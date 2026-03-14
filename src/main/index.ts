@@ -115,29 +115,30 @@ app.whenReady().then(() => {
     }
 
     // Correlate by matching the record's cwd to a pane's cwd
+    // Use the most specific (longest) matching pane CWD to avoid
+    // parent dirs like ~ matching everything.
     const recordCwd = (record as { cwd?: string }).cwd;
     if (recordCwd) {
       const mappedPanes = new Set(sessionToPaneMap.values());
       const activePanes = ptyManager.paneIds();
 
+      let bestPane: string | null = null;
+      let bestLen = 0;
+
       for (const paneId of activePanes) {
         if (mappedPanes.has(paneId)) continue;
         const paneCwd = ptyManager.getCwd(paneId);
-        if (paneCwd && recordCwd.startsWith(paneCwd)) {
-          sessionToPaneMap.set(sessionId, paneId);
-          agentTracker.handleJsonlRecord(paneId, record);
-          return;
+        if (paneCwd && recordCwd.startsWith(paneCwd) && paneCwd.length > bestLen) {
+          bestPane = paneId;
+          bestLen = paneCwd.length;
         }
       }
-    }
 
-    // Fallback: if only one unmapped pane, bind it
-    const activePanes = ptyManager.paneIds();
-    const mappedPanes = new Set(sessionToPaneMap.values());
-    const unmapped = activePanes.filter((id) => !mappedPanes.has(id));
-    if (unmapped.length === 1) {
-      sessionToPaneMap.set(sessionId, unmapped[0]);
-      agentTracker.handleJsonlRecord(unmapped[0], record);
+      if (bestPane) {
+        sessionToPaneMap.set(sessionId, bestPane);
+        agentTracker.handleJsonlRecord(bestPane, record);
+        return;
+      }
     }
   });
 
