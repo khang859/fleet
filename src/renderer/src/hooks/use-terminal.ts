@@ -32,7 +32,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     cursorBlink: true,
     allowProposedApi: true,
     theme: {
-      background: '#0c0c0c',
+      background: '#151515',
       foreground: '#e4e4e4',
       cursor: '#e4e4e4',
       cursorAccent: '#0a0a0a',
