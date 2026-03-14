@@ -1,0 +1,251 @@
+import { randomUUID } from 'crypto';
+import type { SocketCommand, SocketResponse, SocketCommandHandler } from './socket-api';
+import type { PtyManager } from './pty-manager';
+import type { LayoutStore } from './layout-store';
+import type { EventBus } from './event-bus';
+import type { NotificationStateManager } from './notification-state';
+import type { Workspace, Tab, PaneLeaf, PaneNode, PaneSplit } from '../shared/types';
+
+export class FleetCommandHandler implements SocketCommandHandler {
+  private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
+  private tabs = new Map<string, Tab>();
+
+  private getWindow: (() => import('electron').BrowserWindow | null) | null = null;
+
+  constructor(
+    private ptyManager: PtyManager,
+    private layoutStore: LayoutStore,
+    private eventBus: EventBus,
+    private notificationState: NotificationStateManager,
+  ) {}
+
+  setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
+    this.getWindow = getter;
+  }
+
+  async handleCommand(cmd: SocketCommand): Promise<SocketResponse> {
+    switch (cmd.type) {
+      case 'list-workspaces':
+        return { ok: true, workspaces: this.layoutStore.list() };
+
+      case 'load-workspace': {
+        const ws = this.layoutStore.load(cmd.workspaceId as string);
+        if (!ws) return { ok: false, error: `workspace not found: ${cmd.workspaceId}` };
+        this.workspace = ws;
+        this.eventBus.emit('workspace-loaded', { type: 'workspace-loaded', workspaceId: ws.id });
+        return { ok: true };
+      }
+
+      case 'list-tabs':
+        return {
+          ok: true,
+          tabs: this.workspace.tabs.map((t) => ({
+            id: t.id,
+            label: t.label,
+            cwd: t.cwd,
+          })),
+        };
+
+      case 'new-tab': {
+        const paneId = randomUUID();
+        const tabId = randomUUID();
+        const cwd = (cmd.cwd as string) ?? '/';
+        const label = (cmd.label as string) ?? 'Shell';
+
+        const leaf: PaneLeaf = { type: 'leaf', id: paneId, cwd };
+        const tab: Tab = { id: tabId, label, cwd, splitRoot: leaf };
+
+        this.workspace.tabs.push(tab);
+        this.tabs.set(tabId, tab);
+
+        // Create PTY
+        const ptyResult = this.ptyManager.create({
+          paneId,
+          cwd,
+          cmd: cmd.cmd as string | undefined,
+        });
+
+        this.eventBus.emit('pane-created', { type: 'pane-created', paneId });
+
+        return { ok: true, tabId, paneId, pid: ptyResult.pid };
+      }
+
+      case 'close-tab': {
+        const tabId = cmd.tabId as string;
+        const tabIndex = this.workspace.tabs.findIndex((t) => t.id === tabId);
+        if (tabIndex === -1) return { ok: false, error: `tab not found: ${tabId}` };
+
+        const tab = this.workspace.tabs[tabIndex];
+        const paneIds = this.collectPaneIds(tab.splitRoot);
+        for (const pid of paneIds) {
+          this.ptyManager.kill(pid);
+          this.eventBus.emit('pane-closed', { type: 'pane-closed', paneId: pid });
+        }
+        this.workspace.tabs.splice(tabIndex, 1);
+        this.tabs.delete(tabId);
+        return { ok: true };
+      }
+
+      case 'list-panes': {
+        const tabId = cmd.tabId as string;
+        const tab = this.workspace.tabs.find((t) => t.id === tabId);
+        if (!tab) return { ok: false, error: `tab not found: ${tabId}` };
+
+        const leaves = this.collectPaneLeaves(tab.splitRoot);
+        return {
+          ok: true,
+          panes: leaves.map((leaf) => ({
+            id: leaf.id,
+            cwd: leaf.cwd,
+            shell: leaf.shell,
+            hasProcess: this.ptyManager.has(leaf.id),
+          })),
+        };
+      }
+
+      case 'new-pane': {
+        const parentPaneId = cmd.paneId as string;
+        if (!this.ptyManager.has(parentPaneId)) {
+          return { ok: false, error: `pane not found: ${parentPaneId}` };
+        }
+
+        const newPaneId = randomUUID();
+        const cwd = (cmd.cwd as string) ?? '/';
+        const direction = (cmd.direction as 'horizontal' | 'vertical') ?? 'horizontal';
+
+        // Insert new split node into the tab's split tree
+        const newLeaf: PaneLeaf = { type: 'leaf', id: newPaneId, cwd };
+        for (const tab of this.workspace.tabs) {
+          if (this.insertSplit(tab, 'splitRoot', tab.splitRoot, parentPaneId, newLeaf, direction)) {
+            break;
+          }
+        }
+
+        this.ptyManager.create({
+          paneId: newPaneId,
+          cwd,
+          cmd: cmd.cmd as string | undefined,
+        });
+
+        this.eventBus.emit('pane-created', { type: 'pane-created', paneId: newPaneId });
+
+        return { ok: true, paneId: newPaneId };
+      }
+
+      case 'close-pane': {
+        const paneId = cmd.paneId as string;
+        if (!this.ptyManager.has(paneId)) {
+          return { ok: false, error: `pane not found: ${paneId}` };
+        }
+        this.ptyManager.kill(paneId);
+        this.eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
+        return { ok: true };
+      }
+
+      case 'focus-pane': {
+        const paneId = cmd.paneId as string;
+        if (!this.ptyManager.has(paneId)) {
+          return { ok: false, error: `pane not found: ${paneId}` };
+        }
+        // Send focus command to renderer
+        const win = this.getWindow?.();
+        if (win) {
+          win.show();
+          win.focus();
+          win.webContents.send('fleet:focus-pane', { paneId });
+        }
+        return { ok: true };
+      }
+
+      case 'send-input': {
+        const paneId = cmd.paneId as string;
+        if (!this.ptyManager.has(paneId)) {
+          return { ok: false, error: `pane not found: ${paneId}` };
+        }
+        this.ptyManager.write(paneId, cmd.data as string);
+        return { ok: true };
+      }
+
+      case 'get-output': {
+        return {
+          ok: false,
+          error: 'get-output requires renderer IPC round-trip — not yet implemented',
+        };
+      }
+
+      case 'get-state':
+        return {
+          ok: true,
+          workspace: {
+            id: this.workspace.id,
+            label: this.workspace.label,
+            tabCount: this.workspace.tabs.length,
+          },
+          panes: this.ptyManager.paneIds(),
+          notifications: this.notificationState.getAllStates(),
+        };
+
+      default:
+        return { ok: false, error: `Unknown command: ${cmd.type}` };
+    }
+  }
+
+  private collectPaneIds(node: PaneNode): string[] {
+    if (node.type === 'leaf') return [node.id];
+    return [
+      ...this.collectPaneIds(node.children[0]),
+      ...this.collectPaneIds(node.children[1]),
+    ];
+  }
+
+  private collectPaneLeaves(node: PaneNode): PaneLeaf[] {
+    if (node.type === 'leaf') return [node];
+    return [
+      ...this.collectPaneLeaves(node.children[0]),
+      ...this.collectPaneLeaves(node.children[1]),
+    ];
+  }
+
+  private insertSplit(
+    tab: Tab,
+    _key: string,
+    node: PaneNode,
+    targetPaneId: string,
+    newLeaf: PaneLeaf,
+    direction: 'horizontal' | 'vertical',
+  ): boolean {
+    if (node.type === 'leaf' && node.id === targetPaneId) {
+      tab.splitRoot = this.replaceNode(tab.splitRoot, targetPaneId, {
+        type: 'split',
+        direction,
+        ratio: 0.5,
+        children: [node, newLeaf],
+      } as PaneSplit);
+      return true;
+    }
+    if (node.type === 'split') {
+      return (
+        this.insertSplit(tab, 'left', node.children[0], targetPaneId, newLeaf, direction) ||
+        this.insertSplit(tab, 'right', node.children[1], targetPaneId, newLeaf, direction)
+      );
+    }
+    return false;
+  }
+
+  private replaceNode(
+    node: PaneNode,
+    targetId: string,
+    replacement: PaneNode,
+  ): PaneNode {
+    if (node.type === 'leaf') {
+      return node.id === targetId ? replacement : node;
+    }
+    return {
+      ...node,
+      children: [
+        this.replaceNode(node.children[0], targetId, replacement),
+        this.replaceNode(node.children[1], targetId, replacement),
+      ],
+    };
+  }
+}
