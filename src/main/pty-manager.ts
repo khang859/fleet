@@ -18,6 +18,7 @@ export type PtyCreateResult = {
 type PtyEntry = {
   process: pty.IPty;
   paneId: string;
+  cwd: string;
 };
 
 export class PtyManager {
@@ -44,7 +45,7 @@ export class PtyManager {
       env: process.env as Record<string, string>,
     });
 
-    this.ptys.set(opts.paneId, { process: proc, paneId: opts.paneId });
+    this.ptys.set(opts.paneId, { process: proc, paneId: opts.paneId, cwd: opts.cwd });
 
     return { paneId: opts.paneId, pid: proc.pid };
   }
@@ -87,6 +88,10 @@ export class PtyManager {
 
   paneIds(): string[] {
     return Array.from(this.ptys.keys());
+  }
+
+  getCwd(paneId: string): string | undefined {
+    return this.ptys.get(paneId)?.cwd;
   }
 
   /** Kill any PTY whose paneId is not in the given set of active IDs. */

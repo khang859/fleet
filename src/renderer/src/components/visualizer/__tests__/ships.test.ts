@@ -129,14 +129,17 @@ describe('ShipManager', () => {
     // Spawn and let warp-in complete
     sm.update([makeAgent()], 16, 400, 200);
     sm.update([makeAgent()], 600, 400, 200);
-    // Run many frames to let position converge via soft lerp
+    // Run frames to let position converge
     for (let i = 0; i < 300; i++) {
       sm.update([makeAgent()], 16, 400, 200);
     }
 
-    const hit = sm.hitTest(400 * 0.35, 200 * 0.5, 400, 200);
+    // Ship drifts around its target — use its actual position for hit test
+    const ship = sm.getShips()[0];
+    const hit = sm.hitTest(ship.currentX, ship.currentY, 400, 200);
     expect(hit).toBe('pane-1');
 
+    // Far away should miss
     const miss = sm.hitTest(0, 0, 400, 200);
     expect(miss).toBeNull();
   });

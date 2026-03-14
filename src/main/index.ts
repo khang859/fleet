@@ -103,28 +103,41 @@ app.whenReady().then(() => {
   });
 
   // Wire JSONL watcher to agent state tracker
+  // Maps JSONL sessionId → Fleet paneId
   const sessionToPaneMap = new Map<string, string>();
 
   jsonlWatcher.onRecord((sessionId, record) => {
-    const paneId = sessionToPaneMap.get(sessionId);
-    if (paneId) {
-      agentTracker.handleJsonlRecord(paneId, record);
+    // Already mapped?
+    const existingPane = sessionToPaneMap.get(sessionId);
+    if (existingPane) {
+      agentTracker.handleJsonlRecord(existingPane, record);
       return;
     }
 
-    // Auto-correlate: if only one unmapped pane, bind it
+    // Correlate by matching the record's cwd to a pane's cwd
+    const recordCwd = (record as { cwd?: string }).cwd;
+    if (recordCwd) {
+      const mappedPanes = new Set(sessionToPaneMap.values());
+      const activePanes = ptyManager.paneIds();
+
+      for (const paneId of activePanes) {
+        if (mappedPanes.has(paneId)) continue;
+        const paneCwd = ptyManager.getCwd(paneId);
+        if (paneCwd && recordCwd.startsWith(paneCwd)) {
+          sessionToPaneMap.set(sessionId, paneId);
+          agentTracker.handleJsonlRecord(paneId, record);
+          return;
+        }
+      }
+    }
+
+    // Fallback: if only one unmapped pane, bind it
     const activePanes = ptyManager.paneIds();
     const mappedPanes = new Set(sessionToPaneMap.values());
     const unmapped = activePanes.filter((id) => !mappedPanes.has(id));
-
     if (unmapped.length === 1) {
       sessionToPaneMap.set(sessionId, unmapped[0]);
       agentTracker.handleJsonlRecord(unmapped[0], record);
-    } else if (unmapped.length > 1) {
-      // Multiple unmapped panes: bind to the most recent one
-      const target = unmapped[unmapped.length - 1];
-      sessionToPaneMap.set(sessionId, target);
-      agentTracker.handleJsonlRecord(target, record);
     }
   });
 
