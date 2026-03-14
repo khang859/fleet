@@ -1,13 +1,23 @@
+import type { NotificationLevel } from '../../../shared/types';
+
 type TabItemProps = {
   id: string;
   label: string;
   isActive: boolean;
+  badge: NotificationLevel | null;
   onClick: () => void;
   onClose: () => void;
   onRename: (newLabel: string) => void;
 };
 
-export function TabItem({ label, isActive, onClick, onClose }: TabItemProps) {
+const BADGE_COLORS: Record<NotificationLevel, string> = {
+  permission: 'bg-amber-500',
+  error: 'bg-red-500',
+  info: 'bg-blue-500',
+  subtle: 'bg-neutral-600',
+};
+
+export function TabItem({ id, label, isActive, badge, onClick, onClose, onRename }: TabItemProps) {
   return (
     <div
       className={`
@@ -16,6 +26,9 @@ export function TabItem({ label, isActive, onClick, onClose }: TabItemProps) {
       `}
       onClick={onClick}
     >
+      {badge && !isActive && (
+        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${BADGE_COLORS[badge]}`} />
+      )}
       <div className="flex-1 truncate">{label}</div>
       <button
         className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-neutral-300 transition-opacity"

@@ -3,9 +3,11 @@ import { Sidebar } from './components/Sidebar';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
+import { useNotifications } from './hooks/use-notifications';
 
 export function App() {
   usePaneNavigation();
+  useNotifications();
   const initRef = useRef(false);
 
   const { workspace, activeTabId, activePaneId, setActivePane, addTab } =

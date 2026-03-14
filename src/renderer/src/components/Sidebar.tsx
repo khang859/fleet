@@ -1,9 +1,17 @@
 import { TabItem } from './TabItem';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useNotificationStore } from '../store/notification-store';
+import type { PaneNode } from '../../../shared/types';
+
+function collectPaneIds(node: PaneNode): string[] {
+  if (node.type === 'leaf') return [node.id];
+  return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
+}
 
 export function Sidebar() {
   const { workspace, activeTabId, setActiveTab, closeTab, renameTab, addTab } =
     useWorkspaceStore();
+  const { getTabBadge } = useNotificationStore();
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
@@ -23,6 +31,7 @@ export function Sidebar() {
             id={tab.id}
             label={tab.label}
             isActive={tab.id === activeTabId}
+            badge={getTabBadge(collectPaneIds(tab.splitRoot))}
             onClick={() => setActiveTab(tab.id)}
             onClose={() => closeTab(tab.id)}
             onRename={(newLabel) => renameTab(tab.id, newLabel)}
