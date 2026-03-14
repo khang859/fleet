@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useVisualizerStore } from '../store/visualizer-store';
 
 export function usePaneNavigation() {
   const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
@@ -46,6 +47,12 @@ export function usePaneNavigation() {
       if (mod && e.key === 'f') {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:toggle-search'));
+      }
+
+      // Cmd+Shift+V to toggle visualizer
+      if (mod && e.shiftKey && e.key === 'V') {
+        e.preventDefault();
+        useVisualizerStore.getState().toggleVisible();
       }
 
       // Cmd+1-9 to switch tabs

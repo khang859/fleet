@@ -7,6 +7,7 @@ import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 import { useVisualizerStore } from './store/visualizer-store';
+import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -129,7 +130,8 @@ export function App() {
   return (
     <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
       <Sidebar />
-      <main className="flex-1 min-w-0 h-full relative">
+      <div className="flex-1 min-w-0 h-full flex flex-col">
+      <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Top drag region for window movement */}
         <div
           className="absolute top-0 left-0 right-0 h-8 z-10"
@@ -190,6 +192,13 @@ export function App() {
           </div>
         )}
       </main>
+      <VisualizerPanel
+        onShipClick={(paneId) => {
+          setActivePane(paneId);
+          window.fleet.notifications.paneFocused({ paneId });
+        }}
+      />
+      </div>
     </div>
   );
 }
