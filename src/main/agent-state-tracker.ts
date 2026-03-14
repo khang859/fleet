@@ -34,6 +34,7 @@ type AgentEntry = {
 export class AgentStateTracker {
   private agents = new Map<string, AgentEntry>();
   private idleTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private goneTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private fallbackTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private hasJsonlData = new Set<string>();
 
@@ -60,18 +61,7 @@ export class AgentStateTracker {
     });
 
     eventBus.on('pane-closed', (event) => {
-      this.agents.delete(event.paneId);
-      this.hasJsonlData.delete(event.paneId);
-      const idleTimer = this.idleTimers.get(event.paneId);
-      if (idleTimer) {
-        clearTimeout(idleTimer);
-        this.idleTimers.delete(event.paneId);
-      }
-      const fallbackTimer = this.fallbackTimers.get(event.paneId);
-      if (fallbackTimer) {
-        clearTimeout(fallbackTimer);
-        this.fallbackTimers.delete(event.paneId);
-      }
+      this.removeAgent(event.paneId);
     });
 
     eventBus.on('notification', (event) => {
@@ -185,6 +175,41 @@ export class AgentStateTracker {
         this.idleTimers.delete(paneId);
       }, 5000),
     );
+
+    // Also reset "gone" timer — if no JSONL activity for 30s after idle,
+    // the Claude session has likely ended. Remove the agent.
+    const existingGone = this.goneTimers.get(paneId);
+    if (existingGone) clearTimeout(existingGone);
+
+    this.goneTimers.set(
+      paneId,
+      setTimeout(() => {
+        this.removeAgent(paneId);
+        this.goneTimers.delete(paneId);
+      }, 30_000),
+    );
+  }
+
+  private removeAgent(paneId: string): void {
+    const had = this.agents.has(paneId);
+    this.agents.delete(paneId);
+    this.hasJsonlData.delete(paneId);
+
+    const idleTimer = this.idleTimers.get(paneId);
+    if (idleTimer) { clearTimeout(idleTimer); this.idleTimers.delete(paneId); }
+    const goneTimer = this.goneTimers.get(paneId);
+    if (goneTimer) { clearTimeout(goneTimer); this.goneTimers.delete(paneId); }
+    const fallbackTimer = this.fallbackTimers.get(paneId);
+    if (fallbackTimer) { clearTimeout(fallbackTimer); this.fallbackTimers.delete(paneId); }
+
+    // Emit change so renderer gets updated (empty) agent list
+    if (had) {
+      this.eventBus.emit('agent-state-change', {
+        type: 'agent-state-change',
+        paneId,
+        state: 'not-agent',
+      });
+    }
   }
 
   private emitChange(paneId: string): void {
