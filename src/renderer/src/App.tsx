@@ -8,6 +8,7 @@ import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 import { useVisualizerStore } from './store/visualizer-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
+import { ShortcutsHint } from './components/ShortcutsHint';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -182,6 +183,7 @@ export function App() {
             </button>
           </div>
         )}
+        <ShortcutsHint />
       </main>
       <VisualizerPanel
         onShipClick={(id) => {
