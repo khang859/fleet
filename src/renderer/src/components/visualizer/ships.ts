@@ -47,6 +47,11 @@ export type Ship = {
   spawnDelay: number;
   spawnDelayElapsed: number;
   pulsePhase: number;
+  // Organic drift
+  driftPhaseX: number;
+  driftPhaseY: number;
+  driftSpeedX: number;
+  driftSpeedY: number;
 };
 
 export class ShipManager {
@@ -133,10 +138,24 @@ export class ShipManager {
       ship.warp.update(deltaMs);
 
       if (!ship.warp.isActive() && !ship.despawning) {
-        const tx = ship.targetX * canvasW;
-        const ty = ship.targetY * canvasH;
-        ship.currentX += (tx - ship.currentX) * 0.05;
-        ship.currentY += (ty - ship.currentY) * 0.05;
+        // Advance drift phases
+        ship.driftPhaseX += ship.driftSpeedX * deltaMs * 0.001;
+        ship.driftPhaseY += ship.driftSpeedY * deltaMs * 0.001;
+
+        // Organic drift: gentle sinusoidal offset from target
+        // Working ships bob forward/back more; idle ships drift wider
+        const isActive = ship.state === 'working' || ship.state === 'reading';
+        const driftAmountX = isActive ? 6 : 10;
+        const driftAmountY = isActive ? 3 : 8;
+
+        const driftX = Math.sin(ship.driftPhaseX) * driftAmountX;
+        const driftY = Math.sin(ship.driftPhaseY) * driftAmountY
+          + Math.sin(ship.driftPhaseX * 0.7) * driftAmountY * 0.3; // secondary wave
+
+        const tx = ship.targetX * canvasW + driftX;
+        const ty = ship.targetY * canvasH + driftY;
+        ship.currentX += (tx - ship.currentX) * 0.03;
+        ship.currentY += (ty - ship.currentY) * 0.03;
       } else if (ship.warp.isActive()) {
         ship.currentX = ship.warp.getX();
         ship.currentY = ship.warp.getY();
@@ -221,6 +240,10 @@ export class ShipManager {
       spawnDelay: delay,
       spawnDelayElapsed: 0,
       pulsePhase: 0,
+      driftPhaseX: Math.random() * Math.PI * 2,
+      driftPhaseY: Math.random() * Math.PI * 2,
+      driftSpeedX: 0.4 + Math.random() * 0.3,
+      driftSpeedY: 0.5 + Math.random() * 0.4,
     };
 
     if (delay === 0) {
@@ -270,6 +293,10 @@ export class ShipManager {
       spawnDelay: 0,
       spawnDelayElapsed: 0,
       pulsePhase: 0,
+      driftPhaseX: Math.random() * Math.PI * 2,
+      driftPhaseY: Math.random() * Math.PI * 2,
+      driftSpeedX: 0.5 + Math.random() * 0.3,
+      driftSpeedY: 0.6 + Math.random() * 0.4,
     });
   }
 
