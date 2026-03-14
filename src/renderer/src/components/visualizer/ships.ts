@@ -138,24 +138,27 @@ export class ShipManager {
       ship.warp.update(deltaMs);
 
       if (!ship.warp.isActive() && !ship.despawning) {
-        // Advance drift phases
+        // Advance drift phases (slow frequencies for smooth arcs)
         ship.driftPhaseX += ship.driftSpeedX * deltaMs * 0.001;
         ship.driftPhaseY += ship.driftSpeedY * deltaMs * 0.001;
 
-        // Organic drift: gentle sinusoidal offset from target
-        // Working ships bob forward/back more; idle ships drift wider
+        // Layered sine waves for organic, smooth movement
         const isActive = ship.state === 'working' || ship.state === 'reading';
-        const driftAmountX = isActive ? 6 : 10;
-        const driftAmountY = isActive ? 3 : 8;
+        const driftAmountX = isActive ? 18 : 30;
+        const driftAmountY = isActive ? 10 : 22;
 
-        const driftX = Math.sin(ship.driftPhaseX) * driftAmountX;
+        const driftX = Math.sin(ship.driftPhaseX) * driftAmountX
+          + Math.sin(ship.driftPhaseX * 0.37) * driftAmountX * 0.4;
         const driftY = Math.sin(ship.driftPhaseY) * driftAmountY
-          + Math.sin(ship.driftPhaseX * 0.7) * driftAmountY * 0.3; // secondary wave
+          + Math.sin(ship.driftPhaseX * 0.53) * driftAmountY * 0.3
+          + Math.cos(ship.driftPhaseY * 0.71) * driftAmountY * 0.2;
 
         const tx = ship.targetX * canvasW + driftX;
         const ty = ship.targetY * canvasH + driftY;
-        ship.currentX += (tx - ship.currentX) * 0.03;
-        ship.currentY += (ty - ship.currentY) * 0.03;
+        // Very soft lerp for buttery smoothness
+        const lerp = 1 - Math.pow(0.97, deltaMs / 16);
+        ship.currentX += (tx - ship.currentX) * lerp;
+        ship.currentY += (ty - ship.currentY) * lerp;
       } else if (ship.warp.isActive()) {
         ship.currentX = ship.warp.getX();
         ship.currentY = ship.warp.getY();
@@ -242,8 +245,8 @@ export class ShipManager {
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
-      driftSpeedX: 0.4 + Math.random() * 0.3,
-      driftSpeedY: 0.5 + Math.random() * 0.4,
+      driftSpeedX: 0.15 + Math.random() * 0.1,
+      driftSpeedY: 0.2 + Math.random() * 0.12,
     };
 
     if (delay === 0) {
@@ -295,8 +298,8 @@ export class ShipManager {
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
-      driftSpeedX: 0.5 + Math.random() * 0.3,
-      driftSpeedY: 0.6 + Math.random() * 0.4,
+      driftSpeedX: 0.18 + Math.random() * 0.1,
+      driftSpeedY: 0.22 + Math.random() * 0.12,
     });
   }
 

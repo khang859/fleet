@@ -129,8 +129,8 @@ describe('ShipManager', () => {
     // Spawn and let warp-in complete
     sm.update([makeAgent()], 16, 400, 200);
     sm.update([makeAgent()], 600, 400, 200);
-    // Run a few more frames to let position converge via interpolation
-    for (let i = 0; i < 100; i++) {
+    // Run many frames to let position converge via soft lerp
+    for (let i = 0; i < 300; i++) {
       sm.update([makeAgent()], 16, 400, 200);
     }
 
