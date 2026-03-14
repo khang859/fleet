@@ -74,6 +74,17 @@ app.whenReady().then(() => {
     });
   });
 
+  // Emit notification on PTY exit
+  eventBus.on('pty-exit', (event) => {
+    const level = event.exitCode !== 0 ? 'error' : 'subtle';
+    eventBus.emit('notification', {
+      type: 'notification',
+      paneId: event.paneId,
+      level,
+      timestamp: Date.now(),
+    });
+  });
+
   // OS notifications
   eventBus.on('notification', (event) => {
     const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
