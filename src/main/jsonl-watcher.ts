@@ -39,7 +39,7 @@ export class JsonlWatcher {
   private watchedFiles = new Map<string, WatchedFile>();
   private watchedDirs = new Set<string>();
   private scanTimer: ReturnType<typeof setInterval> | null = null;
-  private startTime = 0;
+  private existingAtStart = new Set<string>();
 
   constructor(private watchDir: string) {}
 
@@ -50,10 +50,8 @@ export class JsonlWatcher {
   start(): void {
     if (!existsSync(this.watchDir)) return;
 
-    this.startTime = Date.now();
-
-    // Initial scan of all subdirectories
-    this.scanSubdirs();
+    // Initial scan of all subdirectories (mark files as pre-existing)
+    this.scanSubdirs(true);
 
     // Watch parent for new project subdirectories
     try {
@@ -91,14 +89,14 @@ export class JsonlWatcher {
     }
   }
 
-  private scanSubdirs(): void {
+  private scanSubdirs(isInitialScan = false): void {
     try {
       const entries = readdirSync(this.watchDir);
       for (const entry of entries) {
         const subDir = join(this.watchDir, entry);
         try {
           if (!this.watchedDirs.has(subDir) && statSync(subDir).isDirectory()) {
-            this.watchDir_sub(subDir);
+            this.watchDir_sub(subDir, isInitialScan);
           }
           // Scan for new JSONL files in existing subdirs too
           if (this.watchedDirs.has(subDir)) {
@@ -109,11 +107,11 @@ export class JsonlWatcher {
     } catch {}
   }
 
-  private watchDir_sub(subDir: string): void {
+  private watchDir_sub(subDir: string, isInitialScan = false): void {
     this.watchedDirs.add(subDir);
 
-    // Scan existing files — set offset to end (only process new content)
-    this.scanJsonlFiles(subDir);
+    // Scan existing files — mark as pre-existing during initial scan
+    this.scanJsonlFiles(subDir, isInitialScan);
 
     // fs.watch on the subdir (event-driven, but unreliable on macOS)
     try {
@@ -128,12 +126,14 @@ export class JsonlWatcher {
     } catch {}
   }
 
-  private scanJsonlFiles(dir: string): void {
+  private scanJsonlFiles(dir: string, markExisting = false): void {
     try {
       const files = readdirSync(dir);
       for (const file of files) {
         if (extname(file) === '.jsonl') {
-          this.ensureFileWatched(join(dir, file));
+          const filePath = join(dir, file);
+          if (markExisting) this.existingAtStart.add(filePath);
+          this.ensureFileWatched(filePath);
         }
       }
     } catch {}
@@ -144,12 +144,12 @@ export class JsonlWatcher {
 
     try {
       const stat = statSync(filePath);
-      // If file was modified after watcher started, read from beginning
-      // (it's a new session). Otherwise skip existing content.
-      const isNewFile = stat.mtimeMs > this.startTime;
+      // Files that existed at startup: skip to end (no ghost agents).
+      // Files created after startup: read from beginning (new sessions).
+      const isNew = !this.existingAtStart.has(filePath);
       const watched: WatchedFile = {
         filePath,
-        offset: isNewFile ? 0 : stat.size,
+        offset: isNew ? 0 : stat.size,
         lineBuffer: '',
       };
       this.watchedFiles.set(filePath, watched);

@@ -92,15 +92,6 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const { setAgents } = useVisualizerStore();
-
-  useEffect(() => {
-    const cleanup = window.fleet.agentState.onStateUpdate(({ states }) => {
-      setAgents(states);
-    });
-    return cleanup;
-  }, [setAgents]);
-
   // Handle PTY exit
   useEffect(() => {
     const cleanup = window.fleet.pty.onExit(({ paneId }) => {
@@ -193,9 +184,20 @@ export function App() {
         )}
       </main>
       <VisualizerPanel
-        onShipClick={(paneId) => {
-          setActivePane(paneId);
-          window.fleet.notifications.paneFocused({ paneId });
+        onShipClick={(id) => {
+          // id might be a tab ID (parent ship) or pane ID (child ship)
+          const tab = workspace.tabs.find((t) => t.id === id);
+          if (tab) {
+            // Clicked a tab ship — switch to that tab and focus its first pane
+            const { setActiveTab } = useWorkspaceStore.getState();
+            setActiveTab(tab.id);
+            const paneIds = collectPaneIds(tab.splitRoot);
+            if (paneIds[0]) setActivePane(paneIds[0]);
+          } else {
+            // Clicked a pane ship — focus that pane
+            setActivePane(id);
+            window.fleet.notifications.paneFocused({ paneId: id });
+          }
         }}
       />
       </div>

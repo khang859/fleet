@@ -1,31 +1,46 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
+import { useWorkspaceStore, collectPaneIds } from '../../store/workspace-store';
 import { Starfield } from './starfield';
 import { ShipManager } from './ships';
 import { SpaceRenderer } from './space-renderer';
+import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
   x: number;
   y: number;
   label: string;
-  tool: string;
-  uptime: string;
+  panes: string;
 };
 
 type SpaceCanvasProps = {
   onShipClick: (paneId: string) => void;
 };
 
-function formatUptime(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-  return `${seconds}s`;
-}
-
 const BG_COLOR = '#0a0a1a';
+
+/** Convert workspace tabs/panes into AgentVisualState[] for the ship manager.
+ *  Each tab = parent ship. Each pane in the tab = trailing subagent ship. */
+function workspaceToAgents(tabs: { id: string; label: string; splitRoot: import('../../../../shared/types').PaneNode }[]): AgentVisualState[] {
+  return tabs.map((tab) => {
+    const paneIds = collectPaneIds(tab.splitRoot);
+    return {
+      paneId: tab.id,
+      label: tab.label,
+      state: 'idle' as const,
+      subAgents: paneIds.length > 1
+        ? paneIds.map((pid) => ({
+            paneId: pid,
+            label: pid.slice(0, 8),
+            state: 'idle' as const,
+            subAgents: [],
+            uptime: 0,
+          }))
+        : [],
+      uptime: 0,
+    };
+  });
+}
 
 export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -36,11 +51,12 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const lastTimeRef = useRef<number>(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
-  const { agents, isVisible } = useVisualizerStore();
+  const { isVisible } = useVisualizerStore();
+  const { workspace } = useWorkspaceStore();
 
-  // Keep agents in a ref so the game loop doesn't restart on every IPC update
-  const agentsRef = useRef(agents);
-  agentsRef.current = agents;
+  // Derive agents from workspace tabs/panes and keep in ref
+  const agentsRef = useRef<AgentVisualState[]>([]);
+  agentsRef.current = workspaceToAgents(workspace.tabs);
 
   // Game loop — only restarts when visibility changes
   useEffect(() => {
@@ -55,7 +71,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Initialize starfield on first visible render
     if (!starfieldRef.current) {
       starfieldRef.current = new Starfield(canvas.clientWidth, canvas.clientHeight);
     }
@@ -72,7 +87,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       const cw = canvas!.clientWidth;
       const ch = canvas!.clientHeight;
 
-      // Update canvas resolution for DPI scaling
       const targetW = Math.round(cw * dpr);
       const targetH = Math.round(ch * dpr);
       if (canvas!.width !== targetW || canvas!.height !== targetH) {
@@ -81,15 +95,12 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
         starfield.resize(cw, ch);
       }
 
-      // Scale context for DPI, then render in CSS-pixel space
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      // Update systems (use ref to avoid stale closure)
       starfield.update(deltaMs);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
-      // Clear and render
       ctx!.fillStyle = BG_COLOR;
       ctx!.fillRect(0, 0, cw, ch);
 
@@ -104,7 +115,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [isVisible]);
 
-  // Click handling
+  // Click handling — resolve ship paneId to either tab or pane
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
@@ -122,7 +133,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     [onShipClick],
   );
 
-  // Hover handling for tooltips
+  // Hover tooltip
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
@@ -136,15 +147,17 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (hit) {
         const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
         if (ship) {
-          // Keep tooltip within canvas bounds
           const tooltipX = Math.min(x, rect.width - 160);
           const tooltipY = Math.max(y - 60, 0);
+
+          const paneCount = ship.isSubAgent ? undefined :
+            agentsRef.current.find((a) => a.paneId === hit)?.subAgents.length;
+
           setTooltip({
             x: tooltipX,
             y: tooltipY,
             label: ship.label,
-            tool: ship.currentTool ?? 'none',
-            uptime: formatUptime(ship.uptime),
+            panes: ship.isSubAgent ? 'pane' : `${(paneCount ?? 0) + 1} pane${(paneCount ?? 0) + 1 !== 1 ? 's' : ''}`,
           });
           return;
         }
@@ -170,8 +183,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           <div className="font-medium">{tooltip.label}</div>
-          <div className="text-neutral-400">Tool: {tooltip.tool}</div>
-          <div className="text-neutral-400">Uptime: {tooltip.uptime}</div>
+          <div className="text-neutral-400">{tooltip.panes}</div>
         </div>
       )}
     </div>
