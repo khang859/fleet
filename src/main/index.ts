@@ -7,7 +7,9 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
-import { IPC_CHANNELS, DEFAULT_SETTINGS } from '../shared/constants';
+import { IPC_CHANNELS, DEFAULT_SETTINGS, SOCKET_PATH } from '../shared/constants';
+import { SocketApi } from './socket-api';
+import { FleetCommandHandler } from './socket-command-handler';
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
@@ -15,6 +17,8 @@ const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
 const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
+const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
+const socketApi = new SocketApi(SOCKET_PATH, commandHandler);
 
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -85,6 +89,14 @@ app.whenReady().then(() => {
 
   registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
 
+  // Wire socket command handler to the window
+  commandHandler.setWindowGetter(() => mainWindow);
+
+  // Start socket API
+  socketApi.start().catch((err) => {
+    console.error('Failed to start socket API:', err);
+  });
+
   // Forward notification events to renderer
   eventBus.on('notification', (event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -94,6 +106,27 @@ app.whenReady().then(() => {
         timestamp: event.timestamp,
       });
     }
+  });
+
+  // Broadcast events to socket subscribers
+  eventBus.on('notification', (event) => {
+    socketApi.broadcastEvent('notification', {
+      paneId: event.paneId,
+      level: event.level,
+      timestamp: event.timestamp,
+    });
+  });
+
+  eventBus.on('pane-created', (event) => {
+    socketApi.broadcastEvent('pane-created', { paneId: event.paneId });
+  });
+
+  eventBus.on('pane-closed', (event) => {
+    socketApi.broadcastEvent('pane-closed', { paneId: event.paneId });
+  });
+
+  eventBus.on('workspace-loaded', (event) => {
+    socketApi.broadcastEvent('workspace-loaded', { workspaceId: event.workspaceId });
   });
 
   // Emit notification on PTY exit
@@ -186,6 +219,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   ptyManager.killAll();
+  socketApi.stop();
   if (process.platform !== 'darwin') {
     app.quit();
   }
