@@ -10,6 +10,9 @@ import { registerIpcHandlers } from './ipc-handlers';
 import { IPC_CHANNELS, DEFAULT_SETTINGS, SOCKET_PATH } from '../shared/constants';
 import { SocketApi } from './socket-api';
 import { FleetCommandHandler } from './socket-command-handler';
+import { AgentStateTracker } from './agent-state-tracker';
+import { JsonlWatcher } from './jsonl-watcher';
+import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
@@ -19,6 +22,8 @@ const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
 const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
 const socketApi = new SocketApi(SOCKET_PATH, commandHandler);
+const agentTracker = new AgentStateTracker(eventBus);
+const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR);
 
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -95,6 +100,59 @@ app.whenReady().then(() => {
   // Start socket API
   socketApi.start().catch((err) => {
     console.error('Failed to start socket API:', err);
+  });
+
+  // Wire JSONL watcher to agent state tracker
+  const sessionToPaneMap = new Map<string, string>();
+
+  jsonlWatcher.onRecord((sessionId, record) => {
+    const paneId = sessionToPaneMap.get(sessionId);
+    if (paneId) {
+      agentTracker.handleJsonlRecord(paneId, record);
+      return;
+    }
+
+    // Auto-correlate: if only one unmapped pane, bind it
+    const activePanes = ptyManager.paneIds();
+    const mappedPanes = new Set(sessionToPaneMap.values());
+    const unmapped = activePanes.filter((id) => !mappedPanes.has(id));
+
+    if (unmapped.length === 1) {
+      sessionToPaneMap.set(sessionId, unmapped[0]);
+      agentTracker.handleJsonlRecord(unmapped[0], record);
+    } else if (unmapped.length > 1) {
+      // Multiple unmapped panes: bind to the most recent one
+      const target = unmapped[unmapped.length - 1];
+      sessionToPaneMap.set(sessionId, target);
+      agentTracker.handleJsonlRecord(target, record);
+    }
+  });
+
+  jsonlWatcher.start();
+
+  // Forward agent state changes to renderer and socket API
+  eventBus.on('agent-state-change', (event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.AGENT_STATE, {
+        states: agentTracker.getAllStates(),
+      });
+    }
+
+    socketApi.broadcastEvent('agent-state-change', {
+      paneId: event.paneId,
+      state: event.state,
+      tool: event.tool,
+    });
+  });
+
+  // Clean up session mapping when panes close
+  eventBus.on('pane-closed', (event) => {
+    for (const [sessionId, paneId] of sessionToPaneMap) {
+      if (paneId === event.paneId) {
+        sessionToPaneMap.delete(sessionId);
+        break;
+      }
+    }
   });
 
   // Forward notification events to renderer
@@ -220,6 +278,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   ptyManager.killAll();
   socketApi.stop();
+  jsonlWatcher.stop();
   if (process.platform !== 'darwin') {
     app.quit();
   }
