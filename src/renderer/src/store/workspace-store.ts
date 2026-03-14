@@ -13,6 +13,7 @@ type ClosedTabRecord = {
   tab: Tab;
   index: number;
   closedAt: number;
+  serializedPanes: Map<string, string>;
 };
 
 type WorkspaceStore = {
@@ -23,7 +24,7 @@ type WorkspaceStore = {
 
   // Tab actions
   addTab: (label: string, cwd: string) => string;
-  closeTab: (tabId: string) => void;
+  closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
   setActiveTab: (tabId: string) => void;
@@ -86,7 +87,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return leaf.id;
   },
 
-  closeTab: (tabId) => {
+  closeTab: (tabId, serializedPanes) => {
     set((state) => {
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const closedTab = state.workspace.tabs[tabIndex];
@@ -96,7 +97,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
         activePaneId: nextTab ? collectPaneIds(nextTab.splitRoot)[0] ?? null : null,
-        lastClosedTab: closedTab ? { tab: closedTab, index: tabIndex, closedAt: Date.now() } : null,
+        lastClosedTab: closedTab
+          ? { tab: closedTab, index: tabIndex, closedAt: Date.now(), serializedPanes: serializedPanes ?? new Map() }
+          : null,
       };
     });
   },

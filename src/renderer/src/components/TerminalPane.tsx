@@ -6,11 +6,12 @@ type TerminalPaneProps = {
   cwd: string;
   isActive: boolean;
   onFocus: () => void;
+  serializedContent?: string;
 };
 
-export function TerminalPane({ paneId, cwd, isActive, onFocus }: TerminalPaneProps) {
+export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { fit } = useTerminal(containerRef, { paneId, cwd });
+  const { fit } = useTerminal(containerRef, { paneId, cwd, serializedContent });
 
   return (
     <div

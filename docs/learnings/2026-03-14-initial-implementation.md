@@ -86,6 +86,58 @@ Also requires replacing `__dirname` with `fileURLToPath(new URL('.', import.meta
 
 ---
 
+## Electron app branding only works in packaged builds
+
+**Problem:** `productName` in `package.json`, `app.setName('Fleet')`, and `app.dock.setIcon()` don't change the dock tooltip or menu bar name from "Electron" during development.
+
+**Root cause:** In dev mode, you're running the raw `Electron.app` binary. The dock name comes from the binary's `Info.plist`, not from your app code. Only a packaged build (via `electron-builder`) renames the binary and its `Info.plist` fields (`CFBundleDisplayName`, `CFBundleName`, etc.).
+
+**Fix:** Don't waste time trying to fix dev-mode branding. Set up `productName`, `appId`, and `build` config in `package.json`, and verify branding via `npm run build:mac` → open the `.app` from `dist/`.
+
+---
+
+## Packaged app crashes with "Object has been destroyed" on close
+
+**Problem:** Closing the app window throws `TypeError: Object has been destroyed` from node-pty's `onData` callback.
+
+**Root cause:** PTY processes outlive the `BrowserWindow`. When the window closes, the `BrowserWindow` is destroyed, but PTYs keep emitting data. The IPC callback tries to call `win.webContents.send()` on the destroyed window.
+
+**Fix:** Two-part fix:
+1. Kill all PTYs in the `mainWindow.on('close')` event (before destruction)
+2. Guard every IPC send with `if (w && !w.isDestroyed())` — don't capture `win` at PTY creation time, call `getWindow()` each time instead
+
+---
+
+## macOS code signing mismatch crashes packaged app
+
+**Problem:** Packaged `.app` crashes on launch with `"mapping process and mapped file (non-platform) have different Team IDs"` in the crash log.
+
+**Root cause:** electron-builder's ad-hoc signing doesn't properly sign nested frameworks on newer macOS versions. The main binary and `Electron Framework.framework` end up with mismatched signatures.
+
+**Fix:** After packaging, re-sign with `codesign --force --deep --sign - dist/mac-arm64/Fleet.app`. Also clear quarantine with `xattr -cr` if needed.
+
+---
+
+## electron-builder universal build fails with node-pty
+
+**Problem:** `electron-builder --mac` with `"arch": ["universal"]` fails: `Detected file ... that's the same in both x64 and arm64 builds and not covered by the x64ArchFiles rule`.
+
+**Root cause:** node-pty's prebuilt native binaries have arch-specific paths but electron-builder's universal merge can't reconcile them.
+
+**Fix:** Build for a single architecture instead: `"arch": ["arm64"]` for Apple Silicon or `"arch": ["x64"]` for Intel. Universal builds with native modules need additional `x64ArchFiles` configuration.
+
+---
+
+## xterm.js fit addon throws "dimensions" error on mount
+
+**Problem:** `Uncaught TypeError: Cannot read properties of undefined (reading 'dimensions')` when the terminal first mounts.
+
+**Root cause:** `fitAddon.fit()` is called synchronously after `term.open(container)`, but xterm's render service hasn't completed its first layout pass yet, so `_renderService.dimensions` is undefined.
+
+**Fix:** Defer the initial fit call with `requestAnimationFrame()`. The `ResizeObserver` will handle subsequent resizes.
+
+---
+
 ## General lessons
 
 - **Research before fixing:** When hitting an obscure error, search GitHub issues for the specific error message before trying solutions. The `posix_spawnp` fix was a 30-second `chmod` but took several wrong attempts (rebuilding, changing env vars) before researching.

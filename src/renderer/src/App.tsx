@@ -5,8 +5,17 @@ import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
+import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 
 const UNDO_TOAST_DURATION = 5000;
+const PTY_GC_INTERVAL = 30_000; // 30 seconds
+
+function killClosedTabPtys(paneIds: string[]): void {
+  for (const paneId of paneIds) {
+    window.fleet.pty.kill(paneId);
+    clearCreatedPty(paneId);
+  }
+}
 
 export function App() {
   usePaneNavigation();
@@ -18,6 +27,16 @@ export function App() {
   const { workspace, activeTabId, activePaneId, setActivePane, addTab, lastClosedTab, undoCloseTab } =
     useWorkspaceStore();
 
+  // Track serialized pane content for restored tabs (consumed once on mount)
+  const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
+
+  // Clean up consumed entries after mount (can't delete during render due to StrictMode)
+  useEffect(() => {
+    if (restoredPanesRef.current.size > 0) {
+      restoredPanesRef.current.clear();
+    }
+  });
+
   // Create a default tab on first load if workspace is empty
   useEffect(() => {
     if (!initRef.current && workspace.tabs.length === 0) {
@@ -26,24 +45,55 @@ export function App() {
     }
   }, []);
 
-  // Show undo toast when a tab is closed
+  // Track pane IDs pending kill so we can clean up the previous batch
+  const pendingKillRef = useRef<string[]>([]);
+
+  // Show undo toast when a tab is closed; kill PTYs when undo window expires
   useEffect(() => {
     if (lastClosedTab) {
+      // Kill PTYs from any previous closed tab that wasn't undone
+      if (pendingKillRef.current.length > 0) {
+        killClosedTabPtys(pendingKillRef.current);
+      }
       setShowUndoToast(true);
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-      undoTimerRef.current = setTimeout(() => setShowUndoToast(false), UNDO_TOAST_DURATION);
+      const paneIds = collectPaneIds(lastClosedTab.tab.splitRoot);
+      pendingKillRef.current = paneIds;
+      undoTimerRef.current = setTimeout(() => {
+        setShowUndoToast(false);
+        killClosedTabPtys(paneIds);
+        pendingKillRef.current = [];
+      }, UNDO_TOAST_DURATION);
     }
   }, [lastClosedTab]);
 
   const handleUndo = useCallback(() => {
+    const closed = useWorkspaceStore.getState().lastClosedTab;
+    if (closed && closed.serializedPanes.size > 0) {
+      restoredPanesRef.current.set(closed.tab.id, closed.serializedPanes);
+    }
     undoCloseTab();
     setShowUndoToast(false);
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    pendingKillRef.current = [];
   }, [undoCloseTab]);
+
+  // Periodic GC: kill orphaned PTYs that have no corresponding pane in the workspace
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const state = useWorkspaceStore.getState();
+      const activePaneIds = state.getAllPaneIds();
+      // Also include panes pending undo — they're still alive intentionally
+      const allValid = [...activePaneIds, ...pendingKillRef.current];
+      window.fleet.pty.gc(allValid);
+    }, PTY_GC_INTERVAL);
+    return () => clearInterval(interval);
+  }, []);
 
   // Handle PTY exit
   useEffect(() => {
     const cleanup = window.fleet.pty.onExit(({ paneId }) => {
+      clearCreatedPty(paneId);
       const state = useWorkspaceStore.getState();
       const tab = state.workspace.tabs.find((t) =>
         collectPaneIds(t.splitRoot).includes(paneId),
@@ -52,7 +102,13 @@ export function App() {
 
       const paneIds = collectPaneIds(tab.splitRoot);
       if (paneIds.length === 1) {
-        state.closeTab(tab.id);
+        // Serialize all panes before closing tab
+        const serializedPanes = new Map<string, string>();
+        for (const id of paneIds) {
+          const content = serializePane(id);
+          if (content) serializedPanes.set(id, content);
+        }
+        state.closeTab(tab.id, serializedPanes);
       } else {
         state.closePane(paneId);
       }
@@ -70,23 +126,27 @@ export function App() {
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         />
         {workspace.tabs.length > 0 ? (
-          workspace.tabs.map((tab) => (
-            <div
-              key={tab.id}
-              className="h-full w-full"
-              style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-            >
-              <PaneGrid
-                root={tab.splitRoot}
-                activePaneId={tab.id === activeTabId ? activePaneId : null}
-                onPaneFocus={(paneId) => {
-                  setActivePane(paneId);
-                  window.fleet.notifications.paneFocused({ paneId });
-                  useNotificationStore.getState().clearPane(paneId);
-                }}
-              />
-            </div>
-          ))
+          workspace.tabs.map((tab) => {
+            const serializedPanes = restoredPanesRef.current.get(tab.id);
+            return (
+              <div
+                key={tab.id}
+                className="h-full w-full"
+                style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+              >
+                <PaneGrid
+                  root={tab.splitRoot}
+                  activePaneId={tab.id === activeTabId ? activePaneId : null}
+                  onPaneFocus={(paneId) => {
+                    setActivePane(paneId);
+                    window.fleet.notifications.paneFocused({ paneId });
+                    useNotificationStore.getState().clearPane(paneId);
+                  }}
+                  serializedPanes={serializedPanes}
+                />
+              </div>
+            );
+          })
         ) : (
           <div className="flex items-center justify-center h-full text-neutral-600">
             No tabs open. Press Cmd+T to create one.
@@ -106,7 +166,14 @@ export function App() {
             </button>
             <button
               className="text-neutral-500 hover:text-neutral-300"
-              onClick={() => setShowUndoToast(false)}
+              onClick={() => {
+                setShowUndoToast(false);
+                if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+                if (lastClosedTab) {
+                  killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
+                  pendingKillRef.current = [];
+                }
+              }}
             >
               ×
             </button>

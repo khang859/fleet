@@ -4,6 +4,7 @@ import { Terminal } from '@xterm/xterm';
 import { CanvasAddon } from '@xterm/addon-canvas';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
+import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 
@@ -13,15 +14,28 @@ export type UseTerminalOptions = {
   fontSize?: number;
   fontFamily?: string;
   scrollback?: number;
+  serializedContent?: string;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
 const createdPtys = new Set<string>();
 
+// Registry for serializing terminal content before close
+const serializeRegistry = new Map<string, SerializeAddon>();
+
+export function clearCreatedPty(paneId: string): void {
+  createdPtys.delete(paneId);
+}
+
+export function serializePane(paneId: string): string | undefined {
+  return serializeRegistry.get(paneId)?.serialize();
+}
+
 function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   term: Terminal;
   fitAddon: FitAddon;
   searchAddon: SearchAddon;
+  serializeAddon: SerializeAddon;
   ipcCleanup: () => void;
   resizeObserver: ResizeObserver;
 } {
@@ -58,10 +72,12 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
 
   const fitAddon = new FitAddon();
   const searchAddon = new SearchAddon();
+  const serializeAddon = new SerializeAddon();
   const unicodeAddon = new Unicode11Addon();
 
   term.loadAddon(fitAddon);
   term.loadAddon(searchAddon);
+  term.loadAddon(serializeAddon);
   term.loadAddon(unicodeAddon);
   term.unicode.activeVersion = '11';
 
@@ -72,6 +88,11 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     term.loadAddon(new CanvasAddon());
   } catch {
     // Canvas addon failed, terminal will use default renderer
+  }
+
+  // Restore serialized content after open + canvas addon
+  if (options.serializedContent) {
+    term.write(options.serializedContent);
   }
 
   // Wire IPC data flow
@@ -99,6 +120,13 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   requestAnimationFrame(() => {
     try {
       fitAddon.fit();
+      // Always send resize to PTY — on reconnect (undo) this triggers
+      // SIGWINCH so the shell redraws its prompt.
+      window.fleet.pty.resize({
+        paneId: options.paneId,
+        cols: term.cols,
+        rows: term.rows,
+      });
     } catch {
       // Render service may not be ready yet; ResizeObserver will retry
     }
@@ -120,7 +148,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   });
   resizeObserver.observe(container);
 
-  return { term, fitAddon, searchAddon, ipcCleanup, resizeObserver };
+  return { term, fitAddon, searchAddon, serializeAddon, ipcCleanup, resizeObserver };
 }
 
 export function useTerminal(
@@ -129,18 +157,22 @@ export function useTerminal(
 ) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
+  const serializeAddonRef = useRef<SerializeAddon | null>(null);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, searchAddon, ipcCleanup, resizeObserver } =
+    const { term, fitAddon, searchAddon, serializeAddon, ipcCleanup, resizeObserver } =
       createTerminal(container, options);
 
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
+    serializeAddonRef.current = serializeAddon;
+    serializeRegistry.set(options.paneId, serializeAddon);
 
     return () => {
+      serializeRegistry.delete(options.paneId);
       ipcCleanup();
       resizeObserver.disconnect();
       term.dispose();
@@ -151,5 +183,6 @@ export function useTerminal(
     fit: () => fitAddonRef.current?.fit(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
+    serialize: () => serializeAddonRef.current?.serialize(),
   };
 }

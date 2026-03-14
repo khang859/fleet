@@ -5,15 +5,17 @@ type PaneGridProps = {
   root: PaneNode;
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
+  serializedPanes?: Map<string, string>;
 };
 
-export function PaneGrid({ root, activePaneId, onPaneFocus }: PaneGridProps) {
+export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes }: PaneGridProps) {
   return (
     <div className="h-full w-full">
       <PaneNodeRenderer
         node={root}
         activePaneId={activePaneId}
         onPaneFocus={onPaneFocus}
+        serializedPanes={serializedPanes}
       />
     </div>
   );
@@ -23,9 +25,10 @@ type PaneNodeRendererProps = {
   node: PaneNode;
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
+  serializedPanes?: Map<string, string>;
 };
 
-function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererProps) {
+function PaneNodeRenderer({ node, activePaneId, onPaneFocus, serializedPanes }: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
     return (
       <TerminalPane
@@ -33,6 +36,7 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererP
         cwd={node.cwd}
         isActive={node.id === activePaneId}
         onFocus={() => onPaneFocus(node.id)}
+        serializedContent={serializedPanes?.get(node.id)}
       />
     );
   }
@@ -54,6 +58,7 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererP
           node={node.children[0]}
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
+          serializedPanes={serializedPanes}
         />
       </div>
 
@@ -69,6 +74,7 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererP
           node={node.children[1]}
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
+          serializedPanes={serializedPanes}
         />
       </div>
     </div>

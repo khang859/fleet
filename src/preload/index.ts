@@ -26,6 +26,8 @@ const fleetApi = {
       ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
     kill: (paneId: string): void =>
       ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
+    gc: (activePaneIds: string[]): void =>
+      ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
     onData: (callback: (payload: PtyDataPayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) => callback(payload);
       ipcRenderer.on(IPC_CHANNELS.PTY_DATA, handler);

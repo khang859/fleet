@@ -1,17 +1,25 @@
+import { useCallback } from 'react';
 import { TabItem } from './TabItem';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
-import type { PaneNode } from '../../../shared/types';
-
-function collectPaneIds(node: PaneNode): string[] {
-  if (node.type === 'leaf') return [node.id];
-  return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
-}
+import { serializePane } from '../hooks/use-terminal';
 
 export function Sidebar() {
   const { workspace, activeTabId, setActiveTab, closeTab, renameTab, addTab } =
     useWorkspaceStore();
   const { getTabBadge } = useNotificationStore();
+
+  const handleCloseTab = useCallback((tabId: string) => {
+    const tab = workspace.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    // Serialize terminal content before React unmounts the components
+    const serializedPanes = new Map<string, string>();
+    for (const paneId of collectPaneIds(tab.splitRoot)) {
+      const content = serializePane(paneId);
+      if (content) serializedPanes.set(paneId, content);
+    }
+    closeTab(tabId, serializedPanes);
+  }, [workspace.tabs, closeTab]);
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
@@ -40,7 +48,7 @@ export function Sidebar() {
                 window.fleet.notifications.paneFocused({ paneId });
               }
             }}
-            onClose={() => closeTab(tab.id)}
+            onClose={() => handleCloseTab(tab.id)}
             onRename={(newLabel) => renameTab(tab.id, newLabel)}
           />
         ))}

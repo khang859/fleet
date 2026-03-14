@@ -62,6 +62,15 @@ export function registerIpcHandlers(
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
   });
 
+  // Garbage-collect orphaned PTYs: renderer sends list of active pane IDs,
+  // main kills any PTY not in that list.
+  ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
+    const killed = ptyManager.gc(new Set(activePaneIds));
+    if (killed.length > 0) {
+      console.log(`[pty-gc] killed ${killed.length} orphaned PTY(s):`, killed);
+    }
+  });
+
   // Layout handlers
   ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
     layoutStore.save(req.workspace);

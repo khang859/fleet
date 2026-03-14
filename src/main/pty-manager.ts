@@ -89,6 +89,18 @@ export class PtyManager {
     return Array.from(this.ptys.keys());
   }
 
+  /** Kill any PTY whose paneId is not in the given set of active IDs. */
+  gc(activePaneIds: Set<string>): string[] {
+    const killed: string[] = [];
+    for (const paneId of this.ptys.keys()) {
+      if (!activePaneIds.has(paneId)) {
+        this.kill(paneId);
+        killed.push(paneId);
+      }
+    }
+    return killed;
+  }
+
   onData(paneId: string, callback: (data: string) => void): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
