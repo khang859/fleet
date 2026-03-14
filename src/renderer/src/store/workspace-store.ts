@@ -9,14 +9,22 @@ function createLeaf(cwd: string): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd };
 }
 
+type ClosedTabRecord = {
+  tab: Tab;
+  index: number;
+  closedAt: number;
+};
+
 type WorkspaceStore = {
   workspace: Workspace;
   activeTabId: string | null;
   activePaneId: string | null;
+  lastClosedTab: ClosedTabRecord | null;
 
   // Tab actions
   addTab: (label: string, cwd: string) => string;
   closeTab: (tabId: string) => void;
+  undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
   setActiveTab: (tabId: string) => void;
 
@@ -62,6 +70,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspace: { id: 'default', label: 'Default', tabs: [] },
   activeTabId: null,
   activePaneId: null,
+  lastClosedTab: null,
 
   addTab: (label, cwd) => {
     const leaf = createLeaf(cwd);
@@ -79,12 +88,30 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId) => {
     set((state) => {
+      const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
+      const closedTab = state.workspace.tabs[tabIndex];
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
-      const nextTab = tabs.length > 0 ? tabs[tabs.length - 1] : null;
+      const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
         activePaneId: nextTab ? collectPaneIds(nextTab.splitRoot)[0] ?? null : null,
+        lastClosedTab: closedTab ? { tab: closedTab, index: tabIndex, closedAt: Date.now() } : null,
+      };
+    });
+  },
+
+  undoCloseTab: () => {
+    set((state) => {
+      if (!state.lastClosedTab) return state;
+      const { tab, index } = state.lastClosedTab;
+      const tabs = [...state.workspace.tabs];
+      tabs.splice(Math.min(index, tabs.length), 0, tab);
+      return {
+        workspace: { ...state.workspace, tabs },
+        activeTabId: tab.id,
+        activePaneId: collectPaneIds(tab.splitRoot)[0] ?? null,
+        lastClosedTab: null,
       };
     });
   },

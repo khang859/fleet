@@ -14,11 +14,15 @@ import type { Workspace } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
+import { NotificationDetector } from './notification-detector';
+import { NotificationStateManager } from './notification-state';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   layoutStore: LayoutStore,
   eventBus: EventBus,
+  notificationDetector: NotificationDetector,
+  notificationState: NotificationStateManager,
   getWindow: () => BrowserWindow | null,
 ): void {
   // PTY handlers
@@ -27,6 +31,7 @@ export function registerIpcHandlers(
     const win = getWindow();
 
     ptyManager.onData(req.paneId, (data) => {
+      notificationDetector.scan(req.paneId, data);
       win?.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
     });
 
@@ -70,8 +75,8 @@ export function registerIpcHandlers(
   });
 
   // Notification handlers
-  ipcMain.on(IPC_CHANNELS.PANE_FOCUSED, (_event, _payload: PaneFocusedPayload) => {
-    // Clear notification state for this pane — consumed by notification system in Layer 2
+  ipcMain.on(IPC_CHANNELS.PANE_FOCUSED, (_event, payload: PaneFocusedPayload) => {
+    notificationState.clearPane(payload.paneId);
   });
 
   // Settings handlers (stub — full implementation in Layer 5)

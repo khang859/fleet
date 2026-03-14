@@ -14,8 +14,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus }: TerminalPanePro
 
   return (
     <div
-      className={`h-full w-full overflow-hidden p-3 ${isActive ? 'ring-1 ring-neutral-700' : ''}`}
-      style={{ backgroundColor: '#0c0c0c' }}
+      className={`h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0 ${isActive ? 'ring-2 ring-blue-500/70 bg-[#0c0c0c]' : 'ring-1 ring-neutral-800/50 bg-[#0a0a0a]'}`}
       onFocus={onFocus}
       onClick={() => {
         onFocus();

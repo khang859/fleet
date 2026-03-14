@@ -90,7 +90,7 @@ electron-builder.yml                 # electron-builder config for macOS + Windo
 - Create: `package.json`, `electron-builder.yml`, `electron.vite.config.ts`, `tsconfig.json`, `tsconfig.node.json`, `tsconfig.web.json`
 - Create: `src/main/index.ts`, `src/preload/index.ts`, `src/renderer/index.html`, `src/renderer/main.tsx`
 
-- [ ] **Step 1: Scaffold the project into a temp directory and merge into repo**
+- [x] **Step 1: Scaffold the project into a temp directory and merge into repo**
 
 Run:
 ```bash
@@ -102,7 +102,7 @@ rm -rf /tmp/fleet-scaffold
 
 This copies the scaffolded files into the existing repo root. Existing files (`docs/`, `reference/`, `CLAUDE.md`, `.git/`) are preserved — the scaffold doesn't create conflicting files.
 
-- [ ] **Step 2: Install dependencies and verify the scaffold runs**
+- [x] **Step 2: Install dependencies and verify the scaffold runs**
 
 Run:
 ```bash
@@ -111,7 +111,7 @@ npm install && npm run dev
 
 Expected: Terminal output includes `electron-vite dev server running` before the Electron window spawns. Close the window to stop the process.
 
-- [ ] **Step 3: Commit scaffold**
+- [x] **Step 3: Commit scaffold**
 
 ```bash
 git add -A
@@ -123,14 +123,14 @@ git commit -m "chore: scaffold electron-vite project with React + TypeScript tem
 **Files:**
 - Modify: `package.json`
 
-- [ ] **Step 1: Install production dependencies**
+- [x] **Step 1: Install production dependencies**
 
 Run:
 ```bash
 npm install xterm @xterm/addon-webgl @xterm/addon-canvas @xterm/addon-search @xterm/addon-fit @xterm/addon-unicode11 node-pty electron-store electron-updater
 ```
 
-- [ ] **Step 2: Install UI dependencies (shadcn/ui + Tailwind)**
+- [x] **Step 2: Install UI dependencies (shadcn/ui + Tailwind)**
 
 Run:
 ```bash
@@ -139,7 +139,7 @@ npm install tailwind-merge clsx class-variance-authority lucide-react
 npm install @radix-ui/react-context-menu @radix-ui/react-dialog @radix-ui/react-dropdown-menu @radix-ui/react-tooltip @radix-ui/react-switch @radix-ui/react-select @radix-ui/react-separator
 ```
 
-- [ ] **Step 3: Configure Tailwind**
+- [x] **Step 3: Configure Tailwind**
 
 Create `src/renderer/index.css`:
 ```css
@@ -159,7 +159,7 @@ export default defineConfig({
 })
 ```
 
-- [ ] **Step 4: Verify dependencies install and app still runs**
+- [x] **Step 4: Verify dependencies install and app still runs**
 
 Run:
 ```bash
@@ -168,7 +168,7 @@ npm run dev
 
 Expected: Electron window opens without errors. No import errors in console.
 
-- [ ] **Step 5: Commit dependencies**
+- [x] **Step 5: Commit dependencies**
 
 ```bash
 git add package.json package-lock.json electron.vite.config.ts src/renderer/index.css
@@ -182,7 +182,7 @@ git commit -m "chore: add xterm.js, node-pty, shadcn/ui, and Tailwind dependenci
 - Create: `src/shared/constants.ts`
 - Create: `src/shared/ipc-api.ts`
 
-- [ ] **Step 1: Write shared types**
+- [x] **Step 1: Write shared types**
 
 Create `src/shared/types.ts`:
 ```ts
@@ -259,7 +259,7 @@ export type FleetSettings = {
 };
 ```
 
-- [ ] **Step 2: Write shared constants**
+- [x] **Step 2: Write shared constants**
 
 Create `src/shared/constants.ts`:
 
@@ -323,7 +323,7 @@ export const DEFAULT_SETTINGS: import('./types').FleetSettings = {
 };
 ```
 
-- [ ] **Step 3: Write IPC API contract**
+- [x] **Step 3: Write IPC API contract**
 
 Create `src/shared/ipc-api.ts`:
 ```ts
@@ -381,7 +381,7 @@ export type AgentStatePayload = {
 };
 ```
 
-- [ ] **Step 4: Type-check to verify all types compile**
+- [x] **Step 4: Type-check to verify all types compile**
 
 Run:
 ```bash
@@ -390,7 +390,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0, no diagnostics printed.
 
-- [ ] **Step 5: Commit shared types**
+- [x] **Step 5: Commit shared types**
 
 ```bash
 git add src/shared/
@@ -402,7 +402,7 @@ git commit -m "feat: add shared types, constants, and IPC API contract"
 **Files:**
 - Modify: `src/preload/index.ts`
 
-- [ ] **Step 1: Write the preload script**
+- [x] **Step 1: Write the preload script**
 
 Replace `src/preload/index.ts`:
 ```ts
@@ -483,7 +483,7 @@ contextBridge.exposeInMainWorld('fleet', fleetApi);
 export type FleetApi = typeof fleetApi;
 ```
 
-- [ ] **Step 2: Add global type declaration for the renderer**
+- [x] **Step 2: Add global type declaration for the renderer**
 
 Create `src/renderer/env.d.ts`:
 ```ts
@@ -496,7 +496,7 @@ declare global {
 }
 ```
 
-- [ ] **Step 3: Type-check to verify everything compiles**
+- [x] **Step 3: Type-check to verify everything compiles**
 
 Run:
 ```bash
@@ -505,7 +505,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0, no diagnostics printed.
 
-- [ ] **Step 4: Commit preload script**
+- [x] **Step 4: Commit preload script**
 
 ```bash
 git add src/preload/index.ts src/renderer/env.d.ts
@@ -524,7 +524,7 @@ The main process modules for shell detection, PTY management, layout persistence
 - Create: `src/main/shell-detection.ts`
 - Create: `src/main/__tests__/shell-detection.test.ts`
 
-- [ ] **Step 1: Set up Vitest for main process tests**
+- [x] **Step 1: Set up Vitest for main process tests**
 
 Run:
 ```bash
@@ -549,7 +549,7 @@ export default defineConfig({
 });
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `src/main/__tests__/shell-detection.test.ts`:
 ```ts
@@ -571,7 +571,7 @@ describe('getDefaultShell', () => {
 });
 ```
 
-- [ ] **Step 3: Run test to verify it fails**
+- [x] **Step 3: Run test to verify it fails**
 
 Run:
 ```bash
@@ -580,7 +580,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../shell-detection'`
 
-- [ ] **Step 4: Write the implementation**
+- [x] **Step 4: Write the implementation**
 
 Create `src/main/shell-detection.ts`:
 ```ts
@@ -615,7 +615,7 @@ export function getWSLDistros(): string[] {
 }
 ```
 
-- [ ] **Step 5: Run test to verify it passes**
+- [x] **Step 5: Run test to verify it passes**
 
 Run:
 ```bash
@@ -624,7 +624,7 @@ npm test
 
 Expected: PASS — 2 tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add vitest.config.ts package.json package-lock.json src/main/shell-detection.ts src/main/__tests__/shell-detection.test.ts
@@ -637,7 +637,7 @@ git commit -m "feat: add cross-platform shell detection with tests"
 - Create: `src/main/pty-manager.ts`
 - Create: `src/main/__tests__/pty-manager.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/pty-manager.test.ts`:
 ```ts
@@ -695,7 +695,7 @@ describe('PtyManager', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -704,7 +704,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../pty-manager'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/pty-manager.ts`:
 ```ts
@@ -819,7 +819,7 @@ export class PtyManager {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -828,7 +828,7 @@ npm test
 
 Expected: PASS — 4 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/pty-manager.ts src/main/__tests__/pty-manager.test.ts
@@ -841,7 +841,7 @@ git commit -m "feat: add PTY manager with spawn/kill/resize lifecycle"
 - Create: `src/main/layout-store.ts`
 - Create: `src/main/__tests__/layout-store.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/layout-store.test.ts`:
 ```ts
@@ -904,7 +904,7 @@ describe('LayoutStore', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -913,7 +913,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../layout-store'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/layout-store.ts`:
 ```ts
@@ -960,7 +960,7 @@ export class LayoutStore {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -969,7 +969,7 @@ npm test
 
 Expected: PASS — 4 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/layout-store.ts src/main/__tests__/layout-store.test.ts
@@ -982,7 +982,7 @@ git commit -m "feat: add layout store for workspace persistence via electron-sto
 - Create: `src/main/event-bus.ts`
 - Create: `src/main/__tests__/event-bus.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/event-bus.test.ts`:
 ```ts
@@ -1042,7 +1042,7 @@ describe('EventBus', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -1051,7 +1051,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../event-bus'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/event-bus.ts`:
 ```ts
@@ -1087,7 +1087,7 @@ export class EventBus {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -1096,7 +1096,7 @@ npm test
 
 Expected: PASS — 4 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/event-bus.ts src/main/__tests__/event-bus.test.ts
@@ -1109,7 +1109,7 @@ git commit -m "feat: add typed event bus for cross-module communication"
 - Create: `src/main/ipc-handlers.ts`
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Write the IPC handlers**
+- [x] **Step 1: Write the IPC handlers**
 
 Create `src/main/ipc-handlers.ts`:
 ```ts
@@ -1201,7 +1201,7 @@ export function registerIpcHandlers(
 }
 ```
 
-- [ ] **Step 2: Wire up main process entry point**
+- [x] **Step 2: Wire up main process entry point**
 
 Replace `src/main/index.ts` with:
 ```ts
@@ -1255,7 +1255,7 @@ app.on('window-all-closed', () => {
 });
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -1264,7 +1264,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/ipc-handlers.ts src/main/index.ts
@@ -1276,14 +1276,14 @@ git commit -m "feat: add IPC handlers wiring PTY manager, layout store, and even
 **Files:**
 - Create: `src/renderer/store/workspace-store.ts`
 
-- [ ] **Step 1: Install zustand**
+- [x] **Step 1: Install zustand**
 
 Run:
 ```bash
 npm install zustand
 ```
 
-- [ ] **Step 2: Write the workspace store**
+- [x] **Step 2: Write the workspace store**
 
 Create `src/renderer/store/workspace-store.ts`:
 ```ts
@@ -1484,7 +1484,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 }));
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -1493,7 +1493,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/store/workspace-store.ts package.json package-lock.json
@@ -1506,7 +1506,7 @@ git commit -m "feat: add zustand workspace store with tab/pane management"
 - Create: `src/renderer/hooks/use-terminal.ts`
 - Create: `src/renderer/components/TerminalPane.tsx`
 
-- [ ] **Step 1: Write the xterm.js lifecycle hook**
+- [x] **Step 1: Write the xterm.js lifecycle hook**
 
 Create `src/renderer/hooks/use-terminal.ts`:
 ```ts
@@ -1623,7 +1623,7 @@ export function useTerminal(
 }
 ```
 
-- [ ] **Step 2: Write the TerminalPane component**
+- [x] **Step 2: Write the TerminalPane component**
 
 Create `src/renderer/components/TerminalPane.tsx`:
 ```tsx
@@ -1655,7 +1655,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus }: TerminalPanePro
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -1664,7 +1664,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/hooks/use-terminal.ts src/renderer/components/TerminalPane.tsx
@@ -1676,7 +1676,7 @@ git commit -m "feat: add TerminalPane component with xterm.js WebGL rendering"
 **Files:**
 - Create: `src/renderer/components/PaneGrid.tsx`
 
-- [ ] **Step 1: Write the PaneGrid component**
+- [x] **Step 1: Write the PaneGrid component**
 
 Create `src/renderer/components/PaneGrid.tsx`:
 ```tsx
@@ -1802,7 +1802,7 @@ function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -1811,7 +1811,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/renderer/components/PaneGrid.tsx
@@ -1824,7 +1824,7 @@ git commit -m "feat: add recursive PaneGrid component with split tree rendering"
 - Create: `src/renderer/components/TabItem.tsx`
 - Create: `src/renderer/components/Sidebar.tsx`
 
-- [ ] **Step 1: Write the TabItem component**
+- [x] **Step 1: Write the TabItem component**
 
 Create `src/renderer/components/TabItem.tsx`:
 ```tsx
@@ -1861,7 +1861,7 @@ export function TabItem({ id, label, isActive, onClick, onClose, onRename }: Tab
 }
 ```
 
-- [ ] **Step 2: Write the Sidebar component**
+- [x] **Step 2: Write the Sidebar component**
 
 Create `src/renderer/components/Sidebar.tsx`:
 ```tsx
@@ -1908,7 +1908,7 @@ export function Sidebar() {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -1917,7 +1917,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/components/TabItem.tsx src/renderer/components/Sidebar.tsx
@@ -1930,7 +1930,7 @@ git commit -m "feat: add Sidebar with vertical tab list"
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/main.tsx`
 
-- [ ] **Step 1: Write the App component**
+- [x] **Step 1: Write the App component**
 
 Replace `src/renderer/App.tsx`:
 ```tsx
@@ -1985,7 +1985,7 @@ export function App() {
 }
 ```
 
-- [ ] **Step 2: Update renderer entry point**
+- [x] **Step 2: Update renderer entry point**
 
 Replace `src/renderer/main.tsx`:
 ```tsx
@@ -2004,7 +2004,7 @@ if (root) {
 }
 ```
 
-- [ ] **Step 3: Run the app end-to-end**
+- [x] **Step 3: Run the app end-to-end**
 
 Run:
 ```bash
@@ -2013,7 +2013,7 @@ npm run dev
 
 Expected: Electron window opens showing a sidebar on the left with one "Shell" tab and a terminal pane on the right. The terminal should have a working shell session (typing commands, seeing output).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/App.tsx src/renderer/main.tsx
@@ -2213,7 +2213,7 @@ Watches PTY data streams for OSC sequences and patterns, routes events through t
 - Create: `src/main/notification-detector.ts`
 - Create: `src/main/__tests__/notification-detector.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/notification-detector.test.ts`:
 ```ts
@@ -2296,7 +2296,7 @@ describe('NotificationDetector', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -2305,7 +2305,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../notification-detector'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/notification-detector.ts`:
 ```ts
@@ -2369,7 +2369,7 @@ export class NotificationDetector {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -2378,7 +2378,7 @@ npm test
 
 Expected: PASS — 5 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/notification-detector.ts src/main/__tests__/notification-detector.test.ts
@@ -2390,7 +2390,7 @@ git commit -m "feat: add notification detector for OSC 9/777 and permission prom
 **Files:**
 - Modify: `src/main/ipc-handlers.ts`
 
-- [ ] **Step 1: Update ipc-handlers.ts to scan PTY output**
+- [x] **Step 1: Update ipc-handlers.ts to scan PTY output**
 
 Add `NotificationDetector` import and parameter to `registerIpcHandlers`:
 
@@ -2420,7 +2420,7 @@ In the `PTY_CREATE` handler, update the `onData` callback to scan before forward
     });
 ```
 
-- [ ] **Step 2: Update main/index.ts to create and pass the detector**
+- [x] **Step 2: Update main/index.ts to create and pass the detector**
 
 Add to `src/main/index.ts` imports and instantiation:
 ```ts
@@ -2434,7 +2434,7 @@ Update the `registerIpcHandlers` call:
   registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, () => mainWindow);
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -2443,7 +2443,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/ipc-handlers.ts src/main/index.ts
@@ -2456,7 +2456,7 @@ git commit -m "feat: wire notification detector into PTY data flow"
 - Create: `src/main/notification-state.ts`
 - Create: `src/main/__tests__/notification-state.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/notification-state.test.ts`:
 ```ts
@@ -2552,7 +2552,7 @@ describe('NotificationStateManager', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -2561,7 +2561,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../notification-state'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/notification-state.ts`:
 ```ts
@@ -2615,7 +2615,7 @@ export class NotificationStateManager {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -2624,7 +2624,7 @@ npm test
 
 Expected: PASS — 5 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/notification-state.ts src/main/__tests__/notification-state.test.ts
@@ -2637,7 +2637,7 @@ git commit -m "feat: add notification state manager with priority tracking"
 - Modify: `src/main/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
-- [ ] **Step 1: Create NotificationStateManager in main and forward events to renderer**
+- [x] **Step 1: Create NotificationStateManager in main and forward events to renderer**
 
 Update `src/main/index.ts` — add imports and instantiation:
 ```ts
@@ -2659,7 +2659,7 @@ Add event forwarding after `registerIpcHandlers`:
   });
 ```
 
-- [ ] **Step 2: Handle pane-focused IPC to clear notification state**
+- [x] **Step 2: Handle pane-focused IPC to clear notification state**
 
 Update `src/main/ipc-handlers.ts` — add `NotificationStateManager` as a parameter:
 
@@ -2691,7 +2691,7 @@ Update the `registerIpcHandlers` call in `src/main/index.ts`:
   registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -2700,7 +2700,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/index.ts src/main/ipc-handlers.ts
@@ -2714,7 +2714,7 @@ git commit -m "feat: forward notifications to renderer and handle pane focus cle
 - Create: `src/renderer/hooks/use-notifications.ts`
 - Modify: `src/renderer/components/TabItem.tsx`
 
-- [ ] **Step 1: Write the notification store**
+- [x] **Step 1: Write the notification store**
 
 Create `src/renderer/store/notification-store.ts`:
 ```ts
@@ -2780,7 +2780,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
 }));
 ```
 
-- [ ] **Step 2: Write the notifications hook**
+- [x] **Step 2: Write the notifications hook**
 
 Create `src/renderer/hooks/use-notifications.ts`:
 ```ts
@@ -2803,7 +2803,7 @@ export function useNotifications() {
 }
 ```
 
-- [ ] **Step 3: Add badge to TabItem**
+- [x] **Step 3: Add badge to TabItem**
 
 Update `src/renderer/components/TabItem.tsx` to accept and render a badge:
 
@@ -2854,7 +2854,7 @@ export function TabItem({ id, label, isActive, badge, onClick, onClose, onRename
 }
 ```
 
-- [ ] **Step 4: Update Sidebar to pass badge prop**
+- [x] **Step 4: Update Sidebar to pass badge prop**
 
 Update `src/renderer/components/Sidebar.tsx` — add imports and badge computation:
 
@@ -2889,7 +2889,7 @@ Update the `TabItem` render to pass the badge:
 />
 ```
 
-- [ ] **Step 5: Add useNotifications hook to App.tsx**
+- [x] **Step 5: Add useNotifications hook to App.tsx**
 
 Add to `src/renderer/App.tsx` imports:
 ```ts
@@ -2901,7 +2901,7 @@ Call at the top of the `App` component body:
 useNotifications();
 ```
 
-- [ ] **Step 6: Type-check**
+- [x] **Step 6: Type-check**
 
 Run:
 ```bash
@@ -2910,7 +2910,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/renderer/store/notification-store.ts src/renderer/hooks/use-notifications.ts src/renderer/components/TabItem.tsx src/renderer/components/Sidebar.tsx src/renderer/App.tsx
@@ -2923,7 +2923,7 @@ git commit -m "feat: add notification badges on sidebar tabs with priority rende
 - Modify: `src/main/index.ts`
 - Create: `src/assets/sounds/chime.mp3` (placeholder)
 
-- [ ] **Step 1: Add OS notification dispatch in main process**
+- [x] **Step 1: Add OS notification dispatch in main process**
 
 Add `Notification` to the existing electron import at the top of `src/main/index.ts`:
 ```ts
@@ -2969,7 +2969,7 @@ eventBus.on('notification', (event) => {
 });
 ```
 
-- [ ] **Step 2: Add sound playback in renderer**
+- [x] **Step 2: Add sound playback in renderer**
 
 Update `src/renderer/hooks/use-notifications.ts` to play a chime:
 
@@ -3038,7 +3038,7 @@ export function useNotifications() {
 }
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -3047,7 +3047,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/index.ts src/renderer/hooks/use-notifications.ts
@@ -3059,7 +3059,7 @@ git commit -m "feat: add OS notifications and sound playback for permission prom
 **Files:**
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Emit notification on PTY exit**
+- [x] **Step 1: Emit notification on PTY exit**
 
 Add to the event bus subscriptions in `src/main/index.ts`:
 
@@ -3075,7 +3075,7 @@ Add to the event bus subscriptions in `src/main/index.ts`:
   });
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -3084,7 +3084,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/index.ts
