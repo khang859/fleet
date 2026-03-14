@@ -12,10 +12,14 @@ function tmpDir(): string {
 
 describe('JsonlWatcher', () => {
   let dir: string;
+  let projectDir: string;
   let watcher: JsonlWatcher;
 
   beforeEach(() => {
     dir = tmpDir();
+    // Create a project subdirectory (mirrors ~/.claude/projects/<hash>/)
+    projectDir = join(dir, 'project-abc');
+    mkdirSync(projectDir, { recursive: true });
   });
 
   afterEach(() => {
@@ -23,13 +27,16 @@ describe('JsonlWatcher', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('parses a JSONL record with tool_use', async () => {
+  it('parses a JSONL record with tool_use in a subdirectory', async () => {
     const callback = vi.fn();
     watcher = new JsonlWatcher(dir);
     watcher.onRecord(callback);
     watcher.start();
 
-    const filePath = join(dir, 'session-1.jsonl');
+    // Give fs.watch time to initialize
+    await new Promise((r) => setTimeout(r, 100));
+
+    const filePath = join(projectDir, 'session-1.jsonl');
     const record = {
       type: 'assistant',
       message: {
@@ -52,7 +59,7 @@ describe('JsonlWatcher', () => {
     watcher.onRecord(callback);
     watcher.start();
 
-    const filePath = join(dir, 'session-2.jsonl');
+    const filePath = join(projectDir, 'session-2.jsonl');
     writeFileSync(filePath, JSON.stringify({ type: 'user' }) + '\n');
 
     await new Promise((r) => setTimeout(r, 500));
@@ -70,7 +77,7 @@ describe('JsonlWatcher', () => {
     watcher.onRecord(callback);
     watcher.start();
 
-    writeFileSync(join(dir, 'readme.txt'), 'hello\n');
+    writeFileSync(join(projectDir, 'readme.txt'), 'hello\n');
 
     await new Promise((r) => setTimeout(r, 500));
 

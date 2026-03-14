@@ -20,9 +20,10 @@ export type JsonlRecord = {
 type RecordCallback = (sessionId: string, record: JsonlRecord) => void;
 
 export class JsonlWatcher {
-  private watcher: FSWatcher | null = null;
+  private watchers: FSWatcher[] = [];
   private callbacks: RecordCallback[] = [];
   private fileOffsets = new Map<string, number>();
+  private parentWatcher: FSWatcher | null = null;
 
   constructor(private watchDir: string) {}
 
@@ -33,28 +34,62 @@ export class JsonlWatcher {
   start(): void {
     if (!existsSync(this.watchDir)) return;
 
-    // Read existing files
-    this.scanExistingFiles();
+    // Watch each existing project subdirectory
+    this.scanAndWatchSubdirs();
 
-    // Watch for changes
-    this.watcher = watch(this.watchDir, { persistent: false }, (eventType, filename) => {
-      if (!filename || extname(filename) !== '.jsonl') return;
-      this.processFile(join(this.watchDir, filename));
+    // Watch the parent directory for new project subdirectories
+    this.parentWatcher = watch(this.watchDir, { persistent: false }, (eventType, filename) => {
+      if (!filename) return;
+      const subDir = join(this.watchDir, filename);
+      try {
+        if (existsSync(subDir) && statSync(subDir).isDirectory()) {
+          this.watchSubdir(subDir);
+        }
+      } catch {}
     });
   }
 
   stop(): void {
-    this.watcher?.close();
-    this.watcher = null;
+    this.parentWatcher?.close();
+    this.parentWatcher = null;
+    for (const w of this.watchers) {
+      w.close();
+    }
+    this.watchers = [];
   }
 
-  private scanExistingFiles(): void {
+  private scanAndWatchSubdirs(): void {
     try {
-      const files = readdirSync(this.watchDir);
+      const entries = readdirSync(this.watchDir);
+      for (const entry of entries) {
+        const subDir = join(this.watchDir, entry);
+        try {
+          if (statSync(subDir).isDirectory()) {
+            // Scan existing JSONL files to set offsets (skip existing content)
+            this.scanExistingFiles(subDir);
+            this.watchSubdir(subDir);
+          }
+        } catch {}
+      }
+    } catch {}
+  }
+
+  private watchSubdir(subDir: string): void {
+    try {
+      const watcher = watch(subDir, { persistent: false }, (eventType, filename) => {
+        if (!filename || extname(filename) !== '.jsonl') return;
+        this.processFile(join(subDir, filename));
+      });
+      this.watchers.push(watcher);
+    } catch {}
+  }
+
+  private scanExistingFiles(dir: string): void {
+    try {
+      const files = readdirSync(dir);
       for (const file of files) {
         if (extname(file) === '.jsonl') {
-          const filePath = join(this.watchDir, file);
-          // Set offset to end of file — only process new records
+          const filePath = join(dir, file);
           const stat = statSync(filePath);
           this.fileOffsets.set(filePath, stat.size);
         }
