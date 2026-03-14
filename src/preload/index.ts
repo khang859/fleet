@@ -72,6 +72,15 @@ const fleetApi = {
     set: (settings: Partial<FleetSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings),
   },
+  updates: {
+    onUpdateDownloaded: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on('fleet:update-downloaded', handler);
+      return () => ipcRenderer.removeListener('fleet:update-downloaded', handler);
+    },
+    installUpdate: (): void =>
+      ipcRenderer.send('fleet:install-update'),
+  },
 };
 
 contextBridge.exposeInMainWorld('fleet', fleetApi);

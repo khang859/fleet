@@ -1,5 +1,7 @@
+import { useCallback, useRef } from 'react';
 import type { PaneNode } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
+import { useWorkspaceStore } from '../store/workspace-store';
 
 type PaneGridProps = {
   root: PaneNode;
@@ -13,6 +15,7 @@ export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes }: P
     <div className="h-full w-full">
       <PaneNodeRenderer
         node={root}
+        path={[]}
         activePaneId={activePaneId}
         onPaneFocus={onPaneFocus}
         serializedPanes={serializedPanes}
@@ -23,12 +26,13 @@ export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes }: P
 
 type PaneNodeRendererProps = {
   node: PaneNode;
+  path: number[];
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
   serializedPanes?: Map<string, string>;
 };
 
-function PaneNodeRenderer({ node, activePaneId, onPaneFocus, serializedPanes }: PaneNodeRendererProps) {
+function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes }: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
     return (
       <TerminalPane
@@ -56,13 +60,14 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus, serializedPanes }: 
       >
         <PaneNodeRenderer
           node={node.children[0]}
+          path={[...path, 0]}
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           serializedPanes={serializedPanes}
         />
       </div>
 
-      <ResizeHandle direction={node.direction} />
+      <ResizeHandle direction={node.direction} path={path} />
 
       <div
         style={{
@@ -72,6 +77,7 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus, serializedPanes }: 
       >
         <PaneNodeRenderer
           node={node.children[1]}
+          path={[...path, 1]}
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           serializedPanes={serializedPanes}
@@ -83,15 +89,53 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus, serializedPanes }: 
 
 type ResizeHandleProps = {
   direction: 'horizontal' | 'vertical';
+  path: number[];
 };
 
-function ResizeHandle({ direction }: ResizeHandleProps) {
+function ResizeHandle({ direction, path }: ResizeHandleProps) {
   const isHorizontal = direction === 'horizontal';
+  const handleRef = useRef<HTMLDivElement>(null);
+  const resizeSplit = useWorkspaceStore((s) => s.resizeSplit);
 
-  // Outer div: generous 6px hit area for easy grabbing (Baymard: 76% of sites fail at unified hit areas)
-  // Inner div: thin 1px visual divider
+  const onMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const container = handleRef.current?.parentElement;
+      if (!container) return;
+
+      const rect = container.getBoundingClientRect();
+
+      document.body.style.cursor = isHorizontal ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+
+      const innerDiv = handleRef.current?.querySelector('div');
+      if (innerDiv) innerDiv.classList.add('bg-blue-500');
+
+      const onMouseMove = (moveEvent: MouseEvent) => {
+        const ratio = isHorizontal
+          ? (moveEvent.clientX - rect.left) / rect.width
+          : (moveEvent.clientY - rect.top) / rect.height;
+        resizeSplit(path, ratio);
+      };
+
+      const onMouseUp = () => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        if (innerDiv) innerDiv.classList.remove('bg-blue-500');
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [isHorizontal, path, resizeSplit],
+  );
+
   return (
     <div
+      ref={handleRef}
+      onMouseDown={onMouseDown}
       className={`
         flex-shrink-0 flex items-center justify-center group/handle
         ${isHorizontal ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'}

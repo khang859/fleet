@@ -7,8 +7,11 @@ import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 import { useVisualizerStore } from './store/visualizer-store';
+import { useSettingsStore } from './store/settings-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
+import { SettingsModal } from './components/SettingsModal';
+import { ShortcutsPanel } from './components/ShortcutsPanel';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -23,6 +26,7 @@ function killClosedTabPtys(paneIds: string[]): void {
 export function App() {
   usePaneNavigation();
   useNotifications();
+  const { loadSettings } = useSettingsStore();
   const initRef = useRef(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -40,12 +44,59 @@ export function App() {
     }
   });
 
-  // Create a default tab on first load if workspace is empty
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+
+  // Load settings on startup
   useEffect(() => {
-    if (!initRef.current && workspace.tabs.length === 0) {
-      initRef.current = true;
-      addTab('Shell', window.fleet.homeDir);
-    }
+    loadSettings();
+  }, []);
+
+  // Settings modal toggle
+  useEffect(() => {
+    const handler = () => setSettingsOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-settings', handler);
+    return () => document.removeEventListener('fleet:toggle-settings', handler);
+  }, []);
+
+  // Shortcuts panel toggle
+  useEffect(() => {
+    const handler = () => setShortcutsOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-shortcuts', handler);
+    return () => document.removeEventListener('fleet:toggle-shortcuts', handler);
+  }, []);
+
+  // Auto-updater
+  useEffect(() => {
+    const cleanup = window.fleet.updates.onUpdateDownloaded(() => {
+      setUpdateReady(true);
+    });
+    return () => { cleanup(); };
+  }, []);
+
+  // Restore default workspace on startup, or create a fresh tab
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    window.fleet.layout.list().then(({ workspaces }) => {
+      const defaultWs = workspaces.find((w) => w.id === 'default');
+      if (defaultWs && defaultWs.tabs.length > 0) {
+        useWorkspaceStore.getState().loadWorkspace(defaultWs);
+      } else if (workspace.tabs.length === 0) {
+        addTab(undefined, window.fleet.homeDir);
+      }
+    });
+  }, []);
+
+  // Auto-save workspace on quit
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      const state = useWorkspaceStore.getState();
+      window.fleet.layout.save({ workspace: state.workspace });
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
   // Track pane IDs pending kill so we can clean up the previous batch
@@ -203,6 +254,18 @@ export function App() {
         }}
       />
       </div>
+      {updateReady && (
+        <div className="absolute bottom-4 right-4 z-40">
+          <button
+            onClick={() => window.fleet.updates.installUpdate()}
+            className="px-4 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow-lg"
+          >
+            Update ready — restart to install
+          </button>
+        </div>
+      )}
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
+      <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

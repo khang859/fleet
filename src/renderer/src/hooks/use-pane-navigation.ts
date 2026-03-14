@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
 
 export function usePaneNavigation() {
@@ -12,7 +12,7 @@ export function usePaneNavigation() {
 
       if (e.key === 't') {
         e.preventDefault();
-        addTab('Shell', window.fleet.homeDir);
+        addTab(undefined, window.fleet.homeDir);
       }
 
       if (e.key === 'w') {
@@ -29,17 +29,30 @@ export function usePaneNavigation() {
         if (activePaneId) splitPane(activePaneId, 'horizontal');
       }
 
-      // Ctrl+[ / Ctrl+] to navigate panes
+      // Ctrl+[ / Ctrl+] to navigate panes within current tab only
       if (e.key === '[' || e.key === ']') {
         e.preventDefault();
-        const allPaneIds = useWorkspaceStore.getState().getAllPaneIds();
-        const currentIndex = activePaneId ? allPaneIds.indexOf(activePaneId) : -1;
+        const state = useWorkspaceStore.getState();
+        const activeTab = state.workspace.tabs.find(t => t.id === state.activeTabId);
+        if (!activeTab) return;
+        const tabPaneIds = collectPaneIds(activeTab.splitRoot);
+        const currentIndex = activePaneId ? tabPaneIds.indexOf(activePaneId) : -1;
         const nextIndex = e.key === ']'
-          ? (currentIndex + 1) % allPaneIds.length
-          : (currentIndex - 1 + allPaneIds.length) % allPaneIds.length;
-        if (allPaneIds[nextIndex]) {
-          useWorkspaceStore.getState().setActivePane(allPaneIds[nextIndex]);
+          ? (currentIndex + 1) % tabPaneIds.length
+          : (currentIndex - 1 + tabPaneIds.length) % tabPaneIds.length;
+        if (tabPaneIds[nextIndex]) {
+          state.setActivePane(tabPaneIds[nextIndex]);
         }
+      }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab to switch tabs
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const tabIndex = workspace.tabs.findIndex(t => t.id === activeTabId);
+        const nextIndex = e.shiftKey
+          ? (tabIndex - 1 + workspace.tabs.length) % workspace.tabs.length
+          : (tabIndex + 1) % workspace.tabs.length;
+        if (workspace.tabs[nextIndex]) setActiveTab(workspace.tabs[nextIndex].id);
       }
 
       // Ctrl+F to toggle search
@@ -52,6 +65,18 @@ export function usePaneNavigation() {
       if (e.shiftKey && e.key === 'V') {
         e.preventDefault();
         useVisualizerStore.getState().toggleVisible();
+      }
+
+      // Ctrl+, to toggle settings
+      if (e.key === ',') {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-settings'));
+      }
+
+      // Ctrl+/ to toggle shortcuts
+      if (e.key === '/') {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'));
       }
 
       // Ctrl+1-9 to switch tabs

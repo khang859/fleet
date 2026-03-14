@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
 import { PtyManager } from './pty-manager';
@@ -7,17 +7,21 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
-import { IPC_CHANNELS, DEFAULT_SETTINGS, SOCKET_PATH } from '../shared/constants';
+import { SettingsStore } from './settings-store';
+import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
 import { SocketApi } from './socket-api';
 import { FleetCommandHandler } from './socket-command-handler';
 import { AgentStateTracker } from './agent-state-tracker';
 import { JsonlWatcher } from './jsonl-watcher';
 import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
+import pkg from 'electron-updater';
+const { autoUpdater } = pkg;
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
+const settingsStore = new SettingsStore();
 const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
 const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
@@ -92,7 +96,7 @@ app.whenReady().then(() => {
     }
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, () => mainWindow);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);
@@ -261,7 +265,7 @@ app.whenReady().then(() => {
   }
 
   eventBus.on('notification', (event) => {
-    const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
+    const settings = settingsStore.get();
 
     const settingsKey = {
       permission: 'needsPermission',
@@ -281,6 +285,19 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Auto-updater — checks GitHub Releases for updates
+  autoUpdater.checkForUpdatesAndNotify().catch(() => {
+    // Silently fail if no internet or no releases configured
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    mainWindow?.webContents.send('fleet:update-downloaded');
+  });
+
+  ipcMain.on('fleet:install-update', () => {
+    autoUpdater.quitAndInstall();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

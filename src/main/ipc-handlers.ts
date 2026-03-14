@@ -1,5 +1,5 @@
 import { ipcMain, BrowserWindow } from 'electron';
-import { IPC_CHANNELS, DEFAULT_SETTINGS } from '../shared/constants';
+import { IPC_CHANNELS } from '../shared/constants';
 import type {
   PtyCreateRequest,
   PtyDataPayload,
@@ -16,6 +16,8 @@ import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
+import { SettingsStore } from './settings-store';
+import type { FleetSettings } from '../shared/types';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -23,6 +25,7 @@ export function registerIpcHandlers(
   eventBus: EventBus,
   notificationDetector: NotificationDetector,
   notificationState: NotificationStateManager,
+  settingsStore: SettingsStore,
   getWindow: () => BrowserWindow | null,
 ): void {
   // PTY handlers
@@ -93,12 +96,12 @@ export function registerIpcHandlers(
     notificationState.clearPane(payload.paneId);
   });
 
-  // Settings handlers (stub — full implementation in Layer 5)
+  // Settings handlers
   ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => {
-    return DEFAULT_SETTINGS;
+    return settingsStore.get();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, _settings) => {
-    // Stub — settings persistence added in Layer 5
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: Partial<FleetSettings>) => {
+    settingsStore.set(settings);
   });
 }
