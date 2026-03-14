@@ -4,13 +4,16 @@ import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
+import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
+import { IPC_CHANNELS } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
 const notificationDetector = new NotificationDetector(eventBus);
+const notificationState = new NotificationStateManager(eventBus);
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -60,7 +63,17 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, () => mainWindow);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
+
+  // Forward notification events to renderer
+  eventBus.on('notification', (event) => {
+    mainWindow?.webContents.send(IPC_CHANNELS.NOTIFICATION, {
+      paneId: event.paneId,
+      level: event.level,
+      timestamp: event.timestamp,
+    });
+  });
+
   createWindow();
 
   app.on('activate', () => {
