@@ -1,5 +1,6 @@
 {
   "name": "fleet",
+  "productName": "Fleet",
   "version": "0.1.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
@@ -17,7 +18,7 @@
     "postinstall": "electron-builder install-app-deps && chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:mac": "electron-vite build && electron-builder --mac --arm64",
     "build:linux": "electron-vite build && electron-builder --linux",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -46,6 +47,20 @@
     "node-pty": "^1.1.0",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.11"
+  },
+  "build": {
+    "appId": "com.fleet.app",
+    "productName": "Fleet",
+    "directories": {
+      "buildResources": "build"
+    },
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [{ "target": "dmg", "arch": ["arm64"] }]
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    }
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

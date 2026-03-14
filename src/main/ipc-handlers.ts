@@ -28,15 +28,20 @@ export function registerIpcHandlers(
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
     const result = ptyManager.create(req);
-    const win = getWindow();
 
     ptyManager.onData(req.paneId, (data) => {
       notificationDetector.scan(req.paneId, data);
-      win?.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
+      const w = getWindow();
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
+      }
     });
 
     ptyManager.onExit(req.paneId, (exitCode) => {
-      win?.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId: req.paneId, exitCode } satisfies PtyExitPayload);
+      const w = getWindow();
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId: req.paneId, exitCode } satisfies PtyExitPayload);
+      }
       eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
     });
 

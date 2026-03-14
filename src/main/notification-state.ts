@@ -17,7 +17,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
 export class NotificationStateManager {
   private states = new Map<string, NotificationRecord>();
 
-  constructor(private eventBus: EventBus) {
+  constructor(eventBus: EventBus) {
     eventBus.on('notification', (event) => {
       const existing = this.states.get(event.paneId);
       if (!existing || PRIORITY[event.level] >= PRIORITY[existing.level]) {

@@ -54,6 +54,6 @@ export function useNotifications() {
         });
       }
     });
-    return cleanup;
+    return () => { cleanup(); };
   }, [setNotification]);
 }

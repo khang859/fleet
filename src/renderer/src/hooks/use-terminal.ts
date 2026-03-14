@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
-import { WebglAddon } from '@xterm/addon-webgl';
+
 import { CanvasAddon } from '@xterm/addon-canvas';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
@@ -94,11 +94,15 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     });
   }
 
-  try {
-    fitAddon.fit();
-  } catch {
-    // Render service may not be ready yet; ResizeObserver will retry
-  }
+  // Defer initial fit to next frame — xterm's render service needs a
+  // layout pass before dimensions are available.
+  requestAnimationFrame(() => {
+    try {
+      fitAddon.fit();
+    } catch {
+      // Render service may not be ready yet; ResizeObserver will retry
+    }
+  });
 
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {

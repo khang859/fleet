@@ -19,7 +19,7 @@ const BADGE_CONFIG: Record<NotificationLevel, { color: string; size: string; ani
   subtle:     { color: 'bg-neutral-500', size: 'w-1.5 h-1.5', animate: '',            label: '' },
 };
 
-export function TabItem({ id, label, isActive, badge, onClick, onClose, onRename }: TabItemProps) {
+export function TabItem({ id: _id, label, isActive, badge, onClick, onClose, onRename: _onRename }: TabItemProps) {
   return (
     <div
       className={`
@@ -43,7 +43,7 @@ export function TabItem({ id, label, isActive, badge, onClick, onClose, onRename
       )}
       <div className="flex-1 truncate">{label}</div>
       <button
-        className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-neutral-300 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 px-1 text-neutral-500 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
         onClick={(e) => {
           e.stopPropagation();
           onClose();

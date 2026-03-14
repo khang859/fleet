@@ -1,5 +1,6 @@
-import { app, BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow, Notification, nativeImage } from 'electron';
 import { fileURLToPath } from 'url';
+import { join, dirname } from 'path';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
@@ -16,9 +17,13 @@ const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
 
 function createWindow(): void {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const iconPath = join(__dirname, '../../build/icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    icon: nativeImage.createFromPath(iconPath),
     webPreferences: {
       preload: fileURLToPath(new URL('../preload/index.mjs', import.meta.url)),
       sandbox: false,
@@ -28,8 +33,12 @@ function createWindow(): void {
   });
 
   // Log renderer console messages and errors to main process stdout
-  mainWindow.webContents.on('console-message', (_event, level, message) => {
+  mainWindow.webContents.on('console-message', (_event, _level, message) => {
     console.log(`[renderer] ${message}`);
+  });
+
+  mainWindow.on('close', () => {
+    ptyManager.killAll();
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -62,16 +71,29 @@ function createWindow(): void {
   }
 }
 
+app.setName('Fleet');
+
 app.whenReady().then(() => {
+  // Set dock icon on macOS
+  if (process.platform === 'darwin') {
+    const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png');
+    const dockIcon = nativeImage.createFromPath(dockIconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock?.setIcon(dockIcon);
+    }
+  }
+
   registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
 
   // Forward notification events to renderer
   eventBus.on('notification', (event) => {
-    mainWindow?.webContents.send(IPC_CHANNELS.NOTIFICATION, {
-      paneId: event.paneId,
-      level: event.level,
-      timestamp: event.timestamp,
-    });
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.NOTIFICATION, {
+        paneId: event.paneId,
+        level: event.level,
+        timestamp: event.timestamp,
+      });
+    }
   });
 
   // Emit notification on PTY exit
