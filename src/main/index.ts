@@ -85,7 +85,54 @@ app.whenReady().then(() => {
     });
   });
 
-  // OS notifications
+  // OS notifications — coalesced to prevent burst fatigue (Baymard/NNG)
+  let pendingOsNotifications: Array<{ paneId: string; level: string }> = [];
+  let osNotifTimer: ReturnType<typeof setTimeout> | null = null;
+  const OS_NOTIF_BATCH_MS = 500; // batch window for coalescing
+
+  function flushOsNotifications(): void {
+    if (pendingOsNotifications.length === 0) return;
+
+    const batch = pendingOsNotifications;
+    pendingOsNotifications = [];
+    osNotifTimer = null;
+
+    if (!Notification.isSupported()) return;
+
+    const hasPermission = batch.some((n) => n.level === 'permission');
+    const hasError = batch.some((n) => n.level === 'error');
+
+    let body: string;
+    if (batch.length === 1) {
+      body = hasPermission
+        ? 'An agent needs your permission'
+        : hasError
+          ? 'A process exited with an error'
+          : 'Task completed';
+    } else {
+      const parts: string[] = [];
+      const permCount = batch.filter((n) => n.level === 'permission').length;
+      const errCount = batch.filter((n) => n.level === 'error').length;
+      const infoCount = batch.length - permCount - errCount;
+      if (permCount > 0) parts.push(`${permCount} need${permCount > 1 ? '' : 's'} permission`);
+      if (errCount > 0) parts.push(`${errCount} error${errCount > 1 ? 's' : ''}`);
+      if (infoCount > 0) parts.push(`${infoCount} completed`);
+      body = `${batch.length} agents: ${parts.join(', ')}`;
+    }
+
+    const notif = new Notification({ title: 'Fleet', body });
+    notif.on('click', () => {
+      mainWindow?.show();
+      mainWindow?.focus();
+      // Focus the first pane from the batch (most recent high-priority)
+      const target = batch.find((n) => n.level === 'permission')
+        ?? batch.find((n) => n.level === 'error')
+        ?? batch[0];
+      mainWindow?.webContents.send('fleet:focus-pane', { paneId: target.paneId });
+    });
+    notif.show();
+  }
+
   eventBus.on('notification', (event) => {
     const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
 
@@ -98,19 +145,11 @@ app.whenReady().then(() => {
 
     const config = settings.notifications[settingsKey];
 
-    if (config.os && Notification.isSupported()) {
-      const notif = new Notification({
-        title: 'Fleet',
-        body: event.level === 'permission'
-          ? 'An agent needs your permission'
-          : 'Task completed',
-      });
-      notif.on('click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-        mainWindow?.webContents.send('fleet:focus-pane', { paneId: event.paneId });
-      });
-      notif.show();
+    if (config.os) {
+      pendingOsNotifications.push({ paneId: event.paneId, level: event.level });
+      if (!osNotifTimer) {
+        osNotifTimer = setTimeout(flushOsNotifications, OS_NOTIF_BATCH_MS);
+      }
     }
   });
 

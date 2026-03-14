@@ -82,12 +82,21 @@ type ResizeHandleProps = {
 function ResizeHandle({ direction }: ResizeHandleProps) {
   const isHorizontal = direction === 'horizontal';
 
+  // Outer div: generous 6px hit area for easy grabbing (Baymard: 76% of sites fail at unified hit areas)
+  // Inner div: thin 1px visual divider
   return (
     <div
       className={`
-        flex-shrink-0 bg-neutral-800 hover:bg-neutral-600 transition-colors
-        ${isHorizontal ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'}
+        flex-shrink-0 flex items-center justify-center group/handle
+        ${isHorizontal ? 'w-1.5 cursor-col-resize' : 'h-1.5 cursor-row-resize'}
       `}
-    />
+    >
+      <div
+        className={`
+          bg-neutral-800 group-hover/handle:bg-neutral-500 transition-colors
+          ${isHorizontal ? 'w-px h-full' : 'h-px w-full'}
+        `}
+      />
+    </div>
   );
 }

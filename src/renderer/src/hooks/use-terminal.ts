@@ -94,16 +94,24 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     });
   }
 
-  fitAddon.fit();
+  try {
+    fitAddon.fit();
+  } catch {
+    // Render service may not be ready yet; ResizeObserver will retry
+  }
 
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {
-      fitAddon.fit();
-      window.fleet.pty.resize({
-        paneId: options.paneId,
-        cols: term.cols,
-        rows: term.rows,
-      });
+      try {
+        fitAddon.fit();
+        window.fleet.pty.resize({
+          paneId: options.paneId,
+          cols: term.cols,
+          rows: term.rows,
+        });
+      } catch {
+        // Terminal may be initializing or disposed; ignore
+      }
     }
   });
   resizeObserver.observe(container);
