@@ -3,12 +3,14 @@ import { fileURLToPath } from 'url';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
+import { NotificationDetector } from './notification-detector';
 import { registerIpcHandlers } from './ipc-handlers';
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
+const notificationDetector = new NotificationDetector(eventBus);
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -58,7 +60,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, () => mainWindow);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, () => mainWindow);
   createWindow();
 
   app.on('activate', () => {

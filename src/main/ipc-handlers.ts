@@ -14,11 +14,13 @@ import type { Workspace } from '../shared/types';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
+import { NotificationDetector } from './notification-detector';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   layoutStore: LayoutStore,
   eventBus: EventBus,
+  notificationDetector: NotificationDetector,
   getWindow: () => BrowserWindow | null,
 ): void {
   // PTY handlers
@@ -27,6 +29,7 @@ export function registerIpcHandlers(
     const win = getWindow();
 
     ptyManager.onData(req.paneId, (data) => {
+      notificationDetector.scan(req.paneId, data);
       win?.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
     });
 
