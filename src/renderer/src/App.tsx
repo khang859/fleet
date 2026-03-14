@@ -6,6 +6,7 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
+import { useVisualizerStore } from './store/visualizer-store';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -89,6 +90,15 @@ export function App() {
     }, PTY_GC_INTERVAL);
     return () => clearInterval(interval);
   }, []);
+
+  const { setAgents } = useVisualizerStore();
+
+  useEffect(() => {
+    const cleanup = window.fleet.agentState.onStateUpdate(({ states }) => {
+      setAgents(states);
+    });
+    return cleanup;
+  }, [setAgents]);
 
   // Handle PTY exit
   useEffect(() => {
