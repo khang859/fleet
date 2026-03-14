@@ -10,6 +10,9 @@ function tmpDir(): string {
   return dir;
 }
 
+// Polling interval is 1s, so wait longer than that
+const WAIT = 1500;
+
 describe('JsonlWatcher', () => {
   let dir: string;
   let projectDir: string;
@@ -17,7 +20,6 @@ describe('JsonlWatcher', () => {
 
   beforeEach(() => {
     dir = tmpDir();
-    // Create a project subdirectory (mirrors ~/.claude/projects/<hash>/)
     projectDir = join(dir, 'project-abc');
     mkdirSync(projectDir, { recursive: true });
   });
@@ -33,8 +35,7 @@ describe('JsonlWatcher', () => {
     watcher.onRecord(callback);
     watcher.start();
 
-    // Give fs.watch time to initialize
-    await new Promise((r) => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 200));
 
     const filePath = join(projectDir, 'session-1.jsonl');
     const record = {
@@ -45,7 +46,7 @@ describe('JsonlWatcher', () => {
     };
     writeFileSync(filePath, JSON.stringify(record) + '\n');
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, WAIT));
 
     expect(callback).toHaveBeenCalledWith(
       'session-1',
@@ -59,14 +60,16 @@ describe('JsonlWatcher', () => {
     watcher.onRecord(callback);
     watcher.start();
 
+    await new Promise((r) => setTimeout(r, 200));
+
     const filePath = join(projectDir, 'session-2.jsonl');
     writeFileSync(filePath, JSON.stringify({ type: 'user' }) + '\n');
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, WAIT));
 
     appendFileSync(filePath, JSON.stringify({ type: 'assistant' }) + '\n');
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, WAIT));
 
     expect(callback).toHaveBeenCalledTimes(2);
   });
@@ -77,9 +80,11 @@ describe('JsonlWatcher', () => {
     watcher.onRecord(callback);
     watcher.start();
 
+    await new Promise((r) => setTimeout(r, 200));
+
     writeFileSync(join(projectDir, 'readme.txt'), 'hello\n');
 
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, WAIT));
 
     expect(callback).not.toHaveBeenCalled();
   });

@@ -1,4 +1,8 @@
-import { watch, FSWatcher, readFileSync, existsSync, readdirSync, statSync } from 'fs';
+import {
+  watch, watchFile, unwatchFile, FSWatcher,
+  readFileSync, openSync, readSync, closeSync,
+  existsSync, readdirSync, statSync,
+} from 'fs';
 import { join, extname, basename } from 'path';
 
 export type JsonlRecord = {
@@ -19,11 +23,23 @@ export type JsonlRecord = {
 
 type RecordCallback = (sessionId: string, record: JsonlRecord) => void;
 
+type WatchedFile = {
+  filePath: string;
+  offset: number;
+  lineBuffer: string;
+};
+
+const POLL_INTERVAL_MS = 1000;
+const SCAN_INTERVAL_MS = 1000;
+
 export class JsonlWatcher {
-  private watchers: FSWatcher[] = [];
-  private callbacks: RecordCallback[] = [];
-  private fileOffsets = new Map<string, number>();
+  private dirWatchers: FSWatcher[] = [];
   private parentWatcher: FSWatcher | null = null;
+  private callbacks: RecordCallback[] = [];
+  private watchedFiles = new Map<string, WatchedFile>();
+  private watchedDirs = new Set<string>();
+  private scanTimer: ReturnType<typeof setInterval> | null = null;
+  private startTime = 0;
 
   constructor(private watchDir: string) {}
 
@@ -34,82 +50,139 @@ export class JsonlWatcher {
   start(): void {
     if (!existsSync(this.watchDir)) return;
 
-    // Watch each existing project subdirectory
-    this.scanAndWatchSubdirs();
+    this.startTime = Date.now();
 
-    // Watch the parent directory for new project subdirectories
-    this.parentWatcher = watch(this.watchDir, { persistent: false }, (eventType, filename) => {
-      if (!filename) return;
-      const subDir = join(this.watchDir, filename);
-      try {
-        if (existsSync(subDir) && statSync(subDir).isDirectory()) {
-          this.watchSubdir(subDir);
-        }
-      } catch {}
-    });
+    // Initial scan of all subdirectories
+    this.scanSubdirs();
+
+    // Watch parent for new project subdirectories
+    try {
+      this.parentWatcher = watch(this.watchDir, { persistent: false }, () => {
+        this.scanSubdirs();
+      });
+    } catch {}
+
+    // Periodic scan as fallback (fs.watch is unreliable on macOS)
+    this.scanTimer = setInterval(() => {
+      this.scanSubdirs();
+      // Poll all watched files for changes
+      for (const watched of this.watchedFiles.values()) {
+        this.readNewLines(watched);
+      }
+    }, SCAN_INTERVAL_MS);
   }
 
   stop(): void {
     this.parentWatcher?.close();
     this.parentWatcher = null;
-    for (const w of this.watchers) {
+    for (const w of this.dirWatchers) {
       w.close();
     }
-    this.watchers = [];
+    this.dirWatchers = [];
+    // Unwatch all files
+    for (const watched of this.watchedFiles.values()) {
+      try { unwatchFile(watched.filePath); } catch {}
+    }
+    this.watchedFiles.clear();
+    this.watchedDirs.clear();
+    if (this.scanTimer) {
+      clearInterval(this.scanTimer);
+      this.scanTimer = null;
+    }
   }
 
-  private scanAndWatchSubdirs(): void {
+  private scanSubdirs(): void {
     try {
       const entries = readdirSync(this.watchDir);
       for (const entry of entries) {
         const subDir = join(this.watchDir, entry);
         try {
-          if (statSync(subDir).isDirectory()) {
-            // Scan existing JSONL files to set offsets (skip existing content)
-            this.scanExistingFiles(subDir);
-            this.watchSubdir(subDir);
+          if (!this.watchedDirs.has(subDir) && statSync(subDir).isDirectory()) {
+            this.watchDir_sub(subDir);
+          }
+          // Scan for new JSONL files in existing subdirs too
+          if (this.watchedDirs.has(subDir)) {
+            this.scanJsonlFiles(subDir);
           }
         } catch {}
       }
     } catch {}
   }
 
-  private watchSubdir(subDir: string): void {
+  private watchDir_sub(subDir: string): void {
+    this.watchedDirs.add(subDir);
+
+    // Scan existing files — set offset to end (only process new content)
+    this.scanJsonlFiles(subDir);
+
+    // fs.watch on the subdir (event-driven, but unreliable on macOS)
     try {
-      const watcher = watch(subDir, { persistent: false }, (eventType, filename) => {
+      const watcher = watch(subDir, { persistent: false }, (_eventType, filename) => {
         if (!filename || extname(filename) !== '.jsonl') return;
-        this.processFile(join(subDir, filename));
+        const filePath = join(subDir, filename);
+        this.ensureFileWatched(filePath);
+        const watched = this.watchedFiles.get(filePath);
+        if (watched) this.readNewLines(watched);
       });
-      this.watchers.push(watcher);
+      this.dirWatchers.push(watcher);
     } catch {}
   }
 
-  private scanExistingFiles(dir: string): void {
+  private scanJsonlFiles(dir: string): void {
     try {
       const files = readdirSync(dir);
       for (const file of files) {
         if (extname(file) === '.jsonl') {
-          const filePath = join(dir, file);
-          const stat = statSync(filePath);
-          this.fileOffsets.set(filePath, stat.size);
+          this.ensureFileWatched(join(dir, file));
         }
       }
     } catch {}
   }
 
-  private processFile(filePath: string): void {
+  private ensureFileWatched(filePath: string): void {
+    if (this.watchedFiles.has(filePath)) return;
+
     try {
-      const content = readFileSync(filePath, 'utf-8');
-      const offset = this.fileOffsets.get(filePath) ?? 0;
-      const newContent = content.slice(offset);
-      this.fileOffsets.set(filePath, content.length);
+      const stat = statSync(filePath);
+      // If file was modified after watcher started, read from beginning
+      // (it's a new session). Otherwise skip existing content.
+      const isNewFile = stat.mtimeMs > this.startTime;
+      const watched: WatchedFile = {
+        filePath,
+        offset: isNewFile ? 0 : stat.size,
+        lineBuffer: '',
+      };
+      this.watchedFiles.set(filePath, watched);
 
-      if (!newContent.trim()) return;
+      // fs.watchFile (stat-based polling, more reliable on macOS than fs.watch)
+      watchFile(filePath, { interval: POLL_INTERVAL_MS }, () => {
+        this.readNewLines(watched);
+      });
+    } catch {}
+  }
 
-      const sessionId = basename(filePath, '.jsonl');
-      const lines = newContent.split('\n').filter(Boolean);
+  private readNewLines(watched: WatchedFile): void {
+    try {
+      const stat = statSync(watched.filePath);
+      if (stat.size <= watched.offset) return; // No new data
+
+      // Read only new bytes since last read
+      const bytesToRead = stat.size - watched.offset;
+      const buf = Buffer.alloc(bytesToRead);
+      const fd = openSync(watched.filePath, 'r');
+      readSync(fd, buf, 0, bytesToRead, watched.offset);
+      closeSync(fd);
+      watched.offset = stat.size;
+
+      // Buffer partial lines
+      const text = watched.lineBuffer + buf.toString('utf-8');
+      const lines = text.split('\n');
+      watched.lineBuffer = lines.pop() || ''; // Keep incomplete line
+
+      const sessionId = basename(watched.filePath, '.jsonl');
 
       for (const line of lines) {
+        if (!line.trim()) continue;
         try {
           const record = JSON.parse(line) as JsonlRecord;
           for (const cb of this.callbacks) {
