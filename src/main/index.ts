@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Notification } from 'electron';
 import { fileURLToPath } from 'url';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
@@ -6,7 +6,7 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
-import { IPC_CHANNELS } from '../shared/constants';
+import { IPC_CHANNELS, DEFAULT_SETTINGS } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
 const ptyManager = new PtyManager();
@@ -72,6 +72,35 @@ app.whenReady().then(() => {
       level: event.level,
       timestamp: event.timestamp,
     });
+  });
+
+  // OS notifications
+  eventBus.on('notification', (event) => {
+    const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
+
+    const settingsKey = {
+      permission: 'needsPermission',
+      error: 'processExitError',
+      info: 'taskComplete',
+      subtle: 'processExitClean',
+    }[event.level] as keyof typeof settings.notifications;
+
+    const config = settings.notifications[settingsKey];
+
+    if (config.os && Notification.isSupported()) {
+      const notif = new Notification({
+        title: 'Fleet',
+        body: event.level === 'permission'
+          ? 'An agent needs your permission'
+          : 'Task completed',
+      });
+      notif.on('click', () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+        mainWindow?.webContents.send('fleet:focus-pane', { paneId: event.paneId });
+      });
+      notif.show();
+    }
   });
 
   createWindow();
