@@ -1,17 +1,14 @@
 import { useState } from 'react';
 
-const isMac = navigator.platform.includes('Mac');
-const mod = isMac ? '\u2318' : 'Ctrl';
-
 const SHORTCUTS = [
-  { keys: `${mod}T`, action: 'New tab' },
-  { keys: `${mod}W`, action: 'Close pane' },
-  { keys: `${mod}D`, action: 'Split horizontal' },
-  { keys: `${mod}\u21E7E`, action: 'Split vertical' },
-  { keys: `${mod}[ / ]`, action: 'Navigate panes' },
-  { keys: `${mod}1-9`, action: 'Switch tab' },
-  { keys: `${mod}F`, action: 'Search' },
-  { keys: `${mod}\u21E7V`, action: 'Toggle visualizer' },
+  { keys: 'Ctrl+T', action: 'New tab' },
+  { keys: 'Ctrl+W', action: 'Close pane' },
+  { keys: 'Ctrl+D', action: 'Split horizontal' },
+  { keys: 'Ctrl+Shift+D', action: 'Split vertical' },
+  { keys: 'Ctrl+[ / ]', action: 'Navigate panes' },
+  { keys: 'Ctrl+1-9', action: 'Switch tab' },
+  { keys: 'Ctrl+F', action: 'Search' },
+  { keys: 'Ctrl+Shift+V', action: 'Toggle visualizer' },
 ];
 
 export function ShortcutsHint() {

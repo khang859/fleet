@@ -8,29 +8,29 @@ export function usePaneNavigation() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      const mod = e.metaKey || e.ctrlKey;
+      if (!e.ctrlKey) return;
 
-      if (mod && e.key === 't') {
+      if (e.key === 't') {
         e.preventDefault();
         addTab('Shell', window.fleet.homeDir);
       }
 
-      if (mod && e.key === 'w') {
+      if (e.key === 'w') {
         e.preventDefault();
         if (activePaneId) closePane(activePaneId);
       }
 
-      // Cmd+Shift+E for vertical split
-      if (mod && e.shiftKey && e.key === 'E') {
+      // Ctrl+Shift+D for vertical split (check before Ctrl+D)
+      if (e.shiftKey && e.key === 'D') {
         e.preventDefault();
         if (activePaneId) splitPane(activePaneId, 'vertical');
-      } else if (mod && e.key === 'd' && !e.shiftKey) {
+      } else if (e.key === 'd') {
         e.preventDefault();
         if (activePaneId) splitPane(activePaneId, 'horizontal');
       }
 
-      // Cmd+[ / Cmd+] to navigate panes
-      if (mod && (e.key === '[' || e.key === ']')) {
+      // Ctrl+[ / Ctrl+] to navigate panes
+      if (e.key === '[' || e.key === ']') {
         e.preventDefault();
         const allPaneIds = useWorkspaceStore.getState().getAllPaneIds();
         const currentIndex = activePaneId ? allPaneIds.indexOf(activePaneId) : -1;
@@ -42,20 +42,20 @@ export function usePaneNavigation() {
         }
       }
 
-      // Cmd+F to toggle search
-      if (mod && e.key === 'f') {
+      // Ctrl+F to toggle search
+      if (e.key === 'f') {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:toggle-search'));
       }
 
-      // Cmd+Shift+V to toggle visualizer
-      if (mod && e.shiftKey && e.key === 'V') {
+      // Ctrl+Shift+V to toggle visualizer
+      if (e.shiftKey && e.key === 'V') {
         e.preventDefault();
         useVisualizerStore.getState().toggleVisible();
       }
 
-      // Cmd+1-9 to switch tabs
-      if (mod && e.key >= '1' && e.key <= '9') {
+      // Ctrl+1-9 to switch tabs
+      if (e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
         const tab = workspace.tabs[index];
