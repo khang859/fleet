@@ -20,14 +20,13 @@ export function usePaneNavigation() {
         if (activePaneId) closePane(activePaneId);
       }
 
-      if (mod && e.key === 'd' && !e.shiftKey) {
-        e.preventDefault();
-        if (activePaneId) splitPane(activePaneId, 'horizontal');
-      }
-
-      if (mod && e.shiftKey && e.key === 'D') {
+      // Cmd+Ctrl+D for vertical split (must check before Cmd+D)
+      if (e.metaKey && e.ctrlKey && e.key === 'd') {
         e.preventDefault();
         if (activePaneId) splitPane(activePaneId, 'vertical');
+      } else if (mod && e.key === 'd' && !e.shiftKey) {
+        e.preventDefault();
+        if (activePaneId) splitPane(activePaneId, 'horizontal');
       }
 
       // Cmd+[ / Cmd+] to navigate panes
