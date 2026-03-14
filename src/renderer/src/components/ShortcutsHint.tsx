@@ -7,7 +7,7 @@ const SHORTCUTS = [
   { keys: `${mod}T`, action: 'New tab' },
   { keys: `${mod}W`, action: 'Close pane' },
   { keys: `${mod}D`, action: 'Split horizontal' },
-  { keys: `${mod}${isMac ? '\u2303' : 'Ctrl+'}D`, action: 'Split vertical' },
+  { keys: `${mod}\u21E7E`, action: 'Split vertical' },
   { keys: `${mod}[ / ]`, action: 'Navigate panes' },
   { keys: `${mod}1-9`, action: 'Switch tab' },
   { keys: `${mod}F`, action: 'Search' },

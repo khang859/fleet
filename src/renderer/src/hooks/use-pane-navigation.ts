@@ -20,8 +20,8 @@ export function usePaneNavigation() {
         if (activePaneId) closePane(activePaneId);
       }
 
-      // Cmd+Ctrl+D for vertical split (must check before Cmd+D)
-      if (e.metaKey && e.ctrlKey && e.key === 'd') {
+      // Cmd+Shift+E for vertical split
+      if (mod && e.shiftKey && e.key === 'E') {
         e.preventDefault();
         if (activePaneId) splitPane(activePaneId, 'vertical');
       } else if (mod && e.key === 'd' && !e.shiftKey) {
