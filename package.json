@@ -4,7 +4,10 @@
   "version": "1.0.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
-  "author": "Khang Nguyen",
+  "author": {
+    "name": "Khang Nguyen",
+    "email": "khang859@users.noreply.github.com"
+  },
   "homepage": "https://github.com/khang859/fleet",
   "scripts": {
     "format": "prettier --write .",
@@ -67,7 +70,8 @@
         {
           "target": "dmg",
           "arch": [
-            "universal"
+            "arm64",
+            "x64"
           ]
         }
       ],
