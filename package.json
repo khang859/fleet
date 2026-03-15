@@ -1,11 +1,11 @@
 {
   "name": "fleet",
   "productName": "Fleet",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Khang Nguyen",
+  "homepage": "https://github.com/khang859/fleet",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
@@ -56,16 +56,28 @@
     "directories": {
       "buildResources": "build"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "khang859",
+      "repo": "fleet"
+    },
     "mac": {
       "category": "public.app-category.developer-tools",
       "target": [
         {
           "target": "dmg",
           "arch": [
-            "arm64"
+            "universal"
           ]
         }
-      ]
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": {
+        "teamId": ""
+      }
     },
     "win": {
       "target": [
@@ -76,6 +88,27 @@
           ]
         }
       ]
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   },
   "devDependencies": {

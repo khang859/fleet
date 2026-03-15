@@ -60,24 +60,26 @@ function createWindow(): void {
     console.error(`[renderer] Failed to load: ${errorCode} ${errorDescription}`);
   });
 
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
+  if (!app.isPackaged) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
 
-  // Debug: log DOM state after page loads
-  mainWindow.webContents.on('did-finish-load', () => {
-    setTimeout(() => {
-      mainWindow!.webContents.executeJavaScript(`
-        const root = document.getElementById('root');
-        const xterm = document.querySelector('.xterm');
-        const container = document.querySelector('[class*="h-full"][class*="w-full"]');
-        const main = document.querySelector('main');
-        JSON.stringify({
-          mainHTML: main?.innerHTML.substring(0, 500),
-          mainChildren: main?.children.length,
-          mainDims: main ? { w: main.clientWidth, h: main.clientHeight } : null,
-        })
-      `).then(r => console.log('[debug DOM]', r)).catch(e => console.log('[debug err]', e));
-    }, 3000);
-  });
+    // Debug: log DOM state after page loads
+    mainWindow.webContents.on('did-finish-load', () => {
+      setTimeout(() => {
+        mainWindow!.webContents.executeJavaScript(`
+          const root = document.getElementById('root');
+          const xterm = document.querySelector('.xterm');
+          const container = document.querySelector('[class*="h-full"][class*="w-full"]');
+          const main = document.querySelector('main');
+          JSON.stringify({
+            mainHTML: main?.innerHTML.substring(0, 500),
+            mainChildren: main?.children.length,
+            mainDims: main ? { w: main.clientWidth, h: main.clientHeight } : null,
+          })
+        `).then(r => console.log('[debug DOM]', r)).catch(e => console.log('[debug err]', e));
+      }, 3000);
+    });
+  }
 
   if (process.env.ELECTRON_RENDERER_URL) {
     mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -302,9 +304,11 @@ app.whenReady().then(() => {
   createWindow();
 
   // Auto-updater — checks GitHub Releases for updates
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {
-    // Silently fail if no internet or no releases configured
-  });
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+      console.error('Auto-update check failed:', err);
+    });
+  }
 
   autoUpdater.on('update-downloaded', () => {
     mainWindow?.webContents.send('fleet:update-downloaded');

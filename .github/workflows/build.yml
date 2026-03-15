@@ -1,4 +1,4 @@
-name: Build & Release
+name: CI & Release
 
 on:
   push:
@@ -6,43 +6,89 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    strategy:
-      matrix:
-        os: [macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-
+  ci:
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-
       - run: npm ci
-
       - name: Type check
         run: npx tsc --noEmit
-
       - name: Run tests
         run: npm test
 
-      - name: Build Electron app
-        run: npx electron-vite build
+  verify-version:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches package.json
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::Version mismatch: tag=v$TAG but package.json=$PKG"
+            exit 1
+          fi
 
-      - name: Package
-        if: startsWith(github.ref, 'refs/tags/')
-        run: npx electron-builder --publish always
+  release-mac:
+    needs: [ci, verify-version]
+    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npx electron-vite build && npx electron-builder --mac --publish always
 
-      - name: Upload artifacts
-        if: "!startsWith(github.ref, 'refs/tags/')"
-        uses: actions/upload-artifact@v4
+  release-win:
+    needs: [ci, verify-version]
+    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: fleet-${{ matrix.os }}
-          path: dist/*.{dmg,exe}
-          if-no-files-found: ignore
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-vite build && npx electron-builder --win --publish always
+
+  release-linux:
+    needs: [ci, verify-version]
+    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-vite build && npx electron-builder --linux --publish always
