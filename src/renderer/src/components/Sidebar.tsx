@@ -1,7 +1,9 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
+import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
 import type { Workspace } from '../../../shared/types';
 
@@ -11,15 +13,19 @@ export function Sidebar() {
   const {
     workspace,
     activeTabId,
+    activePaneId,
     setActiveTab,
     closeTab,
     renameTab,
+    resetTabLabel,
     addTab,
     reorderTab,
+    renameWorkspace,
     isDirty,
     markClean,
   } = useWorkspaceStore();
   const { getTabBadge } = useNotificationStore();
+  const { cwds } = useCwdStore();
 
   // --- Drag-and-drop state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -151,6 +157,71 @@ export function Sidebar() {
     }, 0);
   }, [newWsName]);
 
+  // --- Current workspace header rename ---
+  const [isEditingWsLabel, setIsEditingWsLabel] = useState(false);
+  const [wsLabelEdit, setWsLabelEdit] = useState('');
+  const wsLabelInputRef = useRef<HTMLInputElement>(null);
+  const wsLabelCancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (isEditingWsLabel && wsLabelInputRef.current) {
+      wsLabelInputRef.current.focus();
+      wsLabelInputRef.current.select();
+    }
+  }, [isEditingWsLabel]);
+
+  const commitWsLabelRename = useCallback(() => {
+    if (wsLabelCancelledRef.current) {
+      wsLabelCancelledRef.current = false;
+      return;
+    }
+    const trimmed = wsLabelEdit.trim();
+    if (trimmed && trimmed !== workspace.label) {
+      renameWorkspace(trimmed);
+    }
+    setIsEditingWsLabel(false);
+  }, [wsLabelEdit, workspace.label, renameWorkspace]);
+
+  // --- Saved workspace rename ---
+  const [renamingWsId, setRenamingWsId] = useState<string | null>(null);
+  const [renamingWsValue, setRenamingWsValue] = useState('');
+  const renamingWsInputRef = useRef<HTMLInputElement>(null);
+  const savedWsRenamingRef = useRef(false);
+
+  useEffect(() => {
+    if (renamingWsId && renamingWsInputRef.current) {
+      renamingWsInputRef.current.focus();
+      renamingWsInputRef.current.select();
+    }
+  }, [renamingWsId]);
+
+  const commitSavedWsRename = useCallback(async () => {
+    if (savedWsRenamingRef.current) return;
+    const id = renamingWsId;
+    const trimmed = renamingWsValue.trim();
+    setRenamingWsId(null);
+    if (!id || !trimmed) return;
+    savedWsRenamingRef.current = true;
+    try {
+      const full = await window.fleet.layout.load(id);
+      if (!full) return;
+      await window.fleet.layout.save({ workspace: { ...full, label: trimmed } });
+      setSavedWorkspaces((prev) =>
+        prev.map((w) => (w.id === id ? { ...w, label: trimmed } : w))
+      );
+    } finally {
+      savedWsRenamingRef.current = false;
+    }
+  }, [renamingWsId, renamingWsValue]);
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleDeleteWorkspace = useCallback(async (wsId: string) => {
+    await window.fleet.layout.delete(wsId);
+    setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
+    setDeleteConfirmId(null);
+  }, []);
+
   const handleCloseTab = useCallback((tabId: string) => {
     const tab = workspace.tabs.find((t) => t.id === tabId);
     if (!tab) return;
@@ -170,9 +241,45 @@ export function Sidebar() {
         className="px-3 pt-8 pb-3 flex items-center justify-between"
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
       >
-        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
-          {workspace.label}
-        </span>
+        <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex-1 min-w-0 mr-2">
+          {isEditingWsLabel ? (
+            <input
+              ref={wsLabelInputRef}
+              className="w-full bg-neutral-700 text-white text-xs font-semibold uppercase tracking-wider rounded px-1 py-0.5 outline-none border border-blue-500"
+              value={wsLabelEdit}
+              onChange={(e) => setWsLabelEdit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitWsLabelRename();
+                if (e.key === 'Escape') {
+                  wsLabelCancelledRef.current = true;
+                  setIsEditingWsLabel(false);
+                }
+              }}
+              onBlur={commitWsLabelRename}
+            />
+          ) : (
+            <ContextMenu.Root>
+              <ContextMenu.Trigger asChild>
+                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider cursor-default select-none">
+                  {workspace.label}
+                </span>
+              </ContextMenu.Trigger>
+              <ContextMenu.Portal>
+                <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+                  <ContextMenu.Item
+                    className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+                    onSelect={() => {
+                      setWsLabelEdit(workspace.label);
+                      setTimeout(() => setIsEditingWsLabel(true), 0);
+                    }}
+                  >
+                    Rename
+                  </ContextMenu.Item>
+                </ContextMenu.Content>
+              </ContextMenu.Portal>
+            </ContextMenu.Root>
+          )}
+        </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
           {/* Dirty state indicator */}
           {isDirty && (
@@ -191,34 +298,45 @@ export function Sidebar() {
 
       {/* Tab list */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {workspace.tabs.map((tab, index) => (
-          <TabItem
-            key={tab.id}
-            id={tab.id}
-            label={tab.label}
-            isActive={tab.id === activeTabId}
-            badge={getTabBadge(collectPaneIds(tab.splitRoot))}
-            index={index}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            isDragOver={
-              dropTarget?.index === index
-                ? dropTarget.position
-                : null
-            }
-            onClick={() => {
-              setActiveTab(tab.id);
-              const paneIds = collectPaneIds(tab.splitRoot);
-              for (const paneId of paneIds) {
-                useNotificationStore.getState().clearPane(paneId);
-                window.fleet.notifications.paneFocused({ paneId });
+        {workspace.tabs.map((tab, index) => {
+          const paneIds = collectPaneIds(tab.splitRoot);
+          // Active pane within this tab drives the displayed CWD
+          const drivingPane = (tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId))
+            ? activePaneId
+            : paneIds[0];
+          const liveCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
+
+          return (
+            <TabItem
+              key={tab.id}
+              id={tab.id}
+              label={tab.label}
+              labelIsCustom={tab.labelIsCustom ?? false}
+              cwd={liveCwd}
+              isActive={tab.id === activeTabId}
+              badge={getTabBadge(paneIds)}
+              index={index}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              isDragOver={
+                dropTarget?.index === index
+                  ? dropTarget.position
+                  : null
               }
-            }}
-            onClose={() => handleCloseTab(tab.id)}
-            onRename={(newLabel) => renameTab(tab.id, newLabel)}
-          />
-        ))}
+              onClick={() => {
+                setActiveTab(tab.id);
+                for (const paneId of paneIds) {
+                  useNotificationStore.getState().clearPane(paneId);
+                  window.fleet.notifications.paneFocused({ paneId });
+                }
+              }}
+              onClose={() => handleCloseTab(tab.id)}
+              onRename={(newLabel) => renameTab(tab.id, newLabel)}
+              onResetLabel={() => resetTabLabel(tab.id, liveCwd)}
+            />
+          );
+        })}
       </div>
 
       {/* Bottom section: workspaces */}
@@ -280,17 +398,76 @@ export function Sidebar() {
                     </button>
                   </div>
                 </div>
-              ) : (
-                <button
-                  className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
-                  onClick={() => handleSwitchWorkspace(ws.id)}
-                  title={`Switch to ${ws.label}`}
-                >
-                  <span className="truncate">{ws.label}</span>
-                  <span className="text-xs text-neutral-500 hover:text-blue-400 ml-1 flex-shrink-0">
-                    Open
+              ) : deleteConfirmId === ws.id ? (
+                <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
+                  <span className="text-red-400">
+                    Delete this workspace?
                   </span>
-                </button>
+                  <div className="flex gap-2">
+                    <button
+                      className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                      onClick={() => handleDeleteWorkspace(ws.id)}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      className="px-2 py-0.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 rounded transition-colors"
+                      onClick={() => setDeleteConfirmId(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : renamingWsId === ws.id ? (
+                <div className="px-1">
+                  <input
+                    ref={renamingWsInputRef}
+                    type="text"
+                    value={renamingWsValue}
+                    onChange={(e) => setRenamingWsValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') commitSavedWsRename();
+                      if (e.key === 'Escape') setRenamingWsId(null);
+                    }}
+                    onBlur={commitSavedWsRename}
+                    className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
+                  />
+                </div>
+              ) : (
+                <ContextMenu.Root>
+                  <ContextMenu.Trigger asChild>
+                    <button
+                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
+                      onClick={() => handleSwitchWorkspace(ws.id)}
+                      title={`Switch to ${ws.label}`}
+                    >
+                      <span className="truncate">{ws.label}</span>
+                      <span className="text-xs text-neutral-500 hover:text-blue-400 ml-1 flex-shrink-0">
+                        Open
+                      </span>
+                    </button>
+                  </ContextMenu.Trigger>
+                  <ContextMenu.Portal>
+                    <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+                      <ContextMenu.Item
+                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+                        onSelect={() => {
+                          setRenamingWsValue(ws.label);
+                          setTimeout(() => setRenamingWsId(ws.id), 0);
+                        }}
+                      >
+                        Rename
+                      </ContextMenu.Item>
+                      <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+                      <ContextMenu.Item
+                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
+                        onSelect={() => setDeleteConfirmId(ws.id)}
+                      >
+                        Delete
+                      </ContextMenu.Item>
+                    </ContextMenu.Content>
+                  </ContextMenu.Portal>
+                </ContextMenu.Root>
               )}
             </div>
           ))}

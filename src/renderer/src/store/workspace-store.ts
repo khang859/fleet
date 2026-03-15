@@ -10,7 +10,7 @@ function createLeaf(cwd: string): PaneLeaf {
 }
 
 /** Extract basename from a path for auto-labeling tabs */
-function cwdBasename(cwd: string): string {
+export function cwdBasename(cwd: string): string {
   const parts = cwd.replace(/\/+$/, '').split('/');
   return parts[parts.length - 1] || 'Shell';
 }
@@ -34,6 +34,7 @@ type WorkspaceStore = {
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
+  resetTabLabel: (tabId: string, liveCwd?: string) => void;
   setActiveTab: (tabId: string) => void;
   reorderTab: (fromIndex: number, toIndex: number) => void;
 
@@ -46,6 +47,7 @@ type WorkspaceStore = {
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
   setWorkspace: (workspace: Workspace) => void;
+  renameWorkspace: (label: string) => void;
   markClean: () => void;
 
   // Helpers
@@ -101,7 +103,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   addTab: (label, cwd) => {
     const resolvedLabel = label || cwdBasename(cwd);
     const leaf = createLeaf(cwd);
-    const tab: Tab = { id: generateId(), label: resolvedLabel, cwd, splitRoot: leaf };
+    const tab: Tab = { id: generateId(), label: resolvedLabel, labelIsCustom: !!label, cwd, splitRoot: leaf };
     set((state) => ({
       workspace: {
         ...state.workspace,
@@ -153,7 +155,19 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: {
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label } : t,
+          t.id === tabId ? { ...t, label, labelIsCustom: true } : t,
+        ),
+      },
+      isDirty: true,
+    }));
+  },
+
+  resetTabLabel: (tabId, liveCwd) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((t) =>
+          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd), labelIsCustom: false } : t,
         ),
       },
       isDirty: true,
@@ -265,10 +279,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   loadWorkspace: (workspace) => {
-    const firstTab = workspace.tabs[0];
+    // Backward compat: old saved workspaces may lack labelIsCustom
+    const migratedTabs = workspace.tabs.map((t) => ({
+      ...t,
+      labelIsCustom: t.labelIsCustom ?? false,
+    }));
+    const migrated = { ...workspace, tabs: migratedTabs };
+    const firstTab = migrated.tabs[0];
     const firstPane = firstTab ? collectPaneIds(firstTab.splitRoot)[0] : null;
     set({
-      workspace,
+      workspace: migrated,
       activeTabId: firstTab?.id ?? null,
       activePaneId: firstPane ?? null,
       isDirty: false,
@@ -276,6 +296,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setWorkspace: (workspace) => set({ workspace }),
+
+  renameWorkspace: (label) => {
+    set((state) => ({
+      workspace: { ...state.workspace, label },
+      isDirty: true,
+    }));
+  },
 
   markClean: () => set({ isDirty: false }),
 

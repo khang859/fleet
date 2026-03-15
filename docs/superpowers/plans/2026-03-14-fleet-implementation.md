@@ -2025,7 +2025,7 @@ git commit -m "feat: add root App layout with sidebar and terminal pane grid"
 **Files:**
 - Create: `src/renderer/hooks/use-pane-navigation.ts`
 
-- [ ] **Step 1: Write the keyboard shortcut hook**
+- [x] **Step 1: Write the keyboard shortcut hook**
 
 Create `src/renderer/hooks/use-pane-navigation.ts`:
 ```ts
@@ -2088,7 +2088,7 @@ export function usePaneNavigation() {
 }
 ```
 
-- [ ] **Step 2: Add the hook to App.tsx**
+- [x] **Step 2: Add the hook to App.tsx**
 
 Add to the top of the `App` component function body:
 ```ts
@@ -2100,7 +2100,7 @@ And add the import:
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 ```
 
-- [ ] **Step 3: Verify shortcuts work**
+- [x] **Step 3: Verify shortcuts work**
 
 Run:
 ```bash
@@ -2109,7 +2109,7 @@ npm run dev
 
 Expected: `Cmd+T` creates a new tab, `Cmd+D` splits horizontally, `Cmd+Shift+D` splits vertically, `Cmd+W` closes a pane, `Cmd+1`/`Cmd+2` switches tabs.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/hooks/use-pane-navigation.ts src/renderer/App.tsx
@@ -2121,7 +2121,7 @@ git commit -m "feat: add keyboard shortcuts for tab and pane management"
 **Files:**
 - Create: `src/renderer/components/SearchBar.tsx`
 
-- [ ] **Step 1: Write the SearchBar component**
+- [x] **Step 1: Write the SearchBar component**
 
 Create `src/renderer/components/SearchBar.tsx`:
 ```tsx
@@ -2181,7 +2181,7 @@ export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: Searc
 }
 ```
 
-- [ ] **Step 2: Wire Cmd+F to toggle search in App.tsx**
+- [x] **Step 2: Wire Cmd+F to toggle search in App.tsx**
 
 This will be integrated when we connect search to the active pane's xterm.js SearchAddon. For now, add `Cmd+F` handling to the keyboard hook in `use-pane-navigation.ts`:
 
@@ -2194,7 +2194,7 @@ if (mod && e.key === 'f') {
 }
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/renderer/components/SearchBar.tsx src/renderer/hooks/use-pane-navigation.ts
@@ -3103,7 +3103,7 @@ A JSON-over-newline server on a local Unix socket (macOS) or named pipe (Windows
 - Create: `src/main/socket-api.ts`
 - Create: `src/main/__tests__/socket-api.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/socket-api.test.ts`:
 ```ts
@@ -3199,7 +3199,7 @@ function sendRaw(socketPath: string, data: string): Promise<Record<string, unkno
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -3208,7 +3208,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../socket-api'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/socket-api.ts`:
 ```ts
@@ -3357,7 +3357,7 @@ export class SocketApi {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -3366,7 +3366,7 @@ npm test
 
 Expected: PASS — 4 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/socket-api.ts src/main/__tests__/socket-api.test.ts
@@ -3379,7 +3379,7 @@ git commit -m "feat: add socket API server with JSON-over-newline protocol"
 - Create: `src/main/socket-command-handler.ts`
 - Create: `src/main/__tests__/socket-command-handler.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/socket-command-handler.test.ts`:
 ```ts
@@ -3484,7 +3484,7 @@ describe('FleetCommandHandler', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -3493,7 +3493,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../socket-command-handler'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/socket-command-handler.ts`:
 ```ts
@@ -3759,7 +3759,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -3768,7 +3768,7 @@ npm test
 
 Expected: PASS — 6 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/socket-command-handler.ts src/main/__tests__/socket-command-handler.test.ts
@@ -3780,7 +3780,7 @@ git commit -m "feat: add socket command handler routing to Fleet internals"
 **Files:**
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Create and start the socket API**
+- [x] **Step 1: Create and start the socket API**
 
 Add imports to `src/main/index.ts`:
 ```ts
@@ -3846,7 +3846,7 @@ app.on('window-all-closed', () => {
 });
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -3855,7 +3855,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Manual smoke test**
+- [x] **Step 3: Manual smoke test**
 
 Run the app in one terminal:
 ```bash
@@ -3875,7 +3875,7 @@ echo '{"type":"new-tab","label":"test","cwd":"/tmp","id":"2"}' | nc -U ~/.fleet/
 
 Expected: JSON response with `"ok": true`, `"tabId"`, and `"paneId"`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/main/index.ts
@@ -3887,7 +3887,7 @@ git commit -m "feat: wire socket API into main process with event broadcasting"
 **Files:**
 - Create: `src/main/__tests__/socket-subscribe.test.ts`
 
-- [ ] **Step 1: Write the subscribe test**
+- [x] **Step 1: Write the subscribe test**
 
 Create `src/main/__tests__/socket-subscribe.test.ts`:
 ```ts
@@ -3985,7 +3985,7 @@ describe('SocketApi subscriptions', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 
 Run:
 ```bash
@@ -3994,7 +3994,7 @@ npm test
 
 Expected: PASS — all socket tests pass (existing + 2 new).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/__tests__/socket-subscribe.test.ts
@@ -4013,7 +4013,7 @@ The pixel-art office scene. Consists of two parts: the main-process agent state 
 - Create: `src/main/jsonl-watcher.ts`
 - Create: `src/main/__tests__/jsonl-watcher.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/jsonl-watcher.test.ts`:
 ```ts
@@ -4099,7 +4099,7 @@ describe('JsonlWatcher', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -4108,7 +4108,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../jsonl-watcher'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/jsonl-watcher.ts`:
 ```ts
@@ -4203,7 +4203,7 @@ export class JsonlWatcher {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -4212,7 +4212,7 @@ npm test
 
 Expected: PASS — 3 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/jsonl-watcher.ts src/main/__tests__/jsonl-watcher.test.ts
@@ -4225,7 +4225,7 @@ git commit -m "feat: add JSONL transcript file watcher for agent detection"
 - Create: `src/main/agent-state-tracker.ts`
 - Create: `src/main/__tests__/agent-state-tracker.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/agent-state-tracker.test.ts`:
 ```ts
@@ -4329,7 +4329,7 @@ describe('AgentStateTracker', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run:
 ```bash
@@ -4338,7 +4338,7 @@ npm test
 
 Expected: FAIL — `Cannot find module '../agent-state-tracker'`
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 Create `src/main/agent-state-tracker.ts`:
 ```ts
@@ -4535,7 +4535,7 @@ export class AgentStateTracker {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run:
 ```bash
@@ -4544,7 +4544,7 @@ npm test
 
 Expected: PASS — 7 tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/agent-state-tracker.ts src/main/__tests__/agent-state-tracker.test.ts
@@ -4556,7 +4556,7 @@ git commit -m "feat: add agent state tracker with JSONL-based tool detection and
 **Files:**
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Create tracker, wire JSONL watcher, and forward state to renderer**
+- [x] **Step 1: Create tracker, wire JSONL watcher, and forward state to renderer**
 
 Add imports to `src/main/index.ts`:
 ```ts
@@ -4647,7 +4647,7 @@ app.on('window-all-closed', () => {
 });
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -4656,7 +4656,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/index.ts
@@ -4668,7 +4668,7 @@ git commit -m "feat: wire agent state tracker and JSONL watcher into main proces
 **Files:**
 - Create: `src/renderer/store/visualizer-store.ts`
 
-- [ ] **Step 1: Write the visualizer store**
+- [x] **Step 1: Write the visualizer store**
 
 Create `src/renderer/store/visualizer-store.ts`:
 ```ts
@@ -4696,7 +4696,7 @@ export const useVisualizerStore = create<VisualizerStore>((set) => ({
 }));
 ```
 
-- [ ] **Step 2: Wire IPC to update store**
+- [x] **Step 2: Wire IPC to update store**
 
 Add to `src/renderer/App.tsx` — subscribe to agent state updates:
 
@@ -4716,7 +4716,7 @@ useEffect(() => {
 }, [setAgents]);
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -4725,7 +4725,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/store/visualizer-store.ts src/renderer/App.tsx
@@ -4737,7 +4737,7 @@ git commit -m "feat: add visualizer store with IPC-driven agent state updates"
 **Files:**
 - Create: `src/renderer/components/visualizer/sprites.ts`
 
-- [ ] **Step 1: Write the sprite system**
+- [x] **Step 1: Write the sprite system**
 
 Create `src/renderer/components/visualizer/sprites.ts`:
 ```ts
@@ -4857,7 +4857,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -4866,7 +4866,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/renderer/components/visualizer/sprites.ts
@@ -4878,7 +4878,7 @@ git commit -m "feat: add sprite loading system with palette hue-shifting"
 **Files:**
 - Create: `src/renderer/components/visualizer/characters.ts`
 
-- [ ] **Step 1: Write the character system**
+- [x] **Step 1: Write the character system**
 
 Create `src/renderer/components/visualizer/characters.ts`:
 ```ts
@@ -5172,7 +5172,7 @@ export class CharacterManager {
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -5181,7 +5181,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/renderer/components/visualizer/characters.ts
@@ -5195,7 +5195,7 @@ git commit -m "feat: add character manager with state machine, desk assignment, 
 - Create: `src/renderer/components/visualizer/matrix-effect.ts`
 - Create: `src/renderer/components/visualizer/office-state.ts`
 
-- [ ] **Step 1: Write the office state manager**
+- [x] **Step 1: Write the office state manager**
 
 Create `src/renderer/components/visualizer/office-state.ts`:
 ```ts
@@ -5233,7 +5233,7 @@ export function isWalkable(x: number, y: number): boolean {
 }
 ```
 
-- [ ] **Step 2: Write the matrix rain effect**
+- [x] **Step 2: Write the matrix rain effect**
 
 Create `src/renderer/components/visualizer/matrix-effect.ts`:
 ```ts
@@ -5309,7 +5309,7 @@ export class MatrixEffect {
 }
 ```
 
-- [ ] **Step 3: Write the office renderer**
+- [x] **Step 3: Write the office renderer**
 
 Create `src/renderer/components/visualizer/office-renderer.ts`:
 ```ts
@@ -5453,7 +5453,7 @@ export class OfficeRenderer {
 }
 ```
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run:
 ```bash
@@ -5462,7 +5462,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/renderer/components/visualizer/office-renderer.ts src/renderer/components/visualizer/matrix-effect.ts src/renderer/components/visualizer/office-state.ts
@@ -5474,7 +5474,7 @@ git commit -m "feat: add office renderer with tilemap, characters, bubbles, and 
 **Files:**
 - Create: `src/renderer/components/visualizer/OfficeCanvas.tsx`
 
-- [ ] **Step 1: Write the OfficeCanvas component**
+- [x] **Step 1: Write the OfficeCanvas component**
 
 Create `src/renderer/components/visualizer/OfficeCanvas.tsx`:
 ```tsx
@@ -5640,7 +5640,7 @@ export function OfficeCanvas({ onCharacterClick }: OfficeCanvasProps) {
 }
 ```
 
-- [ ] **Step 2: Type-check**
+- [x] **Step 2: Type-check**
 
 Run:
 ```bash
@@ -5649,7 +5649,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/renderer/components/visualizer/OfficeCanvas.tsx
@@ -5663,7 +5663,7 @@ git commit -m "feat: add OfficeCanvas React component with game loop and click-t
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
 
-- [ ] **Step 1: Write the VisualizerPanel component**
+- [x] **Step 1: Write the VisualizerPanel component**
 
 Create `src/renderer/components/visualizer/VisualizerPanel.tsx`:
 ```tsx
@@ -5726,7 +5726,7 @@ export function VisualizerPanel({ onCharacterClick }: VisualizerPanelProps) {
 }
 ```
 
-- [ ] **Step 2: Add VisualizerPanel to App.tsx**
+- [x] **Step 2: Add VisualizerPanel to App.tsx**
 
 Add import:
 ```ts
@@ -5743,7 +5743,7 @@ Add inside the `App` component's return, after the `<main>` section and before t
 />
 ```
 
-- [ ] **Step 3: Add Cmd+Shift+V toggle shortcut**
+- [x] **Step 3: Add Cmd+Shift+V toggle shortcut**
 
 In `src/renderer/hooks/use-pane-navigation.ts`, add import:
 ```ts
@@ -5760,7 +5760,7 @@ Add inside `handleKeyDown`:
       }
 ```
 
-- [ ] **Step 4: Run the app and test**
+- [x] **Step 4: Run the app and test**
 
 Run:
 ```bash
@@ -5769,7 +5769,7 @@ npm run dev
 
 Expected: `Cmd+Shift+V` toggles the visualizer drawer at the bottom. If agents are running (Claude Code in a pane), characters appear in the office scene. Clicking a character focuses the corresponding terminal pane.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/renderer/components/visualizer/VisualizerPanel.tsx src/renderer/App.tsx src/renderer/hooks/use-pane-navigation.ts
@@ -5790,7 +5790,7 @@ Settings persistence, shortcuts panel, workspace picker, auto-updater, and distr
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Create a settings store in the main process**
+- [x] **Step 1: Create a settings store in the main process**
 
 Create `src/main/settings-store.ts`:
 ```ts
@@ -5829,7 +5829,7 @@ export class SettingsStore {
 }
 ```
 
-- [ ] **Step 2: Replace stub settings IPC handlers**
+- [x] **Step 2: Replace stub settings IPC handlers**
 
 In `src/main/ipc-handlers.ts`, add `SettingsStore` as a parameter:
 
@@ -5850,7 +5850,7 @@ Replace the stub handlers:
   });
 ```
 
-- [ ] **Step 3: Create and pass SettingsStore in main/index.ts**
+- [x] **Step 3: Create and pass SettingsStore in main/index.ts**
 
 Add to `src/main/index.ts`:
 ```ts
@@ -5864,7 +5864,7 @@ Pass to `registerIpcHandlers`:
 registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, () => mainWindow);
 ```
 
-- [ ] **Step 4: Create renderer-side settings store**
+- [x] **Step 4: Create renderer-side settings store**
 
 Create `src/renderer/store/settings-store.ts`:
 ```ts
@@ -5895,7 +5895,7 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
 }));
 ```
 
-- [ ] **Step 5: Load settings on app startup**
+- [x] **Step 5: Load settings on app startup**
 
 Add to `src/renderer/App.tsx`:
 ```ts
@@ -5911,7 +5911,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 6: Type-check**
+- [x] **Step 6: Type-check**
 
 Run:
 ```bash
@@ -5920,7 +5920,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/settings-store.ts src/main/ipc-handlers.ts src/main/index.ts src/renderer/store/settings-store.ts src/renderer/App.tsx
@@ -5934,7 +5934,7 @@ git commit -m "feat: add settings persistence with electron-store and IPC"
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
 - Modify: `src/renderer/App.tsx`
 
-- [ ] **Step 1: Write the SettingsModal component**
+- [x] **Step 1: Write the SettingsModal component**
 
 Create `src/renderer/components/SettingsModal.tsx`:
 ```tsx
@@ -6127,7 +6127,7 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
 }
 ```
 
-- [ ] **Step 2: Add Cmd+, shortcut and wire into App**
+- [x] **Step 2: Add Cmd+, shortcut and wire into App**
 
 Add to `src/renderer/hooks/use-pane-navigation.ts` `handleKeyDown`:
 ```ts
@@ -6156,7 +6156,7 @@ Add to the JSX:
 <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -6165,7 +6165,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/components/SettingsModal.tsx src/renderer/hooks/use-pane-navigation.ts src/renderer/App.tsx
@@ -6178,7 +6178,7 @@ git commit -m "feat: add settings modal with per-type notification toggles"
 - Create: `src/renderer/components/WorkspacePicker.tsx`
 - Modify: `src/renderer/components/Sidebar.tsx`
 
-- [ ] **Step 1: Write the WorkspacePicker component**
+- [x] **Step 1: Write the WorkspacePicker component**
 
 Create `src/renderer/components/WorkspacePicker.tsx`:
 ```tsx
@@ -6272,7 +6272,7 @@ export function WorkspacePicker() {
 }
 ```
 
-- [ ] **Step 2: Replace the static workspace label in Sidebar with WorkspacePicker**
+- [x] **Step 2: Replace the static workspace label in Sidebar with WorkspacePicker**
 
 In `src/renderer/components/Sidebar.tsx`, replace:
 ```tsx
@@ -6291,7 +6291,7 @@ Add the import:
 import { WorkspacePicker } from './WorkspacePicker';
 ```
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -6300,7 +6300,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/renderer/components/WorkspacePicker.tsx src/renderer/components/Sidebar.tsx
@@ -6314,7 +6314,7 @@ git commit -m "feat: add workspace picker with save/load/delete"
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
 
-- [ ] **Step 1: Write the ShortcutsPanel component**
+- [x] **Step 1: Write the ShortcutsPanel component**
 
 Create `src/renderer/components/ShortcutsPanel.tsx`:
 ```tsx
@@ -6382,7 +6382,7 @@ export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps) {
 }
 ```
 
-- [ ] **Step 2: Add Cmd+/ shortcut**
+- [x] **Step 2: Add Cmd+/ shortcut**
 
 In `src/renderer/hooks/use-pane-navigation.ts` `handleKeyDown`, add:
 ```ts
@@ -6392,7 +6392,7 @@ In `src/renderer/hooks/use-pane-navigation.ts` `handleKeyDown`, add:
       }
 ```
 
-- [ ] **Step 3: Wire into App.tsx**
+- [x] **Step 3: Wire into App.tsx**
 
 Add import and state:
 ```tsx
@@ -6412,7 +6412,7 @@ Add to JSX:
 <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 ```
 
-- [ ] **Step 4: Type-check**
+- [x] **Step 4: Type-check**
 
 Run:
 ```bash
@@ -6421,7 +6421,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/renderer/components/ShortcutsPanel.tsx src/renderer/hooks/use-pane-navigation.ts src/renderer/App.tsx
@@ -6433,7 +6433,7 @@ git commit -m "feat: add keyboard shortcuts panel with Cmd+/ toggle"
 **Files:**
 - Modify: `src/main/index.ts`
 
-- [ ] **Step 1: Add auto-updater to main process**
+- [x] **Step 1: Add auto-updater to main process**
 
 Add to the top of `src/main/index.ts`:
 ```ts
@@ -6461,7 +6461,7 @@ Add inside `app.whenReady()`, after `createWindow()`:
   });
 ```
 
-- [ ] **Step 2: Add update badge to renderer**
+- [x] **Step 2: Add update badge to renderer**
 
 Add to `src/renderer/App.tsx`:
 ```ts
@@ -6498,7 +6498,7 @@ Add to the sidebar area of the JSX (inside `<Sidebar>` or after it):
 
 Note: For a clean implementation, add `installUpdate` to the preload API and wire `ipcRenderer.send('fleet:install-update')`. The exact wiring follows the same pattern as existing IPC methods.
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -6507,7 +6507,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add src/main/index.ts
@@ -6520,7 +6520,7 @@ git commit -m "feat: add auto-updater via electron-updater and GitHub Releases"
 - Create: `electron-builder.yml`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write the electron-builder config**
+- [x] **Step 1: Write the electron-builder config**
 
 Create `electron-builder.yml`:
 ```yaml
@@ -6559,7 +6559,7 @@ publish:
   repo: fleet
 ```
 
-- [ ] **Step 2: Add build scripts to package.json**
+- [x] **Step 2: Add build scripts to package.json**
 
 Add to `package.json` scripts:
 ```json
@@ -6568,7 +6568,7 @@ Add to `package.json` scripts:
 "build:all": "electron-vite build && electron-builder --mac --win"
 ```
 
-- [ ] **Step 3: Verify build config is valid**
+- [x] **Step 3: Verify build config is valid**
 
 Run:
 ```bash
@@ -6577,7 +6577,7 @@ npx electron-builder --help
 
 Expected: Help output prints without errors (confirms electron-builder is installed and the config is loadable).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add electron-builder.yml package.json
@@ -6589,7 +6589,7 @@ git commit -m "chore: add electron-builder config for macOS and Windows distribu
 **Files:**
 - Create: `.github/workflows/build.yml`
 
-- [ ] **Step 1: Write the CI workflow**
+- [x] **Step 1: Write the CI workflow**
 
 Create `.github/workflows/build.yml`:
 ```yaml
@@ -6643,7 +6643,7 @@ jobs:
           if-no-files-found: ignore
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 git add .github/workflows/build.yml
@@ -6656,7 +6656,7 @@ git commit -m "ci: add GitHub Actions workflow for build, test, and release"
 - Modify: `src/main/index.ts`
 - Modify: `src/renderer/App.tsx`
 
-- [ ] **Step 1: Save workspace state before quit**
+- [x] **Step 1: Save workspace state before quit**
 
 In `src/renderer/App.tsx`, add a `beforeunload` handler:
 ```ts
@@ -6670,7 +6670,7 @@ useEffect(() => {
 }, []);
 ```
 
-- [ ] **Step 2: Restore default workspace on startup**
+- [x] **Step 2: Restore default workspace on startup**
 
 Update the initial workspace load in `App.tsx`:
 ```ts
@@ -6688,7 +6688,7 @@ useEffect(() => {
 
 Remove the previous `useEffect` that unconditionally adds a tab when tabs are empty.
 
-- [ ] **Step 3: Type-check**
+- [x] **Step 3: Type-check**
 
 Run:
 ```bash
@@ -6697,7 +6697,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 4: Run the app end-to-end**
+- [x] **Step 4: Run the app end-to-end**
 
 Run:
 ```bash
@@ -6706,7 +6706,7 @@ npm run dev
 
 Expected: On first launch, a default Shell tab opens. Open additional tabs, close the app, reopen — the previous layout is restored.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/renderer/App.tsx
@@ -6715,7 +6715,7 @@ git commit -m "feat: auto-save and restore default workspace on quit/launch"
 
 ### Task 5.9: Final integration test
 
-- [ ] **Step 1: Run all tests**
+- [x] **Step 1: Run all tests**
 
 Run:
 ```bash
@@ -6724,7 +6724,7 @@ npm test
 
 Expected: All tests pass.
 
-- [ ] **Step 2: Type-check the entire project**
+- [x] **Step 2: Type-check the entire project**
 
 Run:
 ```bash
@@ -6733,7 +6733,7 @@ npx tsc --noEmit
 
 Expected: TypeScript compiler exits with code 0.
 
-- [ ] **Step 3: Run the app and verify all features**
+- [x] **Step 3: Run the app and verify all features**
 
 Run:
 ```bash
@@ -6755,7 +6755,7 @@ Manual checklist:
 - Socket API responds to commands via `nc -U ~/.fleet/fleet.sock`
 - Close and reopen app — layout is restored
 
-- [ ] **Step 4: Commit any final fixes**
+- [x] **Step 4: Commit any final fixes**
 
 ```bash
 git add -A

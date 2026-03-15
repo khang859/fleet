@@ -94,6 +94,15 @@ export class PtyManager {
     return this.ptys.get(paneId)?.cwd;
   }
 
+  updateCwd(paneId: string, cwd: string): void {
+    const entry = this.ptys.get(paneId);
+    if (entry) entry.cwd = cwd;
+  }
+
+  getPid(paneId: string): number | undefined {
+    return this.ptys.get(paneId)?.process.pid;
+  }
+
   /** Kill any PTY whose paneId is not in the given set of active IDs. */
   gc(activePaneIds: Set<string>): string[] {
     const killed: string[] = [];

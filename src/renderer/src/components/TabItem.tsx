@@ -1,14 +1,30 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { NotificationLevel } from '../../../shared/types';
+import { cwdBasename } from '../store/workspace-store';
+
+const HOME = window.fleet.homeDir;
+
+function shortenPath(cwd: string): string {
+  const withTilde = cwd.startsWith(HOME) ? '~' + cwd.slice(HOME.length) : cwd;
+  if (withTilde.length <= 30) return withTilde;
+  const parts = withTilde.split('/').filter(Boolean);
+  if (parts.length <= 2) return withTilde;
+  const prefix = withTilde.startsWith('~') ? '~' : '';
+  return `${prefix}/\u2026/${parts.slice(-2).join('/')}`;
+}
 
 type TabItemProps = {
   id: string;
   label: string;
+  labelIsCustom: boolean;
+  cwd: string;
   isActive: boolean;
   badge: NotificationLevel | null;
   onClick: () => void;
   onClose: () => void;
   onRename: (newLabel: string) => void;
+  onResetLabel: () => void;
   // Drag-and-drop
   index: number;
   onDragStart: (index: number) => void;
@@ -29,11 +45,14 @@ const BADGE_CONFIG: Record<NotificationLevel, { color: string; size: string; ani
 export function TabItem({
   id: _id,
   label,
+  labelIsCustom,
+  cwd,
   isActive,
   badge,
   onClick,
   onClose,
   onRename,
+  onResetLabel,
   index,
   onDragStart,
   onDragOver,
@@ -51,6 +70,17 @@ export function TabItem({
       inputRef.current.select();
     }
   }, [isEditing]);
+
+  // Listen for F2 rename event on the active tab
+  useEffect(() => {
+    if (!isActive) return;
+    const handleRenameEvent = () => {
+      setEditValue(label);
+      setIsEditing(true);
+    };
+    document.addEventListener('fleet:rename-active-tab', handleRenameEvent);
+    return () => document.removeEventListener('fleet:rename-active-tab', handleRenameEvent);
+  }, [isActive, label]);
 
   const commitRename = useCallback(() => {
     const trimmed = editValue.trim();
@@ -75,77 +105,115 @@ export function TabItem({
   }, [commitRename]);
 
   return (
-    <div
-      className={`
-        group flex items-center gap-2 px-3 py-2 cursor-pointer rounded-md text-sm relative
-        ${isActive
-          ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
-          : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
-      `}
-      onClick={onClick}
-      title={label}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', String(index));
-        onDragStart(index);
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        onDragOver(e, index);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        onDrop(index);
-      }}
-    >
-      {/* Drop indicator line above */}
-      {isDragOver === 'above' && (
-        <div className="absolute top-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full -translate-y-0.5" />
-      )}
-      {/* Drop indicator line below */}
-      {isDragOver === 'below' && (
-        <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
-      )}
-
-      {badge && !isActive && (
-        <span
-          className={`rounded-full flex-shrink-0 flex items-center justify-center ${BADGE_CONFIG[badge].color} ${BADGE_CONFIG[badge].size} ${BADGE_CONFIG[badge].animate}`}
-          aria-label={`${badge} notification`}
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          className={`
+            group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px]
+            ${isActive
+              ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
+              : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+          `}
+          onClick={onClick}
+          title={labelIsCustom ? `${label} — ${cwd}` : cwd}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', String(index));
+            onDragStart(index);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            onDragOver(e, index);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            onDrop(index);
+          }}
         >
-          {BADGE_CONFIG[badge].label && (
-            <span className="text-[7px] font-bold text-black leading-none">{BADGE_CONFIG[badge].label}</span>
+          {/* Drop indicator line above */}
+          {isDragOver === 'above' && (
+            <div className="absolute top-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full -translate-y-0.5" />
           )}
-        </span>
-      )}
+          {/* Drop indicator line below */}
+          {isDragOver === 'below' && (
+            <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
+          )}
 
-      {isEditing ? (
-        <input
-          ref={inputRef}
-          className="flex-1 bg-neutral-600 text-white text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          onBlur={commitRename}
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <div className="flex-1 truncate" onDoubleClick={handleDoubleClick}>
-          {label}
+          {badge && !isActive && (
+            <span
+              className={`rounded-full flex-shrink-0 flex items-center justify-center ${BADGE_CONFIG[badge].color} ${BADGE_CONFIG[badge].size} ${BADGE_CONFIG[badge].animate}`}
+              aria-label={`${badge} notification`}
+            >
+              {BADGE_CONFIG[badge].label && (
+                <span className="text-[7px] font-bold text-black leading-none">{BADGE_CONFIG[badge].label}</span>
+              )}
+            </span>
+          )}
+
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              className="flex-1 bg-neutral-600 text-white text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onBlur={commitRename}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div className="flex-1 min-w-0" onDoubleClick={handleDoubleClick}>
+              <div className="truncate text-sm leading-tight">
+                {labelIsCustom ? label : cwdBasename(cwd)}
+              </div>
+              <div className="truncate text-xs leading-tight text-neutral-500">
+                {shortenPath(cwd)}
+              </div>
+            </div>
+          )}
+
+          {/* Always-visible close button (dimmed when not hovered) */}
+          <button
+            className="opacity-40 group-hover:opacity-100 px-1 text-neutral-500 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+          >
+            &times;
+          </button>
         </div>
-      )}
-
-      {/* Always-visible close button (dimmed when not hovered) */}
-      <button
-        className="opacity-40 group-hover:opacity-100 px-1 text-neutral-500 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-      >
-        &times;
-      </button>
-    </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+            onSelect={() => {
+              setEditValue(label);
+              // Defer so Radix finishes focus restoration before we focus the input
+              setTimeout(() => setIsEditing(true), 0);
+            }}
+          >
+            Rename
+          </ContextMenu.Item>
+          {labelIsCustom && (
+            <ContextMenu.Item
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+              onSelect={onResetLabel}
+            >
+              Reset to directory name
+            </ContextMenu.Item>
+          )}
+          <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
+            onSelect={onClose}
+          >
+            Close Tab
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }

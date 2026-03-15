@@ -6,6 +6,7 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
+import { initCwdListener } from './store/cwd-store';
 import { useVisualizerStore } from './store/visualizer-store';
 import { useSettingsStore } from './store/settings-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
@@ -51,6 +52,11 @@ export function App() {
   // Load settings on startup
   useEffect(() => {
     loadSettings();
+  }, []);
+
+  // Subscribe to live CWD updates from main process
+  useEffect(() => {
+    return initCwdListener();
   }, []);
 
   // Settings modal toggle

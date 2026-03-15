@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
   PTY_KILL: 'pty:kill',
   PTY_EXIT: 'pty:exit',
   PTY_GC: 'pty:gc',
+  PTY_CWD: 'pty:cwd',
   LAYOUT_SAVE: 'layout:save',
   LAYOUT_LOAD: 'layout:load',
   LAYOUT_LIST: 'layout:list',

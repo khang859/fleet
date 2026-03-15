@@ -8,6 +8,13 @@ export function usePaneNavigation() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // F2 to rename active tab (no modifier needed)
+      if (e.key === 'F2') {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:rename-active-tab'));
+        return;
+      }
+
       if (!e.ctrlKey) return;
 
       if (e.key === 't') {

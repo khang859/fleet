@@ -9,6 +9,9 @@ const PERMISSION_PATTERNS = [
   /Press Enter to confirm/i,
 ];
 
+// OSC 7 format: ESC ] 7 ; file://[host]/path BEL  or  ESC ] 7 ; file://[host]/path ST
+const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g;  // used via matchAll (no shared lastIndex)
+
 export class NotificationDetector {
   private eventBus: EventBus;
 
@@ -17,9 +20,24 @@ export class NotificationDetector {
   }
 
   scan(paneId: string, data: string): void {
+    this.checkOSC7(paneId, data);
     this.checkOSC9(paneId, data);
     this.checkOSC777(paneId, data);
     this.checkPermissionPrompt(paneId, data);
+  }
+
+  private checkOSC7(paneId: string, data: string): void {
+    for (const match of data.matchAll(OSC7_RE)) {
+      try {
+        const url = new URL(match[1]);
+        const cwd = decodeURIComponent(url.pathname);
+        if (cwd) {
+          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+        }
+      } catch {
+        // Malformed URL, skip
+      }
+    }
   }
 
   private emitNotification(paneId: string, level: NotificationLevel): void {

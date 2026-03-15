@@ -7,6 +7,7 @@ export type Workspace = {
 export type Tab = {
   id: string;
   label: string;
+  labelIsCustom: boolean;
   cwd: string;
   splitRoot: PaneNode;
 };

@@ -13,6 +13,7 @@ import { SocketApi } from './socket-api';
 import { FleetCommandHandler } from './socket-command-handler';
 import { AgentStateTracker } from './agent-state-tracker';
 import { JsonlWatcher } from './jsonl-watcher';
+import { CwdPoller } from './cwd-poller';
 import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
@@ -26,6 +27,7 @@ const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
 const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
 const socketApi = new SocketApi(SOCKET_PATH, commandHandler);
+const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const agentTracker = new AgentStateTracker(eventBus);
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR);
 
@@ -96,7 +98,7 @@ app.whenReady().then(() => {
     }
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, () => mainWindow);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, () => mainWindow);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);
@@ -163,13 +165,26 @@ app.whenReady().then(() => {
     });
   });
 
-  // Clean up session mapping when panes close
+  // Clean up session mapping and CWD polling when panes close
   eventBus.on('pane-closed', (event) => {
+    cwdPoller.stopPolling(event.paneId);
     for (const [sessionId, paneId] of sessionToPaneMap) {
       if (paneId === event.paneId) {
         sessionToPaneMap.delete(sessionId);
         break;
       }
+    }
+  });
+
+  // Forward CWD changes to renderer and keep ptyManager in sync
+  eventBus.on('cwd-changed', (event) => {
+    ptyManager.updateCwd(event.paneId, event.cwd);
+    cwdPoller.markOsc7Seen(event.paneId);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PTY_CWD, {
+        paneId: event.paneId,
+        cwd: event.cwd,
+      });
     }
   });
 
@@ -308,6 +323,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   ptyManager.killAll();
+  cwdPoller.stopAll();
   socketApi.stop();
   jsonlWatcher.stop();
   if (process.platform !== 'darwin') {

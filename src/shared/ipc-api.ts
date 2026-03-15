@@ -47,6 +47,11 @@ export type PaneFocusedPayload = {
   paneId: string;
 };
 
+export type PtyCwdPayload = {
+  paneId: string;
+  cwd: string;
+};
+
 export type AgentStatePayload = {
   states: AgentVisualState[];
 };

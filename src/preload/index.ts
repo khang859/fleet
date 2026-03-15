@@ -8,6 +8,7 @@ import type {
   PtyInputPayload,
   PtyResizePayload,
   PtyExitPayload,
+  PtyCwdPayload,
   LayoutSaveRequest,
   LayoutListResponse,
   NotificationPayload,
@@ -37,6 +38,11 @@ const fleetApi = {
       const handler = (_event: Electron.IpcRendererEvent, payload: PtyExitPayload) => callback(payload);
       ipcRenderer.on(IPC_CHANNELS.PTY_EXIT, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_EXIT, handler);
+    },
+    onCwd: (callback: (payload: PtyCwdPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyCwdPayload) => callback(payload);
+      ipcRenderer.on(IPC_CHANNELS.PTY_CWD, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_CWD, handler);
     },
   },
   layout: {

@@ -17,6 +17,7 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { SettingsStore } from './settings-store';
+import { CwdPoller } from './cwd-poller';
 import type { FleetSettings } from '../shared/types';
 
 export function registerIpcHandlers(
@@ -26,6 +27,7 @@ export function registerIpcHandlers(
   notificationDetector: NotificationDetector,
   notificationState: NotificationStateManager,
   settingsStore: SettingsStore,
+  cwdPoller: CwdPoller,
   getWindow: () => BrowserWindow | null,
 ): void {
   // PTY handlers
@@ -47,6 +49,9 @@ export function registerIpcHandlers(
       }
       eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
     });
+
+    // Start CWD polling fallback for shells that don't emit OSC 7
+    cwdPoller.startPolling(req.paneId, result.pid);
 
     eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
     return result;
@@ -71,6 +76,9 @@ export function registerIpcHandlers(
     const killed = ptyManager.gc(new Set(activePaneIds));
     if (killed.length > 0) {
       console.log(`[pty-gc] killed ${killed.length} orphaned PTY(s):`, killed);
+      for (const paneId of killed) {
+        eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
+      }
     }
   });
 

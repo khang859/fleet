@@ -53,7 +53,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         const label = (cmd.label as string) ?? 'Shell';
 
         const leaf: PaneLeaf = { type: 'leaf', id: paneId, cwd };
-        const tab: Tab = { id: tabId, label, cwd, splitRoot: leaf };
+        const tab: Tab = { id: tabId, label, labelIsCustom: false, cwd, splitRoot: leaf };
 
         this.workspace.tabs.push(tab);
         this.tabs.set(tabId, tab);
