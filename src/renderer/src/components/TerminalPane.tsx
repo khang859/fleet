@@ -11,7 +11,7 @@ type TerminalPaneProps = {
 
 export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { fit } = useTerminal(containerRef, { paneId, cwd, serializedContent });
+  const { fit, focus } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive });
 
   return (
     <div
@@ -19,6 +19,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
       onFocus={onFocus}
       onClick={() => {
         onFocus();
+        focus();
         fit();
       }}
     >

@@ -153,8 +153,9 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  options: UseTerminalOptions,
+  options: UseTerminalOptions & { isActive?: boolean },
 ) {
+  const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
@@ -166,12 +167,14 @@ export function useTerminal(
     const { term, fitAddon, searchAddon, serializeAddon, ipcCleanup, resizeObserver } =
       createTerminal(container, options);
 
+    termRef.current = term;
     fitAddonRef.current = fitAddon;
     searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
     serializeRegistry.set(options.paneId, serializeAddon);
 
     return () => {
+      termRef.current = null;
       serializeRegistry.delete(options.paneId);
       ipcCleanup();
       resizeObserver.disconnect();
@@ -179,7 +182,15 @@ export function useTerminal(
     };
   }, [options.paneId]);
 
+  // Focus the xterm instance when this pane becomes active
+  useEffect(() => {
+    if (options.isActive && termRef.current) {
+      termRef.current.focus();
+    }
+  }, [options.isActive]);
+
   return {
+    focus: () => termRef.current?.focus(),
     fit: () => fitAddonRef.current?.fit(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
