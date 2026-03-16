@@ -185,7 +185,7 @@ export class ShipManager {
     return Array.from(this.ships.values());
   }
 
-  hitTest(pixelX: number, pixelY: number, canvasW: number, canvasH: number): string | null {
+  hitTest(pixelX: number, pixelY: number, _canvasW: number, _canvasH: number): string | null {
     const ships = this.getShips().reverse();
     for (const ship of ships) {
       if (ship.despawning) continue;
@@ -263,7 +263,7 @@ export class ShipManager {
   private spawnSubShip(
     sub: AgentVisualState,
     parentPaneId: string,
-    subIndex: number,
+    _subIndex: number,
     targetX: number,
     targetY: number,
     canvasW: number,
@@ -307,7 +307,7 @@ export class ShipManager {
     });
   }
 
-  private updateShip(agent: AgentVisualState, targetY: number, canvasW: number, canvasH: number): void {
+  private updateShip(agent: AgentVisualState, targetY: number, _canvasW: number, _canvasH: number): void {
     const ship = this.ships.get(agent.paneId);
     if (!ship || ship.despawning) return;
 

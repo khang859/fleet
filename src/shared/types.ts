@@ -48,6 +48,19 @@ export type AgentVisualState = {
   uptime: number;
 };
 
+export type FontSelection =
+  | { type: 'bundled'; name: 'JetBrains Mono Nerd Font' }
+  | { type: 'custom'; name: string };
+
+/** Resolve a FontSelection to the CSS font-family string used by xterm */
+export function resolveFontFamily(sel: FontSelection): string {
+  if (sel.type === 'bundled') {
+    return `${sel.name}, Symbols Nerd Font, monospace`;
+  }
+  // Custom fonts still get Symbols Nerd Font fallback for Nerd glyphs
+  return `${sel.name}, Symbols Nerd Font, monospace`;
+}
+
 export type FleetSettings = {
   general: {
     defaultShell: string;

@@ -1,5 +1,46 @@
 @import "tailwindcss";
 
+/* --- Bundled Nerd Fonts --- */
+
+/* JetBrains Mono Nerd Font Mono (terminal-optimized, fixed-width Nerd glyphs) */
+@font-face {
+  font-family: 'JetBrains Mono Nerd Font';
+  src: url('./assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono Nerd Font';
+  src: url('./assets/fonts/JetBrainsMonoNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono Nerd Font';
+  src: url('./assets/fonts/JetBrainsMonoNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'JetBrains Mono Nerd Font';
+  src: url('./assets/fonts/JetBrainsMonoNerdFontMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Symbols Nerd Font Mono — fallback for Nerd glyphs when using a custom primary font */
+@font-face {
+  font-family: 'Symbols Nerd Font';
+  src: url('./assets/fonts/SymbolsNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;

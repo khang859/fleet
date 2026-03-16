@@ -7,7 +7,6 @@ import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 import { initCwdListener } from './store/cwd-store';
-import { useVisualizerStore } from './store/visualizer-store';
 import { useSettingsStore } from './store/settings-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
@@ -34,6 +33,7 @@ export function App() {
 
   const { workspace, activeTabId, activePaneId, setActivePane, addTab, lastClosedTab, undoCloseTab } =
     useWorkspaceStore();
+  const settings = useSettingsStore((s) => s.settings);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -204,6 +204,8 @@ export function App() {
                     useNotificationStore.getState().clearPane(paneId);
                   }}
                   serializedPanes={serializedPanes}
+                  fontFamily={settings?.general.fontFamily}
+                  fontSize={settings?.general.fontSize}
                 />
               </div>
             );

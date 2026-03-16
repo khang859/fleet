@@ -1,6 +1,6 @@
 import {
   watch, watchFile, unwatchFile, FSWatcher,
-  readFileSync, openSync, readSync, closeSync,
+  openSync, readSync, closeSync,
   existsSync, readdirSync, statSync,
 } from 'fs';
 import { join, extname, basename } from 'path';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Starfield, StarLayer } from '../starfield';
+import { Starfield } from '../starfield';
 
 describe('Starfield', () => {
   it('creates 3 layers with correct star counts for a given area', () => {
