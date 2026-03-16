@@ -201,6 +201,27 @@ export class SpaceRenderer {
       ctx.textBaseline = 'middle';
       ctx.fillText(`+${ship.overflowCount}`, x + w + 2, cy);
     }
+
+    // Uptime badges
+    if (ship.uptime > 0) {
+      const badgeX = x + w / 2;
+      const badgeY = y - 4;
+      ctx.fillStyle = ship.accentColor;
+
+      if (ship.uptime >= 7200) {
+        // 2+ hours: chevron (V shape with 3 fillRects)
+        ctx.fillRect(Math.round(badgeX - 2), Math.round(badgeY), 2, 2);
+        ctx.fillRect(Math.round(badgeX), Math.round(badgeY + 2), 2, 2);
+        ctx.fillRect(Math.round(badgeX + 2), Math.round(badgeY), 2, 2);
+      } else if (ship.uptime >= 1800) {
+        // 30+ min: 2 dots
+        ctx.fillRect(Math.round(badgeX - 2), Math.round(badgeY), 2, 2);
+        ctx.fillRect(Math.round(badgeX + 2), Math.round(badgeY), 2, 2);
+      } else if (ship.uptime >= 300) {
+        // 5+ min: 1 dot
+        ctx.fillRect(Math.round(badgeX), Math.round(badgeY), 2, 2);
+      }
+    }
   }
 
   clearTrails(): void {
