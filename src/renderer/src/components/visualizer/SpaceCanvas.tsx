@@ -4,6 +4,14 @@ import { useWorkspaceStore, collectPaneIds } from '../../store/workspace-store';
 import { Starfield } from './starfield';
 import { ShipManager } from './ships';
 import { SpaceRenderer } from './space-renderer';
+import { ShootingStarSystem } from './shooting-stars';
+import { NebulaSystem } from './nebula';
+import { AuroraBands } from './aurora';
+import { CelestialBodies } from './celestials';
+import { BloomPass } from './bloom';
+import { SpaceWeather } from './space-weather';
+import { AsteroidField } from './asteroids';
+import { AmbientSoundscape } from './ambient-sound';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -17,7 +25,19 @@ type SpaceCanvasProps = {
   onShipClick: (paneId: string) => void;
 };
 
-const BG_COLOR = '#0a0a1a';
+function getDayNightBackground(): string {
+  const hour = new Date().getHours();
+  // Hour-to-color lookup: subtle dark space tints throughout the day
+  const colors: Record<number, string> = {
+    0: '#0a0a1a', 1: '#0a0a1a', 2: '#0a0a1a', 3: '#0a0a1a', 4: '#0a0a1a', 5: '#0a0a1a',
+    6: '#120a1a', 7: '#120a1a', 8: '#120a1a',
+    9: '#0f0e22', 10: '#0f0e22', 11: '#0f0e22', 12: '#0f0e22',
+    13: '#0f0e22', 14: '#0f0e22', 15: '#0f0e22', 16: '#0f0e22',
+    17: '#1a100f', 18: '#1a100f', 19: '#1a100f',
+    20: '#0d0a1a', 21: '#0d0a1a', 22: '#0d0a1a', 23: '#0d0a1a',
+  };
+  return colors[hour] ?? '#0a0a1a';
+}
 
 /** Convert workspace tabs/panes into AgentVisualState[] for the ship manager.
  *  Each tab = parent ship. Each pane in the tab = trailing subagent ship. */
@@ -47,8 +67,18 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const starfieldRef = useRef<Starfield | null>(null);
   const shipManagerRef = useRef(new ShipManager());
   const spaceRendererRef = useRef(new SpaceRenderer());
+  const shootingStarsRef = useRef(new ShootingStarSystem());
+  const nebulaRef = useRef(new NebulaSystem());
+  const auroraRef = useRef(new AuroraBands());
+  const celestialsRef = useRef(new CelestialBodies());
+  const spaceWeatherRef = useRef(new SpaceWeather());
+  const asteroidFieldRef = useRef(new AsteroidField());
+  const bloomRef = useRef<BloomPass | null>(null);
+  const soundscapeRef = useRef(new AmbientSoundscape());
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null });
+  const zoomRef = useRef(1);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   const { isVisible } = useVisualizerStore();
@@ -74,10 +104,20 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     if (!starfieldRef.current) {
       starfieldRef.current = new Starfield(canvas.clientWidth, canvas.clientHeight);
     }
+    if (!bloomRef.current) {
+      bloomRef.current = new BloomPass(canvas.clientWidth, canvas.clientHeight);
+    }
 
     const starfield = starfieldRef.current;
     const shipManager = shipManagerRef.current;
     const spaceRenderer = spaceRendererRef.current;
+    const shootingStars = shootingStarsRef.current;
+    const nebula = nebulaRef.current;
+    const aurora = auroraRef.current;
+    const celestials = celestialsRef.current;
+    const spaceWeather = spaceWeatherRef.current;
+    const asteroidField = asteroidFieldRef.current;
+    const bloom = bloomRef.current!;
 
     function loop(timestamp: number) {
       const deltaMs = lastTimeRef.current ? timestamp - lastTimeRef.current : 16;
@@ -92,20 +132,65 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (canvas!.width !== targetW || canvas!.height !== targetH) {
         canvas!.width = targetW;
         canvas!.height = targetH;
-        starfield.resize(cw, ch);
+        bloom.resize(cw, ch);
       }
 
-      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const zoom = zoomRef.current;
+      // Visible world dimensions (larger when zoomed out)
+      const vw = cw / zoom;
+      const vh = ch / zoom;
 
+      ctx!.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+
+      // Resize starfield to cover visible area when zoomed out
+      if (starfield.getWidth() !== Math.ceil(vw) || starfield.getHeight() !== Math.ceil(vh)) {
+        starfield.resize(Math.ceil(vw), Math.ceil(vh));
+      }
+
+      aurora.update(deltaMs);
       starfield.update(deltaMs);
+      nebula.update(deltaMs, vw, vh);
+      shootingStars.update(deltaMs, vw, vh);
+      celestials.update(deltaMs, vw, vh);
+      const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
+      spaceWeather.update(deltaMs, vw, vh, workingCount);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
+      const hasPermissionNeeded = shipManager.getShips().some(s => s.state === 'needs-permission');
+      asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
-      ctx!.fillStyle = BG_COLOR;
-      ctx!.fillRect(0, 0, cw, ch);
+      // Camera follow logic
+      const camera = cameraRef.current;
+      if (camera.following) {
+        const ship = shipManager.getShips().find(s => s.paneId === camera.following);
+        if (ship) {
+          camera.targetX = ship.currentX - vw / 2;
+          camera.targetY = ship.currentY - vh / 2;
+        } else {
+          camera.following = null;
+          camera.targetX = 0;
+          camera.targetY = 0;
+        }
+      }
+      camera.x += (camera.targetX - camera.x) * 0.05;
+      camera.y += (camera.targetY - camera.y) * 0.05;
 
+      // BG fill (covers viewport regardless of camera)
+      ctx!.fillStyle = getDayNightBackground();
+      ctx!.fillRect(0, 0, vw, vh);
+
+      // Apply camera transform for world-space rendering
+      ctx!.translate(-camera.x, -camera.y);
+
+      aurora.render(ctx!, vw, vh);
+      nebula.render(ctx!);
       starfield.render(ctx!);
+      shootingStars.render(ctx!);
+      celestials.render(ctx!);
+      asteroidField.render(ctx!);
+      spaceWeather.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
+      bloom.render(ctx!);
 
       animFrameRef.current = requestAnimationFrame(loop);
     }
@@ -115,23 +200,70 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     return () => cancelAnimationFrame(animFrameRef.current);
   }, [isVisible]);
 
+  // Soundscape cleanup
+  useEffect(() => {
+    return () => soundscapeRef.current.dispose();
+  }, []);
+
   // Click handling — resolve ship paneId to either tab or pane
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
+      // Initialize ambient soundscape on first click (requires user gesture)
+      const soundscape = soundscapeRef.current;
+      if (!soundscape.getIsRunning()) {
+        soundscape.init().then(() => soundscape.setVolume(0.3));
+      }
+
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const camera = cameraRef.current;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
         onShipClick(hit);
+      } else {
+        cameraRef.current.following = null;
+        cameraRef.current.targetX = 0;
+        cameraRef.current.targetY = 0;
       }
     },
     [onShipClick],
   );
+
+  // Double-click to follow a ship
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const camera = cameraRef.current;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
+      const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
+      if (hit) {
+        camera.following = hit;
+      }
+    },
+    [],
+  );
+
+  // Scroll-wheel zoom — native listener to allow { passive: false }
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      zoomRef.current = Math.max(0.5, Math.min(2.0, zoomRef.current + e.deltaY * -0.001));
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
+  }, []);
 
   // Hover tooltip
   const handleMouseMove = useCallback(
@@ -140,15 +272,20 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const camera = cameraRef.current;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
         const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
         if (ship) {
-          const tooltipX = Math.min(x, rect.width - 160);
-          const tooltipY = Math.max(y - 60, 0);
+          // Use screen-space coordinates for tooltip positioning
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const tooltipX = Math.min(screenX, rect.width - 160);
+          const tooltipY = Math.max(screenY - 60, 0);
 
           const paneCount = ship.isSubAgent ? undefined :
             agentsRef.current.find((a) => a.paneId === hit)?.subAgents.length;
@@ -172,6 +309,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       <canvas
         ref={canvasRef}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
         className="w-full h-full cursor-pointer"

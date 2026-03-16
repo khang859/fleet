@@ -23,8 +23,6 @@ const PARENT_HEIGHT = 24;
 const SUB_WIDTH = 10;
 const SUB_HEIGHT = 15;
 const MAX_RENDERED_SUBS = 4;
-const SUB_OFFSET_X = -0.06;
-const SUB_OFFSET_Y = 0.04;
 export const HULL_COUNT = 5;
 
 export type Ship = {
@@ -54,6 +52,7 @@ export type Ship = {
   driftPhaseY: number;
   driftSpeedX: number;
   driftSpeedY: number;
+  tiltAngle: number;
 };
 
 export class ShipManager {
@@ -87,8 +86,10 @@ export class ShipManager {
         const sub = agent.subAgents[si];
         activeIds.add(sub.paneId);
 
-        const subTargetX = BASE_X + (si + 1) * SUB_OFFSET_X;
-        const subTargetY = targetY + (si + 1) * SUB_OFFSET_Y;
+        const angle = (si % 2 === 0 ? 1 : -1) * (Math.floor(si / 2) + 1) * 0.15;
+        const distance = (Math.floor(si / 2) + 1) * 0.05;
+        const subTargetX = BASE_X - distance;
+        const subTargetY = targetY + angle;
 
         if (!this.ships.has(sub.paneId)) {
           this.spawnSubShip(sub, agent.paneId, si, subTargetX, subTargetY, canvasW, canvasH);
@@ -146,8 +147,11 @@ export class ShipManager {
 
         // Layered sine waves for organic, smooth movement
         const isActive = ship.state === 'working' || ship.state === 'reading';
-        const driftAmountX = isActive ? 18 : 30;
-        const driftAmountY = isActive ? 10 : 22;
+        const isIdle = ship.state === 'idle';
+        const driftAmountX = isActive ? 18 : isIdle ? 45 : 30;
+        const driftAmountY = isActive ? 10 : isIdle ? 33 : 22;
+
+        ship.tiltAngle = isIdle ? Math.sin(ship.driftPhaseX * 0.5) * 0.08 : 0;
 
         const driftX = Math.sin(ship.driftPhaseX) * driftAmountX
           + Math.sin(ship.driftPhaseX * 0.37) * driftAmountX * 0.4;
@@ -250,6 +254,7 @@ export class ShipManager {
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.15 + Math.random() * 0.1,
       driftSpeedY: 0.2 + Math.random() * 0.12,
+      tiltAngle: 0,
     };
 
     if (delay === 0) {
@@ -304,6 +309,7 @@ export class ShipManager {
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.18 + Math.random() * 0.1,
       driftSpeedY: 0.22 + Math.random() * 0.12,
+      tiltAngle: 0,
     });
   }
 

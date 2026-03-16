@@ -109,7 +109,7 @@ export class SpaceRenderer {
         this.particles.spawn(
           ship.currentX - ship.width / 2 - 2,
           ship.currentY,
-          ship.stateColor,
+          ship.accentColor,
           rate.count,
         );
         this.trailTimers.set(ship.paneId, 0);
@@ -149,6 +149,15 @@ export class SpaceRenderer {
     const h = ship.height;
 
     ctx.save();
+
+    // Apply tilt rotation for idle ships
+    if (ship.tiltAngle !== 0) {
+      const cx = ship.currentX;
+      const cy2 = ship.currentY;
+      ctx.translate(cx, cy2);
+      ctx.rotate(ship.tiltAngle);
+      ctx.translate(-cx, -cy2);
+    }
 
     // Needs-permission pulsing glow
     if (ship.state === 'needs-permission') {
@@ -191,6 +200,27 @@ export class SpaceRenderer {
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(`+${ship.overflowCount}`, x + w + 2, cy);
+    }
+
+    // Uptime badges
+    if (ship.uptime > 0) {
+      const badgeX = x + w / 2;
+      const badgeY = y - 4;
+      ctx.fillStyle = ship.accentColor;
+
+      if (ship.uptime >= 7200) {
+        // 2+ hours: chevron (V shape with 3 fillRects)
+        ctx.fillRect(Math.round(badgeX - 2), Math.round(badgeY), 2, 2);
+        ctx.fillRect(Math.round(badgeX), Math.round(badgeY + 2), 2, 2);
+        ctx.fillRect(Math.round(badgeX + 2), Math.round(badgeY), 2, 2);
+      } else if (ship.uptime >= 1800) {
+        // 30+ min: 2 dots
+        ctx.fillRect(Math.round(badgeX - 2), Math.round(badgeY), 2, 2);
+        ctx.fillRect(Math.round(badgeX + 2), Math.round(badgeY), 2, 2);
+      } else if (ship.uptime >= 300) {
+        // 5+ min: 1 dot
+        ctx.fillRect(Math.round(badgeX), Math.round(badgeY), 2, 2);
+      }
     }
   }
 

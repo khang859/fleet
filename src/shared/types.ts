@@ -61,6 +61,29 @@ export function resolveFontFamily(sel: FontSelection): string {
   return `${sel.name}, Symbols Nerd Font, monospace`;
 }
 
+export type VisualizerEffects = {
+  nebulaClouds: boolean;
+  shootingStars: boolean;
+  twinklingStars: boolean;
+  distantPlanets: boolean;
+  auroraBands: boolean;
+  constellationLines: boolean;
+  coloredTrails: boolean;
+  formationFlying: boolean;
+  shipBadges: boolean;
+  enhancedIdle: boolean;
+  dayNightCycle: boolean;
+  spaceWeather: boolean;
+  asteroidField: boolean;
+  spaceStation: boolean;
+  ambientSound: boolean;
+  followCamera: boolean;
+  zoomEnabled: boolean;
+  bloomGlow: boolean;
+  starColorVariety: boolean;
+  depthOfField: boolean;
+};
+
 export type FleetSettings = {
   general: {
     defaultShell: string;
@@ -81,5 +104,7 @@ export type FleetSettings = {
   };
   visualizer: {
     panelMode: 'drawer' | 'tab';
+    effects: VisualizerEffects;
+    soundVolume: number;
   };
 };
