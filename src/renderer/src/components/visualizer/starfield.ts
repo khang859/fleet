@@ -143,17 +143,27 @@ export class Starfield {
   }
 
   render(ctx: CanvasRenderingContext2D): void {
-    for (const layer of this.layers) {
-      for (const star of layer.stars) {
-        const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
-        const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
-        ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${alpha})`;
-        ctx.fillRect(
-          Math.round(star.x),
-          Math.round(star.y),
-          Math.round(star.size),
-          Math.round(star.size),
-        );
+    for (let li = 0; li < this.layers.length; li++) {
+      const layer = this.layers[li];
+
+      if (li === 0) {
+        // Far layer: render with depth-of-field blur
+        ctx.save();
+        ctx.filter = 'blur(1px)';
+        for (const star of layer.stars) {
+          const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
+          const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
+          ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${alpha})`;
+          ctx.fillRect(Math.round(star.x), Math.round(star.y), Math.round(star.size), Math.round(star.size));
+        }
+        ctx.restore();
+      } else {
+        for (const star of layer.stars) {
+          const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
+          const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
+          ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${alpha})`;
+          ctx.fillRect(Math.round(star.x), Math.round(star.y), Math.round(star.size), Math.round(star.size));
+        }
       }
     }
 
