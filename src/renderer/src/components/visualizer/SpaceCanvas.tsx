@@ -190,7 +190,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       asteroidField.render(ctx!);
       spaceWeather.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
-      bloom.render(ctx!, cw, ch);
+      bloom.render(ctx!);
 
       animFrameRef.current = requestAnimationFrame(loop);
     }

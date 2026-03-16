@@ -19,7 +19,7 @@ export class BloomPass {
     this.offCanvas.height = Math.ceil(height / 2);
   }
 
-  render(sourceCtx: CanvasRenderingContext2D, width: number, height: number): void {
+  render(sourceCtx: CanvasRenderingContext2D): void {
     const hw = this.offCanvas.width;
     const hh = this.offCanvas.height;
 
@@ -29,11 +29,14 @@ export class BloomPass {
     this.offCtx.drawImage(sourceCtx.canvas, 0, 0, hw, hh);
     this.offCtx.filter = 'none';
 
-    // 2. Composite back with 'screen' blend mode at low opacity
+    // 2. Composite back in screen space (ignore camera/zoom transforms)
     sourceCtx.save();
+    sourceCtx.setTransform(1, 0, 0, 1, 0, 0); // reset to pixel space
     sourceCtx.globalCompositeOperation = 'screen';
     sourceCtx.globalAlpha = 0.3;
-    sourceCtx.drawImage(this.offCanvas, 0, 0, width, height);
+    const canvasW = sourceCtx.canvas.width;
+    const canvasH = sourceCtx.canvas.height;
+    sourceCtx.drawImage(this.offCanvas, 0, 0, canvasW, canvasH);
     sourceCtx.restore();
   }
 }
