@@ -156,5 +156,30 @@ export class Starfield {
         );
       }
     }
+
+    this.renderConstellations(ctx);
+  }
+
+  renderConstellations(ctx: CanvasRenderingContext2D): void {
+    const midLayer = this.layers[1];
+    if (!midLayer) return;
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+    ctx.lineWidth = 0.5;
+
+    const stars = midLayer.stars;
+    for (let i = 0; i < stars.length; i++) {
+      for (let j = i + 1; j < stars.length; j++) {
+        const dx = stars[i].x - stars[j].x;
+        const dy = stars[i].y - stars[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 40) {
+          ctx.beginPath();
+          ctx.moveTo(Math.round(stars[i].x), Math.round(stars[i].y));
+          ctx.lineTo(Math.round(stars[j].x), Math.round(stars[j].y));
+          ctx.stroke();
+        }
+      }
+    }
   }
 }
