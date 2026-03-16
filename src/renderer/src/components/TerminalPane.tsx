@@ -35,7 +35,8 @@ type TerminalPaneProps = {
 
 export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent, fontFamily, fontSize, onSplitHorizontal, onSplitVertical, onClose }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { fit, focus, search, searchPrevious, clearSearch } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive, fontFamily, fontSize });
+  const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive, fontFamily, fontSize, onScrollStateChange: setIsScrolledUp });
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -136,6 +137,23 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
         onSearchPrevious={(q) => searchPrevious(q)}
       />
       <div ref={containerRef} className="h-full w-full" />
+      {isScrolledUp && (
+        <button
+          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-neutral-800/90 px-2.5 py-1.5 text-xs text-neutral-300 shadow-lg backdrop-blur-sm hover:bg-neutral-700 transition-colors"
+          onClick={(e) => {
+            e.stopPropagation();
+            scrollToBottom();
+            focus();
+          }}
+          tabIndex={-1}
+          aria-label="Scroll to bottom"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <span>Bottom</span>
+        </button>
+      )}
       {isDragOver && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
           <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
