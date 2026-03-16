@@ -76,6 +76,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null });
+  const zoomRef = useRef(1);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   const { isVisible } = useVisualizerStore();
@@ -133,7 +134,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
         bloom.resize(cw, ch);
       }
 
-      ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const zoom = zoomRef.current;
+      ctx!.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
 
       aurora.update(deltaMs);
       starfield.update(deltaMs);
@@ -152,8 +154,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (camera.following) {
         const ship = shipManager.getShips().find(s => s.paneId === camera.following);
         if (ship) {
-          camera.targetX = ship.currentX - cw / 2;
-          camera.targetY = ship.currentY - ch / 2;
+          camera.targetX = ship.currentX - (cw / zoom) / 2;
+          camera.targetY = ship.currentY - (ch / zoom) / 2;
         } else {
           camera.following = null;
           camera.targetX = 0;
@@ -165,7 +167,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 
       // BG fill (covers viewport regardless of camera)
       ctx!.fillStyle = getDayNightBackground();
-      ctx!.fillRect(0, 0, cw, ch);
+      ctx!.fillRect(0, 0, cw / zoom, ch / zoom);
 
       // Apply camera transform for world-space rendering
       ctx!.translate(-camera.x, -camera.y);
@@ -196,8 +198,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 
       const rect = canvas.getBoundingClientRect();
       const camera = cameraRef.current;
-      const x = (e.clientX - rect.left) + camera.x;
-      const y = (e.clientY - rect.top) + camera.y;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
@@ -218,8 +221,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const camera = cameraRef.current;
-      const x = (e.clientX - rect.left) + camera.x;
-      const y = (e.clientY - rect.top) + camera.y;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
         camera.following = hit;
@@ -227,6 +231,12 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     },
     [],
   );
+
+  // Scroll-wheel zoom
+  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
+    e.preventDefault();
+    zoomRef.current = Math.max(0.5, Math.min(2.0, zoomRef.current + e.deltaY * -0.001));
+  }, []);
 
   // Hover tooltip
   const handleMouseMove = useCallback(
@@ -236,8 +246,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 
       const rect = canvas.getBoundingClientRect();
       const camera = cameraRef.current;
-      const x = (e.clientX - rect.left) + camera.x;
-      const y = (e.clientY - rect.top) + camera.y;
+      const zoom = zoomRef.current;
+      const x = (e.clientX - rect.left) / zoom + camera.x;
+      const y = (e.clientY - rect.top) / zoom + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
@@ -272,6 +283,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
         ref={canvasRef}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onWheel={handleWheel}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
         className="w-full h-full cursor-pointer"
