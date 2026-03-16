@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "nano-banana-2": {
+      "source": "inferen-sh/skills",
+      "sourceType": "github",
+      "computedHash": "4ca2bed33d25544f34b0e09c99f0a6d4e530fedc26961dedc88667ecf94d879e"
+    }
+  }
+}

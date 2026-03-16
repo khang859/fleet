@@ -32,6 +32,7 @@
     "@electron-toolkit/utils": "^4.0.0",
     "@git-diff-view/react": "^0.1.2",
     "@git-diff-view/shiki": "^0.1.2",
+    "@imgly/background-removal-node": "^1.4.5",
     "@radix-ui/react-context-menu": "^2.2.16",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",

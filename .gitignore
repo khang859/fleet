@@ -1,3 +1,4 @@
+.env
 node_modules
 dist
 out
@@ -7,3 +8,5 @@ out
 reference/*
 !reference/.gitkeep
 .claude/worktrees
+sprites-raw
+sprites-staging
