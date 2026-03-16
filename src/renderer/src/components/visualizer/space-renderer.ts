@@ -1,5 +1,81 @@
 import type { Ship } from './ships';
+import { HULL_COUNT } from './ships';
 import { ParticleSystem } from './particles';
+
+type HullDrawFn = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) => void;
+
+const HULL_VARIANTS: HullDrawFn[] = [
+  // 0: Arrow (original) — pointed nose, angled rear notch
+  (ctx, x, y, w, h) => {
+    const cy = y + h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, cy);
+    ctx.lineTo(x + w * 0.3, y);
+    ctx.lineTo(x, y + h * 0.25);
+    ctx.lineTo(x, y + h * 0.75);
+    ctx.lineTo(x + w * 0.3, y + h);
+    ctx.closePath();
+  },
+  // 1: Dart — narrow elongated diamond with swept-back wings
+  (ctx, x, y, w, h) => {
+    const cy = y + h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, cy);
+    ctx.lineTo(x + w * 0.45, y);
+    ctx.lineTo(x, cy);
+    ctx.lineTo(x + w * 0.45, y + h);
+    ctx.closePath();
+  },
+  // 2: Wedge — wide triangle, flat front angled back
+  (ctx, x, y, w, h) => {
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h * 0.3);
+    ctx.lineTo(x + w, y + h * 0.7);
+    ctx.lineTo(x, y + h);
+    ctx.lineTo(x, y);
+    ctx.closePath();
+  },
+  // 3: Fighter — notched wings (top/bottom indents)
+  (ctx, x, y, w, h) => {
+    const cy = y + h / 2;
+    ctx.beginPath();
+    ctx.moveTo(x + w, cy);
+    ctx.lineTo(x + w * 0.4, y);
+    ctx.lineTo(x + w * 0.15, y + h * 0.2);
+    ctx.lineTo(x + w * 0.15, y + h * 0.4);
+    ctx.lineTo(x, cy);
+    ctx.lineTo(x + w * 0.15, y + h * 0.6);
+    ctx.lineTo(x + w * 0.15, y + h * 0.8);
+    ctx.lineTo(x + w * 0.4, y + h);
+    ctx.closePath();
+  },
+  // 4: Shuttle — blunt nose, boxy shape
+  (ctx, x, y, w, h) => {
+    ctx.beginPath();
+    ctx.moveTo(x + w, y + h * 0.25);
+    ctx.lineTo(x + w, y + h * 0.75);
+    ctx.lineTo(x + w * 0.2, y + h * 0.85);
+    ctx.lineTo(x, y + h * 0.7);
+    ctx.lineTo(x, y + h * 0.3);
+    ctx.lineTo(x + w * 0.2, y + h * 0.15);
+    ctx.closePath();
+  },
+];
+
+// Accent stripe configs per variant: [xOffset, yOffset from cy, width, height]
+type StripeConfig = [number, number, number, number];
+const STRIPE_CONFIGS: StripeConfig[] = [
+  [0.4, -1, 0.3, 2],   // Arrow
+  [0.35, -1, 0.3, 2],  // Dart
+  [0.3, -1, 0.4, 2],   // Wedge
+  [0.4, -1, 0.25, 2],  // Fighter
+  [0.35, -1, 0.35, 2], // Shuttle
+];
+
+// Sanity check
+if (HULL_VARIANTS.length !== HULL_COUNT) {
+  throw new Error(`HULL_VARIANTS length (${HULL_VARIANTS.length}) must match HULL_COUNT (${HULL_COUNT})`);
+}
 
 // Engine trail spawn rates per state
 const TRAIL_RATES: Record<string, { count: number; interval: number }> = {
@@ -83,27 +159,21 @@ export class SpaceRenderer {
 
     // Ship body (state color)
     ctx.fillStyle = ship.stateColor;
-
-    // Draw a simple pixel-art ship shape:
-    // Pointed nose on the right, flat rear on the left
     const cy = y + h / 2;
 
-    ctx.beginPath();
-    ctx.moveTo(x + w, cy);           // nose (right)
-    ctx.lineTo(x + w * 0.3, y);      // top-left
-    ctx.lineTo(x, y + h * 0.25);     // rear top
-    ctx.lineTo(x, y + h * 0.75);     // rear bottom
-    ctx.lineTo(x + w * 0.3, y + h);  // bottom-left
-    ctx.closePath();
+    // Draw hull variant
+    const variant = ship.hullVariant % HULL_VARIANTS.length;
+    HULL_VARIANTS[variant](ctx, x, y, w, h);
     ctx.fill();
 
-    // Accent stripe (cockpit / wing marking)
+    // Accent stripe (cockpit / wing marking) — adjusted per variant
+    const [sxOff, syOff, swPct, sH] = STRIPE_CONFIGS[variant];
     ctx.fillStyle = ship.accentColor;
     ctx.fillRect(
-      Math.round(x + w * 0.4),
-      Math.round(cy - 1),
-      Math.round(w * 0.3),
-      2,
+      Math.round(x + w * sxOff),
+      Math.round(cy + syOff),
+      Math.round(w * swPct),
+      sH,
     );
 
     // Engine glow (accent color, at rear)

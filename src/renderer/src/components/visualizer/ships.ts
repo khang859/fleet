@@ -25,6 +25,7 @@ const SUB_HEIGHT = 15;
 const MAX_RENDERED_SUBS = 4;
 const SUB_OFFSET_X = -0.06;
 const SUB_OFFSET_Y = 0.04;
+export const HULL_COUNT = 5;
 
 export type Ship = {
   paneId: string;
@@ -46,6 +47,7 @@ export type Ship = {
   despawning: boolean;
   spawnDelay: number;
   spawnDelayElapsed: number;
+  hullVariant: number;
   pulsePhase: number;
   // Organic drift
   driftPhaseX: number;
@@ -242,6 +244,7 @@ export class ShipManager {
       despawning: false,
       spawnDelay: delay,
       spawnDelayElapsed: 0,
+      hullVariant: Math.floor(Math.random() * HULL_COUNT),
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
@@ -295,6 +298,7 @@ export class ShipManager {
       despawning: false,
       spawnDelay: 0,
       spawnDelayElapsed: 0,
+      hullVariant: Math.floor(Math.random() * HULL_COUNT),
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
