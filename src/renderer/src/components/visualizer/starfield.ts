@@ -138,6 +138,9 @@ export class Starfield {
     }
   }
 
+  getWidth(): number { return this.width; }
+  getHeight(): number { return this.height; }
+
   getLayers(): StarLayer[] {
     return this.layers;
   }

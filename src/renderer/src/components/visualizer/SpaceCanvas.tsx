@@ -132,23 +132,31 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (canvas!.width !== targetW || canvas!.height !== targetH) {
         canvas!.width = targetW;
         canvas!.height = targetH;
-        starfield.resize(cw, ch);
         bloom.resize(cw, ch);
       }
 
       const zoom = zoomRef.current;
+      // Visible world dimensions (larger when zoomed out)
+      const vw = cw / zoom;
+      const vh = ch / zoom;
+
       ctx!.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
+
+      // Resize starfield to cover visible area when zoomed out
+      if (starfield.getWidth() !== Math.ceil(vw) || starfield.getHeight() !== Math.ceil(vh)) {
+        starfield.resize(Math.ceil(vw), Math.ceil(vh));
+      }
 
       aurora.update(deltaMs);
       starfield.update(deltaMs);
-      nebula.update(deltaMs, cw, ch);
-      shootingStars.update(deltaMs, cw, ch);
-      celestials.update(deltaMs, cw, ch);
+      nebula.update(deltaMs, vw, vh);
+      shootingStars.update(deltaMs, vw, vh);
+      celestials.update(deltaMs, vw, vh);
       const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
-      spaceWeather.update(deltaMs, cw, ch, workingCount);
+      spaceWeather.update(deltaMs, vw, vh, workingCount);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       const hasPermissionNeeded = shipManager.getShips().some(s => s.state === 'needs-permission');
-      asteroidField.update(deltaMs, cw, ch, hasPermissionNeeded);
+      asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
       // Camera follow logic
@@ -156,8 +164,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (camera.following) {
         const ship = shipManager.getShips().find(s => s.paneId === camera.following);
         if (ship) {
-          camera.targetX = ship.currentX - (cw / zoom) / 2;
-          camera.targetY = ship.currentY - (ch / zoom) / 2;
+          camera.targetX = ship.currentX - vw / 2;
+          camera.targetY = ship.currentY - vh / 2;
         } else {
           camera.following = null;
           camera.targetX = 0;
@@ -169,7 +177,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 
       // BG fill (covers viewport regardless of camera)
       ctx!.fillStyle = getDayNightBackground();
-      ctx!.fillRect(0, 0, cw / zoom, ch / zoom);
+      ctx!.fillRect(0, 0, vw, vh);
 
       // Apply camera transform for world-space rendering
       ctx!.translate(-camera.x, -camera.y);
@@ -245,10 +253,16 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     [],
   );
 
-  // Scroll-wheel zoom
-  const handleWheel = useCallback((e: React.WheelEvent<HTMLCanvasElement>) => {
-    e.preventDefault();
-    zoomRef.current = Math.max(0.5, Math.min(2.0, zoomRef.current + e.deltaY * -0.001));
+  // Scroll-wheel zoom — native listener to allow { passive: false }
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    function onWheel(e: WheelEvent) {
+      e.preventDefault();
+      zoomRef.current = Math.max(0.5, Math.min(2.0, zoomRef.current + e.deltaY * -0.001));
+    }
+    canvas.addEventListener('wheel', onWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', onWheel);
   }, []);
 
   // Hover tooltip
@@ -296,7 +310,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
         ref={canvasRef}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
-        onWheel={handleWheel}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
         className="w-full h-full cursor-pointer"
