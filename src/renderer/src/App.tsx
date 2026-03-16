@@ -6,13 +6,14 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, serializePane } from './hooks/use-terminal';
-import { initCwdListener } from './store/cwd-store';
+import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { SettingsModal } from './components/SettingsModal';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
+import { GitChangesModal } from './components/GitChangesModal';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -35,6 +36,7 @@ export function App() {
   const { workspace, activeTabId, activePaneId, setActivePane, addTab, lastClosedTab, undoCloseTab } =
     useWorkspaceStore();
   const settings = useSettingsStore((s) => s.settings);
+  const focusedPaneCwd = useCwdStore((s) => activePaneId ? s.cwds.get(activePaneId) : undefined);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -49,6 +51,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [gitChangesOpen, setGitChangesOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -80,6 +83,13 @@ export function App() {
     const handler = () => setCommandPaletteOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-command-palette', handler);
     return () => document.removeEventListener('fleet:toggle-command-palette', handler);
+  }, []);
+
+  // Git changes modal toggle
+  useEffect(() => {
+    const handler = () => setGitChangesOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-git-changes', handler);
+    return () => document.removeEventListener('fleet:toggle-git-changes', handler);
   }, []);
 
   // Auto-updater
@@ -284,6 +294,7 @@ export function App() {
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+      <GitChangesModal isOpen={gitChangesOpen} onClose={() => setGitChangesOpen(false)} cwd={focusedPaneCwd} />
     </div>
   );
 }

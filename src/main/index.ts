@@ -7,6 +7,7 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
+import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
 import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
 import { SocketApi } from './socket-api';
@@ -100,7 +101,8 @@ app.whenReady().then(() => {
     }
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, () => mainWindow);
+  const gitService = new GitService();
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);

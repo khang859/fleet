@@ -14,6 +14,8 @@ import type {
   NotificationPayload,
   PaneFocusedPayload,
   AgentStatePayload,
+  GitStatusPayload,
+  GitIsRepoPayload,
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings } from '../shared/types';
 
@@ -81,6 +83,12 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     set: (settings: Partial<FleetSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings),
+  },
+  git: {
+    isRepo: (cwd: string): Promise<GitIsRepoPayload> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
+    getStatus: (cwd: string): Promise<GitStatusPayload> =>
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd),
   },
   updates: {
     onUpdateDownloaded: (callback: () => void) => {
