@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { homedir } from 'os';
 import { IPC_CHANNELS } from '../shared/constants';
 import type {
@@ -72,6 +72,10 @@ const fleetApi = {
     },
   },
   homeDir: homedir(),
+  platform: process.platform,
+  utils: {
+    getFilePath: (file: File): string => webUtils.getPathForFile(file),
+  },
   settings: {
     get: (): Promise<FleetSettings> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
