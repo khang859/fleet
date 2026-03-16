@@ -41,7 +41,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
 } {
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
-    fontFamily: options.fontFamily ?? 'monospace',
+    fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     scrollback: options.scrollback ?? 10_000,
     cursorBlink: true,
     allowProposedApi: true,
@@ -181,6 +181,19 @@ export function useTerminal(
       term.dispose();
     };
   }, [options.paneId]);
+
+  // Update font settings on existing terminal without re-creating it
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    const newFamily = options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace';
+    const newSize = options.fontSize ?? 14;
+    if (term.options.fontFamily !== newFamily || term.options.fontSize !== newSize) {
+      term.options.fontFamily = newFamily;
+      term.options.fontSize = newSize;
+      fitAddonRef.current?.fit();
+    }
+  }, [options.fontFamily, options.fontSize]);
 
   // Focus the xterm instance when this pane becomes active
   useEffect(() => {

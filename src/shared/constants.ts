@@ -38,7 +38,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
     defaultShell: '',
     scrollbackSize: DEFAULT_SCROLLBACK,
-    fontFamily: 'monospace',
+    fontFamily: 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     fontSize: 14,
     theme: 'dark',
   },

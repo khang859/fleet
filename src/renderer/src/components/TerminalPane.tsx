@@ -7,11 +7,13 @@ type TerminalPaneProps = {
   isActive: boolean;
   onFocus: () => void;
   serializedContent?: string;
+  fontFamily?: string;
+  fontSize?: number;
 };
 
-export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent }: TerminalPaneProps) {
+export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent, fontFamily, fontSize }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const { fit, focus } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive });
+  const { fit, focus } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive, fontFamily, fontSize });
 
   return (
     <div

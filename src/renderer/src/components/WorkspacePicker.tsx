@@ -5,7 +5,7 @@ import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
 import type { Workspace } from '../../../shared/types';
 
 export function WorkspacePicker() {
-  const { workspace, activeTabId, setActiveTab, loadWorkspace, addTab, closeTab, renameTab } =
+  const { workspace, activeTabId, setActiveTab, loadWorkspace, addTab, closeTab } =
     useWorkspaceStore();
   const { getTabBadge } = useNotificationStore();
   const [savedWorkspaces, setSavedWorkspaces] = useState<Workspace[]>([]);

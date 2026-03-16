@@ -8,9 +8,11 @@ type PaneGridProps = {
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
   serializedPanes?: Map<string, string>;
+  fontFamily?: string;
+  fontSize?: number;
 };
 
-export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes }: PaneGridProps) {
+export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize }: PaneGridProps) {
   return (
     <div className="h-full w-full">
       <PaneNodeRenderer
@@ -19,6 +21,8 @@ export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes }: P
         activePaneId={activePaneId}
         onPaneFocus={onPaneFocus}
         serializedPanes={serializedPanes}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
       />
     </div>
   );
@@ -30,9 +34,11 @@ type PaneNodeRendererProps = {
   activePaneId: string | null;
   onPaneFocus: (paneId: string) => void;
   serializedPanes?: Map<string, string>;
+  fontFamily?: string;
+  fontSize?: number;
 };
 
-function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes }: PaneNodeRendererProps) {
+function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize }: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
     return (
       <TerminalPane
@@ -41,6 +47,8 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
         isActive={node.id === activePaneId}
         onFocus={() => onPaneFocus(node.id)}
         serializedContent={serializedPanes?.get(node.id)}
+        fontFamily={fontFamily}
+        fontSize={fontSize}
       />
     );
   }
@@ -64,6 +72,8 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           serializedPanes={serializedPanes}
+          fontFamily={fontFamily}
+          fontSize={fontSize}
         />
       </div>
 
@@ -81,6 +91,8 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
           activePaneId={activePaneId}
           onPaneFocus={onPaneFocus}
           serializedPanes={serializedPanes}
+          fontFamily={fontFamily}
+          fontSize={fontSize}
         />
       </div>
     </div>
