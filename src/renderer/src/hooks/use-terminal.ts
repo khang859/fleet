@@ -39,6 +39,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   serializeAddon: SerializeAddon;
   ipcCleanup: () => void;
   resizeObserver: ResizeObserver;
+  cleanupResizeTimer: () => void;
 } {
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
@@ -134,6 +135,22 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   };
 
+  // Debounced PTY resize — sends SIGWINCH once after resizing settles,
+  // preventing rapid-fire signals that corrupt TUI cursor positions
+  // (e.g. Claude Code) during drag resize.
+  let resizeTimer: ReturnType<typeof setTimeout> | null = null;
+  const debouncedPtyResize = (): void => {
+    if (resizeTimer !== null) clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      resizeTimer = null;
+      window.fleet.pty.resize({
+        paneId: options.paneId,
+        cols: term.cols,
+        rows: term.rows,
+      });
+    }, 100);
+  };
+
   // Defer initial fit to next frame — xterm's render service needs a
   // layout pass before dimensions are available.
   requestAnimationFrame(() => {
@@ -141,11 +158,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
       fitPreservingScroll();
       // Always send resize to PTY — on reconnect (undo) this triggers
       // SIGWINCH so the shell redraws its prompt.
-      window.fleet.pty.resize({
-        paneId: options.paneId,
-        cols: term.cols,
-        rows: term.rows,
-      });
+      debouncedPtyResize();
     } catch {
       // Render service may not be ready yet; ResizeObserver will retry
     }
@@ -155,11 +168,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     if (term.element) {
       try {
         fitPreservingScroll();
-        window.fleet.pty.resize({
-          paneId: options.paneId,
-          cols: term.cols,
-          rows: term.rows,
-        });
+        debouncedPtyResize();
       } catch {
         // Terminal may be initializing or disposed; ignore
       }
@@ -167,7 +176,14 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   });
   resizeObserver.observe(container);
 
-  return { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver };
+  const cleanupResizeTimer = (): void => {
+    if (resizeTimer !== null) {
+      clearTimeout(resizeTimer);
+      resizeTimer = null;
+    }
+  };
+
+  return { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver, cleanupResizeTimer };
 }
 
 export function useTerminal(
@@ -184,7 +200,7 @@ export function useTerminal(
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver } =
+    const { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver, cleanupResizeTimer } =
       createTerminal(container, options);
 
     termRef.current = term;
@@ -197,6 +213,7 @@ export function useTerminal(
     return () => {
       termRef.current = null;
       serializeRegistry.delete(options.paneId);
+      cleanupResizeTimer();
       ipcCleanup();
       resizeObserver.disconnect();
       term.dispose();
