@@ -36,9 +36,9 @@ export class AuroraBands {
     }
   }
 
-  render(ctx: CanvasRenderingContext2D): void {
-    const w = ctx.canvas.width / (window.devicePixelRatio || 1);
-    const h = ctx.canvas.height / (window.devicePixelRatio || 1);
+  render(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+    const w = width;
+    const h = height;
 
     for (const band of this.bands) {
       const oscillation = Math.sin(band.phase) * 20; // amplitude ~20px

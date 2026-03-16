@@ -182,7 +182,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       // Apply camera transform for world-space rendering
       ctx!.translate(-camera.x, -camera.y);
 
-      aurora.render(ctx!);
+      aurora.render(ctx!, vw, vh);
       nebula.render(ctx!);
       starfield.render(ctx!);
       shootingStars.render(ctx!);
