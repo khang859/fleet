@@ -1,5 +1,6 @@
 import type { AgentVisualState } from '../../../../shared/types';
 import { WarpEffect } from './particles';
+import { PARENT_HULL_COUNT, SUBAGENT_HULL_COUNT } from './sprite-atlas';
 
 const STATE_COLORS: Record<string, string> = {
   working: '#4ade80',
@@ -18,12 +19,12 @@ const ACCENT_PALETTES = [
 const BASE_X = 0.35;
 const Y_START = 0.15;
 const Y_RANGE = 0.7;
-const PARENT_WIDTH = 16;
-const PARENT_HEIGHT = 24;
-const SUB_WIDTH = 10;
-const SUB_HEIGHT = 15;
+const PARENT_WIDTH = 32;
+const PARENT_HEIGHT = 32;
+const SUB_WIDTH = 20;
+const SUB_HEIGHT = 20;
 const MAX_RENDERED_SUBS = 4;
-export const HULL_COUNT = 5;
+export const HULL_COUNT = PARENT_HULL_COUNT;
 
 export type Ship = {
   paneId: string;
@@ -53,6 +54,7 @@ export type Ship = {
   driftSpeedX: number;
   driftSpeedY: number;
   tiltAngle: number;
+  animElapsed: number;
 };
 
 export class ShipManager {
@@ -171,6 +173,7 @@ export class ShipManager {
       }
 
       ship.pulsePhase += deltaMs * 0.005;
+      ship.animElapsed += deltaMs;
     }
 
     // Remove fully warped-out ships
@@ -248,13 +251,14 @@ export class ShipManager {
       despawning: false,
       spawnDelay: delay,
       spawnDelayElapsed: 0,
-      hullVariant: Math.floor(Math.random() * HULL_COUNT),
+      hullVariant: Math.floor(Math.random() * PARENT_HULL_COUNT) + 1,
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.15 + Math.random() * 0.1,
       driftSpeedY: 0.2 + Math.random() * 0.12,
       tiltAngle: 0,
+      animElapsed: 0,
     };
 
     if (delay === 0) {
@@ -303,13 +307,14 @@ export class ShipManager {
       despawning: false,
       spawnDelay: 0,
       spawnDelayElapsed: 0,
-      hullVariant: Math.floor(Math.random() * HULL_COUNT),
+      hullVariant: Math.floor(Math.random() * SUBAGENT_HULL_COUNT) + 1,
       pulsePhase: 0,
       driftPhaseX: Math.random() * Math.PI * 2,
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.18 + Math.random() * 0.1,
       driftSpeedY: 0.22 + Math.random() * 0.12,
       tiltAngle: 0,
+      animElapsed: 0,
     });
   }
 

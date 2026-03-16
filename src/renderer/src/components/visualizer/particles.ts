@@ -1,3 +1,6 @@
+import { SPRITE_ATLAS } from './sprite-atlas';
+import { isSpriteReady, drawSprite } from './sprite-loader';
+
 const MAX_PARTICLES = 100;
 const MIN_LIFETIME = 0.5;
 const MAX_LIFETIME = 1.5;
@@ -12,6 +15,7 @@ export type Particle = {
   color: string;
   life: number;
   maxLife: number;
+  animElapsed: number;
 };
 
 export class ParticleSystem {
@@ -34,6 +38,7 @@ export class ParticleSystem {
         color,
         life: maxLife,
         maxLife,
+        animElapsed: 0,
       });
     }
   }
@@ -46,6 +51,7 @@ export class ParticleSystem {
       p.y += p.vy * dt;
       p.life -= dt;
       p.opacity = Math.max(0, (p.life / p.maxLife) * 0.9);
+      p.animElapsed += deltaMs;
     }
 
     this.particles = this.particles.filter((p) => p.life > 0);
@@ -60,10 +66,27 @@ export class ParticleSystem {
   }
 
   render(ctx: CanvasRenderingContext2D): void {
+    const useSprites = isSpriteReady();
+    const puffRegion = useSprites ? SPRITE_ATLAS['particle-engine-puff'] : null;
+
     for (const p of this.particles) {
       ctx.globalAlpha = p.opacity;
-      ctx.fillStyle = p.color;
-      ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.round(p.size), Math.round(p.size));
+
+      if (puffRegion) {
+        // Sprite-based puff: 4×4 sprite drawn at ~2× scale
+        const renderSize = Math.round(p.size * 3);
+        drawSprite(
+          ctx, puffRegion, p.animElapsed,
+          Math.round(p.x - renderSize / 2),
+          Math.round(p.y - renderSize / 2),
+          renderSize, renderSize,
+          p.color,
+        );
+      } else {
+        // Fallback: colored pixel
+        ctx.fillStyle = p.color;
+        ctx.fillRect(Math.round(p.x), Math.round(p.y), Math.round(p.size), Math.round(p.size));
+      }
     }
     ctx.globalAlpha = 1;
   }
@@ -153,9 +176,56 @@ export class WarpEffect {
     return this.currentStretch;
   }
 
+  getElapsed(): number {
+    return this.elapsed;
+  }
+
+  getMode(): 'in' | 'out' {
+    return this.mode;
+  }
+
   render(ctx: CanvasRenderingContext2D, color: string, width: number, height: number): void {
     if (!this.active) return;
 
+    const useSprites = isSpriteReady();
+
+    if (useSprites) {
+      // Use warp streak sprite for the warp effect
+      const streakRegion = SPRITE_ATLAS['particle-warp-streak'];
+      if (streakRegion) {
+        const stretchedWidth = width * this.currentStretch;
+        const x = Math.round(this.currentX - stretchedWidth / 2);
+        const y = Math.round(this.targetY - height / 2);
+
+        ctx.globalAlpha = 0.9;
+        drawSprite(
+          ctx, streakRegion, this.elapsed,
+          x, y, Math.round(stretchedWidth), Math.round(height),
+          color,
+        );
+
+        // Spawn burst at target position during warp-in
+        if (this.mode === 'in' && this.elapsed < 200) {
+          const burstRegion = SPRITE_ATLAS['particle-spawn-burst'];
+          if (burstRegion) {
+            const burstAlpha = 1 - this.elapsed / 200;
+            ctx.globalAlpha = burstAlpha * 0.8;
+            const burstSize = 24;
+            drawSprite(
+              ctx, burstRegion, this.elapsed,
+              Math.round(this.targetX - burstSize / 2),
+              Math.round(this.targetY - burstSize / 2),
+              burstSize, burstSize,
+            );
+          }
+        }
+
+        ctx.globalAlpha = 1;
+        return;
+      }
+    }
+
+    // Fallback: procedural warp
     const stretchedWidth = width * this.currentStretch;
     const x = Math.round(this.currentX - stretchedWidth / 2);
     const y = Math.round(this.targetY - height / 2);

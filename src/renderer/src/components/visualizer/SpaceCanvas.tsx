@@ -12,6 +12,7 @@ import { BloomPass } from './bloom';
 import { SpaceWeather } from './space-weather';
 import { AsteroidField } from './asteroids';
 import { AmbientSoundscape } from './ambient-sound';
+import { loadSpriteSheet } from './sprite-loader';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -108,6 +109,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       bloomRef.current = new BloomPass(canvas.clientWidth, canvas.clientHeight);
     }
 
+    // Load sprite sheet (no-op if already loaded)
+    loadSpriteSheet();
+
     const starfield = starfieldRef.current;
     const shipManager = shipManagerRef.current;
     const spaceRenderer = spaceRendererRef.current;
@@ -189,8 +193,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       celestials.render(ctx!);
       asteroidField.render(ctx!);
       spaceWeather.render(ctx!);
+      bloom.renderShipGlow(ctx!, shipManager.getShips());
       spaceRenderer.render(ctx!, shipManager.getShips());
-      bloom.render(ctx!);
+      bloom.render(ctx!); // fallback full-canvas bloom when sprites not loaded
 
       animFrameRef.current = requestAnimationFrame(loop);
     }
