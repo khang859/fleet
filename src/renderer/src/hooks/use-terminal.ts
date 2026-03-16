@@ -146,6 +146,13 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     // Skip while hidden — viewportY is stale and fit() can't measure correctly
     if (container.offsetParent === null) return;
 
+    // Reconcile: if flag says unpinned but viewport is actually at bottom,
+    // correct it before acting. Catches any edge case that falsely unpinned.
+    if (!pinnedToBottom && isAtBottom()) {
+      pinnedToBottom = true;
+      options.onScrollStateChange?.(false);
+    }
+
     const savedPinned = pinnedToBottom;
     const savedViewportY = term.buffer.active.viewportY;
 
@@ -160,15 +167,38 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   };
 
-  // Update pinned state on xterm scroll events (fires when buffer scrolls from new content)
-  term.onScroll(() => updatePinnedState());
+  // Re-pin when content scrolls us to bottom (e.g. new output while following).
+  // IMPORTANT: onScroll only fires for content-driven scroll (new lines added),
+  // NOT for user wheel/keyboard scroll. During fast output, viewportY can briefly
+  // lag behind baseY, so we must NOT unpin here — only re-pin when at bottom.
+  // Unpinning is handled exclusively by the wheel event listener below.
+  term.onScroll(() => {
+    if (container.offsetParent === null) return;
+    if (isAtBottom()) {
+      pinnedToBottom = true;
+      options.onScrollStateChange?.(false);
+    }
+  });
 
-  // Fallback: wheel events on the container (xterm onScroll may not fire for trackpad/mouse wheel)
+  // User-initiated scroll detection: wheel (trackpad/mouse) and keyboard (PageUp/PageDown).
+  // These are the ONLY events that should unpin — onScroll is content-driven only.
   const wheelHandler = (): void => {
     requestAnimationFrame(() => updatePinnedState());
   };
   container.addEventListener('wheel', wheelHandler, { passive: true });
-  const scrollCleanup = (): void => container.removeEventListener('wheel', wheelHandler);
+
+  const keyScrollHandler = (e: KeyboardEvent): void => {
+    if (e.key === 'PageUp' || e.key === 'PageDown' ||
+        ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) {
+      requestAnimationFrame(() => updatePinnedState());
+    }
+  };
+  container.addEventListener('keydown', keyScrollHandler);
+
+  const scrollCleanup = (): void => {
+    container.removeEventListener('wheel', wheelHandler);
+    container.removeEventListener('keydown', keyScrollHandler);
+  };
 
   // Debounced PTY resize — sends SIGWINCH once after resizing settles,
   // preventing rapid-fire signals that corrupt TUI cursor positions
