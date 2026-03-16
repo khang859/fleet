@@ -2,6 +2,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
+import { useCwdStore } from '../store/cwd-store';
 
 function quotePathForShell(filePath: string, platform: string): string {
   if (platform === 'win32') {
@@ -39,6 +40,18 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isGitRepo, setIsGitRepo] = useState(false);
+  const currentCwd = useCwdStore((s) => s.cwds.get(paneId));
+
+  useEffect(() => {
+    if (!currentCwd) {
+      setIsGitRepo(false);
+      return;
+    }
+    window.fleet.git.isRepo(currentCwd).then((result) => {
+      setIsGitRepo(result.isRepo);
+    });
+  }, [currentCwd]);
   const dragCounterRef = useRef(0);
 
   // Listen for search toggle events targeted at this pane
@@ -120,10 +133,12 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
     >
       <PaneToolbar
         visible={hovered}
+        isGitRepo={isGitRepo}
         onSplitHorizontal={() => onSplitHorizontal?.()}
         onSplitVertical={() => onSplitVertical?.()}
         onClose={() => onClose?.()}
         onSearch={() => setSearchOpen(true)}
+        onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
       />
       <SearchBar
         isOpen={searchOpen}
