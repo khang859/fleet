@@ -43,9 +43,26 @@ function randomBody(canvasWidth: number, canvasHeight: number, startOnScreen: bo
   };
 }
 
+type SpaceStation = {
+  x: number;
+  y: number;
+  speed: number;
+  active: boolean;
+  spawnTimer: number;
+  nextSpawn: number;
+};
+
 export class CelestialBodies {
   private bodies: CelestialBody[] = [];
   private initialized = false;
+  private station: SpaceStation = {
+    x: 0,
+    y: 0,
+    speed: 0,
+    active: false,
+    spawnTimer: 0,
+    nextSpawn: 30 + Math.random() * 30, // 30-60 seconds
+  };
 
   update(deltaMs: number, canvasWidth: number, canvasHeight: number): void {
     if (!this.initialized) {
@@ -70,6 +87,25 @@ export class CelestialBodies {
         body.hue = newBody.hue;
         body.type = newBody.type;
         body.craters = newBody.craters;
+      }
+    }
+
+    // Space station logic
+    if (this.station.active) {
+      this.station.x -= this.station.speed * dt;
+      if (this.station.x < -20) {
+        this.station.active = false;
+        this.station.spawnTimer = 0;
+        this.station.nextSpawn = 30 + Math.random() * 30;
+      }
+    } else {
+      this.station.spawnTimer += dt;
+      if (this.station.spawnTimer >= this.station.nextSpawn) {
+        // Spawn station at right edge, traverse in ~15s
+        this.station.active = true;
+        this.station.x = canvasWidth + 10;
+        this.station.y = 20 + Math.random() * (canvasHeight - 40);
+        this.station.speed = canvasWidth / 15; // cross screen in ~15s
       }
     }
   }
@@ -110,6 +146,29 @@ export class CelestialBodies {
           ctx.fill();
         }
       }
+
+      ctx.globalAlpha = 1;
+    }
+
+    // Render space station
+    if (this.station.active) {
+      const sx = Math.round(this.station.x);
+      const sy = Math.round(this.station.y);
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#8899aa';
+
+      // Central module (4x4)
+      ctx.fillRect(sx - 2, sy - 2, 4, 4);
+      // Horizontal beam (14x2)
+      ctx.fillRect(sx - 7, sy - 1, 14, 2);
+      // Left solar panel (3x6)
+      ctx.fillStyle = '#556688';
+      ctx.fillRect(sx - 7, sy - 3, 3, 6);
+      // Right solar panel (3x6)
+      ctx.fillRect(sx + 4, sy - 3, 3, 6);
+      // Top antenna (1x3)
+      ctx.fillStyle = '#8899aa';
+      ctx.fillRect(sx, sy - 5, 1, 3);
 
       ctx.globalAlpha = 1;
     }
