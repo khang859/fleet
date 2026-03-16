@@ -132,6 +132,9 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   };
 
   const updatePinnedState = (): void => {
+    // Don't read buffer state while hidden (display:none) — viewportY is stale
+    // and would incorrectly flip pinnedToBottom to false.
+    if (container.offsetParent === null) return;
     pinnedToBottom = isAtBottom();
     options.onScrollStateChange?.(!pinnedToBottom);
   };
@@ -140,6 +143,9 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   // Without this, fitAddon.fit() can reset the viewport to the top when
   // the container is resized (e.g. adding splits, switching tabs).
   const fitPreservingScroll = (): void => {
+    // Skip while hidden — viewportY is stale and fit() can't measure correctly
+    if (container.offsetParent === null) return;
+
     const savedPinned = pinnedToBottom;
     const savedViewportY = term.buffer.active.viewportY;
 
