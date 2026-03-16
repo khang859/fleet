@@ -55,3 +55,22 @@ export type PtyCwdPayload = {
 export type AgentStatePayload = {
   states: AgentVisualState[];
 };
+
+export type GitFileStatus = {
+  path: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+  insertions: number;
+  deletions: number;
+};
+
+export type GitStatusPayload = {
+  isRepo: boolean;
+  branch: string;
+  files: GitFileStatus[];
+  diff: string;
+  error?: string;
+};
+
+export type GitIsRepoPayload = {
+  isRepo: boolean;
+};
