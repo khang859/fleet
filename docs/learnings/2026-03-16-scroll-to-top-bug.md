@@ -38,3 +38,11 @@ if (!savedPinned) {
 ## Related: Programmatic scrollToBottom doesn't fire onScroll
 
 When calling `term.scrollToBottom()` programmatically, `onScroll` may not fire. If you're tracking scroll state (e.g., to show/hide a "scroll to bottom" button), manually notify after the programmatic scroll.
+
+## Follow-up: onScroll race condition during fast output (same-pane jump to top)
+
+Even with `pinnedToBottom` tracking, the viewport could randomly jump to the top while Claude Code was running in the **active, visible** pane. Root cause: `term.onScroll(() => updatePinnedState())` called `updatePinnedState` on every content-driven scroll event. During fast output, `baseY` advances before `viewportY` catches up, so `viewportY < baseY - 2` is briefly true, falsely flipping `pinnedToBottom = false`. If `fitPreservingScroll` fires at that moment (ResizeObserver, click), it restores position instead of following bottom, and `fit()` can reset viewport to 0.
+
+**Fix:** `onScroll` must only **re-pin** (set `pinnedToBottom = true` when at bottom), never **unpin**. Only `wheel` events should unpin, since they represent actual user scroll intent. Additionally, `fitPreservingScroll` reconciles the flag before acting: if `pinnedToBottom` is false but `isAtBottom()` is true, correct it.
+
+**Key insight:** `term.onScroll` only fires for content-driven scrolling (new lines added), never for user wheel/keyboard scrolling (confirmed by xterm.js issues #3864, #3201). It must never be used to infer user scroll-up intent. This is a known class of bug — Tabby terminal has the same issue with Claude Code (Tabby #10648).
