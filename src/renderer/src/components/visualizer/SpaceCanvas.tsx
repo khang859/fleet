@@ -10,6 +10,7 @@ import { AuroraBands } from './aurora';
 import { CelestialBodies } from './celestials';
 import { BloomPass } from './bloom';
 import { SpaceWeather } from './space-weather';
+import { AsteroidField } from './asteroids';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -70,6 +71,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const auroraRef = useRef(new AuroraBands());
   const celestialsRef = useRef(new CelestialBodies());
   const spaceWeatherRef = useRef(new SpaceWeather());
+  const asteroidFieldRef = useRef(new AsteroidField());
   const bloomRef = useRef<BloomPass | null>(null);
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -110,6 +112,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const aurora = auroraRef.current;
     const celestials = celestialsRef.current;
     const spaceWeather = spaceWeatherRef.current;
+    const asteroidField = asteroidFieldRef.current;
     const bloom = bloomRef.current!;
 
     function loop(timestamp: number) {
@@ -139,6 +142,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
       spaceWeather.update(deltaMs, cw, ch, workingCount);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
+      const hasPermissionNeeded = shipManager.getShips().some(s => s.state === 'needs-permission');
+      asteroidField.update(deltaMs, cw, ch, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
       ctx!.fillStyle = getDayNightBackground();
@@ -149,6 +154,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       starfield.render(ctx!);
       shootingStars.render(ctx!);
       celestials.render(ctx!);
+      asteroidField.render(ctx!);
       spaceWeather.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
       bloom.render(ctx!, cw, ch);
