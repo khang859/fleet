@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
+import { ALL_SHORTCUTS, matchesShortcut } from '../lib/shortcuts';
+
+function sc(id: string) {
+  return ALL_SHORTCUTS.find((s) => s.id === id)!;
+}
 
 export function usePaneNavigation() {
   const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
@@ -8,90 +13,107 @@ export function usePaneNavigation() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      // F2 to rename active tab (no modifier needed)
-      if (e.key === 'F2') {
+      // F2 to rename active tab
+      if (matchesShortcut(e, sc('rename-tab'))) {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:rename-active-tab'));
         return;
       }
 
-      if (!e.ctrlKey) return;
-
-      if (e.key === 't') {
+      if (matchesShortcut(e, sc('new-tab'))) {
         e.preventDefault();
         addTab(undefined, window.fleet.homeDir);
+        return;
       }
 
-      if (e.key === 'w') {
+      if (matchesShortcut(e, sc('close-pane'))) {
         e.preventDefault();
         if (activePaneId) closePane(activePaneId);
+        return;
       }
 
-      // Ctrl+Shift+D for vertical split (check before Ctrl+D)
-      if (e.shiftKey && e.key === 'D') {
+      // Split down must be checked before split right (superset modifiers)
+      if (matchesShortcut(e, sc('split-down'))) {
         e.preventDefault();
         if (activePaneId) splitPane(activePaneId, 'vertical');
-      } else if (e.key === 'd') {
-        e.preventDefault();
-        if (activePaneId) splitPane(activePaneId, 'horizontal');
+        return;
       }
 
-      // Ctrl+[ / Ctrl+] to navigate panes within current tab only
-      if (e.key === '[' || e.key === ']') {
+      if (matchesShortcut(e, sc('split-right'))) {
+        e.preventDefault();
+        if (activePaneId) splitPane(activePaneId, 'horizontal');
+        return;
+      }
+
+      // Navigate panes
+      if (matchesShortcut(e, sc('navigate-prev')) || matchesShortcut(e, sc('navigate-next'))) {
         e.preventDefault();
         const state = useWorkspaceStore.getState();
         const activeTab = state.workspace.tabs.find(t => t.id === state.activeTabId);
         if (!activeTab) return;
         const tabPaneIds = collectPaneIds(activeTab.splitRoot);
         const currentIndex = activePaneId ? tabPaneIds.indexOf(activePaneId) : -1;
-        const nextIndex = e.key === ']'
+        const forward = matchesShortcut(e, sc('navigate-next'));
+        const nextIndex = forward
           ? (currentIndex + 1) % tabPaneIds.length
           : (currentIndex - 1 + tabPaneIds.length) % tabPaneIds.length;
         if (tabPaneIds[nextIndex]) {
           state.setActivePane(tabPaneIds[nextIndex]);
         }
+        return;
       }
 
-      // Ctrl+Tab / Ctrl+Shift+Tab to switch tabs
-      if (e.key === 'Tab') {
+      // Cycle tabs
+      if (matchesShortcut(e, sc('cycle-tab-next')) || matchesShortcut(e, sc('cycle-tab-prev'))) {
         e.preventDefault();
         const tabIndex = workspace.tabs.findIndex(t => t.id === activeTabId);
-        const nextIndex = e.shiftKey
-          ? (tabIndex - 1 + workspace.tabs.length) % workspace.tabs.length
-          : (tabIndex + 1) % workspace.tabs.length;
+        const forward = matchesShortcut(e, sc('cycle-tab-next'));
+        const nextIndex = forward
+          ? (tabIndex + 1) % workspace.tabs.length
+          : (tabIndex - 1 + workspace.tabs.length) % workspace.tabs.length;
         if (workspace.tabs[nextIndex]) setActiveTab(workspace.tabs[nextIndex].id);
+        return;
       }
 
-      // Ctrl+F to toggle search
-      if (e.key === 'f') {
+      if (matchesShortcut(e, sc('search'))) {
         e.preventDefault();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-search'));
+        document.dispatchEvent(new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } }));
+        return;
       }
 
-      // Ctrl+Shift+V to toggle visualizer
-      if (e.shiftKey && e.key === 'V') {
+      if (matchesShortcut(e, sc('visualizer'))) {
         e.preventDefault();
         useVisualizerStore.getState().toggleVisible();
+        return;
       }
 
-      // Ctrl+, to toggle settings
-      if (e.key === ',') {
+      if (matchesShortcut(e, sc('settings'))) {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:toggle-settings'));
+        return;
       }
 
-      // Ctrl+/ to toggle shortcuts
-      if (e.key === '/') {
+      if (matchesShortcut(e, sc('shortcuts'))) {
         e.preventDefault();
         document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'));
+        return;
       }
 
-      // Ctrl+1-9 to switch tabs
-      if (e.key >= '1' && e.key <= '9') {
+      if (matchesShortcut(e, sc('command-palette'))) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-command-palette'));
+        return;
+      }
+
+      // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other)
+      const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
+      const modHeld = isMac ? e.metaKey : e.ctrlKey;
+      if (modHeld && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
         const tab = workspace.tabs[index];
         if (tab) setActiveTab(tab.id);
+        return;
       }
     }
 

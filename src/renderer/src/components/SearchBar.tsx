@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 
 type SearchBarProps = {
   isOpen: boolean;
@@ -44,10 +45,24 @@ export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: Searc
         className="bg-transparent text-sm text-white outline-none w-48 placeholder-neutral-500"
       />
       <button
-        onClick={onClose}
-        className="text-neutral-500 hover:text-white text-sm"
+        onClick={() => onSearchPrevious(query)}
+        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        title="Previous match (Shift+Enter)"
       >
-        ×
+        <ChevronUp size={14} />
+      </button>
+      <button
+        onClick={() => onSearch(query)}
+        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        title="Next match (Enter)"
+      >
+        <ChevronDown size={14} />
+      </button>
+      <button
+        onClick={onClose}
+        className="text-neutral-500 hover:text-white text-sm ml-1"
+      >
+        &times;
       </button>
     </div>
   );

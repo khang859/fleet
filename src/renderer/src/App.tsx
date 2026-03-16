@@ -12,6 +12,7 @@ import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { SettingsModal } from './components/SettingsModal';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
+import { CommandPalette } from './components/CommandPalette';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -47,6 +48,7 @@ export function App() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -71,6 +73,13 @@ export function App() {
     const handler = () => setShortcutsOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-shortcuts', handler);
     return () => document.removeEventListener('fleet:toggle-shortcuts', handler);
+  }, []);
+
+  // Command palette toggle
+  useEffect(() => {
+    const handler = () => setCommandPaletteOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-command-palette', handler);
+    return () => document.removeEventListener('fleet:toggle-command-palette', handler);
   }, []);
 
   // Auto-updater
@@ -274,6 +283,7 @@ export function App() {
       )}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
     </div>
   );
 }
