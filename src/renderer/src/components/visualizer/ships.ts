@@ -16,7 +16,8 @@ const ACCENT_PALETTES = [
   '#f87171', '#fb923c', '#a78bfa', '#f472b6', '#2dd4bf', '#facc15',
 ];
 
-const BASE_X = 0.35;
+const X_START = 0.15;
+const X_RANGE = 0.7;
 const Y_START = 0.15;
 const Y_RANGE = 0.7;
 const PARENT_WIDTH = 32;
@@ -66,21 +67,31 @@ export class ShipManager {
     const activeIds = new Set<string>();
     const visibleAgents = agents.filter((a) => a.state !== 'not-agent');
 
-    const ySpacing = visibleAgents.length > 1
-      ? Y_RANGE / (visibleAgents.length - 1)
-      : 0;
+    // Distribute ships across viewport in a staggered layout
+    const n = visibleAgents.length;
+    const cols = n <= 1 ? 1 : Math.ceil(Math.sqrt(n * 1.5));
+    const rows = Math.ceil(n / cols);
 
     for (let i = 0; i < visibleAgents.length; i++) {
       const agent = visibleAgents[i];
       activeIds.add(agent.paneId);
-      const targetY = visibleAgents.length === 1
+
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const targetX = n === 1
+        ? X_START + X_RANGE / 2
+        : cols === 1 ? X_START + X_RANGE / 2 : X_START + (col / (cols - 1)) * X_RANGE;
+      const targetY = n === 1
         ? Y_START + Y_RANGE / 2
-        : Y_START + i * ySpacing;
+        : rows === 1 ? Y_START + Y_RANGE / 2 : Y_START + (row / (rows - 1)) * Y_RANGE;
+      // Stagger odd rows slightly for a more organic feel
+      const staggerX = row % 2 === 1 && cols > 1 ? X_RANGE / (cols - 1) * 0.3 : 0;
+      const finalTargetX = Math.min(targetX + staggerX, X_START + X_RANGE);
 
       if (!this.ships.has(agent.paneId)) {
-        this.spawnShip(agent, i, targetY, canvasW, canvasH);
+        this.spawnShip(agent, i, finalTargetX, targetY, canvasW, canvasH);
       } else {
-        this.updateShip(agent, targetY, canvasW, canvasH);
+        this.updateShip(agent, finalTargetX, targetY, canvasW, canvasH);
       }
 
       const maxSubs = Math.min(agent.subAgents.length, MAX_RENDERED_SUBS);
@@ -88,15 +99,15 @@ export class ShipManager {
         const sub = agent.subAgents[si];
         activeIds.add(sub.paneId);
 
-        const angle = (si % 2 === 0 ? 1 : -1) * (Math.floor(si / 2) + 1) * 0.15;
-        const distance = (Math.floor(si / 2) + 1) * 0.05;
-        const subTargetX = BASE_X - distance;
+        const angle = (si % 2 === 0 ? 1 : -1) * (Math.floor(si / 2) + 1) * 0.08;
+        const distance = (Math.floor(si / 2) + 1) * 0.06;
+        const subTargetX = finalTargetX - distance;
         const subTargetY = targetY + angle;
 
         if (!this.ships.has(sub.paneId)) {
           this.spawnSubShip(sub, agent.paneId, si, subTargetX, subTargetY, canvasW, canvasH);
         } else {
-          this.updateShip(sub, subTargetY, canvasW, canvasH);
+          this.updateShip(sub, subTargetX, subTargetY, canvasW, canvasH);
         }
 
         if (si === maxSubs - 1 && agent.subAgents.length > MAX_RENDERED_SUBS) {
@@ -161,8 +172,9 @@ export class ShipManager {
           + Math.sin(ship.driftPhaseX * 0.53) * driftAmountY * 0.3
           + Math.cos(ship.driftPhaseY * 0.71) * driftAmountY * 0.2;
 
-        const tx = ship.targetX * canvasW + driftX;
-        const ty = ship.targetY * canvasH + driftY;
+        const margin = ship.width;
+        const tx = Math.max(margin, Math.min(canvasW - margin, ship.targetX * canvasW + driftX));
+        const ty = Math.max(margin, Math.min(canvasH - margin, ship.targetY * canvasH + driftY));
         // Very soft lerp for buttery smoothness
         const lerp = 1 - Math.pow(0.97, deltaMs / 16);
         ship.currentX += (tx - ship.currentX) * lerp;
@@ -223,6 +235,7 @@ export class ShipManager {
   private spawnShip(
     agent: AgentVisualState,
     index: number,
+    targetX: number,
     targetY: number,
     canvasW: number,
     canvasH: number,
@@ -239,7 +252,7 @@ export class ShipManager {
       uptime: agent.uptime,
       stateColor: STATE_COLORS[agent.state] ?? '#9ca3af',
       accentColor: this.getAccentColor(index),
-      targetX: BASE_X,
+      targetX,
       targetY,
       currentX: -20,
       currentY: targetY * canvasH,
@@ -262,7 +275,7 @@ export class ShipManager {
     };
 
     if (delay === 0) {
-      warp.startWarpIn(BASE_X * canvasW, targetY * canvasH);
+      warp.startWarpIn(targetX * canvasW, targetY * canvasH);
     }
 
     this.ships.set(agent.paneId, ship);
@@ -318,7 +331,7 @@ export class ShipManager {
     });
   }
 
-  private updateShip(agent: AgentVisualState, targetY: number, _canvasW: number, _canvasH: number): void {
+  private updateShip(agent: AgentVisualState, targetX: number, targetY: number, _canvasW: number, _canvasH: number): void {
     const ship = this.ships.get(agent.paneId);
     if (!ship || ship.despawning) return;
 
@@ -327,6 +340,7 @@ export class ShipManager {
     ship.currentTool = agent.currentTool;
     ship.label = agent.label;
     ship.uptime = agent.uptime;
+    ship.targetX = targetX;
     ship.targetY = targetY;
     ship.overflowCount = 0;
   }

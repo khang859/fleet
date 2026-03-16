@@ -158,7 +158,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       celestials.update(deltaMs, vw, vh);
       const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
       spaceWeather.update(deltaMs, vw, vh, workingCount);
-      shipManager.update(agentsRef.current, deltaMs, cw, ch);
+      shipManager.update(agentsRef.current, deltaMs, vw, vh);
       const hasPermissionNeeded = shipManager.getShips().some(s => s.state === 'needs-permission');
       asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
