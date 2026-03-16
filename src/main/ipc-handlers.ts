@@ -18,6 +18,7 @@ import { NotificationDetector } from './notification-detector';
 import { NotificationStateManager } from './notification-state';
 import { SettingsStore } from './settings-store';
 import { CwdPoller } from './cwd-poller';
+import { GitService } from './git-service';
 import type { FleetSettings } from '../shared/types';
 
 export function registerIpcHandlers(
@@ -28,6 +29,7 @@ export function registerIpcHandlers(
   notificationState: NotificationStateManager,
   settingsStore: SettingsStore,
   cwdPoller: CwdPoller,
+  gitService: GitService,
   getWindow: () => BrowserWindow | null,
 ): void {
   // PTY handlers
@@ -111,5 +113,14 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: Partial<FleetSettings>) => {
     settingsStore.set(settings);
+  });
+
+  // Git handlers
+  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, (_event, cwd: string) => {
+    return gitService.checkIsRepo(cwd);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, (_event, cwd: string) => {
+    return gitService.getFullStatus(cwd);
   });
 }
