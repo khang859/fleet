@@ -20,6 +20,8 @@ export const IPC_CHANNELS = {
   AGENT_STATE: 'agent:state',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
+  GIT_IS_REPO: 'git:is-repo',
+  GIT_STATUS: 'git:status',
 } as const;
 
 export const DEFAULT_SCROLLBACK = 10_000;

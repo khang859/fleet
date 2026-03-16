@@ -91,6 +91,13 @@ export function createCommandRegistry(): Command[] {
       category: 'Tabs',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:rename-active-tab')),
     },
+    {
+      id: 'git-changes',
+      label: 'Git Changes',
+      shortcut: sc('git-changes'),
+      category: 'View',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes')),
+    },
   ];
 }
 
