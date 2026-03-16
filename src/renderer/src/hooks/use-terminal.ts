@@ -15,6 +15,7 @@ export type UseTerminalOptions = {
   fontFamily?: string;
   scrollback?: number;
   serializedContent?: string;
+  onScrollStateChange?: (isScrolledUp: boolean) => void;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
@@ -35,9 +36,11 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   term: Terminal;
   fitAddon: FitAddon;
   fitPreservingScroll: () => void;
+  scrollToBottom: () => void;
   searchAddon: SearchAddon;
   serializeAddon: SerializeAddon;
   ipcCleanup: () => void;
+  scrollCleanup: () => void;
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
 } {
@@ -117,23 +120,49 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     });
   }
 
+  // Track whether the user intends to follow live output (pinned to bottom).
+  // We track this explicitly rather than checking viewportY >= baseY because
+  // xterm doesn't keep the viewport pinned when the terminal is display:none
+  // (e.g. during tab switches), causing the instantaneous check to be wrong.
+  let pinnedToBottom = true;
+
+  const isAtBottom = (): boolean => {
+    const buf = term.buffer.active;
+    return buf.viewportY >= buf.baseY - 2;
+  };
+
+  const updatePinnedState = (): void => {
+    pinnedToBottom = isAtBottom();
+    options.onScrollStateChange?.(!pinnedToBottom);
+  };
+
   // Helper: fit the terminal while preserving viewport scroll position.
   // Without this, fitAddon.fit() can reset the viewport to the top when
-  // the container is resized (e.g. adding splits or new panes).
+  // the container is resized (e.g. adding splits, switching tabs).
   const fitPreservingScroll = (): void => {
-    const buf = term.buffer.active;
-    const wasAtBottom = buf.viewportY >= buf.baseY;
-    const savedViewportY = buf.viewportY;
+    const savedPinned = pinnedToBottom;
+    const savedViewportY = term.buffer.active.viewportY;
 
     fitAddon.fit();
 
-    // If user had scrolled up, restore their position; otherwise stay at bottom
-    if (!wasAtBottom) {
-      // Clamp to new baseY in case content shrank
-      const targetY = Math.min(savedViewportY, buf.baseY);
+    // If user had scrolled up, restore their position; otherwise ensure we're at bottom
+    if (!savedPinned) {
+      const targetY = Math.min(savedViewportY, term.buffer.active.baseY);
       term.scrollToLine(targetY);
+    } else {
+      term.scrollToBottom();
     }
   };
+
+  // Update pinned state on xterm scroll events (fires when buffer scrolls from new content)
+  term.onScroll(() => updatePinnedState());
+
+  // Fallback: wheel events on the container (xterm onScroll may not fire for trackpad/mouse wheel)
+  const wheelHandler = (): void => {
+    requestAnimationFrame(() => updatePinnedState());
+  };
+  container.addEventListener('wheel', wheelHandler, { passive: true });
+  const scrollCleanup = (): void => container.removeEventListener('wheel', wheelHandler);
 
   // Debounced PTY resize — sends SIGWINCH once after resizing settles,
   // preventing rapid-fire signals that corrupt TUI cursor positions
@@ -176,6 +205,12 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   });
   resizeObserver.observe(container);
 
+  const scrollToBottom = (): void => {
+    term.scrollToBottom();
+    pinnedToBottom = true;
+    options.onScrollStateChange?.(false);
+  };
+
   const cleanupResizeTimer = (): void => {
     if (resizeTimer !== null) {
       clearTimeout(resizeTimer);
@@ -183,7 +218,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   };
 
-  return { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver, cleanupResizeTimer };
+  return { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer };
 }
 
 export function useTerminal(
@@ -193,6 +228,7 @@ export function useTerminal(
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const fitPreservingScrollRef = useRef<(() => void) | null>(null);
+  const scrollToBottomRef = useRef<(() => void) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
 
@@ -200,21 +236,24 @@ export function useTerminal(
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver, cleanupResizeTimer } =
+    const { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer } =
       createTerminal(container, options);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
     fitPreservingScrollRef.current = fitPreservingScroll;
+    scrollToBottomRef.current = scrollToBottom;
     searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
     serializeRegistry.set(options.paneId, serializeAddon);
 
     return () => {
       termRef.current = null;
+      scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
       cleanupResizeTimer();
       ipcCleanup();
+      scrollCleanup();
       resizeObserver.disconnect();
       term.dispose();
     };
@@ -243,6 +282,7 @@ export function useTerminal(
   return {
     focus: () => termRef.current?.focus(),
     fit: () => fitPreservingScrollRef.current?.(),
+    scrollToBottom: () => scrollToBottomRef.current?.(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
     clearSearch: () => searchAddonRef.current?.clearDecorations(),
