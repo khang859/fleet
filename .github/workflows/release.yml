@@ -1,33 +1,15 @@
-name: CI & Release
+name: Release
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Type check
-        run: npx tsc --noEmit
-      - name: Run tests
-        run: npm test
-
   verify-version:
-    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,8 +23,7 @@ jobs:
           fi
 
   release-mac-arm64:
-    needs: [ci, verify-version]
-    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    needs: [verify-version]
     runs-on: macos-15
     timeout-minutes: 30
     steps:
@@ -70,8 +51,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
   release-mac-x64:
-    needs: [ci, verify-version]
-    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    needs: [verify-version]
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
@@ -99,8 +79,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
   release-win:
-    needs: [ci, verify-version]
-    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    needs: [verify-version]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,8 +94,7 @@ jobs:
         run: npx electron-vite build && npx electron-builder --win --publish always
 
   release-linux:
-    needs: [ci, verify-version]
-    if: always() && needs.ci.result == 'success' && (needs.verify-version.result == 'success' || needs.verify-version.result == 'skipped') && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch')
+    needs: [verify-version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -129,3 +107,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-vite build && npx electron-builder --linux --publish always
+
+  publish-release:
+    needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --repo "${{ github.repository }}" --draft=false
