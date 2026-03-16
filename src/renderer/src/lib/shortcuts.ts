@@ -103,6 +103,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     mac: { key: 'P', meta: true, shift: true },
     other: { key: 'P', ctrl: true, shift: true },
   },
+  {
+    id: 'git-changes',
+    label: 'Git Changes',
+    mac: { key: 'g', meta: true, shift: true },
+    other: { key: 'G', ctrl: true, shift: true },
+  },
 ];
 
 export function matchesShortcut(e: KeyboardEvent, def: ShortcutDef): boolean {
