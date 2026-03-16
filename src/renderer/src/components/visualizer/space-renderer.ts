@@ -109,7 +109,7 @@ export class SpaceRenderer {
         this.particles.spawn(
           ship.currentX - ship.width / 2 - 2,
           ship.currentY,
-          ship.stateColor,
+          ship.accentColor,
           rate.count,
         );
         this.trailTimers.set(ship.paneId, 0);
