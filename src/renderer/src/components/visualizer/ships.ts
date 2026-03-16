@@ -54,6 +54,7 @@ export type Ship = {
   driftPhaseY: number;
   driftSpeedX: number;
   driftSpeedY: number;
+  tiltAngle: number;
 };
 
 export class ShipManager {
@@ -146,8 +147,11 @@ export class ShipManager {
 
         // Layered sine waves for organic, smooth movement
         const isActive = ship.state === 'working' || ship.state === 'reading';
-        const driftAmountX = isActive ? 18 : 30;
-        const driftAmountY = isActive ? 10 : 22;
+        const isIdle = ship.state === 'idle';
+        const driftAmountX = isActive ? 18 : isIdle ? 45 : 30;
+        const driftAmountY = isActive ? 10 : isIdle ? 33 : 22;
+
+        ship.tiltAngle = isIdle ? Math.sin(ship.driftPhaseX * 0.5) * 0.08 : 0;
 
         const driftX = Math.sin(ship.driftPhaseX) * driftAmountX
           + Math.sin(ship.driftPhaseX * 0.37) * driftAmountX * 0.4;
@@ -250,6 +254,7 @@ export class ShipManager {
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.15 + Math.random() * 0.1,
       driftSpeedY: 0.2 + Math.random() * 0.12,
+      tiltAngle: 0,
     };
 
     if (delay === 0) {
@@ -304,6 +309,7 @@ export class ShipManager {
       driftPhaseY: Math.random() * Math.PI * 2,
       driftSpeedX: 0.18 + Math.random() * 0.1,
       driftSpeedY: 0.22 + Math.random() * 0.12,
+      tiltAngle: 0,
     });
   }
 

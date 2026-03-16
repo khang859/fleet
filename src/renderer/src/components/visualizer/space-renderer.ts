@@ -150,6 +150,15 @@ export class SpaceRenderer {
 
     ctx.save();
 
+    // Apply tilt rotation for idle ships
+    if (ship.tiltAngle !== 0) {
+      const cx = ship.currentX;
+      const cy2 = ship.currentY;
+      ctx.translate(cx, cy2);
+      ctx.rotate(ship.tiltAngle);
+      ctx.translate(-cx, -cy2);
+    }
+
     // Needs-permission pulsing glow
     if (ship.state === 'needs-permission') {
       const pulse = 0.3 + Math.sin(ship.pulsePhase) * 0.3;
