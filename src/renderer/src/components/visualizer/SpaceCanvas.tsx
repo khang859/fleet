@@ -7,6 +7,7 @@ import { SpaceRenderer } from './space-renderer';
 import { ShootingStarSystem } from './shooting-stars';
 import { NebulaSystem } from './nebula';
 import { AuroraBands } from './aurora';
+import { CelestialBodies } from './celestials';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -53,6 +54,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const shootingStarsRef = useRef(new ShootingStarSystem());
   const nebulaRef = useRef(new NebulaSystem());
   const auroraRef = useRef(new AuroraBands());
+  const celestialsRef = useRef(new CelestialBodies());
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
@@ -87,6 +89,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const shootingStars = shootingStarsRef.current;
     const nebula = nebulaRef.current;
     const aurora = auroraRef.current;
+    const celestials = celestialsRef.current;
 
     function loop(timestamp: number) {
       const deltaMs = lastTimeRef.current ? timestamp - lastTimeRef.current : 16;
@@ -110,6 +113,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       starfield.update(deltaMs);
       nebula.update(deltaMs, cw, ch);
       shootingStars.update(deltaMs, cw, ch);
+      celestials.update(deltaMs, cw, ch);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
@@ -120,6 +124,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       nebula.render(ctx!);
       starfield.render(ctx!);
       shootingStars.render(ctx!);
+      celestials.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
 
       animFrameRef.current = requestAnimationFrame(loop);
