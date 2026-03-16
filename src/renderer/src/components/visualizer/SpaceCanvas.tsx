@@ -75,6 +75,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const bloomRef = useRef<BloomPass | null>(null);
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
+  const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null });
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   const { isVisible } = useVisualizerStore();
@@ -146,8 +147,28 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       asteroidField.update(deltaMs, cw, ch, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
+      // Camera follow logic
+      const camera = cameraRef.current;
+      if (camera.following) {
+        const ship = shipManager.getShips().find(s => s.paneId === camera.following);
+        if (ship) {
+          camera.targetX = ship.currentX - cw / 2;
+          camera.targetY = ship.currentY - ch / 2;
+        } else {
+          camera.following = null;
+          camera.targetX = 0;
+          camera.targetY = 0;
+        }
+      }
+      camera.x += (camera.targetX - camera.x) * 0.05;
+      camera.y += (camera.targetY - camera.y) * 0.05;
+
+      // BG fill (covers viewport regardless of camera)
       ctx!.fillStyle = getDayNightBackground();
       ctx!.fillRect(0, 0, cw, ch);
+
+      // Apply camera transform for world-space rendering
+      ctx!.translate(-camera.x, -camera.y);
 
       aurora.render(ctx!);
       nebula.render(ctx!);
@@ -174,15 +195,37 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const camera = cameraRef.current;
+      const x = (e.clientX - rect.left) + camera.x;
+      const y = (e.clientY - rect.top) + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
         onShipClick(hit);
+      } else {
+        cameraRef.current.following = null;
+        cameraRef.current.targetX = 0;
+        cameraRef.current.targetY = 0;
       }
     },
     [onShipClick],
+  );
+
+  // Double-click to follow a ship
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const camera = cameraRef.current;
+      const x = (e.clientX - rect.left) + camera.x;
+      const y = (e.clientY - rect.top) + camera.y;
+      const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
+      if (hit) {
+        camera.following = hit;
+      }
+    },
+    [],
   );
 
   // Hover tooltip
@@ -192,15 +235,19 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+      const camera = cameraRef.current;
+      const x = (e.clientX - rect.left) + camera.x;
+      const y = (e.clientY - rect.top) + camera.y;
 
       const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
       if (hit) {
         const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
         if (ship) {
-          const tooltipX = Math.min(x, rect.width - 160);
-          const tooltipY = Math.max(y - 60, 0);
+          // Use screen-space coordinates for tooltip positioning
+          const screenX = e.clientX - rect.left;
+          const screenY = e.clientY - rect.top;
+          const tooltipX = Math.min(screenX, rect.width - 160);
+          const tooltipY = Math.max(screenY - 60, 0);
 
           const paneCount = ship.isSubAgent ? undefined :
             agentsRef.current.find((a) => a.paneId === hit)?.subAgents.length;
@@ -224,6 +271,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       <canvas
         ref={canvasRef}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
         className="w-full h-full cursor-pointer"
