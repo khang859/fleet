@@ -88,8 +88,10 @@ export class ShipManager {
         const sub = agent.subAgents[si];
         activeIds.add(sub.paneId);
 
-        const subTargetX = BASE_X + (si + 1) * SUB_OFFSET_X;
-        const subTargetY = targetY + (si + 1) * SUB_OFFSET_Y;
+        const angle = (si % 2 === 0 ? 1 : -1) * (Math.floor(si / 2) + 1) * 0.15;
+        const distance = (Math.floor(si / 2) + 1) * 0.05;
+        const subTargetX = BASE_X - distance;
+        const subTargetY = targetY + angle;
 
         if (!this.ships.has(sub.paneId)) {
           this.spawnSubShip(sub, agent.paneId, si, subTargetX, subTargetY, canvasW, canvasH);
