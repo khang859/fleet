@@ -4,6 +4,7 @@ import { useWorkspaceStore, collectPaneIds } from '../../store/workspace-store';
 import { Starfield } from './starfield';
 import { ShipManager } from './ships';
 import { SpaceRenderer } from './space-renderer';
+import { ShootingStarSystem } from './shooting-stars';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -47,6 +48,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const starfieldRef = useRef<Starfield | null>(null);
   const shipManagerRef = useRef(new ShipManager());
   const spaceRendererRef = useRef(new SpaceRenderer());
+  const shootingStarsRef = useRef(new ShootingStarSystem());
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
@@ -78,6 +80,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const starfield = starfieldRef.current;
     const shipManager = shipManagerRef.current;
     const spaceRenderer = spaceRendererRef.current;
+    const shootingStars = shootingStarsRef.current;
 
     function loop(timestamp: number) {
       const deltaMs = lastTimeRef.current ? timestamp - lastTimeRef.current : 16;
@@ -98,6 +101,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       starfield.update(deltaMs);
+      shootingStars.update(deltaMs, cw, ch);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
@@ -105,6 +109,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       ctx!.fillRect(0, 0, cw, ch);
 
       starfield.render(ctx!);
+      shootingStars.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
 
       animFrameRef.current = requestAnimationFrame(loop);
