@@ -5,6 +5,7 @@ import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
+import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import type { Workspace } from '../../../shared/types';
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
@@ -289,7 +290,7 @@ export function Sidebar() {
           <button
             className="text-neutral-500 hover:text-white text-lg leading-none px-1 rounded hover:bg-neutral-800 transition-colors"
             onClick={() => addTab(undefined, window.fleet.homeDir)}
-            title="New Tab (Ctrl+T)"
+            title={`New Tab (${formatShortcut(getShortcut('new-tab')!)})`}
           >
             +
           </button>

@@ -207,6 +207,7 @@ export function useTerminal(
     fit: () => fitAddonRef.current?.fit(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
+    clearSearch: () => searchAddonRef.current?.clearDecorations(),
     serialize: () => serializeAddonRef.current?.serialize(),
   };
 }

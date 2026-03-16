@@ -1,32 +1,8 @@
-const isMac = typeof navigator !== 'undefined' && navigator.platform.includes('Mac');
+import { ALL_SHORTCUTS, formatShortcut } from '../lib/shortcuts';
 
-const SHORTCUTS = isMac
-  ? [
-      { keys: 'Ctrl+T', action: 'New tab' },
-      { keys: 'Ctrl+W', action: 'Close pane' },
-      { keys: 'Ctrl+D', action: 'Split horizontal' },
-      { keys: 'Ctrl+Shift+D', action: 'Split vertical' },
-      { keys: 'Ctrl+[/]', action: 'Navigate panes' },
-      { keys: 'Ctrl+1-9', action: 'Switch tabs' },
-      { keys: 'F2', action: 'Rename tab' },
-      { keys: 'Ctrl+F', action: 'Search in pane' },
-      { keys: 'Ctrl+Shift+V', action: 'Toggle visualizer' },
-      { keys: 'Ctrl+,', action: 'Settings' },
-      { keys: 'Ctrl+/', action: 'Show shortcuts' },
-    ]
-  : [
-      { keys: 'Ctrl+T', action: 'New tab' },
-      { keys: 'Ctrl+Shift+W', action: 'Close pane' },
-      { keys: 'Ctrl+Shift+D', action: 'Split horizontal' },
-      { keys: 'Ctrl+Shift+Alt+D', action: 'Split vertical' },
-      { keys: 'Ctrl+[/]', action: 'Navigate panes' },
-      { keys: 'Ctrl+1-9', action: 'Switch tabs' },
-      { keys: 'F2', action: 'Rename tab' },
-      { keys: 'Ctrl+Shift+F', action: 'Search in pane' },
-      { keys: 'Ctrl+Shift+V', action: 'Toggle visualizer' },
-      { keys: 'Ctrl+,', action: 'Settings' },
-      { keys: 'Ctrl+/', action: 'Show shortcuts' },
-    ];
+const SHORTCUTS = ALL_SHORTCUTS
+  .filter((s) => s.id !== 'command-palette')
+  .map((s) => ({ keys: formatShortcut(s), action: s.label }));
 
 type ShortcutsPanelProps = {
   isOpen: boolean;

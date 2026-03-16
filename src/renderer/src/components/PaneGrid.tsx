@@ -3,6 +3,11 @@ import type { PaneNode } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
 import { useWorkspaceStore } from '../store/workspace-store';
 
+type PaneActions = {
+  splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => void;
+  closePane: (paneId: string) => void;
+};
+
 type PaneGridProps = {
   root: PaneNode;
   activePaneId: string | null;
@@ -13,6 +18,8 @@ type PaneGridProps = {
 };
 
 export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize }: PaneGridProps) {
+  const { splitPane, closePane } = useWorkspaceStore();
+
   return (
     <div className="h-full w-full">
       <PaneNodeRenderer
@@ -23,6 +30,7 @@ export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes, fon
         serializedPanes={serializedPanes}
         fontFamily={fontFamily}
         fontSize={fontSize}
+        actions={{ splitPane, closePane }}
       />
     </div>
   );
@@ -36,9 +44,10 @@ type PaneNodeRendererProps = {
   serializedPanes?: Map<string, string>;
   fontFamily?: string;
   fontSize?: number;
+  actions: PaneActions;
 };
 
-function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize }: PaneNodeRendererProps) {
+function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize, actions }: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
     return (
       <TerminalPane
@@ -49,6 +58,9 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
         serializedContent={serializedPanes?.get(node.id)}
         fontFamily={fontFamily}
         fontSize={fontSize}
+        onSplitHorizontal={() => actions.splitPane(node.id, 'horizontal')}
+        onSplitVertical={() => actions.splitPane(node.id, 'vertical')}
+        onClose={() => actions.closePane(node.id)}
       />
     );
   }
@@ -74,6 +86,7 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
           serializedPanes={serializedPanes}
           fontFamily={fontFamily}
           fontSize={fontSize}
+          actions={actions}
         />
       </div>
 
@@ -93,6 +106,7 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
           serializedPanes={serializedPanes}
           fontFamily={fontFamily}
           fontSize={fontSize}
+          actions={actions}
         />
       </div>
     </div>
