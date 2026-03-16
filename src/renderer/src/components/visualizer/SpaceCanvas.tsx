@@ -5,6 +5,7 @@ import { Starfield } from './starfield';
 import { ShipManager } from './ships';
 import { SpaceRenderer } from './space-renderer';
 import { ShootingStarSystem } from './shooting-stars';
+import { NebulaSystem } from './nebula';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -49,6 +50,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const shipManagerRef = useRef(new ShipManager());
   const spaceRendererRef = useRef(new SpaceRenderer());
   const shootingStarsRef = useRef(new ShootingStarSystem());
+  const nebulaRef = useRef(new NebulaSystem());
   const animFrameRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
@@ -81,6 +83,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const shipManager = shipManagerRef.current;
     const spaceRenderer = spaceRendererRef.current;
     const shootingStars = shootingStarsRef.current;
+    const nebula = nebulaRef.current;
 
     function loop(timestamp: number) {
       const deltaMs = lastTimeRef.current ? timestamp - lastTimeRef.current : 16;
@@ -101,6 +104,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       starfield.update(deltaMs);
+      nebula.update(deltaMs, cw, ch);
       shootingStars.update(deltaMs, cw, ch);
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
@@ -108,6 +112,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       ctx!.fillStyle = BG_COLOR;
       ctx!.fillRect(0, 0, cw, ch);
 
+      nebula.render(ctx!);
       starfield.render(ctx!);
       shootingStars.render(ctx!);
       spaceRenderer.render(ctx!, shipManager.getShips());
