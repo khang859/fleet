@@ -34,6 +34,7 @@ export function serializePane(paneId: string): string | undefined {
 function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   term: Terminal;
   fitAddon: FitAddon;
+  fitPreservingScroll: () => void;
   searchAddon: SearchAddon;
   serializeAddon: SerializeAddon;
   ipcCleanup: () => void;
@@ -115,11 +116,29 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     });
   }
 
+  // Helper: fit the terminal while preserving viewport scroll position.
+  // Without this, fitAddon.fit() can reset the viewport to the top when
+  // the container is resized (e.g. adding splits or new panes).
+  const fitPreservingScroll = (): void => {
+    const buf = term.buffer.active;
+    const wasAtBottom = buf.viewportY >= buf.baseY;
+    const savedViewportY = buf.viewportY;
+
+    fitAddon.fit();
+
+    // If user had scrolled up, restore their position; otherwise stay at bottom
+    if (!wasAtBottom) {
+      // Clamp to new baseY in case content shrank
+      const targetY = Math.min(savedViewportY, buf.baseY);
+      term.scrollToLine(targetY);
+    }
+  };
+
   // Defer initial fit to next frame — xterm's render service needs a
   // layout pass before dimensions are available.
   requestAnimationFrame(() => {
     try {
-      fitAddon.fit();
+      fitPreservingScroll();
       // Always send resize to PTY — on reconnect (undo) this triggers
       // SIGWINCH so the shell redraws its prompt.
       window.fleet.pty.resize({
@@ -135,7 +154,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {
       try {
-        fitAddon.fit();
+        fitPreservingScroll();
         window.fleet.pty.resize({
           paneId: options.paneId,
           cols: term.cols,
@@ -148,7 +167,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   });
   resizeObserver.observe(container);
 
-  return { term, fitAddon, searchAddon, serializeAddon, ipcCleanup, resizeObserver };
+  return { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver };
 }
 
 export function useTerminal(
@@ -157,6 +176,7 @@ export function useTerminal(
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const fitPreservingScrollRef = useRef<(() => void) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
 
@@ -164,11 +184,12 @@ export function useTerminal(
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, searchAddon, serializeAddon, ipcCleanup, resizeObserver } =
+    const { term, fitAddon, fitPreservingScroll, searchAddon, serializeAddon, ipcCleanup, resizeObserver } =
       createTerminal(container, options);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
+    fitPreservingScrollRef.current = fitPreservingScroll;
     searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
     serializeRegistry.set(options.paneId, serializeAddon);
@@ -191,7 +212,7 @@ export function useTerminal(
     if (term.options.fontFamily !== newFamily || term.options.fontSize !== newSize) {
       term.options.fontFamily = newFamily;
       term.options.fontSize = newSize;
-      fitAddonRef.current?.fit();
+      fitPreservingScrollRef.current?.();
     }
   }, [options.fontFamily, options.fontSize]);
 
@@ -204,7 +225,7 @@ export function useTerminal(
 
   return {
     focus: () => termRef.current?.focus(),
-    fit: () => fitAddonRef.current?.fit(),
+    fit: () => fitPreservingScrollRef.current?.(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
     clearSearch: () => searchAddonRef.current?.clearDecorations(),
