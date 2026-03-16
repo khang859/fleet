@@ -22,7 +22,19 @@ type SpaceCanvasProps = {
   onShipClick: (paneId: string) => void;
 };
 
-const BG_COLOR = '#0a0a1a';
+function getDayNightBackground(): string {
+  const hour = new Date().getHours();
+  // Hour-to-color lookup: subtle dark space tints throughout the day
+  const colors: Record<number, string> = {
+    0: '#0a0a1a', 1: '#0a0a1a', 2: '#0a0a1a', 3: '#0a0a1a', 4: '#0a0a1a', 5: '#0a0a1a',
+    6: '#120a1a', 7: '#120a1a', 8: '#120a1a',
+    9: '#0f0e22', 10: '#0f0e22', 11: '#0f0e22', 12: '#0f0e22',
+    13: '#0f0e22', 14: '#0f0e22', 15: '#0f0e22', 16: '#0f0e22',
+    17: '#1a100f', 18: '#1a100f', 19: '#1a100f',
+    20: '#0d0a1a', 21: '#0d0a1a', 22: '#0d0a1a', 23: '#0d0a1a',
+  };
+  return colors[hour] ?? '#0a0a1a';
+}
 
 /** Convert workspace tabs/panes into AgentVisualState[] for the ship manager.
  *  Each tab = parent ship. Each pane in the tab = trailing subagent ship. */
@@ -124,7 +136,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       shipManager.update(agentsRef.current, deltaMs, cw, ch);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
-      ctx!.fillStyle = BG_COLOR;
+      ctx!.fillStyle = getDayNightBackground();
       ctx!.fillRect(0, 0, cw, ch);
 
       aurora.render(ctx!);
