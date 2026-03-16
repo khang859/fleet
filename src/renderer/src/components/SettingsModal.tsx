@@ -44,13 +44,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       <SettingRow label={label}>
         <input
           type="checkbox"
-          checked={settings.visualizer.effects[key]}
+          checked={settings!.visualizer.effects[key]}
           onChange={(e) => {
             updateSettings({
               visualizer: {
-                ...settings.visualizer,
+                ...settings!.visualizer,
                 effects: {
-                  ...settings.visualizer.effects,
+                  ...settings!.visualizer.effects,
                   [key]: e.target.checked,
                 },
               },
@@ -200,7 +200,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <SettingRow label="Panel Mode">
                 <select
                   value={settings.visualizer.panelMode}
-                  onChange={(e) => updateSettings({ visualizer: { panelMode: e.target.value as 'drawer' | 'tab' } })}
+                  onChange={(e) => updateSettings({ visualizer: { ...settings.visualizer, panelMode: e.target.value as 'drawer' | 'tab' } })}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
                   <option value="drawer">Bottom Drawer</option>

@@ -15,7 +15,20 @@ export class SettingsStore {
   }
 
   get(): FleetSettings {
-    return this.store.get('settings');
+    const saved = this.store.get('settings');
+    // Deep-merge with defaults to handle new fields added after initial save
+    return {
+      ...DEFAULT_SETTINGS,
+      ...saved,
+      general: { ...DEFAULT_SETTINGS.general, ...saved.general },
+      notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications },
+      socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi },
+      visualizer: {
+        ...DEFAULT_SETTINGS.visualizer,
+        ...saved.visualizer,
+        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...(saved.visualizer?.effects ?? {}) },
+      },
+    };
   }
 
   set(partial: Partial<FleetSettings>): void {

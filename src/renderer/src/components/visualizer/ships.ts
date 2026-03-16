@@ -23,8 +23,6 @@ const PARENT_HEIGHT = 24;
 const SUB_WIDTH = 10;
 const SUB_HEIGHT = 15;
 const MAX_RENDERED_SUBS = 4;
-const SUB_OFFSET_X = -0.06;
-const SUB_OFFSET_Y = 0.04;
 export const HULL_COUNT = 5;
 
 export type Ship = {
