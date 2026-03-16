@@ -6,6 +6,8 @@ export type Star = {
   r: number;
   g: number;
   b: number;
+  twinklePhase: number;
+  twinkleSpeed: number;
 };
 
 export type StarLayer = {
@@ -37,6 +39,11 @@ function randomStarColor(): { r: number; g: number; b: number } {
   return { r: 255, g: 255, b: 255 };
 }
 
+function randomTwinkle(): { twinklePhase: number; twinkleSpeed: number } {
+  if (Math.random() < 0.7) return { twinklePhase: 0, twinkleSpeed: 0 };
+  return { twinklePhase: Math.random() * Math.PI * 2, twinkleSpeed: 0.5 + Math.random() * 1.5 };
+}
+
 const REF_AREA = 200 * 100;
 
 export class Starfield {
@@ -58,12 +65,14 @@ export class Starfield {
 
       for (let i = 0; i < count; i++) {
         const color = randomStarColor();
+        const twinkle = randomTwinkle();
         stars.push({
           x: Math.random() * this.width,
           y: Math.random() * this.height,
           size: config.size + (Math.random() - 0.5) * 0.5,
           brightness: config.brightness + (Math.random() - 0.5) * 0.15,
           ...color,
+          ...twinkle,
         });
       }
 
@@ -84,6 +93,9 @@ export class Starfield {
         if (star.x < -5) {
           star.x = this.width + Math.random() * 10;
           star.y = Math.random() * this.height;
+        }
+        if (star.twinkleSpeed > 0) {
+          star.twinklePhase += star.twinkleSpeed * dt;
         }
       }
     }
@@ -109,12 +121,14 @@ export class Starfield {
 
       while (layer.stars.length < targetCount) {
         const color = randomStarColor();
+        const twinkle = randomTwinkle();
         layer.stars.push({
           x: Math.random() * width,
           y: Math.random() * height,
           size: config.size + (Math.random() - 0.5) * 0.5,
           brightness: config.brightness + (Math.random() - 0.5) * 0.15,
           ...color,
+          ...twinkle,
         });
       }
 
@@ -131,7 +145,9 @@ export class Starfield {
   render(ctx: CanvasRenderingContext2D): void {
     for (const layer of this.layers) {
       for (const star of layer.stars) {
-        ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${Math.max(0, Math.min(1, star.brightness))})`;
+        const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
+        const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
+        ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${alpha})`;
         ctx.fillRect(
           Math.round(star.x),
           Math.round(star.y),
