@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStarCommandStore } from '../store/star-command-store';
 import type { AdmiralChatMessage } from '../store/star-command-store';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { StarCommandConfig } from './StarCommandConfig';
 
 type StreamChunk = {
   type: string;
@@ -184,6 +185,7 @@ export function StarCommandTab() {
   } = useStarCommandStore();
 
   const [input, setInput] = useState('');
+  const [view, setView] = useState<'chat' | 'config'>('chat');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -289,6 +291,28 @@ export function StarCommandTab() {
           <div className="flex items-center gap-2">
             <span className="text-yellow-400 text-lg">{'\u2605'}</span>
             <h2 className="text-sm font-semibold text-neutral-200">Star Command</h2>
+            <div className="flex items-center ml-3 bg-neutral-800 rounded-md p-0.5">
+              <button
+                className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                  view === 'chat'
+                    ? 'bg-neutral-700 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+                onClick={() => setView('chat')}
+              >
+                Chat
+              </button>
+              <button
+                className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                  view === 'config'
+                    ? 'bg-neutral-700 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-300'
+                }`}
+                onClick={() => setView('config')}
+              >
+                Config
+              </button>
+            </div>
           </div>
           <button
             className="text-xs text-neutral-500 hover:text-neutral-300 px-2 py-1 rounded hover:bg-neutral-800"
@@ -298,6 +322,10 @@ export function StarCommandTab() {
           </button>
         </div>
 
+        {view === 'config' ? (
+          <StarCommandConfig />
+        ) : (
+        <>
         {/* Messages */}
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {messages.length === 0 && !streamBuffer && (
@@ -346,6 +374,8 @@ export function StarCommandTab() {
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {/* Status panel */}

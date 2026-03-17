@@ -127,6 +127,32 @@ const fleetApi = {
       ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
     },
+    listSupplyRoutes: (opts?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
+    addSupplyRoute: (opts: unknown): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, opts),
+    removeSupplyRoute: (routeId: number): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, { routeId }),
+    getSupplyRouteGraph: (): Promise<Record<string, string[]>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH),
+    listCargo: (filter?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_CARGO, filter),
+    getRetentionStats: (): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_STATS),
+    retentionCleanup: (): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP),
+    retentionVacuum: (): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_VACUUM),
+    getConfig: (): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_GET_CONFIG),
+    setConfig: (key: string, value: unknown): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SET_CONFIG, { key, value }),
+    addSector: (opts: unknown): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SECTOR, opts),
+    removeSector: (sectorId: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
+    updateSector: (sectorId: string, fields: unknown): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
   },
   updates: {
     checkForUpdates: (): Promise<void> =>

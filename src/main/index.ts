@@ -27,6 +27,9 @@ import { Admiral } from './starbase/admiral';
 import { Sentinel } from './starbase/sentinel';
 import { runReconciliation } from './starbase/reconciliation';
 import { Lockfile } from './starbase/lockfile';
+import { SupplyRouteService } from './starbase/supply-route-service';
+import { CargoService } from './starbase/cargo-service';
+import { RetentionService } from './starbase/retention-service';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -124,6 +127,9 @@ app.whenReady().then(() => {
   let crewService: CrewService | null = null;
   let commsService: CommsService | null = null;
   let admiral: Admiral | null = null;
+  let supplyRouteService: SupplyRouteService | null = null;
+  let cargoService: CargoService | null = null;
+  let retentionService: RetentionService | null = null;
 
   try {
     const workspacePath = process.cwd();
@@ -131,6 +137,11 @@ app.whenReady().then(() => {
     starbaseDb.open();
     sectorService = new SectorService(starbaseDb.getDb(), workspacePath);
     configService = new ConfigService(starbaseDb.getDb());
+
+    // Phase 5 services
+    supplyRouteService = new SupplyRouteService(starbaseDb.getDb());
+    cargoService = new CargoService(starbaseDb.getDb(), supplyRouteService, configService);
+    retentionService = new RetentionService(starbaseDb.getDb(), configService, starbaseDb.getDbPath());
 
     // Acquire lockfile
     const basePath = dirname(starbaseDb.getDbPath());
@@ -213,7 +224,7 @@ app.whenReady().then(() => {
     console.error('[starbase] Failed to initialize Star Command database:', err);
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService, crewService, missionService, admiral, commsService);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService, crewService, missionService, admiral, commsService, supplyRouteService, cargoService, retentionService);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);

@@ -26,6 +26,9 @@ import type { CrewService } from './starbase/crew-service';
 import type { MissionService } from './starbase/mission-service';
 import type { Admiral } from './starbase/admiral';
 import type { CommsService } from './starbase/comms-service';
+import type { SupplyRouteService } from './starbase/supply-route-service';
+import type { CargoService } from './starbase/cargo-service';
+import type { RetentionService } from './starbase/retention-service';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -43,6 +46,9 @@ export function registerIpcHandlers(
   missionService?: MissionService | null,
   admiral?: Admiral | null,
   commsService?: CommsService | null,
+  supplyRouteService?: SupplyRouteService | null,
+  cargoService?: CargoService | null,
+  retentionService?: RetentionService | null,
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -213,6 +219,45 @@ export function registerIpcHandlers(
   if (commsService) {
     ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, () => {
       return commsService.getUnread('admiral');
+    });
+  }
+
+  // Phase 5: Supply routes, cargo, retention handlers
+  if (supplyRouteService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, (_e, opts?) => {
+      return supplyRouteService.listRoutes(opts);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, (_e, opts) => {
+      return supplyRouteService.addRoute(opts);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, (_e, { routeId }) => {
+      supplyRouteService.removeRoute(routeId);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH, () => {
+      return supplyRouteService.getGraph();
+    });
+  }
+
+  if (cargoService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_CARGO, (_e, filter?) => {
+      return cargoService.listCargo(filter);
+    });
+  }
+
+  if (retentionService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_STATS, () => {
+      return retentionService.getStats();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP, () => {
+      return retentionService.cleanup();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, () => {
+      retentionService.vacuum();
     });
   }
 }
