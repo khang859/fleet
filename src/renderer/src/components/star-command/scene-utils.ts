@@ -1,0 +1,23 @@
+import type { SectorInfo, CrewStatus } from '../../store/star-command-store'
+import type { SectorState } from '../visualizer/station-ring'
+import type { PodState } from '../visualizer/crew-pods'
+
+const VALID_POD_STATUSES = new Set<string>([
+  'active', 'hailing', 'error', 'complete', 'lost', 'idle',
+])
+
+export function mapSectors(sectors: SectorInfo[], crew: CrewStatus[]): SectorState[] {
+  return sectors.map((s) => ({
+    id: s.id,
+    name: s.name,
+    active: crew.some((c) => c.sector_id === s.id && c.status === 'active'),
+  }))
+}
+
+export function mapCrew(crew: CrewStatus[]): PodState[] {
+  return crew.map((c) => ({
+    crewId: c.id,
+    sectorId: c.sector_id,
+    status: (VALID_POD_STATUSES.has(c.status) ? c.status : 'idle') as PodState['status'],
+  }))
+}
