@@ -87,10 +87,34 @@ The scene applies a uniform scale factor based on `Math.min(canvas.width, canvas
 
 ### Performance
 
-- 30fps cap via timestamp delta check (`if (now - lastFrame < 33) return`)
-- `ResizeObserver` only updates canvas dimensions (no re-init of stars or renderers)
-- Stars array initialized once on mount, positions stored in a `useRef`
-- Loop pauses automatically when tab is hidden via `document.visibilitychange`
+#### Adaptive frame rate
+Two speed modes driven by a `mode` ref checked at the top of every RAF callback:
+
+| Mode | FPS | Condition |
+|------|-----|-----------|
+| `idle` | 10fps (`>= 100ms`) | No active/hailing crew and no beams in flight |
+| `active` | 30fps (`>= 33ms`) | Any active/hailing crew or beams in flight |
+
+The mode is re-evaluated once per frame. This means the loop runs at 10fps when nobody is deployed — the ring and hub still animate, just at low cost.
+
+#### Full pause when hidden
+The RAF loop stops entirely (no `requestAnimationFrame` call) in two cases:
+- `document.visibilitychange` fires with `document.hidden === true`
+- Electron's `BrowserWindow` emits `hide` or `minimize` (forwarded to renderer via existing IPC or `window.addEventListener('blur')` as a proxy)
+
+On becoming visible again, the loop resumes from the current `performance.now()` timestamp to avoid a large `deltaMs` spike.
+
+#### Offscreen star canvas
+Stars are pre-rendered to a secondary `OffscreenCanvas` (same size as the main canvas). The offscreen canvas is redrawn at a fixed **5fps** (`>= 200ms` between star redraws). Every main-canvas frame simply blits it via `ctx.drawImage(starOffscreen, 0, 0)`. Since stars twinkle slowly, 5fps updates are imperceptible. On canvas resize, the offscreen canvas is resized and the star positions are re-scattered.
+
+#### Opaque canvas context
+The 2d context is acquired with `{ alpha: false }`. Since the background is always a solid fill, the browser skips alpha compositing for this canvas layer — a free GPU win.
+
+#### Store data in refs, not React state
+`sectorStatesRef` and `podStatesRef` are `useRef` values updated by a `useEffect` that subscribes to `useStarCommandStore`. The RAF loop reads from refs directly. This means store updates (crew status changes, new sectors) never trigger a React re-render of the component — only the ref values change, and the next RAF frame picks them up.
+
+#### ResizeObserver debounce
+Canvas dimensions are only updated on the next `requestAnimationFrame` after a resize event fires, not synchronously in the observer callback. This coalesces rapid resize events (e.g. window drag) into a single resize per frame.
 
 ## Files Changed
 
