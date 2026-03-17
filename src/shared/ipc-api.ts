@@ -74,3 +74,35 @@ export type GitStatusPayload = {
 export type GitIsRepoPayload = {
   isRepo: boolean;
 };
+
+export type SectorPayload = {
+  id: string;
+  name: string;
+  root_path: string;
+  stack: string | null;
+  description: string | null;
+  base_branch: string;
+  merge_strategy: string;
+  verify_command: string | null;
+  lint_command: string | null;
+  review_mode: string;
+  worktree_enabled: number;
+};
+
+export type AddSectorRequest = {
+  path: string;
+  name?: string;
+  description?: string;
+  baseBranch?: string;
+  mergeStrategy?: string;
+};
+
+export type UpdateSectorRequest = {
+  sectorId: string;
+  fields: Record<string, unknown>;
+};
+
+export type SetConfigRequest = {
+  key: string;
+  value: unknown;
+};
