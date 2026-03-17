@@ -15,6 +15,8 @@ export type HullOpts = {
   lifesignIntervalSec?: number;
   timeoutMin?: number;
   mergeStrategy?: string;
+  verifyCommand?: string;
+  lintCommand?: string;
   onComplete?: () => void;
 };
 
@@ -192,7 +194,61 @@ export class Hull {
         return;
       }
 
-      // Phase 5 placeholder: verify_command would run here
+      // Gate 2: Run verify_command if configured
+      let verificationFailed = false;
+      if (this.opts.verifyCommand) {
+        const verifyStart = Date.now();
+        try {
+          const verifyResult = execSync(this.opts.verifyCommand, {
+            cwd: worktreePath,
+            timeout: 120_000,
+            stdio: 'pipe',
+          });
+          const duration = Date.now() - verifyStart;
+          db.prepare('UPDATE missions SET verify_result = ? WHERE id = ?').run(
+            JSON.stringify({
+              stdout: verifyResult.toString(),
+              stderr: '',
+              exitCode: 0,
+              duration,
+            }),
+            missionId,
+          );
+        } catch (verifyErr: unknown) {
+          const duration = Date.now() - verifyStart;
+          const err = verifyErr as { stdout?: Buffer; stderr?: Buffer; status?: number; killed?: boolean };
+          const timedOut = err.killed === true;
+          db.prepare('UPDATE missions SET verify_result = ? WHERE id = ?').run(
+            JSON.stringify({
+              stdout: err.stdout?.toString() ?? '',
+              stderr: err.stderr?.toString() ?? '',
+              exitCode: err.status ?? 1,
+              duration,
+              timedOut,
+            }),
+            missionId,
+          );
+          verificationFailed = true;
+          db.prepare("UPDATE missions SET status = 'failed-verification' WHERE id = ?").run(missionId);
+        }
+      }
+
+      // Gate 2: Run lint_command if configured (warnings only, non-blocking)
+      let hasLintWarnings = false;
+      let lintOutput = '';
+      if (this.opts.lintCommand) {
+        try {
+          lintOutput = execSync(this.opts.lintCommand, {
+            cwd: worktreePath,
+            timeout: 60_000,
+            stdio: 'pipe',
+          }).toString();
+        } catch (lintErr: unknown) {
+          hasLintWarnings = true;
+          const err = lintErr as { stdout?: Buffer; stderr?: Buffer };
+          lintOutput = err.stdout?.toString() || err.stderr?.toString() || '';
+        }
+      }
 
       // Push branch
       let pushSucceeded = false;
@@ -246,14 +302,14 @@ export class Hull {
         }
       }
 
-      // PR creation
+      // PR creation (skip if verification failed)
       const mergeStrategy = this.opts.mergeStrategy ?? 'pr';
-      if (pushSucceeded && mergeStrategy !== 'branch-only') {
-        this.createPR(hasConflicts, conflictFiles);
+      if (pushSucceeded && mergeStrategy !== 'branch-only' && !verificationFailed) {
+        this.createPR(hasConflicts, conflictFiles, hasLintWarnings, lintOutput);
       }
 
       // Update mission
-      const missionStatus = status === 'complete' ? 'completed' : status;
+      const missionStatus = verificationFailed ? 'failed-verification' : (status === 'complete' ? 'completed' : status);
       if (pushSucceeded) {
         db.prepare(`UPDATE missions SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ?`)
           .run(missionStatus, reason, missionId);
@@ -263,10 +319,16 @@ export class Hull {
       }
 
       // Send mission_complete Transmission
-      const commsPayload: Record<string, unknown> = { missionId, status, reason };
+      const commsPayload: Record<string, unknown> = { missionId, status: missionStatus, reason };
       if (hasConflicts) {
         commsPayload.hasConflicts = true;
         commsPayload.conflictFiles = conflictFiles;
+      }
+      if (verificationFailed) {
+        commsPayload.verificationFailed = true;
+      }
+      if (hasLintWarnings) {
+        commsPayload.hasLintWarnings = true;
       }
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)",
@@ -307,7 +369,7 @@ export class Hull {
     }
   }
 
-  private createPR(isDraft: boolean, conflictFiles: string[]): void {
+  private createPR(isDraft: boolean, conflictFiles: string[], hasLintWarnings = false, lintOutput = ''): void {
     if (!Hull.isGhAvailable()) return;
 
     const { crewId, sectorId, missionId, prompt, worktreeBranch, baseBranch, sectorPath, db } = this.opts;
@@ -325,14 +387,31 @@ export class Hull {
       }).toString().trim();
     } catch { /* ignore */ }
 
+    // Get verify result for PR body
+    let verifySection = '- Build/Test: not configured';
+    try {
+      const row = db.prepare('SELECT verify_result FROM missions WHERE id = ?').get(missionId) as { verify_result: string | null } | undefined;
+      if (row?.verify_result) {
+        const vr = JSON.parse(row.verify_result);
+        verifySection = vr.exitCode === 0 ? '- Build/Test: passed' : `- Build/Test: failed (exit ${vr.exitCode})`;
+      }
+    } catch { /* ignore */ }
+
+    const lintSection = hasLintWarnings
+      ? `- Lint: warnings found\n\n<details><summary>Lint output</summary>\n\n\`\`\`\n${lintOutput.slice(0, 2000)}\n\`\`\`\n\n</details>`
+      : '- Lint: clean';
+
     const conflictNote = isDraft && conflictFiles.length > 0
       ? `\n\n### Merge Conflicts\nRebase failed on: ${conflictFiles.join(', ')}`
       : '';
 
-    const body = `## Mission: ${summary}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`${conflictNote}\n\n---\nDeployed by Star Command`;
+    const body = `## Mission: ${summary}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`;
 
     try {
-      const labelArgs = `--label fleet --label "sector/${sectorId}" --label "mission/${missionId}"`;
+      let labelArgs = `--label fleet --label "sector/${sectorId}" --label "mission/${missionId}"`;
+      if (hasLintWarnings) {
+        labelArgs += ' --label lint-warnings';
+      }
       execSync(
         `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
         { cwd: sectorPath, stdio: 'pipe' },
