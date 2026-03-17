@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
-import { CommsService } from '../starbase/comms-service';
+import { CommsService, CommsRateLimitError } from '../starbase/comms-service';
 import { rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -70,5 +70,47 @@ describe('CommsService', () => {
 
   it('should throw when resolving non-existent transmission', () => {
     expect(() => svc.resolve(999, 'response')).toThrow('Transmission not found: 999');
+  });
+
+  describe('rate limiting', () => {
+    function ensureSector(): void {
+      db.getDb()
+        .prepare("INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')")
+        .run();
+    }
+
+    it('should reject transmissions above rate limit', () => {
+      ensureSector();
+      db.getDb()
+        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-rl', 'test', 'active', 5)")
+        .run();
+
+      svc.setRateLimit(5);
+      expect(() =>
+        svc.send({ from: 'crew-rl', to: 'admiral', type: 'hailing', payload: '{}' }),
+      ).toThrow(CommsRateLimitError);
+    });
+
+    it('should allow transmissions below rate limit', () => {
+      ensureSector();
+      db.getDb()
+        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-ok', 'test', 'active', 0)")
+        .run();
+
+      svc.setRateLimit(5);
+      const id = svc.send({ from: 'crew-ok', to: 'admiral', type: 'hailing', payload: '{}' });
+      expect(id).toBeGreaterThan(0);
+
+      // Counter should have incremented
+      const row = db.getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-ok') as { comms_count_minute: number };
+      expect(row.comms_count_minute).toBe(1);
+    });
+
+    it('should not rate limit admiral messages', () => {
+      svc.setRateLimit(1);
+      // Admiral can always send
+      const id = svc.send({ from: 'admiral', to: 'crew-1', type: 'directive', payload: '{}' });
+      expect(id).toBeGreaterThan(0);
+    });
   });
 });

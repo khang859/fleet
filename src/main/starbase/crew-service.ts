@@ -3,7 +3,7 @@ import { randomBytes } from 'crypto';
 import type { SectorService } from './sector-service';
 import type { MissionService } from './mission-service';
 import type { ConfigService } from './config-service';
-import type { WorktreeManager } from './worktree-manager';
+import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
 import type { PtyManager } from '../pty-manager';
 
@@ -95,6 +95,14 @@ export class CrewService {
         baseBranch,
       });
     } catch (err) {
+      if (err instanceof WorktreeLimitError) {
+        // Queue the mission instead of deploying
+        db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
+        db.prepare(
+          "INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)",
+        ).run(JSON.stringify({ missionId, reason: 'worktree limit reached' }));
+        throw err;
+      }
       missionService.failMission(missionId, `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`);
       throw err;
     }
@@ -131,6 +139,8 @@ export class CrewService {
       db,
       lifesignIntervalSec: lifesignSec,
       timeoutMin,
+      mergeStrategy: sector.merge_strategy,
+      onComplete: () => this.autoDeployNext(ptyManager, createTab),
     });
 
     // Update crew record with avatar
@@ -174,5 +184,41 @@ export class CrewService {
   observeCrew(crewId: string): string {
     const hull = this.hulls.get(crewId);
     return hull?.getOutputBuffer() ?? '';
+  }
+
+  /** Get the next queued mission across all sectors (global FIFO by priority) */
+  nextQueuedMission(): { id: number; sector_id: string; prompt: string; summary: string } | undefined {
+    return this.deps.db
+      .prepare(
+        `SELECT id, sector_id, prompt, summary FROM missions
+         WHERE status = 'queued'
+         AND (depends_on_mission_id IS NULL
+              OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+         ORDER BY priority ASC, created_at ASC
+         LIMIT 1`,
+      )
+      .get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+  }
+
+  /** Auto-deploy next queued mission if worktree slots are available */
+  private autoDeployNext(
+    ptyManager: PtyManager,
+    createTab: (label: string, cwd: string) => string,
+  ): void {
+    const next = this.nextQueuedMission();
+    if (!next) return;
+
+    this.deployCrew(
+      { sectorId: next.sector_id, prompt: next.prompt, missionId: next.id },
+      ptyManager,
+      createTab,
+    ).then((result) => {
+      // Notify Admiral of auto-deployment
+      this.deps.db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_deployed', ?)",
+      ).run(result.crewId, JSON.stringify({ missionId: next.id, sectorId: next.sector_id }));
+    }).catch(() => {
+      // Auto-deploy failed — leave mission queued for next slot
+    });
   }
 }

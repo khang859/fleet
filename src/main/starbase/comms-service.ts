@@ -1,5 +1,12 @@
 import type Database from 'better-sqlite3';
 
+export class CommsRateLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CommsRateLimitError';
+  }
+}
+
 export type TransmissionRow = {
   id: number;
   from_crew: string | null;
@@ -22,9 +29,38 @@ type SendOpts = {
 };
 
 export class CommsService {
+  private rateLimit: number = 0; // 0 = disabled
+
   constructor(private db: Database.Database) {}
 
+  /** Set the per-minute rate limit per crew. 0 = disabled. */
+  setRateLimit(limit: number): void {
+    this.rateLimit = limit;
+  }
+
   send(opts: SendOpts): number {
+    // Check rate limit for the sender
+    if (this.rateLimit > 0 && opts.from !== 'admiral') {
+      const row = this.db
+        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get(opts.from) as { comms_count_minute: number } | undefined;
+
+      if (row && row.comms_count_minute >= this.rateLimit) {
+        // Log the rejection
+        this.db.prepare(
+          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'comms_failed', ?)",
+        ).run(opts.from, JSON.stringify({ reason: 'rate limit exceeded', limit: this.rateLimit }));
+        throw new CommsRateLimitError(`Rate limit exceeded for ${opts.from}: ${row.comms_count_minute}/${this.rateLimit} per minute`);
+      }
+
+      // Increment counter
+      if (row) {
+        this.db
+          .prepare('UPDATE crew SET comms_count_minute = comms_count_minute + 1 WHERE id = ?')
+          .run(opts.from);
+      }
+    }
+
     const result = this.db
       .prepare(
         'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)',
