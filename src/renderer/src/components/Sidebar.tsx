@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
+import { Settings } from 'lucide-react';
 import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -10,7 +11,7 @@ import type { Workspace } from '../../../shared/types';
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
 
-export function Sidebar() {
+export function Sidebar({ updateReady }: { updateReady?: boolean }) {
   const {
     workspace,
     activeTabId,
@@ -472,6 +473,21 @@ export function Sidebar() {
               )}
             </div>
           ))}
+      </div>
+
+      {/* Settings + Update indicator */}
+      <div className="border-t border-neutral-800 px-3 py-2 space-y-1">
+        <button
+          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
+          onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+          title="Settings (⌘,)"
+        >
+          <Settings size={14} />
+          Settings
+          {updateReady && (
+            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+          )}
+        </button>
       </div>
     </div>
   );

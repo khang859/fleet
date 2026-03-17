@@ -108,3 +108,11 @@ export type FleetSettings = {
     soundVolume: number;
   };
 };
+
+export type UpdateStatus =
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'downloading'; version: string; releaseNotes: string; percent: number }
+  | { state: 'ready'; version: string; releaseNotes: string }
+  | { state: 'not-available' }
+  | { state: 'error'; message: string };

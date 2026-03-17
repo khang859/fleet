@@ -305,20 +305,99 @@ app.whenReady().then(() => {
 
   createWindow();
 
-  // Auto-updater — checks GitHub Releases for updates
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdatesAndNotify().catch((err) => {
-      console.error('Auto-update check failed:', err);
-    });
+  // --- Auto-updater: unified status pipeline ---
+  // Allow checking for updates in dev mode via dev-app-update.yml
+  autoUpdater.forceDevUpdateConfig = true;
+
+  let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
+  let pendingVersion = '';
+  let pendingReleaseNotes = '';
+
+  function normalizeReleaseNotes(
+    notes: string | Array<{ note: string }> | null | undefined,
+  ): string {
+    if (!notes) return '';
+    if (typeof notes === 'string') return notes;
+    if (Array.isArray(notes)) return notes.map((n) => n.note).join('\n');
+    return '';
   }
 
-  autoUpdater.on('update-downloaded', () => {
-    mainWindow?.webContents.send('fleet:update-downloaded');
+  function sendUpdateStatus(status: import('../shared/types').UpdateStatus): void {
+    console.log('[auto-updater] status:', status.state);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fleet:update-status', status);
+    }
+  }
+
+  autoUpdater.on('checking-for-update', () => {
+    updateState = 'checking';
+    sendUpdateStatus({ state: 'checking' });
   });
+
+  autoUpdater.on('update-available', (info) => {
+    updateState = 'downloading';
+    pendingVersion = info.version;
+    pendingReleaseNotes = normalizeReleaseNotes(info.releaseNotes as string | Array<{ note: string }> | null);
+    sendUpdateStatus({
+      state: 'downloading',
+      version: pendingVersion,
+      releaseNotes: pendingReleaseNotes,
+      percent: 0,
+    });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    sendUpdateStatus({
+      state: 'downloading',
+      version: pendingVersion,
+      releaseNotes: pendingReleaseNotes,
+      percent: Math.round(progress.percent),
+    });
+  });
+
+  autoUpdater.on('update-downloaded', () => {
+    updateState = 'ready';
+    sendUpdateStatus({
+      state: 'ready',
+      version: pendingVersion,
+      releaseNotes: pendingReleaseNotes,
+    });
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    updateState = 'idle';
+    sendUpdateStatus({ state: 'not-available' });
+  });
+
+  autoUpdater.on('error', (err) => {
+    updateState = 'idle';
+    sendUpdateStatus({ state: 'error', message: err?.message ?? 'Unknown error' });
+  });
+
+  ipcMain.handle('fleet:update-check', async () => {
+    if (updateState === 'checking' || updateState === 'downloading') return;
+    try {
+      await autoUpdater.checkForUpdates();
+    } catch (err) {
+      sendUpdateStatus({
+        state: 'error',
+        message: err instanceof Error ? err.message : 'Update check failed',
+      });
+    }
+  });
+
+  ipcMain.handle('fleet:get-version', () => app.getVersion());
 
   ipcMain.on('fleet:install-update', () => {
     autoUpdater.quitAndInstall();
   });
+
+  // Silent check on launch (packaged builds only)
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates().catch((err) => {
+      console.error('Auto-update check failed:', err);
+    });
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
