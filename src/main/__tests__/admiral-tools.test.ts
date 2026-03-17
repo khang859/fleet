@@ -114,13 +114,13 @@ describe('dispatchTool', () => {
     expect(JSON.parse(result).error).toContain('not yet implemented');
   });
 
-  it('should return deferred message for add_supply_route', async () => {
+  it('should return error when supply route service not initialized', async () => {
     const result = await dispatchTool(
       'add_supply_route',
       { upstream_sector_id: 'a', downstream_sector_id: 'b' },
       deps,
     );
-    expect(JSON.parse(result).error).toContain('not yet available');
+    expect(JSON.parse(result).error).toContain('not initialized');
   });
 
   it('should return error for unknown tool', async () => {

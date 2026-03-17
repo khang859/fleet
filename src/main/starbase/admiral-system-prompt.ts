@@ -20,11 +20,18 @@ type MissionInfo = {
   summary: string;
 };
 
+type SupplyRouteInfo = {
+  upstream_sector_id: string;
+  downstream_sector_id: string;
+  relationship: string | null;
+};
+
 type StarbaseState = {
   workspacePath: string;
   sectors: SectorInfo[];
   crew: CrewInfo[];
   missions: MissionInfo[];
+  supplyRoutes?: SupplyRouteInfo[];
 };
 
 export function buildAdmiralSystemPrompt(state: StarbaseState): string {
@@ -56,6 +63,16 @@ export function buildAdmiralSystemPrompt(state: StarbaseState): string {
         ].join('\n')
       : '_No queued or active Missions._';
 
+  const supplyRouteList =
+    state.supplyRoutes && state.supplyRoutes.length > 0
+      ? state.supplyRoutes
+          .map(
+            (r) =>
+              `- ${r.upstream_sector_id} → ${r.downstream_sector_id}${r.relationship ? ` (${r.relationship})` : ''}`,
+          )
+          .join('\n')
+      : '_No Supply Routes defined._';
+
   return `You are the Admiral — the AI command interface for Fleet's Star Command system. You help the user manage their coding agents (Crewmates) across multiple code repositories (Sectors).
 
 ## Terminology Glossary
@@ -79,6 +96,43 @@ ${activeCrew}
 
 ### Mission Queue
 ${missionSummary}
+
+### Supply Routes (Sector Dependencies)
+${supplyRouteList}
+
+## Mission Decomposition
+
+When the user makes a request that spans multiple concerns, decompose it into discrete Missions:
+
+### Scoping Rules
+Each Mission must be:
+1. **Specific** — A clear, single objective (not vague or open-ended)
+2. **Bounded** — Completable in under 15 minutes of agent time
+3. **Independent** — Produces a mergeable result (its own branch/PR)
+4. **Testable** — Has a clear done condition (tests pass, lint clean, feature works)
+
+### Decomposition Process
+1. **Identify concerns** — Determine if the request touches multiple files, features, or Sectors
+2. **Break into Missions** — Each Mission gets a specific prompt with acceptance criteria
+3. **Set dependencies** — If Mission B needs the output of Mission A, set a dependency. Use Supply Routes for cross-Sector dependencies
+4. **Assign priorities** — Lower number = higher priority. Dependent Missions should have higher priority numbers
+5. **Queue all Missions** — Use \`add_mission()\` for each, with appropriate priority and acceptance criteria
+6. **Present the plan** — Show the user the decomposition and ask for confirmation before deploying Crewmates
+
+### Example Decomposition
+User: "Add a user settings page with API persistence"
+- **Mission 1** (priority 0): "Add GET/PUT /api/settings endpoints with validation" — Sector: backend
+  - Acceptance: endpoint returns 200, schema validated, tests pass
+- **Mission 2** (priority 0): "Create SettingsPage component with form fields" — Sector: frontend
+  - Acceptance: component renders, form submits, tests pass
+- **Mission 3** (priority 1, depends on 1 & 2): "Wire SettingsPage to API and add e2e test" — Sector: frontend
+  - Acceptance: settings save and reload, e2e test passes
+
+### Supply Route Awareness
+When Missions span Sectors with Supply Routes, respect the dependency graph:
+- Upstream Sectors produce Cargo (artifacts, build outputs, API contracts)
+- Downstream Sectors consume that Cargo
+- Use \`produce_cargo()\` to record outputs and \`get_undelivered_cargo()\` to check what downstream Sectors need
 
 ## Behavioral Instructions
 

@@ -3,6 +3,8 @@ import type { SectorService } from './sector-service';
 import type { MissionService } from './mission-service';
 import type { CrewService } from './crew-service';
 import type { CommsService } from './comms-service';
+import type { SupplyRouteService } from './supply-route-service';
+import type { CargoService } from './cargo-service';
 import type { PtyManager } from '../pty-manager';
 
 export type AdmiralToolDeps = {
@@ -12,6 +14,8 @@ export type AdmiralToolDeps = {
   commsService: CommsService;
   ptyManager: PtyManager;
   createTab: (label: string, cwd: string) => string;
+  supplyRouteService?: SupplyRouteService;
+  cargoService?: CargoService;
 };
 
 export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
@@ -218,15 +222,96 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'add_supply_route',
-    description: 'Define a dependency between Sectors. (Not yet available — Phase 5)',
+    description:
+      'Define a dependency between Sectors. The upstream Sector produces Cargo that the downstream Sector consumes.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        upstream_sector_id: { type: 'string' },
-        downstream_sector_id: { type: 'string' },
-        relationship: { type: 'string' },
+        upstream_sector_id: {
+          type: 'string',
+          description: 'The Sector that produces Cargo (upstream dependency)',
+        },
+        downstream_sector_id: {
+          type: 'string',
+          description: 'The Sector that consumes Cargo (downstream dependent)',
+        },
+        relationship: {
+          type: 'string',
+          description: 'Optional description of the dependency relationship (e.g. "api-contract", "shared-types")',
+        },
       },
       required: ['upstream_sector_id', 'downstream_sector_id'],
+    },
+  },
+  {
+    name: 'remove_supply_route',
+    description: 'Remove a Supply Route between Sectors.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        route_id: { type: 'number', description: 'The Supply Route ID to remove' },
+      },
+      required: ['route_id'],
+    },
+  },
+  {
+    name: 'list_supply_routes',
+    description: 'List Supply Routes, optionally filtered by Sector.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        sector_id: { type: 'string', description: 'Optional Sector filter (shows routes where Sector is upstream or downstream)' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'supply_route_graph',
+    description: 'Get the full Supply Route dependency graph as an adjacency list (upstream -> downstream[]).',
+    input_schema: {
+      type: 'object' as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: 'produce_cargo',
+    description: 'Record a Cargo artifact produced by a Crewmate in a Sector. Cargo flows along Supply Routes to downstream Sectors.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        sector_id: { type: 'string', description: 'The Sector where the Cargo was produced' },
+        crew_id: { type: 'string', description: 'Optional Crewmate that produced the Cargo' },
+        mission_id: { type: 'number', description: 'Optional Mission that produced the Cargo' },
+        type: { type: 'string', description: 'Cargo type (e.g. "build", "api-schema", "types", "test-results")' },
+        manifest: { type: 'string', description: 'Description or manifest of the Cargo contents' },
+      },
+      required: ['sector_id'],
+    },
+  },
+  {
+    name: 'list_cargo',
+    description: 'List Cargo artifacts, optionally filtered by Sector, Crewmate, type, or verification status.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        sector_id: { type: 'string', description: 'Optional Sector filter' },
+        crew_id: { type: 'string', description: 'Optional Crewmate filter' },
+        type: { type: 'string', description: 'Optional Cargo type filter' },
+        verified: { type: 'boolean', description: 'Optional verification status filter' },
+      },
+      required: [],
+    },
+  },
+  {
+    name: 'get_undelivered_cargo',
+    description: 'Get Cargo from upstream Sectors that has not yet been consumed by a downstream Sector.',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        sector_id: { type: 'string', description: 'The downstream Sector to check for undelivered Cargo' },
+      },
+      required: ['sector_id'],
     },
   },
 ];
@@ -360,7 +445,62 @@ export async function dispatchTool(
     }
 
     case 'add_supply_route': {
-      return JSON.stringify({ error: 'Supply Routes are not yet available. They will be added in Phase 5.' });
+      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      const route = deps.supplyRouteService.addRoute({
+        upstreamSectorId: input.upstream_sector_id as string,
+        downstreamSectorId: input.downstream_sector_id as string,
+        relationship: input.relationship as string | undefined,
+      });
+      return JSON.stringify(route);
+    }
+
+    case 'remove_supply_route': {
+      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      deps.supplyRouteService.removeRoute(input.route_id as number);
+      return JSON.stringify({ removed: input.route_id });
+    }
+
+    case 'list_supply_routes': {
+      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      const routes = deps.supplyRouteService.listRoutes(
+        input.sector_id ? { sectorId: input.sector_id as string } : undefined,
+      );
+      return JSON.stringify(routes);
+    }
+
+    case 'supply_route_graph': {
+      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      const graph = deps.supplyRouteService.getGraph();
+      return JSON.stringify(graph);
+    }
+
+    case 'produce_cargo': {
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
+      const cargo = deps.cargoService.produceCargo({
+        sectorId: input.sector_id as string,
+        crewId: input.crew_id as string | undefined,
+        missionId: input.mission_id as number | undefined,
+        type: input.type as string | undefined,
+        manifest: input.manifest as string | undefined,
+      });
+      return JSON.stringify(cargo);
+    }
+
+    case 'list_cargo': {
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
+      const cargoList = deps.cargoService.listCargo({
+        sectorId: input.sector_id as string | undefined,
+        crewId: input.crew_id as string | undefined,
+        type: input.type as string | undefined,
+        verified: input.verified as boolean | undefined,
+      });
+      return JSON.stringify(cargoList);
+    }
+
+    case 'get_undelivered_cargo': {
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
+      const undelivered = deps.cargoService.getUndelivered(input.sector_id as string);
+      return JSON.stringify(undelivered);
     }
 
     default:
