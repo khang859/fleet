@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3';
 import { execSync, ExecSyncOptions } from 'child_process';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
@@ -22,11 +23,47 @@ type CreateResult = {
 };
 
 export class WorktreeManager {
+  private db: Database.Database | null = null;
+  private maxConcurrent: number = Infinity;
+
   constructor(private worktreeBasePath: string) {}
+
+  /** Set DB and concurrency limit for pool and limit features */
+  configure(db: Database.Database, maxConcurrent: number): void {
+    this.db = db;
+    this.maxConcurrent = maxConcurrent;
+  }
 
   create(opts: CreateOpts): CreateResult {
     const { starbaseId, crewId, sectorPath, baseBranch } = opts;
     const execOpts: ExecSyncOptions = { cwd: sectorPath, stdio: 'pipe' };
+
+    // Check concurrency limit
+    if (this.db && this.maxConcurrent < Infinity) {
+      const activeCount = (
+        this.db
+          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+          .get() as { cnt: number }
+      ).cnt;
+      if (activeCount >= this.maxConcurrent) {
+        throw new WorktreeLimitError(
+          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`,
+        );
+      }
+    }
+
+    // Check pool for reusable worktree
+    if (this.db) {
+      const pooled = this.getPooled(starbaseId);
+      if (pooled) {
+        try {
+          const recycled = this.recycle(pooled, baseBranch, crewId);
+          if (recycled) return recycled;
+        } catch {
+          // Recycle failed — fall through to create new
+        }
+      }
+    }
 
     // Pre-flight: verify git repo
     try {
@@ -35,7 +72,6 @@ export class WorktreeManager {
       throw new Error(`Not a git repository: ${sectorPath}`);
     }
 
-    // Pre-flight: check disk headroom (500MB minimum)
     const worktreeDir = join(this.worktreeBasePath, starbaseId);
     mkdirSync(worktreeDir, { recursive: true });
 
@@ -141,5 +177,70 @@ export class WorktreeManager {
       const full = join(dir, name);
       return statSync(full).isDirectory();
     });
+  }
+
+  /** Mark a worktree as pooled for reuse instead of removing it */
+  markPooled(crewId: string): void {
+    if (!this.db) return;
+    this.db
+      .prepare("UPDATE crew SET pool_status = 'pooled', pooled_at = datetime('now') WHERE id = ?")
+      .run(crewId);
+  }
+
+  /** Get a pooled worktree path for the given starbase */
+  getPooled(starbaseId: string): string | null {
+    if (!this.db) return null;
+    const row = this.db
+      .prepare(
+        "SELECT worktree_path FROM crew WHERE pool_status = 'pooled' AND worktree_path IS NOT NULL ORDER BY pooled_at ASC LIMIT 1",
+      )
+      .get() as { worktree_path: string } | undefined;
+    return row?.worktree_path ?? null;
+  }
+
+  /** Recycle a pooled worktree: reset to base branch and create new branch */
+  recycle(worktreePath: string, baseBranch: string, newCrewId: string): CreateResult | null {
+    if (!existsSync(worktreePath)) return null;
+    const execOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' };
+
+    try {
+      execSync(`git checkout "${baseBranch}"`, execOpts);
+      execSync('git pull', execOpts);
+      execSync('git clean -fd', execOpts);
+      const branchName = `crew/${newCrewId}`;
+      execSync(`git checkout -b "${branchName}"`, execOpts);
+
+      // Clear pool status for the old crew entry
+      if (this.db) {
+        this.db
+          .prepare("UPDATE crew SET pool_status = NULL WHERE worktree_path = ?")
+          .run(worktreePath);
+      }
+
+      return { worktreePath, worktreeBranch: branchName };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Remove pooled worktrees older than maxAgeMs (default 1 hour) */
+  evictStale(sectorPath: string, maxAgeMs: number = 60 * 60 * 1000): string[] {
+    if (!this.db) return [];
+    const cutoff = new Date(Date.now() - maxAgeMs).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+    const stale = this.db
+      .prepare(
+        "SELECT id, worktree_path FROM crew WHERE pool_status = 'pooled' AND pooled_at < ?",
+      )
+      .all(cutoff) as { id: string; worktree_path: string }[];
+
+    const evicted: string[] = [];
+    for (const entry of stale) {
+      if (entry.worktree_path) {
+        this.remove(entry.worktree_path, sectorPath);
+        evicted.push(entry.worktree_path);
+      }
+      this.db.prepare("UPDATE crew SET pool_status = NULL, worktree_path = NULL WHERE id = ?").run(entry.id);
+    }
+    return evicted;
   }
 }
