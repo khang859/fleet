@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { mapSectors, mapCrew } from '../scene-utils'
+import { mapSectors, mapCrew, computeSectorPositions } from '../scene-utils'
 import type { SectorInfo, CrewStatus } from '../../../store/star-command-store'
 
 const makeSector = (id: string, name = id): SectorInfo => ({
@@ -45,5 +45,47 @@ describe('mapCrew', () => {
 
   it('returns empty array for empty crew', () => {
     expect(mapCrew([])).toEqual([])
+  })
+})
+
+describe('computeSectorPositions', () => {
+  it('returns empty map for empty sectors', () => {
+    const result = computeSectorPositions([], 300, 200, 100)
+    expect(result.size).toBe(0)
+  })
+
+  it('places a single sector at top (angle -π/2)', () => {
+    const sectors = [{ id: 'api', name: 'api', active: false }]
+    const result = computeSectorPositions(sectors, 300, 200, 100)
+    const pos = result.get('api')!
+    expect(pos.x).toBeCloseTo(300)       // cos(-π/2) = 0, so x = cx
+    expect(pos.y).toBeCloseTo(100)       // sin(-π/2) = -1, so y = cy - radius
+  })
+
+  it('places two sectors 180° apart', () => {
+    const sectors = [
+      { id: 'a', name: 'a', active: false },
+      { id: 'b', name: 'b', active: false },
+    ]
+    const result = computeSectorPositions(sectors, 300, 200, 100)
+    const a = result.get('a')!
+    const b = result.get('b')!
+    // They should be exactly opposite: a.x + b.x ≈ 2*cx, a.y + b.y ≈ 2*cy
+    expect(a.x + b.x).toBeCloseTo(600)
+    expect(a.y + b.y).toBeCloseTo(400)
+  })
+
+  it('all sectors are at the specified radius from center', () => {
+    const sectors = [
+      { id: 'a', name: 'a', active: false },
+      { id: 'b', name: 'b', active: false },
+      { id: 'c', name: 'c', active: false },
+    ]
+    const cx = 400, cy = 300, radius = 150
+    const result = computeSectorPositions(sectors, cx, cy, radius)
+    for (const [, pos] of result) {
+      const dist = Math.sqrt((pos.x - cx) ** 2 + (pos.y - cy) ** 2)
+      expect(dist).toBeCloseTo(radius)
+    }
   })
 })
