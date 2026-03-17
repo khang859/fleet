@@ -29,6 +29,10 @@ export class CommsBeamRenderer {
     this.positions.clear()
   }
 
+  hasActiveBeams(): boolean {
+    return this.beams.length > 0
+  }
+
   addBeam(from: string, to: string, color: string): void {
     this.beams.push({
       fromId: from,

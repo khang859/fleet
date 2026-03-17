@@ -102,7 +102,7 @@ export function StarCommandScene({ className }: { className?: string }) {
       const hasActiveCrew = podStatesRef.current.some(
         (p) => p.status === 'active' || p.status === 'hailing'
       )
-      const hasBeams = (commsBeams as any)['beams'].length > 0
+      const hasBeams = commsBeams.hasActiveBeams()
       const isActive = hasActiveCrew || hasBeams
       const frameBudget = isActive ? 33 : 100 // 30fps vs 10fps
 
@@ -174,9 +174,7 @@ export function StarCommandScene({ className }: { className?: string }) {
         }
       }
 
-      commsBeams.update(deltaMs)
-
-      // Spawn beams for hailing crew every 3 seconds
+      // Spawn beams for hailing crew every 3 seconds (before update so beams advance their first frame)
       if (elapsed - lastBeamSpawn >= 3000) {
         for (const pod of pods) {
           if (pod.status === 'hailing') {
@@ -185,6 +183,8 @@ export function StarCommandScene({ className }: { className?: string }) {
         }
         lastBeamSpawn = elapsed
       }
+
+      commsBeams.update(deltaMs)
 
       // Scale context for ring and pods
       ctx!.save()
