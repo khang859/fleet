@@ -238,7 +238,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       const vh = h / zoom;
       ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
 
-      const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
+      let workingCount = 0;
+      for (const a of agentsRef.current) if (a.state === 'working') workingCount++;
       spaceWeather.update(deltaMs, vw, vh, workingCount);
       shipManager.update(agentsRef.current, deltaMs, vw, vh);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);

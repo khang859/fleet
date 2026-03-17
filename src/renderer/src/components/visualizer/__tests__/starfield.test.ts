@@ -1,39 +1,5 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { Starfield } from '../starfield';
-
-// Polyfill OffscreenCanvas for Node.js test environment
-beforeAll(() => {
-  if (typeof globalThis.OffscreenCanvas === 'undefined') {
-    class MockOffscreenCanvas {
-      readonly width: number;
-      readonly height: number;
-      constructor(width: number, height: number) {
-        this.width = width;
-        this.height = height;
-      }
-      getContext(_type: string): object {
-        return {
-          clearRect: () => {},
-          fillRect: () => {},
-          drawImage: () => {},
-          beginPath: () => {},
-          moveTo: () => {},
-          lineTo: () => {},
-          stroke: () => {},
-          set filter(_v: string) {},
-          get filter() { return 'none'; },
-          set fillStyle(_v: string) {},
-          get fillStyle() { return ''; },
-          set strokeStyle(_v: string) {},
-          get strokeStyle() { return ''; },
-          set lineWidth(_v: number) {},
-          get lineWidth() { return 1; },
-        };
-      }
-    }
-    (globalThis as Record<string, unknown>).OffscreenCanvas = MockOffscreenCanvas;
-  }
-});
 
 describe('Starfield', () => {
   it('creates 3 layers with correct star counts for a given area', () => {

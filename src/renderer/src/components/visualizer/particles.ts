@@ -66,6 +66,9 @@ export class ParticleSystem {
     }
 
     this.particles.length = writeIdx;
+    if (this.nextOverwriteIdx > writeIdx) {
+      this.nextOverwriteIdx = 0;
+    }
   }
 
   getParticles(): Particle[] {

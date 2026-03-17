@@ -52,8 +52,11 @@ export class AuroraBands {
 
   private renderBandCache(band: AuroraBand, width: number, height: number): void {
     const bandHeight = Math.ceil(band.heightFraction * height);
-    const canvas = new OffscreenCanvas(width, bandHeight);
-    const offCtx = canvas.getContext('2d')!;
+    if (!band.cachedCanvas || band.cachedCanvas.width !== width || band.cachedCanvas.height !== bandHeight) {
+      band.cachedCanvas = new OffscreenCanvas(width, bandHeight);
+    }
+    const offCtx = band.cachedCanvas.getContext('2d')!;
+    offCtx.clearRect(0, 0, width, bandHeight);
 
     const grad = offCtx.createLinearGradient(0, 0, 0, bandHeight);
     grad.addColorStop(0, `hsla(${band.hue}, 60%, 50%, 0)`);
@@ -62,8 +65,6 @@ export class AuroraBands {
 
     offCtx.fillStyle = grad;
     offCtx.fillRect(0, 0, width, bandHeight);
-
-    band.cachedCanvas = canvas;
     band.lastRenderedHue = band.hue;
   }
 
