@@ -10,7 +10,7 @@ import type { Workspace } from '../../../shared/types';
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
 
-export function Sidebar() {
+export function Sidebar({ updateReady }: { updateReady?: boolean }) {
   const {
     workspace,
     activeTabId,
@@ -473,6 +473,19 @@ export function Sidebar() {
             </div>
           ))}
       </div>
+
+      {/* Update indicator */}
+      {updateReady && (
+        <div className="border-t border-neutral-800 px-3 py-2">
+          <button
+            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-blue-400 hover:text-blue-300 hover:bg-neutral-800 rounded-md transition-colors"
+            onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+            Update available
+          </button>
+        </div>
+      )}
     </div>
   );
 }

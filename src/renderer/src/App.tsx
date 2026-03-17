@@ -197,7 +197,7 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
-      <Sidebar />
+      <Sidebar updateReady={updateReady} />
       <div className="flex-1 min-w-0 h-full flex flex-col">
       <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Top drag region for window movement */}
@@ -281,16 +281,6 @@ export function App() {
         }}
       />
       </div>
-      {updateReady && (
-        <div className="absolute bottom-4 right-4 z-40">
-          <button
-            onClick={() => window.fleet.updates.installUpdate()}
-            className="px-4 py-2 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-md shadow-lg"
-          >
-            Update ready — restart to install
-          </button>
-        </div>
-      )}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
