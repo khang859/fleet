@@ -295,16 +295,31 @@ export function useTerminal(
     };
   }, [options.paneId]);
 
-  // Update font settings on existing terminal without re-creating it
+  // Update font settings on existing terminal without re-creating it.
+  // We force-load the new font via document.fonts.load() before applying it,
+  // then clear the canvas renderer's glyph cache so it rebuilds with the new font.
+  // See xterm.js #1164 — canvas renderer has no automatic font swap detection.
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
     const newFamily = options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace';
     const newSize = options.fontSize ?? 14;
     if (term.options.fontFamily !== newFamily || term.options.fontSize !== newSize) {
-      term.options.fontFamily = newFamily;
-      term.options.fontSize = newSize;
-      fitPreservingScrollRef.current?.();
+      const primaryFamily = newFamily.split(',')[0].trim();
+      const fontLoads = [
+        document.fonts.load(`16px "${primaryFamily}"`),
+        document.fonts.load(`bold 16px "${primaryFamily}"`),
+        document.fonts.load(`italic 16px "${primaryFamily}"`),
+        document.fonts.load(`bold italic 16px "${primaryFamily}"`),
+      ];
+      Promise.allSettled(fontLoads).then(() => {
+        // Guard against terminal being disposed while fonts were loading
+        if (!termRef.current) return;
+        term.options.fontFamily = newFamily;
+        term.options.fontSize = newSize;
+        term.clearTextureAtlas();
+        fitPreservingScrollRef.current?.();
+      });
     }
   }, [options.fontFamily, options.fontSize]);
 

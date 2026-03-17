@@ -23,7 +23,7 @@ describe('ShipManager', () => {
     expect(ships[0].paneId).toBe('pane-1');
   });
 
-  it('assigns correct Y positions for multiple ships', () => {
+  it('spreads ships across viewport for multiple agents', () => {
     const sm = new ShipManager();
     const agents = [
       makeAgent({ paneId: 'pane-1' }),
@@ -34,8 +34,9 @@ describe('ShipManager', () => {
 
     const ships = sm.getShips();
     expect(ships).toHaveLength(3);
-    expect(ships[0].targetY).toBeLessThan(ships[1].targetY);
-    expect(ships[1].targetY).toBeLessThan(ships[2].targetY);
+    // 3 agents fit in a single row (cols=3, rows=1), so X positions increase
+    expect(ships[0].targetX).toBeLessThan(ships[1].targetX);
+    expect(ships[1].targetX).toBeLessThan(ships[2].targetX);
   });
 
   it('maps state to correct color', () => {
