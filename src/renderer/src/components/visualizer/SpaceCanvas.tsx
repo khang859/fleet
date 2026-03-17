@@ -13,6 +13,12 @@ import { SpaceWeather } from './space-weather';
 import { AsteroidField } from './asteroids';
 import { AmbientSoundscape } from './ambient-sound';
 import { loadSpriteSheet } from './sprite-loader';
+import { StationRing } from './station-ring';
+import { CrewPodRenderer } from './crew-pods';
+import { CommsBeamRenderer } from './comms-beams';
+import { useStarCommandStore } from '../../store/star-command-store';
+import type { SectorState } from './station-ring';
+import type { PodState } from './crew-pods';
 import type { AgentVisualState } from '../../../../shared/types';
 
 type Tooltip = {
@@ -138,16 +144,38 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const asteroidFieldRef = useRef(new AsteroidField());
   const bloomRef = useRef<BloomPass | null>(null);
   const soundscapeRef = useRef(new AmbientSoundscape());
+  const stationRingRef = useRef(new StationRing());
+  const crewPodRef = useRef(new CrewPodRenderer());
+  const commsBeamRef = useRef(new CommsBeamRenderer());
   const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null });
   const zoomRef = useRef(1);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
 
   const { isVisible } = useVisualizerStore();
   const { workspace } = useWorkspaceStore();
+  const { sectors, crewList } = useStarCommandStore();
 
   // Derive agents from workspace tabs/panes and keep in ref
   const agentsRef = useRef<AgentVisualState[]>([]);
   agentsRef.current = workspaceToAgents(workspace.tabs);
+
+  // Derive station ring state from star-command store
+  const sectorStatesRef = useRef<SectorState[]>([]);
+  const activeSectorIds = new Set(crewList.filter((c) => c.status === 'active' || c.status === 'hailing').map((c) => c.sector_id));
+  sectorStatesRef.current = sectors.map((s) => ({
+    id: s.id,
+    name: s.name,
+    active: activeSectorIds.has(s.id),
+  }));
+
+  const podStatesRef = useRef<PodState[]>([]);
+  podStatesRef.current = crewList.map((c) => ({
+    crewId: c.id,
+    sectorId: c.sector_id,
+    status: (['active', 'hailing', 'error', 'complete', 'lost', 'idle'].includes(c.status)
+      ? c.status
+      : 'idle') as PodState['status'],
+  }));
 
   // Background loop (10fps) — aurora + nebula + bg fill
   useEffect(() => {
@@ -245,6 +273,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const spaceWeather = spaceWeatherRef.current;
     const bloom = bloomRef.current ?? new BloomPass();
     if (!bloomRef.current) bloomRef.current = bloom;
+    const stationRing = stationRingRef.current;
+    const crewPods = crewPodRef.current;
+    const commsBeams = commsBeamRef.current;
 
     const loop = createThrottledLoop(30, (deltaMs) => {
       const { w, h } = sizeCanvas(canvas);
@@ -281,6 +312,16 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       spaceWeather.render(ctx);
       bloom.renderShipGlow(ctx, shipManager.getShips());
       spaceRenderer.render(ctx, shipManager.getShips());
+
+      // Station ring, crew pods, and comms beams
+      const ringCX = vw / 2;
+      const ringCY = vh / 2;
+      stationRing.update(sectorStatesRef.current, deltaMs);
+      stationRing.render(ctx, ringCX, ringCY);
+      crewPods.update(podStatesRef.current, deltaMs);
+      crewPods.render(ctx, ringCX, ringCY, stationRing);
+      commsBeams.update(deltaMs);
+      commsBeams.render(ctx, ringCX, ringCY);
     });
 
     loop.start();
