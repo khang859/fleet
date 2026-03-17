@@ -116,6 +116,15 @@ export const MIGRATIONS: Migration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    name: '002-phase4-pool-and-rate-limit',
+    sql: `
+      ALTER TABLE crew ADD COLUMN pool_status TEXT;
+      ALTER TABLE crew ADD COLUMN pooled_at DATETIME;
+      ALTER TABLE crew ADD COLUMN comms_count_minute INTEGER DEFAULT 0;
+    `,
+  },
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
