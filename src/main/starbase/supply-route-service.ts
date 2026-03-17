@@ -1,61 +1,61 @@
-import type Database from 'better-sqlite3';
+import type Database from 'better-sqlite3'
 
 export class CyclicDependencyError extends Error {
   constructor(cyclePath: string[]) {
-    super(`Cyclic dependency detected: ${cyclePath.join(' -> ')}`);
-    this.name = 'CyclicDependencyError';
+    super(`Cyclic dependency detected: ${cyclePath.join(' -> ')}`)
+    this.name = 'CyclicDependencyError'
   }
 }
 
 type SupplyRouteRow = {
-  id: number;
-  upstream_sector_id: string;
-  downstream_sector_id: string;
-  relationship: string | null;
-  created_at: string;
-};
+  id: number
+  upstream_sector_id: string
+  downstream_sector_id: string
+  relationship: string | null
+  created_at: string
+}
 
 type AddRouteOpts = {
-  upstreamSectorId: string;
-  downstreamSectorId: string;
-  relationship?: string;
-};
+  upstreamSectorId: string
+  downstreamSectorId: string
+  relationship?: string
+}
 
 type ListRoutesOpts = {
-  sectorId?: string;
-};
+  sectorId?: string
+}
 
 export class SupplyRouteService {
   constructor(private db: Database.Database) {}
 
   addRoute(opts: AddRouteOpts): SupplyRouteRow {
-    const { upstreamSectorId, downstreamSectorId, relationship } = opts;
+    const { upstreamSectorId, downstreamSectorId, relationship } = opts
 
     // Self-reference is a trivial cycle
     if (upstreamSectorId === downstreamSectorId) {
-      throw new CyclicDependencyError([upstreamSectorId, downstreamSectorId]);
+      throw new CyclicDependencyError([upstreamSectorId, downstreamSectorId])
     }
 
     // Cycle detection: check if adding upstream -> downstream creates a cycle
     // A cycle exists if there is already a path from downstream back to upstream
-    this.detectCycle(upstreamSectorId, downstreamSectorId);
+    this.detectCycle(upstreamSectorId, downstreamSectorId)
 
     const result = this.db
       .prepare(
         `INSERT INTO supply_routes (upstream_sector_id, downstream_sector_id, relationship)
-         VALUES (?, ?, ?)`,
+         VALUES (?, ?, ?)`
       )
-      .run(upstreamSectorId, downstreamSectorId, relationship ?? null);
+      .run(upstreamSectorId, downstreamSectorId, relationship ?? null)
 
     return this.db
       .prepare('SELECT * FROM supply_routes WHERE id = ?')
-      .get(result.lastInsertRowid) as SupplyRouteRow;
+      .get(result.lastInsertRowid) as SupplyRouteRow
   }
 
   removeRoute(routeId: number): void {
-    const result = this.db.prepare('DELETE FROM supply_routes WHERE id = ?').run(routeId);
+    const result = this.db.prepare('DELETE FROM supply_routes WHERE id = ?').run(routeId)
     if (result.changes === 0) {
-      throw new Error(`Route not found: ${routeId}`);
+      throw new Error(`Route not found: ${routeId}`)
     }
   }
 
@@ -65,40 +65,38 @@ export class SupplyRouteService {
         .prepare(
           `SELECT * FROM supply_routes
            WHERE upstream_sector_id = ? OR downstream_sector_id = ?
-           ORDER BY id`,
+           ORDER BY id`
         )
-        .all(opts.sectorId, opts.sectorId) as SupplyRouteRow[];
+        .all(opts.sectorId, opts.sectorId) as SupplyRouteRow[]
     }
-    return this.db
-      .prepare('SELECT * FROM supply_routes ORDER BY id')
-      .all() as SupplyRouteRow[];
+    return this.db.prepare('SELECT * FROM supply_routes ORDER BY id').all() as SupplyRouteRow[]
   }
 
   getDownstream(sectorId: string): SupplyRouteRow[] {
     return this.db
       .prepare('SELECT * FROM supply_routes WHERE upstream_sector_id = ? ORDER BY id')
-      .all(sectorId) as SupplyRouteRow[];
+      .all(sectorId) as SupplyRouteRow[]
   }
 
   getUpstream(sectorId: string): SupplyRouteRow[] {
     return this.db
       .prepare('SELECT * FROM supply_routes WHERE downstream_sector_id = ? ORDER BY id')
-      .all(sectorId) as SupplyRouteRow[];
+      .all(sectorId) as SupplyRouteRow[]
   }
 
   getGraph(): Record<string, string[]> {
     const rows = this.db
       .prepare('SELECT upstream_sector_id, downstream_sector_id FROM supply_routes ORDER BY id')
-      .all() as { upstream_sector_id: string; downstream_sector_id: string }[];
+      .all() as { upstream_sector_id: string; downstream_sector_id: string }[]
 
-    const graph: Record<string, string[]> = {};
+    const graph: Record<string, string[]> = {}
     for (const row of rows) {
       if (!graph[row.upstream_sector_id]) {
-        graph[row.upstream_sector_id] = [];
+        graph[row.upstream_sector_id] = []
       }
-      graph[row.upstream_sector_id].push(row.downstream_sector_id);
+      graph[row.upstream_sector_id].push(row.downstream_sector_id)
     }
-    return graph;
+    return graph
   }
 
   /**
@@ -108,38 +106,38 @@ export class SupplyRouteService {
    */
   private detectCycle(upstreamSectorId: string, downstreamSectorId: string): void {
     // Build adjacency list from existing routes
-    const graph = this.getGraph();
+    const graph = this.getGraph()
 
     // DFS from downstreamSectorId to see if we can reach upstreamSectorId
-    const visited = new Set<string>();
-    const path: string[] = [downstreamSectorId];
+    const visited = new Set<string>()
+    const path: string[] = [downstreamSectorId]
 
     const dfs = (node: string): string[] | null => {
       if (node === upstreamSectorId) {
-        return [...path];
+        return [...path]
       }
       if (visited.has(node)) {
-        return null;
+        return null
       }
-      visited.add(node);
+      visited.add(node)
 
-      const neighbors = graph[node];
-      if (!neighbors) return null;
+      const neighbors = graph[node]
+      if (!neighbors) return null
 
       for (const neighbor of neighbors) {
-        path.push(neighbor);
-        const cyclePath = dfs(neighbor);
-        if (cyclePath) return cyclePath;
-        path.pop();
+        path.push(neighbor)
+        const cyclePath = dfs(neighbor)
+        if (cyclePath) return cyclePath
+        path.pop()
       }
 
-      return null;
-    };
+      return null
+    }
 
-    const cyclePath = dfs(downstreamSectorId);
+    const cyclePath = dfs(downstreamSectorId)
     if (cyclePath) {
       // Prepend the upstream to show the full cycle: upstream -> downstream -> ... -> upstream
-      throw new CyclicDependencyError([upstreamSectorId, ...cyclePath]);
+      throw new CyclicDependencyError([upstreamSectorId, ...cyclePath])
     }
   }
 }

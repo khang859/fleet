@@ -1,22 +1,22 @@
-import type Anthropic from '@anthropic-ai/sdk';
-import type { SectorService } from './sector-service';
-import type { MissionService } from './mission-service';
-import type { CrewService } from './crew-service';
-import type { CommsService } from './comms-service';
-import type { SupplyRouteService } from './supply-route-service';
-import type { CargoService } from './cargo-service';
-import type { PtyManager } from '../pty-manager';
+import type Anthropic from '@anthropic-ai/sdk'
+import type { SectorService } from './sector-service'
+import type { MissionService } from './mission-service'
+import type { CrewService } from './crew-service'
+import type { CommsService } from './comms-service'
+import type { SupplyRouteService } from './supply-route-service'
+import type { CargoService } from './cargo-service'
+import type { PtyManager } from '../pty-manager'
 
 export type AdmiralToolDeps = {
-  sectorService: SectorService;
-  missionService: MissionService;
-  crewService: CrewService;
-  commsService: CommsService;
-  ptyManager: PtyManager;
-  createTab: (label: string, cwd: string) => string;
-  supplyRouteService?: SupplyRouteService;
-  cargoService?: CargoService;
-};
+  sectorService: SectorService
+  missionService: MissionService
+  crewService: CrewService
+  commsService: CommsService
+  ptyManager: PtyManager
+  createTab: (label: string, cwd: string) => string
+  supplyRouteService?: SupplyRouteService
+  cargoService?: CargoService
+}
 
 export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
   {
@@ -30,11 +30,12 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
         prompt: { type: 'string', description: 'The mission prompt for the Crewmate' },
         mission_id: {
           type: 'number',
-          description: 'Optional existing Mission ID to assign. If omitted, a new Mission is created.',
-        },
+          description:
+            'Optional existing Mission ID to assign. If omitted, a new Mission is created.'
+        }
       },
-      required: ['sector_id', 'prompt'],
-    },
+      required: ['sector_id', 'prompt']
+    }
   },
   {
     name: 'recall',
@@ -42,10 +43,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        crew_id: { type: 'string', description: 'The Crewmate ID to recall' },
+        crew_id: { type: 'string', description: 'The Crewmate ID to recall' }
       },
-      required: ['crew_id'],
-    },
+      required: ['crew_id']
+    }
   },
   {
     name: 'crew',
@@ -53,10 +54,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'Optional Sector filter' },
+        sector_id: { type: 'string', description: 'Optional Sector filter' }
       },
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'observe',
@@ -64,10 +65,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        crew_id: { type: 'string', description: 'The Crewmate ID to observe' },
+        crew_id: { type: 'string', description: 'The Crewmate ID to observe' }
       },
-      required: ['crew_id'],
-    },
+      required: ['crew_id']
+    }
   },
   {
     name: 'hail',
@@ -76,10 +77,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         to: { type: 'string', description: 'The Crewmate ID to hail' },
-        message: { type: 'string', description: 'The message content' },
+        message: { type: 'string', description: 'The message content' }
       },
-      required: ['to', 'message'],
-    },
+      required: ['to', 'message']
+    }
   },
   {
     name: 'inbox',
@@ -87,8 +88,8 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {},
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'resolve',
@@ -97,22 +98,23 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         transmission_id: { type: 'number', description: 'The Transmission ID to respond to' },
-        response: { type: 'string', description: 'The response message' },
+        response: { type: 'string', description: 'The response message' }
       },
-      required: ['transmission_id', 'response'],
-    },
+      required: ['transmission_id', 'response']
+    }
   },
   {
     name: 'ask',
-    description: 'Send a directive to a Crewmate and wait for response. (Not yet implemented — Phase 4)',
+    description:
+      'Send a directive to a Crewmate and wait for response. (Not yet implemented — Phase 4)',
     input_schema: {
       type: 'object' as const,
       properties: {
         crew_id: { type: 'string', description: 'The Crewmate to ask' },
-        question: { type: 'string', description: 'The question or directive' },
+        question: { type: 'string', description: 'The question or directive' }
       },
-      required: ['crew_id', 'question'],
-    },
+      required: ['crew_id', 'question']
+    }
   },
   {
     name: 'sectors',
@@ -120,8 +122,8 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {},
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'add_sector',
@@ -129,13 +131,16 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        path: { type: 'string', description: 'Path to the git repository (absolute or relative to workspace)' },
+        path: {
+          type: 'string',
+          description: 'Path to the git repository (absolute or relative to workspace)'
+        },
         name: { type: 'string', description: 'Optional display name' },
         description: { type: 'string', description: 'Optional description' },
-        base_branch: { type: 'string', description: 'Base branch (default: main)' },
+        base_branch: { type: 'string', description: 'Base branch (default: main)' }
       },
-      required: ['path'],
-    },
+      required: ['path']
+    }
   },
   {
     name: 'sector_status',
@@ -143,10 +148,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'The Sector slug' },
+        sector_id: { type: 'string', description: 'The Sector slug' }
       },
-      required: ['sector_id'],
-    },
+      required: ['sector_id']
+    }
   },
   {
     name: 'remove_sector',
@@ -154,10 +159,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'The Sector slug to remove' },
+        sector_id: { type: 'string', description: 'The Sector slug to remove' }
       },
-      required: ['sector_id'],
-    },
+      required: ['sector_id']
+    }
   },
   {
     name: 'add_mission',
@@ -169,10 +174,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
         summary: { type: 'string', description: 'Brief summary of the mission' },
         prompt: { type: 'string', description: 'Full prompt for the Crewmate' },
         acceptance_criteria: { type: 'string', description: 'Optional criteria for completion' },
-        priority: { type: 'number', description: 'Priority (lower = higher priority, default 0)' },
+        priority: { type: 'number', description: 'Priority (lower = higher priority, default 0)' }
       },
-      required: ['sector_id', 'summary', 'prompt'],
-    },
+      required: ['sector_id', 'summary', 'prompt']
+    }
   },
   {
     name: 'missions',
@@ -181,10 +186,13 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         sector_id: { type: 'string', description: 'Optional Sector filter' },
-        status: { type: 'string', description: 'Optional status filter (queued, active, completed, failed, aborted)' },
+        status: {
+          type: 'string',
+          description: 'Optional status filter (queued, active, completed, failed, aborted)'
+        }
       },
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'next_mission',
@@ -192,10 +200,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'The Sector to check' },
+        sector_id: { type: 'string', description: 'The Sector to check' }
       },
-      required: ['sector_id'],
-    },
+      required: ['sector_id']
+    }
   },
   {
     name: 'complete_mission',
@@ -204,10 +212,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
       type: 'object' as const,
       properties: {
         mission_id: { type: 'number', description: 'The Mission ID' },
-        result: { type: 'string', description: 'Result summary' },
+        result: { type: 'string', description: 'Result summary' }
       },
-      required: ['mission_id', 'result'],
-    },
+      required: ['mission_id', 'result']
+    }
   },
   {
     name: 'abort_mission',
@@ -215,10 +223,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        mission_id: { type: 'number', description: 'The Mission ID to abort' },
+        mission_id: { type: 'number', description: 'The Mission ID to abort' }
       },
-      required: ['mission_id'],
-    },
+      required: ['mission_id']
+    }
   },
   {
     name: 'add_supply_route',
@@ -229,19 +237,20 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
       properties: {
         upstream_sector_id: {
           type: 'string',
-          description: 'The Sector that produces Cargo (upstream dependency)',
+          description: 'The Sector that produces Cargo (upstream dependency)'
         },
         downstream_sector_id: {
           type: 'string',
-          description: 'The Sector that consumes Cargo (downstream dependent)',
+          description: 'The Sector that consumes Cargo (downstream dependent)'
         },
         relationship: {
           type: 'string',
-          description: 'Optional description of the dependency relationship (e.g. "api-contract", "shared-types")',
-        },
+          description:
+            'Optional description of the dependency relationship (e.g. "api-contract", "shared-types")'
+        }
       },
-      required: ['upstream_sector_id', 'downstream_sector_id'],
-    },
+      required: ['upstream_sector_id', 'downstream_sector_id']
+    }
   },
   {
     name: 'remove_supply_route',
@@ -249,10 +258,10 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        route_id: { type: 'number', description: 'The Supply Route ID to remove' },
+        route_id: { type: 'number', description: 'The Supply Route ID to remove' }
       },
-      required: ['route_id'],
-    },
+      required: ['route_id']
+    }
   },
   {
     name: 'list_supply_routes',
@@ -260,68 +269,82 @@ export const ADMIRAL_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'Optional Sector filter (shows routes where Sector is upstream or downstream)' },
+        sector_id: {
+          type: 'string',
+          description:
+            'Optional Sector filter (shows routes where Sector is upstream or downstream)'
+        }
       },
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'supply_route_graph',
-    description: 'Get the full Supply Route dependency graph as an adjacency list (upstream -> downstream[]).',
+    description:
+      'Get the full Supply Route dependency graph as an adjacency list (upstream -> downstream[]).',
     input_schema: {
       type: 'object' as const,
       properties: {},
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'produce_cargo',
-    description: 'Record a Cargo artifact produced by a Crewmate in a Sector. Cargo flows along Supply Routes to downstream Sectors.',
+    description:
+      'Record a Cargo artifact produced by a Crewmate in a Sector. Cargo flows along Supply Routes to downstream Sectors.',
     input_schema: {
       type: 'object' as const,
       properties: {
         sector_id: { type: 'string', description: 'The Sector where the Cargo was produced' },
         crew_id: { type: 'string', description: 'Optional Crewmate that produced the Cargo' },
         mission_id: { type: 'number', description: 'Optional Mission that produced the Cargo' },
-        type: { type: 'string', description: 'Cargo type (e.g. "build", "api-schema", "types", "test-results")' },
-        manifest: { type: 'string', description: 'Description or manifest of the Cargo contents' },
+        type: {
+          type: 'string',
+          description: 'Cargo type (e.g. "build", "api-schema", "types", "test-results")'
+        },
+        manifest: { type: 'string', description: 'Description or manifest of the Cargo contents' }
       },
-      required: ['sector_id'],
-    },
+      required: ['sector_id']
+    }
   },
   {
     name: 'list_cargo',
-    description: 'List Cargo artifacts, optionally filtered by Sector, Crewmate, type, or verification status.',
+    description:
+      'List Cargo artifacts, optionally filtered by Sector, Crewmate, type, or verification status.',
     input_schema: {
       type: 'object' as const,
       properties: {
         sector_id: { type: 'string', description: 'Optional Sector filter' },
         crew_id: { type: 'string', description: 'Optional Crewmate filter' },
         type: { type: 'string', description: 'Optional Cargo type filter' },
-        verified: { type: 'boolean', description: 'Optional verification status filter' },
+        verified: { type: 'boolean', description: 'Optional verification status filter' }
       },
-      required: [],
-    },
+      required: []
+    }
   },
   {
     name: 'get_undelivered_cargo',
-    description: 'Get Cargo from upstream Sectors that has not yet been consumed by a downstream Sector.',
+    description:
+      'Get Cargo from upstream Sectors that has not yet been consumed by a downstream Sector.',
     input_schema: {
       type: 'object' as const,
       properties: {
-        sector_id: { type: 'string', description: 'The downstream Sector to check for undelivered Cargo' },
+        sector_id: {
+          type: 'string',
+          description: 'The downstream Sector to check for undelivered Cargo'
+        }
       },
-      required: ['sector_id'],
-    },
-  },
-];
+      required: ['sector_id']
+    }
+  }
+]
 
 export async function dispatchTool(
   toolName: string,
   input: Record<string, unknown>,
-  deps: AdmiralToolDeps,
+  deps: AdmiralToolDeps
 ): Promise<string> {
-  const { sectorService, missionService, crewService, commsService, ptyManager, createTab } = deps;
+  const { sectorService, missionService, crewService, commsService, ptyManager, createTab } = deps
 
   switch (toolName) {
     case 'deploy': {
@@ -329,29 +352,29 @@ export async function dispatchTool(
         {
           sectorId: input.sector_id as string,
           prompt: input.prompt as string,
-          missionId: input.mission_id as number | undefined,
+          missionId: input.mission_id as number | undefined
         },
         ptyManager,
-        createTab,
-      );
-      return JSON.stringify(result);
+        createTab
+      )
+      return JSON.stringify(result)
     }
 
     case 'recall': {
-      crewService.recallCrew(input.crew_id as string, ptyManager);
-      return JSON.stringify({ recalled: input.crew_id });
+      crewService.recallCrew(input.crew_id as string, ptyManager)
+      return JSON.stringify({ recalled: input.crew_id })
     }
 
     case 'crew': {
       const list = crewService.listCrew(
-        input.sector_id ? { sectorId: input.sector_id as string } : undefined,
-      );
-      return JSON.stringify(list);
+        input.sector_id ? { sectorId: input.sector_id as string } : undefined
+      )
+      return JSON.stringify(list)
     }
 
     case 'observe': {
-      const output = crewService.observeCrew(input.crew_id as string);
-      return output || '(no output captured)';
+      const output = crewService.observeCrew(input.crew_id as string)
+      return output || '(no output captured)'
     }
 
     case 'hail': {
@@ -359,31 +382,33 @@ export async function dispatchTool(
         from: 'admiral',
         to: input.to as string,
         type: 'directive',
-        payload: input.message as string,
-      });
-      return JSON.stringify({ transmissionId: id });
+        payload: input.message as string
+      })
+      return JSON.stringify({ transmissionId: id })
     }
 
     case 'inbox': {
-      const unread = commsService.getUnread('admiral');
-      return JSON.stringify(unread);
+      const unread = commsService.getUnread('admiral')
+      return JSON.stringify(unread)
     }
 
     case 'resolve': {
       const replyId = commsService.resolve(
         input.transmission_id as number,
-        input.response as string,
-      );
-      return JSON.stringify({ replyTransmissionId: replyId });
+        input.response as string
+      )
+      return JSON.stringify({ replyTransmissionId: replyId })
     }
 
     case 'ask': {
-      return JSON.stringify({ error: 'The ask command is not yet implemented. It will be available in Phase 4.' });
+      return JSON.stringify({
+        error: 'The ask command is not yet implemented. It will be available in Phase 4.'
+      })
     }
 
     case 'sectors': {
-      const list = sectorService.listSectors();
-      return JSON.stringify(list);
+      const list = sectorService.listSectors()
+      return JSON.stringify(list)
     }
 
     case 'add_sector': {
@@ -391,23 +416,23 @@ export async function dispatchTool(
         path: input.path as string,
         name: input.name as string | undefined,
         description: input.description as string | undefined,
-        baseBranch: input.base_branch as string | undefined,
-      });
-      return JSON.stringify(sector);
+        baseBranch: input.base_branch as string | undefined
+      })
+      return JSON.stringify(sector)
     }
 
     case 'sector_status': {
-      const sectorId = input.sector_id as string;
-      const sector = sectorService.getSector(sectorId);
-      if (!sector) return JSON.stringify({ error: `Sector not found: ${sectorId}` });
-      const crewList = crewService.listCrew({ sectorId });
-      const missionList = missionService.listMissions({ sectorId });
-      return JSON.stringify({ sector, crew: crewList, missions: missionList });
+      const sectorId = input.sector_id as string
+      const sector = sectorService.getSector(sectorId)
+      if (!sector) return JSON.stringify({ error: `Sector not found: ${sectorId}` })
+      const crewList = crewService.listCrew({ sectorId })
+      const missionList = missionService.listMissions({ sectorId })
+      return JSON.stringify({ sector, crew: crewList, missions: missionList })
     }
 
     case 'remove_sector': {
-      sectorService.removeSector(input.sector_id as string);
-      return JSON.stringify({ removed: input.sector_id });
+      sectorService.removeSector(input.sector_id as string)
+      return JSON.stringify({ removed: input.sector_id })
     }
 
     case 'add_mission': {
@@ -416,94 +441,100 @@ export async function dispatchTool(
         summary: input.summary as string,
         prompt: input.prompt as string,
         acceptanceCriteria: input.acceptance_criteria as string | undefined,
-        priority: input.priority as number | undefined,
-      });
-      return JSON.stringify(mission);
+        priority: input.priority as number | undefined
+      })
+      return JSON.stringify(mission)
     }
 
     case 'missions': {
       const list = missionService.listMissions({
         sectorId: input.sector_id as string | undefined,
-        status: input.status as string | undefined,
-      });
-      return JSON.stringify(list);
+        status: input.status as string | undefined
+      })
+      return JSON.stringify(list)
     }
 
     case 'next_mission': {
-      const mission = missionService.nextMission(input.sector_id as string);
-      return mission ? JSON.stringify(mission) : JSON.stringify({ message: 'No queued missions for this sector.' });
+      const mission = missionService.nextMission(input.sector_id as string)
+      return mission
+        ? JSON.stringify(mission)
+        : JSON.stringify({ message: 'No queued missions for this sector.' })
     }
 
     case 'complete_mission': {
-      missionService.completeMission(input.mission_id as number, input.result as string);
-      return JSON.stringify({ completed: input.mission_id });
+      missionService.completeMission(input.mission_id as number, input.result as string)
+      return JSON.stringify({ completed: input.mission_id })
     }
 
     case 'abort_mission': {
-      missionService.abortMission(input.mission_id as number);
-      return JSON.stringify({ aborted: input.mission_id });
+      missionService.abortMission(input.mission_id as number)
+      return JSON.stringify({ aborted: input.mission_id })
     }
 
     case 'add_supply_route': {
-      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      if (!deps.supplyRouteService)
+        return JSON.stringify({ error: 'SupplyRouteService not initialized.' })
       const route = deps.supplyRouteService.addRoute({
         upstreamSectorId: input.upstream_sector_id as string,
         downstreamSectorId: input.downstream_sector_id as string,
-        relationship: input.relationship as string | undefined,
-      });
-      return JSON.stringify(route);
+        relationship: input.relationship as string | undefined
+      })
+      return JSON.stringify(route)
     }
 
     case 'remove_supply_route': {
-      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
-      deps.supplyRouteService.removeRoute(input.route_id as number);
-      return JSON.stringify({ removed: input.route_id });
+      if (!deps.supplyRouteService)
+        return JSON.stringify({ error: 'SupplyRouteService not initialized.' })
+      deps.supplyRouteService.removeRoute(input.route_id as number)
+      return JSON.stringify({ removed: input.route_id })
     }
 
     case 'list_supply_routes': {
-      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
+      if (!deps.supplyRouteService)
+        return JSON.stringify({ error: 'SupplyRouteService not initialized.' })
       const routes = deps.supplyRouteService.listRoutes(
-        input.sector_id ? { sectorId: input.sector_id as string } : undefined,
-      );
-      return JSON.stringify(routes);
+        input.sector_id ? { sectorId: input.sector_id as string } : undefined
+      )
+      return JSON.stringify(routes)
     }
 
     case 'supply_route_graph': {
-      if (!deps.supplyRouteService) return JSON.stringify({ error: 'SupplyRouteService not initialized.' });
-      const graph = deps.supplyRouteService.getGraph();
-      return JSON.stringify(graph);
+      if (!deps.supplyRouteService)
+        return JSON.stringify({ error: 'SupplyRouteService not initialized.' })
+      const graph = deps.supplyRouteService.getGraph()
+      return JSON.stringify(graph)
     }
 
     case 'produce_cargo': {
-      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' })
       const cargo = deps.cargoService.produceCargo({
         sectorId: input.sector_id as string,
         crewId: input.crew_id as string | undefined,
         missionId: input.mission_id as number | undefined,
         type: input.type as string | undefined,
-        manifest: input.manifest as string | undefined,
-      });
-      return JSON.stringify(cargo);
+        manifest: input.manifest as string | undefined
+      })
+      return JSON.stringify(cargo)
     }
 
     case 'list_cargo': {
-      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' })
       const cargoList = deps.cargoService.listCargo({
         sectorId: input.sector_id as string | undefined,
         crewId: input.crew_id as string | undefined,
         type: input.type as string | undefined,
-        verified: input.verified as boolean | undefined,
-      });
-      return JSON.stringify(cargoList);
+        verified: input.verified as boolean | undefined
+      })
+      return JSON.stringify(cargoList)
     }
 
     case 'get_undelivered_cargo': {
-      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' });
-      const undelivered = deps.cargoService.getUndelivered(input.sector_id as string);
-      return JSON.stringify(undelivered);
+      if (!deps.cargoService) return JSON.stringify({ error: 'CargoService not initialized.' })
+      const undelivered = deps.cargoService.getUndelivered(input.sector_id as string)
+      return JSON.stringify(undelivered)
     }
 
     default:
-      return JSON.stringify({ error: `Unknown tool: ${toolName}` });
+      return JSON.stringify({ error: `Unknown tool: ${toolName}` })
   }
 }

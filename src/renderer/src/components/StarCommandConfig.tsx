@@ -1,43 +1,43 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useStarCommandStore } from '../store/star-command-store';
+import { useState, useEffect, useCallback } from 'react'
+import { useStarCommandStore } from '../store/star-command-store'
 
 // ---- Types ----
 
 type SectorRow = {
-  id: string;
-  name: string;
-  root_path: string;
-  stack: string | null;
-  description: string | null;
-  base_branch: string;
-  merge_strategy: string;
-  verify_command: string | null;
-  lint_command: string | null;
-  review_mode: string;
-  worktree_enabled: number;
-  created_at: string;
-  updated_at: string;
-};
+  id: string
+  name: string
+  root_path: string
+  stack: string | null
+  description: string | null
+  base_branch: string
+  merge_strategy: string
+  verify_command: string | null
+  lint_command: string | null
+  review_mode: string
+  worktree_enabled: number
+  created_at: string
+  updated_at: string
+}
 
 type SupplyRoute = {
-  id: number;
-  upstream_sector_id: string;
-  downstream_sector_id: string;
-  relationship: string | null;
-  created_at: string;
-};
+  id: number
+  upstream_sector_id: string
+  downstream_sector_id: string
+  relationship: string | null
+  created_at: string
+}
 
 type RetentionStats = {
-  tables: Record<string, number>;
-  dbSizeBytes: number;
-  dbPath: string;
-};
+  tables: Record<string, number>
+  dbSizeBytes: number
+  dbPath: string
+}
 
 type CleanupResult = {
-  comms: number;
-  cargo: number;
-  shipsLog: number;
-};
+  comms: number
+  cargo: number
+  shipsLog: number
+}
 
 // ---- Sub-components ----
 
@@ -45,11 +45,9 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
-      {count !== undefined && (
-        <span className="ml-1 text-neutral-600">({count})</span>
-      )}
+      {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  );
+  )
 }
 
 // ---- Sectors Section ----
@@ -57,13 +55,13 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
 function SectorCard({
   sector,
   onRemove,
-  onUpdate,
+  onUpdate
 }: {
-  sector: SectorRow;
-  onRemove: (id: string) => void;
-  onUpdate: (id: string, fields: Record<string, unknown>) => void;
+  sector: SectorRow
+  onRemove: (id: string) => void
+  onUpdate: (id: string, fields: Record<string, unknown>) => void
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(false)
 
   return (
     <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
@@ -137,9 +135,7 @@ function SectorCard({
                 type="text"
                 value={sector.verify_command ?? ''}
                 placeholder="e.g. npm test"
-                onChange={(e) =>
-                  onUpdate(sector.id, { verify_command: e.target.value || null })
-                }
+                onChange={(e) => onUpdate(sector.id, { verify_command: e.target.value || null })}
                 className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
               />
             </div>
@@ -149,9 +145,7 @@ function SectorCard({
                 type="text"
                 value={sector.lint_command ?? ''}
                 placeholder="e.g. npm run lint"
-                onChange={(e) =>
-                  onUpdate(sector.id, { lint_command: e.target.value || null })
-                }
+                onChange={(e) => onUpdate(sector.id, { lint_command: e.target.value || null })}
                 className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
               />
             </div>
@@ -180,56 +174,56 @@ function SectorCard({
         </div>
       )}
     </div>
-  );
+  )
 }
 
 function SectorsSection() {
-  const { sectors, setSectors } = useStarCommandStore();
-  const [addPath, setAddPath] = useState('');
-  const [addName, setAddName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { sectors, setSectors } = useStarCommandStore()
+  const [addPath, setAddPath] = useState('')
+  const [addName, setAddName] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
-    window.fleet.starbase.listSectors().then((s) => setSectors(s as never[]));
-  }, [setSectors]);
+    window.fleet.starbase.listSectors().then((s) => setSectors(s as never[]))
+  }, [setSectors])
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refresh()
+  }, [refresh])
 
   const handleAdd = async () => {
-    if (!addPath.trim()) return;
-    setError(null);
+    if (!addPath.trim()) return
+    setError(null)
     try {
       await window.fleet.starbase.addSector({
         path: addPath.trim(),
-        name: addName.trim() || undefined,
-      });
-      setAddPath('');
-      setAddName('');
-      refresh();
+        name: addName.trim() || undefined
+      })
+      setAddPath('')
+      setAddName('')
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add sector');
+      setError(err instanceof Error ? err.message : 'Failed to add sector')
     }
-  };
+  }
 
   const handleRemove = async (sectorId: string) => {
     try {
-      await window.fleet.starbase.removeSector(sectorId);
-      refresh();
+      await window.fleet.starbase.removeSector(sectorId)
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove sector');
+      setError(err instanceof Error ? err.message : 'Failed to remove sector')
     }
-  };
+  }
 
   const handleUpdate = async (sectorId: string, fields: Record<string, unknown>) => {
     try {
-      await window.fleet.starbase.updateSector(sectorId, fields);
-      refresh();
+      await window.fleet.starbase.updateSector(sectorId, fields)
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update sector');
+      setError(err instanceof Error ? err.message : 'Failed to update sector')
     }
-  };
+  }
 
   return (
     <section>
@@ -243,9 +237,7 @@ function SectorsSection() {
         {(sectors as SectorRow[]).map((s) => (
           <SectorCard key={s.id} sector={s} onRemove={handleRemove} onUpdate={handleUpdate} />
         ))}
-        {sectors.length === 0 && (
-          <p className="text-xs text-neutral-600">No sectors registered</p>
-        )}
+        {sectors.length === 0 && <p className="text-xs text-neutral-600">No sectors registered</p>}
       </div>
 
       <div className="bg-neutral-800/50 rounded-lg border border-neutral-700 border-dashed p-3 space-y-2">
@@ -275,68 +267,68 @@ function SectorsSection() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 // ---- Supply Routes Section ----
 
 function SupplyRoutesSection() {
-  const { sectors } = useStarCommandStore();
-  const [routes, setRoutes] = useState<SupplyRoute[]>([]);
-  const [graph, setGraph] = useState<Record<string, string[]>>({});
-  const [upstream, setUpstream] = useState('');
-  const [downstream, setDownstream] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const { sectors } = useStarCommandStore()
+  const [routes, setRoutes] = useState<SupplyRoute[]>([])
+  const [graph, setGraph] = useState<Record<string, string[]>>({})
+  const [upstream, setUpstream] = useState('')
+  const [downstream, setDownstream] = useState('')
+  const [error, setError] = useState<string | null>(null)
 
-  const sectorList = sectors as SectorRow[];
+  const sectorList = sectors as SectorRow[]
 
   const refresh = useCallback(async () => {
     try {
       const [r, g] = await Promise.all([
         window.fleet.starbase.listSupplyRoutes(),
-        window.fleet.starbase.getSupplyRouteGraph(),
-      ]);
-      setRoutes(r as SupplyRoute[]);
-      setGraph(g);
+        window.fleet.starbase.getSupplyRouteGraph()
+      ])
+      setRoutes(r as SupplyRoute[])
+      setGraph(g)
     } catch {
       // services may not be initialized
     }
-  }, []);
+  }, [])
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refresh()
+  }, [refresh])
 
   const handleAdd = async () => {
-    if (!upstream || !downstream) return;
-    setError(null);
+    if (!upstream || !downstream) return
+    setError(null)
     try {
       await window.fleet.starbase.addSupplyRoute({
         upstreamSectorId: upstream,
-        downstreamSectorId: downstream,
-      });
-      setUpstream('');
-      setDownstream('');
-      refresh();
+        downstreamSectorId: downstream
+      })
+      setUpstream('')
+      setDownstream('')
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add route');
+      setError(err instanceof Error ? err.message : 'Failed to add route')
     }
-  };
+  }
 
   const handleRemove = async (routeId: number) => {
     try {
-      await window.fleet.starbase.removeSupplyRoute(routeId);
-      refresh();
+      await window.fleet.starbase.removeSupplyRoute(routeId)
+      refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove route');
+      setError(err instanceof Error ? err.message : 'Failed to remove route')
     }
-  };
+  }
 
   // Collect all sector IDs from graph for the visual
-  const allNodes = new Set<string>();
+  const allNodes = new Set<string>()
   for (const [from, tos] of Object.entries(graph)) {
-    allNodes.add(from);
-    for (const to of tos) allNodes.add(to);
+    allNodes.add(from)
+    for (const to of tos) allNodes.add(to)
   }
 
   return (
@@ -363,7 +355,7 @@ function SupplyRoutesSection() {
                     {to}
                   </span>
                 </div>
-              )),
+              ))
             )}
           </div>
         </div>
@@ -437,48 +429,66 @@ function SupplyRoutesSection() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 // ---- Starbase Settings Section ----
 
-const CONFIG_FIELDS: { key: string; label: string; type: 'number' | 'text' | 'select'; options?: string[] }[] = [
+const CONFIG_FIELDS: {
+  key: string
+  label: string
+  type: 'number' | 'text' | 'select'
+  options?: string[]
+}[] = [
   { key: 'max_concurrent_worktrees', label: 'Max Concurrent Worktrees', type: 'number' },
   { key: 'worktree_pool_size', label: 'Worktree Pool Size', type: 'number' },
   { key: 'disk_budget_mb', label: 'Disk Budget (MB)', type: 'number' },
   { key: 'mission_timeout_min', label: 'Mission Timeout (min)', type: 'number' },
-  { key: 'merge_strategy', label: 'Default Merge Strategy', type: 'select', options: ['pr', 'direct', 'squash'] },
+  {
+    key: 'merge_strategy',
+    label: 'Default Merge Strategy',
+    type: 'select',
+    options: ['pr', 'direct', 'squash']
+  },
   { key: 'comms_rate_limit_per_min', label: 'Comms Rate Limit (/min)', type: 'number' },
   { key: 'token_budget', label: 'Token Budget', type: 'number' },
   { key: 'lifesign_interval_sec', label: 'Lifesign Interval (sec)', type: 'number' },
   { key: 'lifesign_timeout_sec', label: 'Lifesign Timeout (sec)', type: 'number' },
-  { key: 'review_mode', label: 'Default Review Mode', type: 'select', options: ['admiral-review', 'auto-merge', 'manual'] },
+  {
+    key: 'review_mode',
+    label: 'Default Review Mode',
+    type: 'select',
+    options: ['admiral-review', 'auto-merge', 'manual']
+  },
   { key: 'review_timeout_min', label: 'Review Timeout (min)', type: 'number' },
   { key: 'comms_retention_days', label: 'Comms Retention (days)', type: 'number' },
   { key: 'cargo_retention_days', label: 'Cargo Retention (days)', type: 'number' },
-  { key: 'ships_log_retention_days', label: 'Ships Log Retention (days)', type: 'number' },
-];
+  { key: 'ships_log_retention_days', label: 'Ships Log Retention (days)', type: 'number' }
+]
 
 function StarbaseSettingsSection() {
-  const [config, setConfig] = useState<Record<string, unknown>>({});
-  const [saving, setSaving] = useState<string | null>(null);
+  const [config, setConfig] = useState<Record<string, unknown>>({})
+  const [saving, setSaving] = useState<string | null>(null)
 
   useEffect(() => {
-    window.fleet.starbase.getConfig().then(setConfig).catch(() => {});
-  }, []);
+    window.fleet.starbase
+      .getConfig()
+      .then(setConfig)
+      .catch(() => {})
+  }, [])
 
   const handleChange = async (key: string, value: unknown) => {
-    setConfig((prev) => ({ ...prev, [key]: value }));
-    setSaving(key);
+    setConfig((prev) => ({ ...prev, [key]: value }))
+    setSaving(key)
     try {
-      await window.fleet.starbase.setConfig(key, value);
+      await window.fleet.starbase.setConfig(key, value)
     } catch {
       // revert on error
-      const fresh = await window.fleet.starbase.getConfig();
-      setConfig(fresh);
+      const fresh = await window.fleet.starbase.getConfig()
+      setConfig(fresh)
     }
-    setSaving(null);
-  };
+    setSaving(null)
+  }
 
   return (
     <section>
@@ -489,9 +499,7 @@ function StarbaseSettingsSection() {
             <div key={field.key}>
               <label className="text-xs text-neutral-500 block mb-1">
                 {field.label}
-                {saving === field.key && (
-                  <span className="text-yellow-400 ml-1">saving...</span>
-                )}
+                {saving === field.key && <span className="text-yellow-400 ml-1">saving...</span>}
               </label>
               {field.type === 'select' ? (
                 <select
@@ -509,7 +517,9 @@ function StarbaseSettingsSection() {
                 <input
                   type="number"
                   value={(config[field.key] as number) ?? ''}
-                  onChange={(e) => handleChange(field.key, e.target.value ? Number(e.target.value) : null)}
+                  onChange={(e) =>
+                    handleChange(field.key, e.target.value ? Number(e.target.value) : null)
+                  }
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
               ) : (
@@ -525,53 +535,56 @@ function StarbaseSettingsSection() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 // ---- Database Section ----
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 function DatabaseSection() {
-  const [stats, setStats] = useState<RetentionStats | null>(null);
-  const [cleaning, setCleaning] = useState(false);
-  const [vacuuming, setVacuuming] = useState(false);
-  const [lastCleanup, setLastCleanup] = useState<CleanupResult | null>(null);
+  const [stats, setStats] = useState<RetentionStats | null>(null)
+  const [cleaning, setCleaning] = useState(false)
+  const [vacuuming, setVacuuming] = useState(false)
+  const [lastCleanup, setLastCleanup] = useState<CleanupResult | null>(null)
 
   const refresh = useCallback(() => {
-    window.fleet.starbase.getRetentionStats().then((s) => setStats(s as RetentionStats)).catch(() => {});
-  }, []);
+    window.fleet.starbase
+      .getRetentionStats()
+      .then((s) => setStats(s as RetentionStats))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refresh()
+  }, [refresh])
 
   const handleCleanup = async () => {
-    setCleaning(true);
+    setCleaning(true)
     try {
-      const result = (await window.fleet.starbase.retentionCleanup()) as CleanupResult;
-      setLastCleanup(result);
-      refresh();
+      const result = (await window.fleet.starbase.retentionCleanup()) as CleanupResult
+      setLastCleanup(result)
+      refresh()
     } catch {
       // ignore
     }
-    setCleaning(false);
-  };
+    setCleaning(false)
+  }
 
   const handleVacuum = async () => {
-    setVacuuming(true);
+    setVacuuming(true)
     try {
-      await window.fleet.starbase.retentionVacuum();
-      refresh();
+      await window.fleet.starbase.retentionVacuum()
+      refresh()
     } catch {
       // ignore
     }
-    setVacuuming(false);
-  };
+    setVacuuming(false)
+  }
 
   return (
     <section>
@@ -594,10 +607,7 @@ function DatabaseSection() {
               <label className="text-xs text-neutral-500 block mb-1">Row Counts</label>
               <div className="grid grid-cols-4 gap-1">
                 {Object.entries(stats.tables).map(([table, count]) => (
-                  <div
-                    key={table}
-                    className="bg-neutral-900 rounded px-2 py-1 text-xs"
-                  >
+                  <div key={table} className="bg-neutral-900 rounded px-2 py-1 text-xs">
                     <div className="text-neutral-500">{table}</div>
                     <div className="text-neutral-200 font-mono">{count}</div>
                   </div>
@@ -611,7 +621,8 @@ function DatabaseSection() {
 
         {lastCleanup && (
           <div className="text-xs text-green-400 bg-green-900/20 rounded px-2 py-1">
-            Cleaned: {lastCleanup.comms} comms, {lastCleanup.cargo} cargo, {lastCleanup.shipsLog} logs
+            Cleaned: {lastCleanup.comms} comms, {lastCleanup.cargo} cargo, {lastCleanup.shipsLog}{' '}
+            logs
           </div>
         )}
 
@@ -633,7 +644,7 @@ function DatabaseSection() {
         </div>
       </div>
     </section>
-  );
+  )
 }
 
 // ---- Main Config Component ----
@@ -646,5 +657,5 @@ export function StarCommandConfig() {
       <StarbaseSettingsSection />
       <DatabaseSection />
     </div>
-  );
+  )
 }

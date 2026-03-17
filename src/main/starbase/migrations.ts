@@ -1,8 +1,8 @@
 export type Migration = {
-  version: number;
-  name: string;
-  sql: string;
-};
+  version: number
+  name: string
+  sql: string
+}
 
 export const MIGRATIONS: Migration[] = [
   {
@@ -114,7 +114,7 @@ export const MIGRATIONS: Migration[] = [
         value TEXT NOT NULL,
         updated_at DATETIME DEFAULT (datetime('now'))
       );
-    `,
+    `
   },
   {
     version: 2,
@@ -123,7 +123,7 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE crew ADD COLUMN pool_status TEXT;
       ALTER TABLE crew ADD COLUMN pooled_at DATETIME;
       ALTER TABLE crew ADD COLUMN comms_count_minute INTEGER DEFAULT 0;
-    `,
+    `
   },
   {
     version: 3,
@@ -132,9 +132,9 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_cargo_sector ON cargo(sector_id);
       CREATE INDEX IF NOT EXISTS idx_comms_to ON comms(to_crew, read);
       CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status, sector_id);
-    `,
-  },
-];
+    `
+  }
+]
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
   max_concurrent_worktrees: 5,
@@ -151,5 +151,5 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   comms_retention_days: 30,
   cargo_retention_days: 14,
   ships_log_retention_days: 30,
-  forward_failed_cargo: false,
-};
+  forward_failed_cargo: false
+}

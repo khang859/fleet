@@ -1,38 +1,38 @@
 type SectorInfo = {
-  id: string;
-  name: string;
-  root_path: string;
-  stack: string | null;
-  base_branch: string;
-};
+  id: string
+  name: string
+  root_path: string
+  stack: string | null
+  base_branch: string
+}
 
 type CrewInfo = {
-  id: string;
-  sector_id: string;
-  status: string;
-  mission_summary: string | null;
-};
+  id: string
+  sector_id: string
+  status: string
+  mission_summary: string | null
+}
 
 type MissionInfo = {
-  id: number;
-  sector_id: string;
-  status: string;
-  summary: string;
-};
+  id: number
+  sector_id: string
+  status: string
+  summary: string
+}
 
 type SupplyRouteInfo = {
-  upstream_sector_id: string;
-  downstream_sector_id: string;
-  relationship: string | null;
-};
+  upstream_sector_id: string
+  downstream_sector_id: string
+  relationship: string | null
+}
 
 type StarbaseState = {
-  workspacePath: string;
-  sectors: SectorInfo[];
-  crew: CrewInfo[];
-  missions: MissionInfo[];
-  supplyRoutes?: SupplyRouteInfo[];
-};
+  workspacePath: string
+  sectors: SectorInfo[]
+  crew: CrewInfo[]
+  missions: MissionInfo[]
+  supplyRoutes?: SupplyRouteInfo[]
+}
 
 export function buildAdmiralSystemPrompt(state: StarbaseState): string {
   const sectorList =
@@ -40,38 +40,40 @@ export function buildAdmiralSystemPrompt(state: StarbaseState): string {
       ? state.sectors
           .map(
             (s) =>
-              `- **${s.id}** (${s.name}): ${s.root_path} [${s.stack ?? 'unknown stack'}] base: ${s.base_branch}`,
+              `- **${s.id}** (${s.name}): ${s.root_path} [${s.stack ?? 'unknown stack'}] base: ${s.base_branch}`
           )
           .join('\n')
-      : '_No Sectors registered._';
+      : '_No Sectors registered._'
 
   const activeCrew =
     state.crew.filter((c) => c.status === 'active').length > 0
       ? state.crew
           .filter((c) => c.status === 'active')
-          .map((c) => `- **${c.id}** → Sector: ${c.sector_id}, Mission: ${c.mission_summary ?? 'none'}`)
+          .map(
+            (c) => `- **${c.id}** → Sector: ${c.sector_id}, Mission: ${c.mission_summary ?? 'none'}`
+          )
           .join('\n')
-      : '_No active Crew._';
+      : '_No active Crew._'
 
-  const missionQueue = state.missions.filter((m) => m.status === 'queued');
-  const activeMissions = state.missions.filter((m) => m.status === 'active');
+  const missionQueue = state.missions.filter((m) => m.status === 'queued')
+  const activeMissions = state.missions.filter((m) => m.status === 'active')
   const missionSummary =
     missionQueue.length + activeMissions.length > 0
       ? [
           ...activeMissions.map((m) => `- [ACTIVE] #${m.id} ${m.sector_id}: ${m.summary}`),
-          ...missionQueue.map((m) => `- [QUEUED] #${m.id} ${m.sector_id}: ${m.summary}`),
+          ...missionQueue.map((m) => `- [QUEUED] #${m.id} ${m.sector_id}: ${m.summary}`)
         ].join('\n')
-      : '_No queued or active Missions._';
+      : '_No queued or active Missions._'
 
   const supplyRouteList =
     state.supplyRoutes && state.supplyRoutes.length > 0
       ? state.supplyRoutes
           .map(
             (r) =>
-              `- ${r.upstream_sector_id} → ${r.downstream_sector_id}${r.relationship ? ` (${r.relationship})` : ''}`,
+              `- ${r.upstream_sector_id} → ${r.downstream_sector_id}${r.relationship ? ` (${r.relationship})` : ''}`
           )
           .join('\n')
-      : '_No Supply Routes defined._';
+      : '_No Supply Routes defined._'
 
   return `You are the Admiral — the AI command interface for Fleet's Star Command system. You help the user manage their coding agents (Crewmates) across multiple code repositories (Sectors).
 
@@ -142,5 +144,5 @@ When Missions span Sectors with Supply Routes, respect the dependency graph:
 4. **Report status concisely.** When listing Crew or Missions, summarize rather than dumping raw data.
 5. **Use the right tool.** Don't describe what you would do — actually call the tool.
 6. **Handle errors gracefully.** If a tool call fails, explain what went wrong and suggest alternatives.
-7. **Be conversational but efficient.** You're a commander, not a chatbot. Keep responses focused.`;
+7. **Be conversational but efficient.** You're a commander, not a chatbot. Keep responses focused.`
 }

@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { homedir } from 'os';
-import { IPC_CHANNELS } from '../shared/constants';
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
+import { homedir } from 'os'
+import { IPC_CHANNELS } from '../shared/constants'
 import type {
   PtyCreateRequest,
   PtyCreateResponse,
@@ -15,107 +15,103 @@ import type {
   PaneFocusedPayload,
   AgentStatePayload,
   GitStatusPayload,
-  GitIsRepoPayload,
-} from '../shared/ipc-api';
-import type { Workspace, FleetSettings } from '../shared/types';
+  GitIsRepoPayload
+} from '../shared/ipc-api'
+import type { Workspace, FleetSettings } from '../shared/types'
 
 const fleetApi = {
   pty: {
     create: (req: PtyCreateRequest): Promise<PtyCreateResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.PTY_CREATE, req),
-    input: (payload: PtyInputPayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_INPUT, payload),
-    resize: (payload: PtyResizePayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
-    kill: (paneId: string): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
-    gc: (activePaneIds: string[]): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
+    input: (payload: PtyInputPayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_INPUT, payload),
+    resize: (payload: PtyResizePayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
+    kill: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
+    gc: (activePaneIds: string[]): void => ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
     onData: (callback: (payload: PtyDataPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.PTY_DATA, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_DATA, handler);
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.PTY_DATA, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_DATA, handler)
     },
     onExit: (callback: (payload: PtyExitPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: PtyExitPayload) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.PTY_EXIT, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_EXIT, handler);
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyExitPayload) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.PTY_EXIT, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_EXIT, handler)
     },
     onCwd: (callback: (payload: PtyCwdPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: PtyCwdPayload) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.PTY_CWD, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_CWD, handler);
-    },
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyCwdPayload) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.PTY_CWD, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_CWD, handler)
+    }
   },
   layout: {
     save: (req: LayoutSaveRequest): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_SAVE, req),
     load: (workspaceId: string): Promise<Workspace> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
-    list: (): Promise<LayoutListResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
+    list: (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
     delete: (workspaceId: string): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_DELETE, workspaceId),
+      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_DELETE, workspaceId)
   },
   notifications: {
     onNotification: (callback: (payload: NotificationPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: NotificationPayload) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.NOTIFICATION, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.NOTIFICATION, handler);
+      const handler = (_event: Electron.IpcRendererEvent, payload: NotificationPayload) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.NOTIFICATION, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.NOTIFICATION, handler)
     },
     paneFocused: (payload: PaneFocusedPayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload),
+      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload)
   },
   agentState: {
     onStateUpdate: (callback: (payload: AgentStatePayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: AgentStatePayload) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.AGENT_STATE, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_STATE, handler);
-    },
+      const handler = (_event: Electron.IpcRendererEvent, payload: AgentStatePayload) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.AGENT_STATE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_STATE, handler)
+    }
   },
   homeDir: homedir(),
   platform: process.platform,
   utils: {
-    getFilePath: (file: File): string => webUtils.getPathForFile(file),
+    getFilePath: (file: File): string => webUtils.getPathForFile(file)
   },
   settings: {
-    get: (): Promise<FleetSettings> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    get: (): Promise<FleetSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     set: (settings: Partial<FleetSettings>): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings),
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings)
   },
   git: {
     isRepo: (cwd: string): Promise<GitIsRepoPayload> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
     getStatus: (cwd: string): Promise<GitStatusPayload> =>
-      ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd),
+      ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd)
   },
   admiral: {
     sendMessage: (content: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_SEND, content),
-    getHistory: (): Promise<unknown[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_GET_HISTORY),
-    reset: (): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
+    getHistory: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_GET_HISTORY),
+    reset: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
     onStreamChunk: (callback: (chunk: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, chunk: unknown) => callback(chunk);
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler);
+      const handler = (_event: Electron.IpcRendererEvent, chunk: unknown) => callback(chunk)
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler)
     },
     onStreamEnd: (callback: () => void) => {
-      const handler = () => callback();
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_END, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_END, handler);
+      const handler = () => callback()
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_END, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_END, handler)
     },
     onStreamError: (callback: (err: { error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, err: { error: string }) => callback(err);
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler);
-    },
+      const handler = (_event: Electron.IpcRendererEvent, err: { error: string }) => callback(err)
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler)
+    }
   },
   starbase: {
-    listSectors: (): Promise<unknown[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
+    listSectors: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
     listCrew: (filter?: unknown): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW, filter),
     listMissions: (filter?: unknown): Promise<unknown[]> =>
@@ -123,9 +119,9 @@ const fleetApi = {
     getUnreadComms: (): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
     onStatusUpdate: (callback: (payload: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
-      ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler)
     },
     listSupplyRoutes: (opts?: unknown): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
@@ -152,24 +148,23 @@ const fleetApi = {
     removeSector: (sectorId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
   updates: {
-    checkForUpdates: (): Promise<void> =>
-      ipcRenderer.invoke('fleet:update-check'),
+    checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {
-      const handler = (_e: Electron.IpcRendererEvent, status: import('../shared/types').UpdateStatus) =>
-        callback(status);
-      ipcRenderer.on('fleet:update-status', handler);
-      return () => ipcRenderer.removeListener('fleet:update-status', handler);
+      const handler = (
+        _e: Electron.IpcRendererEvent,
+        status: import('../shared/types').UpdateStatus
+      ) => callback(status)
+      ipcRenderer.on('fleet:update-status', handler)
+      return () => ipcRenderer.removeListener('fleet:update-status', handler)
     },
-    installUpdate: (): void =>
-      ipcRenderer.send('fleet:install-update'),
-    getVersion: (): Promise<string> =>
-      ipcRenderer.invoke('fleet:get-version'),
-  },
-};
+    installUpdate: (): void => ipcRenderer.send('fleet:install-update'),
+    getVersion: (): Promise<string> => ipcRenderer.invoke('fleet:get-version')
+  }
+}
 
-contextBridge.exposeInMainWorld('fleet', fleetApi);
+contextBridge.exposeInMainWorld('fleet', fleetApi)
 
-export type FleetApi = typeof fleetApi;
+export type FleetApi = typeof fleetApi

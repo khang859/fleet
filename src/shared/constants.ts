@@ -1,6 +1,6 @@
-import { join } from 'path';
-import { homedir } from 'os';
-import type { FleetSettings } from './types';
+import { join } from 'path'
+import { homedir } from 'os'
+import type { FleetSettings } from './types'
 
 export const IPC_CHANNELS = {
   PTY_CREATE: 'pty:create',
@@ -49,20 +49,18 @@ export const IPC_CHANNELS = {
   ADMIRAL_RESET: 'admiral:reset',
   ADMIRAL_STREAM_CHUNK: 'admiral:stream-chunk',
   ADMIRAL_STREAM_END: 'admiral:stream-end',
-  ADMIRAL_STREAM_ERROR: 'admiral:stream-error',
-} as const;
+  ADMIRAL_STREAM_ERROR: 'admiral:stream-error'
+} as const
 
-export const DEFAULT_SCROLLBACK = 10_000;
+export const DEFAULT_SCROLLBACK = 10_000
 
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.
 
 export const SOCKET_PATH =
-  process.platform === 'win32'
-    ? '\\\\.\\pipe\\fleet'
-    : join(homedir(), '.fleet', 'fleet.sock');
+  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock')
 
-export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
+export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
 
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
@@ -70,17 +68,17 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     scrollbackSize: DEFAULT_SCROLLBACK,
     fontFamily: 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     fontSize: 14,
-    theme: 'dark',
+    theme: 'dark'
   },
   notifications: {
     taskComplete: { badge: true, sound: false, os: false },
     needsPermission: { badge: true, sound: true, os: true },
     processExitError: { badge: true, sound: false, os: false },
-    processExitClean: { badge: false, sound: false, os: false },
+    processExitClean: { badge: false, sound: false, os: false }
   },
   socketApi: {
     enabled: true,
-    socketPath: '',
+    socketPath: ''
   },
   visualizer: {
     panelMode: 'drawer',
@@ -104,8 +102,8 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       zoomEnabled: true,
       bloomGlow: true,
       starColorVariety: true,
-      depthOfField: true,
+      depthOfField: true
     },
-    soundVolume: 0.3,
-  },
-};
+    soundVolume: 0.3
+  }
+}

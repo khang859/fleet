@@ -1,37 +1,37 @@
-import type Database from 'better-sqlite3';
+import type Database from 'better-sqlite3'
 
 type MissionRow = {
-  id: number;
-  sector_id: string;
-  crew_id: string | null;
-  summary: string;
-  prompt: string;
-  acceptance_criteria: string | null;
-  status: string;
-  priority: number;
-  depends_on_mission_id: number | null;
-  result: string | null;
-  verify_result: string | null;
-  review_verdict: string | null;
-  review_notes: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-};
+  id: number
+  sector_id: string
+  crew_id: string | null
+  summary: string
+  prompt: string
+  acceptance_criteria: string | null
+  status: string
+  priority: number
+  depends_on_mission_id: number | null
+  result: string | null
+  verify_result: string | null
+  review_verdict: string | null
+  review_notes: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
 
 type AddMissionOpts = {
-  sectorId: string;
-  summary: string;
-  prompt: string;
-  acceptanceCriteria?: string;
-  priority?: number;
-  dependsOnMissionId?: number;
-};
+  sectorId: string
+  summary: string
+  prompt: string
+  acceptanceCriteria?: string
+  priority?: number
+  dependsOnMissionId?: number
+}
 
 type ListMissionsFilter = {
-  sectorId?: string;
-  status?: string;
-};
+  sectorId?: string
+  status?: string
+}
 
 export class MissionService {
   constructor(private db: Database.Database) {}
@@ -40,7 +40,7 @@ export class MissionService {
     const result = this.db
       .prepare(
         `INSERT INTO missions (sector_id, summary, prompt, acceptance_criteria, priority, depends_on_mission_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(
         opts.sectorId,
@@ -48,67 +48,67 @@ export class MissionService {
         opts.prompt,
         opts.acceptanceCriteria ?? null,
         opts.priority ?? 0,
-        opts.dependsOnMissionId ?? null,
-      );
+        opts.dependsOnMissionId ?? null
+      )
 
-    return this.getMission(result.lastInsertRowid as number)!;
+    return this.getMission(result.lastInsertRowid as number)!
   }
 
   completeMission(missionId: number, result: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
-      .run(result, missionId);
+      .run(result, missionId)
   }
 
   failMission(missionId: number, reason: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
-      .run(reason, missionId);
+      .run(reason, missionId)
   }
 
   abortMission(missionId: number): void {
     this.db
       .prepare("UPDATE missions SET status = 'aborted' WHERE id = ? AND status = 'queued'")
-      .run(missionId);
+      .run(missionId)
   }
 
   activateMission(missionId: number, crewId: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
       )
-      .run(crewId, missionId);
+      .run(crewId, missionId)
   }
 
   setStatus(missionId: number, status: string): void {
-    this.db.prepare('UPDATE missions SET status = ? WHERE id = ?').run(status, missionId);
+    this.db.prepare('UPDATE missions SET status = ? WHERE id = ?').run(status, missionId)
   }
 
   getMission(missionId: number): MissionRow | undefined {
     return this.db.prepare('SELECT * FROM missions WHERE id = ?').get(missionId) as
       | MissionRow
-      | undefined;
+      | undefined
   }
 
   listMissions(filter?: ListMissionsFilter): MissionRow[] {
-    let sql = 'SELECT * FROM missions WHERE 1=1';
-    const params: unknown[] = [];
+    let sql = 'SELECT * FROM missions WHERE 1=1'
+    const params: unknown[] = []
 
     if (filter?.sectorId) {
-      sql += ' AND sector_id = ?';
-      params.push(filter.sectorId);
+      sql += ' AND sector_id = ?'
+      params.push(filter.sectorId)
     }
     if (filter?.status) {
-      sql += ' AND status = ?';
-      params.push(filter.status);
+      sql += ' AND status = ?'
+      params.push(filter.status)
     }
 
-    sql += ' ORDER BY priority ASC, created_at ASC';
-    return this.db.prepare(sql).all(...params) as MissionRow[];
+    sql += ' ORDER BY priority ASC, created_at ASC'
+    return this.db.prepare(sql).all(...params) as MissionRow[]
   }
 
   nextMission(sectorId: string): MissionRow | undefined {
@@ -119,30 +119,34 @@ export class MissionService {
          AND (depends_on_mission_id IS NULL
               OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
          ORDER BY priority ASC, created_at ASC
-         LIMIT 1`,
+         LIMIT 1`
       )
-      .get(sectorId) as MissionRow | undefined;
+      .get(sectorId) as MissionRow | undefined
   }
 
   setReviewVerdict(missionId: number, verdict: string, notes: string): void {
-    this.db.prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')
-      .run(verdict, notes, missionId);
+    this.db
+      .prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')
+      .run(verdict, notes, missionId)
   }
 
-  updateMission(missionId: number, fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>): void {
-    const sets: string[] = [];
-    const values: unknown[] = [];
+  updateMission(
+    missionId: number,
+    fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>
+  ): void {
+    const sets: string[] = []
+    const values: unknown[] = []
 
     for (const [key, value] of Object.entries(fields)) {
       if (value !== undefined) {
-        sets.push(`${key} = ?`);
-        values.push(value);
+        sets.push(`${key} = ?`)
+        values.push(value)
       }
     }
 
-    if (sets.length === 0) return;
-    values.push(missionId);
+    if (sets.length === 0) return
+    values.push(missionId)
 
-    this.db.prepare(`UPDATE missions SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    this.db.prepare(`UPDATE missions SET ${sets.join(', ')} WHERE id = ?`).run(...values)
   }
 }
