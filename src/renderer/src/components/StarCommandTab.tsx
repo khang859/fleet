@@ -4,6 +4,7 @@ import type { AdmiralChatMessage } from '../store/star-command-store'
 import { StarCommandConfig } from './StarCommandConfig'
 import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
+import { StarCommandScene } from './star-command/StarCommandScene'
 
 type StreamChunk = {
   type: string
@@ -318,7 +319,7 @@ export function StarCommandTab() {
         </div>{/* end flex row */}
       </CrtFrame>
 
-      <div className="flex-1 min-w-[280px] bg-[#0a0a1a]" />
+      <StarCommandScene className="flex-1 min-w-[280px]" />
     </div>
   )
 }
