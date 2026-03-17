@@ -5,6 +5,7 @@ import { CrewPodRenderer } from '../visualizer/crew-pods'
 import { mapSectors, mapCrew } from './scene-utils'
 import type { SectorState } from '../visualizer/station-ring'
 import type { PodState } from '../visualizer/crew-pods'
+import { loadScSpriteSheet, isScSpriteReady, drawScSprite } from './sc-sprite-loader'
 
 export function StarCommandScene({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -24,6 +25,8 @@ export function StarCommandScene({ className }: { className?: string }) {
   }, [sectors, crewList])
 
   useEffect(() => {
+    loadScSpriteSheet()
+
     const canvas = canvasRef.current
     const container = containerRef.current
     if (!canvas || !container) return
@@ -128,6 +131,13 @@ export function StarCommandScene({ className }: { className?: string }) {
       stationRing.render(ctx!, cx, cy)
       crewPods.render(ctx!, cx, cy, stationRing)
       ctx!.restore()
+
+      // Station hub sprite (centered, drawn on top of ring)
+      if (isScSpriteReady()) {
+        const hubSize = 128 * scale
+        ctx!.imageSmoothingEnabled = false
+        drawScSprite(ctx!, 'station-hub', elapsed, cx - hubSize / 2, cy - hubSize / 2, hubSize, hubSize)
+      }
 
       rafRef.current = requestAnimationFrame(frame)
     }
