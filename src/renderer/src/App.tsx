@@ -94,8 +94,8 @@ export function App() {
 
   // Auto-updater
   useEffect(() => {
-    const cleanup = window.fleet.updates.onUpdateDownloaded(() => {
-      setUpdateReady(true);
+    const cleanup = window.fleet.updates.onUpdateStatus((status) => {
+      if (status.state === 'ready') setUpdateReady(true);
     });
     return () => { cleanup(); };
   }, []);

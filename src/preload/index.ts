@@ -91,13 +91,18 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd),
   },
   updates: {
-    onUpdateDownloaded: (callback: () => void) => {
-      const handler = () => callback();
-      ipcRenderer.on('fleet:update-downloaded', handler);
-      return () => ipcRenderer.removeListener('fleet:update-downloaded', handler);
+    checkForUpdates: (): Promise<void> =>
+      ipcRenderer.invoke('fleet:update-check'),
+    onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, status: import('../shared/types').UpdateStatus) =>
+        callback(status);
+      ipcRenderer.on('fleet:update-status', handler);
+      return () => ipcRenderer.removeListener('fleet:update-status', handler);
     },
     installUpdate: (): void =>
       ipcRenderer.send('fleet:install-update'),
+    getVersion: (): Promise<string> =>
+      ipcRenderer.invoke('fleet:get-version'),
   },
 };
 
