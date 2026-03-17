@@ -306,6 +306,9 @@ app.whenReady().then(() => {
   createWindow();
 
   // --- Auto-updater: unified status pipeline ---
+  // Allow checking for updates in dev mode via dev-app-update.yml
+  autoUpdater.forceDevUpdateConfig = true;
+
   let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
   let pendingVersion = '';
   let pendingReleaseNotes = '';
@@ -320,6 +323,7 @@ app.whenReady().then(() => {
   }
 
   function sendUpdateStatus(status: import('../shared/types').UpdateStatus): void {
+    console.log('[auto-updater] status:', status.state);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('fleet:update-status', status);
     }
