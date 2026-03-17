@@ -34,6 +34,7 @@ const SHEET_SIZE = 512
 // Row 3: y=160, h=24  | Status bar + chip sprites
 // Row 4: y=184, h=24  | Shuttle + spark + gas-puff
 // Row 5: y=208, h=16  | Explosion + dock-sparkle + thruster-flame + checkmark + orbs + beacon
+// Row 6: y=224, h=64  | Station hub rotation (8x 64x64)
 // ---------------------------------------------------------------------------
 
 // Frame durations in ms
@@ -45,6 +46,7 @@ const FRAME_DURATIONS: Record<string, number> = {
   'dock-sparkle': 150,
   'thruster-flame': 100,
   beacon: 500,
+  'station-hub': 150,
 }
 
 // ---------------------------------------------------------------------------
@@ -76,6 +78,20 @@ interface AtlasEntry {
 
 function buildManifest(): SpriteEntry[] {
   const entries: SpriteEntry[] = []
+
+  // ---- Row 6: Station hub rotation (y=224, h=64) ----
+  // 8 frames, 64x64 each — full rotation of the Starbase hub
+  for (let f = 0; f < 8; f++) {
+    entries.push({
+      src: join(SPRITES_RAW, 'station', `station-hub-${f + 1}.png`),
+      w: 64,
+      h: 64,
+      x: f * 64,
+      y: 224,
+      atlasGroup: 'station-hub',
+      frameIndex: f,
+    })
+  }
 
   // ---- Row 0: Admiral avatars (y=0, 64x64 each) ----
   const admiralVariants = ['default', 'speaking', 'thinking', 'alert', 'standby']
@@ -147,11 +163,11 @@ function buildManifest(): SpriteEntry[] {
   })
   crtX += 8
 
-  // Scanline tile: 4x4
+  // Scanline tile: 32x32
   entries.push({
     src: join(SPRITES_RAW, 'chrome', 'crt-scanline.png'),
-    w: 4,
-    h: 4,
+    w: 32,
+    h: 32,
     x: crtX,
     y: 128,
     atlasGroup: 'crt-scanline',
@@ -552,7 +568,8 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
       if (k.startsWith('spark') || k.startsWith('gas-') || k.startsWith('explosion') || k.startsWith('dock-') || k.startsWith('thruster-') || k.startsWith('checkmark')) return 6
       if (k.startsWith('orb-')) return 7
       if (k.startsWith('beacon')) return 8
-      return 9
+      if (k.startsWith('station-')) return 9
+      return 10
     }
     const diff = order(a) - order(b)
     if (diff !== 0) return diff

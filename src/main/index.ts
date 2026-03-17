@@ -227,6 +227,18 @@ app.whenReady().then(() => {
       // Start Sentinel watchdog
       sentinel = new Sentinel({ db: starbaseDb.getDb(), configService })
       sentinel.start()
+
+      // Push status updates to renderer every 5 seconds
+      setInterval(() => {
+        const w = mainWindow
+        if (!w || w.isDestroyed()) return
+        w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+          crew: crewService.listCrew(),
+          missions: missionService.listMissions(),
+          sectors: sectorService.listSectors(),
+          unreadCount: commsService.getUnread('admiral').length
+        })
+      }, 5000)
     }
 
     // Auto-create Star Command tab on workspace load

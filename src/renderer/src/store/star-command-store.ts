@@ -34,6 +34,8 @@ export type SectorInfo = {
   stack: string | null;
 };
 
+type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
+
 type StarCommandStore = {
   messages: AdmiralChatMessage[];
   isStreaming: boolean;
@@ -43,6 +45,7 @@ type StarCommandStore = {
   sectors: SectorInfo[];
   unreadCount: number;
   statusPanelOpen: boolean;
+  admiralAvatarState: AdmiralAvatarState;
 
   // Actions
   addUserMessage: (content: string) => void;
@@ -58,6 +61,7 @@ type StarCommandStore = {
   setUnreadCount: (count: number) => void;
   toggleStatusPanel: () => void;
   clearMessages: () => void;
+  setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
@@ -69,6 +73,7 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   sectors: [],
   unreadCount: 0,
   statusPanelOpen: true,
+  admiralAvatarState: 'standby',
 
   addUserMessage: (content) => {
     set((state) => ({
@@ -87,23 +92,32 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   appendStreamText: (text) => {
     set((state) => ({
       streamBuffer: state.streamBuffer + text,
+      admiralAvatarState: 'speaking',
     }));
   },
 
   addToolCallMessage: (name, input) => {
-    set((state) => ({
-      messages: [
-        ...state.messages,
-        {
+    set((state) => {
+      const newMessages = [...state.messages];
+      // Flush any pending stream text before inserting the tool call, preserving natural order
+      if (state.streamBuffer.trim()) {
+        newMessages.push({
           id: crypto.randomUUID(),
-          role: 'tool',
-          content: `Calling ${name}...`,
-          toolName: name,
-          toolInput: input,
+          role: 'assistant',
+          content: state.streamBuffer,
           timestamp: Date.now(),
-        },
-      ],
-    }));
+        });
+      }
+      newMessages.push({
+        id: crypto.randomUUID(),
+        role: 'tool',
+        content: `Calling ${name}...`,
+        toolName: name,
+        toolInput: input,
+        timestamp: Date.now(),
+      });
+      return { messages: newMessages, streamBuffer: '' };
+    });
   },
 
   addToolResultMessage: (name, result) => {
@@ -135,9 +149,10 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
         ],
         streamBuffer: '',
         isStreaming: false,
+        admiralAvatarState: 'standby',
       }));
     } else {
-      set({ streamBuffer: '', isStreaming: false });
+      set({ streamBuffer: '', isStreaming: false, admiralAvatarState: 'standby' });
     }
   },
 
@@ -154,14 +169,19 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
       ],
       streamBuffer: '',
       isStreaming: false,
+      admiralAvatarState: 'alert',
     }));
   },
 
-  setIsStreaming: (streaming) => set({ isStreaming: streaming }),
+  setIsStreaming: (streaming) => set({
+    isStreaming: streaming,
+    ...(streaming ? { admiralAvatarState: 'thinking' } : {}),
+  }),
   setCrewList: (crew) => set({ crewList: crew }),
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
   toggleStatusPanel: () => set((state) => ({ statusPanelOpen: !state.statusPanelOpen })),
   clearMessages: () => set({ messages: [], streamBuffer: '' }),
+  setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
 }));

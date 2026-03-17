@@ -93,12 +93,12 @@ export class Hull {
       timeoutMin * 60 * 1000
     )
 
-    // Spawn agent PTY and protect it from the renderer-driven GC
+    // Spawn agent PTY
     try {
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --yes --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`
+        cmd: `claude --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`
       })
       this.pid = result.pid
       ptyManager.protect(paneId)

@@ -10,3 +10,4 @@ reference/*
 .claude/worktrees
 sprites-raw
 sprites-staging
+.worktrees/

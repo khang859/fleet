@@ -35,6 +35,7 @@ const MAX_HISTORY_CHARS = MAX_HISTORY_TOKENS_ESTIMATE * AVG_CHARS_PER_TOKEN
 
 export class Admiral {
   private client: Anthropic | null = null
+  private lastApiKey: string | undefined
   private history: AdmiralMessage[] = []
   private deps: AdmiralDeps
 
@@ -43,9 +44,7 @@ export class Admiral {
   }
 
   private getClient(): Anthropic {
-    if (this.client) return this.client
-
-    // Check config override first, then env var (SDK default)
+    // Re-read key each time so config changes take effect without restart
     const configKey = this.deps.configService.get('anthropic_api_key') as string | undefined
     const apiKey = configKey || process.env.ANTHROPIC_API_KEY
 
@@ -53,7 +52,11 @@ export class Admiral {
       throw new Error('Set your ANTHROPIC_API_KEY environment variable to use Star Command.')
     }
 
-    this.client = new Anthropic({ apiKey })
+    // Re-create client if key changed
+    if (!this.client || this.lastApiKey !== apiKey) {
+      this.client = new Anthropic({ apiKey })
+      this.lastApiKey = apiKey
+    }
     return this.client
   }
 
@@ -62,7 +65,7 @@ export class Admiral {
   }
 
   private buildSystemPrompt(): string {
-    const { sectorService, missionService, crewService, workspacePath } = this.deps
+    const { sectorService, missionService, crewService, commsService, workspacePath } = this.deps
     return buildAdmiralSystemPrompt({
       workspacePath,
       sectors: sectorService.listSectors().map((s) => ({
@@ -83,6 +86,13 @@ export class Admiral {
         sector_id: m.sector_id,
         status: m.status,
         summary: m.summary
+      })),
+      unreadComms: commsService.getUnread('admiral').map((c) => ({
+        id: c.id,
+        from_crew: c.from_crew,
+        type: c.type,
+        payload: c.payload,
+        created_at: c.created_at
       }))
     })
   }

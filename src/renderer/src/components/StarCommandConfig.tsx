@@ -437,9 +437,11 @@ function SupplyRoutesSection() {
 const CONFIG_FIELDS: {
   key: string
   label: string
-  type: 'number' | 'text' | 'select'
+  type: 'number' | 'text' | 'password' | 'select'
   options?: string[]
 }[] = [
+  { key: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password' },
+  { key: 'admiral_model', label: 'Admiral Model', type: 'text' },
   { key: 'max_concurrent_worktrees', label: 'Max Concurrent Worktrees', type: 'number' },
   { key: 'worktree_pool_size', label: 'Worktree Pool Size', type: 'number' },
   { key: 'disk_budget_mb', label: 'Disk Budget (MB)', type: 'number' },
@@ -513,6 +515,17 @@ function StarbaseSettingsSection() {
                     </option>
                   ))}
                 </select>
+              ) : field.type === 'password' ? (
+                <input
+                  type="password"
+                  defaultValue={(config[field.key] as string) ?? ''}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim()
+                    if (v && v !== config[field.key]) handleChange(field.key, v)
+                  }}
+                  placeholder="Not set"
+                  className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
+                />
               ) : field.type === 'number' ? (
                 <input
                   type="number"
@@ -652,6 +665,7 @@ function DatabaseSection() {
 export function StarCommandConfig() {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
+      <div className="text-sm text-neutral-300 font-semibold mb-2">Starbase Configuration</div>
       <SectorsSection />
       <SupplyRoutesSection />
       <StarbaseSettingsSection />

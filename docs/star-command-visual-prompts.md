@@ -1,6 +1,6 @@
 # Star Command Visual Asset Prompts
 
-**Total sprites:** 52 images → 1 sprite sheet (`star-command-sprites.png`)
+**Total sprites:** 60 images → 1 sprite sheet (`star-command-sprites.png`)
 
 ## Generation Workflow
 
@@ -34,6 +34,7 @@ Particles: spark-1 → (edit) → spark-2; gas-puff-1 → (edit) → 2, 3; explo
 Orbs:      orb-teal → (edit) → orb-amber, orb-cargo
 Beacon:    beacon-on → (edit) → beacon-off
 Checkmark: standalone (text-to-image)
+Station:   station-hub-1 → (edit) → 2, 3, 4, 5, 6, 7, 8 (rotation frames)
 ```
 
 ---
@@ -386,6 +387,62 @@ npx tsx scripts/generate-image.ts "Same beacon, light is off, dark gray dome wit
 
 ---
 
+---
+
+## 10. Space Station Hub (64x64 per frame, 8 frames)
+
+The central hub module of the Starbase. This is the visual centerpiece rendered inside SpaceCanvas — a slowly rotating pixel art space station core. Each frame is a 22.5° rotation step for a full 360° cycle.
+
+### station-hub-1 (BASE — text-to-image)
+
+```bash
+npx tsx scripts/generate-image.ts "Pixel art sprite, modern pixel art style like Celeste and Hyper Light Drifter, clean lines, vibrant colors, transparent background, dark space game aesthetic, no anti-aliasing, sharp pixels, 64x64 pixel art, top-down view of a sci-fi space station central hub module, circular core with a bright teal glowing reactor in the center, 4 docking arms extending outward at cardinal directions, small solar panel wings on each arm, teal-lit windows dotting the structure, dark gunmetal metal plating, subtle teal ambient glow emanating from center, rotation frame 1 of 8 (0 degrees)" --output star-command/station/station-hub-1.png
+```
+
+### station-hub-2 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 45 degrees clockwise, everything else identical — same art style, same colors, same structure" --output star-command/station/station-hub-2.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-3 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 90 degrees clockwise from the original, docking arms now pointing diagonally, everything else identical" --output star-command/station/station-hub-3.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-4 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 135 degrees clockwise from the original, everything else identical" --output star-command/station/station-hub-4.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-5 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 180 degrees from the original (upside down), everything else identical" --output star-command/station/station-hub-5.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-6 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 225 degrees clockwise from the original, everything else identical" --output star-command/station/station-hub-6.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-7 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 270 degrees clockwise from the original, everything else identical" --output star-command/station/station-hub-7.png --reference star-command/station/station-hub-1.png
+```
+
+### station-hub-8 (EDIT from station-hub-1)
+
+```bash
+npx tsx scripts/generate-image.ts "Same space station hub, rotated 315 degrees clockwise from the original, everything else identical" --output star-command/station/station-hub-8.png --reference star-command/station/station-hub-1.png
+```
+
+---
+
 ## Summary
 
 | Category | Count | Base Images | Edit Images |
@@ -399,8 +456,9 @@ npx tsx scripts/generate-image.ts "Same beacon, light is off, dark gray dome wit
 | Particles | 16 | 5 | 11 |
 | Data Orbs | 3 | 1 | 2 |
 | Beacon | 2 | 1 | 1 |
-| **Total** | **52** | **14** | **38** |
+| Station Hub | 8 | 1 | 7 |
+| **Total** | **60** | **15** | **45** |
 
-**Recommended generation order:** Admiral → Crew → CRT → StatusBar → Chips → Shuttle → Particles → Orbs → Beacon → Checkmark
+**Recommended generation order:** Admiral → Crew → CRT → StatusBar → Chips → Shuttle → Particles → Orbs → Beacon → Checkmark → Station
 
 Start with the admiral-default base image since it sets the overall art style tone for the whole set.

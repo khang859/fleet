@@ -26,12 +26,21 @@ type SupplyRouteInfo = {
   relationship: string | null
 }
 
+type UnreadComm = {
+  id: number
+  from_crew: string | null
+  type: string
+  payload: string | null
+  created_at: string
+}
+
 type StarbaseState = {
   workspacePath: string
   sectors: SectorInfo[]
   crew: CrewInfo[]
   missions: MissionInfo[]
   supplyRoutes?: SupplyRouteInfo[]
+  unreadComms?: UnreadComm[]
 }
 
 export function buildAdmiralSystemPrompt(state: StarbaseState): string {
@@ -75,6 +84,17 @@ export function buildAdmiralSystemPrompt(state: StarbaseState): string {
           .join('\n')
       : '_No Supply Routes defined._'
 
+  const inboxSection =
+    state.unreadComms && state.unreadComms.length > 0
+      ? state.unreadComms
+          .map((c) => {
+            const from = c.from_crew ?? 'system'
+            const payload = c.payload ? (() => { try { return JSON.stringify(JSON.parse(c.payload)) } catch { return c.payload } })() : ''
+            return `- [${c.type}] from **${from}** at ${c.created_at}: ${payload}`
+          })
+          .join('\n')
+      : '_No unread transmissions._'
+
   return `You are the Admiral — the AI command interface for Fleet's Star Command system. You help the user manage their coding agents (Crewmates) across multiple code repositories (Sectors).
 
 ## Terminology Glossary
@@ -101,6 +121,9 @@ ${missionSummary}
 
 ### Supply Routes (Sector Dependencies)
 ${supplyRouteList}
+
+### Unread Transmissions (Inbox)
+${inboxSection}
 
 ## Mission Decomposition
 
