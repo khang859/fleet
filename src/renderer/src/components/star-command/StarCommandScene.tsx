@@ -98,6 +98,19 @@ export function StarCommandScene({ className }: { className?: string }) {
       // Apply pending resize
       if (pendingResizeRef.current) applyResize()
 
+      // Adaptive FPS throttle
+      const hasActiveCrew = podStatesRef.current.some(
+        (p) => p.status === 'active' || p.status === 'hailing'
+      )
+      const hasBeams = (commsBeams as any)['beams'].length > 0
+      const isActive = hasActiveCrew || hasBeams
+      const frameBudget = isActive ? 33 : 100 // 30fps vs 10fps
+
+      if (now - lastFrameRef.current < frameBudget) {
+        rafRef.current = requestAnimationFrame(frame)
+        return
+      }
+
       const deltaMs = lastFrameRef.current ? now - lastFrameRef.current : 16
       lastFrameRef.current = now
       elapsed += deltaMs
