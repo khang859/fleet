@@ -86,14 +86,29 @@ function createThrottledLoop(
     animFrame = requestAnimationFrame(loop);
   }
 
+  function restart() {
+    cancelAnimationFrame(animFrame);
+    lastTime = 0;
+    accumulated = 0;
+    animFrame = requestAnimationFrame(loop);
+  }
+
+  // Chromium may fully stop rAF for hidden/unfocused windows.
+  // Restart the loop when the document becomes visible again.
+  function onVisibilityChange() {
+    if (!document.hidden) restart();
+  }
+
   return {
     start() {
       lastTime = 0;
       accumulated = 0;
       animFrame = requestAnimationFrame(loop);
+      document.addEventListener('visibilitychange', onVisibilityChange);
     },
     stop() {
       cancelAnimationFrame(animFrame);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     },
   };
 }
