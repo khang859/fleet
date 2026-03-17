@@ -100,10 +100,20 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     term.write(options.serializedContent);
   }
 
-  // Wire IPC data flow
+  // Wire IPC data flow.
+  // xterm.js auto-scrolls via its rendering pipeline (requestAnimationFrame),
+  // which Chromium pauses in unfocused windows. Without this callback, data is
+  // written to the buffer (baseY advances) but the viewport DOM scrollTop stays
+  // stale, making the terminal appear stuck at an old scroll position.
+  // By scrolling in the write callback, we ensure the DOM scroll position stays
+  // correct regardless of whether rAF is running.
   const ipcCleanup = window.fleet.pty.onData(({ paneId, data }) => {
     if (paneId === options.paneId) {
-      term.write(data);
+      term.write(data, () => {
+        if (pinnedToBottom) {
+          term.scrollToBottom();
+        }
+      });
     }
   });
 

@@ -46,3 +46,13 @@ Even with `pinnedToBottom` tracking, the viewport could randomly jump to the top
 **Fix:** `onScroll` must only **re-pin** (set `pinnedToBottom = true` when at bottom), never **unpin**. Only `wheel` events should unpin, since they represent actual user scroll intent. Additionally, `fitPreservingScroll` reconciles the flag before acting: if `pinnedToBottom` is false but `isAtBottom()` is true, correct it.
 
 **Key insight:** `term.onScroll` only fires for content-driven scrolling (new lines added), never for user wheel/keyboard scrolling (confirmed by xterm.js issues #3864, #3201). It must never be used to infer user scroll-up intent. This is a known class of bug — Tabby terminal has the same issue with Claude Code (Tabby #10648).
+
+## Follow-up: Viewport stale while Electron window is unfocused
+
+Even with `pinnedToBottom` working correctly, the terminal viewport visually sat at an old scroll position while the OS window was unfocused and Claude Code was producing output. Clicking back into the window would jump to the bottom.
+
+**Root cause:** xterm.js auto-scrolls the viewport via its rendering pipeline, which uses `requestAnimationFrame`. Chromium pauses rAF in unfocused windows. So `term.write(data)` processes data and advances `baseY`, but the viewport's DOM `scrollTop` is never updated to follow — it stays at the old absolute pixel value while content grows below it. Visually the terminal appears stuck near the top.
+
+**Fix:** Use `term.write(data, callback)` instead of `term.write(data)`. In the callback (which fires after xterm has processed the data and updated the buffer), call `term.scrollToBottom()` if `pinnedToBottom` is true. This explicitly sets the DOM scroll position after each write, bypassing xterm's rAF-dependent auto-scroll.
+
+**Key insight:** xterm.js's auto-scroll relies on rAF, which doesn't run in unfocused Chromium windows. Don't depend on it — explicitly scroll after writes when following live output. A `window.focus` handler is just a band-aid; the viewport should never drift in the first place.
