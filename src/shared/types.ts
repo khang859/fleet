@@ -9,6 +9,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
+  type?: 'terminal' | 'star-command';
   splitRoot: PaneNode;
 };
 

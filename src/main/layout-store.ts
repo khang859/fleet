@@ -1,5 +1,6 @@
 import Store from 'electron-store';
-import type { Workspace } from '../shared/types';
+import { randomUUID } from 'crypto';
+import type { Workspace, Tab } from '../shared/types';
 
 type StoreSchema = {
   workspaces: Record<string, Workspace>;
@@ -37,5 +38,26 @@ export class LayoutStore {
     const workspaces = this.store.get('workspaces', {});
     delete workspaces[workspaceId];
     this.store.set('workspaces', workspaces);
+  }
+
+  ensureStarCommandTab(workspaceId: string, cwd: string): void {
+    const workspace = this.load(workspaceId);
+    if (!workspace) return;
+
+    const hasStarCommand = workspace.tabs.some((t) => t.type === 'star-command');
+    if (hasStarCommand) return;
+
+    const paneId = randomUUID();
+    const starTab: Tab = {
+      id: randomUUID(),
+      label: 'Star Command',
+      labelIsCustom: true,
+      cwd,
+      type: 'star-command',
+      splitRoot: { type: 'leaf', id: paneId, cwd },
+    };
+
+    workspace.tabs.unshift(starTab);
+    this.save(workspace);
   }
 }
