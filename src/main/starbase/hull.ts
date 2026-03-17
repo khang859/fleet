@@ -14,6 +14,7 @@ export type HullOpts = {
   db: Database.Database;
   lifesignIntervalSec?: number;
   timeoutMin?: number;
+  onComplete?: () => void;
 };
 
 type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
@@ -243,6 +244,8 @@ export class Hull {
           }
         }
       }
+
+      this.opts.onComplete?.();
     }
   }
 }

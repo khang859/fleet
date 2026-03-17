@@ -131,6 +131,7 @@ export class CrewService {
       db,
       lifesignIntervalSec: lifesignSec,
       timeoutMin,
+      onComplete: () => this.hulls.delete(crewId),
     });
 
     // Update crew record with avatar
@@ -174,5 +175,38 @@ export class CrewService {
   observeCrew(crewId: string): string {
     const hull = this.hulls.get(crewId);
     return hull?.getOutputBuffer() ?? '';
+  }
+
+  /**
+   * Remove worktrees for push-pending missions older than maxAgeHours.
+   * Called on startup to recover disk space from previously failed missions.
+   */
+  pruneStaleWorktrees(maxAgeHours = 2): void {
+    const { db, worktreeManager } = this.deps;
+
+    const stale = db.prepare(`
+      SELECT m.id, c.worktree_path, c.sector_path
+      FROM missions m
+      JOIN crew c ON m.crew_id = c.id
+      WHERE m.status = 'push-pending'
+        AND c.created_at < datetime('now', '-${maxAgeHours} hours')
+        AND c.worktree_path IS NOT NULL
+        AND c.sector_path IS NOT NULL
+    `).all() as Array<{ id: number; worktree_path: string; sector_path: string }>;
+
+    for (const row of stale) {
+      try {
+        worktreeManager.remove(row.worktree_path, row.sector_path);
+        db.prepare("UPDATE missions SET status = 'aborted', result = 'Worktree pruned on startup' WHERE id = ?")
+          .run(row.id);
+        console.log(`[starbase] Pruned stale worktree for mission ${row.id}: ${row.worktree_path}`);
+      } catch (err) {
+        console.error(`[starbase] Failed to prune worktree for mission ${row.id}:`, err);
+      }
+    }
+
+    if (stale.length > 0) {
+      console.log(`[starbase] Pruned ${stale.length} stale push-pending worktree(s)`);
+    }
   }
 }
