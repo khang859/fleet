@@ -106,7 +106,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       starfieldRef.current = new Starfield(canvas.clientWidth, canvas.clientHeight);
     }
     if (!bloomRef.current) {
-      bloomRef.current = new BloomPass(canvas.clientWidth, canvas.clientHeight);
+      bloomRef.current = new BloomPass();
     }
 
     // Load sprite sheet (no-op if already loaded)
@@ -136,7 +136,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       if (canvas!.width !== targetW || canvas!.height !== targetH) {
         canvas!.width = targetW;
         canvas!.height = targetH;
-        bloom.resize(cw, ch);
       }
 
       const zoom = zoomRef.current;
@@ -195,7 +194,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       spaceWeather.render(ctx!);
       bloom.renderShipGlow(ctx!, shipManager.getShips());
       spaceRenderer.render(ctx!, shipManager.getShips());
-      bloom.render(ctx!); // fallback full-canvas bloom when sprites not loaded
 
       animFrameRef.current = requestAnimationFrame(loop);
     }
