@@ -63,8 +63,55 @@ function workspaceToAgents(tabs: { id: string; label: string; splitRoot: import(
   });
 }
 
+function createThrottledLoop(
+  targetFps: number,
+  onFrame: (deltaMs: number, timestamp: number) => void,
+): { start: () => void; stop: () => void } {
+  const interval = 1000 / targetFps;
+  let animFrame = 0;
+  let lastTime = 0;
+  let accumulated = 0;
+
+  function loop(timestamp: number) {
+    const rawDelta = lastTime ? timestamp - lastTime : 0;
+    lastTime = timestamp;
+    const delta = Math.min(rawDelta, interval * 2);
+    accumulated += delta;
+
+    if (accumulated >= interval) {
+      onFrame(accumulated, timestamp);
+      accumulated %= interval;
+    }
+
+    animFrame = requestAnimationFrame(loop);
+  }
+
+  return {
+    start() {
+      lastTime = 0;
+      accumulated = 0;
+      animFrame = requestAnimationFrame(loop);
+    },
+    stop() {
+      cancelAnimationFrame(animFrame);
+    },
+  };
+}
+
+function sizeCanvas(canvas: HTMLCanvasElement): { w: number; h: number } {
+  const cw = canvas.clientWidth;
+  const ch = canvas.clientHeight;
+  if (canvas.width !== cw || canvas.height !== ch) {
+    canvas.width = cw;
+    canvas.height = ch;
+  }
+  return { w: cw, h: ch };
+}
+
 export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bgCanvasRef = useRef<HTMLCanvasElement>(null);
+  const midCanvasRef = useRef<HTMLCanvasElement>(null);
+  const activeCanvasRef = useRef<HTMLCanvasElement>(null);
   const starfieldRef = useRef<Starfield | null>(null);
   const shipManagerRef = useRef(new ShipManager());
   const spaceRendererRef = useRef(new SpaceRenderer());
@@ -76,8 +123,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const asteroidFieldRef = useRef(new AsteroidField());
   const bloomRef = useRef<BloomPass | null>(null);
   const soundscapeRef = useRef(new AmbientSoundscape());
-  const animFrameRef = useRef<number>(0);
-  const lastTimeRef = useRef<number>(0);
   const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null });
   const zoomRef = useRef(1);
   const [tooltip, setTooltip] = useState<Tooltip | null>(null);
@@ -89,77 +134,113 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const agentsRef = useRef<AgentVisualState[]>([]);
   agentsRef.current = workspaceToAgents(workspace.tabs);
 
-  // Game loop — only restarts when visibility changes
+  // Background loop (10fps) — aurora + nebula + bg fill
   useEffect(() => {
-    if (!isVisible) {
-      cancelAnimationFrame(animFrameRef.current);
-      return;
-    }
-
-    const canvas = canvasRef.current;
+    if (!isVisible) return;
+    const canvas = bgCanvasRef.current;
     if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
 
+    const aurora = auroraRef.current;
+    const nebula = nebulaRef.current;
+
+    const loop = createThrottledLoop(10, (deltaMs) => {
+      const { w, h } = sizeCanvas(canvas);
+      const zoom = zoomRef.current;
+      const vw = w / zoom;
+      const vh = h / zoom;
+      ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+
+      aurora.update(deltaMs);
+      nebula.update(deltaMs, vw, vh);
+
+      const camera = cameraRef.current;
+      ctx.fillStyle = getDayNightBackground();
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.translate(-camera.x, -camera.y);
+
+      aurora.render(ctx, vw, vh);
+      nebula.render(ctx);
+    });
+
+    loop.start();
+    return () => loop.stop();
+  }, [isVisible]);
+
+  // Mid loop (30fps) — starfield + shooting stars + celestials + asteroids
+  useEffect(() => {
+    if (!isVisible) return;
+    const canvas = midCanvasRef.current;
+    if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     if (!starfieldRef.current) {
       starfieldRef.current = new Starfield(canvas.clientWidth, canvas.clientHeight);
     }
-    if (!bloomRef.current) {
-      bloomRef.current = new BloomPass();
-    }
-
-    // Load sprite sheet (no-op if already loaded)
     loadSpriteSheet();
 
     const starfield = starfieldRef.current;
-    const shipManager = shipManagerRef.current;
-    const spaceRenderer = spaceRendererRef.current;
     const shootingStars = shootingStarsRef.current;
-    const nebula = nebulaRef.current;
-    const aurora = auroraRef.current;
     const celestials = celestialsRef.current;
-    const spaceWeather = spaceWeatherRef.current;
     const asteroidField = asteroidFieldRef.current;
-    const bloom = bloomRef.current!;
 
-    function loop(timestamp: number) {
-      const deltaMs = lastTimeRef.current ? timestamp - lastTimeRef.current : 16;
-      lastTimeRef.current = timestamp;
-
-      const dpr = window.devicePixelRatio || 1;
-      const cw = canvas!.clientWidth;
-      const ch = canvas!.clientHeight;
-
-      const targetW = Math.round(cw * dpr);
-      const targetH = Math.round(ch * dpr);
-      if (canvas!.width !== targetW || canvas!.height !== targetH) {
-        canvas!.width = targetW;
-        canvas!.height = targetH;
-      }
-
+    const loop = createThrottledLoop(30, (deltaMs) => {
+      const { w, h } = sizeCanvas(canvas);
       const zoom = zoomRef.current;
-      // Visible world dimensions (larger when zoomed out)
-      const vw = cw / zoom;
-      const vh = ch / zoom;
+      const vw = w / zoom;
+      const vh = h / zoom;
+      ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
 
-      ctx!.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
-
-      // Resize starfield to cover visible area when zoomed out
       if (starfield.getWidth() !== Math.ceil(vw) || starfield.getHeight() !== Math.ceil(vh)) {
         starfield.resize(Math.ceil(vw), Math.ceil(vh));
       }
 
-      aurora.update(deltaMs);
       starfield.update(deltaMs);
-      nebula.update(deltaMs, vw, vh);
       shootingStars.update(deltaMs, vw, vh);
       celestials.update(deltaMs, vw, vh);
+      const hasPermissionNeeded = shipManagerRef.current.getShips().some(s => s.state === 'needs-permission');
+      asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
+
+      const camera = cameraRef.current;
+      ctx.clearRect(0, 0, vw, vh);
+      ctx.translate(-camera.x, -camera.y);
+
+      starfield.render(ctx);
+      shootingStars.render(ctx);
+      celestials.render(ctx);
+      asteroidField.render(ctx);
+    });
+
+    loop.start();
+    return () => loop.stop();
+  }, [isVisible]);
+
+  // Active loop (30fps) — ships + space weather + bloom + trails
+  useEffect(() => {
+    if (!isVisible) return;
+    const canvas = activeCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const shipManager = shipManagerRef.current;
+    const spaceRenderer = spaceRendererRef.current;
+    const spaceWeather = spaceWeatherRef.current;
+    const bloom = bloomRef.current ?? new BloomPass();
+    if (!bloomRef.current) bloomRef.current = bloom;
+
+    const loop = createThrottledLoop(30, (deltaMs) => {
+      const { w, h } = sizeCanvas(canvas);
+      const zoom = zoomRef.current;
+      const vw = w / zoom;
+      const vh = h / zoom;
+      ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+
       const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
       spaceWeather.update(deltaMs, vw, vh, workingCount);
       shipManager.update(agentsRef.current, deltaMs, vw, vh);
-      const hasPermissionNeeded = shipManager.getShips().some(s => s.state === 'needs-permission');
-      asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
       spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
 
       // Camera follow logic
@@ -178,29 +259,16 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       camera.x += (camera.targetX - camera.x) * 0.05;
       camera.y += (camera.targetY - camera.y) * 0.05;
 
-      // BG fill (covers viewport regardless of camera)
-      ctx!.fillStyle = getDayNightBackground();
-      ctx!.fillRect(0, 0, vw, vh);
+      ctx.clearRect(0, 0, vw, vh);
+      ctx.translate(-camera.x, -camera.y);
 
-      // Apply camera transform for world-space rendering
-      ctx!.translate(-camera.x, -camera.y);
+      spaceWeather.render(ctx);
+      bloom.renderShipGlow(ctx, shipManager.getShips());
+      spaceRenderer.render(ctx, shipManager.getShips());
+    });
 
-      aurora.render(ctx!, vw, vh);
-      nebula.render(ctx!);
-      starfield.render(ctx!);
-      shootingStars.render(ctx!);
-      celestials.render(ctx!);
-      asteroidField.render(ctx!);
-      spaceWeather.render(ctx!);
-      bloom.renderShipGlow(ctx!, shipManager.getShips());
-      spaceRenderer.render(ctx!, shipManager.getShips());
-
-      animFrameRef.current = requestAnimationFrame(loop);
-    }
-
-    animFrameRef.current = requestAnimationFrame(loop);
-
-    return () => cancelAnimationFrame(animFrameRef.current);
+    loop.start();
+    return () => loop.stop();
   }, [isVisible]);
 
   // Soundscape cleanup
@@ -211,7 +279,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   // Click handling — resolve ship paneId to either tab or pane
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
+      const canvas = activeCanvasRef.current;
       if (!canvas) return;
 
       // Initialize ambient soundscape on first click (requires user gesture)
@@ -241,7 +309,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   // Double-click to follow a ship
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
+      const canvas = activeCanvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const camera = cameraRef.current;
@@ -258,7 +326,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 
   // Scroll-wheel zoom — native listener to allow { passive: false }
   useEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = activeCanvasRef.current;
     if (!canvas) return;
     function onWheel(e: WheelEvent) {
       e.preventDefault();
@@ -271,7 +339,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   // Hover tooltip
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
+      const canvas = activeCanvasRef.current;
       if (!canvas) return;
 
       const rect = canvas.getBoundingClientRect();
@@ -310,12 +378,22 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   return (
     <div className="relative w-full h-full">
       <canvas
-        ref={canvasRef}
+        ref={bgCanvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+      />
+      <canvas
+        ref={midCanvasRef}
+        className="absolute inset-0 w-full h-full"
+        style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+      />
+      <canvas
+        ref={activeCanvasRef}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setTooltip(null)}
-        className="w-full h-full cursor-pointer"
+        className="absolute inset-0 w-full h-full cursor-pointer"
         style={{ imageRendering: 'pixelated' }}
       />
       {tooltip && (
