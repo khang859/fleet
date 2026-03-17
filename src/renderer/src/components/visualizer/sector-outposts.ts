@@ -41,7 +41,7 @@ export class SectorOutpostRenderer {
       drawScSprite(ctx, 'beacon', elapsed, x - 6, y - 6, 12, 12)
 
       // Label — 14px below bottom of beacon
-      ctx.globalAlpha = sector.active ? 0.9 : 0.4
+      ctx.globalAlpha = sector.active ? 1 : 0.4
       ctx.fillStyle = '#ffffff'
       ctx.font = '9px monospace'
       ctx.textAlign = 'center'
