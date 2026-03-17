@@ -44,7 +44,6 @@ type StarCommandStore = {
   missionQueue: MissionInfo[];
   sectors: SectorInfo[];
   unreadCount: number;
-  statusPanelOpen: boolean;
   admiralAvatarState: AdmiralAvatarState;
 
   // Actions
@@ -59,7 +58,6 @@ type StarCommandStore = {
   setMissionQueue: (missions: MissionInfo[]) => void;
   setSectors: (sectors: SectorInfo[]) => void;
   setUnreadCount: (count: number) => void;
-  toggleStatusPanel: () => void;
   clearMessages: () => void;
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
 };
@@ -72,7 +70,6 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   missionQueue: [],
   sectors: [],
   unreadCount: 0,
-  statusPanelOpen: true,
   admiralAvatarState: 'standby',
 
   addUserMessage: (content) => {
@@ -181,7 +178,6 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
-  toggleStatusPanel: () => set((state) => ({ statusPanelOpen: !state.statusPanelOpen })),
   clearMessages: () => set({ messages: [], streamBuffer: '' }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
 }));

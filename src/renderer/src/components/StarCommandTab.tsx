@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useStarCommandStore } from '../store/star-command-store'
 import type { AdmiralChatMessage } from '../store/star-command-store'
-import { useWorkspaceStore } from '../store/workspace-store'
 import { StarCommandConfig } from './StarCommandConfig'
 import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
-import { loadScSpriteSheet } from './star-command/sc-sprite-loader'
 
 type StreamChunk = {
   type: string
@@ -74,102 +72,6 @@ function MessageBubble({ msg }: { msg: AdmiralChatMessage }) {
   )
 }
 
-function StatusPanel() {
-  const { crewList, missionQueue, sectors, statusPanelOpen } = useStarCommandStore()
-  const { setActiveTab } = useWorkspaceStore()
-
-  if (!statusPanelOpen) return null
-
-  const activeCrew = crewList.filter((c) => c.status === 'active')
-  const queuedMissions = missionQueue.filter((m) => m.status === 'queued')
-  const activeMissions = missionQueue.filter((m) => m.status === 'active')
-
-  return (
-    <div className="w-72 border-l border-neutral-800 bg-neutral-900 overflow-y-auto flex-shrink-0">
-      <div className="p-3 space-y-4">
-        {/* Active Crew */}
-        <section>
-          <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Active Crew ({activeCrew.length})
-          </h3>
-          {activeCrew.length === 0 ? (
-            <p className="text-xs text-neutral-600">No active Crewmates</p>
-          ) : (
-            <div className="space-y-1.5">
-              {activeCrew.map((crew) => (
-                <button
-                  key={crew.id}
-                  className="w-full text-left px-2 py-1.5 rounded bg-neutral-800 hover:bg-neutral-750 transition-colors"
-                  onClick={() => {
-                    if (crew.tab_id) setActiveTab(crew.tab_id)
-                  }}
-                >
-                  <div className="flex items-center gap-2">
-                    <Avatar type="crew" variant={crew.avatar_variant ?? undefined} size={20} />
-                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 flex-shrink-0" />
-                    <span className="text-xs text-neutral-200 truncate font-mono">{crew.id}</span>
-                  </div>
-                  <div className="text-xs text-neutral-500 truncate ml-3.5">
-                    {crew.sector_id} — {crew.mission_summary ?? 'no mission'}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Mission Queue */}
-        <section>
-          <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Missions ({activeMissions.length} active, {queuedMissions.length} queued)
-          </h3>
-          {activeMissions.length + queuedMissions.length === 0 ? (
-            <p className="text-xs text-neutral-600">No missions</p>
-          ) : (
-            <div className="space-y-1">
-              {activeMissions.map((m) => (
-                <div key={m.id} className="px-2 py-1 rounded bg-neutral-800 text-xs">
-                  <span className="text-green-400 font-mono">#{m.id}</span>{' '}
-                  <span className="text-neutral-300">{m.summary}</span>
-                  <div className="text-neutral-500">{m.sector_id}</div>
-                </div>
-              ))}
-              {queuedMissions.map((m) => (
-                <div key={m.id} className="px-2 py-1 rounded bg-neutral-800/50 text-xs">
-                  <span className="text-neutral-500 font-mono">#{m.id}</span>{' '}
-                  <span className="text-neutral-400">{m.summary}</span>
-                  <div className="text-neutral-600">{m.sector_id}</div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Sectors */}
-        <section>
-          <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-2">
-            Sectors ({sectors.length})
-          </h3>
-          {sectors.length === 0 ? (
-            <p className="text-xs text-neutral-600">No sectors registered</p>
-          ) : (
-            <div className="space-y-1">
-              {sectors.map((s) => (
-                <div key={s.id} className="px-2 py-1 rounded bg-neutral-800 text-xs">
-                  <span className="text-neutral-200 font-mono">{s.id}</span>
-                  <div className="text-neutral-500">
-                    {s.stack ?? 'unknown'} — {s.name}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
-  )
-}
-
 export function StarCommandTab() {
   const {
     messages,
@@ -186,16 +88,12 @@ export function StarCommandTab() {
     setMissionQueue,
     setSectors,
     setUnreadCount,
-    toggleStatusPanel,
-    statusPanelOpen
   } = useStarCommandStore()
 
   const { admiralAvatarState } = useStarCommandStore()
   const [input, setInput] = useState('')
   const [view, setView] = useState<'chat' | 'config'>('chat')
   const [talkFrame, setTalkFrame] = useState(false)
-
-  useEffect(() => { loadScSpriteSheet() }, [])
 
   // Oscillate between speaking and default while streaming to simulate talking
   useEffect(() => {
@@ -347,12 +245,6 @@ export function StarCommandTab() {
                 </button>
               </div>
             </div>
-            <button
-              className="text-xs text-neutral-500 hover:text-neutral-300 px-2 py-1 rounded hover:bg-neutral-800"
-              onClick={toggleStatusPanel}
-            >
-              {statusPanelOpen ? 'Hide Status' : 'Show Status'}
-            </button>
           </div>
 
           {view === 'config' ? (
@@ -426,8 +318,7 @@ export function StarCommandTab() {
         </div>{/* end flex row */}
       </CrtFrame>
 
-      {/* Status panel */}
-      <StatusPanel />
+      <div className="flex-1 min-w-[280px] bg-[#0a0a1a]" />
     </div>
   )
 }
