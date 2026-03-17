@@ -106,3 +106,31 @@ export type SetConfigRequest = {
   key: string;
   value: unknown;
 };
+
+export type DeployRequest = {
+  sectorId: string;
+  prompt: string;
+  missionId?: number;
+};
+
+export type DeployResponse = {
+  crewId: string;
+  tabId: string;
+  missionId: number;
+};
+
+export type RecallRequest = {
+  crewId: string;
+};
+
+export type MissionListFilter = {
+  sectorId?: string;
+  status?: string;
+};
+
+export type AddMissionRequest = {
+  sectorId: string;
+  summary: string;
+  prompt: string;
+  priority?: number;
+};

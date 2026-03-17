@@ -22,6 +22,8 @@ import { GitService } from './git-service';
 import type { FleetSettings } from '../shared/types';
 import type { SectorService } from './starbase/sector-service';
 import type { ConfigService } from './starbase/config-service';
+import type { CrewService } from './starbase/crew-service';
+import type { MissionService } from './starbase/mission-service';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -35,6 +37,8 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   sectorService?: SectorService | null,
   configService?: ConfigService | null,
+  crewService?: CrewService | null,
+  missionService?: MissionService | null,
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -136,5 +140,40 @@ export function registerIpcHandlers(
     ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, (_e, { sectorId, fields }) => sectorService.updateSector(sectorId, fields));
     ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, () => configService.getAll());
     ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, (_e, { key, value }) => configService.set(key, value));
+  }
+
+  // Phase 2: Deploy/Recall/Crew/Missions handlers
+  if (crewService && missionService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
+      const createTab = (label: string, cwd: string): string => {
+        const tabId = crypto.randomUUID();
+        const w = getWindow();
+        if (w && !w.isDestroyed()) {
+          w.webContents.send('fleet:create-tab', { tabId, label, cwd });
+        }
+        return tabId;
+      };
+      return crewService.deployCrew(req, ptyManager, createTab);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_RECALL, (_e, { crewId }) => {
+      crewService.recallCrew(crewId, ptyManager);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, (_e, filter?) => {
+      return crewService.listCrew(filter);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_MISSIONS, (_e, filter?) => {
+      return missionService.listMissions(filter);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_MISSION, (_e, req) => {
+      return missionService.addMission(req);
+    });
+
+    ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, (_e, { crewId }) => {
+      return crewService.observeCrew(crewId);
+    });
   }
 }

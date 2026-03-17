@@ -19,6 +19,9 @@ import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import { StarbaseDB } from './starbase/db';
 import { SectorService } from './starbase/sector-service';
 import { ConfigService } from './starbase/config-service';
+import { MissionService } from './starbase/mission-service';
+import { WorktreeManager } from './starbase/worktree-manager';
+import { CrewService } from './starbase/crew-service';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -110,6 +113,8 @@ app.whenReady().then(() => {
   let starbaseDb: StarbaseDB | null = null;
   let sectorService: SectorService | null = null;
   let configService: ConfigService | null = null;
+  let missionService: MissionService | null = null;
+  let crewService: CrewService | null = null;
 
   try {
     const workspacePath = process.cwd();
@@ -117,11 +122,24 @@ app.whenReady().then(() => {
     starbaseDb.open();
     sectorService = new SectorService(starbaseDb.getDb(), workspacePath);
     configService = new ConfigService(starbaseDb.getDb());
+
+    // Phase 2 services
+    missionService = new MissionService(starbaseDb.getDb());
+    const worktreeBasePath = join(dirname(starbaseDb.getDbPath()), 'worktrees');
+    const worktreeManager = new WorktreeManager(worktreeBasePath);
+    crewService = new CrewService({
+      db: starbaseDb.getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      sectorService,
+      missionService,
+      configService,
+      worktreeManager,
+    });
   } catch (err) {
     console.error('[starbase] Failed to initialize Star Command database:', err);
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService, crewService, missionService);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);
@@ -129,6 +147,11 @@ app.whenReady().then(() => {
   // Wire starbase services to socket command handler
   if (sectorService && configService) {
     commandHandler.setStarbaseServices(sectorService, configService);
+  }
+
+  // Wire Phase 2 services to socket command handler
+  if (crewService && missionService) {
+    commandHandler.setPhase2Services(crewService, missionService);
   }
 
   // Start socket API

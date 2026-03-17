@@ -7,6 +7,8 @@ import type { NotificationStateManager } from './notification-state';
 import type { Workspace, Tab, PaneLeaf, PaneNode, PaneSplit } from '../shared/types';
 import type { SectorService } from './starbase/sector-service';
 import type { ConfigService } from './starbase/config-service';
+import type { CrewService } from './starbase/crew-service';
+import type { MissionService } from './starbase/mission-service';
 
 export class FleetCommandHandler implements SocketCommandHandler {
   private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
@@ -15,6 +17,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
   private getWindow: (() => import('electron').BrowserWindow | null) | null = null;
   private sectorService: SectorService | null = null;
   private configService: ConfigService | null = null;
+  private crewService: CrewService | null = null;
+  private missionService: MissionService | null = null;
 
   constructor(
     private ptyManager: PtyManager,
@@ -26,6 +30,11 @@ export class FleetCommandHandler implements SocketCommandHandler {
   setStarbaseServices(sectorService: SectorService, configService: ConfigService): void {
     this.sectorService = sectorService;
     this.configService = configService;
+  }
+
+  setPhase2Services(crewService: CrewService, missionService: MissionService): void {
+    this.crewService = crewService;
+    this.missionService = missionService;
   }
 
   setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
@@ -214,6 +223,41 @@ export class FleetCommandHandler implements SocketCommandHandler {
         if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
         this.configService.set(cmd.key as string, cmd.value);
         return { ok: true };
+
+      // Phase 2: Deploy/Recall/Crew/Missions
+      case 'deploy': {
+        if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        const createTab = (label: string, cwd: string): string => {
+          const tabId = randomUUID();
+          const leaf: PaneLeaf = { type: 'leaf', id: randomUUID(), cwd };
+          const tab: Tab = { id: tabId, label, labelIsCustom: false, cwd, splitRoot: leaf };
+          this.workspace.tabs.push(tab);
+          this.tabs.set(tabId, tab);
+
+          this.ptyManager.create({ paneId: leaf.id, cwd, cmd: cmd.cmd as string | undefined });
+          this.eventBus.emit('pane-created', { type: 'pane-created', paneId: leaf.id });
+          return tabId;
+        };
+        const result = await this.crewService.deployCrew(
+          { sectorId: cmd.sectorId as string, prompt: cmd.prompt as string, missionId: cmd.missionId as number | undefined },
+          this.ptyManager,
+          createTab,
+        );
+        return { ok: true, ...result };
+      }
+
+      case 'recall':
+        if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        this.crewService.recallCrew(cmd.crewId as string, this.ptyManager);
+        return { ok: true };
+
+      case 'crew':
+        if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        return { ok: true, crew: this.crewService.listCrew(cmd.sectorId ? { sectorId: cmd.sectorId as string } : undefined) };
+
+      case 'missions':
+        if (!this.missionService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        return { ok: true, missions: this.missionService.listMissions(cmd as any) };
 
       default:
         return { ok: false, error: `Unknown command: ${cmd.type}` };

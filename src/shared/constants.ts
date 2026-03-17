@@ -28,6 +28,12 @@ export const IPC_CHANNELS = {
   STARBASE_UPDATE_SECTOR: 'starbase:update-sector',
   STARBASE_GET_CONFIG: 'starbase:get-config',
   STARBASE_SET_CONFIG: 'starbase:set-config',
+  STARBASE_DEPLOY: 'starbase:deploy',
+  STARBASE_RECALL: 'starbase:recall',
+  STARBASE_CREW: 'starbase:crew',
+  STARBASE_MISSIONS: 'starbase:missions',
+  STARBASE_ADD_MISSION: 'starbase:add-mission',
+  STARBASE_OBSERVE: 'starbase:observe',
 } as const;
 
 export const DEFAULT_SCROLLBACK = 10_000;
