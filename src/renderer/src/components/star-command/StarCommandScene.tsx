@@ -6,6 +6,7 @@ import { mapSectors, mapCrew } from './scene-utils'
 import type { SectorState } from '../visualizer/station-ring'
 import type { PodState } from '../visualizer/crew-pods'
 import { loadScSpriteSheet, isScSpriteReady, drawScSprite } from './sc-sprite-loader'
+import { CommsBeamRenderer } from '../visualizer/comms-beams'
 
 export function StarCommandScene({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -86,6 +87,8 @@ export function StarCommandScene({ className }: { className?: string }) {
 
     const stationRing = new StationRing()
     const crewPods = new CrewPodRenderer()
+    const commsBeams = new CommsBeamRenderer()
+    let lastBeamSpawn = 0
 
     let stopped = false
 
@@ -123,6 +126,53 @@ export function StarCommandScene({ className }: { className?: string }) {
       stationRing.update(sectors, deltaMs)
       crewPods.update(pods, deltaMs)
 
+      // Register positions for comms beams
+      commsBeams.clearPositions()
+      commsBeams.setPosition('hub', cx, cy)
+
+      // Compute pod positions (same math as CrewPodRenderer)
+      const RING_RADIUS = 120 * scale
+      const POD_OFFSET = 4 * scale
+      const podRadius = RING_RADIUS - POD_OFFSET
+      const sectorCount = sectors.length
+      if (sectorCount > 0) {
+        const gapRad = (2 * Math.PI) / 180
+        const totalGap = gapRad * sectorCount
+        const arcPerSector = (Math.PI * 2 - totalGap) / sectorCount
+        const podsBySector = new Map<string, PodState[]>()
+        for (const pod of pods) {
+          const list = podsBySector.get(pod.sectorId) ?? []
+          list.push(pod)
+          podsBySector.set(pod.sectorId, list)
+        }
+        let angle = (stationRing as any).rotation as number // read private rotation field
+        for (const sector of sectors) {
+          const sectorPods = podsBySector.get(sector.id) ?? []
+          const count = sectorPods.length
+          const endAngle = angle + arcPerSector
+          for (let i = 0; i < count; i++) {
+            const t = count === 1 ? 0.5 : i / (count - 1)
+            const podAngle = angle + arcPerSector * (0.15 + t * 0.7)
+            const px = cx + Math.cos(podAngle) * podRadius
+            const py = cy + Math.sin(podAngle) * podRadius
+            commsBeams.setPosition(sectorPods[i].crewId, px, py)
+          }
+          angle = endAngle + gapRad
+        }
+      }
+
+      commsBeams.update(deltaMs)
+
+      // Spawn beams for hailing crew every 3 seconds
+      if (elapsed - lastBeamSpawn >= 3000) {
+        for (const pod of pods) {
+          if (pod.status === 'hailing') {
+            commsBeams.addBeam(pod.crewId, 'hub', '#14b8a6')
+          }
+        }
+        lastBeamSpawn = elapsed
+      }
+
       // Scale context for ring and pods
       ctx!.save()
       ctx!.translate(cx, cy)
@@ -138,6 +188,8 @@ export function StarCommandScene({ className }: { className?: string }) {
         ctx!.imageSmoothingEnabled = false
         drawScSprite(ctx!, 'station-hub', elapsed, cx - hubSize / 2, cy - hubSize / 2, hubSize, hubSize)
       }
+
+      commsBeams.render(ctx!, cx, cy)
 
       rafRef.current = requestAnimationFrame(frame)
     }
