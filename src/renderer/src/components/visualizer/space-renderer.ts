@@ -32,6 +32,7 @@ const TRAIL_RATES: Record<string, { count: number; interval: number }> = {
 export class SpaceRenderer {
   private particles = new ParticleSystem();
   private trailTimers = new Map<string, number>();
+  private sortBuffer: Ship[] = [];
 
   get particleSystem(): ParticleSystem {
     return this.particles;
@@ -68,8 +69,12 @@ export class SpaceRenderer {
     this.particles.render(ctx);
 
     // Render ships sorted by Y (back to front)
-    const sorted = [...ships].sort((a, b) => a.currentY - b.currentY);
-    for (const ship of sorted) {
+    this.sortBuffer.length = 0;
+    for (let i = 0; i < ships.length; i++) {
+      this.sortBuffer.push(ships[i]);
+    }
+    this.sortBuffer.sort((a, b) => a.currentY - b.currentY);
+    for (const ship of this.sortBuffer) {
       this.renderShip(ctx, ship);
     }
   }

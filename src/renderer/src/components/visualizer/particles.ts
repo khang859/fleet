@@ -20,15 +20,12 @@ export type Particle = {
 
 export class ParticleSystem {
   private particles: Particle[] = [];
+  private nextOverwriteIdx = 0;
 
   spawn(x: number, y: number, color: string, count: number): void {
     for (let i = 0; i < count; i++) {
-      if (this.particles.length >= MAX_PARTICLES) {
-        this.particles.shift();
-      }
-
       const maxLife = MIN_LIFETIME + Math.random() * (MAX_LIFETIME - MIN_LIFETIME);
-      this.particles.push({
+      const particle: Particle = {
         x,
         y: y + (Math.random() - 0.5) * 4,
         vx: -(20 + Math.random() * 30),
@@ -39,22 +36,39 @@ export class ParticleSystem {
         life: maxLife,
         maxLife,
         animElapsed: 0,
-      });
+      };
+
+      if (this.particles.length >= MAX_PARTICLES) {
+        this.particles[this.nextOverwriteIdx] = particle;
+        this.nextOverwriteIdx = (this.nextOverwriteIdx + 1) % MAX_PARTICLES;
+      } else {
+        this.particles.push(particle);
+      }
     }
   }
 
   update(deltaMs: number): void {
     const dt = deltaMs / 1000;
+    let writeIdx = 0;
 
-    for (const p of this.particles) {
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.life -= dt;
       p.opacity = Math.max(0, (p.life / p.maxLife) * 0.9);
       p.animElapsed += deltaMs;
+
+      if (p.life > 0) {
+        this.particles[writeIdx] = p;
+        writeIdx++;
+      }
     }
 
-    this.particles = this.particles.filter((p) => p.life > 0);
+    this.particles.length = writeIdx;
+    if (this.nextOverwriteIdx > writeIdx) {
+      this.nextOverwriteIdx = 0;
+    }
   }
 
   getParticles(): Particle[] {
