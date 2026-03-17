@@ -2,8 +2,10 @@
 <html>
   <head>
     <meta charset="UTF-8" />
-    <title>Electron</title>
-    <!-- CSP is set dynamically by electron-vite in production -->
+    <title>Fleet</title>
+    <!-- Preload bundled Nerd Fonts so they're ready before xterm.js canvas renders -->
+    <link rel="preload" href="./src/assets/fonts/JetBrainsMonoNerdFontMono-Regular.ttf" as="font" type="font/ttf" crossorigin />
+    <link rel="preload" href="./src/assets/fonts/SymbolsNerdFontMono-Regular.ttf" as="font" type="font/ttf" crossorigin />
   </head>
 
   <body>
