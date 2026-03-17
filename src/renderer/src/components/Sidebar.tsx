@@ -300,7 +300,32 @@ export function Sidebar({ updateReady }: { updateReady?: boolean }) {
 
       {/* Tab list */}
       <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
-        {workspace.tabs.map((tab, index) => {
+        {/* Star Command tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'star-command')
+          .map((tab) => (
+            <div
+              key={tab.id}
+              className={`
+                flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
+                ${tab.id === activeTabId
+                  ? 'bg-neutral-700 text-white border-l-2 border-yellow-500'
+                  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+              `}
+              onClick={() => {
+                setActiveTab(tab.id);
+              }}
+            >
+              <span className="text-yellow-400 flex-shrink-0">★</span>
+              <div className="flex-1 min-w-0">
+                <div className="truncate text-sm leading-tight font-semibold">Star Command</div>
+              </div>
+            </div>
+          ))}
+        {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
+          <div className="h-px bg-neutral-800 mx-1 my-1" />
+        )}
+        {workspace.tabs.filter((t) => t.type !== 'star-command').map((tab, index) => {
           const paneIds = collectPaneIds(tab.splitRoot);
           // Active pane within this tab drives the displayed CWD
           const drivingPane = (tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId))

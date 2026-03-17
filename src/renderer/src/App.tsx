@@ -14,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
+import { StarCommandTab } from './components/StarCommandTab';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -214,18 +215,22 @@ export function App() {
                 className="h-full w-full"
                 style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
               >
-                <PaneGrid
-                  root={tab.splitRoot}
-                  activePaneId={tab.id === activeTabId ? activePaneId : null}
-                  onPaneFocus={(paneId) => {
-                    setActivePane(paneId);
-                    window.fleet.notifications.paneFocused({ paneId });
-                    useNotificationStore.getState().clearPane(paneId);
-                  }}
-                  serializedPanes={serializedPanes}
-                  fontFamily={settings?.general.fontFamily}
-                  fontSize={settings?.general.fontSize}
-                />
+                {tab.type === 'star-command' ? (
+                  <StarCommandTab />
+                ) : (
+                  <PaneGrid
+                    root={tab.splitRoot}
+                    activePaneId={tab.id === activeTabId ? activePaneId : null}
+                    onPaneFocus={(paneId) => {
+                      setActivePane(paneId);
+                      window.fleet.notifications.paneFocused({ paneId });
+                      useNotificationStore.getState().clearPane(paneId);
+                    }}
+                    serializedPanes={serializedPanes}
+                    fontFamily={settings?.general.fontFamily}
+                    fontSize={settings?.general.fontSize}
+                  />
+                )}
               </div>
             );
           })
