@@ -14,6 +14,8 @@ export type HullOpts = {
   db: Database.Database;
   lifesignIntervalSec?: number;
   timeoutMin?: number;
+  mergeStrategy?: string;
+  onComplete?: () => void;
 };
 
 type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
@@ -27,6 +29,8 @@ export class Hull {
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   private paneId: string | null = null;
   private pid: number | null = null;
+
+  private static ghAvailable: boolean | null = null;
 
   constructor(private opts: HullOpts) {}
 
@@ -205,6 +209,49 @@ export class Hull {
         }
       }
 
+      // Rebase handling after push
+      let hasConflicts = false;
+      let conflictFiles: string[] = [];
+      if (pushSucceeded) {
+        try {
+          const movedCount = execSync(
+            `git rev-list "${baseBranch}..origin/${baseBranch}" --count`,
+            gitOpts,
+          ).toString().trim();
+
+          if (parseInt(movedCount, 10) > 0) {
+            // Base branch has moved — attempt rebase
+            try {
+              execSync(`git rebase "origin/${baseBranch}"`, gitOpts);
+              // Rebase succeeded — force push with lease
+              try {
+                execSync(`git push --force-with-lease origin "${worktreeBranch}"`, { cwd: sectorPath, stdio: 'pipe' });
+              } catch {
+                // Force push failed — acceptable, branch already pushed
+              }
+            } catch {
+              // Rebase failed — abort and note conflicts
+              hasConflicts = true;
+              try {
+                const conflictOutput = execSync('git diff --name-only --diff-filter=U', gitOpts).toString().trim();
+                conflictFiles = conflictOutput ? conflictOutput.split('\n') : [];
+              } catch { /* ignore */ }
+              try {
+                execSync('git rebase --abort', gitOpts);
+              } catch { /* ignore */ }
+            }
+          }
+        } catch {
+          // Could not check base branch — skip rebase
+        }
+      }
+
+      // PR creation
+      const mergeStrategy = this.opts.mergeStrategy ?? 'pr';
+      if (pushSucceeded && mergeStrategy !== 'branch-only') {
+        this.createPR(hasConflicts, conflictFiles);
+      }
+
       // Update mission
       const missionStatus = status === 'complete' ? 'completed' : status;
       if (pushSucceeded) {
@@ -216,9 +263,14 @@ export class Hull {
       }
 
       // Send mission_complete Transmission
+      const commsPayload: Record<string, unknown> = { missionId, status, reason };
+      if (hasConflicts) {
+        commsPayload.hasConflicts = true;
+        commsPayload.conflictFiles = conflictFiles;
+      }
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)",
-      ).run(crewId, JSON.stringify({ missionId, status, reason }));
+      ).run(crewId, JSON.stringify(commsPayload));
 
       // Log exit
       db.prepare(
@@ -243,6 +295,77 @@ export class Hull {
           }
         }
       }
+
+      // Notify completion for auto-deploy
+      if (this.opts.onComplete) {
+        try {
+          this.opts.onComplete();
+        } catch {
+          // Don't let callback errors break cleanup
+        }
+      }
     }
+  }
+
+  private createPR(isDraft: boolean, conflictFiles: string[]): void {
+    if (!Hull.isGhAvailable()) return;
+
+    const { crewId, sectorId, missionId, prompt, worktreeBranch, baseBranch, sectorPath, db } = this.opts;
+    const mergeStrategy = this.opts.mergeStrategy ?? 'pr';
+
+    const summary = prompt.slice(0, 100);
+    const draftFlag = isDraft ? '--draft' : '';
+
+    // Get diff stat for PR body
+    let diffStat = '';
+    try {
+      diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, {
+        cwd: sectorPath,
+        stdio: 'pipe',
+      }).toString().trim();
+    } catch { /* ignore */ }
+
+    const conflictNote = isDraft && conflictFiles.length > 0
+      ? `\n\n### Merge Conflicts\nRebase failed on: ${conflictFiles.join(', ')}`
+      : '';
+
+    const body = `## Mission: ${summary}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`${conflictNote}\n\n---\nDeployed by Star Command`;
+
+    try {
+      const labelArgs = `--label fleet --label "sector/${sectorId}" --label "mission/${missionId}"`;
+      execSync(
+        `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
+        { cwd: sectorPath, stdio: 'pipe' },
+      );
+
+      // Auto-merge if configured
+      if (mergeStrategy === 'auto-merge' && !isDraft) {
+        try {
+          execSync(`gh pr merge --auto --squash "${worktreeBranch}"`, { cwd: sectorPath, stdio: 'pipe' });
+        } catch {
+          // Auto-merge might fail due to conflicts — warn Admiral
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_merge_failed', ?)",
+          ).run(crewId, JSON.stringify({ missionId, worktreeBranch }));
+        }
+      }
+    } catch (err) {
+      // PR creation failed — fall back to branch-only, invalidate gh cache
+      Hull.ghAvailable = null;
+      db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_creation_failed', ?)",
+      ).run(crewId, JSON.stringify({ missionId, error: err instanceof Error ? err.message : 'unknown' }));
+    }
+  }
+
+  private static isGhAvailable(): boolean {
+    if (Hull.ghAvailable !== null) return Hull.ghAvailable;
+    try {
+      execSync('gh auth status', { stdio: 'pipe' });
+      Hull.ghAvailable = true;
+    } catch {
+      Hull.ghAvailable = false;
+    }
+    return Hull.ghAvailable;
   }
 }
