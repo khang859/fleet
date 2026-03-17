@@ -24,10 +24,15 @@ import { WorktreeManager } from './starbase/worktree-manager';
 import { CrewService } from './starbase/crew-service';
 import { CommsService } from './starbase/comms-service';
 import { Admiral } from './starbase/admiral';
+import { Sentinel } from './starbase/sentinel';
+import { runReconciliation } from './starbase/reconciliation';
+import { Lockfile } from './starbase/lockfile';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
 let mainWindow: BrowserWindow | null = null;
+let sentinel: Sentinel | null = null;
+let lockfile: Lockfile | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -127,10 +132,23 @@ app.whenReady().then(() => {
     sectorService = new SectorService(starbaseDb.getDb(), workspacePath);
     configService = new ConfigService(starbaseDb.getDb());
 
+    // Acquire lockfile
+    const basePath = dirname(starbaseDb.getDbPath());
+    lockfile = new Lockfile(basePath, starbaseDb.getStarbaseId());
+    const lockResult = lockfile.acquire();
+    if (lockResult === 'read-only') {
+      console.warn('[starbase] Another Fleet instance manages this Starbase — read-only mode');
+    }
+
     // Phase 2 services
     missionService = new MissionService(starbaseDb.getDb());
-    const worktreeBasePath = join(dirname(starbaseDb.getDbPath()), 'worktrees');
+    const worktreeBasePath = join(basePath, 'worktrees');
     const worktreeManager = new WorktreeManager(worktreeBasePath);
+
+    // Configure worktree manager with concurrency limits
+    const maxConcurrent = configService.get('max_concurrent_worktrees') as number;
+    worktreeManager.configure(starbaseDb.getDb(), maxConcurrent);
+
     crewService = new CrewService({
       db: starbaseDb.getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
@@ -142,6 +160,8 @@ app.whenReady().then(() => {
 
     // Phase 3 services
     commsService = new CommsService(starbaseDb.getDb());
+    const commsRateLimit = configService.get('comms_rate_limit_per_min') as number;
+    commsService.setRateLimit(commsRateLimit);
 
     const createTab = (label: string, cwd: string): string => {
       const tabId = crypto.randomUUID();
@@ -167,6 +187,25 @@ app.whenReady().then(() => {
         createTab,
       },
     });
+
+    // Phase 4: Run reconciliation on startup
+    if (lockResult === 'acquired') {
+      runReconciliation({
+        db: starbaseDb.getDb(),
+        starbaseId: starbaseDb.getStarbaseId(),
+        worktreeBasePath,
+      }).then((summary) => {
+        if (summary.lostCrew.length > 0 || summary.requeuedMissions.length > 0) {
+          console.log('[starbase] Reconciliation summary:', JSON.stringify(summary));
+        }
+      }).catch((err) => {
+        console.error('[starbase] Reconciliation failed:', err);
+      });
+
+      // Start Sentinel watchdog
+      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService });
+      sentinel.start();
+    }
 
     // Auto-create Star Command tab on workspace load
     layoutStore.ensureStarCommandTab('default', workspacePath);
@@ -493,6 +532,8 @@ app.on('window-all-closed', () => {
   cwdPoller.stopAll();
   socketApi.stop();
   jsonlWatcher.stop();
+  if (sentinel) sentinel.stop();
+  if (lockfile) lockfile.release();
   // starbaseDb is scoped inside whenReady — close is handled by process exit
   if (process.platform !== 'darwin') {
     app.quit();

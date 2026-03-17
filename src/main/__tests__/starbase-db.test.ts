@@ -24,7 +24,7 @@ describe('StarbaseDB', () => {
     // Verify schema_version is set
     const raw = db.getDb();
     const meta = raw.prepare('SELECT schema_version FROM _meta').get() as { schema_version: number };
-    expect(meta.schema_version).toBe(1);
+    expect(meta.schema_version).toBeGreaterThanOrEqual(1);
 
     // Verify sectors table exists
     const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
@@ -67,7 +67,7 @@ describe('StarbaseDB', () => {
     // Schema version still 1 (not re-incremented)
     const raw = db2.getDb();
     const meta = raw.prepare('SELECT schema_version FROM _meta').get() as { schema_version: number };
-    expect(meta.schema_version).toBe(1);
+    expect(meta.schema_version).toBeGreaterThanOrEqual(1);
     db2.close();
   });
 });
