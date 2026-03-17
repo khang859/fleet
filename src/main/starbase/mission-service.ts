@@ -124,6 +124,11 @@ export class MissionService {
       .get(sectorId) as MissionRow | undefined;
   }
 
+  setReviewVerdict(missionId: number, verdict: string, notes: string): void {
+    this.db.prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')
+      .run(verdict, notes, missionId);
+  }
+
   updateMission(missionId: number, fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>): void {
     const sets: string[] = [];
     const values: unknown[] = [];

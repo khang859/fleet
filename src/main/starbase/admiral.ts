@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { execSync } from 'child_process';
 import { buildAdmiralSystemPrompt } from './admiral-system-prompt';
 import { ADMIRAL_TOOLS, dispatchTool } from './admiral-tools';
 import type { AdmiralToolDeps } from './admiral-tools';
@@ -206,6 +207,129 @@ export class Admiral {
     }
 
     yield { type: 'done' };
+  }
+
+  /**
+   * Review a PR using the Anthropic API.
+   * Fetches the PR diff, evaluates it against acceptance criteria,
+   * and returns a verdict (pass, request-changes, or reject).
+   */
+  async reviewPR(opts: {
+    prNumber: number;
+    missionId: number;
+    sectorPath: string;
+  }): Promise<{ verdict: 'pass' | 'request-changes' | 'reject'; notes: string }> {
+    const { prNumber, missionId, sectorPath } = opts;
+    const client = this.getClient();
+    const model = this.getModel();
+    const { missionService } = this.deps;
+
+    // 1. Fetch PR diff (truncate to fit context)
+    let diff = '';
+    try {
+      diff = execSync(`gh pr diff ${prNumber}`, {
+        cwd: sectorPath,
+        stdio: 'pipe',
+        timeout: 30_000,
+      }).toString();
+      if (diff.length > 10000) {
+        diff = diff.slice(0, 10000) + '\n... [truncated]';
+      }
+    } catch {
+      diff = '[Failed to fetch PR diff]';
+    }
+
+    // 2. Get acceptance criteria from mission
+    const mission = missionService.getMission(missionId);
+    const acceptanceCriteria = mission?.acceptance_criteria || 'No acceptance criteria specified.';
+
+    // 3. Call Anthropic API for evaluation
+    const reviewPrompt = `You are reviewing a pull request for code quality and correctness.
+
+## Acceptance Criteria
+${acceptanceCriteria}
+
+## PR Diff
+\`\`\`
+${diff}
+\`\`\`
+
+Evaluate the PR diff against the acceptance criteria. For each criterion, state whether it is met or not.
+
+Then provide your overall verdict as one of:
+- "pass" — all criteria met, code looks good
+- "request-changes" — mostly good but needs specific fixes
+- "reject" — fundamentally wrong approach or major issues
+
+Respond in this exact JSON format:
+{
+  "verdict": "pass" | "request-changes" | "reject",
+  "notes": "Your detailed review notes here"
+}`;
+
+    try {
+      const response = await client.messages.create({
+        model,
+        max_tokens: 2048,
+        messages: [{ role: 'user', content: reviewPrompt }],
+      });
+
+      // Parse response
+      let responseText = '';
+      for (const block of response.content) {
+        if (block.type === 'text') {
+          responseText += block.text;
+        }
+      }
+
+      // Extract JSON from response
+      const jsonMatch = responseText.match(/\{[\s\S]*"verdict"[\s\S]*"notes"[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]) as { verdict: string; notes: string };
+        const verdict = (['pass', 'request-changes', 'reject'].includes(parsed.verdict)
+          ? parsed.verdict
+          : 'request-changes') as 'pass' | 'request-changes' | 'reject';
+
+        // 4. Store verdict in mission
+        missionService.setReviewVerdict(missionId, verdict, parsed.notes);
+
+        // 5. Apply verdict via gh CLI
+        try {
+          if (verdict === 'pass') {
+            execSync(`gh pr review ${prNumber} --approve --body "Admiral review: approved. ${parsed.notes.slice(0, 200)}"`, {
+              cwd: sectorPath,
+              stdio: 'pipe',
+            });
+            missionService.setStatus(missionId, 'completed');
+          } else if (verdict === 'request-changes') {
+            execSync(`gh pr review ${prNumber} --request-changes --body "${parsed.notes.replace(/"/g, '\\"').slice(0, 2000)}"`, {
+              cwd: sectorPath,
+              stdio: 'pipe',
+            });
+            missionService.setStatus(missionId, 'changes-requested');
+          } else {
+            execSync(`gh pr close ${prNumber} --comment "Admiral review: rejected. ${parsed.notes.replace(/"/g, '\\"').slice(0, 500)}"`, {
+              cwd: sectorPath,
+              stdio: 'pipe',
+            });
+            missionService.setStatus(missionId, 'rejected');
+          }
+        } catch {
+          // gh command failed — verdict is still stored in DB
+        }
+
+        return { verdict, notes: parsed.notes };
+      }
+
+      // Failed to parse — default to request-changes
+      const fallbackNotes = `Could not parse review response. Raw: ${responseText.slice(0, 500)}`;
+      missionService.setReviewVerdict(missionId, 'request-changes', fallbackNotes);
+      return { verdict: 'request-changes', notes: fallbackNotes };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      missionService.setReviewVerdict(missionId, 'request-changes', `Review failed: ${errorMsg}`);
+      return { verdict: 'request-changes', notes: `Review failed: ${errorMsg}` };
+    }
   }
 
   getHistory(): AdmiralMessage[] {

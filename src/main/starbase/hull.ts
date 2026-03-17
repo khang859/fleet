@@ -17,6 +17,7 @@ export type HullOpts = {
   mergeStrategy?: string;
   verifyCommand?: string;
   lintCommand?: string;
+  reviewMode?: string;
   onComplete?: () => void;
 };
 
@@ -308,8 +309,10 @@ export class Hull {
         this.createPR(hasConflicts, conflictFiles, hasLintWarnings, lintOutput);
       }
 
-      // Update mission
-      const missionStatus = verificationFailed ? 'failed-verification' : (status === 'complete' ? 'completed' : status);
+      // Update mission (but don't overwrite pending-review status set by Gate 3)
+      const currentMission = db.prepare('SELECT status FROM missions WHERE id = ?').get(missionId) as { status: string } | undefined;
+      const isPendingReview = currentMission?.status === 'pending-review';
+      const missionStatus = isPendingReview ? 'pending-review' : (verificationFailed ? 'failed-verification' : (status === 'complete' ? 'completed' : status));
       if (pushSucceeded) {
         db.prepare(`UPDATE missions SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ?`)
           .run(missionStatus, reason, missionId);
@@ -416,6 +419,36 @@ export class Hull {
         `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
         { cwd: sectorPath, stdio: 'pipe' },
       );
+
+      // Gate 3: If review_mode is admiral-review, send pr_review_request comms
+      if (this.opts.reviewMode === 'admiral-review') {
+        try {
+          const prViewOutput = execSync(
+            `gh pr view "${worktreeBranch}" --json number,url`,
+            { cwd: sectorPath, stdio: 'pipe' },
+          ).toString();
+          const prData = JSON.parse(prViewOutput) as { number: number; url: string };
+
+          // Get acceptance criteria from mission
+          const missionRow = db.prepare('SELECT acceptance_criteria FROM missions WHERE id = ?')
+            .get(missionId) as { acceptance_criteria: string | null } | undefined;
+
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)",
+          ).run(crewId, JSON.stringify({
+            prNumber: prData.number,
+            prUrl: prData.url,
+            missionId,
+            diffSummary: diffStat.slice(0, 2000),
+            acceptanceCriteria: missionRow?.acceptance_criteria ?? '',
+          }));
+
+          // Update mission status to pending-review
+          db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId);
+        } catch {
+          // PR view failed — skip review request, continue normally
+        }
+      }
 
       // Auto-merge if configured
       if (mergeStrategy === 'auto-merge' && !isDraft) {
