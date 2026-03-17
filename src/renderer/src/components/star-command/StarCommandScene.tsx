@@ -15,11 +15,47 @@ export function StarCommandScene({ className }: { className?: string }) {
     const ctx = canvas.getContext('2d', { alpha: false })
     if (!ctx) return
 
+    // --- Starfield ---
+    type Star = { x: number; y: number; radius: number; phase: number; speed: number }
+
+    const STAR_COUNT = 150
+    let stars: Star[] = []
+
+    const scatterStars = (w: number, h: number) => {
+      stars = Array.from({ length: STAR_COUNT }, () => ({
+        x: Math.random() * w,
+        y: Math.random() * h,
+        radius: Math.random() * 1.2 + 0.3,
+        phase: Math.random() * Math.PI * 2,
+        speed: Math.random() * 0.0008 + 0.0002,
+      }))
+    }
+
+    let starOffscreen = new OffscreenCanvas(canvas.width, canvas.height)
+    let starCtx = starOffscreen.getContext('2d')!
+    let lastStarRedraw = 0
+    let elapsed = 0
+
+    const redrawStars = () => {
+      starCtx.clearRect(0, 0, starOffscreen.width, starOffscreen.height)
+      for (const star of stars) {
+        const brightness = 0.4 + 0.6 * Math.abs(Math.sin(elapsed * star.speed + star.phase))
+        starCtx.beginPath()
+        starCtx.arc(star.x, star.y, star.radius, 0, Math.PI * 2)
+        starCtx.fillStyle = `rgba(255,255,255,${brightness.toFixed(2)})`
+        starCtx.fill()
+      }
+    }
+
     // Sync canvas size to container
     const applyResize = () => {
       canvas.width = container.clientWidth
       canvas.height = container.clientHeight
       pendingResizeRef.current = false
+      starOffscreen = new OffscreenCanvas(canvas.width, canvas.height)
+      starCtx = starOffscreen.getContext('2d')!
+      scatterStars(canvas.width, canvas.height)
+      redrawStars()
     }
     applyResize()
 
@@ -37,9 +73,9 @@ export function StarCommandScene({ className }: { className?: string }) {
       // Apply pending resize
       if (pendingResizeRef.current) applyResize()
 
-      const deltaMs = lastFrameRef.current ? now - lastFrameRef.current : 16 // used in subsequent tasks
-      void deltaMs
+      const deltaMs = lastFrameRef.current ? now - lastFrameRef.current : 16
       lastFrameRef.current = now
+      elapsed += deltaMs
 
       const w = canvas!.width
       const h = canvas!.height
@@ -47,6 +83,13 @@ export function StarCommandScene({ className }: { className?: string }) {
       // Background
       ctx!.fillStyle = '#0a0a1a'
       ctx!.fillRect(0, 0, w, h)
+
+      // Starfield — redraw offscreen at 5fps, blit every frame
+      if (now - lastStarRedraw >= 200) {
+        redrawStars()
+        lastStarRedraw = now
+      }
+      ctx!.drawImage(starOffscreen, 0, 0)
 
       // TODO: layers will be added in subsequent tasks
 
