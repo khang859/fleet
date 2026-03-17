@@ -20,6 +20,8 @@ import { SettingsStore } from './settings-store';
 import { CwdPoller } from './cwd-poller';
 import { GitService } from './git-service';
 import type { FleetSettings } from '../shared/types';
+import type { SectorService } from './starbase/sector-service';
+import type { ConfigService } from './starbase/config-service';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -31,6 +33,8 @@ export function registerIpcHandlers(
   cwdPoller: CwdPoller,
   gitService: GitService,
   getWindow: () => BrowserWindow | null,
+  sectorService?: SectorService | null,
+  configService?: ConfigService | null,
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -123,4 +127,14 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.GIT_STATUS, (_event, cwd: string) => {
     return gitService.getFullStatus(cwd);
   });
+
+  // Starbase handlers
+  if (sectorService && configService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, () => sectorService.listSectors());
+    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, (_e, req) => sectorService.addSector(req));
+    ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, (_e, { sectorId }) => sectorService.removeSector(sectorId));
+    ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, (_e, { sectorId, fields }) => sectorService.updateSector(sectorId, fields));
+    ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, () => configService.getAll());
+    ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, (_e, { key, value }) => configService.set(key, value));
+  }
 }

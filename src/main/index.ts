@@ -16,6 +16,9 @@ import { AgentStateTracker } from './agent-state-tracker';
 import { JsonlWatcher } from './jsonl-watcher';
 import { CwdPoller } from './cwd-poller';
 import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
+import { StarbaseDB } from './starbase/db';
+import { SectorService } from './starbase/sector-service';
+import { ConfigService } from './starbase/config-service';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -102,10 +105,31 @@ app.whenReady().then(() => {
   }
 
   const gitService = new GitService();
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow);
+
+  // Initialize Star Command database
+  let starbaseDb: StarbaseDB | null = null;
+  let sectorService: SectorService | null = null;
+  let configService: ConfigService | null = null;
+
+  try {
+    const workspacePath = process.cwd();
+    starbaseDb = new StarbaseDB(workspacePath);
+    starbaseDb.open();
+    sectorService = new SectorService(starbaseDb.getDb(), workspacePath);
+    configService = new ConfigService(starbaseDb.getDb());
+  } catch (err) {
+    console.error('[starbase] Failed to initialize Star Command database:', err);
+  }
+
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);
+
+  // Wire starbase services to socket command handler
+  if (sectorService && configService) {
+    commandHandler.setStarbaseServices(sectorService, configService);
+  }
 
   // Start socket API
   socketApi.start().catch((err) => {
@@ -332,6 +356,7 @@ app.on('window-all-closed', () => {
   cwdPoller.stopAll();
   socketApi.stop();
   jsonlWatcher.stop();
+  // starbaseDb is scoped inside whenReady — close is handled by process exit
   if (process.platform !== 'darwin') {
     app.quit();
   }

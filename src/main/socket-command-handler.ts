@@ -5,12 +5,16 @@ import type { LayoutStore } from './layout-store';
 import type { EventBus } from './event-bus';
 import type { NotificationStateManager } from './notification-state';
 import type { Workspace, Tab, PaneLeaf, PaneNode, PaneSplit } from '../shared/types';
+import type { SectorService } from './starbase/sector-service';
+import type { ConfigService } from './starbase/config-service';
 
 export class FleetCommandHandler implements SocketCommandHandler {
   private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
   private tabs = new Map<string, Tab>();
 
   private getWindow: (() => import('electron').BrowserWindow | null) | null = null;
+  private sectorService: SectorService | null = null;
+  private configService: ConfigService | null = null;
 
   constructor(
     private ptyManager: PtyManager,
@@ -18,6 +22,11 @@ export class FleetCommandHandler implements SocketCommandHandler {
     private eventBus: EventBus,
     private notificationState: NotificationStateManager,
   ) {}
+
+  setStarbaseServices(sectorService: SectorService, configService: ConfigService): void {
+    this.sectorService = sectorService;
+    this.configService = configService;
+  }
 
   setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
     this.getWindow = getter;
@@ -184,6 +193,27 @@ export class FleetCommandHandler implements SocketCommandHandler {
           panes: this.ptyManager.paneIds(),
           notifications: this.notificationState.getAllStates(),
         };
+
+      // Starbase commands
+      case 'sectors':
+        if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
+        return { ok: true, sectors: this.sectorService.listSectors() };
+
+      case 'add-sector':
+        if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
+        return { ok: true, sector: this.sectorService.addSector(cmd as any) };
+
+      case 'config-get':
+        if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
+        if (cmd.key) {
+          return { ok: true, key: cmd.key, value: this.configService.get(cmd.key as string) };
+        }
+        return { ok: true, config: this.configService.getAll() };
+
+      case 'config-set':
+        if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
+        this.configService.set(cmd.key as string, cmd.value);
+        return { ok: true };
 
       default:
         return { ok: false, error: `Unknown command: ${cmd.type}` };

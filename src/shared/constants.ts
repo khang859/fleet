@@ -22,6 +22,12 @@ export const IPC_CHANNELS = {
   SETTINGS_SET: 'settings:set',
   GIT_IS_REPO: 'git:is-repo',
   GIT_STATUS: 'git:status',
+  STARBASE_LIST_SECTORS: 'starbase:list-sectors',
+  STARBASE_ADD_SECTOR: 'starbase:add-sector',
+  STARBASE_REMOVE_SECTOR: 'starbase:remove-sector',
+  STARBASE_UPDATE_SECTOR: 'starbase:update-sector',
+  STARBASE_GET_CONFIG: 'starbase:get-config',
+  STARBASE_SET_CONFIG: 'starbase:set-config',
 } as const;
 
 export const DEFAULT_SCROLLBACK = 10_000;
