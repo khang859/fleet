@@ -23,6 +23,8 @@ type PtyEntry = {
 
 export class PtyManager {
   private ptys = new Map<string, PtyEntry>();
+  /** PTYs that must not be killed by the renderer-driven GC (e.g. Star Command crews). */
+  private protectedPtys = new Set<string>();
 
   create(opts: PtyCreateOptions): PtyCreateResult {
     if (this.ptys.has(opts.paneId)) {
@@ -64,11 +66,16 @@ export class PtyManager {
     }
   }
 
+  protect(paneId: string): void {
+    this.protectedPtys.add(paneId);
+  }
+
   kill(paneId: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
       entry.process.kill();
       this.ptys.delete(paneId);
+      this.protectedPtys.delete(paneId);
     }
   }
 
@@ -103,11 +110,11 @@ export class PtyManager {
     return this.ptys.get(paneId)?.process.pid;
   }
 
-  /** Kill any PTY whose paneId is not in the given set of active IDs. */
+  /** Kill any PTY whose paneId is not in the given set of active IDs (and not protected). */
   gc(activePaneIds: Set<string>): string[] {
     const killed: string[] = [];
     for (const paneId of this.ptys.keys()) {
-      if (!activePaneIds.has(paneId)) {
+      if (!activePaneIds.has(paneId) && !this.protectedPtys.has(paneId)) {
         this.kill(paneId);
         killed.push(paneId);
       }
@@ -127,6 +134,7 @@ export class PtyManager {
     if (entry) {
       entry.process.onExit(({ exitCode }) => {
         this.ptys.delete(paneId);
+        this.protectedPtys.delete(paneId);
         callback(exitCode);
       });
     }

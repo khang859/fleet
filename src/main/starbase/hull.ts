@@ -80,7 +80,7 @@ export class Hull {
       this.handleTimeout(ptyManager);
     }, timeoutMin * 60 * 1000);
 
-    // Spawn agent PTY
+    // Spawn agent PTY and protect it from the renderer-driven GC
     try {
       const result = ptyManager.create({
         paneId,
@@ -88,6 +88,7 @@ export class Hull {
         cmd: `claude --yes --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`,
       });
       this.pid = result.pid;
+      ptyManager.protect(paneId);
       db.prepare('UPDATE crew SET pid = ? WHERE id = ?').run(result.pid, crewId);
     } catch (err) {
       this.cleanup('error', `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`);
