@@ -32,7 +32,14 @@ export class SpaceWeather {
       p.life -= dt;
       p.opacity = Math.max(0, (p.life / p.maxLife) * 0.4);
     }
-    this.particles = this.particles.filter((p) => p.life > 0);
+    let writeIdx = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      if (this.particles[i].life > 0) {
+        this.particles[writeIdx] = this.particles[i];
+        writeIdx++;
+      }
+    }
+    this.particles.length = writeIdx;
   }
 
   private spawnParticle(width: number, height: number): void {
