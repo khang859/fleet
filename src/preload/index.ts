@@ -90,6 +90,44 @@ const fleetApi = {
     getStatus: (cwd: string): Promise<GitStatusPayload> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd),
   },
+  admiral: {
+    sendMessage: (content: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_SEND, content),
+    getHistory: (): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_GET_HISTORY),
+    reset: (): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
+    onStreamChunk: (callback: (chunk: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, chunk: unknown) => callback(chunk);
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler);
+    },
+    onStreamEnd: (callback: () => void) => {
+      const handler = () => callback();
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_END, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_END, handler);
+    },
+    onStreamError: (callback: (err: { error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, err: { error: string }) => callback(err);
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler);
+    },
+  },
+  starbase: {
+    listSectors: (): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
+    listCrew: (filter?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW, filter),
+    listMissions: (filter?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MISSIONS, filter),
+    getUnreadComms: (): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
+    onStatusUpdate: (callback: (payload: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload);
+      ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler);
+    },
+  },
   updates: {
     checkForUpdates: (): Promise<void> =>
       ipcRenderer.invoke('fleet:update-check'),

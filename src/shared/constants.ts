@@ -34,6 +34,14 @@ export const IPC_CHANNELS = {
   STARBASE_MISSIONS: 'starbase:missions',
   STARBASE_ADD_MISSION: 'starbase:add-mission',
   STARBASE_OBSERVE: 'starbase:observe',
+  STARBASE_STATUS_UPDATE: 'starbase:status-update',
+  STARBASE_COMMS_UNREAD: 'starbase:comms-unread',
+  ADMIRAL_SEND: 'admiral:send-message',
+  ADMIRAL_GET_HISTORY: 'admiral:get-history',
+  ADMIRAL_RESET: 'admiral:reset',
+  ADMIRAL_STREAM_CHUNK: 'admiral:stream-chunk',
+  ADMIRAL_STREAM_END: 'admiral:stream-end',
+  ADMIRAL_STREAM_ERROR: 'admiral:stream-error',
 } as const;
 
 export const DEFAULT_SCROLLBACK = 10_000;

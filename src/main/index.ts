@@ -22,6 +22,8 @@ import { ConfigService } from './starbase/config-service';
 import { MissionService } from './starbase/mission-service';
 import { WorktreeManager } from './starbase/worktree-manager';
 import { CrewService } from './starbase/crew-service';
+import { CommsService } from './starbase/comms-service';
+import { Admiral } from './starbase/admiral';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -115,6 +117,8 @@ app.whenReady().then(() => {
   let configService: ConfigService | null = null;
   let missionService: MissionService | null = null;
   let crewService: CrewService | null = null;
+  let commsService: CommsService | null = null;
+  let admiral: Admiral | null = null;
 
   try {
     const workspacePath = process.cwd();
@@ -135,11 +139,42 @@ app.whenReady().then(() => {
       configService,
       worktreeManager,
     });
+
+    // Phase 3 services
+    commsService = new CommsService(starbaseDb.getDb());
+
+    const createTab = (label: string, cwd: string): string => {
+      const tabId = crypto.randomUUID();
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('fleet:create-tab', { tabId, label, cwd });
+      }
+      return tabId;
+    };
+
+    admiral = new Admiral({
+      workspacePath,
+      sectorService,
+      missionService,
+      crewService,
+      commsService,
+      configService,
+      toolDeps: {
+        sectorService,
+        missionService,
+        crewService,
+        commsService,
+        ptyManager,
+        createTab,
+      },
+    });
+
+    // Auto-create Star Command tab on workspace load
+    layoutStore.ensureStarCommandTab('default', workspacePath);
   } catch (err) {
     console.error('[starbase] Failed to initialize Star Command database:', err);
   }
 
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService, crewService, missionService);
+  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow, sectorService, configService, crewService, missionService, admiral, commsService);
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);

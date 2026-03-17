@@ -24,6 +24,8 @@ import type { SectorService } from './starbase/sector-service';
 import type { ConfigService } from './starbase/config-service';
 import type { CrewService } from './starbase/crew-service';
 import type { MissionService } from './starbase/mission-service';
+import type { Admiral } from './starbase/admiral';
+import type { CommsService } from './starbase/comms-service';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -39,6 +41,8 @@ export function registerIpcHandlers(
   configService?: ConfigService | null,
   crewService?: CrewService | null,
   missionService?: MissionService | null,
+  admiral?: Admiral | null,
+  commsService?: CommsService | null,
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -174,6 +178,41 @@ export function registerIpcHandlers(
 
     ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, (_e, { crewId }) => {
       return crewService.observeCrew(crewId);
+    });
+  }
+
+  // Phase 3: Admiral + Comms handlers
+  if (admiral) {
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_SEND, async (_e, content: string) => {
+      const w = getWindow();
+      if (!w || w.isDestroyed()) return;
+
+      try {
+        for await (const chunk of admiral.sendMessage(content)) {
+          if (w.isDestroyed()) break;
+          w.webContents.send(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, chunk);
+        }
+      } catch (err) {
+        if (!w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, {
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
+      }
+    });
+
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_GET_HISTORY, () => {
+      return admiral.getHistory();
+    });
+
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, () => {
+      admiral.resetSession();
+    });
+  }
+
+  if (commsService) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, () => {
+      return commsService.getUnread('admiral');
     });
   }
 }

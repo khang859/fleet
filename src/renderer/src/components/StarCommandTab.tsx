@@ -2,7 +2,15 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useStarCommandStore } from '../store/star-command-store';
 import type { AdmiralChatMessage } from '../store/star-command-store';
 import { useWorkspaceStore } from '../store/workspace-store';
-import { IPC_CHANNELS } from '../../../shared/constants';
+
+type StreamChunk = {
+  type: string;
+  text?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+  result?: string;
+  error?: string;
+};
 
 function MessageBubble({ msg }: { msg: AdmiralChatMessage }) {
   const [toolExpanded, setToolExpanded] = useState(false);
@@ -25,7 +33,7 @@ function MessageBubble({ msg }: { msg: AdmiralChatMessage }) {
             className="flex items-center gap-1 text-neutral-400 hover:text-neutral-200"
             onClick={() => setToolExpanded(!toolExpanded)}
           >
-            <span className="text-xs">{toolExpanded ? '▼' : '▶'}</span>
+            <span className="text-xs">{toolExpanded ? '\u25BC' : '\u25B6'}</span>
             <span className="font-mono">{msg.toolName}</span>
             {msg.toolResult ? (
               <span className="text-green-400 ml-1">done</span>
@@ -184,69 +192,63 @@ export function StarCommandTab() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamBuffer]);
 
-  // Listen for streaming chunks from main process
+  // Listen for streaming chunks from main process via preload API
   useEffect(() => {
-    const { ipcRenderer } = window.require?.('electron') ?? {};
-    if (!ipcRenderer) return;
-
-    const onChunk = (_e: unknown, chunk: { type: string; text?: string; name?: string; input?: Record<string, unknown>; result?: string; error?: string }) => {
-      switch (chunk.type) {
+    const cleanupChunk = window.fleet.admiral.onStreamChunk((chunk: unknown) => {
+      const c = chunk as StreamChunk;
+      switch (c.type) {
         case 'text':
-          appendStreamText(chunk.text ?? '');
+          appendStreamText(c.text ?? '');
           break;
         case 'tool_use':
-          addToolCallMessage(chunk.name ?? 'unknown', chunk.input ?? {});
+          addToolCallMessage(c.name ?? 'unknown', c.input ?? {});
           break;
         case 'tool_result':
-          addToolResultMessage(chunk.name ?? 'unknown', chunk.result ?? '');
+          addToolResultMessage(c.name ?? 'unknown', c.result ?? '');
           break;
         case 'done':
           finalizeAssistantMessage();
           refreshStatus();
           break;
         case 'error':
-          setStreamError(chunk.error ?? 'Unknown error');
+          setStreamError(c.error ?? 'Unknown error');
           break;
       }
-    };
+    });
 
-    const onEnd = () => finalizeAssistantMessage();
-    const onError = (_e: unknown, err: { error: string }) => setStreamError(err.error);
+    const cleanupEnd = window.fleet.admiral.onStreamEnd(() => {
+      finalizeAssistantMessage();
+    });
 
-    ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, onChunk);
-    ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_END, onEnd);
-    ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, onError);
+    const cleanupError = window.fleet.admiral.onStreamError((err) => {
+      setStreamError(err.error);
+    });
 
     return () => {
-      ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, onChunk);
-      ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_END, onEnd);
-      ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, onError);
+      cleanupChunk();
+      cleanupEnd();
+      cleanupError();
     };
   }, [appendStreamText, addToolCallMessage, addToolResultMessage, finalizeAssistantMessage, setStreamError]);
 
-  // Listen for status updates
+  // Listen for status updates via preload API
   useEffect(() => {
-    const { ipcRenderer } = window.require?.('electron') ?? {};
-    if (!ipcRenderer) return;
+    const cleanup = window.fleet.starbase.onStatusUpdate((payload: unknown) => {
+      const p = payload as { crew?: unknown[]; missions?: unknown[]; sectors?: unknown[]; unreadCount?: number };
+      if (p.crew) setCrewList(p.crew as never[]);
+      if (p.missions) setMissionQueue(p.missions as never[]);
+      if (p.sectors) setSectors(p.sectors as never[]);
+      if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount);
+    });
 
-    const onStatus = (_e: unknown, payload: { crew?: unknown[]; missions?: unknown[]; sectors?: unknown[]; unreadCount?: number }) => {
-      if (payload.crew) setCrewList(payload.crew as never[]);
-      if (payload.missions) setMissionQueue(payload.missions as never[]);
-      if (payload.sectors) setSectors(payload.sectors as never[]);
-      if (payload.unreadCount !== undefined) setUnreadCount(payload.unreadCount);
-    };
-
-    ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, onStatus);
-    return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, onStatus);
+    return cleanup;
   }, [setCrewList, setMissionQueue, setSectors, setUnreadCount]);
 
   // Initial status fetch and poll fallback
   const refreshStatus = useCallback(() => {
-    const { ipcRenderer } = window.require?.('electron') ?? {};
-    if (!ipcRenderer) return;
-    ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW).then((crew: unknown[]) => setCrewList(crew as never[]));
-    ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MISSIONS).then((missions: unknown[]) => setMissionQueue(missions as never[]));
-    ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS).then((sectors: unknown[]) => setSectors(sectors as never[]));
+    window.fleet.starbase.listCrew().then((crew) => setCrewList(crew as never[]));
+    window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions as never[]));
+    window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors as never[]));
   }, [setCrewList, setMissionQueue, setSectors]);
 
   useEffect(() => {
@@ -263,12 +265,9 @@ export function StarCommandTab() {
     setInput('');
     setIsStreaming(true);
 
-    const { ipcRenderer } = window.require?.('electron') ?? {};
-    if (ipcRenderer) {
-      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_SEND, text).catch((err: Error) => {
-        setStreamError(err.message);
-      });
-    }
+    window.fleet.admiral.sendMessage(text).catch((err: Error) => {
+      setStreamError(err.message);
+    });
   }, [input, isStreaming, addUserMessage, setIsStreaming, setStreamError]);
 
   const handleKeyDown = useCallback(
@@ -288,7 +287,7 @@ export function StarCommandTab() {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900">
           <div className="flex items-center gap-2">
-            <span className="text-yellow-400 text-lg">★</span>
+            <span className="text-yellow-400 text-lg">{'\u2605'}</span>
             <h2 className="text-sm font-semibold text-neutral-200">Star Command</h2>
           </div>
           <button
@@ -303,7 +302,7 @@ export function StarCommandTab() {
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {messages.length === 0 && !streamBuffer && (
             <div className="flex flex-col items-center justify-center h-full text-neutral-600">
-              <span className="text-4xl mb-3">★</span>
+              <span className="text-4xl mb-3">{'\u2605'}</span>
               <p className="text-sm">Welcome to Star Command</p>
               <p className="text-xs mt-1">
                 Ask the Admiral to deploy agents, manage sectors, or check status.
