@@ -125,6 +125,15 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE crew ADD COLUMN comms_count_minute INTEGER DEFAULT 0;
     `,
   },
+  {
+    version: 3,
+    name: '003-indexes',
+    sql: `
+      CREATE INDEX IF NOT EXISTS idx_cargo_sector ON cargo(sector_id);
+      CREATE INDEX IF NOT EXISTS idx_comms_to ON comms(to_crew, read);
+      CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status, sector_id);
+    `,
+  },
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
@@ -139,4 +148,8 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   lifesign_timeout_sec: 30,
   default_review_mode: 'admiral-review',
   review_timeout_min: 10,
+  comms_retention_days: 30,
+  cargo_retention_days: 14,
+  ships_log_retention_days: 30,
+  forward_failed_cargo: false,
 };
