@@ -1,4 +1,10 @@
 import { useRef, useEffect } from 'react'
+import { useStarCommandStore } from '../../store/star-command-store'
+import { StationRing } from '../visualizer/station-ring'
+import { CrewPodRenderer } from '../visualizer/crew-pods'
+import { mapSectors, mapCrew } from './scene-utils'
+import type { SectorState } from '../visualizer/station-ring'
+import type { PodState } from '../visualizer/crew-pods'
 
 export function StarCommandScene({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -6,6 +12,16 @@ export function StarCommandScene({ className }: { className?: string }) {
   const rafRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const pendingResizeRef = useRef(false)
+
+  const sectorStatesRef = useRef<SectorState[]>([])
+  const podStatesRef = useRef<PodState[]>([])
+
+  // Sync store data into refs without causing re-renders
+  const { sectors, crewList } = useStarCommandStore()
+  useEffect(() => {
+    sectorStatesRef.current = mapSectors(sectors, crewList)
+    podStatesRef.current = mapCrew(crewList)
+  }, [sectors, crewList])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -65,6 +81,9 @@ export function StarCommandScene({ className }: { className?: string }) {
     })
     ro.observe(container)
 
+    const stationRing = new StationRing()
+    const crewPods = new CrewPodRenderer()
+
     let stopped = false
 
     function frame(now: number) {
@@ -91,7 +110,24 @@ export function StarCommandScene({ className }: { className?: string }) {
       }
       ctx!.drawImage(starOffscreen, 0, 0)
 
-      // TODO: layers will be added in subsequent tasks
+      const cx = w / 2
+      const cy = h / 2
+      const scale = Math.min(w, h) / 600 // 600 is reference size
+
+      const sectors = sectorStatesRef.current
+      const pods = podStatesRef.current
+
+      stationRing.update(sectors, deltaMs)
+      crewPods.update(pods, deltaMs)
+
+      // Scale context for ring and pods
+      ctx!.save()
+      ctx!.translate(cx, cy)
+      ctx!.scale(scale, scale)
+      ctx!.translate(-cx, -cy)
+      stationRing.render(ctx!, cx, cy)
+      crewPods.render(ctx!, cx, cy, stationRing)
+      ctx!.restore()
 
       rafRef.current = requestAnimationFrame(frame)
     }
