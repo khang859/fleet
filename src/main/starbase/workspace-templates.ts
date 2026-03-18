@@ -140,7 +140,8 @@ fleet missions show <id>               # Show full Mission details
 fleet comms inbox                      # List unread transmissions
 fleet comms inbox --all                # List all transmissions (including read)
 fleet comms check --quiet              # Check for unread comms (exit code 0 = none, 1 = unread)
-fleet comms send --to <crew-id> --message "..."  # Send a transmission
+fleet comms send --to <crew-id> --message "..."  # Send a transmission (as Admiral)
+fleet comms send --from <crew-id> --to admiral --message "..."  # Send as a Crewmate
 fleet comms resolve <id> --response "..."        # Reply and mark resolved
 fleet comms read-all                   # Mark all transmissions as read
 fleet comms read-all --crew <crew-id>  # Mark all from a specific crew as read
@@ -202,10 +203,11 @@ When you find unread transmissions:
 
 When a Crewmate signals their work is ready for review:
 
-1. \`fleet crew observe <crew-id>\` — check their terminal output
-2. Review the PR/branch in the Sector repository
-3. If approved: \`fleet missions update <id> --status done\`
-4. If changes needed: send feedback via \`fleet comms send --to <crew-id> --message "..."\`
+1. \`fleet crew info <crew-id>\` — check their status and mission details
+2. \`fleet crew observe <crew-id>\` — check their terminal output
+3. Review the PR/branch in the Sector repository
+4. If approved: \`fleet missions update <id> --status done\`
+5. If changes needed: send feedback via \`fleet comms send --to <crew-id> --message "..."\`
 
 ## Recovery (Fresh Start)
 
