@@ -13,8 +13,20 @@ export type CrewStatus = {
 export type MissionInfo = {
   id: number;
   sector_id: string;
-  status: string;
+  crew_id: string | null;
   summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  status: string;
+  priority: number;
+  depends_on_mission_id: number | null;
+  result: string | null;
+  verify_result: string | null;
+  review_verdict: string | null;
+  review_notes: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 };
 
 export type SectorInfo = {
