@@ -197,6 +197,7 @@ export class SocketServer extends EventEmitter {
           sectorId: (args.sector ?? args.sectorId) as string,
           summary: args.summary as string,
           prompt: args.prompt as string,
+          dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
         });
         this.emit('state-change', 'mission:changed', { mission });
         return mission;
