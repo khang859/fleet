@@ -44,12 +44,10 @@ export const IPC_CHANNELS = {
   STARBASE_RETENTION_STATS: 'starbase:retention-stats',
   STARBASE_RETENTION_CLEANUP: 'starbase:retention-cleanup',
   STARBASE_RETENTION_VACUUM: 'starbase:retention-vacuum',
-  ADMIRAL_SEND: 'admiral:send-message',
-  ADMIRAL_GET_HISTORY: 'admiral:get-history',
-  ADMIRAL_RESET: 'admiral:reset',
-  ADMIRAL_STREAM_CHUNK: 'admiral:stream-chunk',
-  ADMIRAL_STREAM_END: 'admiral:stream-end',
-  ADMIRAL_STREAM_ERROR: 'admiral:stream-error'
+  ADMIRAL_STATUS_CHANGED: 'admiral:status-changed',
+  ADMIRAL_RESTART: 'admiral:restart',
+  ADMIRAL_PANE_ID: 'admiral:pane-id',
+  PTY_DRAIN: 'fleet:pty-drain',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

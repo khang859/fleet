@@ -62,11 +62,16 @@ describe('PtyManager — extended', () => {
     expect(mockInstances[2].kill).toHaveBeenCalled();
   });
 
-  it('registers onData callback on the underlying PTY', () => {
+  it('registers an internal buffering listener on the underlying PTY at create time', () => {
     manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+    // The internal data listener is registered immediately at create() so its
+    // IDisposable can be tracked and disposed on kill(). manager.onData() stores
+    // the user callback for flushing — it does NOT re-register on the PTY.
+    expect(mockInstances[0].onData).toHaveBeenCalledTimes(1);
     const cb = vi.fn();
     manager.onData('p1', cb);
-    expect(mockInstances[0].onData).toHaveBeenCalledWith(cb);
+    // Still only one registration (at create time)
+    expect(mockInstances[0].onData).toHaveBeenCalledTimes(1);
   });
 
   it('onData() on non-existent pane does not throw', () => {

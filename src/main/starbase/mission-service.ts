@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3'
+import type { EventBus } from '../event-bus'
 
 type MissionRow = {
   id: number
@@ -34,7 +35,10 @@ type ListMissionsFilter = {
 }
 
 export class MissionService {
-  constructor(private db: Database.Database) {}
+  constructor(
+    private db: Database.Database,
+    private eventBus?: EventBus,
+  ) {}
 
   addMission(opts: AddMissionOpts): MissionRow {
     const result = this.db
@@ -51,7 +55,9 @@ export class MissionService {
         opts.dependsOnMissionId ?? null
       )
 
-    return this.getMission(result.lastInsertRowid as number)!
+    const mission = this.getMission(result.lastInsertRowid as number)!
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    return mission
   }
 
   completeMission(missionId: number, result: string): void {
@@ -60,6 +66,7 @@ export class MissionService {
         "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
       .run(result, missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   failMission(missionId: number, reason: string): void {
@@ -68,12 +75,14 @@ export class MissionService {
         "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
       .run(reason, missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   abortMission(missionId: number): void {
     this.db
       .prepare("UPDATE missions SET status = 'aborted' WHERE id = ? AND status = 'queued'")
       .run(missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   activateMission(missionId: number, crewId: string): void {
@@ -82,10 +91,12 @@ export class MissionService {
         "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
       )
       .run(crewId, missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   setStatus(missionId: number, status: string): void {
     this.db.prepare('UPDATE missions SET status = ? WHERE id = ?').run(status, missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   getMission(missionId: number): MissionRow | undefined {
@@ -148,5 +159,6 @@ export class MissionService {
     values.push(missionId)
 
     this.db.prepare(`UPDATE missions SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 }

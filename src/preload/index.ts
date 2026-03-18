@@ -90,24 +90,13 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd)
   },
   admiral: {
-    sendMessage: (content: string): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_SEND, content),
-    getHistory: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_GET_HISTORY),
-    reset: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
-    onStreamChunk: (callback: (chunk: unknown) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, chunk: unknown) => callback(chunk)
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, handler)
-    },
-    onStreamEnd: (callback: () => void) => {
-      const handler = () => callback()
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_END, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_END, handler)
-    },
-    onStreamError: (callback: (err: { error: string }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, err: { error: string }) => callback(err)
-      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, handler)
+    getPaneId: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
+    ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
+    restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
+    onStatusChanged: (callback: (payload: { status: string; paneId: string | null; error?: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; paneId: string | null; error?: string }) => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler) }
     }
   },
   starbase: {
@@ -121,7 +110,7 @@ const fleetApi = {
     onStatusUpdate: (callback: (payload: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler) }
     },
     listSupplyRoutes: (opts?: unknown): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
@@ -150,6 +139,7 @@ const fleetApi = {
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
+  ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {

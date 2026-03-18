@@ -1,12 +1,17 @@
 import type Database from 'better-sqlite3';
 import { existsSync } from 'fs';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { freemem } from 'os';
 import type { ConfigService } from './config-service';
+import type { EventBus } from '../event-bus';
+
+const execFileAsync = promisify(execFile);
 
 type SentinelDeps = {
   db: Database.Database;
   configService: ConfigService;
+  eventBus?: EventBus;
 };
 
 type CrewRow = {
@@ -120,7 +125,7 @@ export class Sentinel {
 
     // 5. Disk usage check
     const diskBudgetGb = configService.get('worktree_disk_budget_gb') as number;
-    const diskBytes = this.getDiskUsage();
+    const diskBytes = await this.getDiskUsage();
     if (diskBytes !== null) {
       const usedGb = diskBytes / (1024 * 1024 * 1024);
       const pct = (usedGb / diskBudgetGb) * 100;
@@ -143,26 +148,26 @@ export class Sentinel {
     // 7. Comms rate limit reset (every 6th sweep = ~60 seconds)
     if (this.sweepCount % 6 === 0) {
       db.prepare('UPDATE crew SET comms_count_minute = 0').run();
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
   }
 
-  private getDiskUsage(): number | null {
+  private async getDiskUsage(): Promise<number | null> {
     const now = Date.now();
     if (this.diskCacheBytes !== null && now - this.diskCacheTime < 60_000) {
       return this.diskCacheBytes;
     }
 
     try {
-      const worktreeBase = this.deps.db
-        .prepare("SELECT value FROM starbase_config WHERE key = 'worktree_disk_budget_gb'")
-        .get();
-      // Use home dir worktrees path
       const homePath = process.env.HOME ?? '~';
       const worktreePath = `${homePath}/.fleet/worktrees`;
       if (!existsSync(worktreePath)) return 0;
 
-      const output = execSync(`du -sk "${worktreePath}"`, { stdio: 'pipe' }).toString().trim();
-      const kb = parseInt(output.split('\t')[0], 10);
+      const { stdout } = await execFileAsync('du', ['-sk', worktreePath], { timeout: 10_000 });
+      const match = stdout.match(/^(\d+)/);
+      if (!match) return null;
+
+      const kb = parseInt(match[1], 10);
       this.diskCacheBytes = kb * 1024;
       this.diskCacheTime = now;
       return this.diskCacheBytes;

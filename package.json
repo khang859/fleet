@@ -28,7 +28,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@git-diff-view/react": "^0.1.2",
@@ -49,12 +48,14 @@
     "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^5.5.0",
     "better-sqlite3": "^12.8.0",
+    "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.577.0",
     "node-pty": "^1.1.0",
+    "pid-cwd": "^1.2.0",
     "shiki": "^4.0.2",
     "simple-git": "^3.33.0",
     "tailwind-merge": "^3.5.0",

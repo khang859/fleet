@@ -6,6 +6,7 @@ import type { ConfigService } from './config-service';
 import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
 import type { PtyManager } from '../pty-manager';
+import type { EventBus } from '../event-bus';
 
 type CrewRow = {
   id: string;
@@ -34,6 +35,7 @@ type CrewServiceDeps = {
   missionService: MissionService;
   configService: ConfigService;
   worktreeManager: WorktreeManager;
+  eventBus?: EventBus;
 };
 
 type DeployResult = {
@@ -151,6 +153,7 @@ export class CrewService {
     // 9. Start the Hull
     await hull.start(ptyManager, tabId);
 
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return { crewId, tabId, missionId };
   }
 
@@ -159,6 +162,7 @@ export class CrewService {
     if (hull) {
       hull.kill(ptyManager);
       this.hulls.delete(crewId);
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
   }
 

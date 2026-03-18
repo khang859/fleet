@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JsonlWatcher, JsonlRecord } from '../jsonl-watcher';
-import { writeFileSync, mkdirSync, rmSync, appendFileSync } from 'fs';
+import { writeFileSync, mkdirSync, rmSync, appendFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -88,4 +88,28 @@ describe('JsonlWatcher', () => {
 
     expect(callback).not.toHaveBeenCalled();
   });
+
+  it('removes deleted files from watchedFiles (no memory leak)', async () => {
+    const callback = vi.fn()
+    watcher = new JsonlWatcher(dir)
+    watcher.onRecord(callback)
+    watcher.start()
+
+    await new Promise((r) => setTimeout(r, 200))
+
+    const filePath = join(projectDir, 'session-gc.jsonl')
+    writeFileSync(filePath, JSON.stringify({ type: 'user' }) + '\n')
+    await new Promise((r) => setTimeout(r, 500))
+
+    // File is watched — now delete it
+    unlinkSync(filePath)
+    await new Promise((r) => setTimeout(r, 500))
+
+    // Writing a new file with same name should be treated as new (offset = 0)
+    writeFileSync(filePath, JSON.stringify({ type: 'assistant' }) + '\n')
+    await new Promise((r) => setTimeout(r, 500))
+
+    // Should have received the new record
+    expect(callback).toHaveBeenCalledWith('session-gc', expect.objectContaining({ type: 'assistant' }))
+  })
 });

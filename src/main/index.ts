@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron'
 import { fileURLToPath } from 'url'
-import { join, dirname } from 'path'
+import { join, dirname, basename } from 'path'
+import { homedir } from 'os'
 import { PtyManager } from './pty-manager'
 import { LayoutStore } from './layout-store'
 import { EventBus } from './event-bus'
@@ -23,19 +24,24 @@ import { MissionService } from './starbase/mission-service'
 import { WorktreeManager } from './starbase/worktree-manager'
 import { CrewService } from './starbase/crew-service'
 import { CommsService } from './starbase/comms-service'
-import { Admiral } from './starbase/admiral'
+import { SocketServer } from './socket-server'
+import { AdmiralProcess } from './starbase/admiral-process'
+import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
 import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
 import { RetentionService } from './starbase/retention-service'
+import { installFleetCLI } from './install-fleet-cli'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 
 let mainWindow: BrowserWindow | null = null
 let sentinel: Sentinel | null = null
 let lockfile: Lockfile | null = null
+let socketServer: SocketServer | null = null
+let admiralProcess: AdmiralProcess | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -115,7 +121,7 @@ function createWindow(): void {
 
 app.setName('Fleet')
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
     const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png')
@@ -134,7 +140,6 @@ app.whenReady().then(() => {
   let missionService: MissionService | null = null
   let crewService: CrewService | null = null
   let commsService: CommsService | null = null
-  let admiral: Admiral | null = null
   let supplyRouteService: SupplyRouteService | null = null
   let cargoService: CargoService | null = null
   let retentionService: RetentionService | null = null
@@ -143,7 +148,7 @@ app.whenReady().then(() => {
     const workspacePath = process.cwd()
     starbaseDb = new StarbaseDB(workspacePath)
     starbaseDb.open()
-    sectorService = new SectorService(starbaseDb.getDb(), workspacePath)
+    sectorService = new SectorService(starbaseDb.getDb(), workspacePath, eventBus)
     configService = new ConfigService(starbaseDb.getDb())
 
     // Phase 5 services
@@ -164,7 +169,7 @@ app.whenReady().then(() => {
     }
 
     // Phase 2 services
-    missionService = new MissionService(starbaseDb.getDb())
+    missionService = new MissionService(starbaseDb.getDb(), eventBus)
     const worktreeBasePath = join(basePath, 'worktrees')
     const worktreeManager = new WorktreeManager(worktreeBasePath)
 
@@ -178,11 +183,12 @@ app.whenReady().then(() => {
       sectorService,
       missionService,
       configService,
-      worktreeManager
+      worktreeManager,
+      eventBus,
     })
 
     // Phase 3 services
-    commsService = new CommsService(starbaseDb.getDb())
+    commsService = new CommsService(starbaseDb.getDb(), eventBus)
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
@@ -194,21 +200,112 @@ app.whenReady().then(() => {
       return tabId
     }
 
-    admiral = new Admiral({
-      workspacePath,
-      sectorService,
-      missionService,
-      crewService,
-      commsService,
-      configService,
-      toolDeps: {
-        sectorService,
-        missionService,
-        crewService,
-        commsService,
-        ptyManager,
-        createTab
+    // Socket Server (replaces SocketApi for starbase commands)
+    const shipsLog = new ShipsLog(starbaseDb.getDb())
+    socketServer = new SocketServer(SOCKET_PATH, {
+      crewService: crewService!,
+      missionService: missionService!,
+      commsService: commsService!,
+      sectorService: sectorService!,
+      cargoService: cargoService!,
+      supplyRouteService: supplyRouteService!,
+      configService: configService!,
+      ptyManager,
+      createTab,
+      shipsLog,
+    })
+
+    socketServer.on('state-change', (event: string, data: unknown) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
       }
+    })
+
+    socketServer.start().catch((err) => {
+      console.error('[socket-server] Failed to start:', err)
+    })
+
+    // Admiral Process
+    // Install fleet CLI binary so it's available on the Admiral's PATH
+    const fleetBinPath = await installFleetCLI().catch((err) => {
+      console.error('[fleet-cli] Failed to install CLI binary:', err)
+      return join(homedir(), '.fleet', 'bin')
+    })
+    const starbaseId = starbaseDb.getStarbaseId()
+    const admiralWorkspace = join(homedir(), '.fleet', 'starbases', `starbase-${starbaseId}`, 'admiral')
+    const starbaseName = (configService.get('starbase_name') as string | undefined) ?? basename(workspacePath)
+
+    admiralProcess = new AdmiralProcess({
+      workspace: admiralWorkspace,
+      starbaseName,
+      sectors: sectorService.listSectors().map((s) => ({
+        name: s.name,
+        root_path: s.root_path,
+        stack: s.stack ?? undefined,
+        base_branch: s.base_branch ?? undefined,
+      })),
+      ptyManager,
+      fleetBinPath,
+    })
+
+    admiralProcess.setOnStatusChange((status, error) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
+          status,
+          paneId: admiralProcess!.paneId,
+          error,
+        })
+      }
+    })
+
+    // Start the Admiral on demand and wire PTY data forwarding to renderer
+    const startAdmiralAndWire = async (): Promise<string | null> => {
+      try {
+        const paneId = await admiralProcess!.start()
+        // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
+        ptyManager.onData(paneId, (data) => {
+          notificationDetector.scan(paneId, data)
+          const w = mainWindow
+          if (w && !w.isDestroyed()) {
+            w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+          }
+        })
+        ptyManager.onExit(paneId, (exitCode) => {
+          const w = mainWindow
+          if (w && !w.isDestroyed()) {
+            w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+          }
+          eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
+        })
+        cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+        return paneId
+      } catch (err) {
+        console.error('[admiral] Failed to start:', err)
+        return null
+      }
+    }
+
+    ipcMain.handle('admiral:ensure-started', async () => {
+      if (!admiralProcess) return null
+      // Already running — return existing paneId
+      if (admiralProcess.paneId) return admiralProcess.paneId
+      // Currently starting — don't double-spawn; return null
+      // StarCommandTab listens to onStatusChanged and will receive the paneId when done
+      if (admiralProcess.status === 'starting') return null
+      // Not started — start it
+      return startAdmiralAndWire()
+    })
+
+    // Push status updates to renderer whenever starbase data changes
+    eventBus.on('starbase-changed', () => {
+      const w = mainWindow
+      if (!w || w.isDestroyed()) return
+      w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+        crew: crewService!.listCrew(),
+        missions: missionService!.listMissions(),
+        sectors: sectorService!.listSectors(),
+        unreadCount: commsService!.getUnread('admiral').length,
+      })
     })
 
     // Phase 4: Run reconciliation on startup
@@ -228,20 +325,8 @@ app.whenReady().then(() => {
         })
 
       // Start Sentinel watchdog
-      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService })
+      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus })
       sentinel.start()
-
-      // Push status updates to renderer every 5 seconds
-      setInterval(() => {
-        const w = mainWindow
-        if (!w || w.isDestroyed()) return
-        w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-          crew: crewService.listCrew(),
-          missions: missionService.listMissions(),
-          sectors: sectorService.listSectors(),
-          unreadCount: commsService.getUnread('admiral').length
-        })
-      }, 5000)
     }
 
     // Auto-create Star Command tab on workspace load
@@ -264,7 +349,7 @@ app.whenReady().then(() => {
     configService,
     crewService,
     missionService,
-    admiral,
+    admiralProcess,
     commsService,
     supplyRouteService,
     cargoService,
@@ -284,13 +369,6 @@ app.whenReady().then(() => {
     commandHandler.setPhase2Services(crewService, missionService)
   }
 
-  // Prune stale push-pending worktrees from previous sessions
-  crewService?.pruneStaleWorktrees();
-
-  // Start socket API
-  socketApi.start().catch((err) => {
-    console.error('Failed to start socket API:', err)
-  })
 
   // Wire JSONL watcher to agent state tracker
   // Maps JSONL sessionId → Fleet paneId
@@ -334,19 +412,13 @@ app.whenReady().then(() => {
 
   jsonlWatcher.start()
 
-  // Forward agent state changes to renderer and socket API
-  eventBus.on('agent-state-change', (event) => {
+  // Forward agent state changes to renderer
+  eventBus.on('agent-state-change', (_event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.AGENT_STATE, {
         states: agentTracker.getAllStates()
       })
     }
-
-    socketApi.broadcastEvent('agent-state-change', {
-      paneId: event.paneId,
-      state: event.state,
-      tool: event.tool
-    })
   })
 
   // Clean up session mapping and CWD polling when panes close
@@ -381,27 +453,6 @@ app.whenReady().then(() => {
         timestamp: event.timestamp
       })
     }
-  })
-
-  // Broadcast events to socket subscribers
-  eventBus.on('notification', (event) => {
-    socketApi.broadcastEvent('notification', {
-      paneId: event.paneId,
-      level: event.level,
-      timestamp: event.timestamp
-    })
-  })
-
-  eventBus.on('pane-created', (event) => {
-    socketApi.broadcastEvent('pane-created', { paneId: event.paneId })
-  })
-
-  eventBus.on('pane-closed', (event) => {
-    socketApi.broadcastEvent('pane-closed', { paneId: event.paneId })
-  })
-
-  eventBus.on('workspace-loaded', (event) => {
-    socketApi.broadcastEvent('workspace-loaded', { workspaceId: event.workspaceId })
   })
 
   // Emit notification on PTY exit
@@ -593,6 +644,8 @@ app.on('window-all-closed', () => {
   ptyManager.killAll()
   cwdPoller.stopAll()
   socketApi.stop()
+  socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err))
+  admiralProcess?.stop().catch((err) => console.error('[admiral] stop error:', err))
   jsonlWatcher.stop()
   if (sentinel) sentinel.stop()
   if (lockfile) lockfile.release()

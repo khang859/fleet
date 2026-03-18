@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { existsSync, readdirSync } from 'fs';
 import { basename, dirname, resolve } from 'path';
+import type { EventBus } from '../event-bus';
 
 export class SectorValidationError extends Error {
   constructor(message: string) {
@@ -48,6 +49,7 @@ export class SectorService {
   constructor(
     private db: Database.Database,
     private workspaceRoot: string,
+    private eventBus?: EventBus,
   ) {}
 
   addSector(opts: AddSectorOpts): SectorRow {
@@ -91,7 +93,9 @@ export class SectorService {
         opts.mergeStrategy ?? 'pr',
       );
 
-    return this.getSector(id)!;
+    const sector = this.getSector(id)!;
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    return sector;
   }
 
   removeSector(sectorId: string): void {
@@ -99,6 +103,7 @@ export class SectorService {
     if (result.changes === 0) {
       throw new SectorValidationError(`Sector not found: ${sectorId}`);
     }
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   updateSector(sectorId: string, fields: UpdateSectorFields): void {
@@ -120,6 +125,7 @@ export class SectorService {
     this.db
       .prepare(`UPDATE sectors SET ${sets.join(', ')} WHERE id = ?`)
       .run(...values);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   getSector(sectorId: string): SectorRow | undefined {
