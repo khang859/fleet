@@ -29,6 +29,7 @@ import type { CommsService } from './starbase/comms-service'
 import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
 import type { RetentionService } from './starbase/retention-service'
+import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -48,7 +49,8 @@ export function registerIpcHandlers(
   commsService?: CommsService | null,
   supplyRouteService?: SupplyRouteService | null,
   cargoService?: CargoService | null,
-  retentionService?: RetentionService | null
+  retentionService?: RetentionService | null,
+  admiralStateDetector?: AdmiralStateDetector | null
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -213,6 +215,7 @@ export function registerIpcHandlers(
     const wireAdmiralPty = (paneId: string): void => {
       ptyManager.onData(paneId, (data) => {
         notificationDetector.scan(paneId, data)
+        admiralStateDetector?.scan(paneId, data)
         const w = getWindow()
         if (w && !w.isDestroyed()) {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
@@ -230,11 +233,13 @@ export function registerIpcHandlers(
 
     ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
       const paneId = await admiralProcess.restart()
+      admiralStateDetector?.setAdmiralPaneId(paneId)
       wireAdmiralPty(paneId)
       return paneId
     })
     ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
       const paneId = await admiralProcess.reset()
+      admiralStateDetector?.setAdmiralPaneId(paneId)
       wireAdmiralPty(paneId)
       return paneId
     })
