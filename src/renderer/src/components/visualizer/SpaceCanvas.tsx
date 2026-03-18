@@ -13,12 +13,11 @@ import { SpaceWeather } from './space-weather'
 import { AsteroidField } from './asteroids'
 import { AmbientSoundscape } from './ambient-sound'
 import { loadSpriteSheet } from './sprite-loader'
-import { StationRing } from './station-ring'
-import { CrewPodRenderer } from './crew-pods'
-import { CommsBeamRenderer } from './comms-beams'
+import { SectorOutpostRenderer, type SectorState } from './sector-outposts'
+import { ShuttleRenderer, type PodState } from './shuttles'
+import { SignalPulseRenderer } from './signal-pulses'
+import { computeSectorPositions } from '../star-command/scene-utils'
 import { useStarCommandStore } from '../../store/star-command-store'
-import type { SectorState } from './station-ring'
-import type { PodState } from './crew-pods'
 import type { AgentVisualState } from '../../../../shared/types'
 
 type Tooltip = {
@@ -165,9 +164,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const asteroidFieldRef = useRef(new AsteroidField())
   const bloomRef = useRef<BloomPass | null>(null)
   const soundscapeRef = useRef(new AmbientSoundscape())
-  const stationRingRef = useRef(new StationRing())
-  const crewPodRef = useRef(new CrewPodRenderer())
-  const commsBeamRef = useRef(new CommsBeamRenderer())
+  const sectorOutpostRef = useRef(new SectorOutpostRenderer())
+  const shuttleRef = useRef(new ShuttleRenderer())
+  const signalPulseRef = useRef(new SignalPulseRenderer())
   const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null })
   const zoomRef = useRef(1)
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
@@ -298,9 +297,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const spaceWeather = spaceWeatherRef.current
     const bloom = bloomRef.current ?? new BloomPass()
     if (!bloomRef.current) bloomRef.current = bloom
-    const stationRing = stationRingRef.current
-    const crewPods = crewPodRef.current
-    const commsBeams = commsBeamRef.current
+    const sectorOutpost = sectorOutpostRef.current
+    const shuttle = shuttleRef.current
+    const signalPulse = signalPulseRef.current
 
     const loop = createThrottledLoop(30, (deltaMs) => {
       const { w, h } = sizeCanvas(canvas)
@@ -338,15 +337,16 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       bloom.renderShipGlow(ctx, shipManager.getShips())
       spaceRenderer.render(ctx, shipManager.getShips())
 
-      // Station ring, crew pods, and comms beams
+      // Sector outposts, shuttles, and signal pulses
       const ringCX = vw / 2
       const ringCY = vh / 2
-      stationRing.update(sectorStatesRef.current, deltaMs)
-      stationRing.render(ctx, ringCX, ringCY)
-      crewPods.update(podStatesRef.current, deltaMs)
-      crewPods.render(ctx, ringCX, ringCY, stationRing)
-      commsBeams.update(deltaMs)
-      commsBeams.render(ctx, ringCX, ringCY)
+      const radius = 120
+      const sectorPositions = computeSectorPositions(sectorStatesRef.current, ringCX, ringCY, radius)
+      sectorOutpost.render(ctx, sectorStatesRef.current, sectorPositions, deltaMs)
+      shuttle.update(podStatesRef.current, sectorPositions, ringCX, ringCY, deltaMs)
+      shuttle.render(ctx, deltaMs)
+      signalPulse.update(deltaMs)
+      signalPulse.render(ctx, deltaMs)
     })
 
     loop.start()
