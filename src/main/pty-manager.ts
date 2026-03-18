@@ -8,6 +8,7 @@ export type PtyCreateOptions = {
   cmd?: string;
   cols?: number;
   rows?: number;
+  env?: Record<string, string>;
 };
 
 export type PtyCreateResult = {
@@ -44,7 +45,7 @@ export class PtyManager {
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: process.env as Record<string, string>,
+      env: opts.env ?? process.env as Record<string, string>,
     });
 
     this.ptys.set(opts.paneId, { process: proc, paneId: opts.paneId, cwd: opts.cwd });
