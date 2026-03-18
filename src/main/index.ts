@@ -26,6 +26,7 @@ import { CrewService } from './starbase/crew-service'
 import { CommsService } from './starbase/comms-service'
 import { SocketServer } from './socket-server'
 import { AdmiralProcess } from './starbase/admiral-process'
+import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
@@ -53,6 +54,7 @@ const socketApi = new SocketApi(SOCKET_PATH, commandHandler)
 const cwdPoller = new CwdPoller(eventBus, ptyManager)
 const agentTracker = new AgentStateTracker(eventBus)
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR)
+const admiralStateDetector = new AdmiralStateDetector(eventBus)
 
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -249,6 +251,10 @@ app.whenReady().then(async () => {
     })
 
     admiralProcess.setOnStatusChange((status, error) => {
+      if (status === 'stopped') {
+        admiralStateDetector.reset()
+        admiralStateDetector.setAdmiralPaneId(null)
+      }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
           status,
@@ -262,9 +268,11 @@ app.whenReady().then(async () => {
     const startAdmiralAndWire = async (): Promise<string | null> => {
       try {
         const paneId = await admiralProcess!.start()
+        admiralStateDetector.setAdmiralPaneId(paneId)
         // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
         ptyManager.onData(paneId, (data) => {
           notificationDetector.scan(paneId, data)
+          admiralStateDetector.scan(paneId, data)
           const w = mainWindow
           if (w && !w.isDestroyed()) {
             w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
@@ -353,7 +361,8 @@ app.whenReady().then(async () => {
     commsService,
     supplyRouteService,
     cargoService,
-    retentionService
+    retentionService,
+    admiralStateDetector
   )
 
   // Wire socket command handler to the window
@@ -411,6 +420,16 @@ app.whenReady().then(async () => {
   })
 
   jsonlWatcher.start()
+
+  // Forward admiral state detail changes to renderer
+  eventBus.on('admiral-state-change', (event) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, {
+        state: event.state,
+        statusText: event.statusText,
+      })
+    }
+  })
 
   // Forward agent state changes to renderer
   eventBus.on('agent-state-change', (_event) => {
@@ -646,6 +665,7 @@ app.on('window-all-closed', () => {
   socketApi.stop()
   socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err))
   admiralProcess?.stop().catch((err) => console.error('[admiral] stop error:', err))
+  admiralStateDetector.dispose()
   jsonlWatcher.stop()
   if (sentinel) sentinel.stop()
   if (lockfile) lockfile.release()
