@@ -9,12 +9,14 @@ import type { CrewService } from './crew-service'
 import type { CommsService } from './comms-service'
 import type { ConfigService } from './config-service'
 
-type AdmiralMessage = Anthropic.MessageParam
+type AdmiralMessage = Anthropic.Beta.Messages.BetaMessageParam
 
 export type AdmiralChunk =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; name: string; input: Record<string, unknown> }
   | { type: 'tool_result'; name: string; result: string }
+  | { type: 'context_status'; percentUsed: number }
+  | { type: 'compacted' }
   | { type: 'done' }
   | { type: 'error'; error: string }
 
@@ -28,10 +30,11 @@ type AdmiralDeps = {
   toolDeps: AdmiralToolDeps
 }
 
-const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
-const MAX_HISTORY_TOKENS_ESTIMATE = 160000
-const AVG_CHARS_PER_TOKEN = 4
-const MAX_HISTORY_CHARS = MAX_HISTORY_TOKENS_ESTIMATE * AVG_CHARS_PER_TOKEN
+const DEFAULT_MODEL = 'claude-sonnet-4-6'
+const COMPACTION_BETA = 'compact-2026-01-12'
+const COMPACTION_TRIGGER_TOKENS = 150_000
+// Rough context window size for computing percentage used
+const CONTEXT_WINDOW_TOKENS = 200_000
 
 export class Admiral {
   private client: Anthropic | null = null
@@ -97,61 +100,41 @@ export class Admiral {
     })
   }
 
-  private trimHistoryIfNeeded(): void {
-    const estimatedChars = JSON.stringify(this.history).length
-    if (estimatedChars <= MAX_HISTORY_CHARS) return
-
-    // Keep the last ~75% of messages, summarize the rest
-    const keepCount = Math.max(2, Math.floor(this.history.length * 0.75))
-    const toSummarize = this.history.slice(0, this.history.length - keepCount)
-    const kept = this.history.slice(this.history.length - keepCount)
-
-    const summaryParts: string[] = []
-    for (const msg of toSummarize) {
-      if (typeof msg.content === 'string') {
-        summaryParts.push(`${msg.role}: ${msg.content.slice(0, 200)}`)
-      }
-    }
-
-    this.history = [
-      {
-        role: 'user',
-        content: `[Session summary of earlier conversation:\n${summaryParts.join('\n')}\n...end summary]`
-      },
-      {
-        role: 'assistant',
-        content: 'Understood. I have the context from our earlier conversation.'
-      },
-      ...kept
-    ]
-  }
-
   async *sendMessage(content: string): AsyncGenerator<AdmiralChunk> {
     const client = this.getClient()
     const model = this.getModel()
     const systemPrompt = this.buildSystemPrompt()
 
     this.history.push({ role: 'user', content })
-    this.trimHistoryIfNeeded()
 
     let continueLoop = true
 
     while (continueLoop) {
       continueLoop = false
 
-      let response: Anthropic.Message
+      let response: Anthropic.Beta.Messages.BetaMessage
       try {
-        response = await client.messages.create({
+        response = await client.beta.messages.create({
+          betas: [COMPACTION_BETA],
           model,
           max_tokens: 4096,
           system: systemPrompt,
-          tools: ADMIRAL_TOOLS,
-          messages: this.history
-        })
+          tools: ADMIRAL_TOOLS as Anthropic.Beta.Messages.BetaToolUnion[],
+          messages: this.history,
+          context_management: {
+            edits: [
+              {
+                type: 'compact_20260112',
+                trigger: { type: 'input_tokens', value: COMPACTION_TRIGGER_TOKENS },
+                instructions:
+                  'Preserve: active fleet state (sectors, crew, missions), key decisions, pending tasks, and any tool call outcomes. Discard routine back-and-forth.'
+              }
+            ]
+          }
+        } as Anthropic.Beta.Messages.MessageCreateParamsNonStreaming)
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown API error'
 
-        // Handle rate limiting
         if (err instanceof Anthropic.RateLimitError) {
           yield { type: 'error', error: 'Admiral is rate-limited. Please try again in a moment.' }
           return
@@ -161,9 +144,23 @@ export class Admiral {
         return
       }
 
-      // Build the assistant message content for history
-      const assistantContent: Anthropic.ContentBlockParam[] = []
-      const toolResults: Anthropic.ToolResultBlockParam[] = []
+      // Emit context usage status
+      const inputTokens = response.usage?.input_tokens ?? 0
+      const percentUsed = Math.round((inputTokens / CONTEXT_WINDOW_TOKENS) * 100)
+      yield { type: 'context_status', percentUsed: Math.min(percentUsed, 100) }
+
+      // Check if compaction occurred — the response may contain a compaction block
+      let compacted = false
+      for (const block of response.content) {
+        if ((block as { type: string }).type === 'compaction') {
+          compacted = true
+        }
+      }
+
+      // Build the assistant message content for history — append full response content
+      // (including any compaction blocks, which the API uses to drop prior messages)
+      const assistantContent: Anthropic.Beta.Messages.BetaContentBlockParam[] = []
+      const toolResults: Anthropic.Beta.Messages.BetaToolResultBlockParam[] = []
 
       for (const block of response.content) {
         if (block.type === 'text') {
@@ -203,15 +200,36 @@ export class Admiral {
             tool_use_id: block.id,
             content: toolResult
           })
+        } else {
+          // Preserve compaction blocks and any other block types in history
+          assistantContent.push(block as Anthropic.Beta.Messages.BetaContentBlockParam)
         }
       }
 
       // Add assistant message to history
-      this.history.push({ role: 'assistant', content: assistantContent })
+      this.history.push({
+        role: 'assistant',
+        content: assistantContent
+      } as AdmiralMessage)
+
+      // When compaction occurs, prune local history to avoid unbounded memory growth.
+      // The API drops messages before the compaction block automatically, so we only
+      // need to keep the assistant message containing the compaction block onward.
+      if (compacted) {
+        // Keep only the last message (the one with the compaction block)
+        this.history = [this.history[this.history.length - 1]]
+        yield { type: 'compacted' }
+      }
+
+      // If compaction stop_reason, continue the loop to get the actual response
+      if ((response.stop_reason as string) === 'compaction') {
+        continueLoop = true
+        continue
+      }
 
       // If there were tool calls, feed results back and continue
       if (toolResults.length > 0) {
-        this.history.push({ role: 'user', content: toolResults })
+        this.history.push({ role: 'user', content: toolResults } as AdmiralMessage)
         continueLoop = response.stop_reason === 'tool_use'
       }
     }

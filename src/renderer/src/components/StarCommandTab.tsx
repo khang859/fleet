@@ -89,6 +89,10 @@ export function StarCommandTab() {
     setMissionQueue,
     setSectors,
     setUnreadCount,
+    contextPercentUsed,
+    showCompactedNotice,
+    setContextPercentUsed,
+    setShowCompactedNotice,
   } = useStarCommandStore()
 
   const { admiralAvatarState } = useStarCommandStore()
@@ -104,6 +108,7 @@ export function StarCommandTab() {
   }, [admiralAvatarState])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const compactedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -123,6 +128,14 @@ export function StarCommandTab() {
           break
         case 'tool_result':
           addToolResultMessage(c.name ?? 'unknown', c.result ?? '')
+          break
+        case 'context_status':
+          setContextPercentUsed((c as { percentUsed?: number }).percentUsed ?? 0)
+          break
+        case 'compacted':
+          setShowCompactedNotice(true)
+          if (compactedTimerRef.current) clearTimeout(compactedTimerRef.current)
+          compactedTimerRef.current = setTimeout(() => setShowCompactedNotice(false), 4000)
           break
         case 'done':
           finalizeAssistantMessage()
@@ -145,13 +158,16 @@ export function StarCommandTab() {
       cleanupChunk()
       cleanupEnd()
       cleanupError()
+      if (compactedTimerRef.current) clearTimeout(compactedTimerRef.current)
     }
   }, [
     appendStreamText,
     addToolCallMessage,
     addToolResultMessage,
     finalizeAssistantMessage,
-    setStreamError
+    setStreamError,
+    setContextPercentUsed,
+    setShowCompactedNotice
   ])
 
   // Listen for status updates via preload API
@@ -246,6 +262,28 @@ export function StarCommandTab() {
                 </button>
               </div>
             </div>
+            {/* Context usage indicator */}
+            {contextPercentUsed > 0 && (
+              <div className="flex items-center gap-2" title={`Context: ${contextPercentUsed}% used`}>
+                <div className="w-16 h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      contextPercentUsed > 80
+                        ? 'bg-red-500'
+                        : contextPercentUsed > 50
+                          ? 'bg-yellow-500'
+                          : 'bg-teal-500'
+                    }`}
+                    style={{ width: `${contextPercentUsed}%` }}
+                  />
+                </div>
+                <span className={`text-[10px] font-mono tabular-nums ${
+                  contextPercentUsed > 80 ? 'text-red-400' : 'text-neutral-500'
+                }`}>
+                  {100 - contextPercentUsed}% left
+                </span>
+              </div>
+            )}
           </div>
 
           {view === 'config' ? (
@@ -289,6 +327,15 @@ export function StarCommandTab() {
                   </span>
                 </div>
               </div>
+
+              {/* Compacted notice */}
+              {showCompactedNotice && (
+                <div className="px-4 py-1.5 bg-teal-900/30 border-t border-teal-800/40 text-center">
+                  <span className="text-[11px] text-teal-400 font-mono">
+                    Context compacted — conversation summarized to free up space
+                  </span>
+                </div>
+              )}
 
               {/* Input bar */}
               <div className="border-t border-neutral-800 px-4 py-3 bg-neutral-900">

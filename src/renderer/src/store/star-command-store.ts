@@ -45,6 +45,8 @@ type StarCommandStore = {
   sectors: SectorInfo[];
   unreadCount: number;
   admiralAvatarState: AdmiralAvatarState;
+  contextPercentUsed: number;
+  showCompactedNotice: boolean;
 
   // Actions
   addUserMessage: (content: string) => void;
@@ -60,6 +62,8 @@ type StarCommandStore = {
   setUnreadCount: (count: number) => void;
   clearMessages: () => void;
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
+  setContextPercentUsed: (percent: number) => void;
+  setShowCompactedNotice: (show: boolean) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
@@ -71,6 +75,8 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   sectors: [],
   unreadCount: 0,
   admiralAvatarState: 'standby',
+  contextPercentUsed: 0,
+  showCompactedNotice: false,
 
   addUserMessage: (content) => {
     set((state) => ({
@@ -178,6 +184,8 @@ export const useStarCommandStore = create<StarCommandStore>((set, get) => ({
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
-  clearMessages: () => set({ messages: [], streamBuffer: '' }),
+  clearMessages: () => set({ messages: [], streamBuffer: '', contextPercentUsed: 0 }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
+  setContextPercentUsed: (percent) => set({ contextPercentUsed: percent }),
+  setShowCompactedNotice: (show) => set({ showCompactedNotice: show }),
 }));
