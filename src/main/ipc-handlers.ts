@@ -24,7 +24,7 @@ import type { SectorService } from './starbase/sector-service'
 import type { ConfigService } from './starbase/config-service'
 import type { CrewService } from './starbase/crew-service'
 import type { MissionService } from './starbase/mission-service'
-import type { Admiral } from './starbase/admiral'
+import type { AdmiralProcess } from './starbase/admiral-process'
 import type { CommsService } from './starbase/comms-service'
 import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
@@ -44,7 +44,7 @@ export function registerIpcHandlers(
   configService?: ConfigService | null,
   crewService?: CrewService | null,
   missionService?: MissionService | null,
-  admiral?: Admiral | null,
+  admiralProcess?: AdmiralProcess | null,
   commsService?: CommsService | null,
   supplyRouteService?: SupplyRouteService | null,
   cargoService?: CargoService | null,
@@ -200,31 +200,11 @@ export function registerIpcHandlers(
   }
 
   // Phase 3: Admiral + Comms handlers
-  if (admiral) {
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_SEND, async (_e, content: string) => {
-      const w = getWindow()
-      if (!w || w.isDestroyed()) return
-
-      try {
-        for await (const chunk of admiral.sendMessage(content)) {
-          if (w.isDestroyed()) break
-          w.webContents.send(IPC_CHANNELS.ADMIRAL_STREAM_CHUNK, chunk)
-        }
-      } catch (err) {
-        if (!w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.ADMIRAL_STREAM_ERROR, {
-            error: err instanceof Error ? err.message : 'Unknown error'
-          })
-        }
-      }
-    })
-
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_GET_HISTORY, () => {
-      return admiral.getHistory()
-    })
-
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, () => {
-      admiral.resetSession()
+  if (admiralProcess) {
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, () => admiralProcess.paneId)
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
+      const paneId = await admiralProcess.restart()
+      return paneId
     })
   }
 

@@ -6,14 +6,6 @@ import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
 import { StarCommandScene } from './star-command/StarCommandScene'
 
-type StreamChunk = {
-  type: string
-  text?: string
-  name?: string
-  input?: Record<string, unknown>
-  result?: string
-  error?: string
-}
 
 function MessageBubble({ msg }: { msg: AdmiralChatMessage }) {
   const [toolExpanded, setToolExpanded] = useState(false)
@@ -79,10 +71,6 @@ export function StarCommandTab() {
     isStreaming,
     streamBuffer,
     addUserMessage,
-    appendStreamText,
-    addToolCallMessage,
-    addToolResultMessage,
-    finalizeAssistantMessage,
     setStreamError,
     setIsStreaming,
     setCrewList,
@@ -91,8 +79,6 @@ export function StarCommandTab() {
     setUnreadCount,
     contextPercentUsed,
     showCompactedNotice,
-    setContextPercentUsed,
-    setShowCompactedNotice,
   } = useStarCommandStore()
 
   const { admiralAvatarState } = useStarCommandStore()
@@ -115,60 +101,17 @@ export function StarCommandTab() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamBuffer])
 
-  // Listen for streaming chunks from main process via preload API
+  // Listen for Admiral process status changes from main process via preload API
   useEffect(() => {
-    const cleanupChunk = window.fleet.admiral.onStreamChunk((chunk: unknown) => {
-      const c = chunk as StreamChunk
-      switch (c.type) {
-        case 'text':
-          appendStreamText(c.text ?? '')
-          break
-        case 'tool_use':
-          addToolCallMessage(c.name ?? 'unknown', c.input ?? {})
-          break
-        case 'tool_result':
-          addToolResultMessage(c.name ?? 'unknown', c.result ?? '')
-          break
-        case 'context_status':
-          setContextPercentUsed((c as { percentUsed?: number }).percentUsed ?? 0)
-          break
-        case 'compacted':
-          setShowCompactedNotice(true)
-          if (compactedTimerRef.current) clearTimeout(compactedTimerRef.current)
-          compactedTimerRef.current = setTimeout(() => setShowCompactedNotice(false), 4000)
-          break
-        case 'done':
-          finalizeAssistantMessage()
-          break
-        case 'error':
-          setStreamError(c.error ?? 'Unknown error')
-          break
-      }
-    })
-
-    const cleanupEnd = window.fleet.admiral.onStreamEnd(() => {
-      finalizeAssistantMessage()
-    })
-
-    const cleanupError = window.fleet.admiral.onStreamError((err) => {
-      setStreamError(err.error)
+    const cleanup = window.fleet.admiral.onStatusChanged((_payload) => {
+      // Admiral status changes (running/stopped/starting) — UI redesign in Task 6
     })
 
     return () => {
-      cleanupChunk()
-      cleanupEnd()
-      cleanupError()
+      cleanup()
       if (compactedTimerRef.current) clearTimeout(compactedTimerRef.current)
     }
-  }, [
-    appendStreamText,
-    addToolCallMessage,
-    addToolResultMessage,
-    finalizeAssistantMessage,
-    setStreamError,
-    setContextPercentUsed,
-    setShowCompactedNotice
-  ])
+  }, [])
 
   // Listen for status updates via preload API
   useEffect(() => {
@@ -209,9 +152,8 @@ export function StarCommandTab() {
     setInput('')
     setIsStreaming(true)
 
-    window.fleet.admiral.sendMessage(text).catch((err: Error) => {
-      setStreamError(err.message)
-    })
+    // Admiral chat via PTY — UI redesign in Task 6
+    setIsStreaming(false)
   }, [input, isStreaming, addUserMessage, setIsStreaming, setStreamError])
 
   const handleKeyDown = useCallback(

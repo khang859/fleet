@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron'
 import { fileURLToPath } from 'url'
-import { join, dirname } from 'path'
+import { join, dirname, basename } from 'path'
+import { homedir } from 'os'
 import { PtyManager } from './pty-manager'
 import { LayoutStore } from './layout-store'
 import { EventBus } from './event-bus'
@@ -23,7 +24,9 @@ import { MissionService } from './starbase/mission-service'
 import { WorktreeManager } from './starbase/worktree-manager'
 import { CrewService } from './starbase/crew-service'
 import { CommsService } from './starbase/comms-service'
-import { Admiral } from './starbase/admiral'
+import { SocketServer } from './socket-server'
+import { AdmiralProcess } from './starbase/admiral-process'
+import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
 import { Lockfile } from './starbase/lockfile'
@@ -36,6 +39,8 @@ const { autoUpdater } = pkg
 let mainWindow: BrowserWindow | null = null
 let sentinel: Sentinel | null = null
 let lockfile: Lockfile | null = null
+let socketServer: SocketServer | null = null
+let admiralProcess: AdmiralProcess | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -134,7 +139,6 @@ app.whenReady().then(() => {
   let missionService: MissionService | null = null
   let crewService: CrewService | null = null
   let commsService: CommsService | null = null
-  let admiral: Admiral | null = null
   let supplyRouteService: SupplyRouteService | null = null
   let cargoService: CargoService | null = null
   let retentionService: RetentionService | null = null
@@ -194,21 +198,63 @@ app.whenReady().then(() => {
       return tabId
     }
 
-    admiral = new Admiral({
-      workspacePath,
-      sectorService,
-      missionService,
-      crewService,
-      commsService,
-      configService,
-      toolDeps: {
-        sectorService,
-        missionService,
-        crewService,
-        commsService,
-        ptyManager,
-        createTab
+    // Socket Server (replaces SocketApi for starbase commands)
+    const shipsLog = new ShipsLog(starbaseDb.getDb())
+    socketServer = new SocketServer(SOCKET_PATH, {
+      crewService: crewService!,
+      missionService: missionService!,
+      commsService: commsService!,
+      sectorService: sectorService!,
+      cargoService: cargoService!,
+      supplyRouteService: supplyRouteService!,
+      configService: configService!,
+      ptyManager,
+      createTab,
+      shipsLog,
+    })
+
+    socketServer.on('state-change', (event: string, data: unknown) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
       }
+    })
+
+    socketServer.start().catch((err) => {
+      console.error('[socket-server] Failed to start:', err)
+    })
+
+    // Admiral Process
+    const fleetBinPath = join(homedir(), '.fleet', 'bin')
+    const starbaseId = starbaseDb.getStarbaseId()
+    const admiralWorkspace = join(homedir(), '.fleet', 'starbases', `starbase-${starbaseId}`, 'admiral')
+    const starbaseName = (configService.get('starbase_name') as string | undefined) ?? basename(workspacePath)
+
+    admiralProcess = new AdmiralProcess({
+      workspace: admiralWorkspace,
+      starbaseName,
+      sectors: sectorService.listSectors().map((s) => ({
+        name: s.name,
+        root_path: s.root_path,
+        stack: s.stack ?? undefined,
+        base_branch: s.base_branch ?? undefined,
+      })),
+      ptyManager,
+      fleetBinPath,
+    })
+
+    admiralProcess.setOnStatusChange((status, error) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
+          status,
+          paneId: admiralProcess!.paneId,
+          error,
+        })
+      }
+    })
+
+    // Auto-start the Admiral
+    admiralProcess.start().catch((err) => {
+      console.error('[admiral] Failed to start:', err)
     })
 
     // Phase 4: Run reconciliation on startup
@@ -236,10 +282,10 @@ app.whenReady().then(() => {
         const w = mainWindow
         if (!w || w.isDestroyed()) return
         w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-          crew: crewService.listCrew(),
-          missions: missionService.listMissions(),
-          sectors: sectorService.listSectors(),
-          unreadCount: commsService.getUnread('admiral').length
+          crew: crewService!.listCrew(),
+          missions: missionService!.listMissions(),
+          sectors: sectorService!.listSectors(),
+          unreadCount: commsService!.getUnread('admiral').length
         })
       }, 5000)
     }
@@ -264,7 +310,7 @@ app.whenReady().then(() => {
     configService,
     crewService,
     missionService,
-    admiral,
+    admiralProcess,
     commsService,
     supplyRouteService,
     cargoService,
@@ -284,13 +330,10 @@ app.whenReady().then(() => {
     commandHandler.setPhase2Services(crewService, missionService)
   }
 
-  // Prune stale push-pending worktrees from previous sessions
-  crewService?.pruneStaleWorktrees();
 
-  // Start socket API
-  socketApi.start().catch((err) => {
-    console.error('Failed to start socket API:', err)
-  })
+  // Note: socketApi is no longer started — SocketServer (new command dispatcher)
+  // owns the SOCKET_PATH. socketApi.broadcastEvent calls are kept temporarily as
+  // no-ops and will be removed in Task 8 (Delete Old Admiral Code).
 
   // Wire JSONL watcher to agent state tracker
   // Maps JSONL sessionId → Fleet paneId
@@ -593,6 +636,8 @@ app.on('window-all-closed', () => {
   ptyManager.killAll()
   cwdPoller.stopAll()
   socketApi.stop()
+  socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err))
+  admiralProcess?.stop().catch((err) => console.error('[admiral] stop error:', err))
   jsonlWatcher.stop()
   if (sentinel) sentinel.stop()
   if (lockfile) lockfile.release()
