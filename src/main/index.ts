@@ -284,6 +284,9 @@ app.whenReady().then(() => {
     commandHandler.setPhase2Services(crewService, missionService)
   }
 
+  // Prune stale push-pending worktrees from previous sessions
+  crewService?.pruneStaleWorktrees();
+
   // Start socket API
   socketApi.start().catch((err) => {
     console.error('Failed to start socket API:', err)
