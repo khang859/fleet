@@ -72,6 +72,49 @@ describe('CommsService', () => {
     expect(() => svc.resolve(999, 'response')).toThrow('Transmission not found: 999');
   });
 
+  it('should delete a single transmission', () => {
+    const id = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+    expect(svc.delete(id)).toBe(true);
+    expect(svc.getRecent()).toHaveLength(0);
+  });
+
+  it('should return false when deleting non-existent transmission', () => {
+    expect(svc.delete(999)).toBe(false);
+  });
+
+  it('should clear all transmissions', () => {
+    svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+    svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+    const count = svc.clear();
+    expect(count).toBe(2);
+    expect(svc.getRecent()).toHaveLength(0);
+  });
+
+  it('should clear transmissions for a specific crew', () => {
+    svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+    svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+    svc.send({ from: 'admiral', to: 'crew-1', type: 'directive', payload: '{}' });
+    const count = svc.clear({ crewId: 'crew-1' });
+    expect(count).toBe(2); // from crew-1 + to crew-1
+    expect(svc.getRecent()).toHaveLength(1); // only crew-2's message remains
+  });
+
+  it('should mark all transmissions as read', () => {
+    svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+    svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+    const count = svc.markAllRead();
+    expect(count).toBe(2);
+    expect(svc.getUnread('admiral')).toHaveLength(0);
+  });
+
+  it('should mark all transmissions as read for a specific crew', () => {
+    svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+    svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+    const count = svc.markAllRead({ crewId: 'admiral' });
+    expect(count).toBe(2);
+    expect(svc.getUnread('admiral')).toHaveLength(0);
+  });
+
   describe('rate limiting', () => {
     function ensureSector(): void {
       db.getDb()

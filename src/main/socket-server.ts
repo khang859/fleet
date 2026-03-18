@@ -270,6 +270,29 @@ export class SocketServer extends EventEmitter {
         return { id };
       }
 
+      case 'comms.delete': {
+        const transmissionId = (args.id ?? args.transmissionId) as number;
+        const deleted = commsService.delete(transmissionId);
+        if (deleted) this.emit('state-change', 'comms:changed', {});
+        return { deleted };
+      }
+
+      case 'comms.clear': {
+        const count = commsService.clear(
+          args.crew ? { crewId: args.crew as string } : undefined,
+        );
+        if (count > 0) this.emit('state-change', 'comms:changed', {});
+        return { deleted: count };
+      }
+
+      case 'comms.read-all': {
+        const count = commsService.markAllRead(
+          args.crew ? { crewId: args.crew as string } : undefined,
+        );
+        if (count > 0) this.emit('state-change', 'comms:changed', {});
+        return { marked: count };
+      }
+
       case 'comms.check':
         return { unread: commsService.getUnread('admiral').length };
 

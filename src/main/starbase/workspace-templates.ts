@@ -46,6 +46,8 @@ Never send a Crewmate an open-ended or vague prompt. Refine requests into precis
 
 Use the \`/fleet\` skill to interact with the Fleet CLI. The skill file at \`.claude/skills/fleet.md\` contains the full command reference and workflow guidance.
 
+**Important:** If \`fleet\` is not found on your PATH, use the full path: \`$FLEET_BIN_DIR/fleet\` (the \`FLEET_BIN_DIR\` environment variable is set in your \`.claude/settings.json\`).
+
 Quick reference:
 - \`fleet crew list\` — list deployed Crewmates
 - \`fleet missions list\` — view queued and active Missions
@@ -134,6 +136,11 @@ fleet comms inbox --all                # List all transmissions (including read)
 fleet comms check --quiet              # Check for unread comms (exit code 0 = none, 1 = unread)
 fleet comms send --to <crew-id> --message "..."  # Send a transmission
 fleet comms resolve <id> --response "..."        # Reply and mark resolved
+fleet comms read-all                   # Mark all transmissions as read
+fleet comms read-all --crew <crew-id>  # Mark all from a specific crew as read
+fleet comms delete --id <id>           # Delete a single transmission
+fleet comms clear                      # Delete all transmissions
+fleet comms clear --crew <crew-id>     # Delete all transmissions for a crew
 \`\`\`
 
 ### Sectors
@@ -214,19 +221,44 @@ Then summarize the state for the user before asking what to do next.
 }
 
 /**
- * Generates .claude/settings.json with a PreToolUse hook for comms checking.
+ * Generates .claude/settings.json with hooks and env for the Admiral workspace.
+ * Accepts the fleet bin directory so Claude Code can find the `fleet` CLI
+ * even if the user's shell profile resets PATH.
  */
-export function generateSettings(): string {
-  const settings = {
+export function generateSettings(fleetBinDir?: string): string {
+  // Use full path to fleet binary so hooks and commands work even if
+  // ~/.fleet/bin isn't on the system PATH (Claude Code inherits the PTY env
+  // which has it, but hooks may spawn a fresh shell).
+  const fleetBin = fleetBinDir ? `${fleetBinDir}/fleet` : 'fleet'
+
+  const settings: Record<string, unknown> = {
     hooks: {
       PreToolUse: [
         {
-          command: 'fleet comms check --quiet',
-          description: 'Check for unread transmissions before taking action'
+          hooks: [
+            {
+              type: 'command',
+              command: `${fleetBin} comms check --quiet`,
+              statusMessage: 'Checking for unread transmissions...'
+            }
+          ]
         }
+      ]
+    },
+    permissions: {
+      allow: [
+        'Bash(fleet:*)',
+        ...(fleetBinDir ? [`Bash(${fleetBinDir}/fleet:*)`] : [])
       ]
     }
   }
+
+  if (fleetBinDir) {
+    settings.env = {
+      FLEET_BIN_DIR: fleetBinDir
+    }
+  }
+
   return JSON.stringify(settings, null, 2)
 }
 

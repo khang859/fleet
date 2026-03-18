@@ -108,6 +108,45 @@ export class CommsService {
       .all(threadId) as TransmissionRow[];
   }
 
+  delete(transmissionId: number): boolean {
+    const result = this.db.prepare('DELETE FROM comms WHERE id = ?').run(transmissionId);
+    if (result.changes > 0) {
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      return true;
+    }
+    return false;
+  }
+
+  clear(opts?: { crewId?: string }): number {
+    let result;
+    if (opts?.crewId) {
+      result = this.db
+        .prepare('DELETE FROM comms WHERE from_crew = ? OR to_crew = ?')
+        .run(opts.crewId, opts.crewId);
+    } else {
+      result = this.db.prepare('DELETE FROM comms').run();
+    }
+    if (result.changes > 0) {
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    }
+    return result.changes;
+  }
+
+  markAllRead(opts?: { crewId?: string }): number {
+    let result;
+    if (opts?.crewId) {
+      result = this.db
+        .prepare('UPDATE comms SET read = 1 WHERE to_crew = ? AND read = 0')
+        .run(opts.crewId);
+    } else {
+      result = this.db.prepare('UPDATE comms SET read = 1 WHERE read = 0').run();
+    }
+    if (result.changes > 0) {
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    }
+    return result.changes;
+  }
+
   getRecent(opts?: { crewId?: string; limit?: number }): TransmissionRow[] {
     const limit = opts?.limit ?? 50;
     if (opts?.crewId) {

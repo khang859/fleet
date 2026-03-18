@@ -1,5 +1,7 @@
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -156,6 +158,58 @@ export class FleetCLI {
   }
 }
 
+// ── Command mapping: CLI names → socket server command names ─────────────────
+
+const COMMAND_MAP: Record<string, string> = {
+  // Sectors (CLI uses plural)
+  'sectors.list': 'sector.list',
+  'sectors.add': 'sector.add',
+  'sectors.remove': 'sector.remove',
+  'sectors.show': 'sector.info',
+  'sectors.info': 'sector.info',
+
+  // Missions (CLI uses plural, different action names)
+  'missions.list': 'mission.list',
+  'missions.add': 'mission.create',
+  'missions.create': 'mission.create',
+  'missions.update': 'mission.status',
+  'missions.show': 'mission.status',
+  'missions.status': 'mission.status',
+  'missions.cancel': 'mission.cancel',
+  'missions.abort': 'mission.cancel',
+
+  // Crew (singular already matches, but add common aliases)
+  'crew.dismiss': 'crew.recall',
+  'crew.kill': 'crew.recall',
+  'crew.stop': 'crew.recall',
+  'crew.remove': 'crew.recall',
+
+  // Comms (CLI "inbox" maps to comms.list)
+  'comms.inbox': 'comms.list',
+  'comms.check': 'comms.check',
+  'comms.send': 'comms.send',
+  'comms.read': 'comms.read',
+  'comms.resolve': 'comms.send',
+  'comms.delete': 'comms.delete',
+  'comms.clear': 'comms.clear',
+  'comms.read-all': 'comms.read-all',
+
+  // Cargo
+  'cargo.show': 'cargo.inspect',
+  'cargo.inspect': 'cargo.inspect',
+  'cargo.pending': 'cargo.list',
+  'cargo.produce': 'cargo.list',
+
+  // Log groups (CLI "log groups list" → "log.show")
+  'log.groups': 'log.show',
+  'log.list': 'log.show',
+}
+
+function mapCommand(group: string, action: string): string {
+  const cliKey = `${group}.${action}`
+  return COMMAND_MAP[cliKey] ?? cliKey
+}
+
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
 export async function runCLI(argv: string[], sockPath: string): Promise<string> {
@@ -170,7 +224,8 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
   const quiet = quietIdx !== -1;
   const cleanRest = quiet ? rest.filter((t) => t !== '--quiet') : rest;
 
-  const command = `${group}.${action}`;
+  // Map CLI commands (plural groups, user-friendly actions) to server commands
+  const command = mapCommand(group, action);
   const args = parseArgs(cleanRest);
 
   const cli = new FleetCLI(sockPath);
@@ -201,7 +256,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
   // ── Array → text table ────────────────────────────────────────────────────
   if (Array.isArray(data)) {
-    if (data.length === 0) return '';
+    if (data.length === 0) return `No ${group} found.`;
     if (typeof data[0] === 'object' && data[0] !== null) {
       return formatTable(data as Record<string, unknown>[]);
     }
@@ -229,10 +284,9 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
 
-if (typeof process !== 'undefined' && process.argv[1]?.endsWith('fleet-cli.js')) {
-  const { join } = await import('node:path');
-  const { homedir } = await import('node:os');
+if (typeof process !== 'undefined' && /fleet-cli\.[jt]s$/.test(process.argv[1] ?? '')) {
   const sockPath = join(homedir(), '.fleet', 'fleet.sock');
-  const output = await runCLI(process.argv.slice(2), sockPath);
-  if (output) process.stdout.write(output + '\n');
+  runCLI(process.argv.slice(2), sockPath).then((output) => {
+    if (output) process.stdout.write(output + '\n');
+  });
 }
