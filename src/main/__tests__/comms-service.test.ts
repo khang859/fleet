@@ -115,6 +115,100 @@ describe('CommsService', () => {
     expect(svc.getUnread('admiral')).toHaveLength(0);
   });
 
+  describe('deduplication', () => {
+    it('should increment repeat_count for identical message within 5 minutes', () => {
+      const id1 = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+      const id2 = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+      expect(id2).toBe(id1);
+
+      const rows = svc.getRecent();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].repeat_count).toBe(2);
+    });
+
+    it('should insert a new row for a different message', () => {
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'goodbye' });
+
+      const rows = svc.getRecent();
+      expect(rows).toHaveLength(2);
+      expect(rows[0].repeat_count).toBe(1);
+      expect(rows[1].repeat_count).toBe(1);
+    });
+
+    it('should insert a new row for the same message after 5+ minutes', () => {
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+
+      // Backdate the existing message to 6 minutes ago
+      db.getDb()
+        .prepare("UPDATE comms SET created_at = datetime('now', '-6 minutes') WHERE from_crew = 'crew-1'")
+        .run();
+
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+
+      const rows = svc.getRecent();
+      expect(rows).toHaveLength(2);
+    });
+
+    it('should not deduplicate messages to different recipients', () => {
+      const id1 = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+      const id2 = svc.send({ from: 'crew-1', to: 'crew-2', type: 'hailing', payload: 'hello' });
+      expect(id2).not.toBe(id1);
+
+      const rows = svc.getRecent();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.repeat_count === 1)).toBe(true);
+    });
+
+    it('should not consume rate limit budget for deduplicated messages', () => {
+      // Set up a crew with rate limiting
+      db.getDb()
+        .prepare("INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')")
+        .run();
+      db.getDb()
+        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-dedup', 'test', 'active', 0)")
+        .run();
+
+      svc.setRateLimit(2);
+
+      // Send a message — should increment counter to 1
+      svc.send({ from: 'crew-dedup', to: 'admiral', type: 'hailing', payload: 'hello' });
+      // Send the same message — should dedup, counter stays at 1
+      svc.send({ from: 'crew-dedup', to: 'admiral', type: 'hailing', payload: 'hello' });
+
+      const row = db.getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-dedup') as { comms_count_minute: number };
+      expect(row.comms_count_minute).toBe(1);
+    });
+  });
+
+  describe('filtering', () => {
+    it('should filter by type', () => {
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'mission_complete', payload: '{}' });
+      svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+
+      const hailing = svc.getRecent({ type: 'hailing' });
+      expect(hailing).toHaveLength(2);
+      expect(hailing.every((r) => r.type === 'hailing')).toBe(true);
+    });
+
+    it('should filter by from', () => {
+      svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}' });
+      svc.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: '{}' });
+      svc.send({ from: 'admiral', to: 'crew-1', type: 'directive', payload: '{}' });
+
+      const fromCrew1 = svc.getRecent({ from: 'crew-1' });
+      expect(fromCrew1).toHaveLength(1);
+      expect(fromCrew1[0].from_crew).toBe('crew-1');
+    });
+
+    it('should throw when both crewId and from are provided', () => {
+      expect(() => svc.getRecent({ crewId: 'crew-1', from: 'crew-1' })).toThrow(
+        'Cannot filter by both crewId and from',
+      );
+    });
+  });
+
   describe('rate limiting', () => {
     function ensureSector(): void {
       db.getDb()

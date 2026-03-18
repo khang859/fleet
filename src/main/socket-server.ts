@@ -261,8 +261,10 @@ export class SocketServer extends EventEmitter {
       }
 
       // ── Comms ─────────────────────────────────────────────────────────────────
-      case 'comms.list':
-        return commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
+      case 'comms.list': {
+        const rows = commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
+        return rows;
+      }
 
       case 'comms.read': {
         const transmissionId = (args.id ?? args.transmissionId) as number;
