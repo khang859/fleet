@@ -186,6 +186,9 @@ const COMMAND_MAP: Record<string, string> = {
   'crew.kill': 'crew.recall',
   'crew.stop': 'crew.recall',
   'crew.remove': 'crew.recall',
+  'crew.message': 'crew.message',
+  'crew.msg': 'crew.message',
+  'crew.send': 'crew.message',
 
   // Comms (CLI "inbox" maps to comms.list)
   'comms.inbox': 'comms.list',

@@ -6,7 +6,6 @@ import type { MissionService } from './mission-service';
 import type { ConfigService } from './config-service';
 import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
-import type { PtyManager } from '../pty-manager';
 import type { EventBus } from '../event-bus';
 
 export class InsufficientMemoryError extends Error {
@@ -44,17 +43,12 @@ type CrewServiceDeps = {
   configService: ConfigService;
   worktreeManager: WorktreeManager;
   eventBus?: EventBus;
-  /** Enriched env for crew PTYs (PATH with claude binary). */
+  /** Enriched env for crew processes (PATH with claude binary). */
   crewEnv?: Record<string, string>;
-  /** Forward crew PTY data to renderer. */
-  onPtyData?: (paneId: string, data: string) => void;
-  /** Forward crew PTY exit to renderer. */
-  onPtyExit?: (paneId: string, exitCode: number) => void;
 };
 
 type DeployResult = {
   crewId: string;
-  tabId: string;
   missionId: number;
 };
 
@@ -71,13 +65,11 @@ export class CrewService {
   }
 
   /**
-   * Deploy a Crewmate. Returns { crewId, tabId, missionId }.
-   * Caller must provide a PtyManager and a way to create tabs.
+   * Deploy a Crewmate. Returns { crewId, missionId }.
+   * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
   async deployCrew(
     opts: { sectorId: string; prompt: string; missionId?: number },
-    ptyManager: PtyManager,
-    createTab: (label: string, cwd: string, avatarVariant?: string) => string,
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -109,7 +101,7 @@ export class CrewService {
     // 4. Generate crew ID
     const crewId = this.generateCrewId(sector.id);
 
-    // 4. Create worktree
+    // 5. Create worktree
     let worktreeResult;
     try {
       worktreeResult = worktreeManager.create({
@@ -131,7 +123,7 @@ export class CrewService {
       throw err;
     }
 
-    // 5. Install dependencies
+    // 6. Install dependencies
     try {
       worktreeManager.installDependencies(worktreeResult.worktreePath);
     } catch (err) {
@@ -140,14 +132,10 @@ export class CrewService {
       throw err;
     }
 
-    // 6. Pick avatar variant
+    // 7. Pick avatar variant (stored in DB for UI display even without a tab)
     const avatar = AVATAR_VARIANTS[Math.floor(Math.random() * AVATAR_VARIANTS.length)];
 
-    // 7. Create tab
-    const tabLabel = opts.prompt.slice(0, 50);
-    const tabId = createTab(tabLabel, worktreeResult.worktreePath, avatar);
-
-    // 8. Create Hull
+    // 8. Create Hull (headless — no tab, no PtyManager)
     const timeoutMin = configService.get('default_mission_timeout_min') as number;
     const lifesignSec = configService.get('lifesign_interval_sec') as number;
 
@@ -164,14 +152,15 @@ export class CrewService {
       lifesignIntervalSec: lifesignSec,
       timeoutMin,
       mergeStrategy: sector.merge_strategy,
+      verifyCommand: sector.verify_command ?? undefined,
+      lintCommand: sector.lint_command ?? undefined,
+      reviewMode: sector.review_mode,
       model: sector.model ?? undefined,
       systemPrompt: sector.system_prompt ?? undefined,
       allowedTools: sector.allowed_tools ?? undefined,
       mcpConfig: sector.mcp_config ?? undefined,
-      onComplete: () => this.autoDeployNext(ptyManager, createTab),
+      onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,
-      onPtyData: this.deps.onPtyData,
-      onPtyExit: this.deps.onPtyExit,
     });
 
     // Update crew record with avatar
@@ -179,20 +168,30 @@ export class CrewService {
 
     this.hulls.set(crewId, hull);
 
-    // 9. Start the Hull
-    await hull.start(ptyManager, tabId);
+    // 9. Start the Hull (headless — no paneId)
+    await hull.start();
 
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
-    return { crewId, tabId, missionId };
+    return { crewId, missionId };
   }
 
-  recallCrew(crewId: string, ptyManager: PtyManager): void {
+  recallCrew(crewId: string): void {
     const hull = this.hulls.get(crewId);
     if (hull) {
-      hull.kill(ptyManager);
+      hull.kill();
       this.hulls.delete(crewId);
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
+  }
+
+  /**
+   * Send a follow-up message to an active crew's Claude Code process.
+   * Returns true if the message was sent, false if the crew is not active.
+   */
+  messageCrew(crewId: string, message: string): boolean {
+    const hull = this.hulls.get(crewId);
+    if (!hull || hull.getStatus() !== 'active') return false;
+    return hull.sendMessage(message);
   }
 
   listCrew(filter?: { sectorId?: string }): CrewRow[] {
@@ -234,17 +233,12 @@ export class CrewService {
   }
 
   /** Auto-deploy next queued mission if worktree slots are available */
-  private autoDeployNext(
-    ptyManager: PtyManager,
-    createTab: (label: string, cwd: string, avatarVariant?: string) => string,
-  ): void {
+  private autoDeployNext(): void {
     const next = this.nextQueuedMission();
     if (!next) return;
 
     this.deployCrew(
       { sectorId: next.sector_id, prompt: next.prompt, missionId: next.id },
-      ptyManager,
-      createTab,
     ).then((result) => {
       // Notify Admiral of auto-deployment
       this.deps.db.prepare(

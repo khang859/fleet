@@ -34,6 +34,7 @@ export const IPC_CHANNELS = {
   STARBASE_MISSIONS: 'starbase:missions',
   STARBASE_ADD_MISSION: 'starbase:add-mission',
   STARBASE_OBSERVE: 'starbase:observe',
+  STARBASE_MESSAGE_CREW: 'starbase:message-crew',
   STARBASE_STATUS_UPDATE: 'starbase:status-update',
   STARBASE_COMMS_UNREAD: 'starbase:comms-unread',
   STARBASE_LIST_SUPPLY_ROUTES: 'starbase:list-supply-routes',

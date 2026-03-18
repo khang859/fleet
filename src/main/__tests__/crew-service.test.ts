@@ -67,11 +67,8 @@ describe('CrewService', () => {
     const configSvc = crewSvc['deps'].configService;
     configSvc.set('min_deploy_free_memory_gb', 999999);
 
-    const mockPtyManager = {} as Parameters<typeof crewSvc.deployCrew>[1];
-    const createTab = () => 'tab-1';
-
     await expect(
-      crewSvc.deployCrew({ sectorId: 'api', prompt: 'do something' }, mockPtyManager, createTab)
+      crewSvc.deployCrew({ sectorId: 'api', prompt: 'do something' })
     ).rejects.toBeInstanceOf(InsufficientMemoryError);
 
     // Mission should be created and queued (not failed)

@@ -191,20 +191,7 @@ app.whenReady().then(async () => {
       PATH: fleetBinPath + ':' + (process.env.PATH ?? '')
     }
 
-    // Buffer crew PTY data until the renderer signals it's ready via PTY_ATTACH.
-    // Before attach: data accumulates in crewPtyBuffers.
-    // After attach: data flows via PTY_DATA IPC as normal.
-    const crewPtyBuffers = new Map<string, string[]>()
-    const crewPtyAttached = new Set<string>()
-
-    ipcMain.handle(IPC_CHANNELS.PTY_ATTACH, (_event, { paneId }: { paneId: string }) => {
-      const buffer = crewPtyBuffers.get(paneId)
-      const data = buffer ? buffer.join('') : ''
-      crewPtyBuffers.delete(paneId)
-      crewPtyAttached.add(paneId)
-      return { data }
-    })
-
+    // Crews are headless (stream-json, no PTY/tab). No PTY buffer wiring needed.
     crewService = new CrewService({
       db: starbaseDb.getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
@@ -214,30 +201,6 @@ app.whenReady().then(async () => {
       worktreeManager,
       eventBus,
       crewEnv,
-      onPtyData: (paneId, data) => {
-        notificationDetector.scan(paneId, data)
-        if (crewPtyAttached.has(paneId)) {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
-          }
-        } else {
-          let buf = crewPtyBuffers.get(paneId)
-          if (!buf) {
-            buf = []
-            crewPtyBuffers.set(paneId, buf)
-          }
-          buf.push(data)
-        }
-      },
-      onPtyExit: (paneId, exitCode) => {
-        cwdPoller.stopPolling(paneId)
-        crewPtyBuffers.delete(paneId)
-        crewPtyAttached.delete(paneId)
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
-        }
-        eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
-      },
     })
 
     // Phase 3 services
@@ -245,8 +208,9 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
-    // Buffer create-tab messages until renderer signals it's ready to receive them.
-    // Prevents race where crew deploys via socket arrive before React mounts.
+    // TODO(#30): createTab and its buffering are no longer used by crew deploys — crews are
+    // now headless (stream-json, no terminal tab). This code remains for backwards compatibility
+    // and potential future use. Remove when crew tab UI is fully deprecated.
     const pendingCreateTabs: Array<{ tabId: string; label: string; cwd: string; avatarVariant?: string }> = []
     let rendererTabListenerReady = false
 
@@ -281,8 +245,6 @@ app.whenReady().then(async () => {
       cargoService: cargoService!,
       supplyRouteService: supplyRouteService!,
       configService: configService!,
-      ptyManager,
-      createTab,
       shipsLog,
     })
 

@@ -107,7 +107,9 @@ export function App() {
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
   }, []);
 
-  // Listen for crew tab creation from main process
+  // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
+  // This listener remains for backwards compatibility but will not fire for new deployments.
+  // Remove when crew tab UI is fully deprecated.
   useEffect(() => {
     const cleanup = window.fleet.onCreateTab(({ tabId, label, cwd, avatarVariant }) => {
       markPtyCreated(tabId);
