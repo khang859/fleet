@@ -97,6 +97,8 @@ const fleetApi = {
     ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
     restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
     reset: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
+    checkDependencies: (): Promise<{ name: string; found: boolean; version?: string; installHint: string }[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
     onStatusChanged: (callback: (payload: { status: string; paneId: string | null; error?: string; exitCode?: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; paneId: string | null; error?: string; exitCode?: number }) => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler)

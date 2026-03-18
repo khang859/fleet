@@ -56,6 +56,7 @@ export const IPC_CHANNELS = {
   ADMIRAL_RESTART: 'admiral:restart',
   ADMIRAL_RESET: 'admiral:reset',
   ADMIRAL_PANE_ID: 'admiral:pane-id',
+  ADMIRAL_CHECK_DEPENDENCIES: 'admiral:check-dependencies',
   PTY_DRAIN: 'fleet:pty-drain',
   PTY_ATTACH: 'pty:attach',
   SHOW_FOLDER_PICKER: 'show-folder-picker',
