@@ -44,6 +44,7 @@ type StarCommandStore = {
   admiralPaneId: string | null;
   admiralStatus: 'running' | 'stopped' | 'starting';
   admiralError: string | null;
+  admiralExitCode: number | null;
 
   // Starbase state
   crewList: CrewStatus[];
@@ -57,7 +58,7 @@ type StarCommandStore = {
   admiralStatusText: string;
 
   // Actions
-  setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null) => void;
+  setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null, exitCode?: number | null) => void;
   setCrewList: (crew: CrewStatus[]) => void;
   setMissionQueue: (missions: MissionInfo[]) => void;
   setSectors: (sectors: SectorInfo[]) => void;
@@ -71,6 +72,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralPaneId: null,
   admiralStatus: 'stopped',
   admiralError: null,
+  admiralExitCode: null,
   crewList: [],
   missionQueue: [],
   sectors: [],
@@ -79,7 +81,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralAvatarState: 'standby',
   admiralStatusText: 'Standing by',
 
-  setAdmiralPty: (paneId, status, error = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error }),
+  setAdmiralPty: (paneId, status, error = null, exitCode = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error, admiralExitCode: exitCode }),
   setCrewList: (crew) => set({ crewList: crew }),
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),

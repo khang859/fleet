@@ -277,7 +277,7 @@ app.whenReady().then(async () => {
       fleetBinPath,
     })
 
-    admiralProcess.setOnStatusChange((status, error) => {
+    admiralProcess.setOnStatusChange((status, error, exitCode) => {
       if (status === 'stopped') {
         admiralStateDetector.reset()
         admiralStateDetector.setAdmiralPaneId(null)
@@ -287,6 +287,7 @@ app.whenReady().then(async () => {
           status,
           paneId: admiralProcess!.paneId,
           error,
+          exitCode,
         })
       }
     })

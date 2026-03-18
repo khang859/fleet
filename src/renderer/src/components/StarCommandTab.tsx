@@ -33,6 +33,7 @@ export function StarCommandTab() {
     admiralPaneId,
     admiralStatus,
     admiralError,
+    admiralExitCode,
     setAdmiralPty,
     setCrewList,
     setMissionQueue,
@@ -80,7 +81,8 @@ export function StarCommandTab() {
       setAdmiralPty(
         data.paneId,
         data.status as 'running' | 'stopped' | 'starting',
-        data.error ?? null
+        data.error ?? null,
+        data.exitCode ?? null
       )
     })
 
@@ -274,12 +276,19 @@ export function StarCommandTab() {
                       variant="standby"
                       size={64}
                     />
-                    <p className="text-sm text-neutral-400 mt-3">Admiral offline</p>
+                    {admiralExitCode !== null && admiralExitCode !== 0 ? (
+                      <p className="text-sm text-red-400 mt-3">
+                        Admiral crashed (exit code {admiralExitCode})
+                      </p>
+                    ) : (
+                      <p className="text-sm text-neutral-400 mt-3">Admiral offline</p>
+                    )}
                     {admiralError && (
                       <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
                     )}
                     <button
-                      className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
+                      className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+                      disabled={admiralStatus === 'starting'}
                       onClick={() => {
                         setAdmiralPty(null, 'starting')
                         window.fleet.admiral.restart().then((paneId) => {
