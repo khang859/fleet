@@ -20,11 +20,12 @@ export class RetentionService {
     private dbPath: string
   ) {}
 
-  cleanup(): { comms: number; cargo: number; shipsLog: number } {
+  cleanup(): { comms: number; cargo: number; shipsLog: number; crew: number } {
     const commsRetentionDays = (this.configService.get('comms_retention_days') as number) ?? 30
     const cargoRetentionDays = (this.configService.get('cargo_retention_days') as number) ?? 14
     const shipsLogRetentionDays =
       (this.configService.get('ships_log_retention_days') as number) ?? 30
+    const crewRetentionDays = (this.configService.get('crew_retention_days') as number) ?? 7
 
     const commsResult = this.db
       .prepare(`DELETE FROM comms WHERE created_at < datetime('now', '-' || ? || ' days')`)
@@ -38,10 +39,19 @@ export class RetentionService {
       .prepare(`DELETE FROM ships_log WHERE created_at < datetime('now', '-' || ? || ' days')`)
       .run(shipsLogRetentionDays)
 
+    const crewResult = this.db
+      .prepare(
+        `DELETE FROM crew
+         WHERE status IN ('error', 'complete', 'timeout', 'lost', 'aborted', 'dismissed')
+         AND updated_at < datetime('now', '-' || ? || ' days')`
+      )
+      .run(crewRetentionDays)
+
     return {
       comms: commsResult.changes,
       cargo: cargoResult.changes,
-      shipsLog: shipsLogResult.changes
+      shipsLog: shipsLogResult.changes,
+      crew: crewResult.changes
     }
   }
 
