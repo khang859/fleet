@@ -91,8 +91,6 @@ export function StarCommandTab() {
 
   useEffect(() => {
     refreshStatus()
-    const interval = setInterval(refreshStatus, 5000)
-    return () => clearInterval(interval)
   }, [refreshStatus])
 
   return (

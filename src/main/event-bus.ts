@@ -8,7 +8,8 @@ export type FleetEvent =
   | { type: 'pty-exit'; paneId: string; exitCode: number }
   | { type: 'agent-state-change'; paneId: string; state: string; tool?: string }
   | { type: 'workspace-loaded'; workspaceId: string }
-  | { type: 'cwd-changed'; paneId: string; cwd: string };
+  | { type: 'cwd-changed'; paneId: string; cwd: string }
+  | { type: 'starbase-changed' };
 
 type EventMap = {
   [K in FleetEvent['type']]: Extract<FleetEvent, { type: K }>;
