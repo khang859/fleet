@@ -1,7 +1,10 @@
 import type Database from 'better-sqlite3';
-import { execSync, ExecSyncOptions } from 'child_process';
+import { exec, execSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
+
+const execAsync = promisify(exec);
 
 export class WorktreeLimitError extends Error {
   constructor(message: string) {
@@ -34,9 +37,9 @@ export class WorktreeManager {
     this.maxConcurrent = maxConcurrent;
   }
 
-  create(opts: CreateOpts): CreateResult {
+  async create(opts: CreateOpts): Promise<CreateResult> {
     const { starbaseId, crewId, sectorPath, baseBranch } = opts;
-    const execOpts: ExecSyncOptions = { cwd: sectorPath, stdio: 'pipe' };
+    const execOpts = { cwd: sectorPath };
 
     // Check concurrency limit
     if (this.db && this.maxConcurrent < Infinity) {
@@ -57,7 +60,7 @@ export class WorktreeManager {
       const pooled = this.getPooled(starbaseId);
       if (pooled) {
         try {
-          const recycled = this.recycle(pooled, baseBranch, crewId);
+          const recycled = await this.recycle(pooled, baseBranch, crewId);
           if (recycled) return recycled;
         } catch {
           // Recycle failed — fall through to create new
@@ -67,7 +70,7 @@ export class WorktreeManager {
 
     // Pre-flight: verify git repo
     try {
-      execSync('git rev-parse --git-dir', execOpts);
+      await execAsync('git rev-parse --git-dir', execOpts);
     } catch {
       throw new Error(`Not a git repository: ${sectorPath}`);
     }
@@ -81,16 +84,14 @@ export class WorktreeManager {
 
     // Check if branch exists locally
     try {
-      const localBranches = execSync(`git branch --list "${branchName}"`, execOpts)
-        .toString()
-        .trim();
-      if (localBranches) {
+      const { stdout: localBranches } = await execAsync(`git branch --list "${branchName}"`, execOpts);
+      if (localBranches.trim()) {
         // Branch exists — append suffix
         let suffix = 2;
         while (true) {
           const candidate = `crew/${crewId}-${suffix}`;
-          const check = execSync(`git branch --list "${candidate}"`, execOpts).toString().trim();
-          if (!check) {
+          const { stdout: check } = await execAsync(`git branch --list "${candidate}"`, execOpts);
+          if (!check.trim()) {
             branchName = candidate;
             break;
           }
@@ -102,13 +103,13 @@ export class WorktreeManager {
     }
 
     // Create worktree
-    execSync(`git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`, execOpts);
+    await execAsync(`git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`, execOpts);
 
     return { worktreePath, worktreeBranch: branchName };
   }
 
   remove(worktreePath: string, sectorPath: string): void {
-    const execOpts: ExecSyncOptions = { cwd: sectorPath, stdio: 'pipe' };
+    const execOpts = { cwd: sectorPath, stdio: 'pipe' as const };
     try {
       execSync(`git worktree remove "${worktreePath}"`, execOpts);
     } catch {
@@ -128,22 +129,20 @@ export class WorktreeManager {
     }
   }
 
-  installDependencies(worktreePath: string, timeoutMs = 120_000): void {
+  async installDependencies(worktreePath: string, timeoutMs = 120_000): Promise<void> {
     const cmd = this.detectInstallCommand(worktreePath);
     if (!cmd) return;
 
     try {
-      execSync(cmd, {
+      await execAsync(cmd, {
         cwd: worktreePath,
-        stdio: 'pipe',
         timeout: timeoutMs,
       });
     } catch {
       // Retry once
       try {
-        execSync(cmd, {
+        await execAsync(cmd, {
           cwd: worktreePath,
-          stdio: 'pipe',
           timeout: timeoutMs,
         });
       } catch (retryErr) {
@@ -199,16 +198,16 @@ export class WorktreeManager {
   }
 
   /** Recycle a pooled worktree: reset to base branch and create new branch */
-  recycle(worktreePath: string, baseBranch: string, newCrewId: string): CreateResult | null {
+  async recycle(worktreePath: string, baseBranch: string, newCrewId: string): Promise<CreateResult | null> {
     if (!existsSync(worktreePath)) return null;
-    const execOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' };
+    const execOpts = { cwd: worktreePath };
 
     try {
-      execSync(`git checkout "${baseBranch}"`, execOpts);
-      execSync('git pull', execOpts);
-      execSync('git clean -fd', execOpts);
+      await execAsync(`git checkout "${baseBranch}"`, execOpts);
+      await execAsync('git pull', execOpts);
+      await execAsync('git clean -fd', execOpts);
       const branchName = `crew/${newCrewId}`;
-      execSync(`git checkout -b "${branchName}"`, execOpts);
+      await execAsync(`git checkout -b "${branchName}"`, execOpts);
 
       // Clear pool status for the old crew entry
       if (this.db) {

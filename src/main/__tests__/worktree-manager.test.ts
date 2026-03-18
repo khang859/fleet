@@ -25,9 +25,9 @@ afterEach(() => {
 });
 
 describe('WorktreeManager', () => {
-  it('should create a worktree', () => {
+  it('should create a worktree', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
@@ -39,17 +39,17 @@ describe('WorktreeManager', () => {
     expect(existsSync(join(result.worktreePath, 'README.md'))).toBe(true);
   });
 
-  it('should handle branch name collision with numeric suffix', () => {
+  it('should handle branch name collision with numeric suffix', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
     // Create first worktree
-    mgr.create({
+    await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
       baseBranch: 'main',
     });
     // Create second with same crewId — should get suffix
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2-2',
       sectorPath: REPO_DIR,
@@ -58,9 +58,9 @@ describe('WorktreeManager', () => {
     expect(result.worktreeBranch).toBe('crew/api-crew-a1b2-2');
   });
 
-  it('should remove a worktree', () => {
+  it('should remove a worktree', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'rm-crew',
       sectorPath: REPO_DIR,
@@ -70,9 +70,9 @@ describe('WorktreeManager', () => {
     expect(existsSync(result.worktreePath)).toBe(false);
   });
 
-  it('should detect lockfile type for dependency install', () => {
+  it('should detect lockfile type for dependency install', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'dep-crew',
       sectorPath: REPO_DIR,
@@ -100,7 +100,7 @@ describe('WorktreeManager with concurrency limits', () => {
     starbaseDb.close();
   });
 
-  it('should throw WorktreeLimitError when at max concurrent', () => {
+  it('should throw WorktreeLimitError when at max concurrent', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
     mgr.configure(starbaseDb.getDb(), 1);
 
@@ -109,21 +109,21 @@ describe('WorktreeManager with concurrency limits', () => {
       .prepare("INSERT INTO crew (id, sector_id, status, worktree_path) VALUES ('existing', 'api', 'active', '/some/path')")
       .run();
 
-    expect(() =>
+    await expect(
       mgr.create({
         starbaseId: 'test-sb',
         crewId: 'new-crew',
         sectorPath: REPO_DIR,
         baseBranch: 'main',
       }),
-    ).toThrow(WorktreeLimitError);
+    ).rejects.toThrow(WorktreeLimitError);
   });
 
-  it('should allow creation when below limit', () => {
+  it('should allow creation when below limit', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
     mgr.configure(starbaseDb.getDb(), 5);
 
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'allowed-crew',
       sectorPath: REPO_DIR,
@@ -132,12 +132,12 @@ describe('WorktreeManager with concurrency limits', () => {
     expect(existsSync(result.worktreePath)).toBe(true);
   });
 
-  it('should mark a worktree as pooled and retrieve it', () => {
+  it('should mark a worktree as pooled and retrieve it', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
     mgr.configure(starbaseDb.getDb(), 5);
 
     // Create crew with worktree
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'pool-crew',
       sectorPath: REPO_DIR,
@@ -157,11 +157,11 @@ describe('WorktreeManager with concurrency limits', () => {
     expect(pooled).toBe(result.worktreePath);
   });
 
-  it('should evict stale pooled worktrees', () => {
+  it('should evict stale pooled worktrees', async () => {
     const mgr = new WorktreeManager(WORKTREE_BASE);
     mgr.configure(starbaseDb.getDb(), 5);
 
-    const result = mgr.create({
+    const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'evict-crew',
       sectorPath: REPO_DIR,

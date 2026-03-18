@@ -104,7 +104,7 @@ export class CrewService {
     // 5. Create worktree
     let worktreeResult;
     try {
-      worktreeResult = worktreeManager.create({
+      worktreeResult = await worktreeManager.create({
         starbaseId,
         crewId,
         sectorPath: sector.root_path,
@@ -125,7 +125,7 @@ export class CrewService {
 
     // 6. Install dependencies
     try {
-      worktreeManager.installDependencies(worktreeResult.worktreePath);
+      await worktreeManager.installDependencies(worktreeResult.worktreePath);
     } catch (err) {
       worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
       missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
