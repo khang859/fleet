@@ -66,6 +66,7 @@ export function registerIpcHandlers(
     })
 
     ptyManager.onExit(req.paneId, (exitCode) => {
+      cwdPoller.stopPolling(req.paneId)
       const w = getWindow()
       if (w && !w.isDestroyed()) {
         w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
