@@ -134,3 +134,8 @@ export type AddMissionRequest = {
   prompt: string;
   priority?: number;
 };
+
+export type AdmiralStateDetailPayload = {
+  state: 'standby' | 'thinking' | 'speaking' | 'alert'
+  statusText: string
+}
