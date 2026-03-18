@@ -110,6 +110,41 @@ Every time you are activated, follow this sequence:
 
 **Reuse Crew:** Before deploying a new Crewmate, check \`fleet crew list\` for an existing idle or available Crew in the same Sector. Send them a Mission or comms instead of spinning up a new one. Only deploy fresh Crew when no suitable existing Crewmate is available.
 
+## Custom Agent Configuration
+
+Crewmates inherit their agent configuration from the Sector they are deployed to. There are no per-deployment model overrides — configuration is set at the Sector level and applies to every Mission run in that Sector.
+
+**Configurable fields per Sector:**
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| \`model\` | \`claude-sonnet-4-6\` | Claude model for the agent session |
+| \`system_prompt\` | _(none)_ | Additional context appended to every agent session |
+| \`allowed_tools\` | _(all tools)_ | Comma-separated tools the agent may use (e.g. \`Read,Edit,Bash\`) |
+| \`mcp_config\` | _(none)_ | Path to an MCP config JSON file for additional tool providers |
+
+**Viewing Sector agent configuration:**
+
+\`\`\`
+fleet sectors show <id>    # Show full Sector details including model and agent config
+fleet sectors list          # List all Sectors with basic info
+\`\`\`
+
+**Model selection guidance:**
+
+- \`claude-haiku-4-5\` — Fast and low-cost; best for simple, well-scoped tasks (docs, formatting, minor fixes)
+- \`claude-sonnet-4-6\` — Default; suitable for most development Missions
+- \`claude-opus-4-6\` — Most capable; use for complex investigations, large refactors, or architecture decisions
+
+**When to set \`system_prompt\` on a Sector:**
+
+Set a system prompt to give every Crewmate persistent, project-specific context that should apply to all Missions in that Sector:
+- Coding conventions (e.g. "Always use TypeScript strict mode")
+- Domain constraints (e.g. "Never modify the public API contract without a migration")
+- Stack-specific notes the agent should always have in mind
+
+**Note:** Sector agent configuration is managed through the Fleet app's Sector settings panel. There is no \`fleet sectors update\` CLI command — changes must be made via the UI.
+
 ## Full Command Reference
 
 ### Crew
