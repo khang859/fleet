@@ -46,6 +46,7 @@ export const IPC_CHANNELS = {
   STARBASE_RETENTION_VACUUM: 'starbase:retention-vacuum',
   ADMIRAL_STATUS_CHANGED: 'admiral:status-changed',
   ADMIRAL_RESTART: 'admiral:restart',
+  ADMIRAL_RESET: 'admiral:reset',
   ADMIRAL_PANE_ID: 'admiral:pane-id',
   PTY_DRAIN: 'fleet:pty-drain',
 } as const

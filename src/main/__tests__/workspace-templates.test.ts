@@ -182,23 +182,36 @@ describe('generateSettings', () => {
     expect(() => JSON.parse(result)).not.toThrow()
   })
 
-  it('includes PreToolUse hook', () => {
+  it('includes PreToolUse hook with correct nested structure', () => {
     const parsed = JSON.parse(generateSettings())
     expect(parsed.hooks).toBeDefined()
     expect(parsed.hooks.PreToolUse).toBeDefined()
     expect(Array.isArray(parsed.hooks.PreToolUse)).toBe(true)
     expect(parsed.hooks.PreToolUse.length).toBeGreaterThan(0)
-  })
 
-  it('PreToolUse hook has fleet comms check command', () => {
-    const parsed = JSON.parse(generateSettings())
-    const hook = parsed.hooks.PreToolUse[0]
+    // Verify nested hooks array with type field (Claude Code settings schema)
+    const matcher = parsed.hooks.PreToolUse[0]
+    expect(matcher.hooks).toBeDefined()
+    expect(Array.isArray(matcher.hooks)).toBe(true)
+    const hook = matcher.hooks[0]
+    expect(hook.type).toBe('command')
     expect(hook.command).toContain('fleet comms check')
   })
 
-  it('hook has a description', () => {
+  it('includes permissions allowing fleet commands', () => {
     const parsed = JSON.parse(generateSettings())
-    const hook = parsed.hooks.PreToolUse[0]
-    expect(hook.description).toBeTruthy()
+    expect(parsed.permissions).toBeDefined()
+    expect(parsed.permissions.allow).toContain('Bash(fleet:*)')
+  })
+
+  it('includes FLEET_BIN_DIR env when fleetBinDir is provided', () => {
+    const parsed = JSON.parse(generateSettings('/home/user/.fleet/bin'))
+    expect(parsed.env).toBeDefined()
+    expect(parsed.env.FLEET_BIN_DIR).toBe('/home/user/.fleet/bin')
+  })
+
+  it('omits env section when fleetBinDir is not provided', () => {
+    const parsed = JSON.parse(generateSettings())
+    expect(parsed.env).toBeUndefined()
   })
 })

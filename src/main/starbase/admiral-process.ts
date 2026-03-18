@@ -100,9 +100,9 @@ export class AdmiralProcess {
     const skillPath = path.join(this.workspace, '.claude', 'skills', 'fleet', 'SKILL.md')
     fs.writeFileSync(skillPath, generateSkillMd(), 'utf-8')
 
-    // 5. Always overwrite settings
+    // 5. Always overwrite settings (include fleet bin path so Claude can find the CLI)
     const settingsPath = path.join(this.workspace, '.claude', 'settings.json')
-    fs.writeFileSync(settingsPath, generateSettings(), 'utf-8')
+    fs.writeFileSync(settingsPath, generateSettings(this.fleetBinPath), 'utf-8')
   }
 
   async start(): Promise<string> {
@@ -165,6 +165,16 @@ export class AdmiralProcess {
 
   async restart(): Promise<string> {
     await this.stop()
+    return this.start()
+  }
+
+  /**
+   * Stop the Admiral, delete the entire workspace, and restart fresh.
+   * This regenerates CLAUDE.md, skills, settings, and re-inits git.
+   */
+  async reset(): Promise<string> {
+    await this.stop()
+    fs.rmSync(this.workspace, { recursive: true, force: true })
     return this.start()
   }
 }
