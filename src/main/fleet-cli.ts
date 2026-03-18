@@ -172,7 +172,7 @@ const COMMAND_MAP: Record<string, string> = {
   'missions.list': 'mission.list',
   'missions.add': 'mission.create',
   'missions.create': 'mission.create',
-  'missions.update': 'mission.status',
+  'missions.update': 'mission.update',
   'missions.show': 'mission.status',
   'missions.status': 'mission.status',
   'missions.cancel': 'mission.cancel',
