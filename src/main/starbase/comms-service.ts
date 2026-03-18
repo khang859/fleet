@@ -45,30 +45,9 @@ export class CommsService {
   }
 
   send(opts: SendOpts): number {
-    // Check rate limit for the sender
-    if (this.rateLimit > 0 && opts.from !== 'admiral') {
-      const row = this.db
-        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
-        .get(opts.from) as { comms_count_minute: number } | undefined;
-
-      if (row && row.comms_count_minute >= this.rateLimit) {
-        // Log the rejection
-        this.db.prepare(
-          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'comms_failed', ?)",
-        ).run(opts.from, JSON.stringify({ reason: 'rate limit exceeded', limit: this.rateLimit }));
-        throw new CommsRateLimitError(`Rate limit exceeded for ${opts.from}: ${row.comms_count_minute}/${this.rateLimit} per minute`);
-      }
-
-      // Increment counter
-      if (row) {
-        this.db
-          .prepare('UPDATE crew SET comms_count_minute = comms_count_minute + 1 WHERE id = ?')
-          .run(opts.from);
-      }
-    }
-
     // Deduplicate: if an identical message exists within 5 minutes, bump its repeat_count
     // Admiral messages are never deduplicated — they are intentional commands
+    // Dedup runs before rate limit so coalesced duplicates don't consume rate limit budget
     if (opts.from !== 'admiral') {
       const existing = this.db
         .prepare(
@@ -87,6 +66,28 @@ export class CommsService {
           .run(existing.id);
         this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
         return existing.id;
+      }
+    }
+
+    // Check rate limit for the sender (after dedup, so coalesced messages don't count)
+    if (this.rateLimit > 0 && opts.from !== 'admiral') {
+      const row = this.db
+        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get(opts.from) as { comms_count_minute: number } | undefined;
+
+      if (row && row.comms_count_minute >= this.rateLimit) {
+        // Log the rejection
+        this.db.prepare(
+          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'comms_failed', ?)",
+        ).run(opts.from, JSON.stringify({ reason: 'rate limit exceeded', limit: this.rateLimit }));
+        throw new CommsRateLimitError(`Rate limit exceeded for ${opts.from}: ${row.comms_count_minute}/${this.rateLimit} per minute`);
+      }
+
+      // Increment counter
+      if (row) {
+        this.db
+          .prepare('UPDATE crew SET comms_count_minute = comms_count_minute + 1 WHERE id = ?')
+          .run(opts.from);
       }
     }
 
@@ -173,6 +174,10 @@ export class CommsService {
   }
 
   getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string }): TransmissionRow[] {
+    if (opts?.crewId && opts?.from) {
+      throw new Error('Cannot filter by both crewId and from — crewId already matches from_crew and to_crew');
+    }
+
     const limit = opts?.limit ?? 50;
     const conditions: string[] = [];
     const params: unknown[] = [];

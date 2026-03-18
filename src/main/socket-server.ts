@@ -263,10 +263,7 @@ export class SocketServer extends EventEmitter {
       // ── Comms ─────────────────────────────────────────────────────────────────
       case 'comms.list': {
         const rows = commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
-        return rows.map((row) => ({
-          ...row,
-          payload: row.repeat_count > 1 ? `${row.payload} (×${row.repeat_count})` : row.payload,
-        }));
+        return rows;
       }
 
       case 'comms.read': {
