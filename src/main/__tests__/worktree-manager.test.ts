@@ -15,6 +15,7 @@ beforeEach(() => {
   mkdirSync(REPO_DIR, { recursive: true });
   // Initialize a git repo with one commit
   execSync('git init && git checkout -b main', { cwd: REPO_DIR });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: REPO_DIR });
   writeFileSync(join(REPO_DIR, 'README.md'), '# Test');
   execSync('git add -A && git commit -m "initial"', { cwd: REPO_DIR });
 });
