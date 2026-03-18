@@ -258,8 +258,8 @@ app.whenReady().then(async () => {
       }
     })
 
-    // Auto-start the Admiral and wire PTY data forwarding to renderer
-    const startAdmiralAndWire = async (): Promise<void> => {
+    // Start the Admiral on demand and wire PTY data forwarding to renderer
+    const startAdmiralAndWire = async (): Promise<string | null> => {
       try {
         const paneId = await admiralProcess!.start()
         // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
@@ -278,11 +278,23 @@ app.whenReady().then(async () => {
           eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
         })
         cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+        return paneId
       } catch (err) {
         console.error('[admiral] Failed to start:', err)
+        return null
       }
     }
-    startAdmiralAndWire()
+
+    ipcMain.handle('admiral:ensure-started', async () => {
+      if (!admiralProcess) return null
+      // Already running — return existing paneId
+      if (admiralProcess.paneId) return admiralProcess.paneId
+      // Currently starting — don't double-spawn; return null
+      // StarCommandTab listens to onStatusChanged and will receive the paneId when done
+      if (admiralProcess.status === 'starting') return null
+      // Not started — start it
+      return startAdmiralAndWire()
+    })
 
     // Push status updates to renderer whenever starbase data changes
     eventBus.on('starbase-changed', () => {
