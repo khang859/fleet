@@ -211,25 +211,35 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
-      {showSidebar && <Sidebar updateReady={updateReady} />}
-      <div className="flex-1 min-w-0 h-full flex flex-col relative">
+      {showSidebar ? (
+        <Sidebar updateReady={updateReady} />
+      ) : (
+        <div
+          className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0"
+          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        >
+          {/* Spacer for macOS traffic lights */}
+          <div className="h-10" />
+          <button
+            onClick={() => setSidebarManualOpen(true)}
+            className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title="Show sidebar"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <rect x="1" y="2" width="14" height="12" rx="2" />
+              <line x1="5.5" y1="2" x2="5.5" y2="14" />
+            </svg>
+          </button>
+        </div>
+      )}
+      <div className="flex-1 min-w-0 h-full flex flex-col">
       <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Top drag region for window movement */}
         <div
           className="absolute top-0 left-0 right-0 h-8 z-10"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         />
-        {/* Sidebar toggle — only visible in star-command with sidebar hidden */}
-        {isStarCommand && !sidebarManualOpen && (
-          <button
-            onClick={() => setSidebarManualOpen(true)}
-            className="absolute top-1.5 left-20 z-50 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-500 bg-neutral-900/80 rounded transition-colors"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            title="Show sidebar"
-          >
-            ☰
-          </button>
-        )}
         {workspace.tabs.length > 0 ? (
           workspace.tabs.map((tab) => {
             const serializedPanes = restoredPanesRef.current.get(tab.id);
