@@ -179,6 +179,9 @@ const COMMAND_MAP: Record<string, string> = {
   'missions.abort': 'mission.cancel',
 
   // Crew (singular already matches, but add common aliases)
+  'crew.info': 'crew.info',
+  'crew.status': 'crew.info',
+  'crew.show': 'crew.info',
   'crew.dismiss': 'crew.recall',
   'crew.kill': 'crew.recall',
   'crew.stop': 'crew.recall',

@@ -117,6 +117,7 @@ Every time you are activated, follow this sequence:
 \`\`\`
 fleet crew list                        # List all deployed Crewmates
 fleet crew list --sector <id>          # Filter by Sector
+fleet crew info <crew-id>              # Show details for a specific Crewmate
 fleet crew deploy --sector <id> --mission <id>  # Deploy a Crewmate to a Mission
 fleet crew recall <crew-id>            # Recall (terminate) a Crewmate
 fleet crew observe <crew-id>           # View recent terminal output from a Crewmate
@@ -139,7 +140,8 @@ fleet missions show <id>               # Show full Mission details
 fleet comms inbox                      # List unread transmissions
 fleet comms inbox --all                # List all transmissions (including read)
 fleet comms check --quiet              # Check for unread comms (exit code 0 = none, 1 = unread)
-fleet comms send --to <crew-id> --message "..."  # Send a transmission
+fleet comms send --to <crew-id> --message "..."  # Send a transmission (as Admiral)
+fleet comms send --from <crew-id> --to admiral --message "..."  # Send as a Crewmate
 fleet comms resolve <id> --response "..."        # Reply and mark resolved
 fleet comms read-all                   # Mark all transmissions as read
 fleet comms read-all --crew <crew-id>  # Mark all from a specific crew as read
@@ -201,10 +203,11 @@ When you find unread transmissions:
 
 When a Crewmate signals their work is ready for review:
 
-1. \`fleet crew observe <crew-id>\` — check their terminal output
-2. Review the PR/branch in the Sector repository
-3. If approved: \`fleet missions update <id> --status done\`
-4. If changes needed: send feedback via \`fleet comms send --to <crew-id> --message "..."\`
+1. \`fleet crew info <crew-id>\` — check their status and mission details
+2. \`fleet crew observe <crew-id>\` — check their terminal output
+3. Review the PR/branch in the Sector repository
+4. If approved: \`fleet missions update <id> --status done\`
+5. If changes needed: send feedback via \`fleet comms send --to <crew-id> --message "..."\`
 
 ## Recovery (Fresh Start)
 
@@ -216,6 +219,21 @@ If you are starting a new conversation and don't know the current state:
 4. \`fleet sectors list\` — what Sectors are registered?
 
 Then summarize the state for the user before asking what to do next.
+
+## Crew Identity
+
+When a Crewmate is deployed, the following environment variables are set in its session:
+
+- \`FLEET_CREW_ID\` — the Crewmate's unique ID (e.g. \`my-sector-crew-a1b2\`)
+- \`FLEET_SECTOR_ID\` — the Sector it was deployed to
+- \`FLEET_MISSION_ID\` — the Mission ID it is working on
+
+Crew can use these to identify themselves in comms:
+
+\`\`\`
+fleet comms send --from $FLEET_CREW_ID --to admiral --message "Found a blocker..."
+fleet crew info $FLEET_CREW_ID    # Check own status
+\`\`\`
 
 ## Error Handling
 

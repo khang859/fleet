@@ -141,6 +141,16 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE comms ADD COLUMN repeat_count INTEGER DEFAULT 1;
       ALTER TABLE comms ADD COLUMN last_repeated_at TEXT;
     `
+  },
+  {
+    version: 5,
+    name: '005-sector-agent-config',
+    sql: `
+      ALTER TABLE sectors ADD COLUMN model TEXT;
+      ALTER TABLE sectors ADD COLUMN system_prompt TEXT;
+      ALTER TABLE sectors ADD COLUMN allowed_tools TEXT;
+      ALTER TABLE sectors ADD COLUMN mcp_config TEXT;
+    `
   }
 ]
 

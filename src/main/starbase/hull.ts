@@ -5,6 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PtyManager } from '../pty-manager'
 import { inferCommitType, deriveSummary, formatCommitMessage, formatCommitSubject } from './conventional-commits'
+import { generateSkillMd } from './workspace-templates'
 
 export type HullOpts = {
   crewId: string
@@ -22,6 +23,14 @@ export type HullOpts = {
   verifyCommand?: string
   lintCommand?: string
   reviewMode?: string
+  /** Claude model override (default: claude-sonnet-4-6) */
+  model?: string
+  /** Custom system prompt for the agent session */
+  systemPrompt?: string
+  /** Comma-separated allowed tools (e.g. "Read,Edit,Bash") */
+  allowedTools?: string
+  /** Path to an MCP config JSON file */
+  mcpConfig?: string
   onComplete?: () => void
   /** Environment variables for the PTY (enriched PATH so `claude` is found). */
   env?: Record<string, string>
@@ -42,6 +51,7 @@ export class Hull {
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null
   private paneId: string | null = null
   private promptFile: string | null = null
+  private systemPromptFile: string | null = null
   private pid: number | null = null
 
   private static ghAvailable: boolean | null = null
@@ -104,6 +114,15 @@ export class Hull {
       timeoutMin * 60 * 1000
     )
 
+    // Set up Fleet skill in worktree so crew agents can use the fleet CLI
+    try {
+      const skillDir = join(worktreePath, '.claude', 'skills', 'fleet')
+      mkdirSync(skillDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), generateSkillMd(), 'utf-8')
+    } catch {
+      // Non-fatal — crew can still work without the skill
+    }
+
     // Spawn agent PTY
     try {
       // Write prompt to a temp file to avoid shell escaping issues with complex prompts.
@@ -114,11 +133,38 @@ export class Hull {
       writeFileSync(promptFile, prompt, 'utf-8')
       this.promptFile = promptFile
 
+      const model = this.opts.model || 'claude-sonnet-4-6'
+      const cmdParts = [
+        'claude',
+        '--dangerously-skip-permissions',
+        `--model ${model}`
+      ]
+      if (this.opts.systemPrompt) {
+        // Append to default prompt so Claude Code retains its built-in tool instructions
+        const spFile = join(promptDir, `${crewId}-system-prompt.md`)
+        writeFileSync(spFile, this.opts.systemPrompt, 'utf-8')
+        this.systemPromptFile = spFile
+        cmdParts.push(`--append-system-prompt-file "${spFile}"`)
+      }
+      if (this.opts.allowedTools) {
+        cmdParts.push(`--allowedTools "${this.opts.allowedTools}"`)
+      }
+      if (this.opts.mcpConfig) {
+        cmdParts.push(`--mcp-config "${this.opts.mcpConfig}"`)
+      }
+      cmdParts.push(`-p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`)
+
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --dangerously-skip-permissions --model claude-sonnet-4-6 -p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`,
-        env: this.opts.env
+        cmd: cmdParts.join(' '),
+        exitOnComplete: true,
+        env: {
+          ...this.opts.env,
+          FLEET_CREW_ID: crewId,
+          FLEET_SECTOR_ID: this.opts.sectorId,
+          FLEET_MISSION_ID: String(this.opts.missionId)
+        }
       })
       this.pid = result.pid
       ptyManager.protect(paneId)
@@ -152,7 +198,13 @@ export class Hull {
 
   kill(ptyManager: PtyManager): void {
     if (this.paneId && ptyManager.has(this.paneId)) {
-      ptyManager.kill(this.paneId)
+      // Try graceful exit first, then force kill after 5s
+      ptyManager.write(this.paneId, '/exit\r')
+      setTimeout(() => {
+        if (this.paneId && ptyManager.has(this.paneId)) {
+          ptyManager.kill(this.paneId)
+        }
+      }, 5000)
     }
     this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
       console.error('[hull] cleanup error:', err)
@@ -181,7 +233,14 @@ export class Hull {
 
   private handleTimeout(ptyManager: PtyManager): void {
     if (this.paneId && ptyManager.has(this.paneId)) {
-      ptyManager.kill(this.paneId)
+      // Try graceful exit first
+      ptyManager.write(this.paneId, '/exit\r')
+      // Force kill after 5s if still alive
+      setTimeout(() => {
+        if (this.paneId && ptyManager.has(this.paneId)) {
+          ptyManager.kill(this.paneId)
+        }
+      }, 5000)
     }
     // Cleanup will be called by the onExit handler, but if kill doesn't trigger exit:
     setTimeout(() => {
@@ -190,7 +249,7 @@ export class Hull {
           console.error('[hull] cleanup error:', err)
         })
       }
-    }, 5000)
+    }, 10000)
   }
 
   private async cleanup(status: HullStatus, reason: string): Promise<void> {
@@ -200,10 +259,14 @@ export class Hull {
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
 
-    // Clean up prompt file
+    // Clean up temp files
     if (this.promptFile) {
       try { unlinkSync(this.promptFile) } catch { /* may already be deleted by agent */ }
       this.promptFile = null
+    }
+    if (this.systemPromptFile) {
+      try { unlinkSync(this.systemPromptFile) } catch { /* may not exist */ }
+      this.systemPromptFile = null
     }
 
     // Stop timers
@@ -212,6 +275,11 @@ export class Hull {
 
     const gitOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' }
     let overrideStatus: HullStatus | null = null
+
+    // Remove fleet skill files from worktree before git operations so they don't pollute commits
+    try {
+      execSync('rm -rf .claude/skills/fleet', gitOpts)
+    } catch { /* may not exist */ }
 
     try {
       // Auto-commit uncommitted files

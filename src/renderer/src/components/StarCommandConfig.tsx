@@ -1,6 +1,126 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useStarCommandStore } from '../store/star-command-store'
 
+// ---- Agent Prompt Templates ----
+
+const FLEET_CONTEXT = `
+## Fleet System
+
+You are a Crewmate deployed by Fleet's Star Command. Your identity is in the environment:
+- \`$FLEET_CREW_ID\` — your crew ID
+- \`$FLEET_SECTOR_ID\` — your sector
+- \`$FLEET_MISSION_ID\` — your mission
+
+The \`fleet\` CLI is on your PATH. Use the \`/fleet\` skill for the full command reference.
+
+Key commands:
+- \`fleet comms inbox\` — check for directives from the Admiral
+- \`fleet comms send --from $FLEET_CREW_ID --to admiral --message "..."\` — report status, ask questions, or flag blockers
+- \`fleet crew info $FLEET_CREW_ID\` — check your own status
+
+**Always check \`fleet comms inbox\` before starting work.** If you hit a blocker or discover something unexpected outside your mission scope, notify the Admiral via comms rather than handling it yourself.`
+
+const AGENT_TEMPLATES: { id: string; label: string; prompt: string }[] = [
+  {
+    id: 'crew-member',
+    label: 'Crew Member',
+    prompt: `You are a focused implementation crew member. You execute mission prompts precisely with minimal, correct changes.
+
+## Workflow
+1. Check \`fleet comms inbox\` for any directives from the Admiral.
+2. Read the mission prompt carefully. Identify the exact scope of work.
+3. Read existing code in the affected area before making changes.
+4. Implement the minimum changes needed to satisfy the mission.
+5. Commit your work with clear, descriptive messages.
+
+## Constraints
+- Stay on task. Do not refactor unrelated code or add features beyond the mission scope.
+- Prefer editing existing files over creating new ones.
+- Follow the project's existing code conventions and patterns.
+- If you encounter a blocker, notify the Admiral via comms and move on to what you can complete.
+${FLEET_CONTEXT}`
+  },
+  {
+    id: 'generalist',
+    label: 'Generalist',
+    prompt: `You are a senior generalist engineer with broad expertise across the full stack. You handle features, bugs, refactors, tests, docs, and DevOps.
+
+## Workflow
+1. Check \`fleet comms inbox\` for any directives from the Admiral.
+2. Assess the task holistically. Read related code to understand context and side effects.
+3. Plan your approach — consider downstream impact before making changes.
+4. Implement changes following existing project conventions.
+5. Add or update tests for any changed behavior.
+6. Commit with clear messages explaining what changed and why.
+
+## Constraints
+- Write clean, idiomatic code that matches the surrounding codebase style.
+- Keep changes proportional to the task — don't over-engineer.
+- When unsure between two approaches, choose the simpler one.
+- Leave clear commit history — one logical change per commit when practical.
+${FLEET_CONTEXT}`
+  },
+  {
+    id: 'investigator',
+    label: 'Investigator / Explorer',
+    prompt: `You are an investigator specializing in codebase exploration and root cause analysis. Your mission is to research and report findings.
+
+## Workflow
+1. Check \`fleet comms inbox\` for any directives from the Admiral.
+2. Read the mission prompt to understand what you're investigating.
+3. Search broadly across the codebase — use Grep, Glob, and Read to build a complete picture.
+4. Trace execution paths end-to-end. Follow imports, function calls, and data flow.
+5. Document your findings with specific file paths and line numbers.
+6. Send key findings to the Admiral via comms so they can coordinate next steps.
+7. Write a summary as a markdown file and commit it.
+
+## Output Format
+Organize findings by:
+- **What you found** — the facts, with file:line references
+- **How it works** — the execution flow or architecture
+- **Issues discovered** — any bugs, risks, or concerns with severity
+
+## Constraints
+- Do NOT modify source code unless the mission explicitly asks you to fix something.
+- Prioritize depth over breadth — fully trace one path before moving to the next.
+- Distinguish between confirmed facts and assumptions. Be precise.
+${FLEET_CONTEXT}`
+  },
+  {
+    id: 'reviewer',
+    label: 'Code Reviewer',
+    prompt: `You are a senior code reviewer focused on correctness, security, and maintainability.
+
+## Workflow
+1. Check \`fleet comms inbox\` for any directives from the Admiral.
+2. Read the mission prompt to identify what to review (PR number, branch, or files).
+3. Use git diff or gh CLI to read the full changeset.
+4. Review each changed file systematically.
+5. Write your findings organized by severity.
+6. Send your verdict to the Admiral via comms.
+
+## Review Checklist
+- Correctness: Does the logic do what it claims? Are edge cases handled?
+- Security: SQL injection, XSS, command injection, exposed secrets, auth gaps?
+- Performance: N+1 queries, unnecessary allocations, missing indexes?
+- Maintainability: Clear naming, reasonable complexity, adequate error handling?
+
+## Output Format
+Organize findings by severity:
+1. **Critical** — bugs, security vulnerabilities, data loss risks (must fix)
+2. **Warning** — logic concerns, missing error handling (should fix)
+3. **Suggestion** — style, naming, minor improvements (nice to have)
+
+End with a clear verdict: approve, request changes, or needs discussion.
+
+## Constraints
+- Flag real issues with high confidence. Do not nitpick style when the project has no style guide.
+- If the mission includes a PR number, use gh CLI to leave review comments directly.
+- Show the problematic code and explain why it's an issue, not just that it is one.
+${FLEET_CONTEXT}`
+  }
+]
+
 // ---- Types ----
 
 type SectorRow = {
@@ -15,6 +135,10 @@ type SectorRow = {
   lint_command: string | null
   review_mode: string
   worktree_enabled: number
+  model: string | null
+  system_prompt: string | null
+  allowed_tools: string | null
+  mcp_config: string | null
   created_at: string
   updated_at: string
 }
@@ -149,6 +273,67 @@ function SectorCard({
                 className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
               />
             </div>
+          </div>
+
+          <div className="text-xs text-neutral-500 font-semibold mt-2 mb-1">Agent Config</div>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label className="text-neutral-500 block mb-1">Model</label>
+              <input
+                type="text"
+                value={sector.model ?? ''}
+                placeholder="claude-sonnet-4-6"
+                onChange={(e) => onUpdate(sector.id, { model: e.target.value || null })}
+                className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-neutral-500 block mb-1">Allowed Tools</label>
+              <input
+                type="text"
+                value={sector.allowed_tools ?? ''}
+                placeholder="e.g. Read,Edit,Bash"
+                onChange={(e) => onUpdate(sector.id, { allowed_tools: e.target.value || null })}
+                className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
+              />
+            </div>
+          </div>
+          <div className="text-xs">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-neutral-500">System Prompt</label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const tpl = AGENT_TEMPLATES.find((t) => t.id === e.target.value)
+                  if (tpl) onUpdate(sector.id, { system_prompt: tpl.prompt })
+                }}
+                className="bg-neutral-900 text-neutral-400 text-xs rounded px-1.5 py-0.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="">Load template...</option>
+                {AGENT_TEMPLATES.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <textarea
+              value={sector.system_prompt ?? ''}
+              placeholder="Custom instructions for crew agents in this sector..."
+              onChange={(e) => onUpdate(sector.id, { system_prompt: e.target.value || null })}
+              rows={3}
+              className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono resize-y"
+            />
+          </div>
+          <div className="text-xs">
+            <label className="text-neutral-500 block mb-1">MCP Config Path</label>
+            <input
+              type="text"
+              value={sector.mcp_config ?? ''}
+              placeholder="e.g. /path/to/mcp-config.json"
+              onChange={(e) => onUpdate(sector.id, { mcp_config: e.target.value || null })}
+              className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
+            />
           </div>
 
           <div className="flex items-center gap-3 text-xs">
