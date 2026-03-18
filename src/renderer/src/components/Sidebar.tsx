@@ -7,6 +7,7 @@ import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
+import { Avatar } from './star-command/Avatar';
 import type { Workspace } from '../../../shared/types';
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
@@ -336,7 +337,45 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
         {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
           <div className="h-px bg-neutral-800 mx-1 my-1" />
         )}
-        {workspace.tabs.filter((t) => t.type !== 'star-command').map((tab, index) => {
+        {/* Crew tabs (with sprite avatars) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'crew')
+          .map((tab) => {
+            const paneIds = collectPaneIds(tab.splitRoot);
+            const badge = getTabBadge(paneIds);
+            return (
+              <div
+                key={tab.id}
+                className={`
+                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
+                  ${tab.id === activeTabId
+                    ? 'bg-neutral-700 text-white border-l-2 border-cyan-500'
+                    : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+                `}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  for (const paneId of paneIds) {
+                    useNotificationStore.getState().clearPane(paneId);
+                    window.fleet.notifications.paneFocused({ paneId });
+                  }
+                }}
+              >
+                <Avatar type="crew" variant={tab.avatarVariant} size={24} />
+                <div className="flex-1 min-w-0">
+                  <div className="truncate text-sm leading-tight">{tab.label}</div>
+                </div>
+                {badge && tab.id !== activeTabId && (
+                  <span className={`rounded-full flex-shrink-0 w-2 h-2 ${
+                    badge === 'error' ? 'bg-red-400' : badge === 'permission' ? 'bg-amber-400 animate-pulse' : 'bg-blue-400'
+                  }`} />
+                )}
+              </div>
+            );
+          })}
+        {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
+          <div className="h-px bg-neutral-800 mx-1 my-1" />
+        )}
+        {workspace.tabs.filter((t) => t.type !== 'star-command' && t.type !== 'crew').map((tab, index) => {
           const paneIds = collectPaneIds(tab.splitRoot);
           // Active pane within this tab drives the displayed CWD
           const drivingPane = (tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId))

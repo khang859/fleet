@@ -21,7 +21,7 @@ export interface ServiceRegistry {
   supplyRouteService: SupplyRouteService;
   configService: ConfigService;
   ptyManager: PtyManager;
-  createTab: (label: string, cwd: string) => string;
+  createTab: (label: string, cwd: string, avatarVariant?: string) => string;
   shipsLog: ShipsLog;
 }
 
@@ -223,11 +223,22 @@ export class SocketServer extends EventEmitter {
         return crewService.listCrew();
 
       case 'crew.deploy': {
+        const missionId = args.mission ? Number(args.mission) : (args.missionId as number | undefined);
+        let prompt = (args.prompt ?? args.summary ?? '') as string;
+
+        // If deploying by missionId with no explicit prompt, look it up from the mission record
+        if (!prompt && missionId) {
+          const mission = missionService.getMission(missionId);
+          if (mission) {
+            prompt = mission.prompt ?? mission.summary ?? '';
+          }
+        }
+
         const result = await crewService.deployCrew(
           {
             sectorId: (args.sector ?? args.sectorId) as string,
-            prompt: (args.prompt ?? args.summary ?? '') as string,
-            missionId: args.mission ? Number(args.mission) : (args.missionId as number | undefined),
+            prompt,
+            missionId,
           },
           ptyManager,
           createTab,

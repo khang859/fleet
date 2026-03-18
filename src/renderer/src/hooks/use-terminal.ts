@@ -32,6 +32,11 @@ export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
 }
 
+/** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
+export function markPtyCreated(paneId: string): void {
+  createdPtys.add(paneId);
+}
+
 export function serializePane(paneId: string): string | undefined {
   return serializeRegistry.get(paneId)?.serialize();
 }
@@ -126,14 +131,33 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   // stale, making the terminal appear stuck at an old scroll position.
   // By scrolling in the write callback, we ensure the DOM scroll position stays
   // correct regardless of whether rAF is running.
+
+  // Create PTY only once per pane (survives StrictMode double-mount).
+  // Skip creation when attachOnly=true (e.g. Admiral PTY pre-created by main process).
+  const isPreCreated = createdPtys.has(options.paneId);
+
+  // For pre-created PTYs (crew deployments), gate live data until attach()
+  // resolves to prevent out-of-order writes. Data that arrives via PTY_DATA
+  // before the attach round-trip completes is queued and flushed in order.
+  let attachResolved = !isPreCreated || options.attachOnly;
+  const pendingLiveData: string[] = [];
+
+  const writeToTerm = (data: string): void => {
+    term.write(data, () => {
+      if (pinnedToBottom) {
+        term.scrollToBottom();
+      }
+      window.fleet.ptyDrain(options.paneId);
+    });
+  };
+
   const ipcCleanup = window.fleet.pty.onData(({ paneId, data }) => {
     if (paneId === options.paneId) {
-      term.write(data, () => {
-        if (pinnedToBottom) {
-          term.scrollToBottom();
-        }
-        window.fleet.ptyDrain(options.paneId);
-      });
+      if (!attachResolved) {
+        pendingLiveData.push(data);
+        return;
+      }
+      writeToTerm(data);
     }
   });
 
@@ -141,13 +165,24 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     window.fleet.pty.input({ paneId: options.paneId, data });
   });
 
-  // Create PTY only once per pane (survives StrictMode double-mount).
-  // Skip creation when attachOnly=true (e.g. Admiral PTY pre-created by main process).
-  if (!options.attachOnly && !createdPtys.has(options.paneId)) {
+  if (!options.attachOnly && !isPreCreated) {
     createdPtys.add(options.paneId);
     window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd,
+    });
+  }
+
+  // For pre-created PTYs (crew deployments), attach to get buffered output
+  // and transition to live streaming. This closes the race where PTY data
+  // arrives before the renderer mounts the terminal.
+  if (isPreCreated && !options.attachOnly) {
+    window.fleet.pty.attach(options.paneId).then(({ data }) => {
+      if (!term.element) return; // terminal disposed during round-trip
+      if (data) writeToTerm(data);
+      attachResolved = true;
+      for (const chunk of pendingLiveData) writeToTerm(chunk);
+      pendingLiveData.length = 0;
     });
   }
 

@@ -31,6 +31,8 @@ type WorkspaceStore = {
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
+  /** Add a tab for a crew PTY whose paneId was pre-determined by the main process. */
+  addCrewTab: (paneId: string, label: string, cwd: string, avatarVariant?: string) => void;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
@@ -114,6 +116,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true,
     }));
     return leaf.id;
+  },
+
+  addCrewTab: (paneId, label, cwd, avatarVariant) => {
+    const leaf: PaneLeaf = { type: 'leaf', id: paneId, cwd };
+    const tab: Tab = { id: generateId(), label, labelIsCustom: true, cwd, type: 'crew', avatarVariant, splitRoot: leaf };
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: [...state.workspace.tabs, tab],
+      },
+      isDirty: true,
+    }));
   },
 
   closeTab: (tabId, serializedPanes) => {

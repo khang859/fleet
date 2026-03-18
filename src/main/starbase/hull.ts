@@ -1,5 +1,8 @@
 import type Database from 'better-sqlite3'
 import { execSync, ExecSyncOptions } from 'child_process'
+import { writeFileSync, unlinkSync, mkdirSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
 import type { PtyManager } from '../pty-manager'
 
 export type HullOpts = {
@@ -19,6 +22,12 @@ export type HullOpts = {
   lintCommand?: string
   reviewMode?: string
   onComplete?: () => void
+  /** Environment variables for the PTY (enriched PATH so `claude` is found). */
+  env?: Record<string, string>
+  /** Called with PTY data — wire to renderer for live terminal output. */
+  onPtyData?: (paneId: string, data: string) => void
+  /** Called on PTY exit — wire to renderer for exit handling. */
+  onPtyExit?: (paneId: string, exitCode: number) => void
 }
 
 type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted'
@@ -31,6 +40,7 @@ export class Hull {
   private lifesignTimer: ReturnType<typeof setInterval> | null = null
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null
   private paneId: string | null = null
+  private promptFile: string | null = null
   private pid: number | null = null
 
   private static ghAvailable: boolean | null = null
@@ -95,10 +105,19 @@ export class Hull {
 
     // Spawn agent PTY
     try {
+      // Write prompt to a temp file to avoid shell escaping issues with complex prompts.
+      // Claude Code reads the file via its Read tool on first turn.
+      const promptDir = join(tmpdir(), 'fleet-prompts')
+      mkdirSync(promptDir, { recursive: true })
+      const promptFile = join(promptDir, `${crewId}.md`)
+      writeFileSync(promptFile, prompt, 'utf-8')
+      this.promptFile = promptFile
+
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`
+        cmd: `claude --dangerously-skip-permissions -p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`,
+        env: this.opts.env
       })
       this.pid = result.pid
       ptyManager.protect(paneId)
@@ -108,13 +127,15 @@ export class Hull {
       return
     }
 
-    // Listen for output
+    // Listen for output (also forward to renderer if callback provided)
     ptyManager.onData(paneId, (data) => {
       this.appendOutput(data)
+      this.opts.onPtyData?.(paneId, data)
     })
 
-    // Listen for exit
+    // Listen for exit (also forward to renderer if callback provided)
     ptyManager.onExit(paneId, (exitCode) => {
+      this.opts.onPtyExit?.(paneId, exitCode)
       const status = exitCode === 0 ? 'complete' : 'error'
       this.cleanup(status, exitCode === 0 ? 'Completed successfully' : `Exit code: ${exitCode}`)
     })
@@ -165,6 +186,12 @@ export class Hull {
     this.status = status
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
+
+    // Clean up prompt file
+    if (this.promptFile) {
+      try { unlinkSync(this.promptFile) } catch { /* may already be deleted by agent */ }
+      this.promptFile = null
+    }
 
     // Stop timers
     if (this.lifesignTimer) clearInterval(this.lifesignTimer)

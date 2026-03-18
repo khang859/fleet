@@ -50,6 +50,7 @@ export const IPC_CHANNELS = {
   ADMIRAL_RESET: 'admiral:reset',
   ADMIRAL_PANE_ID: 'admiral:pane-id',
   PTY_DRAIN: 'fleet:pty-drain',
+  PTY_ATTACH: 'pty:attach',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

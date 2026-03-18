@@ -9,7 +9,8 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'star-command';
+  type?: 'terminal' | 'star-command' | 'crew';
+  avatarVariant?: string;
   splitRoot: PaneNode;
 };
 

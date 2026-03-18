@@ -44,6 +44,12 @@ type CrewServiceDeps = {
   configService: ConfigService;
   worktreeManager: WorktreeManager;
   eventBus?: EventBus;
+  /** Enriched env for crew PTYs (PATH with claude binary). */
+  crewEnv?: Record<string, string>;
+  /** Forward crew PTY data to renderer. */
+  onPtyData?: (paneId: string, data: string) => void;
+  /** Forward crew PTY exit to renderer. */
+  onPtyExit?: (paneId: string, exitCode: number) => void;
 };
 
 type DeployResult = {
@@ -71,7 +77,7 @@ export class CrewService {
   async deployCrew(
     opts: { sectorId: string; prompt: string; missionId?: number },
     ptyManager: PtyManager,
-    createTab: (label: string, cwd: string) => string,
+    createTab: (label: string, cwd: string, avatarVariant?: string) => string,
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -139,7 +145,7 @@ export class CrewService {
 
     // 7. Create tab
     const tabLabel = opts.prompt.slice(0, 50);
-    const tabId = createTab(tabLabel, worktreeResult.worktreePath);
+    const tabId = createTab(tabLabel, worktreeResult.worktreePath, avatar);
 
     // 8. Create Hull
     const timeoutMin = configService.get('default_mission_timeout_min') as number;
@@ -159,6 +165,9 @@ export class CrewService {
       timeoutMin,
       mergeStrategy: sector.merge_strategy,
       onComplete: () => this.autoDeployNext(ptyManager, createTab),
+      env: this.deps.crewEnv,
+      onPtyData: this.deps.onPtyData,
+      onPtyExit: this.deps.onPtyExit,
     });
 
     // Update crew record with avatar
@@ -223,7 +232,7 @@ export class CrewService {
   /** Auto-deploy next queued mission if worktree slots are available */
   private autoDeployNext(
     ptyManager: PtyManager,
-    createTab: (label: string, cwd: string) => string,
+    createTab: (label: string, cwd: string, avatarVariant?: string) => string,
   ): void {
     const next = this.nextQueuedMission();
     if (!next) return;

@@ -28,6 +28,8 @@ const fleetApi = {
     resize: (payload: PtyResizePayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
     kill: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
     gc: (activePaneIds: string[]): void => ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
+    attach: (paneId: string): Promise<{ data: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.PTY_ATTACH, { paneId }),
     onData: (callback: (payload: PtyDataPayload) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) =>
         callback(payload)
@@ -147,6 +149,14 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
+  onCreateTab: (callback: (payload: { tabId: string; label: string; cwd: string; avatarVariant?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, payload: { tabId: string; label: string; cwd: string; avatarVariant?: string }) =>
+      callback(payload)
+    ipcRenderer.on('fleet:create-tab', handler)
+    // Signal to main that the renderer is ready to receive create-tab messages
+    ipcRenderer.send('fleet:create-tab-ready')
+    return () => ipcRenderer.removeListener('fleet:create-tab', handler)
+  },
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {

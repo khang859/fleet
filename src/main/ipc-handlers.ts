@@ -175,11 +175,11 @@ export function registerIpcHandlers(
   // Phase 2: Deploy/Recall/Crew/Missions handlers
   if (crewService && missionService) {
     ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
-      const createTab = (label: string, cwd: string): string => {
+      const createTab = (label: string, cwd: string, avatarVariant?: string): string => {
         const tabId = crypto.randomUUID()
         const w = getWindow()
         if (w && !w.isDestroyed()) {
-          w.webContents.send('fleet:create-tab', { tabId, label, cwd })
+          w.webContents.send('fleet:create-tab', { tabId, label, cwd, avatarVariant })
         }
         return tabId
       }

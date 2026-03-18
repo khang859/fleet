@@ -5,7 +5,7 @@ import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
-import { clearCreatedPty, serializePane } from './hooks/use-terminal';
+import { clearCreatedPty, markPtyCreated, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
@@ -15,6 +15,7 @@ import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
 import { StarCommandTab } from './components/StarCommandTab';
+import { Avatar } from './components/star-command/Avatar';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -36,7 +37,7 @@ export function App() {
 
   const [sidebarManualOpen, setSidebarManualOpen] = useState(false)
 
-  const { workspace, activeTabId, activePaneId, setActivePane, addTab, lastClosedTab, undoCloseTab } =
+  const { workspace, activeTabId, activePaneId, setActiveTab, setActivePane, addTab, lastClosedTab, undoCloseTab } =
     useWorkspaceStore();
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => activePaneId ? s.cwds.get(activePaneId) : undefined);
@@ -104,6 +105,15 @@ export function App() {
     const handler = () => setGitChangesOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-git-changes', handler);
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
+  }, []);
+
+  // Listen for crew tab creation from main process
+  useEffect(() => {
+    const cleanup = window.fleet.onCreateTab(({ tabId, label, cwd, avatarVariant }) => {
+      markPtyCreated(tabId);
+      useWorkspaceStore.getState().addCrewTab(tabId, label, cwd, avatarVariant);
+    });
+    return () => { cleanup(); };
   }, []);
 
   // Auto-updater
@@ -193,6 +203,12 @@ export function App() {
       );
       if (!tab) return;
 
+      // Crew tabs: close silently (no undo toast — automated agent, PTY is dead)
+      if (tab.type === 'crew') {
+        state.closeTab(tab.id);
+        return;
+      }
+
       const paneIds = collectPaneIds(tab.splitRoot);
       if (paneIds.length === 1) {
         // Serialize all panes before closing tab
@@ -221,12 +237,13 @@ export function App() {
         <Sidebar updateReady={updateReady} onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined} />
       ) : (
         <div
-          className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0"
+          className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
+          {/* Expand sidebar button */}
           <button
             onClick={() => setSidebarManualOpen(true)}
-            className="mt-2 p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
             title="Show sidebar"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -234,6 +251,31 @@ export function App() {
               <line x1="5.5" y1="2" x2="5.5" y2="14" />
             </svg>
           </button>
+          <div className="w-6 h-px bg-neutral-800 my-0.5" />
+          {/* Tab icons */}
+          {workspace.tabs.filter((t) => t.type !== 'star-command').map((tab) => {
+            const isActive = tab.id === activeTabId;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`p-1 rounded transition-colors ${
+                  isActive
+                    ? 'bg-neutral-700 ring-1 ring-neutral-600'
+                    : 'hover:bg-neutral-800'
+                }`}
+                title={tab.label}
+              >
+                {tab.type === 'crew' ? (
+                  <Avatar type="crew" variant={tab.avatarVariant} size={20} />
+                ) : (
+                  <span className={`block text-xs leading-none ${isActive ? 'text-white' : 'text-neutral-500'}`}>
+                    &gt;_
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
       <div className="flex-1 min-w-0 h-full flex flex-col">
