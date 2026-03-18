@@ -1,7 +1,51 @@
 import * as fs from 'fs'
 import * as path from 'path'
-import { execSync } from 'child_process'
+import { execSync, exec } from 'child_process'
+import { promisify } from 'util'
 import type { PtyManager } from '../pty-manager'
+
+const execAsync = promisify(exec)
+
+export interface DepCheckResult {
+  name: string
+  found: boolean
+  version?: string
+  installHint: string
+}
+
+export async function checkDependencies(): Promise<DepCheckResult[]> {
+  const checks = [
+    {
+      name: 'claude',
+      cmd: 'which claude',
+      installHint: 'Install Claude Code: npm install -g @anthropic-ai/claude-code'
+    },
+    {
+      name: 'git',
+      cmd: 'git --version',
+      installHint: 'Install Git: https://git-scm.com/downloads'
+    },
+    {
+      name: 'gh',
+      cmd: 'gh --version',
+      installHint: 'Install GitHub CLI: https://cli.github.com'
+    }
+  ]
+
+  const results: DepCheckResult[] = []
+  for (const check of checks) {
+    try {
+      const { stdout } = await execAsync(check.cmd)
+      const firstLine = stdout.trim().split('\n')[0]
+      // 'which' output is just the path, not a version string
+      const version = check.cmd.startsWith('which') ? undefined : firstLine
+      results.push({ name: check.name, found: true, version, installHint: check.installHint })
+    } catch {
+      results.push({ name: check.name, found: false, installHint: check.installHint })
+    }
+  }
+  return results
+}
 import {
   generateClaudeMd,
   generateSkillMd,

@@ -9,6 +9,7 @@ import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
 import { AdmiralSidebar } from './star-command/AdmiralSidebar'
 import { StatusBar } from './star-command/StatusBar'
+import { DependencyCheckScreen } from './star-command/DependencyCheckScreen'
 import { useTerminal } from '../hooks/use-terminal'
 
 function AdmiralTerminal({ paneId }: { paneId: string }) {
@@ -43,6 +44,9 @@ export function StarCommandTab() {
     unreadCount,
     admiralAvatarState,
     setAdmiralState,
+    depCheckStatus,
+    depCheckResults,
+    setDepCheck,
   } = useStarCommandStore()
 
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
@@ -70,12 +74,22 @@ export function StarCommandTab() {
   // Load sprite sheet (previously done by StarCommandScene)
   useEffect(() => { loadScSpriteSheet() }, [])
 
-  // On mount: ensure Admiral is started and listen for status changes
+  // On mount: check dependencies first, then ensure Admiral is started
   useEffect(() => {
-    window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
-      if (paneId) {
-        setAdmiralPty(paneId, 'running')
-      }
+    setDepCheck('checking', [])
+    window.fleet.admiral.checkDependencies().then((results) => {
+      const allPassed = results.every((r) => r.found)
+      setDepCheck(allPassed ? 'passed' : 'failed', results)
+      if (!allPassed) return
+
+      // Brief pause so user can see the "passed" state, then launch
+      setTimeout(() => {
+        window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
+          if (paneId) {
+            setAdmiralPty(paneId, 'running')
+          }
+        })
+      }, 800)
     })
 
     const cleanup = window.fleet.admiral.onStatusChanged((data) => {
@@ -88,7 +102,7 @@ export function StarCommandTab() {
     })
 
     return cleanup
-  }, [setAdmiralPty])
+  }, [setAdmiralPty, setDepCheck])
 
   // Listen for detailed admiral state changes (thinking, speaking, etc.)
   useEffect(() => {
@@ -267,10 +281,18 @@ export function StarCommandTab() {
               <MissionsPanel />
             ) : (
               <div className="flex-1 relative min-h-0">
+                {/* Dependency check screen (shown before Admiral starts) */}
+                {(depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
+                  <DependencyCheckScreen
+                    status={depCheckStatus as 'checking' | 'passed' | 'failed'}
+                    results={depCheckResults}
+                  />
+                )}
+
                 {/* Admiral terminal */}
                 {admiralPaneId ? (
                   <AdmiralTerminal paneId={admiralPaneId} />
-                ) : (
+                ) : depCheckStatus === 'pending' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600">
                     <p className="text-sm">
                       {admiralStatus === 'starting' ? 'Starting Admiral...' : 'Admiral offline'}
@@ -279,7 +301,7 @@ export function StarCommandTab() {
                       <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
                     )}
                   </div>
-                )}
+                ) : null}
 
                 {/* Offline overlay with restart button */}
                 {admiralStatus === 'stopped' && admiralPaneId === null && (

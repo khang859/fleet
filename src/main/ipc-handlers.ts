@@ -25,6 +25,7 @@ import type { ConfigService } from './starbase/config-service'
 import type { CrewService } from './starbase/crew-service'
 import type { MissionService } from './starbase/mission-service'
 import type { AdmiralProcess } from './starbase/admiral-process'
+import { checkDependencies } from './starbase/admiral-process'
 import type { CommsService } from './starbase/comms-service'
 import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
@@ -204,6 +205,8 @@ export function registerIpcHandlers(
   }
 
   // Phase 3: Admiral + Comms handlers
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, () => checkDependencies())
+
   if (admiralProcess) {
     ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, () => admiralProcess.paneId)
 

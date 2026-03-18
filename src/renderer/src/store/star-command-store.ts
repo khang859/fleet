@@ -51,6 +51,13 @@ export type CommInfo = {
 
 type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
 
+export type DepCheckResult = {
+  name: string
+  found: boolean
+  version?: string
+  installHint: string
+}
+
 type StarCommandStore = {
   // Admiral PTY
   admiralPaneId: string | null;
@@ -65,12 +72,17 @@ type StarCommandStore = {
   unreadCount: number;
   commsList: CommInfo[];
 
+  // Dependency check
+  depCheckStatus: 'pending' | 'checking' | 'passed' | 'failed'
+  depCheckResults: DepCheckResult[]
+
   // Visual state
   admiralAvatarState: AdmiralAvatarState;
   admiralStatusText: string;
 
   // Actions
   setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null, exitCode?: number | null) => void;
+  setDepCheck: (status: 'pending' | 'checking' | 'passed' | 'failed', results?: DepCheckResult[]) => void;
   setCrewList: (crew: CrewStatus[]) => void;
   setMissionQueue: (missions: MissionInfo[]) => void;
   setSectors: (sectors: SectorInfo[]) => void;
@@ -90,10 +102,13 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   sectors: [],
   unreadCount: 0,
   commsList: [],
+  depCheckStatus: 'pending',
+  depCheckResults: [],
   admiralAvatarState: 'standby',
   admiralStatusText: 'Standing by',
 
   setAdmiralPty: (paneId, status, error = null, exitCode = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error, admiralExitCode: exitCode }),
+  setDepCheck: (status, results) => set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
   setCrewList: (crew) => set({ crewList: crew }),
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
