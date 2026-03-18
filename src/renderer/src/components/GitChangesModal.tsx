@@ -57,6 +57,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
     window.fleet.git.getStatus(cwd).then((result) => {
       setData(result);
       setLoading(false);
+    }).catch((err) => {
+      console.error('Failed to fetch git status:', err);
+      setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
+      setLoading(false);
     });
   }, [isOpen, cwd]);
 

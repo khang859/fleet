@@ -92,4 +92,38 @@ index 0000000..abc1234
     expect(result[0].hunks[0].startsWith('@@')).toBe(true);
     expect(result[0].hunks[0]).not.toContain('new file mode');
   });
+
+  it('binary file diffs produce empty hunks array', () => {
+    const diff = `diff --git a/image.png b/image.png
+index abc1234..def5678 100644
+Binary files a/image.png and b/image.png differ`;
+
+    const result = parseUnifiedDiff(diff);
+    expect(result).toHaveLength(1);
+    expect(result[0].fileName).toBe('image.png');
+    expect(result[0].hunks).toEqual([]);
+  });
+
+  it('handles renamed file diffs correctly', () => {
+    const diff = `diff --git a/old-name.ts b/new-name.ts
+similarity index 95%
+rename from old-name.ts
+rename to new-name.ts
+index abc1234..def5678 100644
+--- a/old-name.ts
++++ b/new-name.ts
+@@ -1,3 +1,3 @@
+ line1
+-old
++new
+ line3`;
+
+    const result = parseUnifiedDiff(diff);
+    expect(result).toHaveLength(1);
+    expect(result[0].fileName).toBe('new-name.ts');
+    expect(result[0].hunks).toHaveLength(1);
+    expect(result[0].hunks[0].startsWith('@@')).toBe(true);
+    expect(result[0].hunks[0]).not.toContain('rename from');
+    expect(result[0].hunks[0]).not.toContain('similarity index');
+  });
 });
