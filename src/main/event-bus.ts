@@ -7,6 +7,7 @@ export type FleetEvent =
   | { type: 'pane-closed'; paneId: string }
   | { type: 'pty-exit'; paneId: string; exitCode: number }
   | { type: 'agent-state-change'; paneId: string; state: string; tool?: string }
+  | { type: 'admiral-state-change'; state: 'standby' | 'thinking' | 'speaking' | 'alert'; statusText: string }
   | { type: 'workspace-loaded'; workspaceId: string }
   | { type: 'cwd-changed'; paneId: string; cwd: string }
   | { type: 'starbase-changed' };
