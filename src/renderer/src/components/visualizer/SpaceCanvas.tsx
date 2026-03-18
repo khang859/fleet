@@ -301,7 +301,9 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const shuttle = shuttleRef.current
     const signalPulse = signalPulseRef.current
 
+    let elapsed = 0
     const loop = createThrottledLoop(30, (deltaMs) => {
+      elapsed += deltaMs
       const { w, h } = sizeCanvas(canvas)
       const zoom = zoomRef.current
       const vw = w / zoom
@@ -342,11 +344,11 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       const ringCY = vh / 2
       const radius = 120
       const sectorPositions = computeSectorPositions(sectorStatesRef.current, ringCX, ringCY, radius)
-      sectorOutpost.render(ctx, sectorStatesRef.current, sectorPositions, deltaMs)
+      sectorOutpost.render(ctx, sectorStatesRef.current, sectorPositions, elapsed)
       shuttle.update(podStatesRef.current, sectorPositions, ringCX, ringCY, deltaMs)
-      shuttle.render(ctx, deltaMs)
+      shuttle.render(ctx, elapsed)
       signalPulse.update(deltaMs)
-      signalPulse.render(ctx, deltaMs)
+      signalPulse.render(ctx, elapsed)
     })
 
     loop.start()
