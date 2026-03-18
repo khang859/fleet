@@ -9,6 +9,9 @@ export type PtyCreateOptions = {
   cols?: number
   rows?: number
   env?: Record<string, string>
+  /** If true, the PTY exits when cmd finishes instead of falling back to a shell.
+   *  Used for crew PTYs where we need onExit to fire for cleanup. */
+  exitOnComplete?: boolean
 }
 
 export type PtyCreateResult = {
@@ -44,7 +47,13 @@ export class PtyManager {
     const args: string[] = []
 
     if (opts.cmd) {
-      args.push('-c', `${opts.cmd}; exec ${shell}`)
+      if (opts.exitOnComplete) {
+        // PTY exits when command finishes — used for crew agents where onExit triggers cleanup
+        args.push('-c', opts.cmd)
+      } else {
+        // Default: fall back to shell after command exits — keeps terminal alive for user
+        args.push('-c', `${opts.cmd}; exec ${shell}`)
+      }
     }
 
     console.log(`[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`)

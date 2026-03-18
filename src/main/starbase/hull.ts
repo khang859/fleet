@@ -51,6 +51,7 @@ export class Hull {
   private timeoutTimer: ReturnType<typeof setTimeout> | null = null
   private paneId: string | null = null
   private promptFile: string | null = null
+  private systemPromptFile: string | null = null
   private pid: number | null = null
 
   private static ghAvailable: boolean | null = null
@@ -142,6 +143,7 @@ export class Hull {
         // Append to default prompt so Claude Code retains its built-in tool instructions
         const spFile = join(promptDir, `${crewId}-system-prompt.md`)
         writeFileSync(spFile, this.opts.systemPrompt, 'utf-8')
+        this.systemPromptFile = spFile
         cmdParts.push(`--append-system-prompt-file "${spFile}"`)
       }
       if (this.opts.allowedTools) {
@@ -156,6 +158,7 @@ export class Hull {
         paneId,
         cwd: worktreePath,
         cmd: cmdParts.join(' '),
+        exitOnComplete: true,
         env: {
           ...this.opts.env,
           FLEET_CREW_ID: crewId,
@@ -195,7 +198,13 @@ export class Hull {
 
   kill(ptyManager: PtyManager): void {
     if (this.paneId && ptyManager.has(this.paneId)) {
-      ptyManager.kill(this.paneId)
+      // Try graceful exit first, then force kill after 5s
+      ptyManager.write(this.paneId, '/exit\r')
+      setTimeout(() => {
+        if (this.paneId && ptyManager.has(this.paneId)) {
+          ptyManager.kill(this.paneId)
+        }
+      }, 5000)
     }
     this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
       console.error('[hull] cleanup error:', err)
@@ -224,7 +233,14 @@ export class Hull {
 
   private handleTimeout(ptyManager: PtyManager): void {
     if (this.paneId && ptyManager.has(this.paneId)) {
-      ptyManager.kill(this.paneId)
+      // Try graceful exit first
+      ptyManager.write(this.paneId, '/exit\r')
+      // Force kill after 5s if still alive
+      setTimeout(() => {
+        if (this.paneId && ptyManager.has(this.paneId)) {
+          ptyManager.kill(this.paneId)
+        }
+      }, 5000)
     }
     // Cleanup will be called by the onExit handler, but if kill doesn't trigger exit:
     setTimeout(() => {
@@ -233,7 +249,7 @@ export class Hull {
           console.error('[hull] cleanup error:', err)
         })
       }
-    }, 5000)
+    }, 10000)
   }
 
   private async cleanup(status: HullStatus, reason: string): Promise<void> {
@@ -243,13 +259,14 @@ export class Hull {
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
 
-    // Clean up prompt file and system prompt file
+    // Clean up temp files
     if (this.promptFile) {
       try { unlinkSync(this.promptFile) } catch { /* may already be deleted by agent */ }
-      // Also clean up companion system-prompt file if it exists
-      const spFile = this.promptFile.replace(`${this.opts.crewId}.md`, `${this.opts.crewId}-system-prompt.md`)
-      try { unlinkSync(spFile) } catch { /* may not exist */ }
       this.promptFile = null
+    }
+    if (this.systemPromptFile) {
+      try { unlinkSync(this.systemPromptFile) } catch { /* may not exist */ }
+      this.systemPromptFile = null
     }
 
     // Stop timers
@@ -258,6 +275,11 @@ export class Hull {
 
     const gitOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' }
     let overrideStatus: HullStatus | null = null
+
+    // Remove fleet skill files from worktree before git operations so they don't pollute commits
+    try {
+      execSync('rm -rf .claude/skills/fleet', gitOpts)
+    } catch { /* may not exist */ }
 
     try {
       // Auto-commit uncommitted files
