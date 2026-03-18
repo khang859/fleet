@@ -6,7 +6,7 @@ export type PodState = {
   status: 'active' | 'hailing' | 'error' | 'complete' | 'lost' | 'idle'
 }
 
-type ShuttleState = 'orbiting' | 'flying-to-hub' | 'returning' | 'docking' | 'drifting'
+type ShuttleState = 'orbiting' | 'flying-to-hub' | 'returning' | 'docking' | 'drifting' | 'docked'
 
 type ShuttleEntry = {
   crewId: string
@@ -30,11 +30,33 @@ const TRAVEL_SPEED = 80       // px/s
 const ARRIVAL_THRESHOLD = 20  // px
 const DOCK_DURATION = 450     // ms (3 frames × 150ms)
 const DRIFT_DURATION = 3000   // ms
+const DOCK_RADIUS = 20        // px — docked shuttle distance from hub center
 
 function crewHash(id: string): number {
   let sum = 0
   for (let i = 0; i < id.length; i++) sum += id.charCodeAt(i)
   return sum
+}
+
+function makeDockedEntry(crewId: string, sectorId: string, hubX: number, hubY: number): ShuttleEntry {
+  const hash = crewHash(crewId)
+  const angle = hash % (2 * Math.PI)
+  return {
+    crewId,
+    sectorId,
+    state: 'docked',
+    x: hubX + Math.cos(angle) * DOCK_RADIUS,
+    y: hubY + Math.sin(angle) * DOCK_RADIUS,
+    vx: 0,
+    vy: 0,
+    orbitPhase: angle,
+    orbitSpeed: 0.6 + 0.4 * (hash % 100) / 100,
+    alpha: 1,
+    returnTargetX: 0,
+    returnTargetY: 0,
+    dockElapsed: 0,
+    driftElapsed: 0,
+  }
 }
 
 export class ShuttleRenderer {
@@ -65,63 +87,35 @@ export class ShuttleRenderer {
       const sectorPos = positions.get(pod.sectorId)
       let entry = this.entries.get(pod.crewId)
 
-      // Idle: no shuttle
-      if (pod.status === 'idle') {
-        this.entries.delete(pod.crewId)
+      // Inactive crew (idle/complete): dock at station hub
+      if (pod.status === 'idle' || pod.status === 'complete') {
+        if (!entry) {
+          entry = makeDockedEntry(pod.crewId, pod.sectorId, hubX, hubY)
+          this.entries.set(pod.crewId, entry)
+        } else if (statusChanged && pod.status === 'complete' && entry.state !== 'docking' && entry.state !== 'docked') {
+          // Play dock-sparkle at hub on completion, then settle to docked
+          entry.state = 'docking'
+          entry.dockElapsed = 0
+          entry.x = hubX
+          entry.y = hubY
+          entry.vx = 0
+          entry.vy = 0
+        } else if (pod.status === 'idle' && entry.state !== 'docked' && entry.state !== 'drifting') {
+          // Idle transition: snap to docked
+          entry.state = 'docked'
+          entry.vx = 0
+          entry.vy = 0
+        }
         this.lastStatus.set(pod.crewId, pod.status)
-        continue
       }
 
-      // No sector position: skip
-      if (!sectorPos) {
-        this.lastStatus.set(pod.crewId, pod.status)
-        continue
-      }
-
-      const { x: sx, y: sy } = sectorPos
-
-      // Create entry if none exists
-      if (!entry) {
-        // First observation as complete/lost: skip animation
-        if (pod.status === 'complete' || pod.status === 'lost') {
+      // Lost crew: drift away from current position
+      if (pod.status === 'lost') {
+        if (!entry) {
           this.lastStatus.set(pod.crewId, pod.status)
           continue
         }
-        const hash = crewHash(pod.crewId)
-        const initPhase = hash % (2 * Math.PI)  // 0..2π, deterministic
-        const speed = 0.6 + 0.4 * (hash % 100) / 100
-        entry = {
-          crewId: pod.crewId,
-          sectorId: pod.sectorId,
-          state: pod.status === 'hailing' ? 'flying-to-hub' : 'orbiting',
-          x: sx + Math.cos(initPhase) * ORBIT_RADIUS,
-          y: sy + Math.sin(initPhase) * ORBIT_RADIUS,
-          vx: 0,
-          vy: 0,
-          orbitPhase: initPhase,
-          orbitSpeed: speed,
-          alpha: 1,
-          returnTargetX: sx,
-          returnTargetY: sy,
-          dockElapsed: 0,
-          driftElapsed: 0,
-        }
-        this.entries.set(pod.crewId, entry)
-      }
-
-      // Re-trigger flying-to-hub whenever hailing and back to orbiting
-      if (pod.status === 'hailing' && entry.state === 'orbiting') {
-        entry.state = 'flying-to-hub'
-      }
-
-      // Handle explicit status transitions
-      if (statusChanged) {
-        if (pod.status === 'complete' && entry.state !== 'docking') {
-          entry.state = 'docking'
-          entry.dockElapsed = 0
-          entry.x = sx
-          entry.y = sy
-        } else if (pod.status === 'lost' && entry.state !== 'drifting') {
+        if (statusChanged && entry.state !== 'drifting') {
           entry.state = 'drifting'
           entry.driftElapsed = 0
           entry.alpha = 1
@@ -131,12 +125,76 @@ export class ShuttleRenderer {
           entry.vx = (dx / dist) * 15
           entry.vy = (dy / dist) * 15
         }
+        this.lastStatus.set(pod.crewId, pod.status)
       }
 
-      this.lastStatus.set(pod.crewId, pod.status)
+      // Active crew (active/hailing/error): need sector position
+      if (pod.status === 'active' || pod.status === 'hailing' || pod.status === 'error') {
+        if (!sectorPos) {
+          this.lastStatus.set(pod.crewId, pod.status)
+          continue
+        }
+        const { x: sx, y: sy } = sectorPos
+
+        if (!entry) {
+          const hash = crewHash(pod.crewId)
+          const initPhase = hash % (2 * Math.PI)
+          const speed = 0.6 + 0.4 * (hash % 100) / 100
+          entry = {
+            crewId: pod.crewId,
+            sectorId: pod.sectorId,
+            state: pod.status === 'hailing' ? 'flying-to-hub' : 'orbiting',
+            x: sx + Math.cos(initPhase) * ORBIT_RADIUS,
+            y: sy + Math.sin(initPhase) * ORBIT_RADIUS,
+            vx: 0,
+            vy: 0,
+            orbitPhase: initPhase,
+            orbitSpeed: speed,
+            alpha: 1,
+            returnTargetX: sx,
+            returnTargetY: sy,
+            dockElapsed: 0,
+            driftElapsed: 0,
+          }
+          this.entries.set(pod.crewId, entry)
+        }
+
+        // Transition from docked to active: jump to orbit position
+        if (entry.state === 'docked') {
+          const hash = crewHash(pod.crewId)
+          const initPhase = hash % (2 * Math.PI)
+          entry.state = pod.status === 'hailing' ? 'flying-to-hub' : 'orbiting'
+          entry.orbitPhase = initPhase
+          entry.x = sx + Math.cos(initPhase) * ORBIT_RADIUS
+          entry.y = sy + Math.sin(initPhase) * ORBIT_RADIUS
+          entry.vx = 0
+          entry.vy = 0
+        }
+
+        // Re-trigger flying-to-hub whenever hailing and back to orbiting
+        if (pod.status === 'hailing' && entry.state === 'orbiting') {
+          entry.state = 'flying-to-hub'
+        }
+
+        this.lastStatus.set(pod.crewId, pod.status)
+      }
+
+      // Safety net — skip if entry still absent (e.g. lost with no prior entry)
+      if (!entry) continue
+
+      const sx = sectorPos?.x ?? 0
+      const sy = sectorPos?.y ?? 0
 
       // Physics update
       switch (entry.state) {
+        case 'docked': {
+          const angle = crewHash(entry.crewId) % (2 * Math.PI)
+          entry.x = hubX + Math.cos(angle) * DOCK_RADIUS
+          entry.y = hubY + Math.sin(angle) * DOCK_RADIUS
+          entry.vx = 0
+          entry.vy = 0
+          break
+        }
         case 'orbiting': {
           let speed = entry.orbitSpeed
           if (pod.status === 'error') speed *= (Math.random() * 0.5 + 0.75)
@@ -155,7 +213,6 @@ export class ShuttleRenderer {
           const dy = hubY - entry.y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist <= ARRIVAL_THRESHOLD) {
-            // Snapshot outpost for return trip
             const sp = positions.get(entry.sectorId)
             entry.returnTargetX = sp ? sp.x : sx
             entry.returnTargetY = sp ? sp.y : sy
@@ -187,7 +244,10 @@ export class ShuttleRenderer {
         case 'docking': {
           entry.dockElapsed += deltaMs
           if (entry.dockElapsed >= DOCK_DURATION) {
-            this.entries.delete(pod.crewId)
+            // Sparkle done — settle to docked
+            entry.state = 'docked'
+            entry.vx = 0
+            entry.vy = 0
           }
           break
         }
@@ -212,7 +272,7 @@ export class ShuttleRenderer {
 
     for (const entry of this.entries.values()) {
       if (entry.state === 'docking') {
-        // dock-sparkle (8×8 centered at outpost)
+        // dock-sparkle at hub
         ctx.globalAlpha = 1
         drawScSprite(ctx, 'dock-sparkle', entry.dockElapsed, entry.x - 4, entry.y - 4, 8, 8)
         continue
@@ -220,9 +280,8 @@ export class ShuttleRenderer {
 
       ctx.globalAlpha = entry.state === 'drifting' ? entry.alpha : 1
 
-      // Rotate sprite to face direction of travel
       const angle = Math.atan2(entry.vy, entry.vx)
-      const spriteKey = entry.state === 'drifting' ? 'shuttle-idle' : 'shuttle-thrust'
+      const spriteKey = (entry.state === 'drifting' || entry.state === 'docked') ? 'shuttle-idle' : 'shuttle-thrust'
 
       ctx.save()
       ctx.translate(entry.x, entry.y)
