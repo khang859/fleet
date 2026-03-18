@@ -52,11 +52,11 @@ export class CommsService {
       const existing = this.db
         .prepare(
           `SELECT id FROM comms
-           WHERE from_crew = ? AND type = ? AND payload = ?
+           WHERE from_crew = ? AND to_crew = ? AND type = ? AND payload = ?
              AND created_at > datetime('now', '-5 minutes')
            ORDER BY created_at DESC LIMIT 1`,
         )
-        .get(opts.from, opts.type, opts.payload) as { id: number } | undefined;
+        .get(opts.from, opts.to, opts.type, opts.payload) as { id: number } | undefined;
 
       if (existing) {
         this.db

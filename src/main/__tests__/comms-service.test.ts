@@ -150,6 +150,16 @@ describe('CommsService', () => {
       expect(rows).toHaveLength(2);
     });
 
+    it('should not deduplicate messages to different recipients', () => {
+      const id1 = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
+      const id2 = svc.send({ from: 'crew-1', to: 'crew-2', type: 'hailing', payload: 'hello' });
+      expect(id2).not.toBe(id1);
+
+      const rows = svc.getRecent();
+      expect(rows).toHaveLength(2);
+      expect(rows.every((r) => r.repeat_count === 1)).toBe(true);
+    });
+
     it('should not consume rate limit budget for deduplicated messages', () => {
       // Set up a crew with rate limiting
       db.getDb()
