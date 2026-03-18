@@ -22,6 +22,7 @@ beforeEach(() => {
   mkdirSync(sectorDir, { recursive: true });
   writeFileSync(join(sectorDir, 'index.ts'), '');
   execSync('git init && git checkout -b main', { cwd: sectorDir });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: sectorDir });
   writeFileSync(join(sectorDir, 'README.md'), '# Test');
   execSync('git add -A && git commit -m "initial"', { cwd: sectorDir });
 

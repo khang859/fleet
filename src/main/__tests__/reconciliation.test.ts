@@ -27,6 +27,7 @@ beforeEach(() => {
   mkdirSync(sectorDir, { recursive: true });
   writeFileSync(join(sectorDir, 'index.ts'), '');
   execSync('git init && git checkout -b main', { cwd: sectorDir });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: sectorDir });
   execSync('git add -A && git commit -m "init"', { cwd: sectorDir });
 
   starbaseDb = new StarbaseDB(join(TEST_DIR, 'workspace'), join(TEST_DIR, 'starbases'));
