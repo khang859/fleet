@@ -446,20 +446,27 @@ export class Hull {
       }
 
       if (!hasChanges) {
-        // No work produced
-        db.prepare(
-          "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
-        ).run('No work produced', missionId)
-        // Send mission_complete comms so Admiral is notified of the failure
-        db.prepare(
-          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
-        ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }))
-        // Log exit
-        db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
-          crewId,
-          JSON.stringify({ status: 'error', reason: 'No work produced' })
-        )
-        overrideStatus = 'error'
+        if (status !== 'aborted') {
+          // Genuine failure: no work produced
+          db.prepare(
+            "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
+          ).run('No work produced', missionId)
+          // Send mission_complete comms so Admiral is notified of the failure
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+          ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }))
+          // Log exit
+          db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+            crewId,
+            JSON.stringify({ status: 'error', reason: 'No work produced' })
+          )
+          overrideStatus = 'error'
+        } else {
+          // Intentional recall with no changes: mark mission as aborted
+          db.prepare(
+            "UPDATE missions SET status = 'aborted', completed_at = datetime('now') WHERE id = ?"
+          ).run(missionId)
+        }
         return
       }
 
