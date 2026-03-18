@@ -29,7 +29,7 @@ export class AdmiralProcess {
   private sectors: SectorInfo[]
   private ptyManager: PtyManager
   private fleetBinPath: string
-  private onStatusChange: ((status: AdmiralStatus, error?: string) => void) | null = null
+  private onStatusChange: ((status: AdmiralStatus, error?: string, exitCode?: number) => void) | null = null
 
   constructor(opts: AdmiralProcessOpts) {
     this.workspace = opts.workspace
@@ -39,7 +39,7 @@ export class AdmiralProcess {
     this.fleetBinPath = opts.fleetBinPath
   }
 
-  setOnStatusChange(listener: (status: AdmiralStatus, error?: string) => void): void {
+  setOnStatusChange(listener: (status: AdmiralStatus, error?: string, exitCode?: number) => void): void {
     this.onStatusChange = listener
   }
 
@@ -47,10 +47,10 @@ export class AdmiralProcess {
     this.sectors = sectors
   }
 
-  private notify(status: AdmiralStatus, error?: string): void {
+  private notify(status: AdmiralStatus, error?: string, exitCode?: number): void {
     this.status = status
     if (this.onStatusChange) {
-      this.onStatusChange(status, error)
+      this.onStatusChange(status, error, exitCode)
     }
   }
 
@@ -136,9 +136,10 @@ export class AdmiralProcess {
 
       this.ptyManager.protect(paneId)
 
-      this.ptyManager.onExit(paneId, () => {
+      this.ptyManager.onExit(paneId, (exitCode) => {
+        if (this.paneId === null) return
         this.paneId = null
-        this.notify('stopped')
+        this.notify('stopped', undefined, exitCode)
       })
 
       this.paneId = paneId
