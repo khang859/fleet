@@ -227,28 +227,15 @@ export class FleetCommandHandler implements SocketCommandHandler {
       // Phase 2: Deploy/Recall/Crew/Missions
       case 'deploy': {
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
-        const createTab = (label: string, cwd: string): string => {
-          const tabId = randomUUID();
-          const leaf: PaneLeaf = { type: 'leaf', id: randomUUID(), cwd };
-          const tab: Tab = { id: tabId, label, labelIsCustom: false, cwd, splitRoot: leaf };
-          this.workspace.tabs.push(tab);
-          this.tabs.set(tabId, tab);
-
-          this.ptyManager.create({ paneId: leaf.id, cwd, cmd: cmd.cmd as string | undefined });
-          this.eventBus.emit('pane-created', { type: 'pane-created', paneId: leaf.id });
-          return tabId;
-        };
         const result = await this.crewService.deployCrew(
           { sectorId: cmd.sectorId as string, prompt: cmd.prompt as string, missionId: cmd.missionId as number | undefined },
-          this.ptyManager,
-          createTab,
         );
         return { ok: true, ...result };
       }
 
       case 'recall':
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
-        this.crewService.recallCrew(cmd.crewId as string, this.ptyManager);
+        this.crewService.recallCrew(cmd.crewId as string);
         return { ok: true };
 
       case 'crew':

@@ -115,8 +115,8 @@ export type DeployRequest = {
 
 export type DeployResponse = {
   crewId: string;
-  tabId: string;
   missionId: number;
+  // TODO(#30): tabId removed — crews are now headless (stream-json, no terminal tab)
 };
 
 export type RecallRequest = {

@@ -120,7 +120,8 @@ fleet crew list --sector <id>          # Filter by Sector
 fleet crew info <crew-id>              # Show details for a specific Crewmate
 fleet crew deploy --sector <id> --mission <id>  # Deploy a Crewmate to a Mission
 fleet crew recall <crew-id>            # Recall (terminate) a Crewmate
-fleet crew observe <crew-id>           # View recent terminal output from a Crewmate
+fleet crew observe <crew-id>           # View recent assistant output from a Crewmate
+fleet crew message <crew-id> --message "..."  # Send a follow-up message to an active Crewmate
 \`\`\`
 
 ### Missions
@@ -140,7 +141,7 @@ fleet missions show <id>               # Show full Mission details
 fleet comms inbox                      # List unread transmissions
 fleet comms inbox --all                # List all transmissions (including read)
 fleet comms check --quiet              # Check for unread comms (exit code 0 = none, 1 = unread)
-fleet comms send --to <crew-id> --message "..."  # Send a transmission (as Admiral)
+fleet comms send --to <crew-id> --message "..."  # Send directive (also injects into live process)
 fleet comms send --from <crew-id> --to admiral --message "..."  # Send as a Crewmate
 fleet comms resolve <id> --response "..."        # Reply and mark resolved
 fleet comms read-all                   # Mark all transmissions as read
@@ -188,6 +189,35 @@ When a user makes a request, decompose it into well-scoped Missions:
 
 **Bad Mission prompt:**
 > "Add a settings feature"
+
+## Follow-Up Workflow (Mid-Flight Messaging)
+
+Active Crewmates can receive follow-up messages while they are running. This enables
+the Admiral to provide clarification, corrections, or additional context without
+recalling and redeploying.
+
+**When to use:**
+- Crewmate has sent an \`awaiting_feedback\` comms and is waiting for a response
+- You need to correct the Crewmate's approach before they commit
+- Clarification is needed mid-mission without losing the working context
+
+**How it works:**
+1. Crewmate writes to comms: \`fleet comms send --from $FLEET_CREW_ID --to admiral --type awaiting_feedback --message "..."\`
+2. Admiral reads comms: \`fleet comms inbox\`
+3. Admiral responds: \`fleet comms send --to <crew-id> --message "..."\` (this also injects into the live process)
+   OR: \`fleet crew message <crew-id> --message "..."\` (direct injection only, no comms record)
+4. Crewmate receives the message as a new turn in its session
+5. Crewmate continues work and eventually completes the mission
+
+### \`awaiting_feedback\` comms type
+
+Use \`awaiting_feedback\` when you need the Admiral to provide input before you can continue:
+
+\`\`\`
+fleet comms send --from $FLEET_CREW_ID --to admiral --type awaiting_feedback --message "Need clarification on X before proceeding"
+\`\`\`
+
+The Admiral will respond by injecting a follow-up instruction into your session.
 
 ## Handling Comms
 

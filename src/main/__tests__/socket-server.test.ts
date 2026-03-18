@@ -64,9 +64,11 @@ function makeMockServices() {
 
   const crewService = {
     listCrew: vi.fn().mockReturnValue([]),
-    deployCrew: vi.fn().mockResolvedValue({ crewId: 'crew-1', tabId: 'tab-1', missionId: 1 }),
+    deployCrew: vi.fn().mockResolvedValue({ crewId: 'crew-1', missionId: 1 }),
     recallCrew: vi.fn(),
     observeCrew: vi.fn().mockReturnValue('some output'),
+    messageCrew: vi.fn().mockReturnValue(false),
+    getCrewStatus: vi.fn().mockReturnValue(null),
   };
 
   const cargoService = {
@@ -85,20 +87,11 @@ function makeMockServices() {
     set: vi.fn(),
   };
 
-  const ptyManager = {
-    create: vi.fn(),
-    kill: vi.fn(),
-    write: vi.fn(),
-    has: vi.fn().mockReturnValue(false),
-  };
-
   const shipsLog = {
     query: vi.fn().mockReturnValue([{ id: 1, event_type: 'deployed', created_at: '2026-01-01' }]),
     getRecent: vi.fn().mockReturnValue([]),
     log: vi.fn().mockReturnValue(1),
   };
-
-  const createTab = vi.fn().mockReturnValue('tab-uuid');
 
   return {
     sectorService,
@@ -108,9 +101,7 @@ function makeMockServices() {
     cargoService,
     supplyRouteService,
     configService,
-    ptyManager,
     shipsLog,
-    createTab,
   };
 }
 

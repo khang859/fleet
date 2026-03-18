@@ -9,7 +9,6 @@ import type { SectorService } from './starbase/sector-service';
 import type { CargoService } from './starbase/cargo-service';
 import type { SupplyRouteService } from './starbase/supply-route-service';
 import type { ConfigService } from './starbase/config-service';
-import type { PtyManager } from './pty-manager';
 import type { ShipsLog } from './starbase/ships-log';
 
 export interface ServiceRegistry {
@@ -20,8 +19,6 @@ export interface ServiceRegistry {
   cargoService: CargoService;
   supplyRouteService: SupplyRouteService;
   configService: ConfigService;
-  ptyManager: PtyManager;
-  createTab: (label: string, cwd: string, avatarVariant?: string) => string;
   shipsLog: ShipsLog;
 }
 
@@ -172,8 +169,6 @@ export class SocketServer extends EventEmitter {
       cargoService,
       supplyRouteService,
       configService,
-      ptyManager,
-      createTab,
       shipsLog,
     } = this.services;
 
@@ -234,22 +229,18 @@ export class SocketServer extends EventEmitter {
           }
         }
 
-        const result = await crewService.deployCrew(
-          {
-            sectorId: (args.sector ?? args.sectorId) as string,
-            prompt,
-            missionId,
-          },
-          ptyManager,
-          createTab,
-        );
+        const result = await crewService.deployCrew({
+          sectorId: (args.sector ?? args.sectorId) as string,
+          prompt,
+          missionId,
+        });
         this.emit('state-change', 'crew:changed', result);
         return result;
       }
 
       case 'crew.recall': {
         const crewId = (args.id ?? args.crewId) as string;
-        crewService.recallCrew(crewId, ptyManager);
+        crewService.recallCrew(crewId);
         this.emit('state-change', 'crew:changed', { crewId, status: 'recalled' });
         return null;
       }
@@ -263,6 +254,24 @@ export class SocketServer extends EventEmitter {
         const id = (args.id ?? args.crewId) as string;
         const raw = crewService.observeCrew(id);
         return stripAnsi(raw);
+      }
+
+      case 'crew.message': {
+        const crewId = (args.id ?? args.crewId) as string;
+        const message = (args.message ?? args.text) as string;
+        if (!crewId || !message) {
+          const err = new Error('crew.message requires id and message') as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const sent = crewService.messageCrew(crewId, message);
+        if (!sent) {
+          const err = new Error(`Crew not active: ${crewId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        this.emit('state-change', 'crew:changed', { crewId });
+        return { sent: true };
       }
 
       // ── Comms ─────────────────────────────────────────────────────────────────
@@ -279,14 +288,23 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.send': {
+        const to = args.to as string;
+        const payload = (args.message ?? args.payload ?? '') as string;
         const id = commsService.send({
           from: (args.from ?? 'admiral') as string,
-          to: args.to as string,
+          to,
           type: (args.type ?? 'directive') as string,
-          payload: (args.message ?? args.payload ?? '') as string,
+          payload,
         });
         this.emit('state-change', 'comms:changed', { id });
-        return { id };
+
+        // Auto-inject into active crew's Claude Code process if target is a live crew
+        let injected = false;
+        if (to && to !== 'admiral') {
+          injected = crewService.messageCrew(to, payload);
+        }
+
+        return { id, injected };
       }
 
       case 'comms.delete': {

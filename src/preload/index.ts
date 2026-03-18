@@ -149,6 +149,8 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
+  // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
+  // This bridge remains for backwards compatibility but will not fire for new deployments.
   onCreateTab: (callback: (payload: { tabId: string; label: string; cwd: string; avatarVariant?: string }) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, payload: { tabId: string; label: string; cwd: string; avatarVariant?: string }) =>
       callback(payload)
