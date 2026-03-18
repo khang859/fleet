@@ -268,7 +268,8 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.read': {
         const transmissionId = (args.id ?? args.transmissionId) as number;
-        commsService.markRead(transmissionId);
+        const changed = commsService.markRead(transmissionId);
+        if (changed) this.emit('state-change', 'comms:changed', { id: transmissionId });
         return null;
       }
 

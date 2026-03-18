@@ -130,8 +130,13 @@ export class CommsService {
       .all(crewId) as TransmissionRow[];
   }
 
-  markRead(transmissionId: number): void {
-    this.db.prepare('UPDATE comms SET read = 1 WHERE id = ?').run(transmissionId);
+  markRead(transmissionId: number): boolean {
+    const result = this.db.prepare('UPDATE comms SET read = 1 WHERE id = ? AND read = 0').run(transmissionId);
+    if (result.changes > 0) {
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      return true;
+    }
+    return false;
   }
 
   getThread(threadId: string): TransmissionRow[] {

@@ -118,7 +118,8 @@ export function StarCommandTab() {
     window.fleet.starbase.listCrew().then((crew) => setCrewList(crew as never[]))
     window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions as never[]))
     window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors as never[]))
-  }, [setCrewList, setMissionQueue, setSectors])
+    window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount((msgs as unknown[]).length))
+  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount])
 
   useEffect(() => {
     refreshStatus()
