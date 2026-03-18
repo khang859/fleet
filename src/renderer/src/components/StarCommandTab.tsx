@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
+import { loadScSpriteSheet } from './star-command/sc-sprite-loader'
 import { useStarCommandStore } from '../store/star-command-store'
 import { StarCommandConfig } from './StarCommandConfig'
 import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
-import { StarCommandScene } from './star-command/StarCommandScene'
+import { AdmiralSidebar } from './star-command/AdmiralSidebar'
 import { StatusBar } from './star-command/StatusBar'
 import { useTerminal } from '../hooks/use-terminal'
 
@@ -36,6 +37,7 @@ export function StarCommandTab() {
     setSectors,
     setUnreadCount,
     admiralAvatarState,
+    setAdmiralState,
   } = useStarCommandStore()
 
   const [view, setView] = useState<'terminal' | 'config'>('terminal')
@@ -60,6 +62,9 @@ export function StarCommandTab() {
     return () => clearInterval(interval)
   }, [admiralAvatarState])
 
+  // Load sprite sheet (previously done by StarCommandScene)
+  useEffect(() => { loadScSpriteSheet() }, [])
+
   // On mount: ensure Admiral is started and listen for status changes
   useEffect(() => {
     window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
@@ -78,6 +83,17 @@ export function StarCommandTab() {
 
     return cleanup
   }, [setAdmiralPty])
+
+  // Listen for detailed admiral state changes (thinking, speaking, etc.)
+  useEffect(() => {
+    const cleanup = window.fleet.admiral.onStateDetail((data) => {
+      setAdmiralState(
+        data.state as 'standby' | 'thinking' | 'speaking' | 'alert',
+        data.statusText
+      )
+    })
+    return cleanup
+  }, [setAdmiralState])
 
   // Listen for starbase status updates
   useEffect(() => {
@@ -111,7 +127,7 @@ export function StarCommandTab() {
   return (
     <div className="h-full flex">
       {/* Terminal panel wrapped in CRT frame */}
-      <CrtFrame>
+      <CrtFrame className="flex-1 min-w-0">
         <div className="flex flex-1 min-h-0 min-w-0">
           {/* Main column */}
           <div className="flex-1 flex flex-col min-w-0 min-h-0">
@@ -245,19 +261,6 @@ export function StarCommandTab() {
                   </div>
                 )}
 
-                {/* Admiral avatar — fixed at bottom-left when terminal is active */}
-                {admiralPaneId && (
-                  <div className="absolute bottom-2 left-3 flex flex-col items-center gap-1 pointer-events-none z-10">
-                    <Avatar
-                      type="admiral"
-                      variant={admiralAvatarState === 'speaking' ? (talkFrame ? 'speaking' : 'default') : admiralAvatarState}
-                      size={64}
-                    />
-                    <span className="text-[9px] font-mono text-teal-400 uppercase tracking-widest">
-                      Admiral
-                    </span>
-                  </div>
-                )}
               </div>
             )}
 
@@ -267,7 +270,9 @@ export function StarCommandTab() {
         </div>
       </CrtFrame>
 
-      <StarCommandScene className="flex-1 min-w-[280px]" />
+      <AdmiralSidebar
+        avatarVariant={admiralAvatarState === 'speaking' ? (talkFrame ? 'speaking' : 'default') : admiralAvatarState}
+      />
     </div>
   )
 }
