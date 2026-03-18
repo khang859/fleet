@@ -60,8 +60,11 @@ function createWindow(): void {
       preload: fileURLToPath(new URL('../preload/index.mjs', import.meta.url)),
       sandbox: false
     },
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 12 }
+    titleBarStyle: 'hidden',
+    ...(process.platform === 'darwin'
+      ? { trafficLightPosition: { x: 12, y: 10 } }
+      : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a3a3a3', height: 36 } }
+    )
   })
 
   // Log renderer console messages and errors to main process stdout

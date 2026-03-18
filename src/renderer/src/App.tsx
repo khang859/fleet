@@ -210,19 +210,22 @@ export function App() {
   }, []);
 
   return (
-    <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
+    <div className="flex flex-col h-screen w-screen bg-neutral-950 text-white overflow-hidden">
+      {/* Top bar — drag region for window movement, houses OS window controls */}
+      <div
+        className="h-9 shrink-0 bg-neutral-950 flex items-center"
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+      />
+      <div className="flex flex-1 min-h-0">
       {showSidebar ? (
         <Sidebar updateReady={updateReady} onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined} />
       ) : (
         <div
           className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         >
-          {/* Spacer for macOS traffic lights */}
-          <div className="h-10" />
           <button
             onClick={() => setSidebarManualOpen(true)}
-            className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+            className="mt-2 p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="Show sidebar"
           >
@@ -235,11 +238,6 @@ export function App() {
       )}
       <div className="flex-1 min-w-0 h-full flex flex-col">
       <main className="flex-1 min-w-0 relative overflow-hidden">
-        {/* Top drag region for window movement */}
-        <div
-          className="absolute top-0 left-0 right-0 h-8 z-10"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        />
         {workspace.tabs.length > 0 ? (
           workspace.tabs.map((tab) => {
             const serializedPanes = restoredPanesRef.current.get(tab.id);
@@ -319,7 +317,8 @@ export function App() {
           }
         }}
       />
-      </div>
+      </div>{/* end content column */}
+      </div>{/* end sidebar+content row */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />

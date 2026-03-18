@@ -240,8 +240,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
       {/* Drag region + workspace label with add button */}
       <div
-        className="px-3 pt-8 pb-3 flex items-center justify-between"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        className="px-3 pt-2 pb-3 flex items-center justify-between"
       >
         <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex-1 min-w-0 mr-2">
           {isEditingWsLabel ? (
