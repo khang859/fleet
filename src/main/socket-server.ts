@@ -304,6 +304,17 @@ export class SocketServer extends EventEmitter {
         return { marked: count };
       }
 
+      case 'comms.info': {
+        const transmissionId = (args.id ?? args.transmissionId) as number;
+        const transmission = commsService.getTransmission(transmissionId);
+        if (!transmission) {
+          const err = new Error(`Transmission not found: ${transmissionId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return transmission;
+      }
+
       case 'comms.check':
         return { unread: commsService.getUnread('admiral').length };
 
