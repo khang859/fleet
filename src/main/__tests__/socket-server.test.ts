@@ -3,7 +3,6 @@ import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
-import { EventEmitter } from 'node:events';
 
 // We need to import after creating mocks
 let SocketServer: typeof import('../socket-server').SocketServer;
@@ -93,10 +92,10 @@ function makeMockServices() {
     has: vi.fn().mockReturnValue(false),
   };
 
-  const db = {
-    prepare: vi.fn().mockReturnValue({
-      all: vi.fn().mockReturnValue([{ id: 1, event_type: 'deployed', created_at: '2026-01-01' }]),
-    }),
+  const shipsLog = {
+    query: vi.fn().mockReturnValue([{ id: 1, event_type: 'deployed', created_at: '2026-01-01' }]),
+    getRecent: vi.fn().mockReturnValue([]),
+    log: vi.fn().mockReturnValue(1),
   };
 
   const createTab = vi.fn().mockReturnValue('tab-uuid');
@@ -110,7 +109,7 @@ function makeMockServices() {
     supplyRouteService,
     configService,
     ptyManager,
-    db,
+    shipsLog,
     createTab,
   };
 }
@@ -223,9 +222,11 @@ describe('SocketServer', () => {
     expect(services.commsService.send).toHaveBeenCalled();
   });
 
-  it('stops cleanly', async () => {
+  it('stops cleanly and removes socket file', async () => {
     await server.start();
-    await expect(server.stop()).resolves.not.toThrow();
+    expect(existsSync(socketPath)).toBe(true);
+    await server.stop();
+    expect(existsSync(socketPath)).toBe(false);
   });
 
   it('handles multiple concurrent requests', async () => {

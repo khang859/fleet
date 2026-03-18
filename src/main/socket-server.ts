@@ -10,7 +10,7 @@ import type { CargoService } from './starbase/cargo-service';
 import type { SupplyRouteService } from './starbase/supply-route-service';
 import type { ConfigService } from './starbase/config-service';
 import type { PtyManager } from './pty-manager';
-import type { StarbaseDB } from './starbase/db';
+import type { ShipsLog } from './starbase/ships-log';
 
 export interface ServiceRegistry {
   crewService: CrewService;
@@ -22,7 +22,7 @@ export interface ServiceRegistry {
   configService: ConfigService;
   ptyManager: PtyManager;
   createTab: (label: string, cwd: string) => string;
-  db: StarbaseDB;
+  shipsLog: ShipsLog;
 }
 
 type Request = {
@@ -122,7 +122,14 @@ export class SocketServer extends EventEmitter {
 
     return new Promise((resolve) => {
       if (this.server) {
-        this.server.close(() => resolve());
+        this.server.close(() => {
+          try {
+            unlinkSync(this.socketPath);
+          } catch {
+            // Ignore — file may already be gone
+          }
+          resolve();
+        });
         this.server = null;
       } else {
         resolve();
@@ -167,7 +174,7 @@ export class SocketServer extends EventEmitter {
       configService,
       ptyManager,
       createTab,
-      db,
+      shipsLog,
     } = this.services;
 
     switch (command) {
@@ -270,12 +277,8 @@ export class SocketServer extends EventEmitter {
       case 'cargo.list':
         return cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0]);
 
-      case 'cargo.inspect': {
-        // CargoService has no getCargo — query directly via db
-        const rawDbForCargo = (db as unknown as { getDb?: () => { prepare: (sql: string) => { get: (...p: unknown[]) => unknown } } });
-        const dbForCargo = rawDbForCargo.getDb ? rawDbForCargo.getDb() : (rawDbForCargo as any);
-        return dbForCargo.prepare('SELECT * FROM cargo WHERE id = ?').get(args.cargoId);
-      }
+      case 'cargo.inspect':
+        return cargoService.getCargo(args.cargoId as number);
 
       // ── Supply Routes ─────────────────────────────────────────────────────────
       case 'supply-route.list':
@@ -300,23 +303,9 @@ export class SocketServer extends EventEmitter {
 
       // ── Log ───────────────────────────────────────────────────────────────────
       case 'log.show': {
-        const rawDb = (db as unknown as { getDb?: () => import('better-sqlite3').Database; prepare?: (sql: string) => { all: (...p: unknown[]) => unknown[] } });
         const limit = (args.limit as number) ?? 50;
         const crewFilter = args.crew as string | undefined;
-
-        // Support both StarbaseDB (with getDb()) and raw better-sqlite3 (in tests)
-        const dbInstance = rawDb.getDb ? rawDb.getDb() : rawDb;
-
-        if (crewFilter) {
-          return (dbInstance as any)
-            .prepare(
-              'SELECT * FROM ships_log WHERE crew_id = ? ORDER BY created_at DESC LIMIT ?',
-            )
-            .all(crewFilter, limit);
-        }
-        return (dbInstance as any)
-          .prepare('SELECT * FROM ships_log ORDER BY created_at DESC LIMIT ?')
-          .all(limit);
+        return shipsLog.query({ crewId: crewFilter, limit });
       }
 
       default: {

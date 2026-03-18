@@ -69,6 +69,10 @@ export class CargoService {
       .get(result.lastInsertRowid) as CargoRow
   }
 
+  getCargo(id: number): CargoRow | undefined {
+    return this.db.prepare('SELECT * FROM cargo WHERE id = ?').get(id) as CargoRow | undefined
+  }
+
   listCargo(filter?: ListCargoFilter): CargoRow[] {
     let sql = 'SELECT * FROM cargo WHERE 1=1'
     const params: unknown[] = []
