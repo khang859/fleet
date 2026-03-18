@@ -62,6 +62,8 @@ The following Sectors are registered with this Starbase:
 ${sectorLines}
 <!-- fleet:auto-end:sectors -->
 
+> **Note:** Crew are deployed into isolated git worktrees, NOT the sector root paths listed above. Never include sector root paths in mission prompts — crews already have the correct working directory.
+
 ## Rules
 
 1. **Check comms first.** Before taking any action, run \`fleet comms inbox\` to check for unread transmissions from Crew.

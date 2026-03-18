@@ -192,9 +192,10 @@ export class Hull {
       }
 
       // Send initial user message via stream-json stdin
+      const worktreeWarning = `IMPORTANT: You are in a git worktree. Your current directory is already the correct working directory for this mission (branch: ${worktreeBranch}). Do NOT cd to any other path. All file edits and git operations must happen in the current directory.\n\n`
       const initMsg = JSON.stringify({
         type: 'user',
-        message: { role: 'user', content: `Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
+        message: { role: 'user', content: `${worktreeWarning}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
         parent_tool_use_id: null,
         session_id: ''
       }) + '\n'
