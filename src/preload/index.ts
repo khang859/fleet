@@ -138,6 +138,7 @@ const fleetApi = {
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
+  ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {

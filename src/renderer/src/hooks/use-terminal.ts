@@ -115,6 +115,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
         if (pinnedToBottom) {
           term.scrollToBottom();
         }
+        window.fleet.ptyDrain(options.paneId);
       });
     }
   });

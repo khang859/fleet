@@ -97,6 +97,11 @@ export function registerIpcHandlers(
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId })
   })
 
+  // PTY drain — renderer signals it has consumed a batch; resume the PTY
+  ipcMain.on(IPC_CHANNELS.PTY_DRAIN, (_event, { paneId }: { paneId: string }) => {
+    ptyManager.resume(paneId)
+  })
+
   // Garbage-collect orphaned PTYs: renderer sends list of active pane IDs,
   // main kills any PTY not in that list.
   ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
