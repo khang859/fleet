@@ -18,6 +18,8 @@ export type UseTerminalOptions = {
   onScrollStateChange?: (isScrolledUp: boolean) => void;
   /** If true, skip PTY creation (attach to an already-running PTY, e.g. Admiral). */
   attachOnly?: boolean;
+  /** If true, hide xterm's hardware cursor (for TUIs like Claude Code that draw their own). */
+  cursorHidden?: boolean;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
@@ -90,16 +92,31 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
 
   term.open(container);
 
-  // Use canvas renderer (WebGL can cause _isDisposed errors on StrictMode remount)
-  try {
-    term.loadAddon(new CanvasAddon());
-  } catch {
-    // Canvas addon failed, terminal will use default renderer
-  }
-
-  // Restore serialized content after open + canvas addon
+  // Restore serialized content after open (before canvas addon — content is buffer-level)
   if (options.serializedContent) {
     term.write(options.serializedContent);
+  }
+
+  // Hide xterm's hardware cursor for TUIs that draw their own (e.g. Claude Code).
+  // Claude Code (Ink/cli-cursor) renders its own cursor glyph and uses DECTCEM
+  // (\x1b[?25h / \x1b[?25l) to toggle the real cursor. This creates a duplicate:
+  // xterm's native cursor + the TUI-drawn cursor character. We suppress xterm's
+  // cursor entirely by hiding it at init and intercepting any DECSET 25 (show
+  // cursor) sequences from the PTY.
+  let cursorSuppressor: { dispose(): void } | null = null;
+  if (options.cursorHidden) {
+    term.options.cursorBlink = false;
+    term.options.cursorInactiveStyle = 'none';
+    term.write('\x1b[?25l');
+    // Intercept CSI ? 25 h (DECSET 25 = show cursor) and suppress it
+    cursorSuppressor = term.parser.registerCsiHandler(
+      { prefix: '?', final: 'h' },
+      (params) => {
+        // Only intercept DECTCEM (param 25); let other DECSET sequences through
+        if (params[0] === 25) return true; // swallow — keep cursor hidden
+        return false; // pass to default handler
+      }
+    );
   }
 
   // Wire IPC data flow.
@@ -230,19 +247,12 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }, 100);
   };
 
-  // Defer initial fit to next frame — xterm's render service needs a
-  // layout pass before dimensions are available.
-  requestAnimationFrame(() => {
-    try {
-      fitPreservingScroll();
-      // Always send resize to PTY — on reconnect (undo) this triggers
-      // SIGWINCH so the shell redraws its prompt.
-      debouncedPtyResize();
-    } catch {
-      // Render service may not be ready yet; ResizeObserver will retry
-    }
-  });
-
+  // Defer canvas addon, initial fit, and ResizeObserver to next frame.
+  // xterm's render service needs a full layout pass before dimensions are
+  // available. Loading CanvasAddon synchronously after open() triggers
+  // internal xterm events (Viewport.syncScrollArea) before the new
+  // renderer's dimensions are initialized, causing:
+  //   "Cannot read properties of undefined (reading 'dimensions')"
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {
       try {
@@ -253,7 +263,27 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
       }
     }
   });
-  resizeObserver.observe(container);
+
+  requestAnimationFrame(() => {
+    // Load canvas renderer after layout pass — avoids dimensions race
+    try {
+      term.loadAddon(new CanvasAddon());
+    } catch {
+      // Canvas addon failed, terminal will use default renderer
+    }
+
+    try {
+      fitPreservingScroll();
+      // Always send resize to PTY — on reconnect (undo) this triggers
+      // SIGWINCH so the shell redraws its prompt.
+      debouncedPtyResize();
+    } catch {
+      // Render service may not be ready yet; ResizeObserver will retry
+    }
+
+    // Start observing resizes only after initial setup is complete
+    resizeObserver.observe(container);
+  });
 
   const scrollToBottom = (): void => {
     term.scrollToBottom();
@@ -268,7 +298,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   };
 
-  return { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer };
+  return { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer, cursorSuppressor };
 }
 
 export function useTerminal(
@@ -286,7 +316,7 @@ export function useTerminal(
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer } =
+    const { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer, cursorSuppressor } =
       createTerminal(container, options);
 
     termRef.current = term;
@@ -302,6 +332,7 @@ export function useTerminal(
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
       cleanupResizeTimer();
+      cursorSuppressor?.dispose();
       ipcCleanup();
       scrollCleanup();
       resizeObserver.disconnect();
