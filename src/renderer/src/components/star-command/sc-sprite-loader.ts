@@ -70,10 +70,14 @@ export function drawScSprite(
   const region = SC_SPRITE_ATLAS[key]
   if (!region) return
   const frame = getScFrame(region, elapsed)
-  const sx = region.x + frame * region.w
+  const framesPerRow = region.framesPerRow ?? region.frames
+  const col = frame % framesPerRow
+  const row = Math.floor(frame / framesPerRow)
+  const sx = region.x + col * region.w
+  const sy = region.y + row * region.h
   const w = dw ?? region.w
   const h = dh ?? region.h
-  ctx.drawImage(spriteSheet, sx, region.y, region.w, region.h, dx, dy, w, h)
+  ctx.drawImage(spriteSheet, sx, sy, region.w, region.h, dx, dy, w, h)
 }
 
 export function drawScSpriteFrame(
@@ -88,8 +92,12 @@ export function drawScSpriteFrame(
   if (!spriteSheet) return
   const region = SC_SPRITE_ATLAS[key]
   if (!region) return
-  const sx = region.x + frameIndex * region.w
+  const framesPerRow = region.framesPerRow ?? region.frames
+  const col = frameIndex % framesPerRow
+  const row = Math.floor(frameIndex / framesPerRow)
+  const sx = region.x + col * region.w
+  const sy = region.y + row * region.h
   const w = dw ?? region.w
   const h = dh ?? region.h
-  ctx.drawImage(spriteSheet, sx, region.y, region.w, region.h, dx, dy, w, h)
+  ctx.drawImage(spriteSheet, sx, sy, region.w, region.h, dx, dy, w, h)
 }
