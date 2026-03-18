@@ -2,9 +2,9 @@ import type Database from 'better-sqlite3';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { freemem } from 'os';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
+import { getAvailableMemoryBytes } from './available-memory';
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +33,8 @@ export class Sentinel {
   private sweepCount = 0;
   private diskCacheBytes: number | null = null;
   private diskCacheTime = 0;
+  /** Last sent alert level per type — only re-send when level changes or clears */
+  private lastAlertLevel: Record<string, string | null> = {};
 
   constructor(private deps: SentinelDeps) {}
 
@@ -129,20 +131,28 @@ export class Sentinel {
     if (diskBytes !== null) {
       const usedGb = diskBytes / (1024 * 1024 * 1024);
       const pct = (usedGb / diskBudgetGb) * 100;
-      if (pct >= 90) {
+      const diskLevel = pct >= 90 ? 'warning' : null;
+      if (diskLevel && this.lastAlertLevel['disk_warning'] !== diskLevel) {
+        this.lastAlertLevel['disk_warning'] = diskLevel;
         db.prepare(
           "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'disk_warning', ?)",
         ).run(JSON.stringify({ usedGb: usedGb.toFixed(2), budgetGb: diskBudgetGb, percent: pct.toFixed(0) }));
+      } else if (!diskLevel) {
+        this.lastAlertLevel['disk_warning'] = null;
       }
     }
 
-    // 6. System memory check
-    const freeBytes = freemem();
-    const freeGb = freeBytes / (1024 * 1024 * 1024);
-    if (freeGb < 1) {
+    // 6. System memory check (uses available memory, not just free pages)
+    const availableBytes = await getAvailableMemoryBytes();
+    const availableGb = availableBytes / (1024 * 1024 * 1024);
+    const memLevel = availableGb < 0.5 ? 'critical' : availableGb < 1 ? 'warning' : null;
+    if (memLevel && this.lastAlertLevel['memory_warning'] !== memLevel) {
+      this.lastAlertLevel['memory_warning'] = memLevel;
       db.prepare(
         "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'memory_warning', ?)",
-      ).run(JSON.stringify({ freeGb: freeGb.toFixed(2), level: freeGb < 0.5 ? 'critical' : 'warning' }));
+      ).run(JSON.stringify({ freeMemoryGb: availableGb.toFixed(2), level: memLevel }));
+    } else if (!memLevel) {
+      this.lastAlertLevel['memory_warning'] = null;
     }
 
     // 7. Comms rate limit reset (every 6th sweep = ~60 seconds)

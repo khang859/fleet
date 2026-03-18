@@ -1,5 +1,6 @@
 import type Database from 'better-sqlite3';
 import { randomBytes } from 'crypto';
+import { getAvailableMemoryBytes } from './available-memory';
 import type { SectorService } from './sector-service';
 import type { MissionService } from './mission-service';
 import type { ConfigService } from './config-service';
@@ -7,6 +8,13 @@ import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
 import type { PtyManager } from '../pty-manager';
 import type { EventBus } from '../event-bus';
+
+export class InsufficientMemoryError extends Error {
+  constructor(freeGb: number, requiredGb: number) {
+    super(`Insufficient memory to deploy crew: ${freeGb.toFixed(2)}GB free, ${requiredGb}GB required`);
+    this.name = 'InsufficientMemoryError';
+  }
+}
 
 type CrewRow = {
   id: string;
@@ -73,7 +81,7 @@ export class CrewService {
 
     const baseBranch = sector.base_branch || 'main';
 
-    // 2. Create mission if not provided
+    // 2. Create mission if not provided (before memory gate so we can queue it on failure)
     let missionId = opts.missionId;
     if (!missionId) {
       const mission = missionService.addMission({
@@ -84,7 +92,15 @@ export class CrewService {
       missionId = mission.id;
     }
 
-    // 3. Generate crew ID
+    // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
+    const minFreeGb = configService.get('min_deploy_free_memory_gb') as number;
+    const availableGb = (await getAvailableMemoryBytes()) / (1024 * 1024 * 1024);
+    if (availableGb < minFreeGb) {
+      db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
+      throw new InsufficientMemoryError(availableGb, minFreeGb);
+    }
+
+    // 4. Generate crew ID
     const crewId = this.generateCrewId(sector.id);
 
     // 4. Create worktree

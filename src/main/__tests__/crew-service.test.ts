@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { CrewService } from '../starbase/crew-service';
+import { CrewService, InsufficientMemoryError } from '../starbase/crew-service';
 import { StarbaseDB } from '../starbase/db';
 import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
@@ -59,5 +59,23 @@ describe('CrewService', () => {
 
   it('should list crew (empty initially)', () => {
     expect(crewSvc.listCrew()).toHaveLength(0);
+  });
+
+  it('should throw InsufficientMemoryError and queue mission when free RAM is below threshold', async () => {
+    // Set an impossibly high threshold so any real machine will fail the check
+    const configSvc = crewSvc['deps'].configService;
+    configSvc.set('min_deploy_free_memory_gb', 999999);
+
+    const mockPtyManager = {} as Parameters<typeof crewSvc.deployCrew>[1];
+    const createTab = () => 'tab-1';
+
+    await expect(
+      crewSvc.deployCrew({ sectorId: 'api', prompt: 'do something' }, mockPtyManager, createTab)
+    ).rejects.toBeInstanceOf(InsufficientMemoryError);
+
+    // Mission should be created and queued (not failed)
+    const missions = db.getDb().prepare("SELECT status FROM missions WHERE sector_id = 'api'").all() as { status: string }[];
+    expect(missions).toHaveLength(1);
+    expect(missions[0].status).toBe('queued');
   });
 });
