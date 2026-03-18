@@ -208,8 +208,34 @@ export function registerIpcHandlers(
   // Phase 3: Admiral + Comms handlers
   if (admiralProcess) {
     ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, () => admiralProcess.paneId)
+
+    // Wire PTY data forwarding for a newly started Admiral pane
+    const wireAdmiralPty = (paneId: string): void => {
+      ptyManager.onData(paneId, (data) => {
+        notificationDetector.scan(paneId, data)
+        const w = getWindow()
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+        }
+      })
+      ptyManager.onExit(paneId, (exitCode) => {
+        const w = getWindow()
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+        }
+        eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
+      })
+      cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+    }
+
     ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
       const paneId = await admiralProcess.restart()
+      wireAdmiralPty(paneId)
+      return paneId
+    })
+    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
+      const paneId = await admiralProcess.reset()
+      wireAdmiralPty(paneId)
       return paneId
     })
   }

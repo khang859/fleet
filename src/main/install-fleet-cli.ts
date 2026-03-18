@@ -52,7 +52,7 @@ exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
     // Dev mode: resolve the TypeScript source file
     // import.meta.url points to the compiled .mjs in out/main/
     // The TS source lives at src/main/fleet-cli.ts relative to project root
-    const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..')
+    const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
     const tsSource = join(projectRoot, 'src', 'main', 'fleet-cli.ts')
 
     // Write a thin JS entrypoint that delegates to the TS source via tsx
