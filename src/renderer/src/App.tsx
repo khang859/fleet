@@ -223,7 +223,7 @@ export function App() {
         {isStarCommand && !sidebarManualOpen && (
           <button
             onClick={() => setSidebarManualOpen(true)}
-            className="absolute top-1.5 left-2 z-50 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-500 bg-neutral-900/80 rounded transition-colors"
+            className="absolute top-1.5 left-20 z-50 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-500 bg-neutral-900/80 rounded transition-colors"
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             title="Show sidebar"
           >
