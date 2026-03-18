@@ -123,7 +123,11 @@ export class Hull {
       ptyManager.protect(paneId)
       db.prepare('UPDATE crew SET pid = ? WHERE id = ?').run(result.pid, crewId)
     } catch (err) {
-      this.cleanup('error', `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`)
+      this.cleanup('error', `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`).catch(
+        (cleanupErr) => {
+          console.error('[hull] cleanup error:', cleanupErr)
+        }
+      )
       return
     }
 
@@ -137,7 +141,11 @@ export class Hull {
     ptyManager.onExit(paneId, (exitCode) => {
       this.opts.onPtyExit?.(paneId, exitCode)
       const status = exitCode === 0 ? 'complete' : 'error'
-      this.cleanup(status, exitCode === 0 ? 'Completed successfully' : `Exit code: ${exitCode}`)
+      this.cleanup(status, exitCode === 0 ? 'Completed successfully' : `Exit code: ${exitCode}`).catch(
+        (cleanupErr) => {
+          console.error('[hull] cleanup error:', cleanupErr)
+        }
+      )
     })
   }
 
@@ -145,7 +153,9 @@ export class Hull {
     if (this.paneId && ptyManager.has(this.paneId)) {
       ptyManager.kill(this.paneId)
     }
-    this.cleanup('aborted', 'Recalled by Star Command')
+    this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
+      console.error('[hull] cleanup error:', err)
+    })
   }
 
   getStatus(): HullStatus {
@@ -175,7 +185,9 @@ export class Hull {
     // Cleanup will be called by the onExit handler, but if kill doesn't trigger exit:
     setTimeout(() => {
       if (this.status === 'active') {
-        this.cleanup('timeout', 'Mission deadline exceeded')
+        this.cleanup('timeout', 'Mission deadline exceeded').catch((err) => {
+          console.error('[hull] cleanup error:', err)
+        })
       }
     }, 5000)
   }
