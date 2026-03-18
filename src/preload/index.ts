@@ -91,6 +91,7 @@ const fleetApi = {
   },
   admiral: {
     getPaneId: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
+    ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
     restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
     onStatusChanged: (callback: (payload: { status: string; paneId: string | null; error?: string }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; paneId: string | null; error?: string }) => callback(payload)
@@ -138,6 +139,7 @@ const fleetApi = {
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
+  ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {

@@ -95,4 +95,28 @@ describe('AgentStateTracker', () => {
 
     expect(tracker.getAllStates()).toHaveLength(2);
   });
+
+  it('caps sub-agents at 100 per agent, evicting the oldest', () => {
+    const eventBus = new EventBus()
+    const tracker = new AgentStateTracker(eventBus)
+
+    eventBus.emit('pane-created', { type: 'pane-created', paneId: 'pane-1' })
+
+    // Feed 150 sub-agent progress records
+    for (let i = 0; i < 150; i++) {
+      tracker.handleJsonlRecord('pane-1', {
+        type: 'progress',
+        data: {
+          type: 'agent_progress',
+          parentToolUseID: `sub-${i}`,
+        },
+        message: {
+          content: [{ type: 'tool_use', name: 'Read' }],
+        },
+      })
+    }
+
+    const state = tracker.getState('pane-1')
+    expect(state?.subAgents.length).toBe(100)
+  })
 });

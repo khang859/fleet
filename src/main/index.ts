@@ -148,7 +148,7 @@ app.whenReady().then(async () => {
     const workspacePath = process.cwd()
     starbaseDb = new StarbaseDB(workspacePath)
     starbaseDb.open()
-    sectorService = new SectorService(starbaseDb.getDb(), workspacePath)
+    sectorService = new SectorService(starbaseDb.getDb(), workspacePath, eventBus)
     configService = new ConfigService(starbaseDb.getDb())
 
     // Phase 5 services
@@ -169,7 +169,7 @@ app.whenReady().then(async () => {
     }
 
     // Phase 2 services
-    missionService = new MissionService(starbaseDb.getDb())
+    missionService = new MissionService(starbaseDb.getDb(), eventBus)
     const worktreeBasePath = join(basePath, 'worktrees')
     const worktreeManager = new WorktreeManager(worktreeBasePath)
 
@@ -183,11 +183,12 @@ app.whenReady().then(async () => {
       sectorService,
       missionService,
       configService,
-      worktreeManager
+      worktreeManager,
+      eventBus,
     })
 
     // Phase 3 services
-    commsService = new CommsService(starbaseDb.getDb())
+    commsService = new CommsService(starbaseDb.getDb(), eventBus)
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
@@ -257,8 +258,8 @@ app.whenReady().then(async () => {
       }
     })
 
-    // Auto-start the Admiral and wire PTY data forwarding to renderer
-    const startAdmiralAndWire = async (): Promise<void> => {
+    // Start the Admiral on demand and wire PTY data forwarding to renderer
+    const startAdmiralAndWire = async (): Promise<string | null> => {
       try {
         const paneId = await admiralProcess!.start()
         // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
@@ -277,11 +278,35 @@ app.whenReady().then(async () => {
           eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
         })
         cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+        return paneId
       } catch (err) {
         console.error('[admiral] Failed to start:', err)
+        return null
       }
     }
-    startAdmiralAndWire()
+
+    ipcMain.handle('admiral:ensure-started', async () => {
+      if (!admiralProcess) return null
+      // Already running — return existing paneId
+      if (admiralProcess.paneId) return admiralProcess.paneId
+      // Currently starting — don't double-spawn; return null
+      // StarCommandTab listens to onStatusChanged and will receive the paneId when done
+      if (admiralProcess.status === 'starting') return null
+      // Not started — start it
+      return startAdmiralAndWire()
+    })
+
+    // Push status updates to renderer whenever starbase data changes
+    eventBus.on('starbase-changed', () => {
+      const w = mainWindow
+      if (!w || w.isDestroyed()) return
+      w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+        crew: crewService!.listCrew(),
+        missions: missionService!.listMissions(),
+        sectors: sectorService!.listSectors(),
+        unreadCount: commsService!.getUnread('admiral').length,
+      })
+    })
 
     // Phase 4: Run reconciliation on startup
     if (lockResult === 'acquired') {
@@ -300,20 +325,8 @@ app.whenReady().then(async () => {
         })
 
       // Start Sentinel watchdog
-      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService })
+      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus })
       sentinel.start()
-
-      // Push status updates to renderer every 5 seconds
-      setInterval(() => {
-        const w = mainWindow
-        if (!w || w.isDestroyed()) return
-        w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-          crew: crewService!.listCrew(),
-          missions: missionService!.listMissions(),
-          sectors: sectorService!.listSectors(),
-          unreadCount: commsService!.getUnread('admiral').length
-        })
-      }, 5000)
     }
 
     // Auto-create Star Command tab on workspace load

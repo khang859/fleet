@@ -43,15 +43,24 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
   const [isDragOver, setIsDragOver] = useState(false);
   const [isGitRepo, setIsGitRepo] = useState(false);
   const currentCwd = useCwdStore((s) => s.cwds.get(paneId));
+  const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!currentCwd) {
       setIsGitRepo(false);
       return;
     }
-    window.fleet.git.isRepo(currentCwd).then((result) => {
-      setIsGitRepo(result.isRepo);
-    });
+
+    if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
+    gitCheckTimerRef.current = setTimeout(() => {
+      window.fleet.git.isRepo(currentCwd).then((result) => {
+        setIsGitRepo(result.isRepo);
+      });
+    }, 500);
+
+    return () => {
+      if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
+    };
   }, [currentCwd]);
   const dragCounterRef = useRef(0);
 

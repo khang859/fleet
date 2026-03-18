@@ -66,6 +66,7 @@ export function registerIpcHandlers(
     })
 
     ptyManager.onExit(req.paneId, (exitCode) => {
+      cwdPoller.stopPolling(req.paneId)
       const w = getWindow()
       if (w && !w.isDestroyed()) {
         w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
@@ -94,6 +95,11 @@ export function registerIpcHandlers(
   ipcMain.on(IPC_CHANNELS.PTY_KILL, (_event, paneId: string) => {
     ptyManager.kill(paneId)
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId })
+  })
+
+  // PTY drain — renderer signals it has consumed a batch; resume the PTY
+  ipcMain.on(IPC_CHANNELS.PTY_DRAIN, (_event, { paneId }: { paneId: string }) => {
+    ptyManager.resume(paneId)
   })
 
   // Garbage-collect orphaned PTYs: renderer sends list of active pane IDs,

@@ -1,7 +1,10 @@
 import type Database from 'better-sqlite3';
 import { existsSync, readdirSync, rmSync } from 'fs';
-import { execSync } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { join } from 'path';
+
+const execFileAsync = promisify(execFile);
 
 type ReconciliationDeps = {
   db: Database.Database;
@@ -61,15 +64,16 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
 
   // 5. Run git worktree prune on each sector
   const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as { id: string; root_path: string }[];
-  for (const sector of sectors) {
-    if (existsSync(sector.root_path)) {
-      try {
-        execSync('git worktree prune', { cwd: sector.root_path, stdio: 'pipe' });
-      } catch {
-        // Ignore prune failures
-      }
-    }
-  }
+  await Promise.all(
+    sectors
+      .filter((sector) => existsSync(sector.root_path))
+      .map((sector) =>
+        execFileAsync('git', ['worktree', 'prune'], {
+          cwd: sector.root_path,
+          timeout: 10_000,
+        }).catch(() => { /* ignore prune failures */ })
+      )
+  );
 
   // 6. Sweep worktree directories — remove orphaned ones
   const worktreeDir = join(worktreeBasePath, starbaseId);
@@ -111,7 +115,10 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     if (!sector || !existsSync(sector.root_path)) continue;
 
     try {
-      execSync(`git push -u origin "${crew.worktree_branch}"`, { cwd: sector.root_path, stdio: 'pipe' });
+      await execFileAsync('git', ['push', '-u', 'origin', crew.worktree_branch], {
+        cwd: sector.root_path,
+        timeout: 10_000,
+      });
       db.prepare("UPDATE missions SET status = 'completed' WHERE id = ?").run(mission.id);
       db.prepare(
         "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'push_retried', ?)",

@@ -8,12 +8,14 @@ import type { SectorState } from '../visualizer/sector-outposts'
 import type { PodState } from '../visualizer/shuttles'
 import { loadScSpriteSheet, isScSpriteReady, drawScSprite } from './sc-sprite-loader'
 
-export function StarCommandScene({ className }: { className?: string }) {
+export function StarCommandScene({ className, isActive = true }: { className?: string; isActive?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const rafRef = useRef<number>(0)
   const lastFrameRef = useRef<number>(0)
   const pendingResizeRef = useRef(false)
+  const stoppedRef = useRef(false)
+  const frameRef = useRef<(now: number) => void>(() => {})
 
   const sectorStatesRef = useRef<SectorState[]>([])
   const podStatesRef = useRef<PodState[]>([])
@@ -85,18 +87,16 @@ export function StarCommandScene({ className }: { className?: string }) {
     const signalPulses = new SignalPulseRenderer()
     let lastPulseSpawn = 0
 
-    let stopped = false
-
     function frame(now: number) {
-      if (stopped) return
+      if (stoppedRef.current) return
       if (pendingResizeRef.current) applyResize()
 
       // Adaptive FPS throttle
       const hasActiveCrew = podStatesRef.current.some(
         p => p.status === 'active' || p.status === 'hailing' || p.status === 'error'
       )
-      const isActive = hasActiveCrew || shuttleRenderer.hasActiveShuttles() || signalPulses.hasActivePulses()
-      const frameBudget = isActive ? 33 : 100
+      const hasActiveAnimation = hasActiveCrew || shuttleRenderer.hasActiveShuttles() || signalPulses.hasActivePulses()
+      const frameBudget = hasActiveAnimation ? 33 : 100
 
       if (now - lastFrameRef.current < frameBudget) {
         rafRef.current = requestAnimationFrame(frame)
@@ -159,21 +159,22 @@ export function StarCommandScene({ className }: { className?: string }) {
 
       rafRef.current = requestAnimationFrame(frame)
     }
+    frameRef.current = frame
 
     const handleVisibility = () => {
       if (document.hidden) {
-        stopped = true
+        stoppedRef.current = true
         cancelAnimationFrame(rafRef.current)
       } else {
-        stopped = false
+        stoppedRef.current = false
         lastFrameRef.current = 0
         rafRef.current = requestAnimationFrame(frame)
       }
     }
-    const handleBlur = () => { stopped = true; cancelAnimationFrame(rafRef.current) }
+    const handleBlur = () => { stoppedRef.current = true; cancelAnimationFrame(rafRef.current) }
     const handleFocus = () => {
-      if (!stopped) return
-      stopped = false
+      if (!stoppedRef.current) return
+      stoppedRef.current = false
       lastFrameRef.current = 0
       rafRef.current = requestAnimationFrame(frame)
     }
@@ -184,7 +185,7 @@ export function StarCommandScene({ className }: { className?: string }) {
     rafRef.current = requestAnimationFrame(frame)
 
     return () => {
-      stopped = true
+      stoppedRef.current = true
       cancelAnimationFrame(rafRef.current)
       ro.disconnect()
       document.removeEventListener('visibilitychange', handleVisibility)
@@ -192,6 +193,17 @@ export function StarCommandScene({ className }: { className?: string }) {
       window.removeEventListener('focus', handleFocus)
     }
   }, [])
+
+  useEffect(() => {
+    if (!isActive) {
+      stoppedRef.current = true
+      cancelAnimationFrame(rafRef.current)
+    } else if (stoppedRef.current) {
+      stoppedRef.current = false
+      lastFrameRef.current = 0
+      rafRef.current = requestAnimationFrame(frameRef.current)
+    }
+  }, [isActive])
 
   return (
     <div ref={containerRef} className={`relative overflow-hidden ${className ?? ''}`}>

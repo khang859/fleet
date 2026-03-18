@@ -101,6 +101,18 @@ export class AgentStateTracker {
           createdAt: Date.now(),
           lastActivity: Date.now(),
         });
+        // Evict the entry with the oldest lastActivity when cap is exceeded
+        if (agent.subAgents.size > 100) {
+          let oldestId = '';
+          let oldestTime = Infinity;
+          for (const [id, sub] of agent.subAgents) {
+            if (sub.lastActivity < oldestTime) {
+              oldestTime = sub.lastActivity;
+              oldestId = id;
+            }
+          }
+          if (oldestId) agent.subAgents.delete(oldestId);
+        }
       } else {
         const sub = agent.subAgents.get(subId)!;
         sub.state = subState;

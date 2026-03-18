@@ -45,9 +45,9 @@ export function StarCommandTab() {
     return () => clearInterval(interval)
   }, [admiralAvatarState])
 
-  // On mount: get Admiral paneId and listen for status changes
+  // On mount: ensure Admiral is started and listen for status changes
   useEffect(() => {
-    window.fleet.admiral.getPaneId().then((paneId) => {
+    window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
       if (paneId) {
         setAdmiralPty(paneId, 'running')
       }
@@ -91,8 +91,6 @@ export function StarCommandTab() {
 
   useEffect(() => {
     refreshStatus()
-    const interval = setInterval(refreshStatus, 5000)
-    return () => clearInterval(interval)
   }, [refreshStatus])
 
   return (

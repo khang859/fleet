@@ -1,4 +1,5 @@
 import type Database from 'better-sqlite3';
+import type { EventBus } from '../event-bus';
 
 export class CommsRateLimitError extends Error {
   constructor(message: string) {
@@ -31,7 +32,10 @@ type SendOpts = {
 export class CommsService {
   private rateLimit: number = 0; // 0 = disabled
 
-  constructor(private db: Database.Database) {}
+  constructor(
+    private db: Database.Database,
+    private eventBus?: EventBus,
+  ) {}
 
   /** Set the per-minute rate limit per crew. 0 = disabled. */
   setRateLimit(limit: number): void {
@@ -66,6 +70,7 @@ export class CommsService {
         'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)',
       )
       .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return result.lastInsertRowid as number;
   }
 
