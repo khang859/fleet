@@ -116,7 +116,7 @@ export class Hull {
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --dangerously-skip-permissions -p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`,
+        cmd: `claude --dangerously-skip-permissions --model claude-sonnet-4-6 -p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`,
         env: this.opts.env
       })
       this.pid = result.pid
