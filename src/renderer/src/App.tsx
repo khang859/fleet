@@ -212,7 +212,7 @@ export function App() {
   return (
     <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
       {showSidebar ? (
-        <Sidebar updateReady={updateReady} />
+        <Sidebar updateReady={updateReady} onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined} />
       ) : (
         <div
           className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0"

@@ -11,7 +11,7 @@ import type { Workspace } from '../../../shared/types';
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
 
-export function Sidebar({ updateReady }: { updateReady?: boolean }) {
+export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; onCollapse?: () => void }) {
   const {
     workspace,
     activeTabId,
@@ -295,6 +295,18 @@ export function Sidebar({ updateReady }: { updateReady?: boolean }) {
           >
             +
           </button>
+          {onCollapse && (
+            <button
+              className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
+              onClick={onCollapse}
+              title="Collapse sidebar"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <rect x="1" y="2" width="14" height="12" rx="2" />
+                <line x1="5.5" y1="2" x2="5.5" y2="14" />
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 
