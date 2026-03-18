@@ -137,6 +137,7 @@ export class AdmiralProcess {
       this.ptyManager.protect(paneId)
 
       this.ptyManager.onExit(paneId, (exitCode) => {
+        if (this.paneId === null) return
         this.paneId = null
         this.notify('stopped', undefined, exitCode)
       })
