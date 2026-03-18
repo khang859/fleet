@@ -23,6 +23,7 @@ beforeEach(() => {
   writeFileSync(join(SECTOR_DIR, 'index.ts'), '')
   // Init git repo
   execSync('git init && git checkout -b main', { cwd: SECTOR_DIR })
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: SECTOR_DIR })
   writeFileSync(join(SECTOR_DIR, 'README.md'), '# Test')
   execSync('git add -A && git commit -m "initial"', { cwd: SECTOR_DIR })
 

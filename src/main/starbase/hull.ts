@@ -4,6 +4,7 @@ import { writeFileSync, unlinkSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PtyManager } from '../pty-manager'
+import { inferCommitType, deriveSummary, formatCommitMessage, formatCommitSubject } from './conventional-commits'
 
 export type HullOpts = {
   crewId: string
@@ -218,11 +219,18 @@ export class Hull {
         execSync('git add -A', gitOpts)
         execSync('git diff --cached --quiet', gitOpts)
       } catch {
-        // There are staged changes — commit them
+        // There are staged changes — commit them with conventional format
+        const commitType = inferCommitType(this.opts.prompt)
+        const commitSummary = deriveSummary(this.opts.prompt)
+        const commitMsg = formatCommitMessage(commitType, this.opts.sectorId, commitSummary)
+        const commitMsgFile = join(tmpdir(), `fleet-commit-msg-${crewId}.txt`)
+        writeFileSync(commitMsgFile, commitMsg, 'utf-8')
         try {
-          execSync('git commit -m "auto-commit uncommitted changes"', gitOpts)
+          execSync(`git commit -F "${commitMsgFile}"`, gitOpts)
         } catch {
           /* commit might fail if nothing to commit */
+        } finally {
+          try { unlinkSync(commitMsgFile) } catch { /* already deleted */ }
         }
       }
 
@@ -372,9 +380,8 @@ export class Hull {
         }
       }
 
-      // PR creation (skip if verification failed)
-      const mergeStrategy = this.opts.mergeStrategy ?? 'pr'
-      if (pushSucceeded && mergeStrategy !== 'branch-only' && !verificationFailed) {
+      // PR creation (always create if branch was pushed and verification passed)
+      if (pushSucceeded && !verificationFailed) {
         this.createPR(hasConflicts, conflictFiles, hasLintWarnings, lintOutput)
       }
 
@@ -471,7 +478,9 @@ export class Hull {
       this.opts
     const mergeStrategy = this.opts.mergeStrategy ?? 'pr'
 
-    const summary = prompt.slice(0, 100)
+    const prCommitType = inferCommitType(prompt)
+    const prSummary = deriveSummary(prompt)
+    const prTitle = formatCommitSubject(prCommitType, sectorId, prSummary)
     const draftFlag = isDraft ? '--draft' : ''
 
     // Get diff stat for PR body
@@ -511,7 +520,7 @@ export class Hull {
         ? `\n\n### Merge Conflicts\nRebase failed on: ${conflictFiles.join(', ')}`
         : ''
 
-    const body = `## Mission: ${summary}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`
+    const body = `## Mission: ${prTitle}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`
 
     // Write body to temp file to avoid shell injection from diff stat output
     const bodyFile = join(tmpdir(), `fleet-pr-body-${crewId}.md`)
@@ -523,7 +532,7 @@ export class Hull {
         labelArgs += ' --label lint-warnings'
       }
       execSync(
-        `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
+        `gh pr create --title '${prTitle.replace(/'/g, "'\\''")}' --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
         { cwd: sectorPath, stdio: 'pipe' }
       )
 
