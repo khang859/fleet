@@ -366,30 +366,71 @@ function FileEntry({
 
 // --- Diff parsing and rendering ---
 
-type ParsedFileDiff = {
+export type ParsedFileDiff = {
   fileName: string;
-  /** Complete raw diff for this file, including all headers (diff --git, index, ---, +++, etc.) */
-  rawDiff: string;
+  hunks: string[];
 };
 
 /**
- * Split a full unified diff string into per-file sections.
- * Each section preserves all headers — @git-diff-view/core's DiffParser
- * needs them (especially --- and +++) to locate the boundary between
- * the diff header and the hunks.
+ * Parse a full unified diff string into per-file sections.
+ * Each section has the file name and all hunk lines.
+ * The library expects each hunk string to start with @@, not contain file-level headers.
  */
-function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
+export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
   const files: ParsedFileDiff[] = [];
-  // Split on "diff --git" boundaries, keeping the delimiter
-  const parts = rawDiff.split(/^(?=diff --git )/m);
+  const lines = rawDiff.split('\n');
+  let currentFile: ParsedFileDiff | null = null;
+  let currentHunk: string[] = [];
 
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed || !trimmed.startsWith('diff --git')) continue;
+  for (const line of lines) {
+    // New file diff starts with "diff --git"
+    if (line.startsWith('diff --git')) {
+      // Save previous file
+      if (currentFile) {
+        if (currentHunk.length > 0) {
+          currentFile.hunks.push(currentHunk.join('\n'));
+        }
+        files.push(currentFile);
+      }
 
-    const match = trimmed.match(/^diff --git a\/(.+) b\/(.+)/);
-    const fileName = match ? match[2] : 'unknown';
-    files.push({ fileName, rawDiff: trimmed });
+      // Extract filename from "diff --git a/path b/path"
+      const match = line.match(/diff --git a\/(.+) b\/(.+)/);
+      const fileName = match ? match[2] : 'unknown';
+      currentFile = { fileName, hunks: [] };
+      currentHunk = [];
+      continue;
+    }
+
+    // Hunk header starts a new hunk
+    if (line.startsWith('@@')) {
+      if (currentHunk.length > 0 && currentFile) {
+        currentFile.hunks.push(currentHunk.join('\n'));
+      }
+      currentHunk = [line];
+      continue;
+    }
+
+    // Skip file metadata lines (---, +++, index, etc.) - they're before hunks
+    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') ||
+        line.startsWith('new file') || line.startsWith('deleted file') ||
+        line.startsWith('old mode') || line.startsWith('new mode') ||
+        line.startsWith('similarity index') || line.startsWith('rename from') ||
+        line.startsWith('rename to') || line.startsWith('Binary files')) {
+      continue;
+    }
+
+    // Hunk content lines (context, additions, deletions)
+    if (currentHunk.length > 0) {
+      currentHunk.push(line);
+    }
+  }
+
+  // Save last file
+  if (currentFile) {
+    if (currentHunk.length > 0) {
+      currentFile.hunks.push(currentHunk.join('\n'));
+    }
+    files.push(currentFile);
   }
 
   return files;
@@ -444,7 +485,7 @@ function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance)
           fileLang: lang ?? null,
           content: null,
         },
-        hunks: [fileDiff.rawDiff],
+        hunks: fileDiff.hunks,
       });
       diffFile.initRaw();
       if (highlighter) {
