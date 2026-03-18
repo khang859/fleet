@@ -1,0 +1,329 @@
+import { createServer, Server, Socket } from 'node:net';
+import { mkdirSync, unlinkSync } from 'node:fs';
+import { dirname } from 'node:path';
+import { EventEmitter } from 'node:events';
+import type { CrewService } from './starbase/crew-service';
+import type { MissionService } from './starbase/mission-service';
+import type { CommsService } from './starbase/comms-service';
+import type { SectorService } from './starbase/sector-service';
+import type { CargoService } from './starbase/cargo-service';
+import type { SupplyRouteService } from './starbase/supply-route-service';
+import type { ConfigService } from './starbase/config-service';
+import type { PtyManager } from './pty-manager';
+import type { StarbaseDB } from './starbase/db';
+
+export interface ServiceRegistry {
+  crewService: CrewService;
+  missionService: MissionService;
+  commsService: CommsService;
+  sectorService: SectorService;
+  cargoService: CargoService;
+  supplyRouteService: SupplyRouteService;
+  configService: ConfigService;
+  ptyManager: PtyManager;
+  createTab: (label: string, cwd: string) => string;
+  db: StarbaseDB;
+}
+
+type Request = {
+  id?: string;
+  command: string;
+  args: Record<string, unknown>;
+};
+
+type SuccessResponse = {
+  id?: string;
+  ok: true;
+  data: unknown;
+};
+
+type ErrorResponse = {
+  id?: string;
+  ok: false;
+  error: string;
+  code?: string;
+};
+
+type Response = SuccessResponse | ErrorResponse;
+
+/** Strip ANSI escape codes from a string */
+function stripAnsi(str: string): string {
+  // eslint-disable-next-line no-control-regex
+  return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+}
+
+/**
+ * SocketServer — Unix socket server for Fleet CLI command dispatch.
+ *
+ * Listens on a given socket path, accepts newline-delimited JSON requests,
+ * routes commands to service methods, and returns JSON responses.
+ * Emits 'state-change' events for mutating commands.
+ */
+export class SocketServer extends EventEmitter {
+  private server: Server | null = null;
+  private clients = new Set<Socket>();
+
+  constructor(
+    private socketPath: string,
+    private services: ServiceRegistry,
+  ) {
+    super();
+  }
+
+  async start(): Promise<void> {
+    // Ensure parent directory exists
+    mkdirSync(dirname(this.socketPath), { recursive: true });
+
+    // Clean up stale socket file
+    try {
+      unlinkSync(this.socketPath);
+    } catch {
+      // Ignore — file may not exist
+    }
+
+    return new Promise((resolve, reject) => {
+      this.server = createServer((socket) => {
+        this.clients.add(socket);
+        let buffer = '';
+
+        socket.on('data', (chunk) => {
+          buffer += chunk.toString();
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            this.handleLine(socket, line);
+          }
+        });
+
+        socket.on('close', () => {
+          this.clients.delete(socket);
+        });
+
+        socket.on('error', () => {
+          this.clients.delete(socket);
+        });
+      });
+
+      this.server.listen(this.socketPath, () => {
+        resolve();
+      });
+
+      this.server.on('error', reject);
+    });
+  }
+
+  async stop(): Promise<void> {
+    for (const client of this.clients) {
+      client.destroy();
+    }
+    this.clients.clear();
+
+    return new Promise((resolve) => {
+      if (this.server) {
+        this.server.close(() => resolve());
+        this.server = null;
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  private async handleLine(socket: Socket, line: string): Promise<void> {
+    let req: Request;
+
+    try {
+      req = JSON.parse(line);
+    } catch {
+      this.sendResponse(socket, { ok: false, error: 'Invalid JSON' });
+      return;
+    }
+
+    try {
+      const data = await this.dispatch(req.command, req.args ?? {});
+      this.sendResponse(socket, { id: req.id, ok: true, data });
+    } catch (err) {
+      const error = err instanceof Error ? err.message : 'Unknown error';
+      const code = (err as { code?: string }).code ?? undefined;
+      this.sendResponse(socket, { id: req.id, ok: false, error, code });
+    }
+  }
+
+  private sendResponse(socket: Socket, response: Response): void {
+    if (!socket.destroyed) {
+      socket.write(JSON.stringify(response) + '\n');
+    }
+  }
+
+  private async dispatch(command: string, args: Record<string, unknown>): Promise<unknown> {
+    const {
+      sectorService,
+      missionService,
+      commsService,
+      crewService,
+      cargoService,
+      supplyRouteService,
+      configService,
+      ptyManager,
+      createTab,
+      db,
+    } = this.services;
+
+    switch (command) {
+      // ── Sectors ──────────────────────────────────────────────────────────────
+      case 'sector.list':
+        return sectorService.listSectors();
+
+      case 'sector.info':
+        return sectorService.getSector(
+          (args.id ?? args.sectorId ?? args.name) as string,
+        );
+
+      case 'sector.add':
+        return sectorService.addSector(args as Parameters<SectorService['addSector']>[0]);
+
+      case 'sector.remove':
+        sectorService.removeSector(
+          (args.id ?? args.sectorId ?? args.name) as string,
+        );
+        return null;
+
+      // ── Missions ─────────────────────────────────────────────────────────────
+      case 'mission.create': {
+        const mission = missionService.addMission({
+          sectorId: (args.sector ?? args.sectorId) as string,
+          summary: args.summary as string,
+          prompt: args.prompt as string,
+        });
+        this.emit('state-change', 'mission:changed', { mission });
+        return mission;
+      }
+
+      case 'mission.list':
+        return missionService.listMissions(args as Parameters<MissionService['listMissions']>[0]);
+
+      case 'mission.status':
+        return missionService.getMission((args.id ?? args.missionId) as number);
+
+      case 'mission.cancel':
+        missionService.abortMission((args.id ?? args.missionId) as number);
+        this.emit('state-change', 'mission:changed', { id: args.id ?? args.missionId });
+        return null;
+
+      // ── Crew ─────────────────────────────────────────────────────────────────
+      case 'crew.list':
+        return crewService.listCrew();
+
+      case 'crew.deploy': {
+        const result = await crewService.deployCrew(
+          {
+            sectorId: (args.sector ?? args.sectorId) as string,
+            prompt: (args.prompt ?? args.summary ?? '') as string,
+            missionId: args.mission ? Number(args.mission) : (args.missionId as number | undefined),
+          },
+          ptyManager,
+          createTab,
+        );
+        this.emit('state-change', 'crew:changed', result);
+        return result;
+      }
+
+      case 'crew.recall': {
+        const crewId = (args.id ?? args.crewId) as string;
+        crewService.recallCrew(crewId, ptyManager);
+        this.emit('state-change', 'crew:changed', { crewId, status: 'recalled' });
+        return null;
+      }
+
+      case 'crew.observe': {
+        const id = (args.id ?? args.crewId) as string;
+        const raw = crewService.observeCrew(id);
+        return stripAnsi(raw);
+      }
+
+      // ── Comms ─────────────────────────────────────────────────────────────────
+      case 'comms.list':
+        return commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
+
+      case 'comms.read': {
+        const transmissionId = (args.id ?? args.transmissionId) as number;
+        commsService.markRead(transmissionId);
+        return null;
+      }
+
+      case 'comms.send': {
+        const id = commsService.send({
+          from: 'admiral',
+          to: args.to as string,
+          type: (args.type ?? 'directive') as string,
+          payload: (args.message ?? args.payload ?? '') as string,
+        });
+        this.emit('state-change', 'comms:changed', { id });
+        return { id };
+      }
+
+      case 'comms.check':
+        return { unread: commsService.getUnread('admiral').length };
+
+      // ── Cargo ─────────────────────────────────────────────────────────────────
+      case 'cargo.list':
+        return cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0]);
+
+      case 'cargo.inspect': {
+        // CargoService has no getCargo — query directly via db
+        const rawDbForCargo = (db as unknown as { getDb?: () => { prepare: (sql: string) => { get: (...p: unknown[]) => unknown } } });
+        const dbForCargo = rawDbForCargo.getDb ? rawDbForCargo.getDb() : (rawDbForCargo as any);
+        return dbForCargo.prepare('SELECT * FROM cargo WHERE id = ?').get(args.cargoId);
+      }
+
+      // ── Supply Routes ─────────────────────────────────────────────────────────
+      case 'supply-route.list':
+        return supplyRouteService.listRoutes();
+
+      case 'supply-route.add':
+        return supplyRouteService.addRoute(
+          args as Parameters<SupplyRouteService['addRoute']>[0],
+        );
+
+      case 'supply-route.remove':
+        supplyRouteService.removeRoute(args.routeId as number);
+        return null;
+
+      // ── Config ────────────────────────────────────────────────────────────────
+      case 'config.get':
+        return configService.get(args.key as string);
+
+      case 'config.set':
+        configService.set(args.key as string, args.value);
+        return null;
+
+      // ── Log ───────────────────────────────────────────────────────────────────
+      case 'log.show': {
+        const rawDb = (db as unknown as { getDb?: () => import('better-sqlite3').Database; prepare?: (sql: string) => { all: (...p: unknown[]) => unknown[] } });
+        const limit = (args.limit as number) ?? 50;
+        const crewFilter = args.crew as string | undefined;
+
+        // Support both StarbaseDB (with getDb()) and raw better-sqlite3 (in tests)
+        const dbInstance = rawDb.getDb ? rawDb.getDb() : rawDb;
+
+        if (crewFilter) {
+          return (dbInstance as any)
+            .prepare(
+              'SELECT * FROM ships_log WHERE crew_id = ? ORDER BY created_at DESC LIMIT ?',
+            )
+            .all(crewFilter, limit);
+        }
+        return (dbInstance as any)
+          .prepare('SELECT * FROM ships_log ORDER BY created_at DESC LIMIT ?')
+          .all(limit);
+      }
+
+      default: {
+        const err = new Error(`Unknown command: ${command}`) as Error & { code: string };
+        err.code = 'NOT_FOUND';
+        throw err;
+      }
+    }
+  }
+}
