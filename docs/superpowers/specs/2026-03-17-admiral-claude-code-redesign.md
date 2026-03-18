@@ -153,6 +153,17 @@ A thin Node.js CLI client that communicates with the running Fleet Electron app 
 
 **Output format:** Human-readable tables/text by default. Claude Code reads terminal output, so plain text is optimal.
 
+**CLI binary format:** A self-contained shell script that locates Fleet's bundled Electron Node.js binary and uses it to run the CLI logic. This avoids requiring system `node` in PATH — Fleet is a packaged Electron app, and users may not have Node.js installed separately.
+
+```bash
+#!/bin/bash
+# ~/.fleet/bin/fleet
+FLEET_NODE="$(dirname "$0")/../lib/node"  # Electron's bundled node
+exec "$FLEET_NODE" "$(dirname "$0")/../lib/fleet-cli.js" "$@"
+```
+
+The actual CLI logic lives in `~/.fleet/lib/fleet-cli.js`, extracted from the Electron app bundle on launch.
+
 **Installation:** Fleet ensures `~/.fleet/bin/fleet` exists and is executable on launch. The Admiral's PTY environment includes `~/.fleet/bin` in PATH.
 
 ### 3. Socket Server
@@ -166,7 +177,47 @@ New class in the Electron main process. Starts when Fleet launches.
 - Return JSON results
 - Clean up socket file on shutdown
 
-**Implementation:** Thin dispatch layer. No business logic — just routing to services that already exist (CrewService, MissionService, CommsService, etc.).
+**Initialization:** The SocketServer receives a `ServiceRegistry` at construction — an object holding references to all services, PtyManager, and a `createTab` delegate function. This is necessary because commands like `crew.deploy` need access to PtyManager and tab creation (which sends IPC to the renderer). The SocketServer is not purely "thin routing" — it is the bridge between the CLI and the in-process Electron environment.
+
+```typescript
+interface ServiceRegistry {
+  crewService: CrewService
+  missionService: MissionService
+  commsService: CommsService
+  sectorService: SectorService
+  cargoService: CargoService
+  supplyRouteService: SupplyRouteService
+  configService: ConfigService
+  ptyManager: PtyManager
+  createTab: (label: string, cwd: string) => string  // returns tabId
+  db: StarbaseDB
+}
+```
+
+**Protocol:** Newline-delimited JSON with request IDs for multiplexing.
+
+```json
+{"id": "req-1", "command": "crew.deploy", "args": {"sectorId": "abc", "missionId": "xyz"}}
+{"id": "req-1", "ok": true, "data": {"crewId": "...", "tabId": "..."}}
+```
+
+```json
+{"id": "req-2", "command": "sector.list", "args": {}}
+{"id": "req-2", "ok": false, "error": "No starbase loaded", "code": "NO_STARBASE"}
+```
+
+Request IDs allow the Admiral to fire multiple CLI commands concurrently without response mismatching.
+
+**Error codes:** `NOT_FOUND`, `LIMIT_REACHED`, `INVALID_ARGS`, `NO_STARBASE`, `INTERNAL_ERROR`.
+
+**Timeout:** Commands have a 60-second timeout. The CLI prints an error and exits if no response arrives.
+
+**Stale socket handling on startup:**
+1. Check if `~/.fleet/fleet.sock` exists
+2. If yes, try connecting — if connection succeeds, another Fleet instance is running → warn user and abort socket server
+3. If connection fails (stale file) → unlink and recreate
+
+**Implementation:** Thin dispatch layer over services that already exist, but with access to the full ServiceRegistry for commands that need in-process objects.
 
 ### 4. Admiral Lifecycle (AdmiralProcess)
 
@@ -192,6 +243,12 @@ Replaces the current `Admiral` class.
 PTY is marked as protected (not garbage collected).
 
 **Auto-start:** When starbase loads → `ensureWorkspace()` → `start()` → send paneId to renderer.
+
+**Exit handling:** PtyManager.onExit fires → AdmiralProcess sets status to `'stopped'` → sends `admiral:status-changed` IPC to renderer → UI shows "Admiral offline" with restart button. No auto-restart for now — the user clicks to restart.
+
+**Context recovery on restart:** The Admiral starts with a blank Claude Code context on restart. The CLAUDE.md instructs it to check current state on startup ("Always check comms before starting new work"), and `fleet crew list` / `fleet mission list` provide full situational awareness. The `docs/` and `learnings/` directories persist across restarts, so accumulated knowledge survives.
+
+**Claude Code not found:** If `claude` is not in PATH, `PtyManager.create()` will fail. AdmiralProcess catches this error, sets status to `'stopped'`, and sends an error message to the renderer to display in the terminal area: "Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code"
 
 ### 5. Star Command Tab UI
 
@@ -234,6 +291,8 @@ Teaches the Admiral how and when to use the Fleet CLI. Contains:
 - Mission scoping guidance (one prompt, one outcome, verify command)
 - Comms handling patterns
 - Error handling guidance
+- PR review workflow (handling `pr_review_request` comms from crew)
+- Recovery workflow (what to do on fresh start — check crew list, mission list, comms)
 
 ### 7. Hooks Configuration
 
@@ -254,8 +313,11 @@ Teaches the Admiral how and when to use the Fleet CLI. Contains:
 **`fleet comms check --quiet` behavior:**
 - 0 unread → silent exit (code 0, no output)
 - N unread → prints notification, exits 0
+- Socket error → silent exit (code 0, no output) — never blocks tool use
 
-Gentle reminder, not a gate. Fires before every tool use — frequent enough to stay current, only when actively working.
+Gentle reminder, not a gate. Always exits 0 regardless of outcome — this ensures the Admiral can never get stuck because the socket is down.
+
+**Hook output noise:** Claude Code surfaces hook stdout into the conversation context. Since `--quiet` produces no output when there are 0 unread messages, most tool uses add nothing. When there are unread messages, the notification appears until the Admiral reads them. This is acceptable — the repetition creates urgency to handle comms. If it proves too noisy in practice, we can switch to a `Notification` hook (fires less often) or remove the hook entirely and rely on the CLAUDE.md instruction to check comms periodically.
 
 ## Deleted Code
 
@@ -280,7 +342,21 @@ Gentle reminder, not a gate. Fires before every tool use — frequent enough to 
 | StarbaseDB, migrations | Unchanged |
 | PtyManager | Unchanged — Admiral uses it like any other PTY |
 | Galaxy map, CRT frame, sprites | Visual chrome stays |
-| Status bar, crew chips | Stay, data source changes to polling services |
+| Status bar, crew chips | Stay, data source changes (see below) |
+
+## Status Bar Data Source
+
+The current status bar updates are driven by Admiral tool dispatch (push model). With the new design, the Admiral's tool use is internal to the Claude Code PTY — the main process doesn't observe it.
+
+**New approach:** The SocketServer emits events when state-mutating commands are processed (`crew.deploy`, `mission.create`, `comms.send`, etc.). These events are forwarded to the renderer via existing IPC. This is a natural push model — the Fleet CLI is the only way to change state, and all CLI commands go through the SocketServer.
+
+```
+Admiral runs `fleet crew deploy` → SocketServer processes → emits 'crew:changed' → IPC to renderer → status bar updates
+```
+
+No polling needed. The SocketServer is already the single bottleneck for state changes.
+
+**`fleet crew observe` output:** Strips ANSI escape codes before returning to the CLI. Raw ANSI wastes Admiral context tokens and confuses the AI.
 
 ## Future Evolution
 
