@@ -15,7 +15,8 @@ import type {
   PaneFocusedPayload,
   AgentStatePayload,
   GitStatusPayload,
-  GitIsRepoPayload
+  GitIsRepoPayload,
+  AdmiralStateDetailPayload
 } from '../shared/ipc-api'
 import type { Workspace, FleetSettings } from '../shared/types'
 
@@ -98,7 +99,12 @@ const fleetApi = {
       const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; paneId: string | null; error?: string }) => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler)
       return () => { ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler) }
-    }
+    },
+    onStateDetail: (callback: (payload: AdmiralStateDetailPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: AdmiralStateDetailPayload) => callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, handler)
+      return () => { ipcRenderer.removeListener(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, handler) }
+    },
   },
   starbase: {
     listSectors: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
