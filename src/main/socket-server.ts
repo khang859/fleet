@@ -209,6 +209,15 @@ export class SocketServer extends EventEmitter {
       case 'mission.status':
         return missionService.getMission((args.id ?? args.missionId) as number);
 
+      case 'mission.update': {
+        const id = (args.id ?? args.missionId) as number;
+        if (args.status) {
+          missionService.setStatus(id, args.status as string);
+          this.emit('state-change', 'mission:changed', { id });
+        }
+        return missionService.getMission(id);
+      }
+
       case 'mission.cancel':
         missionService.abortMission((args.id ?? args.missionId) as number);
         this.emit('state-change', 'mission:changed', { id: args.id ?? args.missionId });
@@ -227,6 +236,16 @@ export class SocketServer extends EventEmitter {
           const mission = missionService.getMission(missionId);
           if (mission) {
             prompt = mission.prompt ?? mission.summary ?? '';
+          }
+        }
+
+        if (missionId) {
+          const mission = missionService.getMission(missionId);
+          if (mission?.depends_on_mission_id) {
+            const dep = missionService.getMission(mission.depends_on_mission_id);
+            if (dep && dep.status !== 'completed') {
+              throw new Error(`Cannot deploy: mission ${missionId} depends on mission ${mission.depends_on_mission_id} which is not completed (status: ${dep.status})`);
+            }
           }
         }
 
