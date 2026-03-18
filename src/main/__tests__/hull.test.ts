@@ -115,6 +115,7 @@ describe('Hull Gate 2 — verify and lint', () => {
       }),
       has: vi.fn(() => false),
       kill: vi.fn(),
+      protect: vi.fn(),
       triggerExit: (paneId: string, code: number) => {
         handlers[paneId]?.onExit?.(code)
       }
@@ -352,6 +353,7 @@ describe('Hull Gate 3 — Admiral review', () => {
       }),
       has: vi.fn(() => false),
       kill: vi.fn(),
+      protect: vi.fn(),
       triggerExit: (paneId: string, code: number) => {
         handlers[paneId]?.onExit?.(code)
       }

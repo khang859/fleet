@@ -193,6 +193,8 @@ const COMMAND_MAP: Record<string, string> = {
   'comms.delete': 'comms.delete',
   'comms.clear': 'comms.clear',
   'comms.read-all': 'comms.read-all',
+  'comms.show': 'comms.info',
+  'comms.info': 'comms.info',
 
   // Cargo
   'cargo.show': 'cargo.inspect',
@@ -222,7 +224,20 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
   // Extract --quiet flag
   const quietIdx = rest.indexOf('--quiet');
   const quiet = quietIdx !== -1;
-  const cleanRest = quiet ? rest.filter((t) => t !== '--quiet') : rest;
+  let cleanRest = quiet ? rest.filter((t) => t !== '--quiet') : rest;
+
+  // Extract --format flag
+  const formatIdx = cleanRest.indexOf('--format');
+  let format = 'text';
+  if (formatIdx !== -1) {
+    const formatVal = cleanRest[formatIdx + 1];
+    if (formatVal && !formatVal.startsWith('--')) {
+      format = formatVal;
+      cleanRest = cleanRest.filter((_, i) => i !== formatIdx && i !== formatIdx + 1);
+    } else {
+      cleanRest = cleanRest.filter((_, i) => i !== formatIdx);
+    }
+  }
 
   // Map CLI commands (plural groups, user-friendly actions) to server commands
   const command = mapCommand(group, action);
@@ -246,6 +261,11 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
   }
 
   const data = response.data;
+
+  // ── JSON format: return raw JSON ──────────────────────────────────────────
+  if (format === 'json') {
+    return JSON.stringify(data ?? null, null, 2);
+  }
 
   // ── comms.check special formatting ───────────────────────────────────────
   if (command === 'comms.check') {

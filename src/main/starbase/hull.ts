@@ -123,7 +123,11 @@ export class Hull {
       ptyManager.protect(paneId)
       db.prepare('UPDATE crew SET pid = ? WHERE id = ?').run(result.pid, crewId)
     } catch (err) {
-      this.cleanup('error', `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`)
+      this.cleanup('error', `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`).catch(
+        (cleanupErr) => {
+          console.error('[hull] cleanup error:', cleanupErr)
+        }
+      )
       return
     }
 
@@ -137,7 +141,11 @@ export class Hull {
     ptyManager.onExit(paneId, (exitCode) => {
       this.opts.onPtyExit?.(paneId, exitCode)
       const status = exitCode === 0 ? 'complete' : 'error'
-      this.cleanup(status, exitCode === 0 ? 'Completed successfully' : `Exit code: ${exitCode}`)
+      this.cleanup(status, exitCode === 0 ? 'Completed successfully' : `Exit code: ${exitCode}`).catch(
+        (cleanupErr) => {
+          console.error('[hull] cleanup error:', cleanupErr)
+        }
+      )
     })
   }
 
@@ -145,7 +153,9 @@ export class Hull {
     if (this.paneId && ptyManager.has(this.paneId)) {
       ptyManager.kill(this.paneId)
     }
-    this.cleanup('aborted', 'Recalled by Star Command')
+    this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
+      console.error('[hull] cleanup error:', err)
+    })
   }
 
   getStatus(): HullStatus {
@@ -175,12 +185,14 @@ export class Hull {
     // Cleanup will be called by the onExit handler, but if kill doesn't trigger exit:
     setTimeout(() => {
       if (this.status === 'active') {
-        this.cleanup('timeout', 'Mission deadline exceeded')
+        this.cleanup('timeout', 'Mission deadline exceeded').catch((err) => {
+          console.error('[hull] cleanup error:', err)
+        })
       }
     }, 5000)
   }
 
-  private cleanup(status: HullStatus, reason: string): void {
+  private async cleanup(status: HullStatus, reason: string): Promise<void> {
     if (this.status !== 'active' && this.status !== 'pending') return // Already cleaned up
 
     this.status = status
@@ -198,6 +210,7 @@ export class Hull {
     if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
 
     const gitOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' }
+    let overrideStatus: HullStatus | null = null
 
     try {
       // Auto-commit uncommitted files
@@ -229,10 +242,7 @@ export class Hull {
         db.prepare(
           "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
         ).run('No work produced', missionId)
-        db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?").run(
-          'error',
-          crewId
-        )
+        overrideStatus = 'error'
         return
       }
 
@@ -309,7 +319,7 @@ export class Hull {
           break
         } catch {
           if (i < pushRetries.length) {
-            execSync(`sleep ${pushRetries[i] / 1000}`, { stdio: 'pipe' })
+            await new Promise((resolve) => setTimeout(resolve, pushRetries[i]))
           }
         }
       }
@@ -412,9 +422,10 @@ export class Hull {
         JSON.stringify({ status, reason })
       )
     } finally {
-      // Update crew status
+      // Update crew status (use overrideStatus if set, e.g. from !hasChanges early return)
+      const finalStatus = overrideStatus ?? status
       db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?").run(
-        status,
+        finalStatus,
         crewId
       )
 
@@ -502,13 +513,17 @@ export class Hull {
 
     const body = `## Mission: ${summary}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`
 
+    // Write body to temp file to avoid shell injection from diff stat output
+    const bodyFile = join(tmpdir(), `fleet-pr-body-${crewId}.md`)
+    writeFileSync(bodyFile, body, 'utf-8')
+
     try {
       let labelArgs = `--label fleet --label "sector/${sectorId}" --label "mission/${missionId}"`
       if (hasLintWarnings) {
         labelArgs += ' --label lint-warnings'
       }
       execSync(
-        `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body "${body.replace(/"/g, '\\"')}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
+        `gh pr create --title "${summary.replace(/"/g, '\\"')}" --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
         { cwd: sectorPath, stdio: 'pipe' }
       )
 
@@ -569,6 +584,8 @@ export class Hull {
         crewId,
         JSON.stringify({ missionId, error: err instanceof Error ? err.message : 'unknown' })
       )
+    } finally {
+      try { unlinkSync(bodyFile) } catch { /* may already be deleted */ }
     }
   }
 

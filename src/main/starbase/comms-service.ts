@@ -92,6 +92,12 @@ export class CommsService {
     });
   }
 
+  getTransmission(transmissionId: number): TransmissionRow | undefined {
+    return this.db
+      .prepare('SELECT * FROM comms WHERE id = ?')
+      .get(transmissionId) as TransmissionRow | undefined;
+  }
+
   getUnread(crewId: string): TransmissionRow[] {
     return this.db
       .prepare('SELECT * FROM comms WHERE to_crew = ? AND read = 0 ORDER BY created_at ASC')
