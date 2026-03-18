@@ -43,6 +43,7 @@ let sentinel: Sentinel | null = null
 let lockfile: Lockfile | null = null
 let socketServer: SocketServer | null = null
 let admiralProcess: AdmiralProcess | null = null
+let crewServiceRef: CrewService | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -192,7 +193,7 @@ app.whenReady().then(async () => {
     }
 
     // Crews are headless (stream-json, no PTY/tab). No PTY buffer wiring needed.
-    crewService = new CrewService({
+    crewServiceRef = crewService = new CrewService({
       db: starbaseDb.getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
       sectorService,
@@ -685,7 +686,8 @@ app.whenReady().then(async () => {
   })
 })
 
-app.on('window-all-closed', () => {
+function shutdownAll(): void {
+  crewServiceRef?.shutdown()
   ptyManager.killAll()
   cwdPoller.stopAll()
   socketApi.stop()
@@ -695,8 +697,15 @@ app.on('window-all-closed', () => {
   jsonlWatcher.stop()
   if (sentinel) sentinel.stop()
   if (lockfile) lockfile.release()
-  // starbaseDb is scoped inside whenReady — close is handled by process exit
+}
+
+app.on('window-all-closed', () => {
+  shutdownAll()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
+
+// Ensure child processes are cleaned up on unexpected termination
+process.on('SIGTERM', () => { shutdownAll(); process.exit(0) })
+process.on('SIGINT', () => { shutdownAll(); process.exit(0) })

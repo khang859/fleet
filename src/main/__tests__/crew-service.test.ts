@@ -62,6 +62,26 @@ describe('CrewService', () => {
     expect(crewSvc.listCrew()).toHaveLength(0);
   });
 
+  it('should dismiss a terminal crew record when no hull is in memory (post-restart recall)', () => {
+    const rawDb = db.getDb();
+    rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run('fleet-crew-old', 'api', 'error');
+
+    crewSvc.recallCrew('fleet-crew-old');
+
+    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-old') as { status: string };
+    expect(row.status).toBe('dismissed');
+  });
+
+  it('should mark active crew with no hull as lost when recalled post-restart', () => {
+    const rawDb = db.getDb();
+    rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run('fleet-crew-active', 'api', 'active');
+
+    crewSvc.recallCrew('fleet-crew-active');
+
+    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-active') as { status: string };
+    expect(row.status).toBe('lost');
+  });
+
   it('should throw InsufficientMemoryError and queue mission when free RAM is below threshold', async () => {
     // Set an impossibly high threshold so any real machine will fail the check
     const configSvc = crewSvc['deps'].configService;

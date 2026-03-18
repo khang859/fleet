@@ -169,6 +169,7 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   comms_retention_days: 30,
   cargo_retention_days: 14,
   ships_log_retention_days: 30,
+  crew_retention_days: 7,
   forward_failed_cargo: false,
   min_deploy_free_memory_gb: 1.5
 }
