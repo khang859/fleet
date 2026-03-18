@@ -49,7 +49,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
-    scrollback: options.scrollback ?? 10_000,
+    scrollback: options.scrollback ?? 3000,
     cursorBlink: true,
     allowProposedApi: true,
     theme: {
