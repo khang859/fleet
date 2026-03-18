@@ -133,6 +133,7 @@ export type AddMissionRequest = {
   summary: string;
   prompt: string;
   priority?: number;
+  dependsOnMissionId?: number;
 };
 
 export type AdmiralStateDetailPayload = {
