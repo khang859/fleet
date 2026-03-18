@@ -4,6 +4,7 @@ import { useStarCommandStore } from '../store/star-command-store'
 import { StarCommandConfig } from './StarCommandConfig'
 import { CommsPanel } from './star-command/CommsPanel'
 import { CrewPanel } from './star-command/CrewPanel'
+import { MissionsPanel } from './star-command/MissionsPanel'
 import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
 import { AdmiralSidebar } from './star-command/AdmiralSidebar'
@@ -43,7 +44,7 @@ export function StarCommandTab() {
     setAdmiralState,
   } = useStarCommandStore()
 
-  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew'>('terminal')
+  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -189,6 +190,16 @@ export function StarCommandTab() {
                   >
                     Crew
                   </button>
+                  <button
+                    className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                      view === 'missions'
+                        ? 'bg-neutral-700 text-neutral-200'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    onClick={() => setView('missions')}
+                  >
+                    Missions
+                  </button>
                 </div>
               </div>
 
@@ -250,6 +261,8 @@ export function StarCommandTab() {
               <CommsPanel />
             ) : view === 'crew' ? (
               <CrewPanel />
+            ) : view === 'missions' ? (
+              <MissionsPanel />
             ) : (
               <div className="flex-1 relative min-h-0">
                 {/* Admiral terminal */}
