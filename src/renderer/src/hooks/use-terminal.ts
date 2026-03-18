@@ -16,6 +16,8 @@ export type UseTerminalOptions = {
   scrollback?: number;
   serializedContent?: string;
   onScrollStateChange?: (isScrolledUp: boolean) => void;
+  /** If true, skip PTY creation (attach to an already-running PTY, e.g. Admiral). */
+  attachOnly?: boolean;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
@@ -121,8 +123,9 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     window.fleet.pty.input({ paneId: options.paneId, data });
   });
 
-  // Create PTY only once per pane (survives StrictMode double-mount)
-  if (!createdPtys.has(options.paneId)) {
+  // Create PTY only once per pane (survives StrictMode double-mount).
+  // Skip creation when attachOnly=true (e.g. Admiral PTY pre-created by main process).
+  if (!options.attachOnly && !createdPtys.has(options.paneId)) {
     createdPtys.add(options.paneId);
     window.fleet.pty.create({
       paneId: options.paneId,

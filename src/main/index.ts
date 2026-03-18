@@ -252,10 +252,31 @@ app.whenReady().then(() => {
       }
     })
 
-    // Auto-start the Admiral
-    admiralProcess.start().catch((err) => {
-      console.error('[admiral] Failed to start:', err)
-    })
+    // Auto-start the Admiral and wire PTY data forwarding to renderer
+    const startAdmiralAndWire = async (): Promise<void> => {
+      try {
+        const paneId = await admiralProcess!.start()
+        // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
+        ptyManager.onData(paneId, (data) => {
+          notificationDetector.scan(paneId, data)
+          const w = mainWindow
+          if (w && !w.isDestroyed()) {
+            w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+          }
+        })
+        ptyManager.onExit(paneId, (exitCode) => {
+          const w = mainWindow
+          if (w && !w.isDestroyed()) {
+            w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+          }
+          eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
+        })
+        cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+      } catch (err) {
+        console.error('[admiral] Failed to start:', err)
+      }
+    }
+    startAdmiralAndWire()
 
     // Phase 4: Run reconciliation on startup
     if (lockResult === 'acquired') {
