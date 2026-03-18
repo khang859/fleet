@@ -17,7 +17,7 @@ export async function checkDependencies(): Promise<DepCheckResult[]> {
   const checks = [
     {
       name: 'claude',
-      cmd: 'which claude',
+      cmd: 'claude --version',
       installHint: 'Install Claude Code: npm install -g @anthropic-ai/claude-code'
     },
     {
@@ -36,9 +36,7 @@ export async function checkDependencies(): Promise<DepCheckResult[]> {
   for (const check of checks) {
     try {
       const { stdout } = await execAsync(check.cmd)
-      const firstLine = stdout.trim().split('\n')[0]
-      // 'which' output is just the path, not a version string
-      const version = check.cmd.startsWith('which') ? undefined : firstLine
+      const version = stdout.trim().split('\n')[0]
       results.push({ name: check.name, found: true, version, installHint: check.installHint })
     } catch {
       results.push({ name: check.name, found: false, installHint: check.installHint })

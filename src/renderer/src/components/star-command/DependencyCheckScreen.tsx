@@ -55,7 +55,7 @@ export function DependencyCheckScreen({ status, results }: Props) {
   )
 }
 
-function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }) {
+function DepRow({ dep }: { dep: DepCheckResult }) {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-neutral-900 rounded-lg border border-neutral-800">
       <div className="flex items-center gap-2">
