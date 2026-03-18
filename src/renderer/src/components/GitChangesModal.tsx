@@ -57,6 +57,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
     window.fleet.git.getStatus(cwd).then((result) => {
       setData(result);
       setLoading(false);
+    }).catch((err) => {
+      console.error('Failed to fetch git status:', err);
+      setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
+      setLoading(false);
     });
   }, [isOpen, cwd]);
 
@@ -366,7 +370,7 @@ function FileEntry({
 
 // --- Diff parsing and rendering ---
 
-type ParsedFileDiff = {
+export type ParsedFileDiff = {
   fileName: string;
   hunks: string[];
 };
@@ -374,8 +378,9 @@ type ParsedFileDiff = {
 /**
  * Parse a full unified diff string into per-file sections.
  * Each section has the file name and all hunk lines.
+ * The library expects each hunk string to start with @@, not contain file-level headers.
  */
-function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
+export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
   const files: ParsedFileDiff[] = [];
   const lines = rawDiff.split('\n');
   let currentFile: ParsedFileDiff | null = null;
