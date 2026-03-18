@@ -4,6 +4,10 @@ vi.mock('pid-cwd', () => ({
   default: vi.fn().mockResolvedValue('/tmp/test-cwd'),
 }))
 
+vi.mock('fs/promises', () => ({
+  readlink: vi.fn().mockResolvedValue('/tmp/test-cwd'),
+}))
+
 import { CwdPoller } from '../cwd-poller'
 import { EventBus } from '../event-bus'
 import type { PtyManager } from '../pty-manager'
@@ -34,14 +38,19 @@ describe('CwdPoller', () => {
     vi.clearAllMocks()
   })
 
-  it('uses pid-cwd instead of lsof on macOS', async () => {
+  it('resolves cwd via platform-specific method', async () => {
     const ptyManager = makeMockPtyManager('/old-cwd')
     poller = new CwdPoller(eventBus, ptyManager)
     poller.startPolling('pane-1', 999)
 
     await vi.advanceTimersByTimeAsync(5001)
 
-    expect(pidCwd).toHaveBeenCalledWith(999)
+    if (process.platform === 'darwin') {
+      expect(pidCwd).toHaveBeenCalledWith(999)
+    } else {
+      const { readlink } = await import('fs/promises')
+      expect(readlink).toHaveBeenCalledWith('/proc/999/cwd')
+    }
   })
 
   it('emits cwd-changed when cwd differs', async () => {
