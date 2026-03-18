@@ -14,6 +14,9 @@ function AdmiralTerminal({ paneId }: { paneId: string }) {
     cwd: '',
     attachOnly: true,
     isActive: true,
+    // Claude Code draws its own TUI cursor; disable xterm's hardware cursor
+    // to prevent a duplicate block cursor from appearing.
+    cursorHidden: true,
   })
   return (
     <div className="h-full w-full p-2">
@@ -37,6 +40,18 @@ export function StarCommandTab() {
 
   const [view, setView] = useState<'terminal' | 'config'>('terminal')
   const [talkFrame, setTalkFrame] = useState(false)
+  const [resetConfirm, setResetConfirm] = useState(false)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Auto-dismiss reset confirmation after 5s (Baymard: time-limited destructive states)
+  useEffect(() => {
+    if (resetConfirm) {
+      resetTimerRef.current = setTimeout(() => setResetConfirm(false), 5000)
+      return () => {
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+      }
+    }
+  }, [resetConfirm])
 
   // Oscillate talk frame while admiral is speaking
   useEffect(() => {
@@ -132,8 +147,43 @@ export function StarCommandTab() {
                 </div>
               </div>
 
-              {/* Admiral status indicator */}
-              <div className="flex items-center gap-2">
+              {/* Admiral status + reset */}
+              <div className="flex items-center gap-3">
+                {/* Two-step reset confirmation (NNG: explicit destructive action confirmation) */}
+                {resetConfirm ? (
+                  <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded-md px-2 py-1">
+                    <span className="text-[10px] text-red-300 mr-1">Delete workspace &amp; restart?</span>
+                    <button
+                      className="text-[10px] px-2 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors font-medium"
+                      onClick={() => {
+                        setResetConfirm(false)
+                        setAdmiralPty(null, 'starting')
+                        window.fleet.admiral.reset().then((paneId) => {
+                          setAdmiralPty(paneId, 'running')
+                        }).catch((err: Error) => {
+                          setAdmiralPty(null, 'stopped', err.message)
+                        })
+                      }}
+                    >
+                      Confirm
+                    </button>
+                    <button
+                      className="text-[10px] px-2 py-0.5 text-neutral-400 hover:text-neutral-200 transition-colors"
+                      onClick={() => setResetConfirm(false)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="text-[10px] text-neutral-500 hover:text-red-400 transition-colors"
+                    title="Reset Admiral workspace"
+                    onClick={() => setResetConfirm(true)}
+                  >
+                    Reset
+                  </button>
+                )}
+
                 <span
                   className={`w-2 h-2 rounded-full ${
                     admiralStatus === 'running'

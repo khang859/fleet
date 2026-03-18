@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react'
-import { drawScSprite, isScSpriteReady } from './sc-sprite-loader'
+import { drawScSprite, isScSpriteReady, loadScSpriteSheet } from './sc-sprite-loader'
 
 const HUB_SIZE = 128
 
@@ -7,6 +7,8 @@ export function StationHub() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
+    loadScSpriteSheet()
+
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -25,6 +27,13 @@ export function StationHub() {
       if (isScSpriteReady()) {
         ctx!.imageSmoothingEnabled = false
         drawScSprite(ctx!, 'station-hub', elapsed, 0, 0, HUB_SIZE, HUB_SIZE)
+      } else {
+        // Placeholder while sprite loads
+        ctx!.strokeStyle = '#0d9488'
+        ctx!.lineWidth = 1
+        ctx!.strokeRect(0.5, 0.5, HUB_SIZE - 1, HUB_SIZE - 1)
+        ctx!.fillStyle = '#0d948820'
+        ctx!.fillRect(1, 1, HUB_SIZE - 2, HUB_SIZE - 2)
       }
 
       rafId = requestAnimationFrame(frame)

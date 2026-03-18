@@ -13,6 +13,8 @@ export interface SpriteRegion {
   frames: number
   /** Milliseconds per frame (0 = static) */
   frameDuration: number
+  /** Frames per row for multi-row animations (defaults to frames if unset) */
+  framesPerRow?: number
 }
 
 export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
@@ -55,7 +57,7 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'orb-cargo': { x: 152, y: 208, w: 16, h: 16, frames: 1, frameDuration: 0 },
   'orb-teal': { x: 128, y: 208, w: 12, h: 12, frames: 1, frameDuration: 0 },
   'beacon': { x: 168, y: 208, w: 12, h: 12, frames: 2, frameDuration: 500 },
-  'station-hub': { x: 0, y: 224, w: 64, h: 64, frames: 8, frameDuration: 150 },
+  'station-hub': { x: 0, y: 224, w: 64, h: 64, frames: 32, frameDuration: 625, framesPerRow: 8 },
 }
 
 export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const

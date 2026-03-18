@@ -34,8 +34,15 @@ const SHEET_SIZE = 512
 // Row 3: y=160, h=24  | Status bar + chip sprites
 // Row 4: y=184, h=24  | Shuttle + spark + gas-puff
 // Row 5: y=208, h=16  | Explosion + dock-sparkle + thruster-flame + checkmark + orbs + beacon
-// Row 6: y=224, h=64  | Station hub rotation (8x 64x64)
+// Row 6: y=224, h=64  | Station hub rotation (32x 64x64 in 4 rows of 8)
+//   Row 6a: y=224 frames 0-7
+//   Row 6b: y=288 frames 8-15
+//   Row 6c: y=352 frames 16-23
+//   Row 6d: y=416 frames 24-31
 // ---------------------------------------------------------------------------
+
+const STATION_FRAMES = 32
+const STATION_FRAMES_PER_ROW = 8
 
 // Frame durations in ms
 const FRAME_DURATIONS: Record<string, number> = {
@@ -46,7 +53,7 @@ const FRAME_DURATIONS: Record<string, number> = {
   'dock-sparkle': 150,
   'thruster-flame': 100,
   beacon: 500,
-  'station-hub': 150,
+  'station-hub': 625,
 }
 
 // ---------------------------------------------------------------------------
@@ -54,13 +61,15 @@ const FRAME_DURATIONS: Record<string, number> = {
 // ---------------------------------------------------------------------------
 
 interface SpriteEntry {
-  src: string
+  src?: string
+  buffer?: Buffer
   w: number
   h: number
   x: number
   y: number
   atlasGroup: string
   frameIndex: number
+  framesPerRow?: number
 }
 
 interface AtlasEntry {
@@ -70,26 +79,81 @@ interface AtlasEntry {
   h: number
   frames: number
   frameDuration: number
+  framesPerRow?: number
+}
+
+// ---------------------------------------------------------------------------
+// Generate station hub rotation frames from a single source image
+// ---------------------------------------------------------------------------
+
+async function generateStationFrames(sourcePath: string, count: number): Promise<Buffer[]> {
+  // Rotate at source resolution for best quality, then downscale to 64x64
+  const source = await sharp(sourcePath).ensureAlpha().png().toBuffer()
+  const sourceMeta = await sharp(source).metadata()
+  const srcSize = sourceMeta.width! // assume square
+  const frames: Buffer[] = []
+
+  for (let i = 0; i < count; i++) {
+    const angle = (360 / count) * i
+
+    if (angle === 0) {
+      const frame = await sharp(source)
+        .resize(64, 64, { kernel: 'nearest', fit: 'fill' })
+        .ensureAlpha()
+        .png()
+        .toBuffer()
+      frames.push(frame)
+      continue
+    }
+
+    // Rotate at full resolution (canvas expands to contain rotated image)
+    const rotated = await sharp(source)
+      .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .toBuffer()
+
+    // Center-crop back to srcSize x srcSize, then resize to 64x64
+    const rotMeta = await sharp(rotated).metadata()
+    const left = Math.floor((rotMeta.width! - srcSize) / 2)
+    const top = Math.floor((rotMeta.height! - srcSize) / 2)
+
+    const frame = await sharp(rotated)
+      .extract({ left, top, width: srcSize, height: srcSize })
+      .resize(64, 64, { kernel: 'nearest', fit: 'fill' })
+      .ensureAlpha()
+      .png()
+      .toBuffer()
+
+    frames.push(frame)
+  }
+
+  return frames
 }
 
 // ---------------------------------------------------------------------------
 // Build sprite manifest
 // ---------------------------------------------------------------------------
 
-function buildManifest(): SpriteEntry[] {
+async function buildManifest(): Promise<SpriteEntry[]> {
   const entries: SpriteEntry[] = []
 
-  // ---- Row 6: Station hub rotation (y=224, h=64) ----
-  // 8 frames, 64x64 each — full rotation of the Starbase hub
-  for (let f = 0; f < 8; f++) {
+  // ---- Rows 6a-6d: Station hub rotation (y=224+, h=64) ----
+  // 32 frames auto-generated from station-hub-1.png, 8 per row across 4 rows
+  const stationFrameBuffers = await generateStationFrames(
+    join(SPRITES_RAW, 'station', 'station-hub-1.png'),
+    STATION_FRAMES,
+  )
+  for (let f = 0; f < STATION_FRAMES; f++) {
+    const row = Math.floor(f / STATION_FRAMES_PER_ROW)
+    const col = f % STATION_FRAMES_PER_ROW
     entries.push({
-      src: join(SPRITES_RAW, 'station', `station-hub-${f + 1}.png`),
+      buffer: stationFrameBuffers[f],
       w: 64,
       h: 64,
-      x: f * 64,
-      y: 224,
+      x: col * 64,
+      y: 224 + row * 64,
       atlasGroup: 'station-hub',
       frameIndex: f,
+      framesPerRow: f === 0 ? STATION_FRAMES_PER_ROW : undefined,
     })
   }
 
@@ -420,6 +484,7 @@ function buildManifest(): SpriteEntry[] {
 async function validateFiles(entries: SpriteEntry[]): Promise<string[]> {
   const missing: string[] = []
   for (const entry of entries) {
+    if (!entry.src) continue
     try {
       await access(entry.src)
     } catch {
@@ -460,14 +525,19 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
   const warnings: string[] = []
 
   for (const entry of entries) {
-    const hasAlpha = await checkTransparency(entry.src)
-    if (!hasAlpha) {
-      warnings.push(`  WARNING: ${entry.src.replace(SPRITES_RAW + '/', '')} has no alpha channel`)
+    let inputBuffer: Buffer
+
+    if (entry.buffer) {
+      inputBuffer = entry.buffer
+    } else {
+      const hasAlpha = await checkTransparency(entry.src!)
+      if (!hasAlpha) {
+        warnings.push(`  WARNING: ${entry.src!.replace(SPRITES_RAW + '/', '')} has no alpha channel`)
+      }
+      inputBuffer = await sharp(entry.src!).ensureAlpha().png().toBuffer()
     }
 
-    const cleaned = await sharp(entry.src).ensureAlpha().png().toBuffer()
-
-    const resized = await sharp(cleaned)
+    const resized = await sharp(inputBuffer)
       .resize(entry.w, entry.h, {
         kernel: 'nearest',
         fit: 'fill',
@@ -529,6 +599,7 @@ function buildAtlas(entries: SpriteEntry[]): Record<string, AtlasEntry> {
       h: first.h,
       frames: groupEntries.length,
       frameDuration: duration,
+      framesPerRow: first.framesPerRow,
     }
   }
 
@@ -552,6 +623,8 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
     '  frames: number',
     '  /** Milliseconds per frame (0 = static) */',
     '  frameDuration: number',
+    '  /** Frames per row for multi-row animations (defaults to frames if unset) */',
+    '  framesPerRow?: number',
     '}',
     '',
     'export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {',
@@ -579,7 +652,7 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
   for (const key of sortedKeys) {
     const e = atlas[key]
     lines.push(
-      `  '${key}': { x: ${e.x}, y: ${e.y}, w: ${e.w}, h: ${e.h}, frames: ${e.frames}, frameDuration: ${e.frameDuration} },`
+      `  '${key}': { x: ${e.x}, y: ${e.y}, w: ${e.w}, h: ${e.h}, frames: ${e.frames}, frameDuration: ${e.frameDuration}${e.framesPerRow !== undefined ? `, framesPerRow: ${e.framesPerRow}` : ''} },`
     )
   }
 
@@ -602,7 +675,8 @@ async function main(): Promise<void> {
   console.log('Star Command Sprite Assembly')
   console.log('============================\n')
 
-  const entries = buildManifest()
+  console.log('Generating station rotation frames...')
+  const entries = await buildManifest()
   console.log(`Expected sprites: ${entries.length}`)
 
   console.log('Validating source files...')
