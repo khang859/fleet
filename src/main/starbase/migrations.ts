@@ -133,6 +133,14 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_comms_to ON comms(to_crew, read);
       CREATE INDEX IF NOT EXISTS idx_missions_status ON missions(status, sector_id);
     `
+  },
+  {
+    version: 4,
+    name: '004-comms-dedup',
+    sql: `
+      ALTER TABLE comms ADD COLUMN repeat_count INTEGER DEFAULT 1;
+      ALTER TABLE comms ADD COLUMN last_repeated_at TEXT;
+    `
   }
 ]
 
