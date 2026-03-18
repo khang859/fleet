@@ -1,12 +1,12 @@
 import { useRef, useEffect } from 'react'
 import { useStarCommandStore } from '../../store/star-command-store'
-import { StationRing } from '../visualizer/station-ring'
-import { CrewPodRenderer } from '../visualizer/crew-pods'
-import { mapSectors, mapCrew } from './scene-utils'
-import type { SectorState } from '../visualizer/station-ring'
-import type { PodState } from '../visualizer/crew-pods'
+import { SectorOutpostRenderer } from '../visualizer/sector-outposts'
+import { ShuttleRenderer } from '../visualizer/shuttles'
+import { SignalPulseRenderer } from '../visualizer/signal-pulses'
+import { mapSectors, mapCrew, computeSectorPositions } from './scene-utils'
+import type { SectorState } from '../visualizer/sector-outposts'
+import type { PodState } from '../visualizer/shuttles'
 import { loadScSpriteSheet, isScSpriteReady, drawScSprite } from './sc-sprite-loader'
-import { CommsBeamRenderer } from '../visualizer/comms-beams'
 
 export function StarCommandScene({ className }: { className?: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -18,7 +18,6 @@ export function StarCommandScene({ className }: { className?: string }) {
   const sectorStatesRef = useRef<SectorState[]>([])
   const podStatesRef = useRef<PodState[]>([])
 
-  // Sync store data into refs without causing re-renders
   const { sectors, crewList } = useStarCommandStore()
   useEffect(() => {
     sectorStatesRef.current = mapSectors(sectors, crewList)
@@ -37,7 +36,6 @@ export function StarCommandScene({ className }: { className?: string }) {
 
     // --- Starfield ---
     type Star = { x: number; y: number; radius: number; phase: number; speed: number }
-
     const STAR_COUNT = 150
     let stars: Star[] = []
 
@@ -67,7 +65,6 @@ export function StarCommandScene({ className }: { className?: string }) {
       }
     }
 
-    // Sync canvas size to container
     const applyResize = () => {
       canvas.width = container.clientWidth
       canvas.height = container.clientHeight
@@ -79,32 +76,27 @@ export function StarCommandScene({ className }: { className?: string }) {
     }
     applyResize()
 
-    const ro = new ResizeObserver(() => {
-      // Debounce: apply resize on next RAF tick
-      pendingResizeRef.current = true
-    })
+    const ro = new ResizeObserver(() => { pendingResizeRef.current = true })
     ro.observe(container)
 
-    const stationRing = new StationRing()
-    const crewPods = new CrewPodRenderer()
-    const commsBeams = new CommsBeamRenderer()
-    let lastBeamSpawn = 0
+    // --- Renderers ---
+    const sectorOutposts = new SectorOutpostRenderer()
+    const shuttleRenderer = new ShuttleRenderer()
+    const signalPulses = new SignalPulseRenderer()
+    let lastPulseSpawn = 0
 
     let stopped = false
 
     function frame(now: number) {
       if (stopped) return
-
-      // Apply pending resize
       if (pendingResizeRef.current) applyResize()
 
       // Adaptive FPS throttle
       const hasActiveCrew = podStatesRef.current.some(
-        (p) => p.status === 'active' || p.status === 'hailing'
+        p => p.status === 'active' || p.status === 'hailing' || p.status === 'error'
       )
-      const hasBeams = commsBeams.hasActiveBeams()
-      const isActive = hasActiveCrew || hasBeams
-      const frameBudget = isActive ? 33 : 100 // 30fps vs 10fps
+      const isActive = hasActiveCrew || shuttleRenderer.hasActiveShuttles() || signalPulses.hasActivePulses()
+      const frameBudget = isActive ? 33 : 100
 
       if (now - lastFrameRef.current < frameBudget) {
         rafRef.current = requestAnimationFrame(frame)
@@ -122,7 +114,7 @@ export function StarCommandScene({ className }: { className?: string }) {
       ctx!.fillStyle = '#0a0a1a'
       ctx!.fillRect(0, 0, w, h)
 
-      // Starfield — redraw offscreen at 5fps, blit every frame
+      // Starfield
       if (now - lastStarRedraw >= 200) {
         redrawStars()
         lastStarRedraw = now
@@ -131,78 +123,39 @@ export function StarCommandScene({ className }: { className?: string }) {
 
       const cx = w / 2
       const cy = h / 2
-      const scale = Math.min(w, h) / 600 // 600 is reference size
+      const scale = Math.min(w, h) / 600
+      const outpostRadius = Math.min(w, h) * 0.42
 
-      const sectors = sectorStatesRef.current
-      const pods = podStatesRef.current
+      const currentSectors = sectorStatesRef.current
+      const currentPods = podStatesRef.current
+      const sectorPositions = computeSectorPositions(currentSectors, cx, cy, outpostRadius)
 
-      stationRing.update(sectors, deltaMs)
-      crewPods.update(pods, deltaMs)
+      // Update renderers
+      shuttleRenderer.update(currentPods, sectorPositions, cx, cy, deltaMs)
+      signalPulses.update(deltaMs)
 
-      // Register positions for comms beams
-      commsBeams.clearPositions()
-      commsBeams.setPosition('hub', cx, cy)
-
-      // Compute pod positions (same math as CrewPodRenderer)
-      const RING_RADIUS = 120 * scale
-      const POD_OFFSET = 4 * scale
-      const podRadius = RING_RADIUS - POD_OFFSET
-      const sectorCount = sectors.length
-      if (sectorCount > 0) {
-        const gapRad = (2 * Math.PI) / 180
-        const totalGap = gapRad * sectorCount
-        const arcPerSector = (Math.PI * 2 - totalGap) / sectorCount
-        const podsBySector = new Map<string, PodState[]>()
-        for (const pod of pods) {
-          const list = podsBySector.get(pod.sectorId) ?? []
-          list.push(pod)
-          podsBySector.set(pod.sectorId, list)
-        }
-        let angle = (stationRing as any).rotation as number // read private rotation field
-        for (const sector of sectors) {
-          const sectorPods = podsBySector.get(sector.id) ?? []
-          const count = sectorPods.length
-          const endAngle = angle + arcPerSector
-          for (let i = 0; i < count; i++) {
-            const t = count === 1 ? 0.5 : i / (count - 1)
-            const podAngle = angle + arcPerSector * (0.15 + t * 0.7)
-            const px = cx + Math.cos(podAngle) * podRadius
-            const py = cy + Math.sin(podAngle) * podRadius
-            commsBeams.setPosition(sectorPods[i].crewId, px, py)
-          }
-          angle = endAngle + gapRad
-        }
-      }
-
-      // Spawn beams for hailing crew every 3 seconds (before update so beams advance their first frame)
-      if (elapsed - lastBeamSpawn >= 3000) {
-        for (const pod of pods) {
+      // Spawn signal pulses every 3s for hailing crew
+      if (elapsed - lastPulseSpawn >= 3000) {
+        for (const pod of currentPods) {
           if (pod.status === 'hailing') {
-            commsBeams.addBeam(pod.crewId, 'hub', '#14b8a6')
+            const pos = shuttleRenderer.getShuttlePosition(pod.crewId)
+            if (pos) signalPulses.addPulse(pos.x, pos.y, cx, cy)
           }
         }
-        lastBeamSpawn = elapsed
+        lastPulseSpawn = elapsed
       }
 
-      commsBeams.update(deltaMs)
+      // Render layers (back to front)
+      sectorOutposts.render(ctx!, currentSectors, sectorPositions, elapsed)
+      signalPulses.render(ctx!, elapsed)
+      shuttleRenderer.render(ctx!, elapsed)
 
-      // Scale context for ring and pods
-      ctx!.save()
-      ctx!.translate(cx, cy)
-      ctx!.scale(scale, scale)
-      ctx!.translate(-cx, -cy)
-      stationRing.render(ctx!, cx, cy)
-      crewPods.render(ctx!, cx, cy, stationRing)
-      ctx!.restore()
-
-      // Station hub sprite (centered, drawn on top of ring)
+      // Hub sprite on top
       if (isScSpriteReady()) {
         const hubSize = 128 * scale
         ctx!.imageSmoothingEnabled = false
         drawScSprite(ctx!, 'station-hub', elapsed, cx - hubSize / 2, cy - hubSize / 2, hubSize, hubSize)
       }
-
-      commsBeams.render(ctx!, cx, cy)
 
       rafRef.current = requestAnimationFrame(frame)
     }
@@ -213,14 +166,11 @@ export function StarCommandScene({ className }: { className?: string }) {
         cancelAnimationFrame(rafRef.current)
       } else {
         stopped = false
-        lastFrameRef.current = 0 // reset to avoid deltaMs spike
+        lastFrameRef.current = 0
         rafRef.current = requestAnimationFrame(frame)
       }
     }
-    const handleBlur = () => {
-      stopped = true
-      cancelAnimationFrame(rafRef.current)
-    }
+    const handleBlur = () => { stopped = true; cancelAnimationFrame(rafRef.current) }
     const handleFocus = () => {
       if (!stopped) return
       stopped = false
@@ -231,7 +181,6 @@ export function StarCommandScene({ className }: { className?: string }) {
     document.addEventListener('visibilitychange', handleVisibility)
     window.addEventListener('blur', handleBlur)
     window.addEventListener('focus', handleFocus)
-
     rafRef.current = requestAnimationFrame(frame)
 
     return () => {
