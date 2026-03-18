@@ -95,7 +95,6 @@ export function StarCommandTab() {
   const [input, setInput] = useState('')
   const [view, setView] = useState<'chat' | 'config'>('chat')
   const [talkFrame, setTalkFrame] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // Oscillate between speaking and default while streaming to simulate talking
   useEffect(() => {
@@ -211,8 +210,7 @@ export function StarCommandTab() {
 
   return (
     <div className="h-full flex">
-      {/* Chat panel wrapped in CRT frame — collapsed by default */}
-      {sidebarOpen && (
+      {/* Chat panel wrapped in CRT frame */}
       <CrtFrame>
         <div className="flex flex-1 min-h-0 min-w-0">
           {/* Chat column */}
@@ -248,13 +246,6 @@ export function StarCommandTab() {
                 </button>
               </div>
             </div>
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="text-neutral-500 hover:text-neutral-300 transition-colors px-1"
-              title="Collapse sidebar"
-            >
-              &#x2039;
-            </button>
           </div>
 
           {view === 'config' ? (
@@ -327,20 +318,8 @@ export function StarCommandTab() {
           </div>{/* end chat column */}
         </div>{/* end flex row */}
       </CrtFrame>
-      )}
 
-      <div className="relative flex-1 min-w-0">
-        <StarCommandScene className="absolute inset-0" />
-        {!sidebarOpen && (
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="absolute top-3 left-3 z-10 px-2 py-1 text-xs font-mono text-teal-400 border border-teal-800 bg-black/60 hover:bg-teal-900/40 hover:border-teal-600 hover:text-teal-300 rounded transition-colors"
-            title="Open Star Command"
-          >
-            &#x203A; HQ
-          </button>
-        )}
-      </div>
+      <StarCommandScene className="flex-1 min-w-[280px]" />
     </div>
   )
 }

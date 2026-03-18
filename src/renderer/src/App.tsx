@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
@@ -34,10 +34,23 @@ export function App() {
   const [showUndoToast, setShowUndoToast] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [sidebarManualOpen, setSidebarManualOpen] = useState(false)
+
   const { workspace, activeTabId, activePaneId, setActivePane, addTab, lastClosedTab, undoCloseTab } =
     useWorkspaceStore();
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => activePaneId ? s.cwds.get(activePaneId) : undefined);
+
+  const isStarCommand = useMemo(
+    () => workspace.tabs.find((t) => t.id === activeTabId)?.type === 'star-command',
+    [workspace.tabs, activeTabId]
+  )
+  const showSidebar = !isStarCommand || sidebarManualOpen
+
+  // Reset manual override when leaving star-command
+  useEffect(() => {
+    if (!isStarCommand) setSidebarManualOpen(false)
+  }, [isStarCommand])
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -198,14 +211,25 @@ export function App() {
 
   return (
     <div className="flex h-screen w-screen bg-neutral-950 text-white overflow-hidden">
-      <Sidebar updateReady={updateReady} />
-      <div className="flex-1 min-w-0 h-full flex flex-col">
+      {showSidebar && <Sidebar updateReady={updateReady} />}
+      <div className="flex-1 min-w-0 h-full flex flex-col relative">
       <main className="flex-1 min-w-0 relative overflow-hidden">
         {/* Top drag region for window movement */}
         <div
           className="absolute top-0 left-0 right-0 h-8 z-10"
           style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         />
+        {/* Sidebar toggle — only visible in star-command with sidebar hidden */}
+        {isStarCommand && !sidebarManualOpen && (
+          <button
+            onClick={() => setSidebarManualOpen(true)}
+            className="absolute top-10 left-2 z-20 px-2 py-1 text-xs text-neutral-400 hover:text-neutral-200 border border-neutral-700 hover:border-neutral-500 bg-neutral-900/80 rounded transition-colors"
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+            title="Show sidebar"
+          >
+            ☰
+          </button>
+        )}
         {workspace.tabs.length > 0 ? (
           workspace.tabs.map((tab) => {
             const serializedPanes = restoredPanesRef.current.get(tab.id);
