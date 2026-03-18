@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { runReconciliation } from '../starbase/reconciliation';
-import { rmSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, rmSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -166,5 +166,47 @@ describe('runReconciliation', () => {
     expect(summary.lostCrew).not.toContain('crew-done');
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-done') as { status: string };
     expect(crew.status).toBe('complete');
+  });
+
+  it('should remove a lingering worktree for errored crew without a push-pending mission', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+
+    const worktreeDir = join(TEST_DIR, 'worktrees', starbaseDb.getStarbaseId(), 'crew-errored');
+    mkdirSync(worktreeDir, { recursive: true });
+    writeFileSync(join(worktreeDir, 'leftover.ts'), '// orphan');
+
+    insertCrew({ id: 'crew-errored', sectorId: 'api', status: 'error', worktreePath: worktreeDir });
+    insertMission({ sectorId: 'api', status: 'failed', crewId: 'crew-errored' });
+
+    const summary = await runReconciliation({
+      db: getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+    });
+
+    expect(summary.cleanedErroredCrew).toContain('crew-errored');
+    expect(existsSync(worktreeDir)).toBe(false);
+  });
+
+  it('should NOT remove a worktree for errored crew with a push-pending mission', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+
+    const worktreeDir = join(TEST_DIR, 'worktrees', starbaseDb.getStarbaseId(), 'crew-push-pending');
+    mkdirSync(worktreeDir, { recursive: true });
+    writeFileSync(join(worktreeDir, 'leftover.ts'), '// needs push');
+
+    insertCrew({ id: 'crew-push-pending', sectorId: 'api', status: 'error', worktreePath: worktreeDir });
+    insertMission({ sectorId: 'api', status: 'push-pending', crewId: 'crew-push-pending' });
+
+    const summary = await runReconciliation({
+      db: getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+    });
+
+    expect(summary.cleanedErroredCrew).not.toContain('crew-push-pending');
+    expect(existsSync(worktreeDir)).toBe(true);
   });
 });

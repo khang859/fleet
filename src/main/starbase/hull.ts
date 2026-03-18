@@ -276,17 +276,37 @@ export class Hull {
     if (this.process) {
       // Graceful: close stdin so Claude finishes current turn then exits
       try { this.process.stdin?.end() } catch { /* ignore */ }
-      // Force kill after 5s if still alive
+      // Force kill after 5s if still alive, escalate to SIGKILL after 10s
       const proc = this.process
-      setTimeout(() => {
-        if (proc && !proc.killed) {
-          proc.kill('SIGTERM')
+      const sigterm = setTimeout(() => {
+        if (!proc.killed) {
+          try { proc.kill('SIGTERM') } catch { /* already dead */ }
         }
       }, 5000)
+      const sigkill = setTimeout(() => {
+        if (!proc.killed) {
+          try { proc.kill('SIGKILL') } catch { /* already dead */ }
+        }
+      }, 10000)
+      proc.once('exit', () => {
+        clearTimeout(sigterm)
+        clearTimeout(sigkill)
+      })
     }
     this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
       console.error('[hull] cleanup error:', err)
     })
+  }
+
+  /** Immediately kill the process (app shutdown — no graceful wait). */
+  forceKill(): void {
+    if (this.lifesignTimer) clearInterval(this.lifesignTimer)
+    if (this.timeoutTimer) clearTimeout(this.timeoutTimer)
+    if (this.process && !this.process.killed) {
+      try { this.process.kill('SIGKILL') } catch { /* already dead */ }
+    }
+    this.process = null
+    this.status = 'aborted'
   }
 
   getStatus(): HullStatus {

@@ -181,7 +181,27 @@ export class CrewService {
       hull.kill();
       this.hulls.delete(crewId);
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      return;
     }
+
+    // Hull not in memory (post-restart recall): update DB record directly.
+    const TERMINAL_STATUSES = ['error', 'complete', 'timeout', 'lost', 'aborted', 'dismissed'];
+    const row = this.deps.db.prepare('SELECT status FROM crew WHERE id = ?').get(crewId) as
+      | { status: string }
+      | undefined;
+    if (!row) return;
+
+    if (TERMINAL_STATUSES.includes(row.status)) {
+      this.deps.db
+        .prepare("UPDATE crew SET status = 'dismissed', updated_at = datetime('now') WHERE id = ?")
+        .run(crewId);
+    } else {
+      // Active crew with no hull is an inconsistent state — mark as lost
+      this.deps.db
+        .prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?")
+        .run(crewId);
+    }
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   /**
@@ -230,6 +250,18 @@ export class CrewService {
          LIMIT 1`,
       )
       .get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+  }
+
+  /** Immediately kill all active Hull processes (app shutdown). */
+  shutdown(): void {
+    for (const [crewId, hull] of this.hulls) {
+      try {
+        hull.forceKill();
+      } catch {
+        // Best-effort during shutdown
+      }
+      this.hulls.delete(crewId);
+    }
   }
 
   /** Auto-deploy next queued mission if worktree slots are available */

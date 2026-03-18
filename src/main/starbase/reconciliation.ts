@@ -17,6 +17,7 @@ type ReconciliationSummary = {
   orphanedWorktrees: string[];
   retriedPushes: number[];
   requeuedMissions: number[];
+  cleanedErroredCrew: string[];
 };
 
 type CrewRow = {
@@ -37,6 +38,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     orphanedWorktrees: [],
     retriedPushes: [],
     requeuedMissions: [],
+    cleanedErroredCrew: [],
   };
 
   // 1. Query all active crew
@@ -142,7 +144,36 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     }
   }
 
-  // 9. Return summary
+  // 9. Clean up errored crew whose worktrees are still on disk but mission is not push-pending
+  const erroredCrew = db
+    .prepare(
+      `SELECT c.id, c.worktree_path, c.sector_id
+       FROM crew c
+       WHERE c.status IN ('error', 'timeout')
+         AND c.worktree_path IS NOT NULL`,
+    )
+    .all() as { id: string; worktree_path: string; sector_id: string }[];
+
+  for (const crew of erroredCrew) {
+    if (!existsSync(crew.worktree_path)) continue;
+
+    // Skip if there is a push-pending mission — worktree needed for push retry
+    const hasPushPending = db
+      .prepare(
+        "SELECT 1 FROM missions WHERE crew_id = ? AND status = 'push-pending' LIMIT 1",
+      )
+      .get(crew.id);
+    if (hasPushPending) continue;
+
+    try {
+      rmSync(crew.worktree_path, { recursive: true, force: true });
+      summary.cleanedErroredCrew.push(crew.id);
+    } catch {
+      console.error(`[reconciliation] Failed to remove errored crew worktree: ${crew.worktree_path}`);
+    }
+  }
+
+  // 10. Return summary
   return summary;
 }
 
