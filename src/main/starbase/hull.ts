@@ -448,8 +448,8 @@ export class Hull {
         }
       }
 
-      // Notify completion for auto-deploy
-      if (this.opts.onComplete) {
+      // Notify completion for auto-deploy (skip if recalled — don't auto-deploy next)
+      if (this.opts.onComplete && this.status !== 'aborted') {
         try {
           this.opts.onComplete()
         } catch {
