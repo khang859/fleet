@@ -5,6 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type { PtyManager } from '../pty-manager'
 import { inferCommitType, deriveSummary, formatCommitMessage, formatCommitSubject } from './conventional-commits'
+import { generateSkillMd } from './workspace-templates'
 
 export type HullOpts = {
   crewId: string
@@ -22,6 +23,14 @@ export type HullOpts = {
   verifyCommand?: string
   lintCommand?: string
   reviewMode?: string
+  /** Claude model override (default: claude-sonnet-4-6) */
+  model?: string
+  /** Custom system prompt for the agent session */
+  systemPrompt?: string
+  /** Comma-separated allowed tools (e.g. "Read,Edit,Bash") */
+  allowedTools?: string
+  /** Path to an MCP config JSON file */
+  mcpConfig?: string
   onComplete?: () => void
   /** Environment variables for the PTY (enriched PATH so `claude` is found). */
   env?: Record<string, string>
@@ -104,6 +113,15 @@ export class Hull {
       timeoutMin * 60 * 1000
     )
 
+    // Set up Fleet skill in worktree so crew agents can use the fleet CLI
+    try {
+      const skillDir = join(worktreePath, '.claude', 'skills', 'fleet')
+      mkdirSync(skillDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), generateSkillMd(), 'utf-8')
+    } catch {
+      // Non-fatal — crew can still work without the skill
+    }
+
     // Spawn agent PTY
     try {
       // Write prompt to a temp file to avoid shell escaping issues with complex prompts.
@@ -114,10 +132,30 @@ export class Hull {
       writeFileSync(promptFile, prompt, 'utf-8')
       this.promptFile = promptFile
 
+      const model = this.opts.model || 'claude-sonnet-4-6'
+      const cmdParts = [
+        'claude',
+        '--dangerously-skip-permissions',
+        `--model ${model}`
+      ]
+      if (this.opts.systemPrompt) {
+        // Append to default prompt so Claude Code retains its built-in tool instructions
+        const spFile = join(promptDir, `${crewId}-system-prompt.md`)
+        writeFileSync(spFile, this.opts.systemPrompt, 'utf-8')
+        cmdParts.push(`--append-system-prompt-file "${spFile}"`)
+      }
+      if (this.opts.allowedTools) {
+        cmdParts.push(`--allowedTools "${this.opts.allowedTools}"`)
+      }
+      if (this.opts.mcpConfig) {
+        cmdParts.push(`--mcp-config "${this.opts.mcpConfig}"`)
+      }
+      cmdParts.push(`-p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`)
+
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --dangerously-skip-permissions --model claude-sonnet-4-6 -p "Read and execute the mission prompt in ${promptFile}. Delete the file when done."`,
+        cmd: cmdParts.join(' '),
         env: this.opts.env
       })
       this.pid = result.pid
@@ -200,9 +238,12 @@ export class Hull {
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
 
-    // Clean up prompt file
+    // Clean up prompt file and system prompt file
     if (this.promptFile) {
       try { unlinkSync(this.promptFile) } catch { /* may already be deleted by agent */ }
+      // Also clean up companion system-prompt file if it exists
+      const spFile = this.promptFile.replace(`${this.opts.crewId}.md`, `${this.opts.crewId}-system-prompt.md`)
+      try { unlinkSync(spFile) } catch { /* may not exist */ }
       this.promptFile = null
     }
 

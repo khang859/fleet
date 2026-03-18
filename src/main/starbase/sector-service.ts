@@ -22,6 +22,10 @@ type SectorRow = {
   lint_command: string | null;
   review_mode: string;
   worktree_enabled: number;
+  model: string | null;
+  system_prompt: string | null;
+  allowed_tools: string | null;
+  mcp_config: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -43,6 +47,10 @@ type UpdateSectorFields = {
   lint_command?: string | null;
   review_mode?: string;
   worktree_enabled?: boolean;
+  model?: string | null;
+  system_prompt?: string | null;
+  allowed_tools?: string | null;
+  mcp_config?: string | null;
 };
 
 export class SectorService {
