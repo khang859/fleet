@@ -2,6 +2,8 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import { loadScSpriteSheet } from './star-command/sc-sprite-loader'
 import { useStarCommandStore } from '../store/star-command-store'
 import { StarCommandConfig } from './StarCommandConfig'
+import { CommsPanel } from './star-command/CommsPanel'
+import { CrewPanel } from './star-command/CrewPanel'
 import { CrtFrame } from './star-command/CrtFrame'
 import { Avatar } from './star-command/Avatar'
 import { AdmiralSidebar } from './star-command/AdmiralSidebar'
@@ -36,11 +38,12 @@ export function StarCommandTab() {
     setMissionQueue,
     setSectors,
     setUnreadCount,
+    unreadCount,
     admiralAvatarState,
     setAdmiralState,
   } = useStarCommandStore()
 
-  const [view, setView] = useState<'terminal' | 'config'>('terminal')
+  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew'>('terminal')
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -161,6 +164,31 @@ export function StarCommandTab() {
                   >
                     Config
                   </button>
+                  <button
+                    className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                      view === 'comms'
+                        ? 'bg-neutral-700 text-neutral-200'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    onClick={() => setView('comms')}
+                  >
+                    Comms
+                    {unreadCount > 0 && (
+                      <span className="ml-1 text-[10px] bg-teal-600 text-white rounded-full px-1">
+                        {unreadCount > 9 ? '9+' : unreadCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                      view === 'crew'
+                        ? 'bg-neutral-700 text-neutral-200'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    onClick={() => setView('crew')}
+                  >
+                    Crew
+                  </button>
                 </div>
               </div>
 
@@ -218,6 +246,10 @@ export function StarCommandTab() {
 
             {view === 'config' ? (
               <StarCommandConfig />
+            ) : view === 'comms' ? (
+              <CommsPanel />
+            ) : view === 'crew' ? (
+              <CrewPanel />
             ) : (
               <div className="flex-1 relative min-h-0">
                 {/* Admiral terminal */}

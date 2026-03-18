@@ -116,6 +116,28 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MISSIONS, filter),
     getUnreadComms: (): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
+    listComms: (opts?: unknown): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_COMMS, opts),
+    markCommsRead: (id: number): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, { id }),
+    resolveComms: (id: number, response: string): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, { id, response }),
+    deleteComms: (id: number): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_DELETE_COMMS, { id }),
+    markAllCommsRead: (): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ),
+    clearComms: (): Promise<number> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CLEAR_COMMS),
+    deployCrew: (opts: unknown): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_DEPLOY, opts),
+    recallCrew: (crewId: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RECALL, { crewId }),
+    observeCrew: (crewId: string): Promise<string> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_OBSERVE, { crewId }),
+    messageCrew: (crewId: string, message: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MESSAGE_CREW, { crewId, message }),
+    addMission: (req: unknown): Promise<unknown> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_MISSION, req),
     onStatusUpdate: (callback: (payload: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.STARBASE_STATUS_UPDATE, handler)

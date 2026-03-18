@@ -24,6 +24,19 @@ export type SectorInfo = {
   stack: string | null;
 };
 
+export type CommInfo = {
+  id: number;
+  from_crew: string | null;
+  to_crew: string | null;
+  thread_id: string | null;
+  in_reply_to: number | null;
+  type: string;
+  payload: string;
+  read: number;
+  repeat_count: number;
+  created_at: string;
+};
+
 type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
 
 type StarCommandStore = {
@@ -37,6 +50,7 @@ type StarCommandStore = {
   missionQueue: MissionInfo[];
   sectors: SectorInfo[];
   unreadCount: number;
+  commsList: CommInfo[];
 
   // Visual state
   admiralAvatarState: AdmiralAvatarState;
@@ -48,6 +62,7 @@ type StarCommandStore = {
   setMissionQueue: (missions: MissionInfo[]) => void;
   setSectors: (sectors: SectorInfo[]) => void;
   setUnreadCount: (count: number) => void;
+  setCommsList: (comms: CommInfo[]) => void;
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
   setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
 };
@@ -60,6 +75,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   missionQueue: [],
   sectors: [],
   unreadCount: 0,
+  commsList: [],
   admiralAvatarState: 'standby',
   admiralStatusText: 'Standing by',
 
@@ -68,6 +84,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
+  setCommsList: (comms) => set({ commsList: comms }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
   setAdmiralState: (state, statusText) => set({ admiralAvatarState: state, admiralStatusText: statusText }),
 }));

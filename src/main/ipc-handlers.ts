@@ -245,6 +245,24 @@ export function registerIpcHandlers(
     ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, () => {
       return commsService.getUnread('admiral')
     })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_COMMS, (_e, opts?) => {
+      return commsService.getRecent(opts)
+    })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, (_e, { id }) => {
+      return commsService.markRead(id)
+    })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, (_e, { id, response }) => {
+      return commsService.resolve(id, response)
+    })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, (_e, { id }) => {
+      return commsService.delete(id)
+    })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ, () => {
+      return commsService.markAllRead()
+    })
+    ipcMain.handle(IPC_CHANNELS.STARBASE_CLEAR_COMMS, () => {
+      return commsService.clear()
+    })
   }
 
   // Phase 5: Supply routes, cargo, retention handlers
