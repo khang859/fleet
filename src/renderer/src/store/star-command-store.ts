@@ -40,6 +40,7 @@ type StarCommandStore = {
 
   // Visual state
   admiralAvatarState: AdmiralAvatarState;
+  admiralStatusText: string;
 
   // Actions
   setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null) => void;
@@ -48,6 +49,7 @@ type StarCommandStore = {
   setSectors: (sectors: SectorInfo[]) => void;
   setUnreadCount: (count: number) => void;
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
+  setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set) => ({
@@ -59,6 +61,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   sectors: [],
   unreadCount: 0,
   admiralAvatarState: 'standby',
+  admiralStatusText: 'Standing by',
 
   setAdmiralPty: (paneId, status, error = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error }),
   setCrewList: (crew) => set({ crewList: crew }),
@@ -66,4 +69,5 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
+  setAdmiralState: (state, statusText) => set({ admiralAvatarState: state, admiralStatusText: statusText }),
 }));
