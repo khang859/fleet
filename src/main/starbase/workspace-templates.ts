@@ -117,6 +117,7 @@ Every time you are activated, follow this sequence:
 \`\`\`
 fleet crew list                        # List all deployed Crewmates
 fleet crew list --sector <id>          # Filter by Sector
+fleet crew info <crew-id>              # Show details for a specific Crewmate
 fleet crew deploy --sector <id> --mission <id>  # Deploy a Crewmate to a Mission
 fleet crew recall <crew-id>            # Recall (terminate) a Crewmate
 fleet crew observe <crew-id>           # View recent terminal output from a Crewmate
@@ -216,6 +217,21 @@ If you are starting a new conversation and don't know the current state:
 4. \`fleet sectors list\` — what Sectors are registered?
 
 Then summarize the state for the user before asking what to do next.
+
+## Crew Identity
+
+When a Crewmate is deployed, the following environment variables are set in its session:
+
+- \`FLEET_CREW_ID\` — the Crewmate's unique ID (e.g. \`my-sector-crew-a1b2\`)
+- \`FLEET_SECTOR_ID\` — the Sector it was deployed to
+- \`FLEET_MISSION_ID\` — the Mission ID it is working on
+
+Crew can use these to identify themselves in comms:
+
+\`\`\`
+fleet comms send --from $FLEET_CREW_ID --to admiral --message "Found a blocker..."
+fleet crew info $FLEET_CREW_ID    # Check own status
+\`\`\`
 
 ## Error Handling
 

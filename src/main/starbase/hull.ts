@@ -156,7 +156,12 @@ export class Hull {
         paneId,
         cwd: worktreePath,
         cmd: cmdParts.join(' '),
-        env: this.opts.env
+        env: {
+          ...this.opts.env,
+          FLEET_CREW_ID: crewId,
+          FLEET_SECTOR_ID: this.opts.sectorId,
+          FLEET_MISSION_ID: String(this.opts.missionId)
+        }
       })
       this.pid = result.pid
       ptyManager.protect(paneId)

@@ -254,6 +254,11 @@ export class SocketServer extends EventEmitter {
         return null;
       }
 
+      case 'crew.info': {
+        const id = (args.id ?? args.crewId) as string;
+        return crewService.getCrewStatus(id);
+      }
+
       case 'crew.observe': {
         const id = (args.id ?? args.crewId) as string;
         const raw = crewService.observeCrew(id);
@@ -275,7 +280,7 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.send': {
         const id = commsService.send({
-          from: 'admiral',
+          from: (args.from ?? 'admiral') as string,
           to: args.to as string,
           type: (args.type ?? 'directive') as string,
           payload: (args.message ?? args.payload ?? '') as string,
