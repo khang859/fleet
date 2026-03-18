@@ -2,7 +2,7 @@ import { type ReactNode, useState, useEffect } from 'react'
 import { getScSpriteSheetUrl, getScTileUrl, isScSpriteReady } from './sc-sprite-loader'
 import { SC_SPRITE_ATLAS } from './sc-sprite-atlas'
 
-type CrtFrameProps = { children: ReactNode }
+type CrtFrameProps = { children: ReactNode; className?: string }
 
 /**
  * NOTE on tiling: CSS background-repeat tiles the ENTIRE background image,
@@ -39,7 +39,7 @@ function SpriteDiv({
   )
 }
 
-export function CrtFrame({ children }: CrtFrameProps) {
+export function CrtFrame({ children, className }: CrtFrameProps) {
   const [ready, setReady] = useState(isScSpriteReady())
   useEffect(() => {
     if (ready) return
@@ -60,7 +60,7 @@ export function CrtFrame({ children }: CrtFrameProps) {
   const scanlineUrl = ready ? getScTileUrl('crt-scanline') : ''
 
   return (
-    <div className="flex flex-col h-full relative">
+    <div className={`flex flex-col h-full relative ${className ?? ''}`}>
       {/* Top edge: corner-tl + repeating edge-h + corner-tr */}
       <div className="flex flex-shrink-0">
         <SpriteDiv spriteKey="crt-corner-tl" />
