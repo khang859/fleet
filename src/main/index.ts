@@ -33,6 +33,7 @@ import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
 import { RetentionService } from './starbase/retention-service'
+import { installFleetCLI } from './install-fleet-cli'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 
@@ -120,7 +121,7 @@ function createWindow(): void {
 
 app.setName('Fleet')
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
     const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png')
@@ -224,7 +225,11 @@ app.whenReady().then(() => {
     })
 
     // Admiral Process
-    const fleetBinPath = join(homedir(), '.fleet', 'bin')
+    // Install fleet CLI binary so it's available on the Admiral's PATH
+    const fleetBinPath = await installFleetCLI().catch((err) => {
+      console.error('[fleet-cli] Failed to install CLI binary:', err)
+      return join(homedir(), '.fleet', 'bin')
+    })
     const starbaseId = starbaseDb.getStarbaseId()
     const admiralWorkspace = join(homedir(), '.fleet', 'starbases', `starbase-${starbaseId}`, 'admiral')
     const starbaseName = (configService.get('starbase_name') as string | undefined) ?? basename(workspacePath)
