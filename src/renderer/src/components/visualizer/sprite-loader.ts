@@ -27,12 +27,10 @@ export function getSpriteSheet(): HTMLImageElement | null {
 const tintCache = new Map<string, CanvasImageSource>();
 const TINT_CANVAS_SIZE = 64; // max sprite dimension we need to tint
 let tintCanvas: OffscreenCanvas | null = null;
-let tintCtx: OffscreenCanvasRenderingContext2D | null = null;
 
 function ensureTintCanvas(): void {
   if (!tintCanvas) {
     tintCanvas = new OffscreenCanvas(TINT_CANVAS_SIZE, TINT_CANVAS_SIZE);
-    tintCtx = tintCanvas.getContext('2d')!;
   }
 }
 
@@ -49,7 +47,6 @@ function getTintedFrame(
   if (cached) return cached;
 
   ensureTintCanvas();
-  const tc = tintCtx!;
 
   // Create a result canvas sized to the sprite
   const result = new OffscreenCanvas(region.w, region.h);

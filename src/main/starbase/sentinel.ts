@@ -153,9 +153,6 @@ export class Sentinel {
     }
 
     try {
-      const worktreeBase = this.deps.db
-        .prepare("SELECT value FROM starbase_config WHERE key = 'worktree_disk_budget_gb'")
-        .get();
       // Use home dir worktrees path
       const homePath = process.env.HOME ?? '~';
       const worktreePath = `${homePath}/.fleet/worktrees`;

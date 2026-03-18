@@ -357,10 +357,6 @@ app.whenReady().then(async () => {
   }
 
 
-  // Note: socketApi is no longer started — SocketServer (new command dispatcher)
-  // owns the SOCKET_PATH. socketApi.broadcastEvent calls are kept temporarily as
-  // no-ops and will be removed in Task 8 (Delete Old Admiral Code).
-
   // Wire JSONL watcher to agent state tracker
   // Maps JSONL sessionId → Fleet paneId
   const sessionToPaneMap = new Map<string, string>()
@@ -403,19 +399,13 @@ app.whenReady().then(async () => {
 
   jsonlWatcher.start()
 
-  // Forward agent state changes to renderer and socket API
-  eventBus.on('agent-state-change', (event) => {
+  // Forward agent state changes to renderer
+  eventBus.on('agent-state-change', (_event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.AGENT_STATE, {
         states: agentTracker.getAllStates()
       })
     }
-
-    socketApi.broadcastEvent('agent-state-change', {
-      paneId: event.paneId,
-      state: event.state,
-      tool: event.tool
-    })
   })
 
   // Clean up session mapping and CWD polling when panes close
@@ -450,27 +440,6 @@ app.whenReady().then(async () => {
         timestamp: event.timestamp
       })
     }
-  })
-
-  // Broadcast events to socket subscribers
-  eventBus.on('notification', (event) => {
-    socketApi.broadcastEvent('notification', {
-      paneId: event.paneId,
-      level: event.level,
-      timestamp: event.timestamp
-    })
-  })
-
-  eventBus.on('pane-created', (event) => {
-    socketApi.broadcastEvent('pane-created', { paneId: event.paneId })
-  })
-
-  eventBus.on('pane-closed', (event) => {
-    socketApi.broadcastEvent('pane-closed', { paneId: event.paneId })
-  })
-
-  eventBus.on('workspace-loaded', (event) => {
-    socketApi.broadcastEvent('workspace-loaded', { workspaceId: event.workspaceId })
   })
 
   // Emit notification on PTY exit

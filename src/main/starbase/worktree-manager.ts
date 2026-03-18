@@ -188,7 +188,7 @@ export class WorktreeManager {
   }
 
   /** Get a pooled worktree path for the given starbase */
-  getPooled(starbaseId: string): string | null {
+  getPooled(_starbaseId: string): string | null {
     if (!this.db) return null;
     const row = this.db
       .prepare(
