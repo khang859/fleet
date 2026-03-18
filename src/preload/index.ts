@@ -148,6 +148,8 @@ const fleetApi = {
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
+  showFolderPicker: (): Promise<string | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
   // This bridge remains for backwards compatibility but will not fire for new deployments.

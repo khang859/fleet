@@ -435,6 +435,15 @@ function SectorsSection() {
             placeholder="Path to project directory"
             className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
           />
+          <button
+            onClick={async () => {
+              const path = await window.fleet.showFolderPicker()
+              if (path) setAddPath(path)
+            }}
+            className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs font-medium rounded transition-colors"
+          >
+            Browse
+          </button>
           <input
             type="text"
             value={addName}
