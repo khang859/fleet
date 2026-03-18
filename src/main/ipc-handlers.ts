@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow } from 'electron'
+import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { IPC_CHANNELS } from '../shared/constants'
 import type {
   PtyCreateRequest,
@@ -285,4 +285,13 @@ export function registerIpcHandlers(
       retentionService.vacuum()
     })
   }
+
+  // Folder picker
+  ipcMain.handle(IPC_CHANNELS.SHOW_FOLDER_PICKER, async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openDirectory']
+    })
+    return result.canceled ? null : result.filePaths[0]
+  })
 }
