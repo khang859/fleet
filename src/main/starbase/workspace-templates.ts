@@ -256,15 +256,35 @@ fleet comms send --from $FLEET_CREW_ID --to admiral --type awaiting_feedback --m
 
 The Admiral will respond by injecting a follow-up instruction into your session.
 
+## Sentinel Alerts
+
+The Starbase Sentinel is an automated watchdog that monitors system and crew health. It sends comms directly to the Admiral when it detects problems. These arrive in your inbox alongside normal Crew transmissions. Sentinel comms have no \`from_crew\` — they come from the system, not a Crewmate.
+
+**Sentinel comms types and what to do:**
+
+| Type | Meaning | Action |
+|------|---------|--------|
+| \`lifesign_lost\` | A Crew stopped sending lifesigns (stalled or crashed) | Check \`fleet crew info <crew-id>\`, then recall and redeploy or investigate |
+| \`sector_path_missing\` | A registered Sector path no longer exists on disk | Alert the user — the Sector may need to be re-added or the path restored |
+| \`disk_warning\` | Worktree disk usage has exceeded 90% of the configured budget | Alert the user to free disk space or increase the budget in app settings |
+| \`memory_warning\` | System available memory is critically low (<0.5 GB) or low (<1 GB) | Alert the user — consider recalling Crew to free memory |
+
+**Example response for \`lifesign_lost\`:**
+\`\`\`
+fleet crew info <crew-id>      # Check last known status
+fleet crew recall <crew-id>    # Recall if stuck
+\`\`\`
+
 ## Handling Comms
 
 When you find unread transmissions:
 
 1. Read each one carefully
-2. For **hailing** (question from Crew): reply with \`fleet comms resolve <id> --response "..."\`
-3. For **status** (progress update): acknowledge and mark read
-4. For **blocker**: assess if you can unblock via another Mission or need to ask the user
-5. Report a summary to the user if anything requires their attention
+2. For **sentinel alerts** (no from_crew, type is \`lifesign_lost\`, \`sector_path_missing\`, \`disk_warning\`, or \`memory_warning\`): see the Sentinel Alerts section above
+3. For **hailing** (question from Crew): reply with \`fleet comms resolve <id> --response "..."\`
+4. For **status** (progress update): acknowledge and mark read
+5. For **blocker**: assess if you can unblock via another Mission or need to ask the user
+6. Report a summary to the user if anything requires their attention
 
 ## PR Review Workflow
 
