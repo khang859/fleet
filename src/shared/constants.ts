@@ -72,6 +72,8 @@ export const IPC_CHANNELS = {
   MEMO_READ: 'memo:read',
   MEMO_DISMISS: 'memo:dismiss',
   MEMO_CONTENT: 'memo:content',
+  FOCUS_COMMS: 'fleet:focus-comms',
+  FOCUS_FIRST_OFFICER: 'fleet:focus-first-officer',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

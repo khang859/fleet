@@ -24,6 +24,7 @@ type SentinelDeps = {
   firstOfficer?: FirstOfficer;
   crewService?: CrewService;
   settingsStore?: SettingsStore;
+  onNudgeClick?: () => void;
 };
 
 type CrewRow = {
@@ -394,6 +395,9 @@ export class Sentinel {
             const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
             const body = `${staleComms.length} unread transmission${staleComms.length > 1 ? 's' : ''} from ${uniqueCrews.size} crew${uniqueCrews.size > 1 ? 's' : ''}`;
             const notif = new Notification({ title: 'Fleet', body });
+            if (this.deps.onNudgeClick) {
+              notif.on('click', this.deps.onNudgeClick);
+            }
             notif.show();
             this.lastNudgeAt = now;
           }

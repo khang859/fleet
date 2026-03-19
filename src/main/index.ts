@@ -356,6 +356,10 @@ app.whenReady().then(async () => {
       return startAdmiralAndWire()
     })
 
+    // Seed notification counters to avoid spurious notifications for pre-existing unread items
+    lastUnreadCommsCount = commsService!.getUnread('admiral').length
+    lastUnreadMemosCount = memoService.getUnreadCount()
+
     // Push status updates to renderer whenever starbase data changes
     eventBus.on('starbase-changed', () => {
       const w = mainWindow
@@ -389,7 +393,7 @@ app.whenReady().then(async () => {
           notif.on('click', () => {
             mainWindow?.show()
             mainWindow?.focus()
-            mainWindow?.webContents.send('fleet:focus-comms')
+            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
           })
           notif.show()
         }
@@ -404,7 +408,7 @@ app.whenReady().then(async () => {
           notif.on('click', () => {
             mainWindow?.show()
             mainWindow?.focus()
-            mainWindow?.webContents.send('fleet:focus-first-officer')
+            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_FIRST_OFFICER)
           })
           notif.show()
         }
@@ -449,6 +453,11 @@ app.whenReady().then(async () => {
         firstOfficer,
         crewService,
         settingsStore,
+        onNudgeClick: () => {
+          mainWindow?.show()
+          mainWindow?.focus()
+          mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
+        },
       })
       sentinel.start()
     }
