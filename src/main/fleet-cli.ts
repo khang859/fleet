@@ -299,7 +299,7 @@ function mapCommand(group: string, action: string): string {
 
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
-export async function runCLI(argv: string[], sockPath: string): Promise<string> {
+export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: boolean }): Promise<string> {
   const [group, action, ...rest] = argv;
 
   // ── Top-level "open" command ─────────────────────────────────────────────
@@ -388,7 +388,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
   let response: CLIResponse;
   try {
-    response = await cli.sendWithRetry(command, args);
+    response = opts?.retry ? await cli.sendWithRetry(command, args) : await cli.send(command, args);
   } catch (err) {
     if (quiet) return '';
     const msg = err instanceof Error ? err.message : String(err);
@@ -447,7 +447,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
 if (typeof process !== 'undefined' && /fleet-cli\.[jt]s$/.test(process.argv[1] ?? '')) {
   const sockPath = join(homedir(), '.fleet', 'fleet.sock');
-  runCLI(process.argv.slice(2), sockPath).then((output) => {
+  runCLI(process.argv.slice(2), sockPath, { retry: true }).then((output) => {
     if (output) process.stdout.write(output + '\n');
   });
 }
