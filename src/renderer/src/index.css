@@ -48,3 +48,18 @@ html, body, #root {
   padding: 0;
   overflow: hidden;
 }
+
+/* Custom scrollbar — dark sci-fi theme */
+.scrollbar-sc::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-sc::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scrollbar-sc::-webkit-scrollbar-thumb {
+  background: #2dd4bf33;
+  border-radius: 3px;
+}
+.scrollbar-sc::-webkit-scrollbar-thumb:hover {
+  background: #2dd4bf66;
+}
