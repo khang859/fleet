@@ -765,12 +765,8 @@ export class Hull {
     writeFileSync(bodyFile, body, 'utf-8')
 
     try {
-      let labelArgs = `--label fleet --label "sector/${sectorId}" --label "mission/${missionId}"`
-      if (hasLintWarnings) {
-        labelArgs += ' --label lint-warnings'
-      }
       execSync(
-        `gh pr create --title '${prTitle.replace(/'/g, "'\\''")}' --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag} ${labelArgs}`,
+        `gh pr create --title '${prTitle.replace(/'/g, "'\\''")}' --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag}`,
         { cwd: sectorPath, stdio: 'pipe' }
       )
 
