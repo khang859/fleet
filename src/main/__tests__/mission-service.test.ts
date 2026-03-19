@@ -90,4 +90,23 @@ describe('MissionService', () => {
     const next = missionSvc.nextMission('api');
     expect(next!.summary).toBe('M1');
   });
+
+  it('should store and return mission type', () => {
+    const m = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Research auth patterns',
+      prompt: 'Investigate auth patterns in the codebase',
+      type: 'research',
+    });
+    expect(m.type).toBe('research');
+  });
+
+  it('should default mission type to code', () => {
+    const m = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Add endpoint',
+      prompt: 'Create a /users endpoint',
+    });
+    expect(m.type).toBe('code');
+  });
 });

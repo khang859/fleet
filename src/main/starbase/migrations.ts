@@ -151,6 +151,13 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE sectors ADD COLUMN allowed_tools TEXT;
       ALTER TABLE sectors ADD COLUMN mcp_config TEXT;
     `
+  },
+  {
+    version: 6,
+    name: '006-mission-type',
+    sql: `
+      ALTER TABLE missions ADD COLUMN type TEXT DEFAULT 'code';
+    `
   }
 ]
 
