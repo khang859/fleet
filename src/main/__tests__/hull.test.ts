@@ -74,6 +74,59 @@ describe('Hull', () => {
     expect(hull.getStatus()).toBe('pending')
   })
 
+  it('should accept missionType and starbaseId in opts', () => {
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'echo hello',
+      type: 'research',
+    })
+    const hull = new Hull({
+      crewId: 'hull-crew',
+      sectorId: 'api',
+      missionId: mission.id,
+      prompt: 'echo hello',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/hull-crew',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      missionType: 'research',
+      starbaseId: 'abc123',
+    })
+    expect(hull).toBeDefined()
+    expect(hull.getStatus()).toBe('pending')
+  })
+
+  it('should use higher output cap for research missions', () => {
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'echo hello',
+      type: 'research',
+    })
+    const hull = new Hull({
+      crewId: 'hull-crew',
+      sectorId: 'api',
+      missionId: mission.id,
+      prompt: 'echo hello',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/hull-crew',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      missionType: 'research',
+      starbaseId: 'abc123',
+    })
+    // Append 500 lines — should all be kept for research (cap is 2000)
+    for (let i = 0; i < 500; i++) {
+      hull.appendOutput(`line ${i}`)
+    }
+    const output = hull.getOutputBuffer()
+    expect(output).toContain('line 0')
+    expect(output).toContain('line 499')
+  })
+
   it('should track output in ring buffer', () => {
     const mission = missionSvc.addMission({
       sectorId: 'api',

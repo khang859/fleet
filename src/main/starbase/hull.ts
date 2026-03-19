@@ -53,6 +53,10 @@ export type HullOpts = {
   allowedTools?: string
   /** Path to an MCP config JSON file */
   mcpConfig?: string
+  /** Mission type: 'code' (default) or 'research' */
+  missionType?: string
+  /** Starbase ID for cargo file storage paths */
+  starbaseId?: string
   onComplete?: () => void
   /** Environment variables for the subprocess (enriched PATH so `claude` is found). */
   env?: Record<string, string>
@@ -73,6 +77,8 @@ export class Hull {
   private pid: number | null = null
   private stdoutBuffer: string = ''
   private sessionId: string | null = null
+
+  private resultText: string | null = null
 
   private static ghAvailable: boolean | null = null
 
@@ -321,8 +327,9 @@ export class Hull {
   appendOutput(data: string): void {
     const lines = data.split('\n')
     this.outputLines.push(...lines)
-    if (this.outputLines.length > MAX_OUTPUT_LINES) {
-      this.outputLines = this.outputLines.slice(-MAX_OUTPUT_LINES)
+    const maxLines = this.opts.missionType === 'research' ? 2000 : MAX_OUTPUT_LINES
+    if (this.outputLines.length > maxLines) {
+      this.outputLines = this.outputLines.slice(-maxLines)
     }
   }
 
@@ -342,6 +349,11 @@ export class Hull {
         this.appendOutput(textParts.join('\n'))
       }
     } else if (msg.type === 'result') {
+      // Capture result text for research mission cargo
+      const rm = msg as ClaudeResultMessage
+      if (rm.result) {
+        this.resultText = rm.result
+      }
       // Close stdin so the process exits naturally — this triggers the exit handler and cleanup.
       // With --input-format stream-json, Claude waits for more stdin input after a result message.
       // Closing stdin sends EOF, causing Claude to exit and triggering proc.on('exit') → cleanup().

@@ -91,6 +91,10 @@ export class CrewService {
       missionId = mission.id;
     }
 
+    // Read mission type for Hull
+    const missionRow = missionService.getMission(missionId)!
+    const missionType = missionRow.type ?? 'code'
+
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
     const minFreeGb = configService.get('min_deploy_free_memory_gb') as number;
     const availableGb = (await getAvailableMemoryBytes()) / (1024 * 1024 * 1024);
@@ -162,6 +166,8 @@ export class CrewService {
       mcpConfig: sector.mcp_config ?? undefined,
       onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,
+      missionType,
+      starbaseId,
     });
 
     // Update crew record with avatar
