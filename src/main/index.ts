@@ -228,7 +228,7 @@ app.whenReady().then(async () => {
       eventBus,
       starbaseId: starbaseDb.getStarbaseId(),
       crewEnv: crewEnv,
-      mcpConfigPath: undefined, // TODO: wire MCP config when available
+      fleetBinDir: fleetBinPath,
     })
     firstOfficerRef = firstOfficer
 

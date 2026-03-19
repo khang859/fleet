@@ -1,8 +1,7 @@
 import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync } from 'fs'
+import { writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { randomBytes } from 'crypto'
 import type Database from 'better-sqlite3'
 import type { ConfigService } from './config-service'
 import type { MemoService } from './memo-service'
@@ -16,8 +15,8 @@ type FirstOfficerDeps = {
   starbaseId: string
   /** Enriched env with PATH containing claude binary */
   crewEnv?: Record<string, string>
-  /** Path to MCP config JSON for Bridge Controls */
-  mcpConfigPath?: string
+  /** Directory containing the fleet CLI binary */
+  fleetBinDir?: string
 }
 
 export type ActionableEvent = {
@@ -133,15 +132,13 @@ export class FirstOfficer {
       '--model', model,
       '--append-system-prompt-file', spFile,
     ]
-    if (this.deps.mcpConfigPath) {
-      cmdArgs.push('--mcp-config', this.deps.mcpConfigPath)
-    }
 
     const mergedEnv: Record<string, string> = {
       ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
       FLEET_FIRST_OFFICER: '1',
       FLEET_CREW_ID: event.crewId,
       FLEET_MISSION_ID: String(event.missionId),
+      ...(this.deps.fleetBinDir ? { FLEET_BIN_DIR: this.deps.fleetBinDir } : {}),
     }
 
     try {
@@ -362,6 +359,8 @@ This crew has been waiting for a response for over 60 seconds. Please review and
   }
 
   private generateClaudeMd(): string {
+    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet'
+
     return `# First Officer
 
 You are the First Officer aboard Star Command. You are NOT the Admiral.
@@ -372,25 +371,55 @@ You triage failed missions. For each invocation you will:
 1. Analyze why a crew's mission failed
 2. Decide whether to RETRY (re-queue with a revised prompt) or ESCALATE (write a memo)
 
-## Retry
-Use the mission management MCP tools to re-queue the mission with a revised prompt.
-Adjust the prompt based on the failure — fix test expectations, narrow scope, add missing context.
+## Retry Workflow
+
+Use the \`fleet\` CLI to recall the errored crew and re-queue the mission with a revised prompt:
+
+\`\`\`bash
+# 1. Recall the errored crew (clean up the old process)
+${fleetBin} crew recall <crew-id>
+
+# 2. Re-queue the mission with a revised prompt
+${fleetBin} missions update <mission-id> --status queued --prompt "revised prompt addressing the failure..."
+
+# 3. Deploy a new crew for the re-queued mission
+${fleetBin} crew deploy --sector <sector-id> --mission <mission-id>
+\`\`\`
+
+When revising the prompt:
+- Fix test expectations based on failure output
+- Narrow scope if the mission was too broad
+- Add missing context the crew needed
+- Reference specific error messages so the new crew knows what to watch for
 
 ## Escalate
-Write a markdown memo to \`./memos/\` with:
+
+If retrying won't help, write a markdown memo to \`./memos/\` with:
 - What happened (failure details)
 - What was tried (retry history)
 - Recommendation (split mission, manual fix, etc.)
+
+## Useful Commands
+
+\`\`\`bash
+${fleetBin} crew list                        # Check current crew status
+${fleetBin} crew observe <crew-id>           # View errored crew's output
+${fleetBin} missions show <mission-id>       # View mission details
+${fleetBin} missions list --sector <id>      # List missions in a sector
+\`\`\`
 
 ## Rules
 - Never create new missions unrelated to the failure
 - Never modify sectors or supply routes
 - Never answer hailing questions — only escalate them as memos
 - Keep memos concise and actionable
+- Always recall the errored crew before deploying a new one
 `
   }
 
   private buildSystemPrompt(event: ActionableEvent, maxRetries: number): string {
+    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet'
+
     return `You are the First Officer aboard Star Command. Your role is to
 triage failed missions and decide whether to retry or escalate.
 
@@ -398,19 +427,34 @@ You are NOT the Admiral. Ignore any CLAUDE.md instructions about
 the Admiral role. Your job is narrowly scoped to this specific failure.
 
 You are analyzing a failure for crew ${event.crewId} on mission "${event.missionSummary}"
-in sector ${event.sectorName}.
+in sector ${event.sectorName} (sector ID: ${event.sectorId}).
 
 ## Context
-- Retry attempt: ${event.retryCount}/${maxRetries}
+- Mission ID: ${event.missionId}
+- Crew ID: ${event.crewId}
+- Sector ID: ${event.sectorId}
+- Retry attempt: ${event.retryCount + 1}/${maxRetries}
 - Failure type: ${event.eventType}
 - Sector verify command: ${event.verifyCommand ?? 'none configured'}
 - Acceptance criteria: ${event.acceptanceCriteria ?? 'none specified'}
 
 ## Your Options
-1. RETRY — use the mission management tools to re-queue with a revised prompt
-2. ESCALATE — write a memo to ./memos/ explaining what happened and recommending next steps
 
-Rules:
+### 1. RETRY — recall errored crew, revise prompt, deploy new crew
+\`\`\`bash
+# Step 1: Recall the errored crew
+${fleetBin} crew recall ${event.crewId}
+
+# Step 2: Re-queue with revised prompt
+${fleetBin} missions update ${event.missionId} --status queued --prompt "your revised prompt here"
+
+# Step 3: Deploy fresh crew
+${fleetBin} crew deploy --sector ${event.sectorId} --mission ${event.missionId}
+\`\`\`
+
+### 2. ESCALATE — write a memo to ./memos/ explaining what happened
+
+## Decision Rules
 - If this is a transient failure (crash, OOM, timeout on a reasonable scope), retry with the same or slightly adjusted prompt
 - If tests failed, read the test output and adjust the prompt to address specific failures
 - If you've seen the same failure pattern across retries, escalate

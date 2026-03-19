@@ -138,6 +138,16 @@ export class MissionService {
       .get(sectorId) as MissionRow | undefined
   }
 
+  /** Reset crew assignment and timestamps so the mission can be re-deployed */
+  resetForRequeue(missionId: number): void {
+    this.db
+      .prepare(
+        'UPDATE missions SET crew_id = NULL, started_at = NULL, completed_at = NULL, result = NULL WHERE id = ?'
+      )
+      .run(missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  }
+
   setReviewVerdict(missionId: number, verdict: string, notes: string): void {
     this.db
       .prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')

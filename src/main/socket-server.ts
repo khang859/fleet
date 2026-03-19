@@ -327,7 +327,7 @@ export class SocketServer extends EventEmitter {
         if (rawId == null) {
           const err = new Error(
             'mission.update requires a mission ID.\n' +
-            'Usage: fleet missions update <mission-id> --status <status>'
+            'Usage: fleet missions update <mission-id> --status <status> [--prompt "..."] [--summary "..."]'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -339,8 +339,22 @@ export class SocketServer extends EventEmitter {
           err.code = 'NOT_FOUND';
           throw err;
         }
+
+        // Update editable fields (prompt, summary, etc.)
+        const fields: Record<string, string> = {};
+        if (args.prompt) fields.prompt = args.prompt as string;
+        if (args.summary) fields.summary = args.summary as string;
+        if (Object.keys(fields).length > 0) {
+          missionService.updateMission(id, fields);
+        }
+
         if (args.status) {
-          missionService.setStatus(id, args.status as string);
+          const newStatus = args.status as string;
+          missionService.setStatus(id, newStatus);
+          // When re-queuing a mission, reset crew assignment so autoDeployNext() picks it up
+          if (newStatus === 'queued') {
+            missionService.resetForRequeue(id);
+          }
           this.emit('state-change', 'mission:changed', { id });
         }
         return missionService.getMission(id);
