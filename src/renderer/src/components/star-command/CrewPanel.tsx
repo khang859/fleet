@@ -290,7 +290,11 @@ function MissionQueueSection() {
     queued: 'text-yellow-400',
     active: 'text-green-400',
     done: 'text-neutral-500',
-    failed: 'text-red-400',
+    reviewing: 'text-blue-400',
+    approved: 'text-green-400',
+    'changes-requested': 'text-yellow-400',
+    escalated: 'text-red-400',
+    'pending-review': 'text-blue-300',
   }
 
   return (
