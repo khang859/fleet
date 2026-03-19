@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron
 import { fileURLToPath } from 'url'
 import { join, dirname, basename } from 'path'
 import { homedir } from 'os'
+import { mkdirSync } from 'fs'
 import { PtyManager } from './pty-manager'
 import { LayoutStore } from './layout-store'
 import { EventBus } from './event-bus'
@@ -29,6 +30,8 @@ import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
+import { MemoService } from './starbase/memo-service'
+import { FirstOfficer } from './starbase/first-officer'
 import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
@@ -44,6 +47,7 @@ let lockfile: Lockfile | null = null
 let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
 let crewServiceRef: CrewService | null = null
+let firstOfficerRef: FirstOfficer | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -212,6 +216,20 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
+    // First Officer services
+    const memoService = new MemoService(starbaseDb.getDb(), eventBus)
+
+    const firstOfficer = new FirstOfficer({
+      db: starbaseDb.getDb(),
+      configService,
+      memoService,
+      eventBus,
+      starbaseId: starbaseDb.getStarbaseId(),
+      crewEnv: crewEnv,
+      mcpConfigPath: undefined, // TODO: wire MCP config when available
+    })
+    firstOfficerRef = firstOfficer
+
     // Socket Supervisor (wraps SocketServer with auto-restart)
     const shipsLog = new ShipsLog(starbaseDb.getDb())
     socketSupervisor = new SocketSupervisor(SOCKET_PATH, {
@@ -343,6 +361,11 @@ app.whenReady().then(async () => {
         missions: missionService!.listMissions(),
         sectors: sectorService!.listSectors(),
         unreadCount: commsService!.getUnread('admiral').length,
+        firstOfficer: {
+          status: firstOfficer.getStatus(),
+          statusText: firstOfficer.getStatusText(),
+          unreadMemos: memoService.getUnreadCount(),
+        },
       })
     })
 
@@ -362,6 +385,17 @@ app.whenReady().then(async () => {
           console.error('[starbase] Reconciliation failed:', err)
         })
 
+      firstOfficer.reconcile()
+
+      // Ensure First Officer workspace exists
+      const foWorkspace = join(
+        process.env.HOME ?? '~',
+        '.fleet', 'starbases',
+        `starbase-${starbaseDb.getStarbaseId()}`,
+        'first-officer',
+      )
+      mkdirSync(join(foWorkspace, 'memos'), { recursive: true })
+
       // Start Sentinel watchdog
       sentinel = new Sentinel({
         db: starbaseDb.getDb(),
@@ -369,6 +403,8 @@ app.whenReady().then(async () => {
         eventBus,
         supervisor: socketSupervisor ?? undefined,
         socketPath: SOCKET_PATH,
+        firstOfficer,
+        crewService,
       })
       sentinel.start()
     }
@@ -697,6 +733,7 @@ app.whenReady().then(async () => {
 
 function shutdownAll(): void {
   crewServiceRef?.shutdown()
+  firstOfficerRef?.shutdown()
   ptyManager.killAll()
   cwdPoller.stopAll()
   socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err))
