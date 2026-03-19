@@ -2,12 +2,22 @@ import { create } from 'zustand';
 
 export type CrewStatus = {
   id: string;
+  tab_id: string | null;
   sector_id: string;
+  mission_id?: number | null;
+  sector_path?: string | null;
+  worktree_path?: string | null;
+  worktree_branch?: string | null;
   status: string;
   mission_summary: string | null;
-  tab_id: string | null;
   avatar_variant: string | null;
+  pid?: number | null;
+  deadline?: string | null;
+  token_budget?: number;
+  tokens_used?: number;
+  last_lifesign?: string | null;
   created_at: string;
+  updated_at?: string;
 };
 
 export type MissionInfo = {
