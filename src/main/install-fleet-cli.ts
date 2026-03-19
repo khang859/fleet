@@ -31,6 +31,53 @@ export async function installFleetCLI(): Promise<string> {
   let cliEntrypoint: string
   let wrapperContent: string
 
+  // Shell wrapper with node path detection for common version managers.
+  // Non-interactive shells (e.g. Claude Code) don't source ~/.zshrc or nvm.sh,
+  // so `node` may not be on PATH. This wrapper probes nvm, fnm, volta, and
+  // Homebrew before falling back to a helpful error message.
+  const nodeResolverScript = `
+# ── Node.js path resolution ───────────────────────────────────────────────────
+# Only run if node isn't already accessible — don't override a working setup.
+if ! command -v node >/dev/null 2>&1; then
+  # nvm: use the default alias if available, otherwise pick the latest installed
+  if [ -s "$HOME/.nvm/alias/default" ]; then
+    NVM_DEFAULT="$(cat "$HOME/.nvm/alias/default")"
+    NVM_BIN="$HOME/.nvm/versions/node/$NVM_DEFAULT/bin"
+    [ -d "$NVM_BIN" ] && export PATH="$NVM_BIN:$PATH"
+  fi
+  if ! command -v node >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then
+    NVM_LATEST="$(ls -1 "$HOME/.nvm/versions/node" | sort -V | tail -1)"
+    [ -n "$NVM_LATEST" ] && export PATH="$HOME/.nvm/versions/node/$NVM_LATEST/bin:$PATH"
+  fi
+  # fnm: default alias (respects $FNM_DIR override)
+  if ! command -v node >/dev/null 2>&1; then
+    FNM_DIR_RESOLVED="\${FNM_DIR:-$HOME/.local/share/fnm}"
+    FNM_BIN="$FNM_DIR_RESOLVED/aliases/default/bin"
+    [ -d "$FNM_BIN" ] && export PATH="$FNM_BIN:$PATH"
+  fi
+  # volta
+  if ! command -v node >/dev/null 2>&1 && [ -d "$HOME/.volta/bin" ]; then
+    export PATH="$HOME/.volta/bin:$PATH"
+  fi
+  # Homebrew — Apple Silicon first, then Intel/Linux
+  if ! command -v node >/dev/null 2>&1 && [ -d "/opt/homebrew/bin" ]; then
+    export PATH="/opt/homebrew/bin:$PATH"
+  fi
+  if ! command -v node >/dev/null 2>&1 && [ -d "/usr/local/bin" ]; then
+    export PATH="/usr/local/bin:$PATH"
+  fi
+fi
+
+# If node still can't be found, print a clear error and exit
+if ! command -v node >/dev/null 2>&1; then
+  echo "fleet: error: 'node' not found on PATH." >&2
+  echo "       Fleet requires Node.js to run the CLI." >&2
+  echo "       Install it via https://nodejs.org, nvm, fnm, or volta," >&2
+  echo "       then restart Fleet so it can pick up the new installation." >&2
+  exit 1
+fi
+`
+
   if (isPackaged) {
     // Production: use the compiled output bundled alongside the app
     const compiledPath = existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs'))
@@ -45,6 +92,7 @@ export async function installFleetCLI(): Promise<string> {
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
+${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
 exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
 `
@@ -80,6 +128,7 @@ process.exit(result.status ?? 1);
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
+${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
 exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
 `
