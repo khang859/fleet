@@ -1,0 +1,467 @@
+import { spawn, ChildProcess } from 'child_process'
+import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync } from 'fs'
+import { join } from 'path'
+import { tmpdir } from 'os'
+import { randomBytes } from 'crypto'
+import type Database from 'better-sqlite3'
+import type { ConfigService } from './config-service'
+import type { MemoService } from './memo-service'
+import type { EventBus } from '../event-bus'
+
+type FirstOfficerDeps = {
+  db: Database.Database
+  configService: ConfigService
+  memoService: MemoService
+  eventBus?: EventBus
+  starbaseId: string
+  /** Enriched env with PATH containing claude binary */
+  crewEnv?: Record<string, string>
+  /** Path to MCP config JSON for Bridge Controls */
+  mcpConfigPath?: string
+}
+
+export type ActionableEvent = {
+  crewId: string
+  missionId: number
+  sectorId: string
+  sectorName: string
+  eventType: string
+  missionSummary: string
+  missionPrompt: string
+  acceptanceCriteria: string | null
+  verifyCommand: string | null
+  crewOutput: string
+  verifyResult: string | null
+  reviewNotes: string | null
+  retryCount: number
+}
+
+type RunningProcess = {
+  proc: ChildProcess
+  crewId: string
+  missionId: number
+  startedAt: number
+}
+
+export class FirstOfficer {
+  private running = new Map<string, RunningProcess>()
+
+  constructor(private deps: FirstOfficerDeps) {}
+
+  /** Key for dedup map */
+  private key(crewId: string, missionId: number): string {
+    return `${crewId}:${missionId}`
+  }
+
+  /** How many First Officer processes are currently running */
+  get activeCount(): number {
+    return this.running.size
+  }
+
+  /** Is a process already running for this crew+mission? */
+  isRunning(crewId: string, missionId: number): boolean {
+    return this.running.has(this.key(crewId, missionId))
+  }
+
+  /** Get status text for UI */
+  getStatusText(): string {
+    if (this.running.size === 0) return 'Idle'
+    const entries = [...this.running.values()]
+    if (entries.length === 1) return `Triaging ${entries[0].crewId}`
+    return `Triaging ${entries.length} issues`
+  }
+
+  /** Get status for UI: 'idle' | 'working' | 'memo' */
+  getStatus(): 'idle' | 'working' | 'memo' {
+    if (this.running.size > 0) return 'working'
+    if (this.deps.memoService.getUnreadCount() > 0) return 'memo'
+    return 'idle'
+  }
+
+  /**
+   * Spawn a First Officer process to handle an actionable event.
+   * Returns false if dedup/concurrency prevents spawning.
+   */
+  async dispatch(event: ActionableEvent): Promise<boolean> {
+    const { configService } = this.deps
+    const maxConcurrent = configService.get('first_officer_max_concurrent') as number
+    const maxRetries = configService.get('first_officer_max_retries') as number
+    const timeout = configService.get('first_officer_timeout') as number
+    const model = configService.get('first_officer_model') as string
+
+    const k = this.key(event.crewId, event.missionId)
+
+    // Dedup: already running for this crew+mission
+    if (this.running.has(k)) return false
+
+    // Concurrency limit
+    if (this.running.size >= maxConcurrent) return false
+
+    // Retries exhausted — force escalation
+    if (event.retryCount >= maxRetries) {
+      this.writeEscalationMemo(event, 'Maximum retries exhausted')
+      return true
+    }
+
+    // Ensure workspace exists
+    const workspace = this.getWorkspacePath()
+    const memosDir = join(workspace, 'memos')
+    mkdirSync(memosDir, { recursive: true })
+
+    // Ensure CLAUDE.md exists
+    const claudeMdPath = join(workspace, 'CLAUDE.md')
+    if (!existsSync(claudeMdPath)) {
+      writeFileSync(claudeMdPath, this.generateClaudeMd(), 'utf-8')
+    }
+
+    // Write system prompt to temp file
+    const promptDir = join(tmpdir(), 'fleet-first-officer')
+    mkdirSync(promptDir, { recursive: true })
+    const spFile = join(promptDir, `${event.crewId}-sp.md`)
+    writeFileSync(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8')
+
+    // Write initial message to temp file
+    const msgFile = join(promptDir, `${event.crewId}-msg.md`)
+    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8')
+
+    // Build CLI args
+    const cmdArgs = [
+      '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
+      '--dangerously-skip-permissions',
+      '--model', model,
+      '--append-system-prompt-file', spFile,
+    ]
+    if (this.deps.mcpConfigPath) {
+      cmdArgs.push('--mcp-config', this.deps.mcpConfigPath)
+    }
+
+    const mergedEnv: Record<string, string> = {
+      ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
+      FLEET_FIRST_OFFICER: '1',
+      FLEET_CREW_ID: event.crewId,
+      FLEET_MISSION_ID: String(event.missionId),
+    }
+
+    try {
+      const proc = spawn('claude', cmdArgs, {
+        cwd: workspace,
+        env: mergedEnv,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      const entry: RunningProcess = {
+        proc,
+        crewId: event.crewId,
+        missionId: event.missionId,
+        startedAt: Date.now(),
+      }
+      this.running.set(k, entry)
+
+      // Send initial message
+      const initMsg = JSON.stringify({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: `Read and execute the triage instructions in ${msgFile}. Delete the file when done.`,
+        },
+        parent_tool_use_id: null,
+        session_id: '',
+      }) + '\n'
+      proc.stdin!.write(initMsg)
+
+      // Parse stdout for result message
+      let stdoutBuffer = ''
+      proc.stdout!.on('data', (chunk: Buffer) => {
+        stdoutBuffer += chunk.toString()
+        const lines = stdoutBuffer.split('\n')
+        stdoutBuffer = lines.pop() ?? ''
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const msg = JSON.parse(line)
+            if (msg.type === 'result') {
+              try { proc.stdin?.end() } catch { /* ignore */ }
+            }
+          } catch { /* non-JSON */ }
+        }
+      })
+
+      proc.stderr!.on('data', (chunk: Buffer) => {
+        console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim())
+      })
+
+      // Hard timeout
+      const timer = setTimeout(() => {
+        if (!proc.killed) {
+          console.warn(`[first-officer] Timeout for ${k}, killing`)
+          try { proc.kill('SIGTERM') } catch { /* already dead */ }
+          setTimeout(() => {
+            if (!proc.killed) try { proc.kill('SIGKILL') } catch { /* ignore */ }
+          }, 5000)
+        }
+      }, timeout * 1000)
+
+      // Cleanup on exit
+      proc.on('exit', (code) => {
+        clearTimeout(timer)
+        this.running.delete(k)
+
+        // Clean up temp files
+        try { unlinkSync(spFile) } catch { /* ignore */ }
+        try { unlinkSync(msgFile) } catch { /* ignore */ }
+
+        if (code !== 0) {
+          // First Officer itself crashed — fallback escalation
+          this.writeEscalationMemo(event, `First Officer process crashed (exit code: ${code})`)
+        }
+
+        // Check if new memos were written and insert DB records
+        this.scanForNewMemos(event)
+
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      })
+
+      proc.on('error', (err) => {
+        clearTimeout(timer)
+        this.running.delete(k)
+        this.writeEscalationMemo(event, `First Officer spawn failed: ${err.message}`)
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      })
+
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      return true
+    } catch (err) {
+      this.writeEscalationMemo(
+        event,
+        `First Officer spawn failed: ${err instanceof Error ? err.message : 'unknown'}`,
+      )
+      return false
+    }
+  }
+
+  /** Scan memos dir for files not yet in DB and insert records */
+  private scanForNewMemos(event: ActionableEvent): void {
+    const memosDir = join(this.getWorkspacePath(), 'memos')
+    if (!existsSync(memosDir)) return
+
+    try {
+      const files = readdirSync(memosDir)
+      for (const file of files) {
+        if (!file.endsWith('.md')) continue
+        const filePath = join(memosDir, file)
+        // Check if already tracked
+        const existing = this.deps.db
+          .prepare('SELECT 1 FROM memos WHERE file_path = ? LIMIT 1')
+          .get(filePath)
+        if (existing) continue
+
+        this.deps.memoService.insert({
+          crewId: event.crewId,
+          missionId: event.missionId,
+          eventType: event.eventType,
+          filePath,
+          retryCount: event.retryCount,
+        })
+      }
+    } catch { /* ignore scan errors */ }
+  }
+
+  /** Write a fallback escalation memo when the First Officer itself fails */
+  private writeEscalationMemo(event: ActionableEvent, reason: string): void {
+    const memosDir = join(this.getWorkspacePath(), 'memos')
+    mkdirSync(memosDir, { recursive: true })
+
+    const slug = event.missionSummary
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 40)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
+    const filename = `${ts}-${event.crewId}-${slug}.md`
+    const filePath = join(memosDir, filename)
+
+    const content = `## Triage Failed: ${event.missionSummary}
+
+**Crew:** ${event.crewId} · **Sector:** ${event.sectorName} · **Attempts:** ${event.retryCount}/${this.deps.configService.get('first_officer_max_retries')}
+
+### What happened
+${reason}
+
+### Failure type
+${event.eventType}
+
+### Last crew output (tail)
+\`\`\`
+${event.crewOutput.split('\n').slice(-30).join('\n')}
+\`\`\`
+
+### Recommendation
+Manual investigation required. The automated triage process was unable to resolve this issue.
+`
+
+    writeFileSync(filePath, content, 'utf-8')
+    this.deps.memoService.insert({
+      crewId: event.crewId,
+      missionId: event.missionId,
+      eventType: event.eventType,
+      filePath,
+      retryCount: event.retryCount,
+    })
+  }
+
+  /** Write a memo for an unanswered hailing request (no process spawn needed) */
+  writeHailingMemo(opts: {
+    crewId: string
+    missionId: number | null
+    sectorName: string
+    payload: string
+    createdAt: string
+  }): void {
+    const memosDir = join(this.getWorkspacePath(), 'memos')
+    mkdirSync(memosDir, { recursive: true })
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
+    const filename = `${ts}-${opts.crewId}-hailing.md`
+    const filePath = join(memosDir, filename)
+
+    let payloadText = ''
+    try {
+      const parsed = JSON.parse(opts.payload)
+      payloadText = parsed.message ?? parsed.question ?? JSON.stringify(parsed, null, 2)
+    } catch {
+      payloadText = opts.payload
+    }
+
+    const content = `## Unanswered Hailing: ${opts.crewId}
+
+**Crew:** ${opts.crewId} · **Sector:** ${opts.sectorName} · **Waiting since:** ${opts.createdAt}
+
+### Message
+${payloadText}
+
+### Action Required
+This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.
+`
+    writeFileSync(filePath, content, 'utf-8')
+    this.deps.memoService.insert({
+      crewId: opts.crewId,
+      missionId: opts.missionId,
+      eventType: 'unanswered-hailing',
+      filePath,
+    })
+  }
+
+  private getWorkspacePath(): string {
+    return join(
+      process.env.HOME ?? '~',
+      '.fleet', 'starbases',
+      `starbase-${this.deps.starbaseId}`,
+      'first-officer',
+    )
+  }
+
+  private generateClaudeMd(): string {
+    return `# First Officer
+
+You are the First Officer aboard Star Command. You are NOT the Admiral.
+Ignore any CLAUDE.md instructions about the Admiral role.
+
+## Your Role
+You triage failed missions. For each invocation you will:
+1. Analyze why a crew's mission failed
+2. Decide whether to RETRY (re-queue with a revised prompt) or ESCALATE (write a memo)
+
+## Retry
+Use the mission management MCP tools to re-queue the mission with a revised prompt.
+Adjust the prompt based on the failure — fix test expectations, narrow scope, add missing context.
+
+## Escalate
+Write a markdown memo to \`./memos/\` with:
+- What happened (failure details)
+- What was tried (retry history)
+- Recommendation (split mission, manual fix, etc.)
+
+## Rules
+- Never create new missions unrelated to the failure
+- Never modify sectors or supply routes
+- Never answer hailing questions — only escalate them as memos
+- Keep memos concise and actionable
+`
+  }
+
+  private buildSystemPrompt(event: ActionableEvent, maxRetries: number): string {
+    return `You are the First Officer aboard Star Command. Your role is to
+triage failed missions and decide whether to retry or escalate.
+
+You are NOT the Admiral. Ignore any CLAUDE.md instructions about
+the Admiral role. Your job is narrowly scoped to this specific failure.
+
+You are analyzing a failure for crew ${event.crewId} on mission "${event.missionSummary}"
+in sector ${event.sectorName}.
+
+## Context
+- Retry attempt: ${event.retryCount}/${maxRetries}
+- Failure type: ${event.eventType}
+- Sector verify command: ${event.verifyCommand ?? 'none configured'}
+- Acceptance criteria: ${event.acceptanceCriteria ?? 'none specified'}
+
+## Your Options
+1. RETRY — use the mission management tools to re-queue with a revised prompt
+2. ESCALATE — write a memo to ./memos/ explaining what happened and recommending next steps
+
+Rules:
+- If this is a transient failure (crash, OOM, timeout on a reasonable scope), retry with the same or slightly adjusted prompt
+- If tests failed, read the test output and adjust the prompt to address specific failures
+- If you've seen the same failure pattern across retries, escalate
+- If the mission scope seems too large, recommend splitting in your memo
+- Never retry more than ${maxRetries} times total
+- Write memos in markdown
+`
+  }
+
+  private buildInitialMessage(event: ActionableEvent): string {
+    let msg = `# Triage Assignment
+
+## Failed Mission
+**Summary:** ${event.missionSummary}
+**Crew:** ${event.crewId}
+**Sector:** ${event.sectorName} (${event.sectorId})
+**Failure type:** ${event.eventType}
+**Retry attempt:** ${event.retryCount + 1}
+
+## Original Mission Prompt
+${event.missionPrompt}
+
+## Crew Output (last lines)
+\`\`\`
+${event.crewOutput}
+\`\`\`
+`
+
+    if (event.verifyResult) {
+      msg += `\n## Verification Result\n\`\`\`json\n${event.verifyResult}\n\`\`\`\n`
+    }
+
+    if (event.reviewNotes) {
+      msg += `\n## Review Notes\n${event.reviewNotes}\n`
+    }
+
+    msg += `\nAnalyze this failure and decide: RETRY or ESCALATE.\n`
+    return msg
+  }
+
+  /** Kill all running processes (app shutdown) */
+  shutdown(): void {
+    for (const [k, entry] of this.running) {
+      try { entry.proc.kill('SIGKILL') } catch { /* already dead */ }
+      this.running.delete(k)
+    }
+  }
+
+  /** Clean up orphaned processes on startup (reconciliation) */
+  reconcile(): void {
+    // First Officer processes are ephemeral (max 120s) — if Fleet restarted,
+    // they're already dead. Just clear the map.
+    this.running.clear()
+  }
+}
