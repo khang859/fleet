@@ -172,6 +172,10 @@ const fleetApi = {
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
   },
+  system: {
+    check: (): Promise<import('../shared/ipc-api').SystemDepResult[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_CHECK),
+  },
   showFolderPicker: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
   file: {

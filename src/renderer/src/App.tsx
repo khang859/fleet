@@ -19,6 +19,7 @@ import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
+import { AppPreChecks } from './components/AppPreChecks';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -72,6 +73,7 @@ export function App() {
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
+  const [showPreChecks, setShowPreChecks] = useState(true);
 
   // Load settings on startup
   useEffect(() => {
@@ -399,6 +401,9 @@ export function App() {
         onClose={() => setQuickOpenOpen(false)}
         rootDir={focusedPaneCwd}
       />
+      {showPreChecks && (
+        <AppPreChecks onDismiss={() => setShowPreChecks(false)} />
+      )}
     </div>
   );
 }

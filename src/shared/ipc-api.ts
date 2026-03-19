@@ -140,3 +140,10 @@ export type AdmiralStateDetailPayload = {
   state: 'standby' | 'thinking' | 'speaking' | 'alert'
   statusText: string
 }
+
+export type SystemDepResult = {
+  name: string
+  found: boolean
+  version?: string
+  installHint: string
+}

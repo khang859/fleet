@@ -66,6 +66,7 @@ export const IPC_CHANNELS = {
   FILE_OPEN_DIALOG: 'file:open-dialog',
   FILE_LIST: 'file:list',
   FILE_READ_BINARY: 'file:read-binary',
+  SYSTEM_CHECK: 'system:check',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

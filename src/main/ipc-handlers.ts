@@ -32,6 +32,7 @@ import type { CrewService } from './starbase/crew-service'
 import type { MissionService } from './starbase/mission-service'
 import type { AdmiralProcess } from './starbase/admiral-process'
 import { checkDependencies } from './starbase/admiral-process'
+import { checkSystemDeps } from './system-checker'
 import type { CommsService } from './starbase/comms-service'
 import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
@@ -219,6 +220,9 @@ export function registerIpcHandlers(
       return crewService.observeCrew(crewId)
     })
   }
+
+  // System-level dependency check (app-wide pre-checks screen)
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, () => checkSystemDeps())
 
   // Phase 3: Admiral + Comms handlers
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, () => checkDependencies())
