@@ -59,9 +59,9 @@ export class CrewService {
 
   constructor(private deps: CrewServiceDeps) {}
 
-  generateCrewId(sectorSlug: string): string {
+  generateCrewId(sectorSlug: string, missionType: string = 'code'): string {
     const hex = randomBytes(2).toString('hex');
-    return `${sectorSlug}-crew-${hex}`;
+    return `${sectorSlug}-${missionType}-${hex}`;
   }
 
   /**
@@ -106,7 +106,7 @@ export class CrewService {
     }
 
     // 4. Generate crew ID
-    const crewId = this.generateCrewId(sector.id);
+    const crewId = this.generateCrewId(sector.id, missionType);
 
     // 5. Create worktree
     let worktreeResult;
