@@ -127,6 +127,7 @@ export class FirstOfficer {
     // Build CLI args
     const cmdArgs = [
       '--output-format', 'stream-json',
+      '--verbose',
       '--input-format', 'stream-json',
       '--dangerously-skip-permissions',
       '--model', model,
