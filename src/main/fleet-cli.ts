@@ -436,6 +436,11 @@ function validateCommand(command: string, args: Record<string, unknown>): string
         return 'Error: cargo show requires a cargo ID.\n\nUsage: fleet cargo show <cargo-id>\nList cargo: fleet cargo list';
       return null;
 
+    case 'cargo.pending':
+      if (!args.sector && !args.sectorId)
+        return 'Error: cargo pending requires --sector <sector-id>.\n\nUsage: fleet cargo pending --sector <sector-id>';
+      return null;
+
     case 'cargo.produce':
       if (!args.sector && !args.sectorId)
         return 'Error: cargo produce requires --sector <sector-id>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
