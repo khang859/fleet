@@ -4,12 +4,14 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
 import { join } from 'path';
+import { Notification } from 'electron';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
 import type { SocketSupervisor } from '../socket-supervisor';
 import { getAvailableMemoryBytes } from './available-memory';
 import type { FirstOfficer } from './first-officer';
 import type { CrewService } from './crew-service';
+import type { SettingsStore } from '../settings-store';
 
 const execFileAsync = promisify(execFile);
 
@@ -21,6 +23,8 @@ type SentinelDeps = {
   socketPath?: string;
   firstOfficer?: FirstOfficer;
   crewService?: CrewService;
+  settingsStore?: SettingsStore;
+  onNudgeClick?: () => void;
 };
 
 type CrewRow = {
@@ -45,6 +49,7 @@ export class Sentinel {
   private diskCacheTime = 0;
   /** Last sent alert level per type — only re-send when level changes or clears */
   private lastAlertLevel: Record<string, string | null> = {};
+  private lastNudgeAt = 0;
 
   constructor(private deps: SentinelDeps) {}
 
@@ -368,6 +373,36 @@ export class Sentinel {
         payload: hail.payload,
         createdAt: hail.created_at,
       })
+    }
+
+    // Nudge: summary notification for comms unread >5 minutes
+    const { settingsStore } = this.deps;
+    if (settingsStore && Notification.isSupported()) {
+      const settings = settingsStore.get();
+      if (settings.notifications.comms.os) {
+        const NUDGE_INTERVAL_MS = 5 * 60 * 1000;
+        const now = Date.now();
+        if (now - this.lastNudgeAt >= NUDGE_INTERVAL_MS) {
+          const staleComms = db
+            .prepare(
+              `SELECT from_crew FROM comms
+               WHERE to_crew = 'admiral' AND read = 0
+                 AND created_at < datetime('now', '-5 minutes')`
+            )
+            .all() as Array<{ from_crew: string | null }>;
+
+          if (staleComms.length > 0) {
+            const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
+            const body = `${staleComms.length} unread transmission${staleComms.length > 1 ? 's' : ''} from ${uniqueCrews.size} crew${uniqueCrews.size > 1 ? 's' : ''}`;
+            const notif = new Notification({ title: 'Fleet', body });
+            if (this.deps.onNudgeClick) {
+              notif.on('click', this.deps.onNudgeClick);
+            }
+            notif.show();
+            this.lastNudgeAt = now;
+          }
+        }
+      }
     }
   }
 

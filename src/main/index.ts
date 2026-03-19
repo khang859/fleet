@@ -43,6 +43,8 @@ const { autoUpdater } = pkg
 
 let mainWindow: BrowserWindow | null = null
 let sentinel: Sentinel | null = null
+let lastUnreadCommsCount = 0
+let lastUnreadMemosCount = 0
 let lockfile: Lockfile | null = null
 let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
@@ -354,21 +356,64 @@ app.whenReady().then(async () => {
       return startAdmiralAndWire()
     })
 
+    // Seed notification counters to avoid spurious notifications for pre-existing unread items
+    lastUnreadCommsCount = commsService!.getUnread('admiral').length
+    lastUnreadMemosCount = memoService.getUnreadCount()
+
     // Push status updates to renderer whenever starbase data changes
     eventBus.on('starbase-changed', () => {
       const w = mainWindow
       if (!w || w.isDestroyed()) return
+
+      const unreadComms = commsService!.getUnread('admiral')
+      const unreadMemosCount = memoService.getUnreadCount()
+
       w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
         crew: crewService!.listCrew(),
         missions: missionService!.listMissions(),
         sectors: sectorService!.listSectors(),
-        unreadCount: commsService!.getUnread('admiral').length,
+        unreadCount: unreadComms.length,
         firstOfficer: {
           status: firstOfficer.getStatus(),
           statusText: firstOfficer.getStatusText(),
-          unreadMemos: memoService.getUnreadCount(),
+          unreadMemos: unreadMemosCount,
         },
       })
+
+      // OS notifications for new comms
+      if (unreadComms.length > lastUnreadCommsCount && Notification.isSupported()) {
+        const settings = settingsStore.get()
+        if (settings.notifications.comms.os) {
+          const newComms = unreadComms.slice(lastUnreadCommsCount)
+          const body =
+            newComms.length === 1
+              ? `New transmission from ${newComms[0].from_crew ?? 'crew'}`
+              : `${newComms.length} new transmissions`
+          const notif = new Notification({ title: 'Fleet', body })
+          notif.on('click', () => {
+            mainWindow?.show()
+            mainWindow?.focus()
+            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
+          })
+          notif.show()
+        }
+      }
+      lastUnreadCommsCount = unreadComms.length
+
+      // OS notifications for new memos
+      if (unreadMemosCount > lastUnreadMemosCount && Notification.isSupported()) {
+        const settings = settingsStore.get()
+        if (settings.notifications.memos.os) {
+          const notif = new Notification({ title: 'Fleet — First Officer', body: 'New memo requires review' })
+          notif.on('click', () => {
+            mainWindow?.show()
+            mainWindow?.focus()
+            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_FIRST_OFFICER)
+          })
+          notif.show()
+        }
+      }
+      lastUnreadMemosCount = unreadMemosCount
     })
 
     // Phase 4: Run reconciliation on startup
@@ -407,6 +452,12 @@ app.whenReady().then(async () => {
         socketPath: SOCKET_PATH,
         firstOfficer,
         crewService,
+        settingsStore,
+        onNudgeClick: () => {
+          mainWindow?.show()
+          mainWindow?.focus()
+          mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
+        },
       })
       sentinel.start()
     }

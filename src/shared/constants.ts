@@ -72,6 +72,8 @@ export const IPC_CHANNELS = {
   MEMO_READ: 'memo:read',
   MEMO_DISMISS: 'memo:dismiss',
   MEMO_CONTENT: 'memo:content',
+  FOCUS_COMMS: 'fleet:focus-comms',
+  FOCUS_FIRST_OFFICER: 'fleet:focus-first-officer',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000
@@ -96,7 +98,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     taskComplete: { badge: true, sound: false, os: false },
     needsPermission: { badge: true, sound: true, os: true },
     processExitError: { badge: true, sound: false, os: false },
-    processExitClean: { badge: false, sound: false, os: false }
+    processExitClean: { badge: false, sound: false, os: false },
+    comms: { badge: true, sound: false, os: true },
+    memos: { badge: true, sound: false, os: true }
   },
   socketApi: {
     enabled: true,
