@@ -24,7 +24,6 @@ import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry'
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
-const SAVED_FLASH_DURATION = 1500; // 1.5 seconds
 
 function getLanguageExtension(filePath: string) {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
@@ -58,6 +57,24 @@ function getLanguageExtension(filePath: string) {
   }
 }
 
+function getLanguageName(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'js': case 'mjs': case 'cjs': return 'JavaScript';
+    case 'ts': return 'TypeScript';
+    case 'tsx': return 'TSX';
+    case 'jsx': return 'JSX';
+    case 'html': case 'htm': return 'HTML';
+    case 'css': return 'CSS';
+    case 'scss': return 'SCSS';
+    case 'less': return 'Less';
+    case 'json': return 'JSON';
+    case 'md': case 'markdown': return 'Markdown';
+    case 'py': return 'Python';
+    default: return 'Plain Text';
+  }
+}
+
 type Props = {
   paneId: string;
   filePath: string;
@@ -69,32 +86,36 @@ export function FileEditorPane({ paneId, filePath }: Props) {
   const [tooLarge, setTooLarge] = useState(false);
   const [fileSize, setFileSize] = useState(0);
   const [isDirty, setIsDirty] = useState(false);
-  const [showSaved, setShowSaved] = useState(false);
+  const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
+  const [isSaving, setIsSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const savedContentRef = useRef<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialContentRef = useRef<string | null>(null);
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
 
   const save = useCallback(async () => {
     if (!viewRef.current) return;
+    setIsSaving(true);
     const content = viewRef.current.state.doc.toString();
     const result = await window.fleet.file.write(filePath, content);
+    setIsSaving(false);
     if (result.success) {
       savedContentRef.current = content;
-      setIsDirty(false);
-      setPaneDirty(paneId, false);
-      if (autoSaveTimerRef.current) {
-        clearTimeout(autoSaveTimerRef.current);
-        autoSaveTimerRef.current = null;
+      // Re-check if editor content changed during the async write
+      const currentContent = viewRef.current?.state.doc.toString();
+      const stillDirty = currentContent !== undefined && currentContent !== content;
+      if (!stillDirty) {
+        setIsDirty(false);
+        setPaneDirty(paneId, false);
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
       }
-      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
-      setShowSaved(true);
-      savedFlashTimerRef.current = setTimeout(() => setShowSaved(false), SAVED_FLASH_DURATION);
     }
   }, [filePath, paneId, setPaneDirty]);
 
@@ -162,6 +183,13 @@ export function FileEditorPane({ paneId, filePath }: Props) {
               }, AUTO_SAVE_DELAY);
             }
           }),
+          EditorView.updateListener.of((update) => {
+            if (update.selectionSet || update.docChanged) {
+              const head = update.state.selection.main.head;
+              const line = update.state.doc.lineAt(head);
+              setCursorPos({ line: line.number, col: head - line.from + 1 });
+            }
+          }),
           EditorView.theme({
             '&': { height: '100%' },
             '.cm-scroller': { overflow: 'auto' },
@@ -191,7 +219,6 @@ export function FileEditorPane({ paneId, filePath }: Props) {
   // Cleanup dirty state on unmount
   useEffect(() => {
     return () => {
-      if (savedFlashTimerRef.current) clearTimeout(savedFlashTimerRef.current);
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
       setPaneDirty(paneId, false);
     };
@@ -225,22 +252,26 @@ export function FileEditorPane({ paneId, filePath }: Props) {
     );
   }
 
+  const langLabel = getLanguageName(filePath);
+  const saveStatus = isSaving
+    ? { label: 'Saving...', className: 'text-neutral-500' }
+    : isDirty
+    ? { label: 'Modified', className: 'text-amber-400' }
+    : { label: 'Saved', className: 'text-emerald-500' };
+
   return (
-    <div className="h-full w-full relative flex flex-col overflow-hidden">
-      <div ref={containerRef} className="h-full w-full" />
-      {/* Saved flash indicator */}
-      {showSaved && (
-        <div className="absolute bottom-3 right-4 text-xs text-neutral-400 bg-neutral-800 border border-neutral-700 px-2 py-1 rounded pointer-events-none">
-          Saved
-        </div>
-      )}
-      {/* Dirty dot (only when not showing Saved) */}
-      {isDirty && !showSaved && (
-        <div
-          className="absolute bottom-3 right-4 w-2 h-2 rounded-full bg-amber-400 pointer-events-none"
-          title="Unsaved changes"
-        />
-      )}
+    <div className="h-full w-full flex flex-col overflow-hidden">
+      <div ref={containerRef} className="flex-1 min-h-0" />
+      <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
+        <span className="text-neutral-300">{langLabel}</span>
+        <span className="text-neutral-500">Ln {cursorPos.line}, Col {cursorPos.col}</span>
+        <span className={`ml-auto flex items-center gap-1.5 ${saveStatus.className}`}>
+          {saveStatus.label === 'Modified' && (
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
+          )}
+          {saveStatus.label}
+        </span>
+      </div>
     </div>
   );
 }

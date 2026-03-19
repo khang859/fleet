@@ -26,6 +26,7 @@ type TabItemProps = {
   onClose: () => void;
   onRename: (newLabel: string) => void;
   onResetLabel: () => void;
+  disableReset?: boolean;
   // Drag-and-drop
   index: number;
   onDragStart: (index: number) => void;
@@ -55,6 +56,7 @@ export function TabItem({
   onClose,
   onRename,
   onResetLabel,
+  disableReset,
   index,
   onDragStart,
   onDragOver,
@@ -206,7 +208,7 @@ export function TabItem({
           >
             Rename
           </ContextMenu.Item>
-          {labelIsCustom && (
+          {!disableReset && labelIsCustom && (
             <ContextMenu.Item
               className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
               onSelect={onResetLabel}

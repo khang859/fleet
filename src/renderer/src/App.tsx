@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Terminal, FileCode2, ImageIcon } from 'lucide-react';
+import { Terminal, ImageIcon } from 'lucide-react';
+import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
 import { PaneGrid } from './components/PaneGrid';
-import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
+import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
@@ -295,7 +296,7 @@ export function App() {
                 {tab.type === 'crew' ? (
                   <Avatar type="crew" variant={tab.avatarVariant} size={20} />
                 ) : tab.type === 'file' ? (
-                  <FileCode2 size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
+                  <span className={isActive ? 'text-white' : 'text-neutral-500'}>{getFileIcon(collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ?? tab.label, 16)}</span>
                 ) : tab.type === 'image' ? (
                   <ImageIcon size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
                 ) : (
