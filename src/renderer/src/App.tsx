@@ -145,6 +145,14 @@ export function App() {
     return () => { cleanup(); };
   }, []);
 
+  // Open file in tab via IPC (fleet file:open-in-tab, with dedup)
+  useEffect(() => {
+    const cleanup = window.fleet.file.onOpenInTab((payload) => {
+      useWorkspaceStore.getState().openFileInTab(payload.files);
+    });
+    return () => { cleanup(); };
+  }, []);
+
   // Auto-updater
   useEffect(() => {
     const cleanup = window.fleet.updates.onUpdateStatus((status) => {

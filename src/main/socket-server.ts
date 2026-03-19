@@ -399,6 +399,25 @@ export class SocketServer extends EventEmitter {
         return shipsLog.query({ crewId: crewFilter, limit });
       }
 
+      // ── File Open ──────────────────────────────────────────────────────────────
+      case 'file.open': {
+        const files = args.files as Array<{ path: string; paneType: 'file' | 'image' }>;
+        if (!files || !Array.isArray(files) || files.length === 0) {
+          const err = new Error('file.open requires a non-empty files array') as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const payload = {
+          files: files.map((f) => ({
+            path: f.path,
+            paneType: f.paneType,
+            label: f.path.split('/').pop() ?? f.path,
+          })),
+        };
+        this.emit('file-open', payload);
+        return { fileCount: files.length };
+      }
+
       default: {
         const err = new Error(`Unknown command: ${command}`) as Error & { code: string };
         err.code = 'NOT_FOUND';

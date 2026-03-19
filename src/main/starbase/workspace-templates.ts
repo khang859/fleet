@@ -149,6 +149,12 @@ Set a system prompt to give every Crewmate persistent, project-specific context 
 
 ## Full Command Reference
 
+### File Operations
+
+\`\`\`
+fleet open <path> [path2 ...]    # Open file(s) or image(s) in Fleet tabs
+\`\`\`
+
 ### Crew
 
 \`\`\`
