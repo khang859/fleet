@@ -111,6 +111,16 @@ export function registerIpcHandlers(
     ptyManager.resume(paneId)
   })
 
+  // Attach to a pre-created PTY: drain its buffered output so the renderer
+  // can replay what arrived before the terminal component mounted.
+  ipcMain.handle(IPC_CHANNELS.PTY_ATTACH, (_event, { paneId }: { paneId: string }) => {
+    const entry = ptyManager.get(paneId)
+    if (!entry) return { data: '' }
+    const data = entry.outputBuffer
+    entry.outputBuffer = ''
+    return { data }
+  })
+
   // Garbage-collect orphaned PTYs: renderer sends list of active pane IDs,
   // main kills any PTY not in that list.
   ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
