@@ -427,13 +427,14 @@ export class Hull {
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
 
-    // Review crew timeout → escalate instead of entering failure-triage
+    // Review crew timeout → escalate instead of entering failure-triage, then skip to finally
     if (this.opts.missionType === 'review' && status === 'timeout') {
       db.prepare("UPDATE missions SET status = 'escalated', result = 'Review crew timed out' WHERE id = ?")
         .run(missionId)
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
       ).run(crewId, JSON.stringify({ missionId, verdict: 'escalated', notes: 'Review crew timed out' }))
+      return
     }
 
     // Clean up temp files
@@ -497,7 +498,7 @@ export class Hull {
           const fullOutput = this.outputLines.join('\n')
           const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i)
           const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/)
-          const verdict = verdictMatch?.[1]?.toLowerCase().replace('_', '-') ?? 'escalate'
+          const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate'
           const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000)
 
           const statusMap: Record<string, string> = {
@@ -626,6 +627,50 @@ export class Hull {
             "UPDATE missions SET status = 'aborted', completed_at = datetime('now') WHERE id = ?"
           ).run(missionId)
         }
+        return
+      }
+
+      // Safety guard: review crews should never push code — discard changes and parse verdict
+      if (this.opts.missionType === 'review') {
+        // Reset any accidental changes and fall through to the !hasChanges review path
+        try { execSync('git checkout -- .', gitOpts) } catch { /* ignore */ }
+        try { execSync('git clean -fd', gitOpts) } catch { /* ignore */ }
+        // Re-enter cleanup with no changes — the review verdict path will handle it
+        hasChanges = false
+      }
+
+      if (!hasChanges && this.opts.missionType === 'review') {
+        // Redirect to review verdict handling (same as the !hasChanges block above)
+        overrideStatus = 'complete'
+        const fullOutput = this.outputLines.join('\n')
+        const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i)
+        const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/)
+        const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate'
+        const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000)
+
+        const statusMap: Record<string, string> = {
+          'approve': 'approved',
+          'request-changes': 'changes-requested',
+          'escalate': 'escalated',
+        }
+        const missionStatus = statusMap[verdict] ?? 'escalated'
+
+        db.prepare('UPDATE missions SET review_verdict = ?, review_notes = ?, status = ? WHERE id = ?')
+          .run(verdict, notes, missionStatus, missionId)
+
+        if (missionStatus === 'changes-requested') {
+          db.prepare('UPDATE missions SET review_round = review_round + 1 WHERE id = ?')
+            .run(missionId)
+        }
+
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
+        ).run(crewId, JSON.stringify({ missionId, verdict, notes: notes.slice(0, 2000) }))
+
+        db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+          crewId,
+          JSON.stringify({ status: 'complete', reason: `Review verdict: ${verdict} (changes discarded)` })
+        )
         return
       }
 
