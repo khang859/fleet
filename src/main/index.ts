@@ -11,7 +11,7 @@ import { registerIpcHandlers } from './ipc-handlers'
 import { GitService } from './git-service'
 import { SettingsStore } from './settings-store'
 import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants'
-import { SocketApi } from './socket-api'
+import { SocketSupervisor } from './socket-supervisor'
 import { FleetCommandHandler } from './socket-command-handler'
 import { AgentStateTracker } from './agent-state-tracker'
 import { JsonlWatcher } from './jsonl-watcher'
@@ -24,7 +24,6 @@ import { MissionService } from './starbase/mission-service'
 import { WorktreeManager } from './starbase/worktree-manager'
 import { CrewService } from './starbase/crew-service'
 import { CommsService } from './starbase/comms-service'
-import { SocketServer } from './socket-server'
 import { AdmiralProcess } from './starbase/admiral-process'
 import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { ShipsLog } from './starbase/ships-log'
@@ -42,7 +41,7 @@ const { autoUpdater } = pkg
 let mainWindow: BrowserWindow | null = null
 let sentinel: Sentinel | null = null
 let lockfile: Lockfile | null = null
-let socketServer: SocketServer | null = null
+let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
 let crewServiceRef: CrewService | null = null
 const ptyManager = new PtyManager()
@@ -52,7 +51,6 @@ const settingsStore = new SettingsStore()
 const notificationDetector = new NotificationDetector(eventBus)
 const notificationState = new NotificationStateManager(eventBus)
 const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState)
-const socketApi = new SocketApi(SOCKET_PATH, commandHandler)
 const cwdPoller = new CwdPoller(eventBus, ptyManager)
 const agentTracker = new AgentStateTracker(eventBus)
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR)
@@ -214,9 +212,9 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
-    // Socket Server (replaces SocketApi for starbase commands)
+    // Socket Supervisor (wraps SocketServer with auto-restart)
     const shipsLog = new ShipsLog(starbaseDb.getDb())
-    socketServer = new SocketServer(SOCKET_PATH, {
+    socketSupervisor = new SocketSupervisor(SOCKET_PATH, {
       crewService: crewService!,
       missionService: missionService!,
       commsService: commsService!,
@@ -227,14 +225,34 @@ app.whenReady().then(async () => {
       shipsLog,
     })
 
-    socketServer.on('state-change', (event: string, data: unknown) => {
+    socketSupervisor.on('state-change', (event: string, data: unknown) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
       }
     })
 
-    socketServer.start().catch((err) => {
-      console.error('[socket-server] Failed to start:', err)
+    socketSupervisor.on('restarted', () => {
+      console.log('[socket-supervisor] Socket server restarted')
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+          event: 'socket:restarted',
+          data: {},
+        })
+      }
+    })
+
+    socketSupervisor.on('failed', () => {
+      console.error('[socket-supervisor] Socket server permanently failed')
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+          event: 'socket:failed',
+          data: {},
+        })
+      }
+    })
+
+    socketSupervisor.start().catch((err) => {
+      console.error('[socket-supervisor] Failed to start:', err)
     })
 
     // Admiral Process
@@ -339,7 +357,13 @@ app.whenReady().then(async () => {
         })
 
       // Start Sentinel watchdog
-      sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus })
+      sentinel = new Sentinel({
+        db: starbaseDb.getDb(),
+        configService,
+        eventBus,
+        supervisor: socketSupervisor ?? undefined,
+        socketPath: SOCKET_PATH,
+      })
       sentinel.start()
     }
 
@@ -669,8 +693,7 @@ function shutdownAll(): void {
   crewServiceRef?.shutdown()
   ptyManager.killAll()
   cwdPoller.stopAll()
-  socketApi.stop()
-  socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err))
+  socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err))
   admiralProcess?.stop().catch((err) => console.error('[admiral] stop error:', err))
   admiralStateDetector.dispose()
   jsonlWatcher.stop()
