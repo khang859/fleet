@@ -228,6 +228,12 @@ app.whenReady().then(async () => {
       }
     })
 
+    socketServer.on('file-open', (payload: unknown) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload)
+      }
+    })
+
     socketServer.start().catch((err) => {
       console.error('[socket-server] Failed to start:', err)
     })
