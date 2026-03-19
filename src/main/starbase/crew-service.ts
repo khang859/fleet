@@ -92,6 +92,11 @@ export class CrewService {
     const missionRow = missionService.getMission(missionId)!
     const missionType = missionRow.type ?? 'code'
 
+    // Guard: reject if the mission already has an active crew assigned
+    if (missionRow.crew_id !== null) {
+      throw new Error(`Mission ${missionId} already has crew ${missionRow.crew_id} assigned. Cannot deploy duplicate.`);
+    }
+
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
     const minFreeGb = configService.get('min_deploy_free_memory_gb') as number;
     const availableGb = (await getAvailableMemoryBytes()) / (1024 * 1024 * 1024);
@@ -283,18 +288,34 @@ export class CrewService {
 
   /** Auto-deploy next queued mission if worktree slots are available */
   private autoDeployNext(): void {
-    const next = this.nextQueuedMission();
-    if (!next) return;
+    const { db } = this.deps;
+
+    // Atomically claim the next queued mission — prevents concurrent deployments from racing
+    const claim = db.prepare(
+      `UPDATE missions SET status = 'deploying'
+       WHERE id = (
+         SELECT id FROM missions
+         WHERE status = 'queued'
+         AND (depends_on_mission_id IS NULL
+              OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+         ORDER BY priority ASC, created_at ASC
+         LIMIT 1
+       )
+       RETURNING id, sector_id, prompt, summary`,
+    ).get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+
+    if (!claim) return;
 
     this.deployCrew(
-      { sectorId: next.sector_id, prompt: next.prompt, missionId: next.id },
+      { sectorId: claim.sector_id, prompt: claim.prompt, missionId: claim.id },
     ).then((result) => {
       // Notify Admiral of auto-deployment
-      this.deps.db.prepare(
+      db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_deployed', ?)",
-      ).run(result.crewId, JSON.stringify({ missionId: next.id, sectorId: next.sector_id }));
+      ).run(result.crewId, JSON.stringify({ missionId: claim.id, sectorId: claim.sector_id }));
     }).catch(() => {
-      // Auto-deploy failed — leave mission queued for next slot
+      // Auto-deploy failed — revert to queued so it can be retried next slot
+      db.prepare("UPDATE missions SET status = 'queued' WHERE id = ? AND status = 'deploying'").run(claim.id);
     });
   }
 }

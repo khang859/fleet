@@ -537,6 +537,14 @@ NOTES: <your review notes — specific file:line references for issues>`
         continue
       }
 
+      // Atomically claim the mission — skip if another process already claimed it
+      const claim = db.prepare(
+        "UPDATE missions SET status = 'deploying' WHERE id = ? AND status = 'changes-requested'"
+      ).run(mission.id)
+      if (claim.changes === 0) {
+        continue
+      }
+
       // Deploy fix crew on the same PR branch
       const fixPrompt = `Fix the issues identified in the PR review for branch \`${mission.pr_branch}\`.
 
@@ -566,7 +574,10 @@ ${mission.review_notes ?? 'No specific notes provided'}
           "INSERT INTO ships_log (event_type, detail) VALUES ('fix_crew_dispatched', ?)"
         ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round }))
       } catch (err) {
-        // Deploy failed — leave as changes-requested for next sweep
+        // Deploy failed — revert to changes-requested for next sweep
+        db.prepare(
+          "UPDATE missions SET status = 'changes-requested' WHERE id = ? AND status = 'deploying'"
+        ).run(mission.id)
         console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err)
       }
     }

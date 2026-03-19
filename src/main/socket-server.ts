@@ -461,6 +461,16 @@ export class SocketServer extends EventEmitter {
           }
         }
 
+        // Guard: reject if mission already has a crew assigned or is already active
+        if (mission.crew_id != null || mission.status === 'active' || mission.status === 'deploying') {
+          const err = new Error(
+            `Mission ${missionId} already has a crew assigned (status: ${mission.status}). ` +
+            'Recall the existing crew before deploying a new one.'
+          ) as Error & { code: string };
+          err.code = 'CONFLICT';
+          throw err;
+        }
+
         const result = await crewService.deployCrew({
           sectorId: (args.sector ?? args.sectorId ?? mission.sector_id) as string,
           prompt,

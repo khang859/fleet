@@ -110,10 +110,13 @@ export class Hull {
       prompt.slice(0, 100)
     )
 
-    // Activate mission
-    db.prepare(
-      "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
+    // Activate mission atomically — abort if another crew already claimed it
+    const activateResult = db.prepare(
+      "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ? AND crew_id IS NULL"
     ).run(crewId, missionId)
+    if (activateResult.changes === 0) {
+      throw new Error(`Mission ${missionId} already has an active crew. Aborting duplicate deployment.`)
+    }
 
     // Log deployment
     db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deployed', ?)").run(
