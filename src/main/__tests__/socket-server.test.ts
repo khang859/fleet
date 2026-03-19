@@ -248,7 +248,7 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'req-mission',
       command: 'mission.create',
-      args: { sector: 'alpha', summary: 'Do stuff', prompt: 'Do the stuff' },
+      args: { sector: 'alpha', summary: 'Do stuff', prompt: 'Do the stuff', type: 'code' },
     });
 
     expect(events.some((e) => e.event === 'mission:changed')).toBe(true);

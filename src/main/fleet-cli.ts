@@ -318,14 +318,34 @@ function validateCommand(command: string, args: Record<string, unknown>): string
       return null;
 
     // ── Missions ──────────────────────────────────────────────────────────
-    case 'mission.create':
+    case 'mission.create': {
+      const usage = 'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"';
       if (!args.sector && !args.sectorId)
-        return 'Error: missions add requires --sector <id>.\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+        return `Error: missions add requires --sector <id>.\n\n${usage}`;
+      if (!args.type) {
+        return (
+          'Error: missions add requires --type <code|research>.\n\n' +
+          'Mission types:\n' +
+          '  code     — produces git commits (code changes, bug fixes, features)\n' +
+          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n\n' +
+          usage
+        );
+      }
+      if (args.type !== 'code' && args.type !== 'research') {
+        return (
+          `Error: invalid mission type "${args.type}". Must be "code" or "research".\n\n` +
+          'Mission types:\n' +
+          '  code     — produces git commits (code changes, bug fixes, features)\n' +
+          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n\n' +
+          usage
+        );
+      }
       if (!args.prompt)
-        return 'Error: missions add requires --prompt "...".\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+        return `Error: missions add requires --prompt "...".\n\n${usage}`;
       if (!args.summary)
-        return 'Error: missions add requires --summary "...".\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+        return `Error: missions add requires --summary "...".\n\n${usage}`;
       return null;
+    }
 
     case 'mission.status':
       if (!args.id && !args.missionId)
