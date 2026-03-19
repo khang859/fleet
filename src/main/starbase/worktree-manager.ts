@@ -108,6 +108,53 @@ export class WorktreeManager {
     return { worktreePath, worktreeBranch: branchName };
   }
 
+  async createForExistingBranch(opts: CreateOpts & { existingBranch: string }): Promise<CreateResult> {
+    const { starbaseId, crewId, sectorPath, existingBranch } = opts;
+    const execOpts = { cwd: sectorPath };
+
+    // Check concurrency limit (same as create())
+    if (this.db && this.maxConcurrent < Infinity) {
+      const activeCount = (
+        this.db
+          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+          .get() as { cnt: number }
+      ).cnt;
+      if (activeCount >= this.maxConcurrent) {
+        throw new WorktreeLimitError(
+          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`,
+        );
+      }
+    }
+
+    // Pre-flight: verify git repo
+    try {
+      await execAsync('git rev-parse --git-dir', execOpts);
+    } catch {
+      throw new Error(`Not a git repository: ${sectorPath}`);
+    }
+
+    // Fetch the branch from origin to ensure it exists locally as a proper tracking branch
+    try {
+      await execAsync(`git fetch origin "${existingBranch}":"${existingBranch}"`, execOpts);
+    } catch {
+      // Branch may already exist locally — try to update it
+      try {
+        await execAsync(`git fetch origin "${existingBranch}"`, execOpts);
+      } catch {
+        throw new Error(`Failed to fetch branch: ${existingBranch}`);
+      }
+    }
+
+    const worktreeDir = join(this.worktreeBasePath, starbaseId);
+    mkdirSync(worktreeDir, { recursive: true });
+    const worktreePath = join(worktreeDir, crewId);
+
+    // Create worktree from existing branch (no -b flag)
+    await execAsync(`git worktree add "${worktreePath}" "${existingBranch}"`, execOpts);
+
+    return { worktreePath, worktreeBranch: existingBranch };
+  }
+
   remove(worktreePath: string, sectorPath: string): void {
     const execOpts = { cwd: sectorPath, stdio: 'pipe' as const };
     try {
