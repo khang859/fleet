@@ -322,6 +322,22 @@ fleet comms send --from $FLEET_CREW_ID --to admiral --message "Found a blocker..
 fleet crew info $FLEET_CREW_ID    # Check own status
 \`\`\`
 
+## Mission Completion
+
+**You MUST send a comms report to the Admiral before completing your mission.** This is required for every mission, regardless of outcome.
+
+\`\`\`
+fleet comms send --from $FLEET_CREW_ID --to admiral --message "<summary of what you did, findings, files changed, or blockers>"
+\`\`\`
+
+Include in your report:
+- What you found or accomplished
+- Files created or changed
+- Any blockers or issues encountered
+- PR link if one was created
+
+Do not exit without sending a comms report.
+
 ## Error Handling
 
 - If a \`fleet\` command fails, report the error and suggest a resolution

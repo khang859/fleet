@@ -324,8 +324,7 @@ export function StarCommandTab() {
                       <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
                     )}
                     <button
-                      className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                      disabled={isRestarting}
+                      className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
                       onClick={() => {
                         setIsRestarting(true)
                         setAdmiralPty(null, 'starting')
