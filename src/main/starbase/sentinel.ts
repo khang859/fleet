@@ -604,6 +604,24 @@ ${mission.review_notes ?? 'No specific notes provided'}
         console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err)
       }
     }
+
+    // Auto-approved missions — transition to completed and notify admiral
+    const autoApproved = db
+      .prepare(
+        `SELECT id, summary, pr_branch FROM missions
+         WHERE status = 'approved'`
+      )
+      .all() as { id: number; summary: string; pr_branch: string | null }[]
+
+    for (const mission of autoApproved) {
+      db.prepare(
+        "UPDATE missions SET status = 'completed', completed_at = datetime('now') WHERE id = ?"
+      ).run(mission.id)
+      db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES ('admiral', 'admiral', 'mission_approved', ?)"
+      ).run(JSON.stringify({ missionId: mission.id, summary: mission.summary, pr_branch: mission.pr_branch }))
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    }
   }
 
   private pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {

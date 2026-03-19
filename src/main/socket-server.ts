@@ -405,7 +405,22 @@ export class SocketServer extends EventEmitter {
         }
 
         missionService.setReviewVerdict(id, verdict, notes);
-        missionService.setStatus(id, verdict);
+        if (verdict === 'approved') {
+          missionService.setStatus(id, 'completed');
+          const mission = missionService.getMission(id);
+          commsService.send({
+            from: 'admiral',
+            to: 'admiral',
+            type: 'mission_approved',
+            payload: JSON.stringify({
+              missionId: id,
+              summary: mission?.summary ?? '',
+              pr_branch: mission?.pr_branch ?? null,
+            }),
+          });
+        } else {
+          missionService.setStatus(id, verdict);
+        }
         this.emit('state-change', 'mission:changed', { id });
         return missionService.getMission(id);
       }
