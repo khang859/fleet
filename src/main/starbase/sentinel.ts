@@ -3,10 +3,13 @@ import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
+import { join } from 'path';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
 import type { SocketSupervisor } from '../socket-supervisor';
 import { getAvailableMemoryBytes } from './available-memory';
+import type { FirstOfficer } from './first-officer';
+import type { CrewService } from './crew-service';
 
 const execFileAsync = promisify(execFile);
 
@@ -16,6 +19,8 @@ type SentinelDeps = {
   eventBus?: EventBus;
   supervisor?: SocketSupervisor;
   socketPath?: string;
+  firstOfficer?: FirstOfficer;
+  crewService?: CrewService;
 };
 
 type CrewRow = {
@@ -170,6 +175,11 @@ export class Sentinel {
     if (this.deps.supervisor && this.deps.socketPath) {
       await this.checkSocketHealth();
     }
+
+    // 9. First Officer triage — detect actionable failures and dispatch
+    if (this.deps.firstOfficer) {
+      await this.firstOfficerSweep()
+    }
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -229,6 +239,135 @@ export class Sentinel {
       supervisor.restart().catch((err) => {
         console.error('[sentinel] Supervisor restart failed:', err);
       });
+    }
+  }
+
+  private async firstOfficerSweep(): Promise<void> {
+    const { db, configService, firstOfficer } = this.deps
+    if (!firstOfficer) return
+
+    const maxRetries = configService.get('first_officer_max_retries') as number
+
+    const failedCrew = db
+      .prepare(
+        `SELECT c.id as crew_id, c.sector_id, c.mission_id,
+                m.id as mid, m.summary, m.prompt, m.acceptance_criteria,
+                m.status as mission_status, m.result, m.verify_result,
+                m.review_notes, m.first_officer_retry_count,
+                s.name as sector_name, s.verify_command
+         FROM crew c
+         JOIN missions m ON m.id = c.mission_id
+         JOIN sectors s ON s.id = c.sector_id
+         WHERE c.status IN ('error', 'lost', 'timeout')
+           AND m.status IN ('failed', 'failed-verification', 'review-rejected')
+           AND m.first_officer_retry_count < ?
+           AND NOT EXISTS (
+             SELECT 1 FROM memos
+             WHERE crew_id = c.id AND mission_id = m.id AND status = 'unread'
+           )`
+      )
+      .all(maxRetries) as Array<{
+        crew_id: string
+        sector_id: string
+        mission_id: number
+        mid: number
+        summary: string
+        prompt: string
+        acceptance_criteria: string | null
+        mission_status: string
+        result: string | null
+        verify_result: string | null
+        review_notes: string | null
+        first_officer_retry_count: number
+        sector_name: string
+        verify_command: string | null
+      }>
+
+    for (const row of failedCrew) {
+      if (firstOfficer.isRunning(row.crew_id, row.mid)) continue
+
+      // Get crew output from Hull buffer (via CrewService) or fall back to mission result
+      let crewOutput = row.result ?? 'No output captured'
+      if (this.deps.crewService) {
+        const hullOutput = this.deps.crewService.observeCrew(row.crew_id)
+        if (hullOutput) crewOutput = hullOutput
+      }
+      // Append verify_result if available (structured test output)
+      if (row.verify_result) {
+        try {
+          const vr = JSON.parse(row.verify_result)
+          if (vr.stdout) crewOutput += '\n\n--- Verification Output ---\n' + vr.stdout
+          if (vr.stderr) crewOutput += '\n\n--- Verification Stderr ---\n' + vr.stderr
+        } catch { /* ignore parse errors */ }
+      }
+
+      const dispatched = await firstOfficer.dispatch({
+        crewId: row.crew_id,
+        missionId: row.mid,
+        sectorId: row.sector_id,
+        sectorName: row.sector_name,
+        eventType: row.mission_status === 'failed-verification' ? 'verification-failed'
+          : row.mission_status === 'review-rejected' ? 'review-rejected' : 'error',
+        missionSummary: row.summary,
+        missionPrompt: row.prompt,
+        acceptanceCriteria: row.acceptance_criteria,
+        verifyCommand: row.verify_command,
+        crewOutput,
+        verifyResult: row.verify_result,
+        reviewNotes: row.review_notes,
+        retryCount: row.first_officer_retry_count,
+      })
+
+      if (dispatched) {
+        if (firstOfficer.isRunning(row.crew_id, row.mid)) {
+          db.prepare(
+            'UPDATE missions SET first_officer_retry_count = first_officer_retry_count + 1 WHERE id = ?'
+          ).run(row.mid)
+        }
+
+        db.prepare(
+          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
+        ).run(row.crew_id, JSON.stringify({ missionId: row.mid, retryCount: row.first_officer_retry_count + 1 }))
+      }
+    }
+
+    // Check for unanswered hailing > 60s (escalation only, no auto-answer)
+    const unansweredHailing = db
+      .prepare(
+        `SELECT c.id as comm_id, c.from_crew, c.payload, c.created_at,
+                cr.sector_id, cr.mission_id,
+                s.name as sector_name
+         FROM comms c
+         JOIN crew cr ON cr.id = c.from_crew
+         JOIN sectors s ON s.id = cr.sector_id
+         WHERE c.type = 'hailing'
+           AND c.read = 0
+           AND c.created_at < datetime('now', '-60 seconds')
+           AND NOT EXISTS (
+             SELECT 1 FROM memos
+             WHERE crew_id = c.from_crew AND event_type = 'unanswered-hailing'
+               AND status = 'unread'
+           )
+         LIMIT 5`
+      )
+      .all() as Array<{
+        comm_id: number
+        from_crew: string
+        payload: string
+        created_at: string
+        sector_id: string
+        mission_id: number | null
+        sector_name: string
+      }>
+
+    for (const hail of unansweredHailing) {
+      firstOfficer.writeHailingMemo({
+        crewId: hail.from_crew,
+        missionId: hail.mission_id,
+        sectorName: hail.sector_name,
+        payload: hail.payload,
+        createdAt: hail.created_at,
+      })
     }
   }
 
