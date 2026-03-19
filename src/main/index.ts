@@ -209,36 +209,6 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
-    // TODO(#30): createTab and its buffering are no longer used by crew deploys — crews are
-    // now headless (stream-json, no terminal tab). This code remains for backwards compatibility
-    // and potential future use. Remove when crew tab UI is fully deprecated.
-    const pendingCreateTabs: Array<{ tabId: string; label: string; cwd: string; avatarVariant?: string }> = []
-    let rendererTabListenerReady = false
-
-    ipcMain.on('fleet:create-tab-ready', () => {
-      rendererTabListenerReady = true
-      for (const msg of pendingCreateTabs) {
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send('fleet:create-tab', msg)
-        }
-      }
-      pendingCreateTabs.length = 0
-    })
-
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    // @ts-ignore -- backwards compat, see TODO(#30): crews are now headless
-    const createTab = (label: string, cwd: string, avatarVariant?: string): string => {
-      const tabId = crypto.randomUUID()
-      const msg = { tabId, label, cwd, avatarVariant }
-      if (rendererTabListenerReady && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('fleet:create-tab', msg)
-      } else {
-        pendingCreateTabs.push(msg)
-      }
-      return tabId
-    }
-
-
     // Socket Server (replaces SocketApi for starbase commands)
     const shipsLog = new ShipsLog(starbaseDb.getDb())
     socketServer = new SocketServer(SOCKET_PATH, {
