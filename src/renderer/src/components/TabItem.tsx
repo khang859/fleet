@@ -21,6 +21,7 @@ type TabItemProps = {
   cwd: string;
   isActive: boolean;
   badge: NotificationLevel | null;
+  icon?: React.ReactNode;
   onClick: () => void;
   onClose: () => void;
   onRename: (newLabel: string) => void;
@@ -43,12 +44,13 @@ const BADGE_CONFIG: Record<NotificationLevel, { color: string; size: string; ani
 };
 
 export function TabItem({
-  id: _id,
+  id,
   label,
   labelIsCustom,
   cwd,
   isActive,
   badge,
+  icon,
   onClick,
   onClose,
   onRename,
@@ -108,8 +110,9 @@ export function TabItem({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
+          data-tab-id={id}
           className={`
-            group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px]
+            group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
             ${isActive
               ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
               : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
@@ -149,6 +152,12 @@ export function TabItem({
               {BADGE_CONFIG[badge].label && (
                 <span className="text-[7px] font-bold text-black leading-none">{BADGE_CONFIG[badge].label}</span>
               )}
+            </span>
+          )}
+
+          {icon && (
+            <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-600'}`}>
+              {icon}
             </span>
           )}
 

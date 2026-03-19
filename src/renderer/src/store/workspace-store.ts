@@ -83,6 +83,7 @@ type WorkspaceStore = {
   // File/image pane helpers
   openFile: (filePath: string) => string;
   addRecentFile: (filePath: string) => void;
+  setFileDirty: (paneId: string, isDirty: boolean) => void;
 
   // Helpers
   findTab: (tabId: string) => Tab | undefined;
@@ -100,6 +101,19 @@ function updateRatioAtPath(node: PaneNode, path: number[], ratio: number): PaneN
     children: [
       head === 0 ? updateRatioAtPath(node.children[0], rest, ratio) : node.children[0],
       head === 1 ? updateRatioAtPath(node.children[1], rest, ratio) : node.children[1],
+    ],
+  };
+}
+
+function updateLeafInTree(node: PaneNode, paneId: string, updater: (leaf: PaneLeaf) => PaneLeaf): PaneNode {
+  if (node.type === 'leaf') {
+    return node.id === paneId ? updater(node) : node;
+  }
+  return {
+    ...node,
+    children: [
+      updateLeafInTree(node.children[0], paneId, updater),
+      updateLeafInTree(node.children[1], paneId, updater),
     ],
   };
 }
@@ -125,6 +139,11 @@ function removePaneFromTree(node: PaneNode, paneId: string): PaneNode | null {
 export function collectPaneIds(node: PaneNode): string[] {
   if (node.type === 'leaf') return [node.id];
   return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
+}
+
+export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
+  if (node.type === 'leaf') return [node];
+  return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
 }
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
@@ -384,6 +403,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       saveRecentFiles(updated);
       return { recentFiles: updated };
     });
+  },
+
+  setFileDirty: (paneId, isDirty) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, isDirty })),
+        })),
+      },
+    }));
   },
 
   findTab: (tabId) => get().workspace.tabs.find((t) => t.id === tabId),

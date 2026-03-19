@@ -1,8 +1,8 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
-import { Settings } from 'lucide-react';
+import { Settings, Terminal, FileCode2, ImageIcon } from 'lucide-react';
 import { TabItem } from './TabItem';
-import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
+import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
@@ -219,6 +219,31 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // --- Tab list scroll state ---
+  const tabListRef = useRef<HTMLDivElement>(null);
+  const [hasScrollOverflow, setHasScrollOverflow] = useState(false);
+
+  // Auto-scroll active tab into view
+  useEffect(() => {
+    if (!activeTabId || !tabListRef.current) return;
+    const el = tabListRef.current.querySelector(`[data-tab-id="${activeTabId}"]`);
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [activeTabId]);
+
+  // Track whether tab list overflows
+  useEffect(() => {
+    const el = tabListRef.current;
+    if (!el) return;
+    const check = () => {
+      setHasScrollOverflow(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 8);
+    };
+    check();
+    el.addEventListener('scroll', check);
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => { el.removeEventListener('scroll', check); observer.disconnect(); };
+  }, []);
+
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
     await window.fleet.layout.delete(wsId);
     setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
@@ -311,15 +336,17 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
       </div>
 
       {/* Tab list */}
-      <div className="flex-1 overflow-y-auto px-2 space-y-0.5">
+      <div className="flex-1 min-h-0 relative">
+      <div ref={tabListRef} className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2">
         {/* Star Command tab (pinned, not closeable) */}
         {workspace.tabs
           .filter((tab) => tab.type === 'star-command')
           .map((tab) => (
             <div
               key={tab.id}
+              data-tab-id={tab.id}
               className={`
-                flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
+                flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
                 ${tab.id === activeTabId
                   ? 'bg-neutral-700 text-white border-l-2 border-yellow-500'
                   : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
@@ -346,8 +373,9 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
             return (
               <div
                 key={tab.id}
+                data-tab-id={tab.id}
                 className={`
-                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
+                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
                   ${tab.id === activeTabId
                     ? 'bg-neutral-700 text-white border-l-2 border-cyan-500'
                     : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
@@ -392,6 +420,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
               cwd={liveCwd}
               isActive={tab.id === activeTabId}
               badge={getTabBadge(paneIds)}
+              icon={<Terminal size={14} />}
               index={index}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
@@ -415,29 +444,48 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
           );
         })}
         {/* File and image tabs */}
-        {workspace.tabs.filter((t) => t.type === 'file' || t.type === 'image').map((tab) => (
-          <div
-            key={tab.id}
-            className={`
-              group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
-              ${tab.id === activeTabId
-                ? 'bg-neutral-700 text-white border-l-2 border-blue-400'
-                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
-            `}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            <div className="flex-1 min-w-0">
-              <div className="truncate text-sm leading-tight">{tab.label}</div>
-            </div>
-            <button
-              className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-white transition-opacity ml-1"
-              onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
-              title="Close"
+        {workspace.tabs.filter((t) => t.type === 'file' || t.type === 'image').map((tab) => {
+          const leafs = collectPaneLeafs(tab.splitRoot);
+          const filePath = leafs[0]?.filePath;
+          const isFileDirty = leafs.some(l => l.isDirty === true);
+          const isActive = tab.id === activeTabId;
+          const Icon = tab.type === 'image' ? ImageIcon : FileCode2;
+          return (
+            <div
+              key={tab.id}
+              data-tab-id={tab.id}
+              className={`
+                group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
+                ${isActive
+                  ? 'bg-neutral-700 text-white border-l-2 border-blue-400'
+                  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+              `}
+              onClick={() => setActiveTab(tab.id)}
+              title={filePath ?? tab.label}
             >
-              ×
-            </button>
-          </div>
-        ))}
+              <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-600'}`}>
+                <Icon size={14} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className={`truncate text-sm leading-tight ${isFileDirty ? 'font-semibold' : ''}`}>
+                  {tab.label}{isFileDirty ? ' *' : ''}
+                </div>
+              </div>
+              <button
+                className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-red-400 transition-opacity flex-shrink-0"
+                onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
+                title="Close"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {/* Scroll overflow shadow indicator */}
+      {hasScrollOverflow && (
+        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
+      )}
       </div>
 
       {/* Bottom section: workspaces */}
