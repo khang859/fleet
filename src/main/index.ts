@@ -187,6 +187,13 @@ app.whenReady().then(async () => {
       return join(homedir(), '.fleet', 'bin')
     })
 
+    // Add ~/.fleet/bin to the main process PATH so all PTYs (including normal tabs)
+    // can find the `fleet` CLI binary without needing explicit env enrichment.
+    const pathDirs = (process.env.PATH ?? '').split(':')
+    if (!pathDirs.includes(fleetBinPath)) {
+      process.env.PATH = fleetBinPath + ':' + (process.env.PATH ?? '')
+    }
+
     // Phase 2 services
     missionService = new MissionService(starbaseDb.getDb(), eventBus)
     const worktreeBasePath = join(basePath, 'worktrees')
@@ -196,10 +203,9 @@ app.whenReady().then(async () => {
     const maxConcurrent = configService.get('max_concurrent_worktrees') as number
     worktreeManager.configure(starbaseDb.getDb(), maxConcurrent)
 
-    // Build enriched env for crew PTYs so `claude` is on PATH
+    // Crew PTYs inherit the main process env (which already has ~/.fleet/bin on PATH)
     const crewEnv: Record<string, string> = {
       ...(process.env as Record<string, string>),
-      PATH: fleetBinPath + ':' + (process.env.PATH ?? '')
     }
 
     // Crews are headless (stream-json, no PTY/tab). No PTY buffer wiring needed.

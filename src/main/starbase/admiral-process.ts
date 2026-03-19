@@ -165,9 +165,9 @@ export class AdmiralProcess {
 
       const paneId = 'admiral-' + Date.now()
 
+      // process.env.PATH already has ~/.fleet/bin prepended at startup
       const env: Record<string, string> = {
         ...(process.env as Record<string, string>),
-        PATH: this.fleetBinPath + ':' + (process.env.PATH ?? '')
       }
 
       try {

@@ -321,7 +321,7 @@ describe('AdmiralProcess.start/stop/restart', () => {
         cwd: workspace,
         cmd: 'claude --dangerously-skip-permissions',
         env: expect.objectContaining({
-          PATH: expect.stringContaining('/fleet/bin')
+          PATH: expect.any(String)
         })
       })
     )
@@ -442,8 +442,12 @@ describe('AdmiralProcess.start/stop/restart', () => {
     expect(statuses[statuses.length - 1]).toBe('stopped')
   })
 
-  it("fleetBinPath is prepended to PATH in the PTY env", async () => {
+  it("PTY env inherits process.env.PATH (fleet bin added at startup)", async () => {
     const workspace = path.join(tmpDir, 'starbase')
+    // Simulate main process having already prepended fleet bin to PATH
+    const origPath = process.env.PATH
+    process.env.PATH = '/custom/fleet/bin:' + (origPath ?? '')
+
     const admiral = new AdmiralProcess({
       workspace,
       starbaseName: 'TestBase',
@@ -455,6 +459,9 @@ describe('AdmiralProcess.start/stop/restart', () => {
     await admiral.start()
 
     const callArgs = (mockPty.create as ReturnType<typeof vi.fn>).mock.calls[0][0]
-    expect(callArgs.env.PATH.startsWith('/custom/fleet/bin:')).toBe(true)
+    expect(callArgs.env.PATH).toContain('/custom/fleet/bin')
+
+    // Restore
+    process.env.PATH = origPath
   })
 })
