@@ -346,6 +346,24 @@ export class Hull {
       // With --input-format stream-json, Claude waits for more stdin input after a result message.
       // Closing stdin sends EOF, causing Claude to exit and triggering proc.on('exit') → cleanup().
       try { this.process?.stdin?.end() } catch { /* ignore */ }
+      // Escalation fallback: if the process doesn't exit after stdin EOF, force it.
+      const proc = this.process
+      if (proc) {
+        const sigterm = setTimeout(() => {
+          if (!proc.killed) {
+            try { proc.kill('SIGTERM') } catch { /* already dead */ }
+          }
+        }, 5000)
+        const sigkill = setTimeout(() => {
+          if (!proc.killed) {
+            try { proc.kill('SIGKILL') } catch { /* already dead */ }
+          }
+        }, 10000)
+        proc.once('exit', () => {
+          clearTimeout(sigterm)
+          clearTimeout(sigkill)
+        })
+      }
     }
   }
 
