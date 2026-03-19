@@ -55,6 +55,8 @@ export type HullOpts = {
   mcpConfig?: string
   /** Mission type: 'code' (default) or 'research' */
   missionType?: string
+  /** PR branch name for review/fix crews working on an existing PR */
+  prBranch?: string
   /** Starbase ID for cargo file storage paths */
   starbaseId?: string
   onComplete?: () => void
@@ -425,6 +427,16 @@ export class Hull {
     const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
       this.opts
 
+    // Review crew timeout → escalate instead of entering failure-triage, then skip to finally
+    if (this.opts.missionType === 'review' && status === 'timeout') {
+      db.prepare("UPDATE missions SET status = 'escalated', result = 'Review crew timed out' WHERE id = ?")
+        .run(missionId)
+      db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
+      ).run(crewId, JSON.stringify({ missionId, verdict: 'escalated', notes: 'Review crew timed out' }))
+      return
+    }
+
     // Clean up temp files
     if (this.promptFile) {
       try { unlinkSync(this.promptFile) } catch { /* may already be deleted by agent */ }
@@ -480,6 +492,57 @@ export class Hull {
       }
 
       if (!hasChanges) {
+        // NEW: Review mission verdict handling
+        if (this.opts.missionType === 'review') {
+          overrideStatus = 'complete'
+          const fullOutput = this.outputLines.join('\n')
+          const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i)
+          const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/)
+          const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate'
+          const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000)
+
+          const statusMap: Record<string, string> = {
+            'approve': 'approved',
+            'request-changes': 'changes-requested',
+            'escalate': 'escalated',
+          }
+          const missionStatus = statusMap[verdict] ?? 'escalated'
+
+          db.prepare('UPDATE missions SET review_verdict = ?, review_notes = ?, status = ? WHERE id = ?')
+            .run(verdict, notes, missionStatus, missionId)
+
+          if (missionStatus === 'changes-requested') {
+            db.prepare('UPDATE missions SET review_round = review_round + 1 WHERE id = ?')
+              .run(missionId)
+          }
+
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
+          ).run(crewId, JSON.stringify({ missionId, verdict, notes: notes.slice(0, 2000) }))
+
+          if (missionStatus === 'escalated') {
+            const memoDir = join(
+              process.env.HOME ?? '~', '.fleet', 'starbases',
+              `starbase-${this.opts.starbaseId}`, 'first-officer', 'memos'
+            )
+            mkdirSync(memoDir, { recursive: true })
+            const memoId = `review-${missionId}-${Date.now()}`
+            const memoPath = join(memoDir, `${memoId}.md`)
+            const memoContent = `## Review Escalation: Mission #${missionId}\n\n**Verdict:** ${verdict}\n**Branch:** ${this.opts.prBranch ?? worktreeBranch}\n\n### Review Notes\n${notes}\n`
+            writeFileSync(memoPath, memoContent, 'utf-8')
+            db.prepare(
+              "INSERT INTO memos (id, crew_id, mission_id, event_type, file_path, status) VALUES (?, ?, ?, 'review-escalation', ?, 'unread')"
+            ).run(memoId, crewId, missionId, memoPath)
+          }
+
+          db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+            crewId,
+            JSON.stringify({ status: 'complete', reason: `Review verdict: ${verdict}` })
+          )
+          return
+        }
+
+        // EXISTING code continues: if (status !== 'aborted') { ...
         if (status !== 'aborted') {
           if (this.opts.missionType === 'research' && status !== 'error') {
             // Research mission completed — produce cargo instead of failing
@@ -564,6 +627,50 @@ export class Hull {
             "UPDATE missions SET status = 'aborted', completed_at = datetime('now') WHERE id = ?"
           ).run(missionId)
         }
+        return
+      }
+
+      // Safety guard: review crews should never push code — discard changes and parse verdict
+      if (this.opts.missionType === 'review') {
+        // Reset any accidental changes and fall through to the !hasChanges review path
+        try { execSync('git checkout -- .', gitOpts) } catch { /* ignore */ }
+        try { execSync('git clean -fd', gitOpts) } catch { /* ignore */ }
+        // Re-enter cleanup with no changes — the review verdict path will handle it
+        hasChanges = false
+      }
+
+      if (!hasChanges && this.opts.missionType === 'review') {
+        // Redirect to review verdict handling (same as the !hasChanges block above)
+        overrideStatus = 'complete'
+        const fullOutput = this.outputLines.join('\n')
+        const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i)
+        const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/)
+        const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate'
+        const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000)
+
+        const statusMap: Record<string, string> = {
+          'approve': 'approved',
+          'request-changes': 'changes-requested',
+          'escalate': 'escalated',
+        }
+        const missionStatus = statusMap[verdict] ?? 'escalated'
+
+        db.prepare('UPDATE missions SET review_verdict = ?, review_notes = ?, status = ? WHERE id = ?')
+          .run(verdict, notes, missionStatus, missionId)
+
+        if (missionStatus === 'changes-requested') {
+          db.prepare('UPDATE missions SET review_round = review_round + 1 WHERE id = ?')
+            .run(missionId)
+        }
+
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
+        ).run(crewId, JSON.stringify({ missionId, verdict, notes: notes.slice(0, 2000) }))
+
+        db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+          crewId,
+          JSON.stringify({ status: 'complete', reason: `Review verdict: ${verdict} (changes discarded)` })
+        )
         return
       }
 
@@ -840,43 +947,55 @@ export class Hull {
     writeFileSync(bodyFile, body, 'utf-8')
 
     try {
+      // Check if PR already exists on this branch (fix crews push to existing PR)
+      try {
+        execSync(`gh pr view "${worktreeBranch}" --json number`, {
+          cwd: sectorPath,
+          stdio: 'pipe'
+        })
+        // PR exists — store pr_branch and set pending-review, skip creating a new PR
+        db.prepare("UPDATE missions SET pr_branch = ?, status = 'pending-review' WHERE id = ?")
+          .run(worktreeBranch, missionId)
+        return
+      } catch {
+        // No existing PR — continue to create one
+      }
+
       execSync(
         `gh pr create --title '${prTitle.replace(/'/g, "'\\''")}' --body-file "${bodyFile}" --base "${baseBranch}" --head "${worktreeBranch}" ${draftFlag}`,
         { cwd: sectorPath, stdio: 'pipe' }
       )
 
-      // Gate 3: If review_mode is admiral-review, send pr_review_request comms
-      if (this.opts.reviewMode === 'admiral-review') {
-        try {
-          const prViewOutput = execSync(`gh pr view "${worktreeBranch}" --json number,url`, {
-            cwd: sectorPath,
-            stdio: 'pipe'
-          }).toString()
-          const prData = JSON.parse(prViewOutput) as { number: number; url: string }
+      // Store PR branch and set pending-review for automated FO review
+      try {
+        const prViewOutput = execSync(`gh pr view "${worktreeBranch}" --json number,url`, {
+          cwd: sectorPath,
+          stdio: 'pipe'
+        }).toString()
+        const prData = JSON.parse(prViewOutput) as { number: number; url: string }
 
-          // Get acceptance criteria from mission
-          const missionRow = db
-            .prepare('SELECT acceptance_criteria FROM missions WHERE id = ?')
-            .get(missionId) as { acceptance_criteria: string | null } | undefined
+        db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId)
 
-          db.prepare(
-            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)"
-          ).run(
-            crewId,
-            JSON.stringify({
-              prNumber: prData.number,
-              prUrl: prData.url,
-              missionId,
-              diffSummary: diffStat.slice(0, 2000),
-              acceptanceCriteria: missionRow?.acceptance_criteria ?? ''
-            })
-          )
+        const missionRow = db
+          .prepare('SELECT acceptance_criteria FROM missions WHERE id = ?')
+          .get(missionId) as { acceptance_criteria: string | null } | undefined
 
-          // Update mission status to pending-review
-          db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId)
-        } catch {
-          // PR view failed — skip review request, continue normally
-        }
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)"
+        ).run(
+          crewId,
+          JSON.stringify({
+            prNumber: prData.number,
+            prUrl: prData.url,
+            missionId,
+            diffSummary: diffStat.slice(0, 2000),
+            acceptanceCriteria: missionRow?.acceptance_criteria ?? ''
+          })
+        )
+
+        db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId)
+      } catch {
+        // PR view failed — skip review request, continue normally
       }
 
       // Auto-merge if configured

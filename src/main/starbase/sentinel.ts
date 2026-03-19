@@ -181,7 +181,12 @@ export class Sentinel {
       await this.checkSocketHealth();
     }
 
-    // 9. First Officer triage — detect actionable failures and dispatch
+    // 9. PR Review sweep — dispatch review/fix crews for pending-review and changes-requested missions
+    if (this.deps.crewService) {
+      await this.reviewSweep()
+    }
+
+    // 10. First Officer triage — detect actionable failures and dispatch
     if (this.deps.firstOfficer) {
       await this.firstOfficerSweep()
     }
@@ -264,7 +269,7 @@ export class Sentinel {
          JOIN missions m ON m.id = c.mission_id
          JOIN sectors s ON s.id = c.sector_id
          WHERE c.status IN ('error', 'lost', 'timeout')
-           AND m.status IN ('failed', 'failed-verification', 'review-rejected')
+           AND m.status IN ('failed', 'failed-verification')
            AND m.first_officer_retry_count < ?
            AND NOT EXISTS (
              SELECT 1 FROM memos
@@ -311,8 +316,7 @@ export class Sentinel {
         missionId: row.mid,
         sectorId: row.sector_id,
         sectorName: row.sector_name,
-        eventType: row.mission_status === 'failed-verification' ? 'verification-failed'
-          : row.mission_status === 'review-rejected' ? 'review-rejected' : 'error',
+        eventType: row.mission_status === 'failed-verification' ? 'verification-failed' : 'error',
         missionSummary: row.summary,
         missionPrompt: row.prompt,
         acceptanceCriteria: row.acceptance_criteria,
@@ -402,6 +406,168 @@ export class Sentinel {
             this.lastNudgeAt = now;
           }
         }
+      }
+    }
+  }
+
+  private async reviewSweep(): Promise<void> {
+    const { db, configService, crewService } = this.deps
+    if (!crewService) return
+
+    const maxConcurrent = (configService.get('review_crew_max_concurrent') as number) ?? 2
+
+    // Count active review crews
+    const activeReviewCount = (
+      db.prepare(
+        "SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'"
+      ).get() as { cnt: number }
+    ).cnt
+
+    if (activeReviewCount >= maxConcurrent) return
+
+    // Find missions needing review
+    const pendingReview = db.prepare(
+      `SELECT m.id, m.sector_id, m.summary, m.acceptance_criteria, m.pr_branch,
+              m.review_round, m.review_notes,
+              s.base_branch, s.verify_command, s.name as sector_name
+       FROM missions m
+       JOIN sectors s ON s.id = m.sector_id
+       WHERE m.status = 'pending-review'
+         AND m.pr_branch IS NOT NULL
+       ORDER BY m.priority ASC, m.completed_at ASC
+       LIMIT ?`
+    ).all(maxConcurrent - activeReviewCount) as Array<{
+      id: number
+      sector_id: string
+      summary: string
+      acceptance_criteria: string | null
+      pr_branch: string
+      review_round: number
+      review_notes: string | null
+      base_branch: string
+      verify_command: string | null
+      sector_name: string
+    }>
+
+    for (const mission of pendingReview) {
+      // Transition to reviewing (dedup guard)
+      db.prepare("UPDATE missions SET status = 'reviewing' WHERE id = ? AND status = 'pending-review'").run(mission.id)
+      const changed = db.prepare('SELECT changes() as c').get() as { c: number }
+      if (changed.c === 0) continue // Another sweep already claimed it
+
+      // Build review prompt
+      const reviewPrompt = `Review the PR on branch \`${mission.pr_branch}\` targeting \`${mission.base_branch}\`.
+
+## Mission Context
+Summary: ${mission.summary}
+Acceptance Criteria: ${mission.acceptance_criteria ?? 'None specified'}
+
+## Instructions
+1. Run the verify command to check tests pass
+2. Read the diff: \`git diff ${mission.base_branch}...${mission.pr_branch}\`
+3. Review against acceptance criteria and code quality
+4. Check for: logic errors, security issues, missing tests, convention violations, unnecessary complexity
+5. Only report issues you are >=80% confident about
+6. Output your verdict in this exact format:
+
+VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
+NOTES: <your review notes — specific file:line references for issues>`
+
+      try {
+        await crewService.deployCrew({
+          sectorId: mission.sector_id,
+          prompt: reviewPrompt,
+          missionId: mission.id,
+          type: 'review',
+          prBranch: mission.pr_branch,
+        })
+
+        db.prepare(
+          "INSERT INTO ships_log (event_type, detail) VALUES ('review_crew_dispatched', ?)"
+        ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch }))
+      } catch (err) {
+        // Deployment failed — revert to pending-review so next sweep retries
+        db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id)
+        console.error(`[sentinel] Review crew deploy failed for mission ${mission.id}:`, err)
+      }
+    }
+
+    // Find missions needing fix crews (changes-requested)
+    const changesRequested = db.prepare(
+      `SELECT m.id, m.sector_id, m.summary, m.prompt, m.acceptance_criteria,
+              m.pr_branch, m.review_round, m.review_notes,
+              s.base_branch, s.name as sector_name
+       FROM missions m
+       JOIN sectors s ON s.id = m.sector_id
+       WHERE m.status = 'changes-requested'
+         AND m.pr_branch IS NOT NULL
+       ORDER BY m.priority ASC
+       LIMIT 5`
+    ).all() as Array<{
+      id: number
+      sector_id: string
+      summary: string
+      prompt: string
+      acceptance_criteria: string | null
+      pr_branch: string
+      review_round: number
+      review_notes: string | null
+      base_branch: string
+      sector_name: string
+    }>
+
+    for (const mission of changesRequested) {
+      // Check max review rounds
+      if (mission.review_round >= 2) {
+        db.prepare("UPDATE missions SET status = 'escalated' WHERE id = ?").run(mission.id)
+
+        // Send escalation comms
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES ('first-officer', 'admiral', 'review_escalated', ?)"
+        ).run(JSON.stringify({
+          missionId: mission.id,
+          reason: `Max review rounds (${mission.review_round}) reached`,
+          reviewNotes: mission.review_notes,
+          prBranch: mission.pr_branch,
+        }))
+
+        db.prepare(
+          "INSERT INTO ships_log (event_type, detail) VALUES ('review_escalated', ?)"
+        ).run(JSON.stringify({ missionId: mission.id, reviewRound: mission.review_round }))
+        continue
+      }
+
+      // Deploy fix crew on the same PR branch
+      const fixPrompt = `Fix the issues identified in the PR review for branch \`${mission.pr_branch}\`.
+
+## Original Mission
+Summary: ${mission.summary}
+Acceptance Criteria: ${mission.acceptance_criteria ?? 'None specified'}
+
+## Review Feedback (Round ${mission.review_round})
+${mission.review_notes ?? 'No specific notes provided'}
+
+## Instructions
+1. Read the review feedback carefully
+2. Address each issue mentioned
+3. Run the verify command to ensure tests still pass
+4. Commit and push your fixes to the existing branch`
+
+      try {
+        await crewService.deployCrew({
+          sectorId: mission.sector_id,
+          prompt: fixPrompt,
+          missionId: mission.id,
+          type: 'code',
+          prBranch: mission.pr_branch,
+        })
+
+        db.prepare(
+          "INSERT INTO ships_log (event_type, detail) VALUES ('fix_crew_dispatched', ?)"
+        ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round }))
+      } catch (err) {
+        // Deploy failed — leave as changes-requested for next sweep
+        console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err)
       }
     }
   }

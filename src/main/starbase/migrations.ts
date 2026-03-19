@@ -180,6 +180,14 @@ export const MIGRATIONS: Migration[] = [
 
       ALTER TABLE missions ADD COLUMN first_officer_retry_count INTEGER DEFAULT 0;
     `
+  },
+  {
+    version: 8,
+    name: '008-pr-review',
+    sql: `
+      ALTER TABLE missions ADD COLUMN review_round INTEGER DEFAULT 0;
+      ALTER TABLE missions ADD COLUMN pr_branch TEXT;
+    `
   }
 ]
 
@@ -204,5 +212,6 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   first_officer_max_retries: 3,
   first_officer_max_concurrent: 2,
   first_officer_timeout: 120,
-  first_officer_model: 'claude-sonnet-4-6'
+  first_officer_model: 'claude-sonnet-4-6',
+  review_crew_max_concurrent: 2
 }

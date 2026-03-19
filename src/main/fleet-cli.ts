@@ -256,6 +256,7 @@ const COMMAND_MAP: Record<string, string> = {
   'missions.status': 'mission.status',
   'missions.cancel': 'mission.cancel',
   'missions.abort': 'mission.cancel',
+  'missions.verdict': 'mission.verdict',
 
   // Crew (singular already matches, but add common aliases)
   'crew.info': 'crew.info',
@@ -360,6 +361,13 @@ function validateCommand(command: string, args: Record<string, unknown>): string
     case 'mission.cancel':
       if (!args.id && !args.missionId)
         return 'Error: missions cancel requires a mission ID.\n\nUsage: fleet missions cancel <mission-id>';
+      return null;
+
+    case 'mission.verdict':
+      if (!args.id && !args.missionId)
+        return 'Error: missions verdict requires a mission ID.\n\nUsage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated> --notes "..."';
+      if (!args.verdict)
+        return 'Error: missions verdict requires --verdict flag.\n\nUsage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated>';
       return null;
 
     // ── Crew ──────────────────────────────────────────────────────────────

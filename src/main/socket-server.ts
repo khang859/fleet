@@ -382,6 +382,34 @@ export class SocketServer extends EventEmitter {
         return null;
       }
 
+      case 'mission.verdict': {
+        const rawId = args.id ?? args.missionId;
+        if (rawId == null) {
+          const err = new Error(
+            'mission.verdict requires a mission ID.\n' +
+            'Usage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated> --notes "..."'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const id = typeof rawId === 'string' ? parseInt(rawId, 10) : (rawId as number);
+        const verdict = args.verdict as string;
+        const notes = (args.notes as string) ?? '';
+
+        if (!verdict || !['approved', 'changes-requested', 'escalated'].includes(verdict)) {
+          const err = new Error(
+            'Invalid verdict. Must be one of: approved, changes-requested, escalated'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+
+        missionService.setReviewVerdict(id, verdict, notes);
+        missionService.setStatus(id, verdict);
+        this.emit('state-change', 'mission:changed', { id });
+        return missionService.getMission(id);
+      }
+
       // ── Crew ─────────────────────────────────────────────────────────────────
       case 'crew.list':
         return crewService.listCrew();
