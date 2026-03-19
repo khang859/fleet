@@ -37,8 +37,8 @@ export function markPtyCreated(paneId: string): void {
   createdPtys.add(paneId);
 }
 
-export function serializePane(paneId: string): string | undefined {
-  return serializeRegistry.get(paneId)?.serialize();
+export function serializePane(paneId: string, scrollback?: number): string | undefined {
+  return serializeRegistry.get(paneId)?.serialize(scrollback != null ? { scrollback } : undefined);
 }
 
 function createTerminal(container: HTMLElement, options: UseTerminalOptions): {

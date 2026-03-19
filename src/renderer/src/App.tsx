@@ -32,10 +32,12 @@ function killClosedTabPtys(paneIds: string[]): void {
   }
 }
 
+const SERIALIZE_SCROLLBACK_CAP = 1000;
+
 function injectSerializedContent(node: PaneNode): PaneNode {
   if (node.type === 'leaf') {
     if (node.paneType === 'file' || node.paneType === 'image') return node;
-    const content = serializePane(node.id);
+    const content = serializePane(node.id, SERIALIZE_SCROLLBACK_CAP);
     return content ? { ...node, serializedContent: content } : node;
   }
   return {
