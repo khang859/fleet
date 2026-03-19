@@ -62,6 +62,7 @@ export function StarCommandTab() {
         if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
       }
     }
+    return undefined
   }, [resetConfirm])
 
   // Oscillate talk frame while admiral is speaking
@@ -323,7 +324,7 @@ export function StarCommandTab() {
                     )}
                     <button
                       className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                      disabled={admiralStatus === 'starting'}
+                      disabled={false}
                       onClick={() => {
                         setAdmiralPty(null, 'starting')
                         window.fleet.admiral.restart().then((paneId) => {

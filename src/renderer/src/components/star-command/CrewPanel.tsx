@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useStarCommandStore } from '../../store/star-command-store'
-import type { CrewStatus, MissionInfo, SectorInfo } from '../../store/star-command-store'
+import type { MissionInfo, SectorInfo } from '../../store/star-command-store'
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-400',
@@ -343,7 +343,7 @@ export function CrewPanel() {
       <section>
         <SectionHeader title="Active Crew" count={crewList.length} />
         <div className="space-y-2 mb-3">
-          {(crewList as FullCrewRow[]).map((c) => (
+          {(crewList as unknown as FullCrewRow[]).map((c) => (
             <CrewCard key={c.id} crew={c} onRefresh={refresh} />
           ))}
           {crewList.length === 0 && (

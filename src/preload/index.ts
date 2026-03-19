@@ -174,6 +174,14 @@ const fleetApi = {
   },
   showFolderPicker: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
+  file: {
+    read: (filePath: string): Promise<{ content: string; size: number; modifiedAt: number }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
+    write: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
+    stat: (filePath: string): Promise<{ size: number; modifiedAt: number; mimeType: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
+  },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
   // This bridge remains for backwards compatibility but will not fire for new deployments.

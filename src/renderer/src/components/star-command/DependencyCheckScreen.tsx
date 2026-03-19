@@ -17,7 +17,7 @@ export function DependencyCheckScreen({ status, results }: Props) {
 
         <div className="space-y-3">
           {results.map((dep) => (
-            <DepRow key={dep.name} dep={dep} checking={status === 'checking' && !dep.found && results.every((r) => r.found === dep.found)} />
+            <DepRow key={dep.name} dep={dep} />
           ))}
           {/* Show placeholder rows while still checking and no results yet */}
           {status === 'checking' && results.length === 0 && (

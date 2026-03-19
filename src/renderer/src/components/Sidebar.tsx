@@ -375,7 +375,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
         {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
           <div className="h-px bg-neutral-800 mx-1 my-1" />
         )}
-        {workspace.tabs.filter((t) => t.type !== 'star-command' && t.type !== 'crew').map((tab, index) => {
+        {workspace.tabs.filter((t) => t.type !== 'star-command' && t.type !== 'crew' && t.type !== 'file' && t.type !== 'image').map((tab, index) => {
           const paneIds = collectPaneIds(tab.splitRoot);
           // Active pane within this tab drives the displayed CWD
           const drivingPane = (tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId))
@@ -414,6 +414,30 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
             />
           );
         })}
+        {/* File and image tabs */}
+        {workspace.tabs.filter((t) => t.type === 'file' || t.type === 'image').map((tab) => (
+          <div
+            key={tab.id}
+            className={`
+              group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px]
+              ${tab.id === activeTabId
+                ? 'bg-neutral-700 text-white border-l-2 border-blue-400'
+                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+            `}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <div className="flex-1 min-w-0">
+              <div className="truncate text-sm leading-tight">{tab.label}</div>
+            </div>
+            <button
+              className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-white transition-opacity ml-1"
+              onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
+              title="Close"
+            >
+              ×
+            </button>
+          </div>
+        ))}
       </div>
 
       {/* Bottom section: workspaces */}

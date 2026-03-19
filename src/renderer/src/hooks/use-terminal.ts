@@ -52,6 +52,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   scrollCleanup: () => void;
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
+  cursorSuppressor: { dispose(): void } | null;
 } {
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,

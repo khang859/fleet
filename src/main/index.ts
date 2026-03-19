@@ -225,6 +225,8 @@ app.whenReady().then(async () => {
       pendingCreateTabs.length = 0
     })
 
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // @ts-ignore -- backwards compat, see TODO(#30): crews are now headless
     const createTab = (label: string, cwd: string, avatarVariant?: string): string => {
       const tabId = crypto.randomUUID()
       const msg = { tabId, label, cwd, avatarVariant }
