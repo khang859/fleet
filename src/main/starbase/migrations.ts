@@ -158,6 +158,28 @@ export const MIGRATIONS: Migration[] = [
     sql: `
       ALTER TABLE missions ADD COLUMN type TEXT DEFAULT 'code';
     `
+  },
+  {
+    version: 7,
+    name: '007-first-officer',
+    sql: `
+      CREATE TABLE IF NOT EXISTS memos (
+        id TEXT PRIMARY KEY,
+        crew_id TEXT REFERENCES crew(id),
+        mission_id INTEGER REFERENCES missions(id),
+        event_type TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'unread',
+        retry_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT (datetime('now')),
+        updated_at DATETIME DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_memos_crew_mission ON memos(crew_id, mission_id);
+      CREATE INDEX IF NOT EXISTS idx_memos_status ON memos(status);
+
+      ALTER TABLE missions ADD COLUMN first_officer_retry_count INTEGER DEFAULT 0;
+    `
   }
 ]
 
@@ -178,5 +200,9 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   ships_log_retention_days: 30,
   crew_retention_days: 7,
   forward_failed_cargo: false,
-  min_deploy_free_memory_gb: 1.5
+  min_deploy_free_memory_gb: 1.5,
+  first_officer_max_retries: 3,
+  first_officer_max_concurrent: 2,
+  first_officer_timeout: 120,
+  first_officer_model: 'claude-sonnet-4-6'
 }
