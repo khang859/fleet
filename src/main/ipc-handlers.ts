@@ -414,4 +414,21 @@ export function registerIpcHandlers(
       return { success: false, error: (err as Error).message }
     }
   })
+
+  ipcMain.handle(IPC_CHANNELS.FILE_READ_BINARY, async (_event, filePath: string) => {
+    try {
+      const ext = extname(filePath).toLowerCase().slice(1)
+      const mimeTypes: Record<string, string> = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+        bmp: 'image/bmp', ico: 'image/x-icon',
+      }
+      const mimeType = mimeTypes[ext] ?? 'application/octet-stream'
+      const buffer = await readFile(filePath)
+      const base64 = buffer.toString('base64')
+      return { success: true, data: { base64, mimeType } }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
+  })
 }

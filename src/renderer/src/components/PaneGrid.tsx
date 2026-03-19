@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import type { PaneNode } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
+import { ImageViewerPane } from './ImageViewerPane';
 import { useWorkspaceStore } from '../store/workspace-store';
 
 type PaneActions = {
@@ -58,9 +59,7 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
     }
     if (node.paneType === 'image') {
       return (
-        <div className="h-full w-full flex items-center justify-center bg-neutral-900 text-neutral-400 text-sm">
-          Image Viewer: {node.filePath}
-        </div>
+        <ImageViewerPane filePath={node.filePath ?? ''} />
       );
     }
     return (
