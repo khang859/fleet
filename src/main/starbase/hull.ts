@@ -341,8 +341,12 @@ export class Hull {
       if (textParts.length > 0) {
         this.appendOutput(textParts.join('\n'))
       }
+    } else if (msg.type === 'result') {
+      // Close stdin so the process exits naturally — this triggers the exit handler and cleanup.
+      // With --input-format stream-json, Claude waits for more stdin input after a result message.
+      // Closing stdin sends EOF, causing Claude to exit and triggering proc.on('exit') → cleanup().
+      try { this.process?.stdin?.end() } catch { /* ignore */ }
     }
-    // 'result' messages are informational — the process exit handler triggers cleanup
   }
 
   private resetTimeout(): void {
