@@ -55,7 +55,12 @@ afterEach(() => {
 describe('CrewService', () => {
   it('should generate a crew ID with sector slug and random hex', () => {
     const id = crewSvc.generateCrewId('api');
-    expect(id).toMatch(/^api-crew-[a-f0-9]{4}$/);
+    expect(id).toMatch(/^api-code-[a-f0-9]{4}$/);
+  });
+
+  it('should generate a crew ID with the specified mission type', () => {
+    const id = crewSvc.generateCrewId('fleet', 'research');
+    expect(id).toMatch(/^fleet-research-[a-f0-9]{4}$/);
   });
 
   it('should list crew (empty initially)', () => {
