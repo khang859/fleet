@@ -481,20 +481,83 @@ export class Hull {
 
       if (!hasChanges) {
         if (status !== 'aborted') {
-          // Genuine failure: no work produced
-          db.prepare(
-            "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
-          ).run('No work produced', missionId)
-          // Send mission_complete comms so Admiral is notified of the failure
-          db.prepare(
-            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
-          ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }))
-          // Log exit
-          db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
-            crewId,
-            JSON.stringify({ status: 'error', reason: 'No work produced' })
-          )
-          overrideStatus = 'error'
+          if (this.opts.missionType === 'research' && status !== 'error') {
+            // Research mission completed — produce cargo instead of failing
+            overrideStatus = 'complete'
+
+            // Write cargo files to starbase directory
+            const cargoDir = join(
+              process.env.HOME ?? '~',
+              '.fleet', 'starbases',
+              `starbase-${this.opts.starbaseId}`,
+              'cargo', this.opts.sectorId, String(missionId)
+            )
+            const fullOutput = this.outputLines.join('\n')
+            const summary = this.resultText ?? this.outputLines.slice(-20).join('\n')
+            const hasOutput = fullOutput.trim().length > 0
+            const resultMsg = hasOutput ? 'Research completed' : 'Research completed (no output captured)'
+
+            // Attempt to write cargo files
+            let fullManifest: string
+            let summaryManifest: string
+
+            try {
+              mkdirSync(cargoDir, { recursive: true })
+              const fullOutputPath = join(cargoDir, 'full-output.md')
+              const summaryPath = join(cargoDir, 'summary.md')
+              writeFileSync(fullOutputPath, fullOutput, 'utf-8')
+              writeFileSync(summaryPath, summary, 'utf-8')
+              fullManifest = JSON.stringify({ path: fullOutputPath })
+              summaryManifest = JSON.stringify({ path: summaryPath })
+            } catch (fileErr) {
+              console.error(`[hull:${crewId}] cargo file write failed:`, fileErr)
+              // Fallback: store content directly in manifest
+              fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) })
+              summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) })
+            }
+
+            // Insert cargo records
+            db.prepare(
+              `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
+               VALUES (?, ?, ?, 'documentation_full', ?, 1)`
+            ).run(crewId, missionId, this.opts.sectorId, fullManifest)
+
+            db.prepare(
+              `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
+               VALUES (?, ?, ?, 'documentation_summary', ?, 1)`
+            ).run(crewId, missionId, this.opts.sectorId, summaryManifest)
+
+            // Update mission
+            db.prepare(
+              "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
+            ).run(resultMsg, missionId)
+
+            // Send comms
+            db.prepare(
+              "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+            ).run(crewId, JSON.stringify({
+              missionId, status: 'completed', reason: resultMsg, cargoProduced: true
+            }))
+
+            // Log exit
+            db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+              crewId,
+              JSON.stringify({ status: 'complete', reason: resultMsg })
+            )
+          } else {
+            // Code mission: Genuine failure — no work produced
+            db.prepare(
+              "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
+            ).run('No work produced', missionId)
+            db.prepare(
+              "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+            ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }))
+            db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+              crewId,
+              JSON.stringify({ status: 'error', reason: 'No work produced' })
+            )
+            overrideStatus = 'error'
+          }
         } else {
           // Intentional recall with no changes: mark mission as aborted
           db.prepare(
