@@ -56,7 +56,7 @@ export function AdmiralSidebar({
   const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default
 
   return (
-    <div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col">
+    <div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc">
       {/* Admiral avatar — full-res 512x512 source image */}
       <div className="flex flex-col items-center pt-6 pb-4 border-b border-neutral-800">
         <img
@@ -129,7 +129,7 @@ export function AdmiralSidebar({
       </div>
 
       {/* Status sections */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="px-4 py-4 space-y-4">
         {/* Fleet */}
         <div>
           <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
