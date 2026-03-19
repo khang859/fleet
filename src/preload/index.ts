@@ -175,11 +175,11 @@ const fleetApi = {
   showFolderPicker: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
   file: {
-    read: (filePath: string): Promise<{ content: string; size: number; modifiedAt: number }> =>
+    read: (filePath: string): Promise<{ success: boolean; data?: { content: string; size: number; modifiedAt: number }; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
     write: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
-    stat: (filePath: string): Promise<{ size: number; modifiedAt: number; mimeType: string }> =>
+    stat: (filePath: string): Promise<{ success: boolean; data?: { size: number; modifiedAt: number; mimeType: string }; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
   },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),

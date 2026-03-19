@@ -320,9 +320,13 @@ export function registerIpcHandlers(
 
   // File operations
   ipcMain.handle(IPC_CHANNELS.FILE_READ, async (_event, filePath: string) => {
-    const stats = await stat(filePath)
-    const content = await readFile(filePath, 'utf-8')
-    return { content, size: stats.size, modifiedAt: stats.mtimeMs }
+    try {
+      const stats = await stat(filePath)
+      const content = await readFile(filePath, 'utf-8')
+      return { success: true, data: { content, size: stats.size, modifiedAt: stats.mtimeMs } }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.FILE_WRITE, async (_event, { filePath, content }: { filePath: string; content: string }) => {
@@ -335,14 +339,18 @@ export function registerIpcHandlers(
   })
 
   ipcMain.handle(IPC_CHANNELS.FILE_STAT, async (_event, filePath: string) => {
-    const stats = await stat(filePath)
-    const ext = extname(filePath).toLowerCase().slice(1)
-    const mimeTypes: Record<string, string> = {
-      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
-      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
-      bmp: 'image/bmp', ico: 'image/x-icon',
+    try {
+      const stats = await stat(filePath)
+      const ext = extname(filePath).toLowerCase().slice(1)
+      const mimeTypes: Record<string, string> = {
+        png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+        bmp: 'image/bmp', ico: 'image/x-icon',
+      }
+      const mimeType = mimeTypes[ext] ?? 'application/octet-stream'
+      return { success: true, data: { size: stats.size, modifiedAt: stats.mtimeMs, mimeType } }
+    } catch (err) {
+      return { success: false, error: (err as Error).message }
     }
-    const mimeType = mimeTypes[ext] ?? 'application/octet-stream'
-    return { size: stats.size, modifiedAt: stats.mtimeMs, mimeType }
   })
 }

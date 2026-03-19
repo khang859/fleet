@@ -52,6 +52,7 @@ export function StarCommandTab() {
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const [isRestarting, setIsRestarting] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-dismiss reset confirmation after 5s (Baymard: time-limited destructive states)
@@ -324,13 +325,16 @@ export function StarCommandTab() {
                     )}
                     <button
                       className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
-                      disabled={false}
+                      disabled={isRestarting}
                       onClick={() => {
+                        setIsRestarting(true)
                         setAdmiralPty(null, 'starting')
                         window.fleet.admiral.restart().then((paneId) => {
                           setAdmiralPty(paneId, 'running')
+                          setIsRestarting(false)
                         }).catch((err: Error) => {
                           setAdmiralPty(null, 'stopped', err.message)
+                          setIsRestarting(false)
                         })
                       }}
                     >
