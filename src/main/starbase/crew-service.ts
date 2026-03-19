@@ -88,8 +88,12 @@ export class CrewService {
       throw new Error(`Mission ${missionId} has an empty prompt. Cannot deploy crew without instructions.`);
     }
 
-    // Read mission type for Hull
+    // Guard: reject if the mission already has an active crew assigned.
+    // This is a defence-in-depth check — the primary guard is the atomic hull.ts UPDATE.
     const missionRow = missionService.getMission(missionId)!
+    if (missionRow.crew_id != null || missionRow.status === 'active') {
+      throw new Error(`Mission ${missionId} already has an active crew (crew_id=${missionRow.crew_id}). Aborting duplicate deploy.`);
+    }
     const missionType = missionRow.type ?? 'code'
 
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
@@ -283,8 +287,26 @@ export class CrewService {
 
   /** Auto-deploy next queued mission if worktree slots are available */
   private autoDeployNext(): void {
-    const next = this.nextQueuedMission();
-    if (!next) return;
+    // Atomically claim the next queued mission by transitioning it to 'deploying'.
+    // This prevents concurrent autoDeployNext() calls from racing to deploy the same mission.
+    const claimed = this.deps.db
+      .prepare(
+        `UPDATE missions SET status = 'deploying'
+         WHERE id = (
+           SELECT id FROM missions
+           WHERE status = 'queued'
+           AND (depends_on_mission_id IS NULL
+                OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+           ORDER BY priority ASC, created_at ASC
+           LIMIT 1
+         )
+         RETURNING id, sector_id, prompt, summary`,
+      )
+      .get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+
+    if (!claimed) return; // Nothing queued, or another caller already claimed it
+
+    const next = claimed;
 
     this.deployCrew(
       { sectorId: next.sector_id, prompt: next.prompt, missionId: next.id },
@@ -294,7 +316,8 @@ export class CrewService {
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_deployed', ?)",
       ).run(result.crewId, JSON.stringify({ missionId: next.id, sectorId: next.sector_id }));
     }).catch(() => {
-      // Auto-deploy failed — leave mission queued for next slot
+      // Auto-deploy failed — revert to queued so the next slot can retry
+      this.deps.db.prepare("UPDATE missions SET status = 'queued' WHERE id = ? AND status = 'deploying'").run(next.id);
     });
   }
 }
