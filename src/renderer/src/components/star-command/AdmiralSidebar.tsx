@@ -6,6 +6,19 @@ import admiralThinking from '../../assets/admiral-thinking.png'
 import admiralAlert from '../../assets/admiral-alert.png'
 import admiralStandby from '../../assets/admiral-standby.png'
 
+// TODO: Replace with actual First Officer pixel art assets when generated
+import foDefault from '../../assets/admiral-default.png'
+import foWorking from '../../assets/admiral-thinking.png'
+import foEscalation from '../../assets/admiral-alert.png'
+import foIdle from '../../assets/admiral-standby.png'
+
+const FO_IMAGES: Record<string, string> = {
+  idle: foIdle,
+  working: foWorking,
+  memo: foEscalation,
+  default: foDefault,
+}
+
 const ADMIRAL_IMAGES: Record<string, string> = {
   default: admiralDefault,
   speaking: admiralSpeaking,
@@ -29,16 +42,19 @@ function StatusDot({ color }: { color: string }) {
 
 export function AdmiralSidebar({
   avatarVariant,
+  onMemoClick,
 }: {
   avatarVariant: string
+  onMemoClick?: () => void
 }) {
-  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText } = useStarCommandStore()
+  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } = useStarCommandStore()
 
   const activeCrew = crewList.filter((c) => c.status === 'active').length
   const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length
   const totalCrew = crewList.length
 
   const admiralSrc = ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default
+  const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default
 
   return (
     <div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col">
@@ -69,6 +85,48 @@ export function AdmiralSidebar({
             {admiralStatus === 'running' ? admiralStatusText : admiralStatus}
           </span>
         </div>
+      </div>
+
+      {/* First Officer */}
+      <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
+        <img
+          src={foSrc}
+          alt="First Officer"
+          width={128}
+          height={128}
+          className="rounded"
+          style={{ imageRendering: 'pixelated' as const }}
+        />
+        <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
+          First Officer
+        </span>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              firstOfficerStatus.status === 'working'
+                ? 'bg-teal-400 animate-pulse'
+                : firstOfficerStatus.status === 'memo'
+                  ? 'bg-yellow-400'
+                  : 'bg-green-400'
+            }`}
+          />
+          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
+            {firstOfficerStatus.statusText}
+          </span>
+        </div>
+        {firstOfficerStatus.unreadMemos > 0 && (
+          <button
+            onClick={onMemoClick}
+            className="mt-2 flex items-center gap-1.5 px-2 py-1 rounded bg-neutral-800 hover:bg-neutral-700 transition-colors"
+          >
+            <span className="bg-amber-600 text-white text-[10px] font-mono font-bold rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+              {firstOfficerStatus.unreadMemos > 9 ? '9+' : firstOfficerStatus.unreadMemos}
+            </span>
+            <span className="text-xs text-neutral-300">
+              {firstOfficerStatus.unreadMemos === 1 ? 'memo' : 'memos'}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Status sections */}

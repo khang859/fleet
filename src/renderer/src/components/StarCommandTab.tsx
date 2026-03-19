@@ -10,6 +10,7 @@ import { Avatar } from './star-command/Avatar'
 import { AdmiralSidebar } from './star-command/AdmiralSidebar'
 import { StatusBar } from './star-command/StatusBar'
 import { DependencyCheckScreen } from './star-command/DependencyCheckScreen'
+import { MemoPanel } from './star-command/MemoPanel'
 import { useTerminal } from '../hooks/use-terminal'
 
 function AdmiralTerminal({ paneId }: { paneId: string }) {
@@ -51,6 +52,7 @@ export function StarCommandTab() {
   } = useStarCommandStore()
 
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
+  const [showMemos, setShowMemos] = useState(false)
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const [_isRestarting, setIsRestarting] = useState(false)
@@ -276,7 +278,9 @@ export function StarCommandTab() {
               </div>
             </div>
 
-            {view === 'config' ? (
+            {showMemos ? (
+              <MemoPanel onClose={() => setShowMemos(false)} />
+            ) : view === 'config' ? (
               <StarCommandConfig />
             ) : view === 'comms' ? (
               <CommsPanel />
@@ -356,6 +360,7 @@ export function StarCommandTab() {
 
       <AdmiralSidebar
         avatarVariant={admiralAvatarState === 'speaking' ? (talkFrame ? 'speaking' : 'default') : admiralAvatarState}
+        onMemoClick={() => setShowMemos(true)}
       />
     </div>
   )
