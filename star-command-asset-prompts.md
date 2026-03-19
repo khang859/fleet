@@ -140,6 +140,48 @@ integrated into the star center, dark navy background, clean symmetrical design,
 32x32 pixels, app icon style, also generate 16x16 variant for tab favicon
 ```
 
+## 2b. First Officer Avatar / Portrait
+
+These are portraits for the First Officer — the automated triage officer who handles failed missions. Same style as Admiral but with amber ops accents and a data-pad.
+
+### 2b-a. First Officer Portrait — Default
+```
+{style prefix}, pixel art character portrait, front-facing bust shot,
+female First Officer with sharp features, short practical hair, small
+tactical headset with amber LED accent on one ear, holding a glowing
+data-pad at chest level, confident focused expression, fitted dark coat
+with high collar similar to Admiral but with amber rank stripe on shoulder,
+dark navy background with subtle teal grid lines, 64x64 pixels, portrait
+avatar, clean readable face details
+```
+
+### 2b-b. First Officer Portrait — Working
+```
+{style prefix}, pixel art character portrait, front-facing bust shot,
+same female First Officer with short practical hair and tactical headset,
+eyes focused down on glowing data-pad, small teal processing indicators
+near headset, concentrated expression, dark navy background,
+64x64 pixels, portrait avatar
+```
+
+### 2b-c. First Officer Portrait — Escalation
+```
+{style prefix}, pixel art character portrait, front-facing bust shot,
+same female First Officer with short practical hair and tactical headset,
+looking up from data-pad with alert expression, headset flashing amber,
+one hand raised slightly as if flagging attention, dark navy background
+with subtle amber tint, 64x64 pixels, portrait avatar
+```
+
+### 2b-d. First Officer Portrait — Idle
+```
+{style prefix}, pixel art character portrait, front-facing bust shot,
+same female First Officer with short practical hair and tactical headset,
+relaxed neutral expression, data-pad lowered to side, headset glow dimmed,
+dark navy background slightly darker than default, 64x64 pixels,
+portrait avatar
+```
+
 ---
 
 ## 3. Crew Avatars / Portraits
