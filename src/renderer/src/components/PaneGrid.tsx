@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { PaneNode } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
 import { ImageViewerPane } from './ImageViewerPane';
+import { FileEditorPane } from './FileEditorPane';
 import { useWorkspaceStore } from '../store/workspace-store';
 
 type PaneActions = {
@@ -52,9 +53,10 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
   if (node.type === 'leaf') {
     if (node.paneType === 'file') {
       return (
-        <div className="h-full w-full flex items-center justify-center bg-neutral-900 text-neutral-400 text-sm">
-          File Editor: {node.filePath}
-        </div>
+        <FileEditorPane
+          paneId={node.id}
+          filePath={node.filePath ?? ''}
+        />
       );
     }
     if (node.paneType === 'image') {
