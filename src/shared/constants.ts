@@ -63,6 +63,8 @@ export const IPC_CHANNELS = {
   FILE_READ: 'file:read',
   FILE_WRITE: 'file:write',
   FILE_STAT: 'file:stat',
+  FILE_OPEN_DIALOG: 'file:open-dialog',
+  FILE_LIST: 'file:list',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

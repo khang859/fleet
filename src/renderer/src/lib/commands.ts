@@ -98,6 +98,20 @@ export function createCommandRegistry(): Command[] {
       category: 'View',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes')),
     },
+    {
+      id: 'open-file',
+      label: 'Open File...',
+      shortcut: sc('open-file'),
+      category: 'File',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:open-file-dialog')),
+    },
+    {
+      id: 'quick-open',
+      label: 'Quick Open',
+      shortcut: sc('quick-open'),
+      category: 'File',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-quick-open')),
+    },
   ];
 }
 

@@ -109,6 +109,18 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     mac: { key: 'g', meta: true, shift: true },
     other: { key: 'G', ctrl: true, shift: true },
   },
+  {
+    id: 'open-file',
+    label: 'Open file dialog',
+    mac: { key: 'o', meta: true },
+    other: { key: 'o', ctrl: true },
+  },
+  {
+    id: 'quick-open',
+    label: 'Quick open',
+    mac: { key: 'p', meta: true },
+    other: { key: 'p', ctrl: true },
+  },
 ];
 
 export function matchesShortcut(e: KeyboardEvent, def: ShortcutDef): boolean {

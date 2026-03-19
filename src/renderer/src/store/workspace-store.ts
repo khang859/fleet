@@ -1,6 +1,26 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
 
+const RECENT_FILES_KEY = 'fleet:recent-files';
+const MAX_RECENT_FILES = 20;
+
+function loadRecentFiles(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_FILES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentFiles(files: string[]): void {
+  try {
+    localStorage.setItem(RECENT_FILES_KEY, JSON.stringify(files));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function generateId(): string {
   return crypto.randomUUID();
 }
@@ -35,6 +55,7 @@ type WorkspaceStore = {
   activePaneId: string | null;
   lastClosedTab: ClosedTabRecord | null;
   isDirty: boolean;
+  recentFiles: string[];
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
@@ -61,6 +82,7 @@ type WorkspaceStore = {
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
+  addRecentFile: (filePath: string) => void;
 
   // Helpers
   findTab: (tabId: string) => Tab | undefined;
@@ -109,6 +131,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspace: { id: 'default', label: 'Default', tabs: [] },
   activeTabId: null,
   activePaneId: null,
+  recentFiles: loadRecentFiles(),
   lastClosedTab: null,
   isDirty: false,
 
@@ -350,7 +373,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activePaneId: leaf.id,
       isDirty: true,
     }));
+    get().addRecentFile(filePath);
     return leaf.id;
+  },
+
+  addRecentFile: (filePath) => {
+    set((state) => {
+      const filtered = state.recentFiles.filter((f) => f !== filePath);
+      const updated = [filePath, ...filtered].slice(0, MAX_RECENT_FILES);
+      saveRecentFiles(updated);
+      return { recentFiles: updated };
+    });
   },
 
   findTab: (tabId) => get().workspace.tabs.find((t) => t.id === tabId),
