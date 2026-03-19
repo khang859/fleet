@@ -2,6 +2,7 @@ import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { existsSync } from 'node:fs';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -11,6 +12,14 @@ export interface CLIResponse {
   data?: unknown;
   error?: string;
   code?: string;
+}
+
+export interface RetryOptions {
+  maxRetries?: number;
+  initialBackoffMs?: number;
+  backoffMultiplier?: number;
+  waitForAppMs?: number;
+  pollIntervalMs?: number;
 }
 
 // ── Helper: strip ANSI escape codes ──────────────────────────────────────────
@@ -156,6 +165,67 @@ export class FleetCLI {
       });
     });
   }
+
+  async sendWithRetry(
+    command: string,
+    args: Record<string, unknown>,
+    opts: RetryOptions = {},
+  ): Promise<CLIResponse> {
+    const {
+      maxRetries = 4,
+      initialBackoffMs = 200,
+      backoffMultiplier = 2,
+      waitForAppMs = 15_000,
+      pollIntervalMs = 500,
+    } = opts;
+
+    // Wait for socket file if it doesn't exist
+    if (waitForAppMs > 0) {
+      if (!existsSync(this.sockPath)) {
+        process.stderr.write('Waiting for Fleet app to start...\n');
+        const deadline = Date.now() + waitForAppMs;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+          if (existsSync(this.sockPath)) break;
+        }
+        if (!existsSync(this.sockPath)) {
+          return {
+            id: '',
+            ok: false,
+            error: `Fleet app not running (no socket at ${this.sockPath})`,
+            code: 'ENOENT',
+          };
+        }
+      }
+    }
+
+    // Retry loop for transient connection errors
+    let backoff = initialBackoffMs;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await this.send(command, args);
+
+      // Transient connection error codes worth retrying
+      const TRANSIENT_CODES = new Set(['ECONNREFUSED', 'ENOENT', 'ECONNRESET']);
+
+      // Non-transient errors: fail immediately
+      if (!result.ok && !TRANSIENT_CODES.has(result.code ?? '')) {
+        return result;
+      }
+
+      // Success or last attempt: return
+      if (result.ok || attempt === maxRetries) {
+        return result;
+      }
+
+      // Transient error: retry with backoff
+      process.stderr.write(`Connection failed (${result.code}), retrying (${attempt + 1}/${maxRetries})...\n`);
+      await new Promise((r) => setTimeout(r, backoff));
+      backoff = Math.min(backoff * backoffMultiplier, 10_000);
+    }
+
+    // Should not reach here, but satisfy TypeScript
+    return { id: '', ok: false, error: 'Retry exhausted', code: 'RETRY_EXHAUSTED' };
+  }
 }
 
 // ── Command mapping: CLI names → socket server command names ─────────────────
@@ -253,7 +323,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
   let response: CLIResponse;
   try {
-    response = await cli.send(command, args);
+    response = await cli.sendWithRetry(command, args);
   } catch (err) {
     if (quiet) return '';
     const msg = err instanceof Error ? err.message : String(err);
