@@ -69,7 +69,7 @@ export class CrewService {
    * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
   async deployCrew(
-    opts: { sectorId: string; prompt: string; missionId?: number },
+    opts: { sectorId: string; prompt: string; missionId?: number; type?: string },
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -86,6 +86,7 @@ export class CrewService {
         sectorId: opts.sectorId,
         summary: opts.prompt.slice(0, 100),
         prompt: opts.prompt,
+        type: opts.type,
       });
       missionId = mission.id;
     }
