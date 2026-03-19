@@ -69,7 +69,7 @@ export class CrewService {
    * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
   async deployCrew(
-    opts: { sectorId: string; prompt: string; missionId: number; type?: string },
+    opts: { sectorId: string; prompt: string; missionId: number; type?: string; prBranch?: string },
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -106,15 +106,25 @@ export class CrewService {
     // 5. Create worktree
     let worktreeResult;
     try {
-      worktreeResult = await worktreeManager.create({
-        starbaseId,
-        crewId,
-        sectorPath: sector.root_path,
-        baseBranch,
-      });
+      if (opts.prBranch) {
+        // Review/fix crew: check out existing PR branch
+        worktreeResult = await worktreeManager.createForExistingBranch({
+          starbaseId,
+          crewId,
+          sectorPath: sector.root_path,
+          baseBranch,
+          existingBranch: opts.prBranch,
+        });
+      } else {
+        worktreeResult = await worktreeManager.create({
+          starbaseId,
+          crewId,
+          sectorPath: sector.root_path,
+          baseBranch,
+        });
+      }
     } catch (err) {
       if (err instanceof WorktreeLimitError) {
-        // Queue the mission instead of deploying
         db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
         db.prepare(
           "INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)",
@@ -125,13 +135,15 @@ export class CrewService {
       throw err;
     }
 
-    // 6. Install dependencies
-    try {
-      await worktreeManager.installDependencies(worktreeResult.worktreePath);
-    } catch (err) {
-      worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
-      missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
-      throw err;
+    // 6. Install dependencies (skip for review crews — they only read code)
+    if (missionType !== 'review') {
+      try {
+        await worktreeManager.installDependencies(worktreeResult.worktreePath);
+      } catch (err) {
+        worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
+        missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
+        throw err;
+      }
     }
 
     // 7. Pick avatar variant (stored in DB for UI display even without a tab)
@@ -165,6 +177,7 @@ export class CrewService {
       env: this.deps.crewEnv,
       missionType,
       starbaseId,
+      prBranch: opts.prBranch,
     });
 
     // Update crew record with avatar
