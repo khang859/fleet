@@ -238,6 +238,7 @@ app.whenReady().then(async () => {
       return tabId
     }
 
+
     // Socket Server (replaces SocketApi for starbase commands)
     const shipsLog = new ShipsLog(starbaseDb.getDb())
     socketServer = new SocketServer(SOCKET_PATH, {

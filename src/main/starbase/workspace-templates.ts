@@ -51,7 +51,7 @@ Use the \`/fleet\` skill to interact with the Fleet CLI. The skill file at \`.cl
 Quick reference:
 - \`fleet crew list\` — list deployed Crewmates
 - \`fleet missions list\` — view queued and active Missions
-- \`fleet comms inbox\` — check unread transmissions
+- \`fleet comms inbox --unread\` — check unread transmissions
 - \`fleet sectors list\` — list registered Sectors
 
 ## Sectors
@@ -66,7 +66,7 @@ ${sectorLines}
 
 ## Rules
 
-1. **Check comms first.** Before taking any action, run \`fleet comms inbox\` to check for unread transmissions from Crew.
+1. **Check comms first.** Before taking any action, run \`fleet comms inbox --unread\` to check for unread transmissions from Crew.
 2. **Scope Missions tightly.** One clear objective per Mission. If unclear, ask the user for clarification before deploying.
 3. **Ask before deploying.** Present your decomposition plan to the user and confirm before dispatching Crew.
 4. **Never investigate or fix Sectors yourself.** You are a coordinator, not a worker. When something needs investigating, debugging, or fixing in a Sector, dispatch a Crew to do it. Do not read code, run tests, or make changes in Sectors directly.
@@ -91,7 +91,7 @@ description: Fleet CLI — manage AI coding agents (Crew), Missions, Sectors, an
 
 Every time you are activated, follow this sequence:
 
-1. **Check comms** — \`fleet comms inbox\` — read and acknowledge any unread transmissions
+1. **Check comms** — \`fleet comms inbox --unread\` — read and acknowledge any unread transmissions
 2. **Review crew** — \`fleet crew list\` — see who is deployed and what they are working on
 3. **Review missions** — \`fleet missions list\` — check queued and active Missions
 4. **Take action** — based on the above, either deploy new Crew, update Missions, or respond to the user
@@ -175,8 +175,8 @@ fleet missions show <id>               # Show full Mission details
 ### Comms
 
 \`\`\`
-fleet comms inbox                      # List unread transmissions
-fleet comms inbox --all                # List all transmissions (including read)
+fleet comms inbox --unread             # List only unread transmissions
+fleet comms inbox                      # List all transmissions (read and unread)
 fleet comms check --quiet              # Check for unread comms (exit code 0 = none, 1 = unread)
 fleet comms send --to <crew-id> --message "..."  # Send directive (also injects into live process)
 fleet comms send --from <crew-id> --to admiral --message "..."  # Send as a Crewmate
@@ -240,7 +240,7 @@ recalling and redeploying.
 
 **How it works:**
 1. Crewmate writes to comms: \`fleet comms send --from $FLEET_CREW_ID --to admiral --type awaiting_feedback --message "..."\`
-2. Admiral reads comms: \`fleet comms inbox\`
+2. Admiral reads comms: \`fleet comms inbox --unread\`
 3. Admiral responds: \`fleet comms send --to <crew-id> --message "..."\` (this also injects into the live process)
    OR: \`fleet crew message <crew-id> --message "..."\` (direct injection only, no comms record)
 4. Crewmate receives the message as a new turn in its session
@@ -302,7 +302,7 @@ If you are starting a new conversation and don't know the current state:
 
 1. \`fleet crew list\` — who is deployed?
 2. \`fleet missions list --status active\` — what is in flight?
-3. \`fleet comms inbox\` — any pending messages?
+3. \`fleet comms inbox --unread\` — any pending messages?
 4. \`fleet sectors list\` — what Sectors are registered?
 
 Then summarize the state for the user before asking what to do next.

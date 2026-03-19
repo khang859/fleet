@@ -184,7 +184,7 @@ export class CommsService {
     return result.changes;
   }
 
-  getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string }): TransmissionRow[] {
+  getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string; unread?: boolean }): TransmissionRow[] {
     if (opts?.crewId && opts?.from) {
       throw new Error('Cannot filter by both crewId and from — crewId already matches from_crew and to_crew');
     }
@@ -204,6 +204,9 @@ export class CommsService {
     if (opts?.from) {
       conditions.push('from_crew = ?');
       params.push(opts.from);
+    }
+    if (opts?.unread) {
+      conditions.push('read = 0');
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
