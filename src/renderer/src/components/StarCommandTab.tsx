@@ -52,7 +52,7 @@ export function StarCommandTab() {
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
-  const [isRestarting, setIsRestarting] = useState(false)
+  const [_isRestarting, setIsRestarting] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto-dismiss reset confirmation after 5s (Baymard: time-limited destructive states)

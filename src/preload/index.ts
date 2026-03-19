@@ -181,6 +181,10 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
     stat: (filePath: string): Promise<{ success: boolean; data?: { size: number; modifiedAt: number; mimeType: string }; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
+    openDialog: (opts?: { defaultPath?: string }): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts ?? {}),
+    list: (dirPath: string): Promise<{ success: boolean; files: { path: string; relativePath: string; name: string }[]; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
   },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).

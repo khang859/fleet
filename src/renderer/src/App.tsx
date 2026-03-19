@@ -14,6 +14,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
+import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
 
@@ -67,6 +68,7 @@ export function App() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
+  const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -106,6 +108,27 @@ export function App() {
     document.addEventListener('fleet:toggle-git-changes', handler);
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
   }, []);
+
+  // Quick open toggle (Cmd+P)
+  useEffect(() => {
+    const handler = () => setQuickOpenOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-quick-open', handler);
+    return () => document.removeEventListener('fleet:toggle-quick-open', handler);
+  }, []);
+
+  // Open file dialog (Cmd+O)
+  useEffect(() => {
+    const handler = () => {
+      const cwd = focusedPaneCwd ?? window.fleet.homeDir;
+      window.fleet.file.openDialog({ defaultPath: cwd }).then((filePaths) => {
+        for (const filePath of filePaths) {
+          useWorkspaceStore.getState().openFile(filePath);
+        }
+      });
+    };
+    document.addEventListener('fleet:open-file-dialog', handler);
+    return () => document.removeEventListener('fleet:open-file-dialog', handler);
+  }, [focusedPaneCwd]);
 
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
   // This listener remains for backwards compatibility but will not fire for new deployments.
@@ -367,6 +390,11 @@ export function App() {
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <GitChangesModal isOpen={gitChangesOpen} onClose={() => setGitChangesOpen(false)} cwd={focusedPaneCwd} />
+      <QuickOpenOverlay
+        isOpen={quickOpenOpen}
+        onClose={() => setQuickOpenOpen(false)}
+        rootDir={focusedPaneCwd}
+      />
     </div>
   );
 }

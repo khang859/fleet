@@ -1,6 +1,10 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
-import { readFile, writeFile, stat } from 'fs/promises'
-import { extname } from 'path'
+import { readFile, writeFile, stat, readdir } from 'fs/promises'
+import { extname, join, relative } from 'path'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 import { IPC_CHANNELS } from '../shared/constants'
 import type {
   PtyCreateRequest,
@@ -316,6 +320,63 @@ export function registerIpcHandlers(
       properties: ['openDirectory']
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+
+  // Open file dialog — allows multi-select, no type filter, starts in provided dir
+  ipcMain.handle(IPC_CHANNELS.FILE_OPEN_DIALOG, async (event, { defaultPath }: { defaultPath?: string } = {}) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const result = await dialog.showOpenDialog(win!, {
+      properties: ['openFile', 'multiSelections'],
+      defaultPath: defaultPath ?? undefined,
+    })
+    return result.canceled ? [] : result.filePaths
+  })
+
+  // List files recursively in a directory, respecting .gitignore when in a git repo
+  ipcMain.handle(IPC_CHANNELS.FILE_LIST, async (_event, { dirPath }: { dirPath: string }) => {
+    try {
+      // Try git ls-files first (respects .gitignore)
+      const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', {
+        cwd: dirPath,
+        maxBuffer: 10 * 1024 * 1024,
+      })
+      const files = stdout.split('\n').filter(Boolean).map((f) => ({
+        path: join(dirPath, f),
+        relativePath: f,
+        name: f.split('/').pop() ?? f,
+      }))
+      return { success: true, files }
+    } catch {
+      // Fallback: manual recursive walk with common ignore patterns
+      const IGNORE_DIRS = new Set([
+        'node_modules', '.git', 'dist', 'build', '.next', '.nuxt', 'coverage',
+        '__pycache__', '.cache', '.parcel-cache', 'out', '.svelte-kit',
+      ])
+      const files: { path: string; relativePath: string; name: string }[] = []
+
+      async function walk(dir: string, base: string): Promise<void> {
+        let entries
+        try {
+          entries = await readdir(dir, { withFileTypes: true })
+        } catch {
+          return
+        }
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            if (!IGNORE_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+              await walk(join(dir, entry.name), base)
+            }
+          } else if (entry.isFile()) {
+            const abs = join(dir, entry.name)
+            const rel = relative(base, abs)
+            files.push({ path: abs, relativePath: rel, name: entry.name })
+          }
+        }
+      }
+
+      await walk(dirPath, dirPath)
+      return { success: true, files }
+    }
   })
 
   // File operations
