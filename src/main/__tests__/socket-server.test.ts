@@ -318,4 +318,20 @@ describe('SocketServer', () => {
     expect(response.ok).toBe(true);
     expect((response.data as any).unread).toBe(2);
   });
+
+  it('responds to ping with pong and uptime', async () => {
+    await server.start();
+
+    const response = await sendCommand(socketPath, {
+      id: 'req-ping',
+      command: 'ping',
+      args: {},
+    });
+
+    expect(response.id).toBe('req-ping');
+    expect(response.ok).toBe(true);
+    expect((response.data as any).pong).toBe(true);
+    expect(typeof (response.data as any).uptime).toBe('number');
+    expect((response.data as any).uptime).toBeGreaterThanOrEqual(0);
+  });
 });

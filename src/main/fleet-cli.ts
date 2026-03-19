@@ -23,6 +23,14 @@ export interface CLIResponse {
   code?: string;
 }
 
+export interface RetryOptions {
+  maxRetries?: number;
+  initialBackoffMs?: number;
+  backoffMultiplier?: number;
+  waitForAppMs?: number;
+  pollIntervalMs?: number;
+}
+
 // ── Helper: strip ANSI escape codes ──────────────────────────────────────────
 
 export function stripAnsi(str: string): string {
@@ -166,6 +174,67 @@ export class FleetCLI {
       });
     });
   }
+
+  async sendWithRetry(
+    command: string,
+    args: Record<string, unknown>,
+    opts: RetryOptions = {},
+  ): Promise<CLIResponse> {
+    const {
+      maxRetries = 4,
+      initialBackoffMs = 200,
+      backoffMultiplier = 2,
+      waitForAppMs = 15_000,
+      pollIntervalMs = 500,
+    } = opts;
+
+    // Wait for socket file if it doesn't exist
+    if (waitForAppMs > 0) {
+      if (!existsSync(this.sockPath)) {
+        process.stderr.write('Waiting for Fleet app to start...\n');
+        const deadline = Date.now() + waitForAppMs;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+          if (existsSync(this.sockPath)) break;
+        }
+        if (!existsSync(this.sockPath)) {
+          return {
+            id: '',
+            ok: false,
+            error: `Fleet app not running (no socket at ${this.sockPath})`,
+            code: 'ENOENT',
+          };
+        }
+      }
+    }
+
+    // Retry loop for transient connection errors
+    let backoff = initialBackoffMs;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      const result = await this.send(command, args);
+
+      // Transient connection error codes worth retrying
+      const TRANSIENT_CODES = new Set(['ECONNREFUSED', 'ENOENT', 'ECONNRESET']);
+
+      // Non-transient errors: fail immediately
+      if (!result.ok && !TRANSIENT_CODES.has(result.code ?? '')) {
+        return result;
+      }
+
+      // Success or last attempt: return
+      if (result.ok || attempt === maxRetries) {
+        return result;
+      }
+
+      // Transient error: retry with backoff
+      process.stderr.write(`Connection failed (${result.code}), retrying (${attempt + 1}/${maxRetries})...\n`);
+      await new Promise((r) => setTimeout(r, backoff));
+      backoff = Math.min(backoff * backoffMultiplier, 10_000);
+    }
+
+    // Should not reach here, but satisfy TypeScript
+    return { id: '', ok: false, error: 'Retry exhausted', code: 'RETRY_EXHAUSTED' };
+  }
 }
 
 // ── Command mapping: CLI names → socket server command names ─────────────────
@@ -230,7 +299,7 @@ function mapCommand(group: string, action: string): string {
 
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
-export async function runCLI(argv: string[], sockPath: string): Promise<string> {
+export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: boolean }): Promise<string> {
   const [group, action, ...rest] = argv;
 
   // ── Top-level "open" command ─────────────────────────────────────────────
@@ -319,7 +388,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
   let response: CLIResponse;
   try {
-    response = await cli.send(command, args);
+    response = opts?.retry ? await cli.sendWithRetry(command, args) : await cli.send(command, args);
   } catch (err) {
     if (quiet) return '';
     const msg = err instanceof Error ? err.message : String(err);
@@ -378,7 +447,7 @@ export async function runCLI(argv: string[], sockPath: string): Promise<string> 
 
 if (typeof process !== 'undefined' && /fleet-cli\.[jt]s$/.test(process.argv[1] ?? '')) {
   const sockPath = join(homedir(), '.fleet', 'fleet.sock');
-  runCLI(process.argv.slice(2), sockPath).then((output) => {
+  runCLI(process.argv.slice(2), sockPath, { retry: true }).then((output) => {
     if (output) process.stdout.write(output + '\n');
   });
 }

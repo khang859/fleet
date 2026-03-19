@@ -59,6 +59,7 @@ function stripAnsi(str: string): string {
 export class SocketServer extends EventEmitter {
   private server: Server | null = null;
   private clients = new Set<Socket>();
+  private startTime: number | null = null;
 
   constructor(
     private socketPath: string,
@@ -103,11 +104,22 @@ export class SocketServer extends EventEmitter {
         });
       });
 
-      this.server.listen(this.socketPath, () => {
-        resolve();
+      this.server.on('close', () => {
+        this.emit('server-close');
       });
 
-      this.server.on('error', reject);
+      // Use once for startup error — detaches after first fire so it doesn't linger
+      this.server.once('error', reject);
+
+      this.server.listen(this.socketPath, () => {
+        // Remove startup error handler and attach permanent one for post-startup errors
+        this.server!.off('error', reject);
+        this.server!.on('error', (err) => {
+          this.emit('server-error', err);
+        });
+        this.startTime = Date.now();
+        resolve();
+      });
     });
   }
 
@@ -173,6 +185,9 @@ export class SocketServer extends EventEmitter {
     } = this.services;
 
     switch (command) {
+      case 'ping':
+        return { pong: true, uptime: this.startTime ? (Date.now() - this.startTime) / 1000 : 0 };
+
       // ── Sectors ──────────────────────────────────────────────────────────────
       case 'sector.list':
         return sectorService.listSectors();
