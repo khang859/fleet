@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Terminal, FileCode2, ImageIcon } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds } from './store/workspace-store';
@@ -293,10 +294,12 @@ export function App() {
               >
                 {tab.type === 'crew' ? (
                   <Avatar type="crew" variant={tab.avatarVariant} size={20} />
+                ) : tab.type === 'file' ? (
+                  <FileCode2 size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
+                ) : tab.type === 'image' ? (
+                  <ImageIcon size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
                 ) : (
-                  <span className={`block text-xs leading-none ${isActive ? 'text-white' : 'text-neutral-500'}`}>
-                    &gt;_
-                  </span>
+                  <Terminal size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
                 )}
               </button>
             );
