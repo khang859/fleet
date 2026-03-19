@@ -20,6 +20,7 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
+import type { PaneNode } from '../../shared/types';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -29,6 +30,21 @@ function killClosedTabPtys(paneIds: string[]): void {
     window.fleet.pty.kill(paneId);
     clearCreatedPty(paneId);
   }
+}
+
+function injectSerializedContent(node: PaneNode): PaneNode {
+  if (node.type === 'leaf') {
+    if (node.paneType === 'file' || node.paneType === 'image') return node;
+    const content = serializePane(node.id);
+    return content ? { ...node, serializedContent: content } : node;
+  }
+  return {
+    ...node,
+    children: [
+      injectSerializedContent(node.children[0]),
+      injectSerializedContent(node.children[1]),
+    ],
+  };
 }
 
 export function App() {
@@ -171,7 +187,14 @@ export function App() {
   useEffect(() => {
     const handleBeforeUnload = () => {
       const state = useWorkspaceStore.getState();
-      window.fleet.layout.save({ workspace: state.workspace });
+      const workspaceWithContent = {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectSerializedContent(tab.splitRoot),
+        })),
+      };
+      window.fleet.layout.save({ workspace: workspaceWithContent });
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
