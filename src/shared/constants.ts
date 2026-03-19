@@ -96,7 +96,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     taskComplete: { badge: true, sound: false, os: false },
     needsPermission: { badge: true, sound: true, os: true },
     processExitError: { badge: true, sound: false, os: false },
-    processExitClean: { badge: false, sound: false, os: false }
+    processExitClean: { badge: false, sound: false, os: false },
+    comms: { badge: true, sound: false, os: true },
+    memos: { badge: true, sound: false, os: true }
   },
   socketApi: {
     enabled: true,
