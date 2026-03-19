@@ -2,8 +2,10 @@ import type Database from 'better-sqlite3';
 import { existsSync } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { createConnection } from 'node:net';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
+import type { SocketSupervisor } from '../socket-supervisor';
 import { getAvailableMemoryBytes } from './available-memory';
 
 const execFileAsync = promisify(execFile);
@@ -12,6 +14,8 @@ type SentinelDeps = {
   db: Database.Database;
   configService: ConfigService;
   eventBus?: EventBus;
+  supervisor?: SocketSupervisor;
+  socketPath?: string;
 };
 
 type CrewRow = {
@@ -31,6 +35,7 @@ type SectorRow = {
 export class Sentinel {
   private interval: ReturnType<typeof setInterval> | null = null;
   private sweepCount = 0;
+  private consecutivePingFailures = 0;
   private diskCacheBytes: number | null = null;
   private diskCacheTime = 0;
   /** Last sent alert level per type — only re-send when level changes or clears */
@@ -160,6 +165,11 @@ export class Sentinel {
       db.prepare('UPDATE crew SET comms_count_minute = 0').run();
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
+
+    // 8. Socket health check
+    if (this.deps.supervisor && this.deps.socketPath) {
+      await this.checkSocketHealth();
+    }
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -184,5 +194,74 @@ export class Sentinel {
     } catch {
       return null;
     }
+  }
+
+  private async checkSocketHealth(): Promise<void> {
+    const { supervisor, socketPath } = this.deps;
+    if (!supervisor || !socketPath) return;
+
+    const healthy = await this.pingSocket(socketPath, 3000);
+
+    if (healthy) {
+      this.consecutivePingFailures = 0;
+      supervisor.resetBackoff();
+      return;
+    }
+
+    this.consecutivePingFailures++;
+    console.warn(`[sentinel] Socket ping failed (${this.consecutivePingFailures}/3)`);
+
+    if (this.consecutivePingFailures >= 3) {
+      console.error('[sentinel] Socket unresponsive, triggering restart');
+      this.consecutivePingFailures = 0;
+
+      const alertLevel = 'warning';
+      if (this.lastAlertLevel['socket_health'] !== alertLevel) {
+        this.lastAlertLevel['socket_health'] = alertLevel;
+        this.deps.db.prepare(
+          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'socket_restart', ?)",
+        ).run(JSON.stringify({ reason: '3 consecutive ping failures' }));
+        this.deps.db.prepare(
+          "INSERT INTO ships_log (event_type, detail) VALUES ('socket_restart', ?)",
+        ).run(JSON.stringify({ reason: '3 consecutive ping failures' }));
+      }
+
+      supervisor.restart().catch((err) => {
+        console.error('[sentinel] Supervisor restart failed:', err);
+      });
+    }
+  }
+
+  private pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        socket.destroy();
+        resolve(false);
+      }, timeoutMs);
+
+      const socket = createConnection(socketPath, () => {
+        socket.write(JSON.stringify({ id: 'sentinel-ping', command: 'ping', args: {} }) + '\n');
+      });
+
+      let buffer = '';
+      socket.on('data', (chunk) => {
+        buffer += chunk.toString();
+        if (buffer.includes('\n')) {
+          clearTimeout(timer);
+          socket.end();
+          try {
+            const parsed = JSON.parse(buffer.split('\n')[0]);
+            resolve(parsed.ok === true && parsed.data?.pong === true);
+          } catch {
+            resolve(false);
+          }
+        }
+      });
+
+      socket.on('error', () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
   }
 }
