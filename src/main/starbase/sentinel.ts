@@ -434,6 +434,7 @@ export class Sentinel {
        JOIN sectors s ON s.id = m.sector_id
        WHERE m.status = 'pending-review'
          AND m.pr_branch IS NOT NULL
+         AND m.type = 'code'
        ORDER BY m.priority ASC, m.completed_at ASC
        LIMIT ?`
     ).all(maxConcurrent - activeReviewCount) as Array<{
@@ -501,6 +502,7 @@ NOTES: <your review notes — specific file:line references for issues>`
        JOIN sectors s ON s.id = m.sector_id
        WHERE m.status = 'changes-requested'
          AND m.pr_branch IS NOT NULL
+         AND m.type = 'code'
        ORDER BY m.priority ASC
        LIMIT 5`
     ).all() as Array<{

@@ -633,6 +633,82 @@ export class Hull {
         return
       }
 
+      // Safety guard: research crews should never push code — discard changes and produce cargo
+      if (this.opts.missionType === 'research') {
+        try { execSync('git checkout -- .', gitOpts) } catch { /* ignore */ }
+        try { execSync('git clean -fd', gitOpts) } catch { /* ignore */ }
+
+        if (status === 'error') {
+          db.prepare(
+            "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
+          ).run('Research crew error', missionId)
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+          ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'Research crew error' }))
+          db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+            crewId, JSON.stringify({ status: 'error', reason: 'Research crew error (git changes discarded)' })
+          )
+          overrideStatus = 'error'
+          return
+        }
+
+        overrideStatus = 'complete'
+
+        const cargoDir = join(
+          process.env.HOME ?? '~',
+          '.fleet', 'starbases',
+          `starbase-${this.opts.starbaseId}`,
+          'cargo', this.opts.sectorId, String(missionId)
+        )
+        const fullOutput = this.outputLines.join('\n')
+        const summary = this.resultText ?? this.outputLines.slice(-20).join('\n')
+        const hasOutput = fullOutput.trim().length > 0
+        const resultMsg = hasOutput ? 'Research completed' : 'Research completed (no output captured)'
+
+        let fullManifest: string
+        let summaryManifest: string
+
+        try {
+          mkdirSync(cargoDir, { recursive: true })
+          const fullOutputPath = join(cargoDir, 'full-output.md')
+          const summaryPath = join(cargoDir, 'summary.md')
+          writeFileSync(fullOutputPath, fullOutput, 'utf-8')
+          writeFileSync(summaryPath, summary, 'utf-8')
+          fullManifest = JSON.stringify({ path: fullOutputPath })
+          summaryManifest = JSON.stringify({ path: summaryPath })
+        } catch (fileErr) {
+          console.error(`[hull:${crewId}] cargo file write failed:`, fileErr)
+          fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) })
+          summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) })
+        }
+
+        db.prepare(
+          `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
+           VALUES (?, ?, ?, 'documentation_full', ?, 1)`
+        ).run(crewId, missionId, this.opts.sectorId, fullManifest)
+
+        db.prepare(
+          `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
+           VALUES (?, ?, ?, 'documentation_summary', ?, 1)`
+        ).run(crewId, missionId, this.opts.sectorId, summaryManifest)
+
+        db.prepare(
+          "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
+        ).run(resultMsg, missionId)
+
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+        ).run(crewId, JSON.stringify({
+          missionId, status: 'completed', reason: resultMsg, cargoProduced: true
+        }))
+
+        db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+          crewId,
+          JSON.stringify({ status: 'complete', reason: resultMsg + ' (git changes discarded)' })
+        )
+        return
+      }
+
       // Safety guard: review crews should never push code — discard changes and parse verdict
       if (this.opts.missionType === 'review') {
         // Reset any accidental changes and fall through to the !hasChanges review path
