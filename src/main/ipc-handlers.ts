@@ -1,6 +1,7 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { readFile, writeFile, stat, readdir } from 'fs/promises'
-import { extname, join, relative } from 'path'
+import { readFileSync } from 'fs'
+import { extname, join, relative, resolve } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -38,6 +39,7 @@ import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
 import type { RetentionService } from './starbase/retention-service'
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
+import type { MemoService } from './starbase/memo-service'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -58,7 +60,8 @@ export function registerIpcHandlers(
   supplyRouteService?: SupplyRouteService | null,
   cargoService?: CargoService | null,
   retentionService?: RetentionService | null,
-  admiralStateDetector?: AdmiralStateDetector | null
+  admiralStateDetector?: AdmiralStateDetector | null,
+  memoService?: MemoService | null
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -324,6 +327,34 @@ export function registerIpcHandlers(
 
     ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, () => {
       retentionService.vacuum()
+    })
+  }
+
+  // First Officer: Memo handlers
+  if (memoService) {
+    ipcMain.handle(IPC_CHANNELS.MEMO_LIST, () => {
+      return memoService!.listAll()
+    })
+
+    ipcMain.handle(IPC_CHANNELS.MEMO_READ, (_e, id: string) => {
+      memoService!.markRead(id)
+    })
+
+    ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, (_e, id: string) => {
+      memoService!.dismiss(id)
+    })
+
+    ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, (_e, filePath: string) => {
+      const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
+      const resolved = resolve(filePath)
+      if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
+        return null
+      }
+      try {
+        return readFileSync(resolved, 'utf-8')
+      } catch {
+        return null
+      }
     })
   }
 

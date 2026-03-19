@@ -170,7 +170,15 @@ const fleetApi = {
     removeSector: (sectorId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
     updateSector: (sectorId: string, fields: unknown): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields })
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
+    memoList: (): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMO_LIST),
+    memoRead: (id: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMO_READ, id),
+    memoDismiss: (id: string): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMO_DISMISS, id),
+    memoContent: (filePath: string): Promise<string | null> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMO_CONTENT, filePath),
   },
   system: {
     check: (): Promise<import('../shared/ipc-api').SystemDepResult[]> =>

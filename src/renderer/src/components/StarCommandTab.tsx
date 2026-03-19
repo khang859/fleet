@@ -47,6 +47,7 @@ export function StarCommandTab() {
     depCheckStatus,
     depCheckResults,
     setDepCheck,
+    setFirstOfficerStatus,
   } = useStarCommandStore()
 
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
@@ -125,15 +126,17 @@ export function StarCommandTab() {
         missions?: unknown[]
         sectors?: unknown[]
         unreadCount?: number
+        firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number }
       }
       if (p.crew) setCrewList(p.crew as never[])
       if (p.missions) setMissionQueue(p.missions as never[])
       if (p.sectors) setSectors(p.sectors as never[])
       if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount)
+      if (p.firstOfficer !== undefined) setFirstOfficerStatus(p.firstOfficer)
     })
 
     return cleanup
-  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount])
+  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus])
 
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {

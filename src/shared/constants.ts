@@ -68,6 +68,10 @@ export const IPC_CHANNELS = {
   FILE_READ_BINARY: 'file:read-binary',
   FILE_OPEN_IN_TAB: 'file:open-in-tab',
   SYSTEM_CHECK: 'system:check',
+  MEMO_LIST: 'memo:list',
+  MEMO_READ: 'memo:read',
+  MEMO_DISMISS: 'memo:dismiss',
+  MEMO_CONTENT: 'memo:content',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

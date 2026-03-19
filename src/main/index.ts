@@ -48,6 +48,7 @@ let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
 let crewServiceRef: CrewService | null = null
 let firstOfficerRef: FirstOfficer | null = null
+let memoServiceRef: MemoService | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -217,7 +218,8 @@ app.whenReady().then(async () => {
     commsService.setRateLimit(commsRateLimit)
 
     // First Officer services
-    const memoService = new MemoService(starbaseDb.getDb(), eventBus)
+    memoServiceRef = new MemoService(starbaseDb.getDb(), eventBus)
+    const memoService = memoServiceRef
 
     const firstOfficer = new FirstOfficer({
       db: starbaseDb.getDb(),
@@ -434,7 +436,8 @@ app.whenReady().then(async () => {
     supplyRouteService,
     cargoService,
     retentionService,
-    admiralStateDetector
+    admiralStateDetector,
+    memoServiceRef
   )
 
   // Wire socket command handler to the window

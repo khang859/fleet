@@ -59,6 +59,24 @@ export type CommInfo = {
   created_at: string;
 };
 
+export type MemoInfo = {
+  id: string
+  crew_id: string | null
+  mission_id: number | null
+  event_type: string
+  file_path: string
+  status: string
+  retry_count: number
+  created_at: string
+  updated_at: string
+}
+
+export type FirstOfficerStatus = {
+  status: 'idle' | 'working' | 'memo'
+  statusText: string
+  unreadMemos: number
+}
+
 type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
 
 export type DepCheckResult = {
@@ -90,6 +108,9 @@ type StarCommandStore = {
   admiralAvatarState: AdmiralAvatarState;
   admiralStatusText: string;
 
+  // First Officer
+  firstOfficerStatus: FirstOfficerStatus;
+
   // Actions
   setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null, exitCode?: number | null) => void;
   setDepCheck: (status: 'pending' | 'checking' | 'passed' | 'failed', results?: DepCheckResult[]) => void;
@@ -100,6 +121,7 @@ type StarCommandStore = {
   setCommsList: (comms: CommInfo[]) => void;
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
   setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
+  setFirstOfficerStatus: (status: FirstOfficerStatus) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set) => ({
@@ -116,6 +138,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   depCheckResults: [],
   admiralAvatarState: 'standby',
   admiralStatusText: 'Standing by',
+  firstOfficerStatus: { status: 'idle', statusText: 'Idle', unreadMemos: 0 },
 
   setAdmiralPty: (paneId, status, error = null, exitCode = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error, admiralExitCode: exitCode }),
   setDepCheck: (status, results) => set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
@@ -126,4 +149,5 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   setCommsList: (comms) => set({ commsList: comms }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
   setAdmiralState: (state, statusText) => set({ admiralAvatarState: state, admiralStatusText: statusText }),
+  setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status }),
 }));
