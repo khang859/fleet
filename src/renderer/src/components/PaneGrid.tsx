@@ -70,7 +70,7 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
         cwd={node.cwd}
         isActive={node.id === activePaneId}
         onFocus={() => onPaneFocus(node.id)}
-        serializedContent={serializedPanes?.get(node.id)}
+        serializedContent={serializedPanes?.get(node.id) ?? node.serializedContent}
         fontFamily={fontFamily}
         fontSize={fontSize}
         onSplitHorizontal={() => actions.splitPane(node.id, 'horizontal')}
