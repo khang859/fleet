@@ -22,34 +22,55 @@ Existing rows default to `'code'`. No backfill needed. The column is a free-form
 
 ### 2. Mission Service
 
-`MissionService.createMission()` accepts an optional `type` parameter (defaults to `'code'`). The type is stored in the `missions` table and later read by the Hull.
+`MissionService.addMission()` accepts an optional `type` parameter (defaults to `'code'`). The type is stored in the `missions` table.
 
-### 3. Crew Service
+Changes:
+- Add `type?: string` to `AddMissionOpts`
+- Add `type: string` to `MissionRow`
+- Include `type` in the `INSERT` statement (defaulting to `opts.type ?? 'code'`)
 
-Pass two new fields through to `HullOpts`:
-- `starbaseId: string` — already available in `CrewServiceDeps`, needed for cargo file paths
-- `missionType: string` — read from the mission row after creation
+### 3. Call Sites
 
-`CrewServiceDeps` gains a `starbaseId` field, set from `starbaseDb.getStarbaseId()` in `index.ts`.
+Two call sites create missions and must forward the `type` parameter:
 
-### 4. Hull Cleanup — Research Branch
+1. **`socket-server.ts`** — `mission.create` command: forward `args.type` to `addMission()`
+2. **`crew-service.ts`** — `deployCrew()`: add `type?: string` to the opts parameter, forward to `addMission()` when creating inline missions
 
-In `cleanup()`, after the auto-commit step and the `hasChanges` check, add a branch for research missions:
+For pre-created missions (when `deployCrew` receives `missionId`), the type is read back from the mission row via `missionService.getMission()`.
+
+### 4. Crew Service → Hull Wiring
+
+Pass two new fields to `HullOpts`:
+- `missionType: string` — read from the mission row (either just-created or pre-existing)
+- `starbaseId: string` — already available in `CrewServiceDeps` (no changes to deps or `index.ts`)
+
+The crew service reads the mission type after mission creation/lookup:
+```typescript
+const mission = missionService.getMission(missionId)!
+// ... pass mission.type to Hull
+```
+
+### 5. Hull Cleanup — Research Branch
+
+In `cleanup()`, after the auto-commit step and the `hasChanges` check (line 470), add a branch for research missions:
 
 **When `missionType === 'research'` and `!hasChanges` and `status !== 'aborted'`:**
 
-1. Write cargo files to `~/.fleet/starbases/starbase-<starbaseId>/cargo/<sectorId>/<missionId>/`:
+1. Set `overrideStatus = 'complete'` (so the `finally` block updates crew status correctly)
+
+2. Write cargo files to `${process.env.HOME}/.fleet/starbases/starbase-<starbaseId>/cargo/<sectorId>/<missionId>/`:
    - `full-output.md` — complete output buffer (`this.outputLines.join('\n')`)
-   - `summary.md` — tail of output buffer or result message (concise version)
+   - `summary.md` — last 20 lines of output buffer (a reasonable tail for quick reading)
 
-2. Insert two `cargo` DB records:
-   - `type: 'documentation_full'`, `manifest` = JSON with file path
-   - `type: 'documentation_summary'`, `manifest` = JSON with file path
+3. Insert two `cargo` DB records (raw SQL, consistent with existing Hull pattern):
+   - `type: 'documentation_full'`, `manifest` = JSON with absolute file path, `verified = 1`
+   - `type: 'documentation_summary'`, `manifest` = JSON with absolute file path, `verified = 1`
+   - `verified = 1` is correct because the mission is completed successfully
 
-3. Update mission: `status = 'completed'`, `result = 'Research completed'`
+4. Update mission: `status = 'completed'`, `result = 'Research completed'`
    - If output buffer is empty: `result = 'Research completed (no output captured)'`
 
-4. Send `mission_complete` comms to admiral:
+5. Send `mission_complete` comms to admiral:
    ```json
    {
      "missionId": 123,
@@ -59,56 +80,59 @@ In `cleanup()`, after the auto-commit step and the `hasChanges` check, add a bra
    }
    ```
 
-5. Log exit in `ships_log`
+6. Log exit in `ships_log`
 
-6. Skip push, PR, verification, and lint entirely
-
-7. Clean up worktree normally
-
-8. Return early (same pattern as existing `!hasChanges` early return)
+7. Return early — the `finally` block handles worktree cleanup and crew status update using `overrideStatus`
 
 **When `missionType === 'research'` and `hasChanges`:** Proceed through normal code flow — a research crew that produces commits still gets push/PR/verification.
 
 **When `missionType === 'code'` and `!hasChanges`:** Existing behavior (mark failed/error).
 
-### 5. Cargo File Storage
+### 6. Hull — Capture Result Message
 
-Cargo files are written using raw SQL inserts (consistent with how Hull handles comms, ships_log, and mission updates). No `CargoService` dependency added to Hull.
+Add a `resultText` field to Hull. In `handleStreamMessage()`, when a `result` message arrives, store `(msg as ClaudeResultMessage).result` in `this.resultText`. Use this for `summary.md` when available (falling back to the last 20 lines of output if not).
 
-Directory structure:
+### 7. Hull — Output Buffer Cap
+
+The existing `MAX_OUTPUT_LINES = 200` cap applies to research missions too. For research missions, raise the cap to `2000` lines to capture more complete output. This is done by checking `this.opts.missionType` in `appendOutput()`.
+
+### 8. Cargo File Storage
+
+Directory structure (using absolute paths via `process.env.HOME`):
 ```
-~/.fleet/starbases/starbase-{id}/cargo/{sectorId}/{missionId}/
+$HOME/.fleet/starbases/starbase-{id}/cargo/{sectorId}/{missionId}/
   full-output.md
   summary.md
 ```
 
-The `manifest` column in the cargo DB record stores a JSON blob with the file path:
+The `manifest` column in the cargo DB record stores a JSON blob:
 ```json
-{ "path": "~/.fleet/starbases/starbase-abc123/cargo/api/42/full-output.md" }
+{ "path": "/Users/alice/.fleet/starbases/starbase-abc123/cargo/api/42/full-output.md" }
 ```
 
-### 6. Error Handling
+### 9. Error Handling
 
 | Scenario | Behavior |
 |----------|----------|
 | Research crew exits non-zero (crash) | Still marked `error` — crash is a crash regardless of type |
 | Research crew produces commits | Normal code flow (push/PR/verify) |
 | Research crew produces no output text | Mark `completed` with note, create cargo with empty content |
-| Cargo file write fails (disk/permissions) | Non-fatal, log error, mark mission `completed`, store content in DB manifest as fallback |
+| Cargo file write fails (disk/permissions) | Non-fatal, log error, mark mission `completed`, store full content directly in DB `manifest` column as fallback |
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
 | `src/main/starbase/migrations.ts` | New migration adding `type` column to missions |
-| `src/main/starbase/mission-service.ts` | Accept `type` param on creation |
-| `src/main/starbase/hull.ts` | Add `missionType` + `starbaseId` to `HullOpts`, research branch in cleanup |
-| `src/main/starbase/crew-service.ts` | Pass `starbaseId` and mission type to Hull |
-| `src/main/index.ts` | Pass `starbaseId` to `CrewServiceDeps` |
+| `src/main/starbase/mission-service.ts` | Add `type` to `AddMissionOpts`, `MissionRow`, and INSERT |
+| `src/main/starbase/hull.ts` | Add `missionType` + `starbaseId` to `HullOpts`, capture result text, raise output cap for research, research branch in cleanup |
+| `src/main/starbase/crew-service.ts` | Add `type` to `deployCrew` opts, read mission type, pass to Hull |
+| `src/main/socket-server.ts` | Forward `type` arg in `mission.create` command |
 
 ## Not Changed
 
 - `cargo-service.ts` — Hull uses raw SQL (existing pattern)
+- `index.ts` — `starbaseId` is already in `CrewServiceDeps`
 - Sector config — mission type is per-mission, not per-sector
 - Supply routes — cargo flows through existing mechanisms once produced
 - Comms protocol — uses existing `mission_complete` type with added `cargoProduced` flag
