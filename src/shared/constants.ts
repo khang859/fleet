@@ -60,6 +60,9 @@ export const IPC_CHANNELS = {
   PTY_DRAIN: 'fleet:pty-drain',
   PTY_ATTACH: 'pty:attach',
   SHOW_FOLDER_PICKER: 'show-folder-picker',
+  FILE_READ: 'file:read',
+  FILE_WRITE: 'file:write',
+  FILE_STAT: 'file:stat',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

@@ -9,7 +9,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'star-command' | 'crew';
+  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image';
   avatarVariant?: string;
   splitRoot: PaneNode;
 };
@@ -29,6 +29,9 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
+  paneType?: 'terminal' | 'file' | 'image';
+  filePath?: string;
+  isDirty?: boolean;
 };
 
 export type NotificationLevel = 'permission' | 'error' | 'info' | 'subtle';

@@ -49,6 +49,20 @@ type PaneNodeRendererProps = {
 
 function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize, actions }: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
+    if (node.paneType === 'file') {
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-neutral-900 text-neutral-400 text-sm">
+          File Editor: {node.filePath}
+        </div>
+      );
+    }
+    if (node.paneType === 'image') {
+      return (
+        <div className="h-full w-full flex items-center justify-center bg-neutral-900 text-neutral-400 text-sm">
+          Image Viewer: {node.filePath}
+        </div>
+      );
+    }
     return (
       <TerminalPane
         paneId={node.id}

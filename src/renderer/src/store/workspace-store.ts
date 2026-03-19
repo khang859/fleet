@@ -5,6 +5,13 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+
+function getFileExt(filePath: string): string {
+  const idx = filePath.lastIndexOf('.');
+  return idx >= 0 ? filePath.slice(idx).toLowerCase() : '';
+}
+
 function createLeaf(cwd: string): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd };
 }
@@ -51,6 +58,9 @@ type WorkspaceStore = {
   setWorkspace: (workspace: Workspace) => void;
   renameWorkspace: (label: string) => void;
   markClean: () => void;
+
+  // File/image pane helpers
+  openFile: (filePath: string) => string;
 
   // Helpers
   findTab: (tabId: string) => Tab | undefined;
@@ -319,6 +329,29 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   markClean: () => set({ isDirty: false }),
+
+  openFile: (filePath) => {
+    const ext = getFileExt(filePath);
+    const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image' : 'file';
+    const tabType = paneType === 'image' ? 'image' : 'file';
+    const fileName = filePath.split('/').pop() ?? filePath;
+    const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd: '/', paneType, filePath };
+    const tab: Tab = {
+      id: generateId(),
+      label: fileName,
+      labelIsCustom: true,
+      cwd: '/',
+      type: tabType,
+      splitRoot: leaf,
+    };
+    set((state) => ({
+      workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true,
+    }));
+    return leaf.id;
+  },
 
   findTab: (tabId) => get().workspace.tabs.find((t) => t.id === tabId),
 
