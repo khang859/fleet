@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { fuzzyMatch } from '../lib/commands';
+import { getFileIcon } from '../lib/file-icons';
 
 type FileEntry = {
   path: string;
@@ -54,6 +55,7 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
   useEffect(() => {
     if (!isOpen || !rootDir) return;
     setIsLoading(true);
+    setAllFiles([]);
     window.fleet.file.list(rootDir).then((result) => {
       if (result.success) {
         setAllFiles(result.files);
@@ -169,29 +171,18 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
                 onMouseEnter={() => setSelectedIndex(i)}
                 onClick={() => handleSelect(file)}
               >
-                {/* File icon */}
-                <svg
-                  className="text-neutral-500 shrink-0"
-                  width="13"
-                  height="13"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M9 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6L9 2z" />
-                  <polyline points="9 2 9 6 13 6" />
-                </svg>
-                {/* Filename + path */}
+                <span className="text-neutral-500 shrink-0">
+                  {getFileIcon(file.name)}
+                </span>
                 <div className="flex flex-col min-w-0">
                   <span className="truncate font-medium">
                     <HighlightedText text={file.name} query={query} />
                   </span>
                   {file.relativePath !== file.name && (
-                    <span className="truncate text-xs text-neutral-500">
-                      {file.relativePath}
+                    <span className="truncate text-xs text-neutral-600">
+                      {file.relativePath.includes('/')
+                        ? file.relativePath.split('/').slice(0, -1).join('/')
+                        : file.relativePath}
                     </span>
                   )}
                 </div>

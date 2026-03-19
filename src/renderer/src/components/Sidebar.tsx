@@ -1,7 +1,8 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Settings, Terminal, FileCode2, ImageIcon } from 'lucide-react';
+import { Settings, Terminal, ImageIcon } from 'lucide-react';
+import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -444,84 +445,77 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
         {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
           <div className="h-px bg-neutral-800 mx-1 my-1" />
         )}
-        {workspace.tabs.filter((t) => t.type !== 'star-command' && t.type !== 'crew' && t.type !== 'file' && t.type !== 'image').map((tab, index) => {
-          const paneIds = collectPaneIds(tab.splitRoot);
-          // Active pane within this tab drives the displayed CWD
-          const drivingPane = (tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId))
-            ? activePaneId
-            : paneIds[0];
-          const liveCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
+        {workspace.tabs
+          .filter((t) => t.type !== 'star-command' && t.type !== 'crew')
+          .map((tab, index) => {
+            const paneIds = collectPaneIds(tab.splitRoot);
+            const isFile = tab.type === 'file' || tab.type === 'image';
 
-          return (
-            <TabItem
-              key={tab.id}
-              id={tab.id}
-              label={tab.label}
-              labelIsCustom={tab.labelIsCustom ?? false}
-              cwd={liveCwd}
-              isActive={tab.id === activeTabId}
-              badge={getTabBadge(paneIds)}
-              icon={<Terminal size={14} />}
-              index={index}
-              onDragStart={handleDragStart}
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
-              isDragOver={
-                dropTarget?.index === index
-                  ? dropTarget.position
-                  : null
-              }
-              onClick={() => {
-                setActiveTab(tab.id);
-                for (const paneId of paneIds) {
-                  useNotificationStore.getState().clearPane(paneId);
-                  window.fleet.notifications.paneFocused({ paneId });
+            // Derive CWD to display in TabItem
+            let displayCwd: string;
+            if (isFile) {
+              const leafs = collectPaneLeafs(tab.splitRoot);
+              const filePath = leafs[0]?.filePath ?? '';
+              displayCwd = filePath
+                ? filePath.split('/').slice(0, -1).join('/') || '/'
+                : '/';
+            } else {
+              const drivingPane =
+                tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
+                  ? activePaneId
+                  : paneIds[0];
+              displayCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
+            }
+
+            // Dirty label for file tabs
+            const isFileDirty = isFile && collectPaneLeafs(tab.splitRoot).some((l) => l.isDirty === true);
+            const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
+
+            // Icon — use filePath basename for file tabs (label may be renamed)
+            let icon: React.ReactNode;
+            if (isFile) {
+              const leafs2 = collectPaneLeafs(tab.splitRoot);
+              const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
+              icon = tab.type === 'image'
+                ? <ImageIcon size={14} />
+                : getFileIcon(fileBasename, 14);
+            } else {
+              icon = <Terminal size={14} />;
+            }
+
+            return (
+              <TabItem
+                key={tab.id}
+                id={tab.id}
+                label={displayLabel}
+                labelIsCustom={tab.labelIsCustom ?? false}
+                cwd={displayCwd}
+                isActive={tab.id === activeTabId}
+                badge={getTabBadge(paneIds)}
+                icon={icon}
+                disableReset={isFile}
+                index={index}
+                onDragStart={handleDragStart}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                isDragOver={
+                  dropTarget?.index === index ? dropTarget.position : null
                 }
-              }}
-              onClose={() => handleCloseTab(tab.id)}
-              onRename={(newLabel) => renameTab(tab.id, newLabel)}
-              onResetLabel={() => resetTabLabel(tab.id, liveCwd)}
-            />
-          );
-        })}
-        {/* File and image tabs */}
-        {workspace.tabs.filter((t) => t.type === 'file' || t.type === 'image').map((tab) => {
-          const leafs = collectPaneLeafs(tab.splitRoot);
-          const filePath = leafs[0]?.filePath;
-          const isFileDirty = leafs.some(l => l.isDirty === true);
-          const isActive = tab.id === activeTabId;
-          const Icon = tab.type === 'image' ? ImageIcon : FileCode2;
-          return (
-            <div
-              key={tab.id}
-              data-tab-id={tab.id}
-              className={`
-                group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
-                ${isActive
-                  ? 'bg-neutral-700 text-white border-l-2 border-blue-400'
-                  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
-              `}
-              onClick={() => setActiveTab(tab.id)}
-              title={filePath ?? tab.label}
-            >
-              <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-600'}`}>
-                <Icon size={14} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className={`truncate text-sm leading-tight ${isFileDirty ? 'font-semibold' : ''}`}>
-                  {tab.label}{isFileDirty ? ' *' : ''}
-                </div>
-              </div>
-              <button
-                className="opacity-0 group-hover:opacity-100 text-neutral-500 hover:text-red-400 transition-opacity flex-shrink-0"
-                onClick={(e) => { e.stopPropagation(); handleCloseTab(tab.id); }}
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-          );
-        })}
+                onClick={() => {
+                  setActiveTab(tab.id);
+                  if (!isFile) {
+                    for (const paneId of paneIds) {
+                      useNotificationStore.getState().clearPane(paneId);
+                      window.fleet.notifications.paneFocused({ paneId });
+                    }
+                  }
+                }}
+                onClose={() => handleCloseTab(tab.id)}
+                onRename={(newLabel) => renameTab(tab.id, newLabel)}
+                onResetLabel={() => resetTabLabel(tab.id, displayCwd)}
+              />
+            );
+          })}
       </div>
       {/* Scroll overflow shadow indicator */}
       {hasScrollOverflow && (

@@ -29,7 +29,6 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
   const [zoom, setZoom] = useState(1);
   const [isFit, setIsFit] = useState(true);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const dragAnchor = useRef({ x: 0, y: 0 });
@@ -176,27 +175,23 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
     return () => observer.disconnect();
   }, [applyFit]);
 
-  // Keyboard shortcuts (active when pane is hovered)
+  // Keyboard shortcuts (always active unless focused on an input)
   useEffect(() => {
-    if (!isHovered) return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === '0') applyFit();
       else if (e.key === '+' || e.key === '=') adjustZoom(ZOOM_STEP);
       else if (e.key === '-') adjustZoom(-ZOOM_STEP);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isHovered, applyFit, adjustZoom]);
+  }, [applyFit, adjustZoom]);
 
   const zoomPercent = Math.round(zoom * 100);
   const cursor = isFit ? 'default' : isDragging ? 'grabbing' : 'grab';
 
   return (
-    <div
-      className="flex flex-col h-full w-full bg-neutral-900 select-none"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-    >
+    <div className="flex flex-col h-full w-full bg-neutral-900 select-none">
       {/* Image viewport */}
       <div
         ref={containerRef}
@@ -241,28 +236,6 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
           />
         )}
 
-        {/* Zoom indicator */}
-        {imageSrc && (
-          <div className="absolute bottom-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded pointer-events-none font-mono">
-            {zoomPercent}%
-          </div>
-        )}
-
-        {/* Floating toolbar */}
-        {isHovered && imageSrc && (
-          <div className="absolute top-2 right-2 flex items-center gap-0.5 bg-black/70 backdrop-blur-sm border border-white/10 rounded px-1.5 py-1">
-            <ToolbarButton onClick={() => adjustZoom(ZOOM_STEP)} title="Zoom In (+)">+</ToolbarButton>
-            <ToolbarButton onClick={() => adjustZoom(-ZOOM_STEP)} title="Zoom Out (−)">−</ToolbarButton>
-            <div className="w-px h-3.5 bg-neutral-600 mx-0.5" />
-            <ToolbarButton onClick={applyFit} title="Fit to Window (0)">Fit</ToolbarButton>
-            <ToolbarButton
-              onClick={() => { setZoom(1); setOffset({ x: 0, y: 0 }); setIsFit(false); }}
-              title="Actual Size (1:1)"
-            >
-              1:1
-            </ToolbarButton>
-          </div>
-        )}
       </div>
 
       {/* Status bar */}
@@ -273,6 +246,27 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
         )}
         {fileSize !== null && (
           <span className="text-neutral-500">{formatSize(fileSize)}</span>
+        )}
+        {imageSrc && (
+          <div className="ml-auto flex items-center gap-0.5">
+            <ToolbarButton onClick={() => adjustZoom(-ZOOM_STEP)} title="Zoom Out (−)">−</ToolbarButton>
+            <span
+              className="font-mono w-10 text-center text-neutral-400 hover:text-white cursor-pointer"
+              onClick={applyFit}
+              title="Click to fit"
+            >
+              {zoomPercent}%
+            </span>
+            <ToolbarButton onClick={() => adjustZoom(ZOOM_STEP)} title="Zoom In (+)">+</ToolbarButton>
+            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
+            <ToolbarButton onClick={applyFit} title="Fit to Window (0)">Fit</ToolbarButton>
+            <ToolbarButton
+              onClick={() => { setZoom(1); setOffset({ x: 0, y: 0 }); setIsFit(false); }}
+              title="Actual Size"
+            >
+              1:1
+            </ToolbarButton>
+          </div>
         )}
       </div>
     </div>
