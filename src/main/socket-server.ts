@@ -653,6 +653,36 @@ export class SocketServer extends EventEmitter {
         return cargo;
       }
 
+      case 'cargo.produce': {
+        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
+        if (!sectorId || !args.type || !args.path) {
+          const err = new Error(
+            'cargo.produce requires --sector <sector-id>, --type <type>, and --path <path>.\n' +
+            'Usage: fleet cargo produce --sector <sector-id> --type <type> --path <path>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        return cargoService.produceCargo({
+          sectorId,
+          type: args.type as string,
+          manifest: args.path as string,
+        });
+      }
+
+      case 'cargo.pending': {
+        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
+        if (!sectorId) {
+          const err = new Error(
+            'cargo.pending requires --sector <sector-id>.\n' +
+            'Usage: fleet cargo pending --sector <sector-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        return cargoService.getUndelivered(sectorId);
+      }
+
       // ── Supply Routes ─────────────────────────────────────────────────────────
       case 'supply-route.list':
         return supplyRouteService.listRoutes();

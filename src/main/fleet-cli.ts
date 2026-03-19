@@ -284,8 +284,8 @@ const COMMAND_MAP: Record<string, string> = {
   // Cargo
   'cargo.show': 'cargo.inspect',
   'cargo.inspect': 'cargo.inspect',
-  'cargo.pending': 'cargo.list',
-  'cargo.produce': 'cargo.list',
+  'cargo.pending': 'cargo.pending',
+  'cargo.produce': 'cargo.produce',
 
   // Log groups (CLI "log groups list" → "log.show")
   'log.groups': 'log.show',
@@ -434,6 +434,15 @@ function validateCommand(command: string, args: Record<string, unknown>): string
     case 'cargo.inspect':
       if (!args.cargoId && !args.id)
         return 'Error: cargo show requires a cargo ID.\n\nUsage: fleet cargo show <cargo-id>\nList cargo: fleet cargo list';
+      return null;
+
+    case 'cargo.produce':
+      if (!args.sector && !args.sectorId)
+        return 'Error: cargo produce requires --sector <sector-id>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
+      if (!args.type)
+        return 'Error: cargo produce requires --type <type>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
+      if (!args.path)
+        return 'Error: cargo produce requires --path <path>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
       return null;
 
     // ── Config ────────────────────────────────────────────────────────────
