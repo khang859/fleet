@@ -16,6 +16,8 @@ type MissionRow = {
   verify_result: string | null
   review_verdict: string | null
   review_notes: string | null
+  review_round: number
+  pr_branch: string | null
   created_at: string
   started_at: string | null
   completed_at: string | null
@@ -152,6 +154,12 @@ export class MissionService {
     this.db
       .prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')
       .run(verdict, notes, missionId)
+  }
+
+  setPrBranch(missionId: number, prBranch: string): void {
+    this.db
+      .prepare('UPDATE missions SET pr_branch = ? WHERE id = ?')
+      .run(prBranch, missionId)
   }
 
   updateMission(
