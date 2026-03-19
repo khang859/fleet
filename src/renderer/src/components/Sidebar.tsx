@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
+import * as Dialog from '@radix-ui/react-dialog';
 import { Settings, Terminal, FileCode2, ImageIcon } from 'lucide-react';
 import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
@@ -8,7 +9,24 @@ import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { Avatar } from './star-command/Avatar';
-import type { Workspace } from '../../../shared/types';
+import { getFileSave } from '../lib/file-save-registry';
+import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
+
+function getFirstDirtyPaneId(tab: Tab): string | null {
+  function check(node: Tab['splitRoot']): string | null {
+    if (node.type === 'leaf') return node.isDirty ? node.id : null;
+    return check(node.children[0]) ?? check(node.children[1]);
+  }
+  return check(tab.splitRoot);
+}
+
+function getFirstLeaf(tab: Tab): PaneLeaf | null {
+  function find(node: Tab['splitRoot']): PaneLeaf | null {
+    if (node.type === 'leaf') return node;
+    return find(node.children[0]) ?? find(node.children[1]);
+  }
+  return find(tab.splitRoot);
+}
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;
 
@@ -250,10 +268,17 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     setDeleteConfirmId(null);
   }, []);
 
-  const handleCloseTab = useCallback((tabId: string) => {
+  // --- File close confirmation ---
+  const [fileCloseConfirm, setFileCloseConfirm] = useState<{
+    tabId: string;
+    label: string;
+    paneId: string;
+  } | null>(null);
+  const [fileSaving, setFileSaving] = useState(false);
+
+  const doCloseTab = useCallback((tabId: string) => {
     const tab = workspace.tabs.find((t) => t.id === tabId);
     if (!tab) return;
-    // Serialize terminal content before React unmounts the components
     const serializedPanes = new Map<string, string>();
     for (const paneId of collectPaneIds(tab.splitRoot)) {
       const content = serializePane(paneId);
@@ -261,6 +286,22 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     }
     closeTab(tabId, serializedPanes);
   }, [workspace.tabs, closeTab]);
+
+  const handleCloseTab = useCallback((tabId: string) => {
+    const tab = workspace.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    // File tabs: check for dirty panes before closing
+    if (tab.type === 'file') {
+      const dirtyPaneId = getFirstDirtyPaneId(tab);
+      if (dirtyPaneId) {
+        const leaf = getFirstLeaf(tab);
+        const filename = leaf?.filePath?.split('/').pop() ?? tab.label;
+        setFileCloseConfirm({ tabId, label: filename, paneId: dirtyPaneId });
+        return;
+      }
+    }
+    doCloseTab(tabId);
+  }, [workspace.tabs, doCloseTab]);
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
@@ -636,6 +677,56 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
           )}
         </button>
       </div>
+
+      {/* File close confirmation dialog */}
+      <Dialog.Root
+        open={!!fileCloseConfirm}
+        onOpenChange={(open) => { if (!open && !fileSaving) setFileCloseConfirm(null); }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
+            <Dialog.Title className="text-base font-semibold text-white mb-1">
+              Save changes to &ldquo;{fileCloseConfirm?.label}&rdquo;?
+            </Dialog.Title>
+            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
+              Your changes will be lost if you don&apos;t save.
+            </Dialog.Description>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                onClick={() => {
+                  if (fileCloseConfirm) doCloseTab(fileCloseConfirm.tabId);
+                  setFileCloseConfirm(null);
+                }}
+              >
+                Don&apos;t Save
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                onClick={() => setFileCloseConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={fileSaving}
+                className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors font-medium"
+                onClick={async () => {
+                  if (!fileCloseConfirm) return;
+                  setFileSaving(true);
+                  const saveFn = getFileSave(fileCloseConfirm.paneId);
+                  if (saveFn) await saveFn();
+                  setFileSaving(false);
+                  doCloseTab(fileCloseConfirm.tabId);
+                  setFileCloseConfirm(null);
+                }}
+              >
+                {fileSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
     </div>
   );
 }

@@ -84,6 +84,7 @@ type WorkspaceStore = {
   openFile: (filePath: string) => string;
   addRecentFile: (filePath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
+  setPaneDirty: (paneId: string, dirty: boolean) => void;
 
   // Helpers
   findTab: (tabId: string) => Tab | undefined;
@@ -371,6 +372,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   markClean: () => set({ isDirty: false }),
+
+  setPaneDirty: (paneId, dirty) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, isDirty: dirty })),
+        })),
+      },
+    }));
+  },
 
   openFile: (filePath) => {
     const ext = getFileExt(filePath);
