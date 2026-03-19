@@ -35,6 +35,7 @@ import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
 import { RetentionService } from './starbase/retention-service'
 import { installFleetCLI } from './install-fleet-cli'
+import { enrichProcessEnv } from './shell-env'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 
@@ -125,6 +126,10 @@ function createWindow(): void {
 app.setName('Fleet')
 
 app.whenReady().then(async () => {
+  // Resolve the user's login shell PATH before anything spawns subprocesses.
+  // Packaged Electron apps inherit a minimal PATH from launchd.
+  await enrichProcessEnv()
+
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
     const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png')

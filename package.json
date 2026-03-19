@@ -68,6 +68,7 @@
     "lucide-react": "^0.577.0",
     "node-pty": "^1.1.0",
     "pid-cwd": "^1.2.0",
+    "shell-env": "^4.0.3",
     "shiki": "^4.0.2",
     "simple-git": "^3.33.0",
     "tailwind-merge": "^3.5.0",
