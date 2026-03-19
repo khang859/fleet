@@ -6,11 +6,10 @@ import admiralThinking from '../../assets/admiral-thinking.png'
 import admiralAlert from '../../assets/admiral-alert.png'
 import admiralStandby from '../../assets/admiral-standby.png'
 
-// TODO: Replace with actual First Officer pixel art assets when generated
-import foDefault from '../../assets/admiral-default.png'
-import foWorking from '../../assets/admiral-thinking.png'
-import foEscalation from '../../assets/admiral-alert.png'
-import foIdle from '../../assets/admiral-standby.png'
+import foDefault from '../../assets/first-officer-default.png'
+import foWorking from '../../assets/first-officer-working.png'
+import foEscalation from '../../assets/first-officer-escalation.png'
+import foIdle from '../../assets/first-officer-idle.png'
 
 const FO_IMAGES: Record<string, string> = {
   idle: foIdle,

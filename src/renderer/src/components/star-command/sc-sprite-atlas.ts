@@ -23,6 +23,10 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'admiral-speaking': { x: 64, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'admiral-standby': { x: 256, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'admiral-thinking': { x: 128, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'first-officer-default': { x: 320, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'first-officer-escalation': { x: 448, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'first-officer-idle': { x: 512, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'first-officer-working': { x: 384, y: 0, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crew-cap': { x: 192, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crew-glasses': { x: 256, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crew-headphones': { x: 64, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
@@ -61,4 +65,5 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
 }
 
 export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const
+export const FIRST_OFFICER_VARIANTS = ['default', 'working', 'escalation', 'idle'] as const
 export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const

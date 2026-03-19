@@ -23,12 +23,12 @@ const OUTPUT_ATLAS = join(
   'sc-sprite-atlas.ts'
 )
 
-const SHEET_SIZE = 512
+const SHEET_SIZE = 576
 
 // ---------------------------------------------------------------------------
 // Sprite layout — pixel-level positions for every asset
 //
-// Row 0: y=0,   h=64  | Admiral avatars (5x 64x64)
+// Row 0: y=0,   h=64  | Admiral avatars (5x 64x64) + First Officer avatars (4x 64x64)
 // Row 1: y=64,  h=64  | Crew avatars (5x 64x64)
 // Row 2: y=128, h=32  | CRT frame pieces (mixed sizes)
 // Row 3: y=160, h=24  | Status bar + chip sprites
@@ -167,6 +167,20 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: i * 64,
       y: 0,
       atlasGroup: `admiral-${variant}`,
+      frameIndex: 0,
+    })
+  })
+
+  // ---- Row 0 continued: First Officer avatars (y=0, 64x64, after admiral) ----
+  const firstOfficerVariants = ['default', 'working', 'escalation', 'idle']
+  firstOfficerVariants.forEach((variant, i) => {
+    entries.push({
+      src: join(SPRITES_RAW, 'avatars', `first-officer-${variant}.png`),
+      w: 64,
+      h: 64,
+      x: (admiralVariants.length + i) * 64,
+      y: 0,
+      atlasGroup: `first-officer-${variant}`,
       frameIndex: 0,
     })
   })
@@ -633,6 +647,7 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
   const sortedKeys = Object.keys(atlas).sort((a, b) => {
     const order = (k: string): number => {
       if (k.startsWith('admiral-')) return 0
+      if (k.startsWith('first-officer-')) return 0.5
       if (k.startsWith('crew-')) return 1
       if (k.startsWith('crt-')) return 2
       if (k.startsWith('statusbar-')) return 3
@@ -661,6 +676,7 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
 
   // Helper constants
   lines.push('export const ADMIRAL_VARIANTS = [\'default\', \'speaking\', \'thinking\', \'alert\', \'standby\'] as const')
+  lines.push('export const FIRST_OFFICER_VARIANTS = [\'default\', \'working\', \'escalation\', \'idle\'] as const')
   lines.push('export const CREW_VARIANTS = [\'hoodie\', \'headphones\', \'robot\', \'cap\', \'glasses\'] as const')
   lines.push('')
 
