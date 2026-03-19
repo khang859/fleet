@@ -104,20 +104,22 @@ export class SocketServer extends EventEmitter {
         });
       });
 
-      this.server.on('error', (err) => {
-        this.emit('server-error', err);
-      });
-
       this.server.on('close', () => {
         this.emit('server-close');
       });
 
+      // Use once for startup error — detaches after first fire so it doesn't linger
+      this.server.once('error', reject);
+
       this.server.listen(this.socketPath, () => {
+        // Remove startup error handler and attach permanent one for post-startup errors
+        this.server!.off('error', reject);
+        this.server!.on('error', (err) => {
+          this.emit('server-error', err);
+        });
         this.startTime = Date.now();
         resolve();
       });
-
-      this.server.on('error', reject);
     });
   }
 
