@@ -251,6 +251,12 @@ app.whenReady().then(async () => {
       }
     })
 
+    socketSupervisor.on('file-open', (payload: unknown) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload)
+      }
+    })
+
     socketSupervisor.start().catch((err) => {
       console.error('[socket-supervisor] Failed to start:', err)
     })

@@ -82,6 +82,7 @@ type WorkspaceStore = {
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
+  openFileInTab: (files: Array<{ path: string; paneType: 'file' | 'image'; label: string }>) => void;
   addRecentFile: (filePath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
   setPaneDirty: (paneId: string, dirty: boolean) => void;
@@ -407,6 +408,48 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
     get().addRecentFile(filePath);
     return leaf.id;
+  },
+
+  openFileInTab: (files) => {
+    for (const file of files) {
+      const state = get();
+      // Dedup: check if file is already open in any tab
+      const existingTab = state.workspace.tabs.find((tab) => {
+        const findLeaf = (node: PaneNode): boolean => {
+          if (node.type === 'leaf') return node.filePath === file.path;
+          return findLeaf(node.children[0]) || findLeaf(node.children[1]);
+        };
+        return findLeaf(tab.splitRoot);
+      });
+
+      if (existingTab) {
+        // Focus existing tab
+        set({ activeTabId: existingTab.id, isDirty: true });
+      } else {
+        // Create new tab
+        const leaf: PaneLeaf = {
+          type: 'leaf',
+          id: generateId(),
+          cwd: '/',
+          paneType: file.paneType,
+          filePath: file.path,
+        };
+        const tab: Tab = {
+          id: generateId(),
+          label: file.label,
+          labelIsCustom: true,
+          cwd: '/',
+          type: file.paneType === 'image' ? 'image' : 'file',
+          splitRoot: leaf,
+        };
+        set((s) => ({
+          workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+          activeTabId: tab.id,
+          activePaneId: leaf.id,
+          isDirty: true,
+        }));
+      }
+    }
   },
 
   addRecentFile: (filePath) => {

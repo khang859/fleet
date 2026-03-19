@@ -32,6 +32,7 @@ export type PaneLeaf = {
   paneType?: 'terminal' | 'file' | 'image';
   filePath?: string;
   isDirty?: boolean;
+  serializedContent?: string;
 };
 
 export type NotificationLevel = 'permission' | 'error' | 'info' | 'subtle';

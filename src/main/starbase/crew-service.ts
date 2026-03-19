@@ -69,7 +69,7 @@ export class CrewService {
    * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
   async deployCrew(
-    opts: { sectorId: string; prompt: string; missionId?: number },
+    opts: { sectorId: string; prompt: string; missionId?: number; type?: string },
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -86,9 +86,14 @@ export class CrewService {
         sectorId: opts.sectorId,
         summary: opts.prompt.slice(0, 100),
         prompt: opts.prompt,
+        type: opts.type,
       });
       missionId = mission.id;
     }
+
+    // Read mission type for Hull
+    const missionRow = missionService.getMission(missionId)!
+    const missionType = missionRow.type ?? 'code'
 
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
     const minFreeGb = configService.get('min_deploy_free_memory_gb') as number;
@@ -161,6 +166,8 @@ export class CrewService {
       mcpConfig: sector.mcp_config ?? undefined,
       onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,
+      missionType,
+      starbaseId,
     });
 
     // Update crew record with avatar

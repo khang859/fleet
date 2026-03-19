@@ -213,6 +213,7 @@ export class SocketServer extends EventEmitter {
           summary: args.summary as string,
           prompt: args.prompt as string,
           dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
+          type: args.type as string | undefined,
         });
         this.emit('state-change', 'mission:changed', { mission });
         return mission;
@@ -268,6 +269,7 @@ export class SocketServer extends EventEmitter {
           sectorId: (args.sector ?? args.sectorId) as string,
           prompt,
           missionId,
+          type: args.type as string | undefined,
         });
         this.emit('state-change', 'crew:changed', result);
         return result;
@@ -412,6 +414,25 @@ export class SocketServer extends EventEmitter {
         const limit = (args.limit as number) ?? 50;
         const crewFilter = args.crew as string | undefined;
         return shipsLog.query({ crewId: crewFilter, limit });
+      }
+
+      // ── File Open ──────────────────────────────────────────────────────────────
+      case 'file.open': {
+        const files = args.files as Array<{ path: string; paneType: 'file' | 'image' }>;
+        if (!files || !Array.isArray(files) || files.length === 0) {
+          const err = new Error('file.open requires a non-empty files array') as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const payload = {
+          files: files.map((f) => ({
+            path: f.path,
+            paneType: f.paneType,
+            label: f.path.split('/').pop() ?? f.path,
+          })),
+        };
+        this.emit('file-open', payload);
+        return { fileCount: files.length };
       }
 
       default: {

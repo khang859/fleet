@@ -1,8 +1,17 @@
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { join } from 'node:path';
+import { join, resolve, extname } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+
+const BINARY_BLOCKLIST = new Set([
+  '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dmg', '.pkg', '.deb', '.rpm',
+  '.iso', '.bin', '.dll', '.so', '.dylib', '.o', '.a', '.wasm', '.class', '.jar', '.war',
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+  '.mp3', '.mp4', '.mov', '.avi', '.mkv', '.flac', '.wav', '.aac',
+]);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -292,6 +301,62 @@ function mapCommand(group: string, action: string): string {
 
 export async function runCLI(argv: string[], sockPath: string): Promise<string> {
   const [group, action, ...rest] = argv;
+
+  // ── Top-level "open" command ─────────────────────────────────────────────
+  if (group === 'open') {
+    const paths = [action, ...rest].filter(Boolean);
+    if (paths.length === 0) {
+      return 'Usage: fleet open <path> [path2 ...]';
+    }
+
+    const errors: string[] = [];
+    const files: Array<{ path: string; paneType: 'file' | 'image' }> = [];
+
+    for (const p of paths) {
+      const resolved = resolve(p);
+
+      if (!existsSync(resolved)) {
+        errors.push(`Error: file not found: ${p}`);
+        continue;
+      }
+
+      if (statSync(resolved).isDirectory()) {
+        errors.push(`Error: directories not supported, use a file path: ${p}`);
+        continue;
+      }
+
+      const ext = extname(resolved).toLowerCase();
+      if (BINARY_BLOCKLIST.has(ext)) {
+        errors.push(`Error: unsupported binary file: ${p}`);
+        continue;
+      }
+
+      const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image' as const : 'file' as const;
+      files.push({ path: resolved, paneType });
+    }
+
+    if (files.length === 0) {
+      return errors.join('\n');
+    }
+
+    const cli = new FleetCLI(sockPath);
+    try {
+      const response = await cli.send('file.open', { files });
+      if (!response.ok) {
+        return `Error: ${response.error ?? 'Unknown error'}`;
+      }
+      const output = errors.length > 0
+        ? errors.join('\n') + '\n' + `Opened ${files.length} file(s) in Fleet`
+        : `Opened ${files.length} file(s) in Fleet`;
+      return output;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+        return 'Fleet is not running';
+      }
+      return `Error: ${msg}`;
+    }
+  }
 
   if (!group || !action) {
     return 'Usage: fleet <group> <action> [--key value ...]';

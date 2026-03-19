@@ -85,6 +85,10 @@ export class SocketSupervisor extends EventEmitter {
       this.emit('state-change', ...args);
     });
 
+    server.on('file-open', (...args: unknown[]) => {
+      this.emit('file-open', ...args);
+    });
+
     server.on('server-error', (err: Error) => {
       console.error('[socket-supervisor] Server error detected:', err.message);
       this.restart().catch((e) => console.error('[socket-supervisor] Auto-restart failed:', e));
