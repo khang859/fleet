@@ -243,16 +243,39 @@ export class SocketServer extends EventEmitter {
         const sectorId = (args.sector ?? args.sectorId) as string;
         const summary = args.summary as string | undefined;
         const prompt = args.prompt as string | undefined;
+        const type = args.type as string | undefined;
+        const VALID_MISSION_TYPES = ['code', 'research'];
 
         if (!sectorId) {
           const err = new Error('mission.create requires --sector <id>') as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
         }
+        if (!type) {
+          const err = new Error(
+            'mission.create requires --type <code|research>.\n' +
+            'Mission types:\n' +
+            '  code     — produces git commits (code changes, bug fixes, features)\n' +
+            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        if (!VALID_MISSION_TYPES.includes(type)) {
+          const err = new Error(
+            `Invalid mission type "${type}". Must be "code" or "research".\n` +
+            'Mission types:\n' +
+            '  code     — produces git commits (code changes, bug fixes, features)\n' +
+            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         if (!prompt || prompt.trim().length === 0) {
           const err = new Error(
             'mission.create requires a non-empty --prompt.\n' +
-            'Usage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"'
+            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -260,7 +283,7 @@ export class SocketServer extends EventEmitter {
         if (!summary || summary.trim().length === 0) {
           const err = new Error(
             'mission.create requires a non-empty --summary.\n' +
-            'Usage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"'
+            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -271,7 +294,7 @@ export class SocketServer extends EventEmitter {
           summary,
           prompt,
           dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
-          type: args.type as string | undefined,
+          type,
         });
         this.emit('state-change', 'mission:changed', { mission });
         return mission;

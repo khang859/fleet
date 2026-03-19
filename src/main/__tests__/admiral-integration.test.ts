@@ -209,6 +209,7 @@ describe('Admiral Integration', () => {
       sector: 'alpha',
       summary: 'Implement auth',
       prompt: 'Add JWT-based authentication to the API',
+      type: 'code',
     });
     expect(createResp.ok).toBe(true);
     const created = createResp.data as MockMission;
@@ -243,6 +244,7 @@ describe('Admiral Integration', () => {
       sector: 'beta',
       summary: 'Refactor service',
       prompt: 'Extract service layer from controllers',
+      type: 'code',
     });
 
     expect(resp.ok).toBe(true);
@@ -267,11 +269,13 @@ describe('Admiral Integration', () => {
       sector: 'alpha',
       summary: 'Task One',
       prompt: 'Do task one',
+      type: 'code',
     });
     await cli.send('mission.create', {
       sector: 'alpha',
       summary: 'Task Two',
       prompt: 'Do task two',
+      type: 'code',
     });
 
     // Both should appear in the list

@@ -48,11 +48,15 @@ Never send a Crewmate an open-ended or vague prompt. Refine requests into precis
 
 \`\`\`bash
 # 1. Create the mission (note the returned mission ID)
-fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions..."
+fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions..."
 
 # 2. Deploy crew to execute it
 fleet crew deploy --sector <id> --mission <mission-id>
 \`\`\`
+
+**Mission types (required):**
+- \`code\` — produces git commits (code changes, bug fixes, features)
+- \`research\` — produces documentation artifacts (investigation, analysis, no git changes expected)
 
 This ensures mission prompts are persisted in the database and never lost.
 
@@ -189,12 +193,12 @@ fleet crew message <crew-id> --message "..."  # Send a follow-up message to an a
 fleet missions list                    # List all Missions
 fleet missions list --sector <id>      # Filter by Sector
 fleet missions list --status queued    # Filter by status
-fleet missions add --sector <id> --summary "..." --prompt "..."  # Create a Mission
+fleet missions add --sector <id> --type <code|research> --summary "..." --prompt "..."  # Create a Mission
 fleet missions update <id> --status done    # Update Mission status
 fleet missions show <id>               # Show full Mission details
 \`\`\`
 
-**Required fields for \`missions add\`:** Both \`--summary\` (short title) and \`--prompt\` (detailed instructions) are required. Empty prompts are rejected.
+**Required fields for \`missions add\`:** \`--type\` (code or research), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, and \`--type research\` for investigation/analysis that produces documentation artifacts.
 
 ### Comms
 
@@ -245,14 +249,14 @@ fleet log groups show <id>             # Show entries for a log group
 1. **Identify concerns** — Does the request touch multiple files, features, or Sectors?
 2. **Break into Missions** — Each Mission gets a precise prompt with acceptance criteria
 3. **Confirm with user** — Show the plan before deploying
-4. **Create Missions** — \`fleet missions add --sector <id> --summary "..." --prompt "..."\`
+4. **Create Missions** — \`fleet missions add --sector <id> --type <code|research> --summary "..." --prompt "..."\`
 5. **Deploy Crew** — \`fleet crew deploy --sector <id> --mission <mission-id>\`
 
 ### Example:
 
 \`\`\`bash
 # Step 1: Create the mission (returns the mission ID)
-fleet missions add --sector my-app --summary "Add POST /api/settings endpoint" --prompt "Add a POST /api/settings endpoint that accepts { theme: string, notifications: boolean }, validates input, persists to SQLite, and returns the updated settings. Tests must pass. No UI changes."
+fleet missions add --sector my-app --type code --summary "Add POST /api/settings endpoint" --prompt "Add a POST /api/settings endpoint that accepts { theme: string, notifications: boolean }, validates input, persists to SQLite, and returns the updated settings. Tests must pass. No UI changes."
 
 # Step 2: Deploy crew to execute the mission
 fleet crew deploy --sector my-app --mission 42
