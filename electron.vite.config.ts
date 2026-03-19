@@ -7,6 +7,7 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
+        input: { index: 'src/main/index.ts', 'fleet-cli': 'src/main/fleet-cli.ts' },
         output: { format: 'es' }
       }
     }
