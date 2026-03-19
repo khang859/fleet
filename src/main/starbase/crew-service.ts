@@ -69,7 +69,7 @@ export class CrewService {
    * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
   async deployCrew(
-    opts: { sectorId: string; prompt: string; missionId?: number; type?: string },
+    opts: { sectorId: string; prompt: string; missionId: number; type?: string },
   ): Promise<DeployResult> {
     const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
 
@@ -79,16 +79,13 @@ export class CrewService {
 
     const baseBranch = sector.base_branch || 'main';
 
-    // 2. Create mission if not provided (before memory gate so we can queue it on failure)
-    let missionId = opts.missionId;
+    // 2. Validate mission exists with a non-empty prompt
+    const missionId = opts.missionId;
     if (!missionId) {
-      const mission = missionService.addMission({
-        sectorId: opts.sectorId,
-        summary: opts.prompt.slice(0, 100),
-        prompt: opts.prompt,
-        type: opts.type,
-      });
-      missionId = mission.id;
+      throw new Error('deployCrew requires a missionId. Create a mission first.');
+    }
+    if (!opts.prompt || opts.prompt.trim().length === 0) {
+      throw new Error(`Mission ${missionId} has an empty prompt. Cannot deploy crew without instructions.`);
     }
 
     // Read mission type for Hull

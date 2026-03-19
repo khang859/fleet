@@ -192,26 +192,84 @@ export class SocketServer extends EventEmitter {
       case 'sector.list':
         return sectorService.listSectors();
 
-      case 'sector.info':
-        return sectorService.getSector(
-          (args.id ?? args.sectorId ?? args.name) as string,
-        );
+      case 'sector.info': {
+        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
+        if (!sectorId) {
+          const err = new Error(
+            'sector.info requires a sector ID.\n' +
+            'Usage: fleet sectors show <sector-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const sector = sectorService.getSector(sectorId);
+        if (!sector) {
+          const err = new Error(`Sector not found: ${sectorId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return sector;
+      }
 
-      case 'sector.add':
+      case 'sector.add': {
+        const path = (args.path ?? args.id) as string | undefined;
+        if (!path) {
+          const err = new Error(
+            'sector.add requires --path <path>.\n' +
+            'Usage: fleet sectors add --path /path/to/repo'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         return sectorService.addSector(args as Parameters<SectorService['addSector']>[0]);
+      }
 
-      case 'sector.remove':
-        sectorService.removeSector(
-          (args.id ?? args.sectorId ?? args.name) as string,
-        );
+      case 'sector.remove': {
+        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
+        if (!sectorId) {
+          const err = new Error(
+            'sector.remove requires a sector ID.\n' +
+            'Usage: fleet sectors remove <sector-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        sectorService.removeSector(sectorId);
         return null;
+      }
 
       // ── Missions ─────────────────────────────────────────────────────────────
       case 'mission.create': {
+        const sectorId = (args.sector ?? args.sectorId) as string;
+        const summary = args.summary as string | undefined;
+        const prompt = args.prompt as string | undefined;
+
+        if (!sectorId) {
+          const err = new Error('mission.create requires --sector <id>') as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        if (!prompt || prompt.trim().length === 0) {
+          const err = new Error(
+            'mission.create requires a non-empty --prompt.\n' +
+            'Usage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        if (!summary || summary.trim().length === 0) {
+          const err = new Error(
+            'mission.create requires a non-empty --summary.\n' +
+            'Usage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+
         const mission = missionService.addMission({
-          sectorId: (args.sector ?? args.sectorId) as string,
-          summary: args.summary as string,
-          prompt: args.prompt as string,
+          sectorId,
+          summary,
+          prompt,
           dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
           type: args.type as string | undefined,
         });
@@ -222,11 +280,42 @@ export class SocketServer extends EventEmitter {
       case 'mission.list':
         return missionService.listMissions(args as Parameters<MissionService['listMissions']>[0]);
 
-      case 'mission.status':
-        return missionService.getMission((args.id ?? args.missionId) as number);
+      case 'mission.status': {
+        const rawId = args.id ?? args.missionId;
+        if (rawId == null) {
+          const err = new Error(
+            'mission.status requires a mission ID.\n' +
+            'Usage: fleet missions show <mission-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const mission = missionService.getMission(Number(rawId));
+        if (!mission) {
+          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return mission;
+      }
 
       case 'mission.update': {
-        const id = (args.id ?? args.missionId) as number;
+        const rawId = args.id ?? args.missionId;
+        if (rawId == null) {
+          const err = new Error(
+            'mission.update requires a mission ID.\n' +
+            'Usage: fleet missions update <mission-id> --status <status>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const id = Number(rawId);
+        const existing = missionService.getMission(id);
+        if (!existing) {
+          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
         if (args.status) {
           missionService.setStatus(id, args.status as string);
           this.emit('state-change', 'mission:changed', { id });
@@ -234,39 +323,81 @@ export class SocketServer extends EventEmitter {
         return missionService.getMission(id);
       }
 
-      case 'mission.cancel':
-        missionService.abortMission((args.id ?? args.missionId) as number);
-        this.emit('state-change', 'mission:changed', { id: args.id ?? args.missionId });
+      case 'mission.cancel': {
+        const rawId = args.id ?? args.missionId;
+        if (rawId == null) {
+          const err = new Error(
+            'mission.cancel requires a mission ID.\n' +
+            'Usage: fleet missions cancel <mission-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const id = Number(rawId);
+        const existing = missionService.getMission(id);
+        if (!existing) {
+          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        missionService.abortMission(id);
+        this.emit('state-change', 'mission:changed', { id });
         return null;
+      }
 
       // ── Crew ─────────────────────────────────────────────────────────────────
       case 'crew.list':
         return crewService.listCrew();
 
       case 'crew.deploy': {
-        const missionId = args.mission ? Number(args.mission) : (args.missionId as number | undefined);
-        let prompt = (args.prompt ?? args.summary ?? '') as string;
-
-        // If deploying by missionId with no explicit prompt, look it up from the mission record
-        if (!prompt && missionId) {
-          const mission = missionService.getMission(missionId);
-          if (mission) {
-            prompt = mission.prompt ?? mission.summary ?? '';
-          }
+        const rawMission = args.mission ?? args.missionId;
+        if (rawMission == null) {
+          const err = new Error(
+            'crew.deploy requires --mission <id>. Create a mission first with: fleet missions add --sector <id> --summary "..." --prompt "..."'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
         }
 
-        if (missionId) {
-          const mission = missionService.getMission(missionId);
-          if (mission?.depends_on_mission_id) {
-            const dep = missionService.getMission(mission.depends_on_mission_id);
-            if (dep && dep.status !== 'completed') {
-              throw new Error(`Cannot deploy: mission ${missionId} depends on mission ${mission.depends_on_mission_id} which is not completed (status: ${dep.status})`);
-            }
+        const missionId = Number(rawMission);
+        if (Number.isNaN(missionId) || missionId <= 0) {
+          const err = new Error(
+            `Invalid mission ID: "${rawMission}". --mission must be a numeric mission ID.\n` +
+            'Create a mission first:\n' +
+            '  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
+            'Then deploy:\n' +
+            '  fleet crew deploy --sector <id> --mission <mission-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+
+        const mission = missionService.getMission(missionId);
+        if (!mission) {
+          const err = new Error(`Mission not found: ${missionId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+
+        const prompt = mission.prompt;
+        if (!prompt || prompt.trim().length === 0) {
+          const err = new Error(
+            `Mission ${missionId} has an empty prompt. Update it first:\n` +
+            `  fleet missions update ${missionId} --prompt "..."`
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+
+        if (mission.depends_on_mission_id) {
+          const dep = missionService.getMission(mission.depends_on_mission_id);
+          if (dep && dep.status !== 'completed') {
+            throw new Error(`Cannot deploy: mission ${missionId} depends on mission ${mission.depends_on_mission_id} which is not completed (status: ${dep.status})`);
           }
         }
 
         const result = await crewService.deployCrew({
-          sectorId: (args.sector ?? args.sectorId) as string,
+          sectorId: (args.sector ?? args.sectorId ?? mission.sector_id) as string,
           prompt,
           missionId,
           type: args.type as string | undefined,
@@ -276,34 +407,82 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'crew.recall': {
-        const crewId = (args.id ?? args.crewId) as string;
+        const crewId = (args.id ?? args.crewId) as string | undefined;
+        if (!crewId) {
+          const err = new Error(
+            'crew.recall requires a crew ID.\n' +
+            'Usage: fleet crew recall <crew-id>\n' +
+            'List crew: fleet crew list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         crewService.recallCrew(crewId);
         this.emit('state-change', 'crew:changed', { crewId, status: 'recalled' });
         return null;
       }
 
       case 'crew.info': {
-        const id = (args.id ?? args.crewId) as string;
-        return crewService.getCrewStatus(id);
+        const crewId = (args.id ?? args.crewId) as string | undefined;
+        if (!crewId) {
+          const err = new Error(
+            'crew.info requires a crew ID.\n' +
+            'Usage: fleet crew info <crew-id>\n' +
+            'List crew: fleet crew list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const info = crewService.getCrewStatus(crewId);
+        if (!info) {
+          const err = new Error(`Crew not found: ${crewId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return info;
       }
 
       case 'crew.observe': {
-        const id = (args.id ?? args.crewId) as string;
-        const raw = crewService.observeCrew(id);
+        const crewId = (args.id ?? args.crewId) as string | undefined;
+        if (!crewId) {
+          const err = new Error(
+            'crew.observe requires a crew ID.\n' +
+            'Usage: fleet crew observe <crew-id>\n' +
+            'List crew: fleet crew list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const raw = crewService.observeCrew(crewId);
         return stripAnsi(raw);
       }
 
       case 'crew.message': {
-        const crewId = (args.id ?? args.crewId) as string;
-        const message = (args.message ?? args.text) as string;
-        if (!crewId || !message) {
-          const err = new Error('crew.message requires id and message') as Error & { code: string };
+        const crewId = (args.id ?? args.crewId) as string | undefined;
+        const message = (args.message ?? args.text) as string | undefined;
+        if (!crewId) {
+          const err = new Error(
+            'crew.message requires a crew ID.\n' +
+            'Usage: fleet crew message <crew-id> --message "..."\n' +
+            'List crew: fleet crew list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        if (!message || message.trim().length === 0) {
+          const err = new Error(
+            'crew.message requires a non-empty --message.\n' +
+            'Usage: fleet crew message <crew-id> --message "your message here"'
+          ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
         }
         const sent = crewService.messageCrew(crewId, message);
         if (!sent) {
-          const err = new Error(`Crew not active: ${crewId}`) as Error & { code: string };
+          const err = new Error(
+            `Crew not active: ${crewId}. Only active crew can receive messages.\n` +
+            'Check crew status: fleet crew info ' + crewId
+          ) as Error & { code: string };
           err.code = 'NOT_FOUND';
           throw err;
         }
@@ -318,15 +497,41 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.read': {
-        const transmissionId = (args.id ?? args.transmissionId) as number;
+        const rawId = args.id ?? args.transmissionId;
+        if (rawId == null) {
+          const err = new Error(
+            'comms.read requires a transmission ID.\n' +
+            'Usage: fleet comms read <transmission-id>\n' +
+            'List transmissions: fleet comms inbox'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const transmissionId = Number(rawId);
         const changed = commsService.markRead(transmissionId);
         if (changed) this.emit('state-change', 'comms:changed', { id: transmissionId });
         return null;
       }
 
       case 'comms.send': {
-        const to = args.to as string;
-        const payload = (args.message ?? args.payload ?? '') as string;
+        const to = args.to as string | undefined;
+        if (!to) {
+          const err = new Error(
+            'comms.send requires --to <crew-id|admiral>.\n' +
+            'Usage: fleet comms send --to <crew-id> --message "..."'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const payload = (args.message ?? args.payload) as string | undefined;
+        if (!payload || payload.trim().length === 0) {
+          const err = new Error(
+            'comms.send requires a non-empty --message.\n' +
+            'Usage: fleet comms send --to <crew-id> --message "your message"'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         const id = commsService.send({
           from: (args.from ?? 'admiral') as string,
           to,
@@ -337,7 +542,7 @@ export class SocketServer extends EventEmitter {
 
         // Auto-inject into active crew's Claude Code process if target is a live crew
         let injected = false;
-        if (to && to !== 'admiral') {
+        if (to !== 'admiral') {
           injected = crewService.messageCrew(to, payload);
         }
 
@@ -345,7 +550,17 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.delete': {
-        const transmissionId = (args.id ?? args.transmissionId) as number;
+        const rawId = args.id ?? args.transmissionId;
+        if (rawId == null) {
+          const err = new Error(
+            'comms.delete requires a transmission ID.\n' +
+            'Usage: fleet comms delete --id <transmission-id>\n' +
+            'List transmissions: fleet comms inbox'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const transmissionId = Number(rawId);
         const deleted = commsService.delete(transmissionId);
         if (deleted) this.emit('state-change', 'comms:changed', {});
         return { deleted };
@@ -368,7 +583,17 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.info': {
-        const transmissionId = (args.id ?? args.transmissionId) as number;
+        const rawId = args.id ?? args.transmissionId;
+        if (rawId == null) {
+          const err = new Error(
+            'comms.info requires a transmission ID.\n' +
+            'Usage: fleet comms show <transmission-id>\n' +
+            'List transmissions: fleet comms inbox'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const transmissionId = Number(rawId);
         const transmission = commsService.getTransmission(transmissionId);
         if (!transmission) {
           const err = new Error(`Transmission not found: ${transmissionId}`) as Error & { code: string };
@@ -385,29 +610,94 @@ export class SocketServer extends EventEmitter {
       case 'cargo.list':
         return cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0]);
 
-      case 'cargo.inspect':
-        return cargoService.getCargo(args.cargoId as number);
+      case 'cargo.inspect': {
+        const rawId = args.cargoId ?? args.id;
+        if (rawId == null) {
+          const err = new Error(
+            'cargo.inspect requires a cargo ID.\n' +
+            'Usage: fleet cargo show <cargo-id>\n' +
+            'List cargo: fleet cargo list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        const cargo = cargoService.getCargo(Number(rawId));
+        if (!cargo) {
+          const err = new Error(`Cargo not found: ${rawId}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return cargo;
+      }
 
       // ── Supply Routes ─────────────────────────────────────────────────────────
       case 'supply-route.list':
         return supplyRouteService.listRoutes();
 
-      case 'supply-route.add':
+      case 'supply-route.add': {
+        const fromSector = (args.from ?? args.fromSector) as string | undefined;
+        const toSector = (args.to ?? args.toSector) as string | undefined;
+        if (!fromSector || !toSector) {
+          const err = new Error(
+            'supply-route.add requires --from <sector-id> and --to <sector-id>.\n' +
+            'Usage: fleet supply-route add --from <sector-id> --to <sector-id>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         return supplyRouteService.addRoute(
           args as Parameters<SupplyRouteService['addRoute']>[0],
         );
+      }
 
-      case 'supply-route.remove':
-        supplyRouteService.removeRoute(args.routeId as number);
+      case 'supply-route.remove': {
+        const rawId = args.routeId ?? args.id;
+        if (rawId == null) {
+          const err = new Error(
+            'supply-route.remove requires a route ID.\n' +
+            'Usage: fleet supply-route remove <route-id>\n' +
+            'List routes: fleet supply-route list'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        supplyRouteService.removeRoute(Number(rawId));
         return null;
+      }
 
       // ── Config ────────────────────────────────────────────────────────────────
-      case 'config.get':
+      case 'config.get': {
+        if (!args.key) {
+          const err = new Error(
+            'config.get requires --key <key>.\n' +
+            'Usage: fleet config get --key <config-key>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         return configService.get(args.key as string);
+      }
 
-      case 'config.set':
+      case 'config.set': {
+        if (!args.key) {
+          const err = new Error(
+            'config.set requires --key <key> and --value <value>.\n' +
+            'Usage: fleet config set --key <config-key> --value <value>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
+        if (args.value === undefined) {
+          const err = new Error(
+            'config.set requires --value <value>.\n' +
+            'Usage: fleet config set --key <config-key> --value <value>'
+          ) as Error & { code: string };
+          err.code = 'BAD_REQUEST';
+          throw err;
+        }
         configService.set(args.key as string, args.value);
         return null;
+      }
 
       // ── Log ───────────────────────────────────────────────────────────────────
       case 'log.show': {

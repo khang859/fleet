@@ -51,7 +51,7 @@ function makeMockServices() {
   const missionService = {
     addMission: vi.fn().mockReturnValue({ id: 1, summary: 'test', status: 'queued' }),
     listMissions: vi.fn().mockReturnValue([]),
-    getMission: vi.fn().mockReturnValue({ id: 1, status: 'queued' }),
+    getMission: vi.fn().mockReturnValue({ id: 1, status: 'queued', prompt: 'Do the stuff', summary: 'test', sector_id: 'alpha' }),
     abortMission: vi.fn(),
   };
 
@@ -265,7 +265,7 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'req-deploy',
       command: 'crew.deploy',
-      args: { sector: 'alpha', prompt: 'Do work' },
+      args: { sector: 'alpha', mission: 1 },
     });
 
     expect(events.some((e) => e.event === 'crew:changed')).toBe(true);

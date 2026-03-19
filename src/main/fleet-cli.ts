@@ -297,6 +297,143 @@ function mapCommand(group: string, action: string): string {
   return COMMAND_MAP[cliKey] ?? cliKey
 }
 
+// ── Client-side validation ────────────────────────────────────────────────────
+
+function validateCommand(command: string, args: Record<string, unknown>): string | null {
+  switch (command) {
+    // ── Sectors ────────────────────────────────────────────────────────────
+    case 'sector.info':
+      if (!args.id && !args.sectorId && !args.name)
+        return 'Error: sectors show requires a sector ID.\n\nUsage: fleet sectors show <sector-id>';
+      return null;
+
+    case 'sector.add':
+      if (!args.path && !args.id)
+        return 'Error: sectors add requires --path <path>.\n\nUsage: fleet sectors add --path /path/to/repo';
+      return null;
+
+    case 'sector.remove':
+      if (!args.id && !args.sectorId && !args.name)
+        return 'Error: sectors remove requires a sector ID.\n\nUsage: fleet sectors remove <sector-id>';
+      return null;
+
+    // ── Missions ──────────────────────────────────────────────────────────
+    case 'mission.create':
+      if (!args.sector && !args.sectorId)
+        return 'Error: missions add requires --sector <id>.\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+      if (!args.prompt)
+        return 'Error: missions add requires --prompt "...".\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+      if (!args.summary)
+        return 'Error: missions add requires --summary "...".\n\nUsage: fleet missions add --sector <id> --summary "short title" --prompt "detailed instructions"';
+      return null;
+
+    case 'mission.status':
+      if (!args.id && !args.missionId)
+        return 'Error: missions show requires a mission ID.\n\nUsage: fleet missions show <mission-id>';
+      return null;
+
+    case 'mission.update':
+      if (!args.id && !args.missionId)
+        return 'Error: missions update requires a mission ID.\n\nUsage: fleet missions update <mission-id> --status <status>';
+      return null;
+
+    case 'mission.cancel':
+      if (!args.id && !args.missionId)
+        return 'Error: missions cancel requires a mission ID.\n\nUsage: fleet missions cancel <mission-id>';
+      return null;
+
+    // ── Crew ──────────────────────────────────────────────────────────────
+    case 'crew.deploy': {
+      const rawMission = args.mission ?? args.missionId;
+      if (rawMission == null) {
+        return (
+          'Error: crew deploy requires --mission <id>\n\n' +
+          'Workflow:\n' +
+          '  1. Create a mission:  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
+          '  2. Deploy crew:       fleet crew deploy --sector <id> --mission <mission-id>'
+        );
+      }
+      const missionId = Number(rawMission);
+      if (Number.isNaN(missionId) || missionId <= 0) {
+        return (
+          `Error: --mission must be a numeric mission ID, got: "${rawMission}"\n\n` +
+          'It looks like you passed a prompt string to --mission. Create a mission first:\n\n' +
+          '  1. Create a mission:  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
+          '  2. Deploy crew:       fleet crew deploy --sector <id> --mission <mission-id>'
+        );
+      }
+      return null;
+    }
+
+    case 'crew.recall':
+      if (!args.id && !args.crewId)
+        return 'Error: crew recall requires a crew ID.\n\nUsage: fleet crew recall <crew-id>\nList crew: fleet crew list';
+      return null;
+
+    case 'crew.info':
+      if (!args.id && !args.crewId)
+        return 'Error: crew info requires a crew ID.\n\nUsage: fleet crew info <crew-id>\nList crew: fleet crew list';
+      return null;
+
+    case 'crew.observe':
+      if (!args.id && !args.crewId)
+        return 'Error: crew observe requires a crew ID.\n\nUsage: fleet crew observe <crew-id>\nList crew: fleet crew list';
+      return null;
+
+    case 'crew.message':
+      if (!args.id && !args.crewId)
+        return 'Error: crew message requires a crew ID.\n\nUsage: fleet crew message <crew-id> --message "..."\nList crew: fleet crew list';
+      if (!args.message && !args.text)
+        return 'Error: crew message requires --message "...".\n\nUsage: fleet crew message <crew-id> --message "your message here"';
+      return null;
+
+    // ── Comms ─────────────────────────────────────────────────────────────
+    case 'comms.read':
+      if (!args.id && !args.transmissionId)
+        return 'Error: comms read requires a transmission ID.\n\nUsage: fleet comms read <transmission-id>\nList transmissions: fleet comms inbox';
+      return null;
+
+    case 'comms.send':
+      if (!args.to)
+        return 'Error: comms send requires --to <crew-id|admiral>.\n\nUsage: fleet comms send --to <crew-id> --message "..."';
+      if (!args.message && !args.payload)
+        return 'Error: comms send requires --message "...".\n\nUsage: fleet comms send --to <crew-id> --message "your message"';
+      return null;
+
+    case 'comms.delete':
+      if (!args.id && !args.transmissionId)
+        return 'Error: comms delete requires a transmission ID.\n\nUsage: fleet comms delete --id <transmission-id>\nList transmissions: fleet comms inbox';
+      return null;
+
+    case 'comms.info':
+      if (!args.id && !args.transmissionId)
+        return 'Error: comms show requires a transmission ID.\n\nUsage: fleet comms show <transmission-id>\nList transmissions: fleet comms inbox';
+      return null;
+
+    // ── Cargo ─────────────────────────────────────────────────────────────
+    case 'cargo.inspect':
+      if (!args.cargoId && !args.id)
+        return 'Error: cargo show requires a cargo ID.\n\nUsage: fleet cargo show <cargo-id>\nList cargo: fleet cargo list';
+      return null;
+
+    // ── Config ────────────────────────────────────────────────────────────
+    case 'config.get':
+      if (!args.key)
+        return 'Error: config get requires --key <key>.\n\nUsage: fleet config get --key <config-key>';
+      return null;
+
+    case 'config.set':
+      if (!args.key)
+        return 'Error: config set requires --key <key> and --value <value>.\n\nUsage: fleet config set --key <config-key> --value <value>';
+      if (args.value === undefined)
+        return 'Error: config set requires --value <value>.\n\nUsage: fleet config set --key <config-key> --value <value>';
+      return null;
+
+    default:
+      return null;
+  }
+}
+
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
 export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: boolean }): Promise<string> {
@@ -383,6 +520,10 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
   // Map CLI commands (plural groups, user-friendly actions) to server commands
   const command = mapCommand(group, action);
   const args = parseArgs(cleanRest);
+
+  // ── Client-side validation ──────────────────────────────────────────────
+  const validationError = validateCommand(command, args);
+  if (validationError) return validationError;
 
   const cli = new FleetCLI(sockPath);
 
