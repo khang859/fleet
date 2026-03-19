@@ -1,6 +1,5 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { readFile, writeFile, stat, readdir } from 'fs/promises'
-import { readFileSync } from 'fs'
 import { extname, join, relative, resolve } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
@@ -344,14 +343,14 @@ export function registerIpcHandlers(
       memoService!.dismiss(id)
     })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, (_e, filePath: string) => {
+    ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
       const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
       const resolved = resolve(filePath)
       if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
         return null
       }
       try {
-        return readFileSync(resolved, 'utf-8')
+        return await readFile(resolved, 'utf-8')
       } catch {
         return null
       }

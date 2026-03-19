@@ -1,6 +1,6 @@
-import * as fs from 'fs'
+import * as fsp from 'fs/promises'
 import * as path from 'path'
-import { execSync, exec } from 'child_process'
+import { exec } from 'child_process'
 import { promisify } from 'util'
 import type { PtyManager } from '../pty-manager'
 
@@ -106,20 +106,30 @@ export class AdmiralProcess {
     ]
 
     for (const dir of dirsToCreate) {
-      fs.mkdirSync(dir, { recursive: true })
+      await fsp.mkdir(dir, { recursive: true })
     }
 
     // 2. git init if no .git/
     const gitDir = path.join(this.workspace, '.git')
-    if (!fs.existsSync(gitDir)) {
-      execSync('git init', { cwd: this.workspace, stdio: 'ignore' })
+    try {
+      await fsp.access(gitDir)
+    } catch {
+      await execAsync('git init', { cwd: this.workspace })
     }
 
     // 3. Handle CLAUDE.md
     const claudeMdPath = path.join(this.workspace, 'CLAUDE.md')
-    if (fs.existsSync(claudeMdPath)) {
+    let claudeMdExists = false
+    try {
+      await fsp.access(claudeMdPath)
+      claudeMdExists = true
+    } catch {
+      // does not exist
+    }
+
+    if (claudeMdExists) {
       // Read existing content and update sectors auto-section only
-      const existing = fs.readFileSync(claudeMdPath, 'utf-8')
+      const existing = await fsp.readFile(claudeMdPath, 'utf-8')
       const sectorLines =
         this.sectors.length > 0
           ? this.sectors
@@ -131,20 +141,20 @@ export class AdmiralProcess {
               .join('\n')
           : '_No sectors registered._'
       const updated = updateAutoSection(existing, 'sectors', sectorLines)
-      fs.writeFileSync(claudeMdPath, updated, 'utf-8')
+      await fsp.writeFile(claudeMdPath, updated, 'utf-8')
     } else {
       // Write full generated content
       const content = generateClaudeMd({ starbaseName: this.starbaseName, sectors: this.sectors })
-      fs.writeFileSync(claudeMdPath, content, 'utf-8')
+      await fsp.writeFile(claudeMdPath, content, 'utf-8')
     }
 
     // 4. Always overwrite skill file
     const skillPath = path.join(this.workspace, '.claude', 'skills', 'fleet', 'SKILL.md')
-    fs.writeFileSync(skillPath, generateSkillMd(), 'utf-8')
+    await fsp.writeFile(skillPath, generateSkillMd(), 'utf-8')
 
     // 5. Always overwrite settings (include fleet bin path so Claude can find the CLI)
     const settingsPath = path.join(this.workspace, '.claude', 'settings.json')
-    fs.writeFileSync(settingsPath, generateSettings(this.fleetBinPath), 'utf-8')
+    await fsp.writeFile(settingsPath, generateSettings(this.fleetBinPath), 'utf-8')
   }
 
   async start(): Promise<string> {
@@ -217,7 +227,7 @@ export class AdmiralProcess {
    */
   async reset(): Promise<string> {
     await this.stop()
-    fs.rmSync(this.workspace, { recursive: true, force: true })
+    await fsp.rm(this.workspace, { recursive: true, force: true })
     return this.start()
   }
 }

@@ -1,5 +1,5 @@
 import type Database from 'better-sqlite3';
-import { existsSync } from 'fs';
+import { access } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
@@ -44,6 +44,7 @@ type SectorRow = {
 export class Sentinel {
   private interval: ReturnType<typeof setInterval> | null = null;
   private sweepCount = 0;
+  private sweepInProgress = false;
   private consecutivePingFailures = 0;
   private diskCacheBytes: number | null = null;
   private diskCacheTime = 0;
@@ -70,6 +71,16 @@ export class Sentinel {
   }
 
   async runSweep(): Promise<void> {
+    if (this.sweepInProgress) return;
+    this.sweepInProgress = true;
+    try {
+      await this._runSweep();
+    } finally {
+      this.sweepInProgress = false;
+    }
+  }
+
+  private async _runSweep(): Promise<void> {
     this.sweepCount++;
     const { db, configService } = this.deps;
 
@@ -124,7 +135,13 @@ export class Sentinel {
     // 3. Sector path validation
     const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as SectorRow[];
     for (const sector of sectors) {
-      if (!existsSync(sector.root_path)) {
+      let pathExists = true;
+      try {
+        await access(sector.root_path);
+      } catch {
+        pathExists = false;
+      }
+      if (!pathExists) {
         // Mark all crew in this sector as lost
         db.prepare(
           "UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE sector_id = ? AND status = 'active'",
@@ -201,7 +218,11 @@ export class Sentinel {
     try {
       const homePath = process.env.HOME ?? '~';
       const worktreePath = `${homePath}/.fleet/worktrees`;
-      if (!existsSync(worktreePath)) return 0;
+      try {
+        await access(worktreePath);
+      } catch {
+        return 0;
+      }
 
       const { stdout } = await execFileAsync('du', ['-sk', worktreePath], { timeout: 10_000 });
       const match = stdout.match(/^(\d+)/);
