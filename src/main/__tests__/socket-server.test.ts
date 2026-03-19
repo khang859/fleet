@@ -287,6 +287,24 @@ describe('SocketServer', () => {
     expect(response.data).toContain('normal');
   });
 
+  it('mission.create forwards type parameter', async () => {
+    const sock = tmpSocket();
+    const services = makeMockServices();
+    const server = new SocketServer(sock, services);
+    await server.start();
+
+    const resp = await sendCommand(sock, {
+      command: 'mission.create',
+      args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' },
+    });
+
+    expect(services.missionService.addMission).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'research' }),
+    );
+
+    await server.stop();
+  });
+
   it('comms.check returns unread count', async () => {
     services.commsService.getUnread.mockReturnValue([{ id: 1 }, { id: 2 }]);
     await server.start();

@@ -9,6 +9,7 @@ type MissionRow = {
   prompt: string
   acceptance_criteria: string | null
   status: string
+  type: string
   priority: number
   depends_on_mission_id: number | null
   result: string | null
@@ -27,6 +28,7 @@ type AddMissionOpts = {
   acceptanceCriteria?: string
   priority?: number
   dependsOnMissionId?: number
+  type?: string
 }
 
 type ListMissionsFilter = {
@@ -43,8 +45,8 @@ export class MissionService {
   addMission(opts: AddMissionOpts): MissionRow {
     const result = this.db
       .prepare(
-        `INSERT INTO missions (sector_id, summary, prompt, acceptance_criteria, priority, depends_on_mission_id)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO missions (sector_id, summary, prompt, acceptance_criteria, priority, depends_on_mission_id, type)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         opts.sectorId,
@@ -52,7 +54,8 @@ export class MissionService {
         opts.prompt,
         opts.acceptanceCriteria ?? null,
         opts.priority ?? 0,
-        opts.dependsOnMissionId ?? null
+        opts.dependsOnMissionId ?? null,
+        opts.type ?? 'code'
       )
 
     const mission = this.getMission(result.lastInsertRowid as number)!
