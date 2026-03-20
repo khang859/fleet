@@ -259,6 +259,25 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO sectors (id, name, root_path, stack)
       VALUES ('global', 'Global', ':global:', 'none');
 
+      INSERT OR IGNORE INTO protocols (id, slug, name, description, help_text, trigger_examples, built_in)
+      VALUES (
+        'builtin-research-deploy',
+        'research-and-deploy',
+        'Research and Deploy',
+        'Research the codebase and produce a Feature Brief for implementation.',
+        'Use this protocol when a user asks to build or implement a feature. The Navigator deploys a research crew to investigate the codebase, then a review crew validates the brief, then gates for operator approval before the Admiral creates missions.',
+        '["build me X", "implement X feature", "add X to the codebase", "research how to build X"]',
+        1
+      );
+
+      INSERT OR IGNORE INTO protocol_steps (protocol_id, step_order, type, config, description) VALUES
+        ('builtin-research-deploy', 1, 'deploy-crew', '{"role": "research", "missionTemplate": "Research the codebase for: {featureRequest}. Document existing patterns, relevant files, and proposed approach."}', 'Deploy research crew'),
+        ('builtin-research-deploy', 2, 'await-comms', '{"signalType": "cargo", "timeout": 3600}', 'Wait for research cargo'),
+        ('builtin-research-deploy', 3, 'review', '{"role": "review", "missionTemplate": "Review this Feature Brief for completeness and accuracy: {brief}. Flag gaps, contradictions, or missing context.", "maxIterations": 3}', 'Deploy review crew'),
+        ('builtin-research-deploy', 4, 'await-comms', '{"signalType": "review-pass"}', 'Wait for review approval'),
+        ('builtin-research-deploy', 5, 'gate', '{"decision": "approve or reject Feature Brief"}', 'Gate — operator approves Feature Brief'),
+        ('builtin-research-deploy', 6, 'complete', '{}', 'Protocol complete');
+
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_model', '"claude-haiku-4-5"');
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_max_concurrent', '2');
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_timeout', '180');
