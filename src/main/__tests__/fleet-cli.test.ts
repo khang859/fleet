@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { FleetCLI, runCLI, parseArgs } from '../fleet-cli';
+import { FleetCLI, runCLI, parseArgs, validateCommand } from '../fleet-cli';
 import { SocketServer } from '../socket-server';
 import { StarbaseDB } from '../starbase/db';
 import { CommsService } from '../starbase/comms-service';
@@ -101,6 +101,28 @@ describe('parseArgs', () => {
     const result = parseArgs(['--summary', 'Add tests', '--unread']);
     expect(result).toEqual({ summary: 'Add tests', unread: true });
   });
+
+  it('accumulates repeated --depends-on flags into an array', () => {
+    const result = parseArgs(['--depends-on', '12', '--depends-on', '15'])
+    expect(result['depends-on']).toEqual(['12', '15'])
+  })
+
+  it('keeps single --depends-on as a plain string (not array)', () => {
+    const result = parseArgs(['--depends-on', '12'])
+    expect(result['depends-on']).toBe('12')
+  })
+});
+
+// ── validateCommand tests ─────────────────────────────────────────────────────
+
+describe('validateCommand', () => {
+  it('validateCommand errors on non-numeric --depends-on', () => {
+    const error = validateCommand('mission.create', {
+      sector: 'api', type: 'code', summary: 'S', prompt: 'P',
+      'depends-on': 'not-a-number'
+    })
+    expect(error).toContain('--depends-on')
+  })
 });
 
 // ── FleetCLI.send tests ───────────────────────────────────────────────────────

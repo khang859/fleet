@@ -86,8 +86,18 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
       const next = argv[i + 1];
 
       if (next !== undefined && !next.startsWith('--')) {
-        result[key] = next;
-        i += 2;
+        if (key === 'depends-on') {
+          // Accumulate into array for repeated flags
+          const existing = result[key]
+          result[key] = existing === undefined
+            ? next
+            : Array.isArray(existing)
+              ? [...existing, next]
+              : [existing as string, next]
+        } else {
+          result[key] = next
+        }
+        i += 2
       } else {
         result[key] = true;
         i += 1;
@@ -300,7 +310,7 @@ function mapCommand(group: string, action: string): string {
 
 // ── Client-side validation ────────────────────────────────────────────────────
 
-function validateCommand(command: string, args: Record<string, unknown>): string | null {
+export function validateCommand(command: string, args: Record<string, unknown>): string | null {
   switch (command) {
     // ── Sectors ────────────────────────────────────────────────────────────
     case 'sector.info':
@@ -347,6 +357,17 @@ function validateCommand(command: string, args: Record<string, unknown>): string
         return `Error: missions add requires --prompt "...".\n\n${usage}`;
       if (!args.summary)
         return `Error: missions add requires --summary "...".\n\n${usage}`;
+      if (args['depends-on'] !== undefined) {
+        const depIds = Array.isArray(args['depends-on'])
+          ? args['depends-on'] as string[]
+          : [args['depends-on'] as string]
+        for (const depId of depIds) {
+          const n = Number(depId)
+          if (isNaN(n) || n <= 0) {
+            return `Error: --depends-on must be a numeric mission ID, got: "${depId}".\n\nUsage: fleet missions add ... --depends-on <research-mission-id>`
+          }
+        }
+      }
       return null;
     }
 
