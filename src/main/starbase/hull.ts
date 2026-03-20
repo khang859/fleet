@@ -615,13 +615,23 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
               `starbase-${this.opts.starbaseId}`, 'first-officer', 'memos'
             )
             mkdirSync(memoDir, { recursive: true })
-            const memoId = `review-${missionId}-${Date.now()}`
-            const memoPath = join(memoDir, `${memoId}.md`)
+            const memoPath = join(memoDir, `review-${missionId}-${Date.now()}.md`)
             const memoContent = `## Review Escalation: Mission #${missionId}\n\n**Verdict:** ${verdict}\n**Branch:** ${this.opts.prBranch ?? worktreeBranch}\n\n### Review Notes\n${notes}\n`
             writeFileSync(memoPath, memoContent, 'utf-8')
             db.prepare(
-              "INSERT INTO memos (id, crew_id, mission_id, event_type, file_path, status) VALUES (?, ?, ?, 'review-escalation', ?, 'unread')"
-            ).run(memoId, crewId, missionId, memoPath)
+              `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+               VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+            ).run(
+              missionId,
+              JSON.stringify({
+                missionId,
+                crewId,
+                eventType: 'review-escalation',
+                summary: `Review escalation: ${verdict} on mission #${missionId}`,
+                filePath: memoPath,
+                classification: 'review-escalation',
+              })
+            )
           }
 
           db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
