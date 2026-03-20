@@ -118,32 +118,39 @@ export class ProtocolService {
   }
 
   advanceStep(executionId: string, toStep: number): void {
-    const exec = this.getExecution(executionId);
-    if (!exec) throw new Error(`Execution not found: ${executionId}`);
-    if (toStep !== exec.current_step + 1) {
+    const fromStep = toStep - 1;
+    const result = this.db.prepare(
+      `UPDATE protocol_executions
+       SET current_step = ?, updated_at = datetime('now')
+       WHERE id = ? AND current_step = ?`
+    ).run(toStep, executionId, fromStep);
+
+    if (result.changes === 0) {
+      const exec = this.getExecution(executionId);
+      if (!exec) throw new Error(`Execution not found: ${executionId}`);
       throw new Error(`Cannot advance from step ${exec.current_step} to step ${toStep} — steps must be sequential`);
     }
-    this.db.prepare(
-      `UPDATE protocol_executions SET current_step = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(toStep, executionId);
   }
 
   updateExecutionStatus(id: string, status: string): void {
-    this.db.prepare(
+    const result = this.db.prepare(
       `UPDATE protocol_executions SET status = ?, updated_at = datetime('now') WHERE id = ?`
     ).run(status, id);
+    if (result.changes === 0) throw new Error(`Execution not found: ${id}`);
   }
 
   updateExecutionContext(id: string, context: string): void {
-    this.db.prepare(
+    const result = this.db.prepare(
       `UPDATE protocol_executions SET context = ?, updated_at = datetime('now') WHERE id = ?`
     ).run(context, id);
+    if (result.changes === 0) throw new Error(`Execution not found: ${id}`);
   }
 
   updateActiveCrewIds(id: string, crewIds: string[]): void {
-    this.db.prepare(
+    const result = this.db.prepare(
       `UPDATE protocol_executions SET active_crew_ids = ?, updated_at = datetime('now') WHERE id = ?`
     ).run(JSON.stringify(crewIds), id);
+    if (result.changes === 0) throw new Error(`Execution not found: ${id}`);
   }
 
   getStaleGatePendingExecutions(olderThanSeconds: number): ProtocolExecutionRow[] {

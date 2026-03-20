@@ -102,5 +102,33 @@ describe('ProtocolService', () => {
       const stale = svc.getStaleGatePendingExecutions(3600);
       expect(stale.some(e => e.id === id)).toBe(true);
     });
+
+    it('updates execution context', () => {
+      svc.createProtocol({ id: 'proto-8', slug: 'ctx-proto', name: 'Ctx', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      const id = svc.createExecution({ protocolId: 'proto-8', featureRequest: 'test' });
+      svc.updateExecutionContext(id, 'some context');
+      expect(svc.getExecution(id)?.context).toBe('some context');
+    });
+
+    it('updates active crew ids', () => {
+      svc.createProtocol({ id: 'proto-9', slug: 'crew-proto', name: 'Crew', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      const id = svc.createExecution({ protocolId: 'proto-9', featureRequest: 'test' });
+      svc.updateActiveCrewIds(id, ['crew-1', 'crew-2']);
+      expect(svc.getExecution(id)?.active_crew_ids).toBe('["crew-1","crew-2"]');
+    });
+
+    it('lists executions filtered by status', () => {
+      svc.createProtocol({ id: 'proto-10', slug: 'filter-proto', name: 'Filter', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      const id1 = svc.createExecution({ protocolId: 'proto-10', featureRequest: 'test1' });
+      const id2 = svc.createExecution({ protocolId: 'proto-10', featureRequest: 'test2' });
+      svc.updateExecutionStatus(id2, 'complete');
+      const running = svc.listExecutions('running');
+      expect(running.some(e => e.id === id1)).toBe(true);
+      expect(running.some(e => e.id === id2)).toBe(false);
+    });
+
+    it('throws on updateExecutionStatus with missing id', () => {
+      expect(() => svc.updateExecutionStatus('no-such', 'complete')).toThrow();
+    });
   });
 });
