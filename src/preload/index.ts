@@ -50,8 +50,8 @@ const fleetApi = {
     }
   },
   layout: {
-    save: (req: LayoutSaveRequest): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_SAVE, req),
+    save: (req: LayoutSaveRequest): void =>
+      ipcRenderer.sendSync(IPC_CHANNELS.LAYOUT_SAVE, req),
     load: (workspaceId: string): Promise<Workspace> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
     list: (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
