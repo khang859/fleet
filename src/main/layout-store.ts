@@ -8,6 +8,7 @@ type StoreSchema = {
 
 export class LayoutStore {
   private store: Store<StoreSchema>;
+  private lastSaved: Workspace | undefined;
 
   constructor() {
     this.store = new Store<StoreSchema>({
@@ -22,6 +23,11 @@ export class LayoutStore {
     const workspaces = this.store.get('workspaces', {});
     workspaces[workspace.id] = workspace;
     this.store.set('workspaces', workspaces);
+    this.lastSaved = workspace;
+  }
+
+  getLastSaved(): Workspace | undefined {
+    return this.lastSaved;
   }
 
   load(workspaceId: string): Workspace | undefined {

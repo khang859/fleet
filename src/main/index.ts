@@ -792,6 +792,8 @@ app.whenReady().then(async () => {
 })
 
 function shutdownAll(): void {
+  const lastWorkspace = layoutStore.getLastSaved()
+  if (lastWorkspace) layoutStore.save(lastWorkspace)
   crewServiceRef?.shutdown()
   firstOfficerRef?.shutdown()
   ptyManager.killAll()

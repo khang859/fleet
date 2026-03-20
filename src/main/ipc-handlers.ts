@@ -137,8 +137,9 @@ export function registerIpcHandlers(
   })
 
   // Layout handlers
-  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
+  ipcMain.on(IPC_CHANNELS.LAYOUT_SAVE, (event, req: LayoutSaveRequest) => {
     layoutStore.save(req.workspace)
+    event.returnValue = undefined
   })
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LOAD, (_event, workspaceId: string): Workspace | undefined => {
