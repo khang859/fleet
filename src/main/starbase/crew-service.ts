@@ -243,6 +243,11 @@ export class CrewService {
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
+  deleteCrew(crewId: string): void {
+    this.deps.db.prepare('UPDATE missions SET crew_id = NULL WHERE crew_id = ?').run(crewId)
+    this.deps.db.prepare('DELETE FROM crew WHERE id = ?').run(crewId)
+  }
+
   /**
    * Send a follow-up message to an active crew's Claude Code process.
    * Returns true if the message was sent, false if the crew is not active.
