@@ -45,11 +45,12 @@ describe('PtyManager', () => {
     expect(manager.paneIds()).toEqual(['pane-1', 'pane-2']);
   });
 
-  it('throws when creating a duplicate paneId', () => {
-    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
-    expect(() =>
-      manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
-    ).toThrow('pane-1 already exists');
+  it('returns existing PTY info when creating a duplicate paneId (idempotent for HMR)', () => {
+    const first = manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const second = manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    expect(second.paneId).toBe('pane-1');
+    expect(second.pid).toBe(first.pid);
+    expect(manager.has('pane-1')).toBe(true);
   });
 });
 
