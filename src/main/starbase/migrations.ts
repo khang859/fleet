@@ -235,7 +235,7 @@ export const MIGRATIONS: Migration[] = [
       );
 
       CREATE TABLE IF NOT EXISTS protocol_steps (
-        id INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         protocol_id TEXT REFERENCES protocols(id) ON DELETE CASCADE,
         step_order INTEGER NOT NULL,
         type TEXT NOT NULL,
@@ -257,7 +257,7 @@ export const MIGRATIONS: Migration[] = [
       );
 
       INSERT OR IGNORE INTO sectors (id, name, root_path, stack)
-      VALUES ('global', 'Global', '', 'none');
+      VALUES ('global', 'Global', ':global:', 'none');
 
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_model', '"claude-haiku-4-5"');
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_max_concurrent', '2');
