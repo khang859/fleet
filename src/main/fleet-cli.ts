@@ -301,6 +301,17 @@ const COMMAND_MAP: Record<string, string> = {
   // Log groups (CLI "log groups list" → "log.show")
   'log.groups': 'log.show',
   'log.list': 'log.show',
+
+  // Protocols
+  'protocols.list': 'protocol.list',
+  'protocol.list': 'protocol.list',
+  'protocols.show': 'protocol.show',
+  'protocol.show': 'protocol.show',
+  'protocols.enable': 'protocol.enable',
+  'protocols.disable': 'protocol.disable',
+  'protocols.executions.list': 'execution.list',
+  'protocols.executions.show': 'execution.show',
+  'protocols.executions.update': 'execution.update',
 }
 
 function mapCommand(group: string, action: string): string {
@@ -619,6 +630,42 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
     const unread = (data as { unread: number })?.unread ?? 0;
     if (unread === 0) return '';
     return `${unread} unread transmission(s) — run: fleet comms list --unread`;
+  }
+
+  // ── protocol.list formatting ──────────────────────────────────────────────
+  if (command === 'protocol.list') {
+    const protocols = (data as { ok: boolean; data: { slug: string; name: string; enabled: number; built_in: number }[] }).data;
+    if (!protocols || protocols.length === 0) return 'No protocols registered.';
+    return protocols.map(p => {
+      const status = p.enabled ? '✓' : '✗';
+      const tag = p.built_in ? ' [built-in]' : '';
+      return `  ${status} ${p.slug.padEnd(30)} ${p.name}${tag}`;
+    }).join('\n');
+  }
+
+  // ── protocol.show formatting ──────────────────────────────────────────────
+  if (command === 'protocol.show') {
+    const inner = (data as { ok: boolean; data: { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] } }).data;
+    if (!inner) return 'Protocol not found.';
+    const lines: string[] = [`\n${inner.name}\n`];
+    if (inner.description) lines.push(inner.description + '\n');
+    if (inner.help_text) lines.push(inner.help_text + '\n');
+    if (inner.trigger_examples) {
+      const examples = JSON.parse(inner.trigger_examples) as string[];
+      if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
+    }
+    lines.push('Steps:');
+    for (const s of inner.steps) lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
+    return lines.join('\n');
+  }
+
+  // ── execution.list formatting ─────────────────────────────────────────────
+  if (command === 'execution.list') {
+    const execs = (data as { ok: boolean; data: { id: string; status: string; current_step: number; feature_request: string }[] }).data;
+    if (!execs || execs.length === 0) return 'No executions found.';
+    return execs.map(e =>
+      `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
+    ).join('\n');
   }
 
   // ── Array → text table ────────────────────────────────────────────────────

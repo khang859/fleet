@@ -35,6 +35,7 @@ import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
 import { RetentionService } from './starbase/retention-service'
+import { ProtocolService } from './starbase/protocol-service'
 import { installFleetCLI } from './install-fleet-cli'
 import { enrichProcessEnv } from './shell-env'
 import pkg from 'electron-updater'
@@ -154,6 +155,7 @@ app.whenReady().then(async () => {
   let supplyRouteService: SupplyRouteService | null = null
   let cargoService: CargoService | null = null
   let retentionService: RetentionService | null = null
+  let protocolService: ProtocolService | null = null
 
   try {
     const workspacePath = process.cwd()
@@ -223,6 +225,9 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
+    // Protocol service
+    protocolService = new ProtocolService(starbaseDb.getDb())
+
     // Helper: count unread memos from comms table
     function getUnreadMemoCount(): number {
       return (starbaseDb!.getDb().prepare(
@@ -251,6 +256,7 @@ app.whenReady().then(async () => {
       supplyRouteService: supplyRouteService!,
       configService: configService!,
       shipsLog,
+      protocolService: protocolService!,
     })
 
     socketSupervisor.on('state-change', (event: string, data: unknown) => {
