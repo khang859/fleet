@@ -110,3 +110,80 @@ describe('MissionService', () => {
     expect(m.type).toBe('code');
   });
 });
+
+describe('MissionService — dependencies', () => {
+  it('getDependencies returns [] when no dependencies', () => {
+    const m = missionSvc.addMission({ sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code' })
+    expect(missionSvc.getDependencies(m.id)).toEqual([])
+  })
+
+  it('getDependents returns [] when no dependents', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'Research', prompt: 'P', type: 'research' })
+    expect(missionSvc.getDependents(r.id)).toEqual([])
+  })
+
+  it('addMission with dependsOnMissionIds links via junction table', () => {
+    const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
+    const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+    const code = missionSvc.addMission({
+      sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code',
+      dependsOnMissionIds: [r1.id, r2.id]
+    })
+    const deps = missionSvc.getDependencies(code.id)
+    expect(deps).toHaveLength(2)
+    expect(deps.map(d => d.id)).toContain(r1.id)
+    expect(deps.map(d => d.id)).toContain(r2.id)
+  })
+
+  it('getDependents returns code missions that depend on a research mission', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    const c1 = missionSvc.addMission({ sectorId: 'api', summary: 'C1', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    const c2 = missionSvc.addMission({ sectorId: 'api', summary: 'C2', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    const dependents = missionSvc.getDependents(r.id)
+    expect(dependents).toHaveLength(2)
+    expect(dependents.map(d => d.id)).toContain(c1.id)
+    expect(dependents.map(d => d.id)).toContain(c2.id)
+  })
+})
+
+describe('MissionService — nextMission with junction table', () => {
+  it('queues code mission until research dependency completes', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    expect(missionSvc.nextMission('api')).toBeUndefined()
+  })
+
+  it('unblocks code mission when research dependency completes', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    missionSvc.completeMission(r.id, 'done')
+    expect(missionSvc.nextMission('api')?.id).toBe(code.id)
+  })
+
+  it('unblocks code mission when research dependency fails (terminal state)', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    missionSvc.failMission(r.id, 'error')
+    expect(missionSvc.nextMission('api')?.id).toBe(code.id)
+  })
+
+  it('unblocks code mission when research dependency is aborted', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    missionSvc.abortMission(r.id)
+    expect(missionSvc.nextMission('api')?.id).toBe(code.id)
+  })
+
+  it('stays blocked when one of two dependencies is still queued', () => {
+    const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
+    const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+    missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r1.id, r2.id] })
+    missionSvc.completeMission(r1.id, 'done')
+    expect(missionSvc.nextMission('api')).toBeUndefined()
+  })
+
+  it('mission with no dependencies is immediately eligible', () => {
+    const m = missionSvc.addMission({ sectorId: 'api', summary: 'Simple', prompt: 'P', type: 'code' })
+    expect(missionSvc.nextMission('api')?.id).toBe(m.id)
+  })
+})

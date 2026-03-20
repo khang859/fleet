@@ -30,6 +30,7 @@ type AddMissionOpts = {
   acceptanceCriteria?: string
   priority?: number
   dependsOnMissionId?: number
+  dependsOnMissionIds?: number[]
   type?: string
   prBranch?: string
 }
@@ -63,6 +64,15 @@ export class MissionService {
       )
 
     const mission = this.getMission(result.lastInsertRowid as number)!
+
+    for (const depId of opts.dependsOnMissionIds ?? []) {
+      this.db
+        .prepare(
+          'INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id) VALUES (?, ?)'
+        )
+        .run(result.lastInsertRowid, depId)
+    }
+
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
     return mission
   }
@@ -133,13 +143,42 @@ export class MissionService {
     return this.db
       .prepare(
         `SELECT * FROM missions
-         WHERE sector_id = ? AND status = 'queued'
-         AND (depends_on_mission_id IS NULL
-              OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+         WHERE sector_id = ? AND status = 'queued' AND type = 'code'
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM mission_dependencies WHERE mission_id = missions.id
+           )
+           OR NOT EXISTS (
+             SELECT 1 FROM mission_dependencies md
+             JOIN missions dep ON dep.id = md.depends_on_mission_id
+             WHERE md.mission_id = missions.id
+               AND dep.status NOT IN ('completed', 'failed', 'aborted')
+           )
+         )
          ORDER BY priority ASC, created_at ASC
          LIMIT 1`
       )
       .get(sectorId) as MissionRow | undefined
+  }
+
+  getDependencies(missionId: number): MissionRow[] {
+    return this.db
+      .prepare(
+        `SELECT m.* FROM missions m
+         JOIN mission_dependencies md ON md.depends_on_mission_id = m.id
+         WHERE md.mission_id = ?`
+      )
+      .all(missionId) as MissionRow[]
+  }
+
+  getDependents(missionId: number): MissionRow[] {
+    return this.db
+      .prepare(
+        `SELECT m.* FROM missions m
+         JOIN mission_dependencies md ON md.mission_id = m.id
+         WHERE md.depends_on_mission_id = ?`
+      )
+      .all(missionId) as MissionRow[]
   }
 
   /** Reset crew assignment and timestamps so the mission can be re-deployed */
