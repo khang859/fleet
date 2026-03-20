@@ -53,7 +53,8 @@ describe('Navigator', () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123', fleetBinDir: '/usr/local/bin' });
     // dispatch will fail (no claude binary in test) but workspace setup happens first
     await nav.dispatch({ executionId: 'exec-new', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null }).catch(() => {});
-    // Just verify no crash and process cleaned up
+    // Shutdown any spawned process and verify no crash
+    nav.shutdown();
     expect(nav.activeCount).toBe(0); // process failed or never started, cleaned up
   });
 

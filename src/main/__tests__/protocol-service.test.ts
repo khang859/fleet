@@ -32,16 +32,16 @@ describe('ProtocolService', () => {
     it('creates and retrieves a protocol by slug', () => {
       svc.createProtocol({
         id: 'proto-1',
-        slug: 'research-and-deploy',
+        slug: 'test-research-deploy',
         name: 'Research and Deploy',
         description: 'Research then build',
         helpText: null,
         triggerExamples: ['build me X'],
         builtIn: false,
       });
-      const p = svc.getProtocolBySlug('research-and-deploy');
+      const p = svc.getProtocolBySlug('test-research-deploy');
       expect(p?.name).toBe('Research and Deploy');
-      expect(p?.slug).toBe('research-and-deploy');
+      expect(p?.slug).toBe('test-research-deploy');
     });
 
     it('enables and disables a protocol', () => {
