@@ -377,22 +377,24 @@ export type ParsedFileDiff = {
 
 /**
  * Parse a full unified diff string into per-file sections.
- * Each section has the file name and all hunk lines.
- * The library expects each hunk string to start with @@, not contain file-level headers.
+ * Each section has the file name and the full per-file diff as a single hunk string.
+ * The library's parse() expects a complete per-file unified diff (including ---/+++ headers).
  */
 export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
   const files: ParsedFileDiff[] = [];
   const lines = rawDiff.split('\n');
   let currentFile: ParsedFileDiff | null = null;
-  let currentHunk: string[] = [];
+  let currentLines: string[] = [];
 
   for (const line of lines) {
     // New file diff starts with "diff --git"
     if (line.startsWith('diff --git')) {
       // Save previous file
       if (currentFile) {
-        if (currentHunk.length > 0) {
-          currentFile.hunks.push(currentHunk.join('\n'));
+        // Only push if there is actual diff content (not binary files)
+        const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+        if (hasDiffContent) {
+          currentFile.hunks.push(currentLines.join('\n'));
         }
         files.push(currentFile);
       }
@@ -401,38 +403,22 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
       const match = line.match(/diff --git a\/(.+) b\/(.+)/);
       const fileName = match ? match[2] : 'unknown';
       currentFile = { fileName, hunks: [] };
-      currentHunk = [];
+      currentLines = [];
       continue;
     }
 
-    // Hunk header starts a new hunk
-    if (line.startsWith('@@')) {
-      if (currentHunk.length > 0 && currentFile) {
-        currentFile.hunks.push(currentHunk.join('\n'));
-      }
-      currentHunk = [line];
-      continue;
-    }
-
-    // Skip file metadata lines (---, +++, index, etc.) - they're before hunks
-    if (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index ') ||
-        line.startsWith('new file') || line.startsWith('deleted file') ||
-        line.startsWith('old mode') || line.startsWith('new mode') ||
-        line.startsWith('similarity index') || line.startsWith('rename from') ||
-        line.startsWith('rename to') || line.startsWith('Binary files')) {
-      continue;
-    }
-
-    // Hunk content lines (context, additions, deletions)
-    if (currentHunk.length > 0) {
-      currentHunk.push(line);
+    // Accumulate all lines for the current file (including ---/+++ headers that the library needs)
+    if (currentFile) {
+      currentLines.push(line);
     }
   }
 
   // Save last file
   if (currentFile) {
-    if (currentHunk.length > 0) {
-      currentFile.hunks.push(currentHunk.join('\n'));
+    // Only push if there is actual diff content (not binary files)
+    const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+    if (hasDiffContent) {
+      currentFile.hunks.push(currentLines.join('\n'));
     }
     files.push(currentFile);
   }
