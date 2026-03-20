@@ -334,6 +334,22 @@ export function registerIpcHandlers(
     })
   }
 
+  // Logs: ships_log + comms UNION query
+  if (starbaseDb) {
+    ipcMain.handle(IPC_CHANNELS.STARBASE_SHIPS_LOG, (_e, opts?: { limit?: number }) => {
+      const db = starbaseDb.getDb()
+      const limit = opts?.limit ?? 200
+      return db.prepare(`
+        SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp
+        FROM ships_log
+        UNION ALL
+        SELECT 'comms', id, from_crew, to_crew, type, payload, created_at
+        FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
+        ORDER BY timestamp ASC LIMIT ?
+      `).all(limit)
+    })
+  }
+
   // First Officer: Memo handlers (backed by comms table)
   if (starbaseDb) {
     const memoDb = starbaseDb.getDb()

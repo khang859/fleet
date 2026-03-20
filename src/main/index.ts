@@ -404,6 +404,16 @@ app.whenReady().then(async () => {
         },
       })
 
+      if (starbaseDb) {
+        const recentEntry = starbaseDb.getDb().prepare(`
+          SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp FROM ships_log
+          UNION ALL
+          SELECT 'comms', id, from_crew, to_crew, type, payload, created_at FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
+          ORDER BY timestamp DESC LIMIT 1
+        `).get()
+        if (recentEntry) w.webContents.send(IPC_CHANNELS.STARBASE_LOG_ENTRY, recentEntry)
+      }
+
       // OS notifications for new comms
       if (unreadComms.length > lastUnreadCommsCount && Notification.isSupported()) {
         const settings = settingsStore.get()
