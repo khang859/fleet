@@ -356,6 +356,8 @@ The Starbase Sentinel is an automated watchdog that monitors system and crew hea
 | \`sector_path_missing\` | A registered Sector path no longer exists on disk | Alert the user — the Sector may need to be re-added or the path restored |
 | \`disk_warning\` | Worktree disk usage has exceeded 90% of the configured budget | Alert the user to free disk space or increase the budget in app settings |
 | \`memory_warning\` | System available memory is critically low (<0.5 GB) or low (<1 GB) | Alert the user — consider recalling Crew to free memory |
+| \`memo\` | Escalation report from the First Officer | Read the summary in payload. For full details, read the markdown file at \`payload.filePath\`. Decide whether to create a new mission, adjust scope, or investigate manually. |
+| \`hailing-memo\` | Crew waiting for a response >60s | Review and respond via \`fleet crew message\` |
 
 **Example response for \`lifesign_lost\`:**
 \`\`\`
