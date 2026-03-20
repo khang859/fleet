@@ -11,6 +11,7 @@ import { AdmiralSidebar } from './star-command/AdmiralSidebar'
 import { StatusBar } from './star-command/StatusBar'
 import { DependencyCheckScreen } from './star-command/DependencyCheckScreen'
 import { MemoPanel } from './star-command/MemoPanel'
+import { LogsPanel } from './star-command/LogsPanel'
 import { useTerminal } from '../hooks/use-terminal'
 import { useTerminalDrop } from '../hooks/use-terminal-drop'
 
@@ -54,7 +55,7 @@ export function StarCommandTab() {
 
   const { isDragOver: isTerminalDragOver, handlers: terminalDragHandlers } = useTerminalDrop(admiralPaneId)
 
-  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
+  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions' | 'logs'>('terminal')
   const [showMemos, setShowMemos] = useState(false)
   const [talkFrame, setTalkFrame] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -226,6 +227,16 @@ export function StarCommandTab() {
                   >
                     Missions
                   </button>
+                  <button
+                    className={`text-xs px-2.5 py-1 rounded transition-colors ${
+                      view === 'logs'
+                        ? 'bg-neutral-700 text-neutral-200'
+                        : 'text-neutral-500 hover:text-neutral-300'
+                    }`}
+                    onClick={() => setView('logs')}
+                  >
+                    Logs
+                  </button>
                 </div>
               </div>
 
@@ -289,6 +300,8 @@ export function StarCommandTab() {
               <CrewPanel />
             ) : view === 'missions' ? (
               <MissionsPanel />
+            ) : view === 'logs' ? (
+              <LogsPanel />
             ) : (
               <div className="flex-1 relative min-h-0" {...terminalDragHandlers}>
                 {/* Dependency check screen (shown before Admiral starts) */}

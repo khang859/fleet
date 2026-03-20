@@ -74,6 +74,8 @@ export const IPC_CHANNELS = {
   MEMO_CONTENT: 'memo:content',
   FOCUS_COMMS: 'fleet:focus-comms',
   FOCUS_FIRST_OFFICER: 'fleet:focus-first-officer',
+  STARBASE_SHIPS_LOG: 'starbase:ships-log',
+  STARBASE_LOG_ENTRY: 'starbase:log-entry',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

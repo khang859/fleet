@@ -178,6 +178,13 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_DISMISS, id),
     memoContent: (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_CONTENT, filePath),
+    getShipsLog: (opts?: { limit?: number }): Promise<unknown[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SHIPS_LOG, opts),
+    onLogEntry: (cb: (entry: unknown) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, entry: unknown) => cb(entry)
+      ipcRenderer.on(IPC_CHANNELS.STARBASE_LOG_ENTRY, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_LOG_ENTRY, handler)
+    },
   },
   system: {
     check: (): Promise<import('../shared/ipc-api').SystemDepResult[]> =>
