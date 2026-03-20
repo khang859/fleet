@@ -53,6 +53,7 @@ function makeMockServices() {
     listMissions: vi.fn().mockReturnValue([]),
     getMission: vi.fn().mockReturnValue({ id: 1, status: 'queued', prompt: 'Do the stuff', summary: 'test', sector_id: 'alpha' }),
     abortMission: vi.fn(),
+    getDependencies: vi.fn().mockReturnValue([]),
   };
 
   const commsService = {
@@ -333,5 +334,96 @@ describe('SocketServer', () => {
     expect((response.data as any).pong).toBe(true);
     expect(typeof (response.data as any).uptime).toBe('number');
     expect((response.data as any).uptime).toBeGreaterThanOrEqual(0);
+  });
+
+  it('mission.create passes dependsOnMissionIds to addMission', async () => {
+    await server.start();
+    // Mock getMission to return a mission (for dependency validation)
+    services.missionService.getMission.mockReturnValue({ id: 5, status: 'queued' });
+
+    await sendCommand(socketPath, {
+      id: 'dep-1',
+      command: 'mission.create',
+      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '5' },
+    });
+
+    expect(services.missionService.addMission).toHaveBeenCalledWith(
+      expect.objectContaining({ dependsOnMissionIds: [5] })
+    );
+  });
+
+  it('mission.create returns dependencies array', async () => {
+    await server.start();
+    services.missionService.getMission.mockReturnValue({ id: 5, status: 'queued' });
+
+    const response = await sendCommand(socketPath, {
+      id: 'dep-2',
+      command: 'mission.create',
+      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '5' },
+    });
+
+    expect(response.ok).toBe(true);
+    expect((response.data as any).dependencies).toEqual([5]);
+  });
+
+  it('mission.create returns nudge for code missions without deps', async () => {
+    await server.start();
+
+    const response = await sendCommand(socketPath, {
+      id: 'nudge-1',
+      command: 'mission.create',
+      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff' },
+    });
+
+    expect(response.ok).toBe(true);
+    expect((response.data as any).nudge).toContain('research mission');
+  });
+
+  it('mission.create errors on non-existent dependency', async () => {
+    await server.start();
+    services.missionService.getMission.mockReturnValue(undefined);
+
+    const response = await sendCommand(socketPath, {
+      id: 'bad-dep',
+      command: 'mission.create',
+      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '9999' },
+    });
+
+    expect(response.ok).toBe(false);
+    expect(response.error).toContain('9999');
+  });
+
+  it('crew.deploy blocks when dependencies not in terminal state', async () => {
+    await server.start();
+    services.missionService.getDependencies.mockReturnValue([
+      { id: 3, status: 'active', summary: 'Research' }
+    ]);
+
+    const response = await sendCommand(socketPath, {
+      id: 'deploy-blocked',
+      command: 'crew.deploy',
+      args: { sector: 'alpha', mission: '1' },
+    });
+
+    expect(response.ok).toBe(false);
+    expect(response.error).toContain('depends on');
+  });
+
+  it('crew.deploy allows when dependencies are completed', async () => {
+    await server.start();
+    services.missionService.getDependencies.mockReturnValue([
+      { id: 3, status: 'completed', summary: 'Research' }
+    ]);
+
+    const response = await sendCommand(socketPath, {
+      id: 'deploy-ok',
+      command: 'crew.deploy',
+      args: { sector: 'alpha', mission: '1' },
+    });
+
+    // Should pass the dependency guard (may fail later for other reasons)
+    if (!response.ok) {
+      expect(response.error).not.toContain('depends on');
+    }
   });
 });

@@ -292,16 +292,41 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
 
+        // Parse --depends-on (may be a single string or array of strings)
+        const rawDeps = args['depends-on']
+        const dependsOnMissionIds: number[] = rawDeps == null
+          ? []
+          : (Array.isArray(rawDeps) ? rawDeps : [rawDeps])
+              .map(Number)
+              .filter(n => !isNaN(n) && n > 0)
+
+        // Validate each dependency ID exists
+        for (const depId of dependsOnMissionIds) {
+          const dep = missionService.getMission(depId)
+          if (!dep) {
+            const err = new Error(
+              `Cannot link dependency: mission ${depId} does not exist.`
+            ) as Error & { code: string }
+            err.code = 'BAD_REQUEST'
+            throw err
+          }
+        }
+
         const mission = missionService.addMission({
           sectorId,
           summary,
           prompt,
-          dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
+          dependsOnMissionIds,
           type,
           prBranch,
         });
+
+        const nudge = type === 'code' && dependsOnMissionIds.length === 0
+          ? 'Tip: Consider attaching a research mission to provide context before this code mission runs. Use --depends-on <research-mission-id> to link one. Skip this for trivial changes.'
+          : undefined
+
         this.emit('state-change', 'mission:changed', { mission });
-        return mission;
+        return nudge ? { ...mission, dependencies: dependsOnMissionIds, nudge } : { ...mission, dependencies: dependsOnMissionIds }
       }
 
       case 'mission.list':
@@ -473,11 +498,15 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
 
-        if (mission.depends_on_mission_id) {
-          const dep = missionService.getMission(mission.depends_on_mission_id);
-          if (dep && dep.status !== 'completed') {
-            throw new Error(`Cannot deploy: mission ${missionId} depends on mission ${mission.depends_on_mission_id} which is not completed (status: ${dep.status})`);
-          }
+        // Check all dependencies via junction table
+        const blockedDeps = missionService.getDependencies(missionId).filter(
+          dep => !['completed', 'failed', 'aborted'].includes(dep.status)
+        )
+        if (blockedDeps.length > 0) {
+          const depList = blockedDeps.map(d => `#${d.id} (${d.status})`).join(', ')
+          throw new Error(
+            `Cannot deploy: mission ${missionId} depends on mission(s) ${depList} which have not reached a terminal state.`
+          )
         }
 
         // Guard: reject if mission already has a crew assigned or is already active
