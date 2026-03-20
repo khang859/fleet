@@ -312,26 +312,30 @@ export function StarCommandTab() {
                   </div>
                 ) : null}
 
-                {/* Offline overlay with restart button */}
-                {admiralStatus === 'stopped' && admiralPaneId === null && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/80 backdrop-blur-sm z-20">
+                {/* Offline overlay with restart button — shown whenever Admiral is stopped,
+                    even if paneId is still set (process exited from within terminal) */}
+                {admiralStatus === 'stopped' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/90 backdrop-blur-sm z-20">
                     <Avatar
                       type="admiral"
                       variant="standby"
                       size={64}
                     />
+                    <p className="text-base font-semibold text-neutral-200 mt-4 tracking-wide">
+                      Station Dormant
+                    </p>
                     {admiralExitCode !== null && admiralExitCode !== 0 ? (
-                      <p className="text-sm text-red-400 mt-3">
-                        Admiral crashed (exit code {admiralExitCode})
+                      <p className="text-xs text-red-400 mt-1">
+                        Admiral offline — exit code {admiralExitCode}
                       </p>
                     ) : (
-                      <p className="text-sm text-neutral-400 mt-3">Admiral offline</p>
+                      <p className="text-xs text-neutral-500 mt-1">Admiral session ended</p>
                     )}
                     {admiralError && (
                       <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
                     )}
                     <button
-                      className="mt-4 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
+                      className="mt-5 px-5 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors tracking-wide"
                       onClick={() => {
                         setIsRestarting(true)
                         setAdmiralPty(null, 'starting')
@@ -344,7 +348,7 @@ export function StarCommandTab() {
                         })
                       }}
                     >
-                      Restart Admiral
+                      Reactivate Command
                     </button>
                   </div>
                 )}
