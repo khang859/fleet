@@ -213,6 +213,10 @@ const fleetApi = {
       ipcRenderer.on(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
     },
+    readBinary: (filePath: string): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
+    stat: (filePath: string): Promise<{ success: boolean; data?: { size: number; modifiedAt: number; mimeType: string }; error?: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
   },
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
