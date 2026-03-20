@@ -93,6 +93,7 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd)
   },
   admiral: {
+    checkDependencies: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
     getPaneId: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
     ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
     restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
@@ -194,6 +195,16 @@ const fleetApi = {
     // Signal to main that the renderer is ready to receive create-tab messages
     ipcRenderer.send('fleet:create-tab-ready')
     return () => ipcRenderer.removeListener('fleet:create-tab', handler)
+  },
+  file: {
+    openDialog: (opts: { defaultPath?: string } = {}): Promise<string[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
+    onOpenInTab: (callback: (payload: { files: string[] }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { files: string[] }) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
+    },
   },
   updates: {
     checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),
