@@ -1,25 +1,9 @@
 import { useRef, useState, useEffect } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
+import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { useCwdStore } from '../store/cwd-store';
-
-function quotePathForShell(filePath: string, platform: string): string {
-  if (platform === 'win32') {
-    return '"' + filePath.replace(/"/g, '\\"') + '"';
-  }
-  // POSIX: single-quote, escape internal single quotes as '\''
-  return "'" + filePath.replace(/'/g, "'\\''" ) + "'";
-}
-
-function formatDroppedFiles(files: FileList, platform: string): string {
-  const paths: string[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const filePath = window.fleet.utils.getFilePath(files[i]);
-    paths.push(quotePathForShell(filePath, platform));
-  }
-  return paths.join(' ') + ' ';
-}
 
 type TerminalPaneProps = {
   paneId: string;
@@ -40,10 +24,10 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
   const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive, fontFamily, fontSize, onScrollStateChange: setIsScrolledUp });
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const [isDragOver, setIsDragOver] = useState(false);
   const [isGitRepo, setIsGitRepo] = useState(false);
   const currentCwd = useCwdStore((s) => s.cwds.get(paneId));
   const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { isDragOver, handlers: dragHandlers } = useTerminalDrop(paneId, focus);
 
   useEffect(() => {
     if (!currentCwd) {
@@ -62,8 +46,6 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
       if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     };
   }, [currentCwd]);
-  const dragCounterRef = useRef(0);
-
   // Listen for search toggle events targeted at this pane
   useEffect(() => {
     const handler = (e: Event) => {
@@ -76,55 +58,6 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
     return () => document.removeEventListener('fleet:toggle-search', handler);
   }, [paneId]);
 
-  // Safety net: reset drag state on document-level drop/dragend to prevent stuck overlay
-  useEffect(() => {
-    const resetDrag = () => {
-      dragCounterRef.current = 0;
-      setIsDragOver(false);
-    };
-    document.addEventListener('drop', resetDrag);
-    document.addEventListener('dragend', resetDrag);
-    return () => {
-      document.removeEventListener('drop', resetDrag);
-      document.removeEventListener('dragend', resetDrag);
-    };
-  }, []);
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-  };
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    // Only show overlay for file drags, not text/URL drags
-    if (!e.dataTransfer.types.includes('Files')) return;
-    dragCounterRef.current++;
-    if (dragCounterRef.current === 1) {
-      setIsDragOver(true);
-    }
-  };
-
-  const handleDragLeave = () => {
-    dragCounterRef.current--;
-    if (dragCounterRef.current === 0) {
-      setIsDragOver(false);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragOver(false);
-
-    if (e.dataTransfer.files.length > 0) {
-      const formatted = formatDroppedFiles(e.dataTransfer.files, window.fleet.platform);
-      window.fleet.pty.input({ paneId, data: formatted });
-      focus();
-    }
-  };
-
   return (
     <div
       className={`relative h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0 ${isActive ? 'ring-2 ring-blue-500/70 bg-[#151515]' : 'ring-1 ring-neutral-800/50 bg-[#131313]'}`}
@@ -136,10 +69,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
         focus();
         fit();
       }}
-      onDragOver={handleDragOver}
-      onDragEnter={handleDragEnter}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      {...dragHandlers}
     >
       <PaneToolbar
         visible={hovered}
