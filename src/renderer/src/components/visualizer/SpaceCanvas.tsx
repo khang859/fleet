@@ -11,7 +11,6 @@ import { CelestialBodies } from './celestials'
 import { BloomPass } from './bloom'
 import { SpaceWeather } from './space-weather'
 import { AsteroidField } from './asteroids'
-import { AmbientSoundscape } from './ambient-sound'
 import { loadSpriteSheet } from './sprite-loader'
 import { SectorOutpostRenderer, type SectorState } from './sector-outposts'
 import { ShuttleRenderer, type PodState } from './shuttles'
@@ -163,7 +162,6 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const spaceWeatherRef = useRef(new SpaceWeather())
   const asteroidFieldRef = useRef(new AsteroidField())
   const bloomRef = useRef<BloomPass | null>(null)
-  const soundscapeRef = useRef(new AmbientSoundscape())
   const sectorOutpostRef = useRef(new SectorOutpostRenderer())
   const shuttleRef = useRef(new ShuttleRenderer())
   const signalPulseRef = useRef(new SignalPulseRenderer())
@@ -355,22 +353,11 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     return () => loop.stop()
   }, [isVisible])
 
-  // Soundscape cleanup
-  useEffect(() => {
-    return () => soundscapeRef.current.dispose()
-  }, [])
-
   // Click handling — resolve ship paneId to either tab or pane
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       const canvas = activeCanvasRef.current
       if (!canvas) return
-
-      // Initialize ambient soundscape on first click (requires user gesture)
-      const soundscape = soundscapeRef.current
-      if (!soundscape.getIsRunning()) {
-        soundscape.init().then(() => soundscape.setVolume(0.3))
-      }
 
       const rect = canvas.getBoundingClientRect()
       const camera = cameraRef.current
