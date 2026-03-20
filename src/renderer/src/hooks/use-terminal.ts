@@ -59,6 +59,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     scrollback: options.scrollback ?? 3000,
     cursorBlink: true,
+    cursorInactiveStyle: 'none',
     allowProposedApi: true,
     theme: {
       background: '#151515',
