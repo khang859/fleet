@@ -49,6 +49,21 @@ function injectSerializedContent(node: PaneNode): PaneNode {
   };
 }
 
+function injectLiveCwd(node: PaneNode): PaneNode {
+  const cwds = useCwdStore.getState().cwds;
+  if (node.type === 'leaf') {
+    const liveCwd = cwds.get(node.id);
+    return liveCwd ? { ...node, cwd: liveCwd } : node;
+  }
+  return {
+    ...node,
+    children: [
+      injectLiveCwd(node.children[0]),
+      injectLiveCwd(node.children[1]),
+    ],
+  };
+}
+
 export function App() {
   usePaneNavigation();
   useNotifications();
@@ -201,7 +216,7 @@ export function App() {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectSerializedContent(tab.splitRoot),
+          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot)),
         })),
       };
       window.fleet.layout.save({ workspace: workspaceWithContent });
