@@ -48,7 +48,7 @@ Never send a Crewmate an open-ended or vague prompt. Refine requests into precis
 
 \`\`\`bash
 # 1. Create the mission (note the returned mission ID)
-fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions..."
+fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions..."
 
 # 2. Deploy crew to execute it
 fleet crew deploy --sector <id> --mission <mission-id>
@@ -57,6 +57,7 @@ fleet crew deploy --sector <id> --mission <mission-id>
 **Mission types (required):**
 - \`code\` — produces git commits (code changes, bug fixes, features)
 - \`research\` — produces documentation artifacts (investigation, analysis, no git changes expected)
+- \`review\` — performs PR code review, produces a VERDICT (approve/request-changes/escalate)
 
 ### Research-First Workflow (recommended for non-trivial code missions)
 
@@ -213,13 +214,13 @@ fleet crew message <crew-id> --message "..."  # Send a follow-up message to an a
 fleet missions list                    # List all Missions
 fleet missions list --sector <id>      # Filter by Sector
 fleet missions list --status queued    # Filter by status
-fleet missions add --sector <id> --type <code|research> --summary "..." --prompt "..."  # Create a Mission
+fleet missions add --sector <id> --type <code|research|review> --summary "..." --prompt "..."  # Create a Mission
 fleet missions add ... --depends-on <research-id>   # Link a research dependency (can repeat for multiple)
 fleet missions update <id> --status done    # Update Mission status
 fleet missions show <id>               # Show full Mission details
 \`\`\`
 
-**Required fields for \`missions add\`:** \`--type\` (code or research), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, and \`--type research\` for investigation/analysis that produces documentation artifacts. Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
+**Required fields for \`missions add\`:** \`--type\` (code, research, or review), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, \`--type research\` for investigation/analysis that produces documentation artifacts, and \`--type review\` for PR code reviews that produce a VERDICT (approve/request-changes/escalate). Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
 
 ### Comms
 
@@ -282,7 +283,7 @@ fleet protocols executions show <id>              # Show execution detail
 1. **Identify concerns** — Does the request touch multiple files, features, or Sectors?
 2. **Break into Missions** — Each Mission gets a precise prompt with acceptance criteria
 3. **Confirm with user** — Show the plan before deploying
-4. **Create Missions** — \`fleet missions add --sector <id> --type <code|research> --summary "..." --prompt "..."\`
+4. **Create Missions** — \`fleet missions add --sector <id> --type <code|research|review> --summary "..." --prompt "..."\`
 5. **Deploy Crew** — \`fleet crew deploy --sector <id> --mission <mission-id>\`
 
 ### Example:
@@ -452,7 +453,7 @@ When \`FLEET_MISSION_TYPE=research\`, your findings are captured as **cargo** fr
 
 **Checking your mission type:**
 \`\`\`bash
-echo $FLEET_MISSION_TYPE   # 'research' or 'code'
+echo $FLEET_MISSION_TYPE   # 'research', 'code', or 'review'
 \`\`\`
 
 When a research mission completes, its summary cargo path is referenced in the initial message of any code missions that depend on it. The code crew can Read the file on demand if the task requires the findings.
@@ -464,7 +465,7 @@ When a Crewmate is deployed, the following environment variables are set in its 
 - \`FLEET_CREW_ID\` — the Crewmate's unique ID (e.g. \`my-sector-crew-a1b2\`)
 - \`FLEET_SECTOR_ID\` — the Sector it was deployed to
 - \`FLEET_MISSION_ID\` — the Mission ID it is working on
-- \`FLEET_MISSION_TYPE\` — the mission type (\`research\` or \`code\`)
+- \`FLEET_MISSION_TYPE\` — the mission type (\`research\`, \`code\`, or \`review\`)
 
 Crew can use these to identify themselves in comms:
 
