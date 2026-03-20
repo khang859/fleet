@@ -202,6 +202,20 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id)
       SELECT id, depends_on_mission_id FROM missions WHERE depends_on_mission_id IS NOT NULL;
     `
+  },
+  {
+    version: 10,
+    name: '010-fo-circuit-breaker',
+    sql: `
+      ALTER TABLE missions ADD COLUMN last_error_fingerprint TEXT;
+      ALTER TABLE missions ADD COLUMN mission_deployment_count INTEGER DEFAULT 0;
+      ALTER TABLE comms ADD COLUMN mission_id INTEGER REFERENCES missions(id);
+      CREATE INDEX IF NOT EXISTS idx_comms_mission_type ON comms(mission_id, type, read);
+      DROP TABLE IF EXISTS memos;
+
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('max_mission_deployments', '8');
+      UPDATE starbase_config SET value = 'claude-haiku-4-5' WHERE key = 'first_officer_model';
+    `
   }
 ]
 
@@ -226,6 +240,7 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   first_officer_max_retries: 3,
   first_officer_max_concurrent: 2,
   first_officer_timeout: 120,
-  first_officer_model: 'claude-sonnet-4-6',
+  first_officer_model: 'claude-haiku-4-5',
+  max_mission_deployments: 8,
   review_crew_max_concurrent: 2
 }
