@@ -1,4 +1,4 @@
-# Crew Deploy Agent Scoping
+# Mission Type Scoping
 
 ## Investigation Findings (Mission 28)
 
@@ -50,13 +50,13 @@ The preamble comes **before** the sector `system_prompt`, so sector config can o
 If `missionType === 'research'` AND `sector.allowed_tools` is not explicitly set, Hull receives:
 
 ```
-Read,Glob,Grep,WebSearch,WebFetch,Bash
+Read,Glob,Grep,WebSearch,WebFetch
 ```
 
-This excludes `Edit` and `Write` by default, preventing research crews from modifying files. Code crews remain unrestricted (all tools).
+This excludes `Edit`, `Write`, and `Bash` by default, preventing research crews from modifying files or running shell commands. `Bash` is excluded because it is a superset of `Edit`/`Write` and allows file writes, commits, and pushes via shell — undermining the read-only intent. Code crews remain unrestricted (all tools).
 
 ```typescript
-allowedTools: sector.allowed_tools ?? (missionType === 'research' ? 'Read,Glob,Grep,WebSearch,WebFetch,Bash' : undefined),
+allowedTools: sector.allowed_tools ?? (missionType === 'research' ? 'Read,Glob,Grep,WebSearch,WebFetch' : undefined),
 ```
 
 **To override per sector:** Set `allowed_tools` in Sector settings. The default only applies when `allowed_tools` is null/empty.
@@ -91,12 +91,12 @@ fi
 
 ```
 Sector: research-sector
-allowed_tools: (leave empty — defaults to Read,Glob,Grep,WebSearch,WebFetch,Bash for research)
+allowed_tools: (leave empty — defaults to Read,Glob,Grep,WebSearch,WebFetch for research)
 system_prompt: Focus on security vulnerabilities. Always check CVE databases.
 ```
 
 Research missions automatically get:
-- Read-only tool defaults
+- Read-only tool defaults (no Bash — use Read/Glob/Grep for file access)
 - Research preamble injected before the sector system_prompt
 - `FLEET_MISSION_TYPE=research` in env
 
@@ -104,7 +104,7 @@ Research missions automatically get:
 
 ```
 Sector: research-with-write
-allowed_tools: Read,Glob,Grep,WebSearch,WebFetch,Bash,Write
+allowed_tools: Read,Glob,Grep,WebSearch,WebFetch,Write
 system_prompt: You may write summary files to /tmp for intermediate work.
 ```
 
@@ -126,7 +126,7 @@ Code missions are unrestricted as before.
 
 | Mission Type | `sector.allowed_tools` set? | Effective `allowedTools` |
 |---|---|---|
-| `research` | No | `Read,Glob,Grep,WebSearch,WebFetch,Bash` |
+| `research` | No | `Read,Glob,Grep,WebSearch,WebFetch` |
 | `research` | Yes | Sector value (overrides default) |
 | `code` | No | All tools (no restriction) |
 | `code` | Yes | Sector value |
