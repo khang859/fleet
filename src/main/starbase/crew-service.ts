@@ -176,7 +176,8 @@ export class CrewService {
       reviewMode: sector.review_mode,
       model: sector.model ?? undefined,
       systemPrompt: sector.system_prompt ?? undefined,
-      allowedTools: sector.allowed_tools ?? undefined,
+      // Research crews default to read-only tools unless sector explicitly overrides
+      allowedTools: sector.allowed_tools ?? (missionType === 'research' ? 'Read,Glob,Grep,WebSearch,WebFetch,Bash' : undefined),
       mcpConfig: sector.mcp_config ?? undefined,
       onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,

@@ -170,9 +170,35 @@ export class Hull {
         '--dangerously-skip-permissions',
         '--model', model
       ]
-      if (this.opts.systemPrompt) {
+
+      // Build system prompt: research preamble (if applicable) + sector system_prompt
+      const researchPreamble = this.opts.missionType === 'research'
+        ? `# Research Mission Instructions
+
+You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=research).
+
+## Cargo Workflow
+- Output your findings as printed text in your responses — do NOT write findings to files in the worktree.
+- The Fleet system captures your full output as cargo automatically.
+- Use WebSearch, WebFetch, Read, Glob, Grep, and Bash for investigation.
+
+## Constraints
+- Do NOT push code or create pull requests. This is a research mission, not a code mission.
+- Do NOT commit changes. Any git changes you make will be discarded at the end of the mission.
+- Focus on investigation, analysis, and producing written findings.
+
+## Environment
+- FLEET_MISSION_TYPE=research (available in your environment)
+`
+        : null
+
+      const combinedSystemPrompt = [researchPreamble, this.opts.systemPrompt]
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (combinedSystemPrompt) {
         const spFile = join(promptDir, `${crewId}-system-prompt.md`)
-        writeFileSync(spFile, this.opts.systemPrompt, 'utf-8')
+        writeFileSync(spFile, combinedSystemPrompt, 'utf-8')
         this.systemPromptFile = spFile
         cmdArgs.push('--append-system-prompt-file', spFile)
       }
@@ -187,7 +213,8 @@ export class Hull {
         ...(this.opts.env ?? (process.env as Record<string, string>)),
         FLEET_CREW_ID: crewId,
         FLEET_SECTOR_ID: this.opts.sectorId,
-        FLEET_MISSION_ID: String(this.opts.missionId)
+        FLEET_MISSION_ID: String(this.opts.missionId),
+        FLEET_MISSION_TYPE: this.opts.missionType ?? 'code'
       }
 
       const proc = spawn('claude', cmdArgs, {
