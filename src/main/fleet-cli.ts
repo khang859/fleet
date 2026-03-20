@@ -634,7 +634,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── protocol.list formatting ──────────────────────────────────────────────
   if (command === 'protocol.list') {
-    const protocols = (data as { ok: boolean; data: { slug: string; name: string; enabled: number; built_in: number }[] }).data;
+    const protocols = data as { slug: string; name: string; enabled: number; built_in: number }[];
     if (!protocols || protocols.length === 0) return 'No protocols registered.';
     return protocols.map(p => {
       const status = p.enabled ? '✓' : '✗';
@@ -645,7 +645,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── protocol.show formatting ──────────────────────────────────────────────
   if (command === 'protocol.show') {
-    const inner = (data as { ok: boolean; data: { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] } }).data;
+    const inner = data as { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] };
     if (!inner) return 'Protocol not found.';
     const lines: string[] = [`\n${inner.name}\n`];
     if (inner.description) lines.push(inner.description + '\n');
@@ -661,7 +661,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── execution.list formatting ─────────────────────────────────────────────
   if (command === 'execution.list') {
-    const execs = (data as { ok: boolean; data: { id: string; status: string; current_step: number; feature_request: string }[] }).data;
+    const execs = data as { id: string; status: string; current_step: number; feature_request: string }[];
     if (!execs || execs.length === 0) return 'No executions found.';
     return execs.map(e =>
       `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`

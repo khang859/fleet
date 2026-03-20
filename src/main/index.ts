@@ -31,6 +31,7 @@ import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
 import { FirstOfficer } from './starbase/first-officer'
+import { Navigator } from './starbase/navigator'
 import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
 import { CargoService } from './starbase/cargo-service'
@@ -50,6 +51,7 @@ let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
 let crewServiceRef: CrewService | null = null
 let firstOfficerRef: FirstOfficer | null = null
+let navigatorRef: Navigator | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -244,6 +246,16 @@ app.whenReady().then(async () => {
       fleetBinDir: fleetBinPath,
     })
     firstOfficerRef = firstOfficer
+
+    const navigator = new Navigator({
+      db: starbaseDb.getDb(),
+      configService,
+      eventBus,
+      starbaseId: starbaseDb.getStarbaseId(),
+      crewEnv,
+      fleetBinDir: fleetBinPath,
+    })
+    navigatorRef = navigator
 
     // Socket Supervisor (wraps SocketServer with auto-restart)
     const shipsLog = new ShipsLog(starbaseDb.getDb())
@@ -445,6 +457,7 @@ app.whenReady().then(async () => {
         })
 
       firstOfficer.reconcile()
+      navigator.reconcile()
 
       // Ensure First Officer workspace exists
       const foWorkspace = join(
@@ -800,6 +813,7 @@ app.whenReady().then(async () => {
 function shutdownAll(): void {
   crewServiceRef?.shutdown()
   firstOfficerRef?.shutdown()
+  navigatorRef?.shutdown()
   ptyManager.killAll()
   cwdPoller.stopAll()
   socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err))

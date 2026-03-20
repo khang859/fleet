@@ -890,52 +890,52 @@ export class SocketServer extends EventEmitter {
 
       // ── Protocols ─────────────────────────────────────────────────────────────
       case 'protocol.list':
-        return { ok: true, data: protocolService.listProtocols() };
+        return protocolService.listProtocols();
 
       case 'protocol.show': {
         const p = protocolService.getProtocolBySlug(args.slug as string);
-        if (!p) return { ok: false, error: `Protocol not found: ${args.slug}`, hint: 'Run `fleet protocols list` to see available protocols' };
+        if (!p) {
+          const err = new Error(`Protocol not found: ${args.slug}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
         const steps = protocolService.listSteps(p.id);
-        return { ok: true, data: { ...p, steps } };
+        return { ...p, steps };
       }
 
       case 'protocol.enable': {
-        try {
-          protocolService.setProtocolEnabled(args.slug as string, true);
-          return { ok: true, data: { slug: args.slug, enabled: true } };
-        } catch (e) {
-          return { ok: false, error: (e as Error).message, hint: 'Run `fleet protocols list` to see available protocols' };
-        }
+        protocolService.setProtocolEnabled(args.slug as string, true);
+        return { slug: args.slug, enabled: true };
       }
 
       case 'protocol.disable': {
-        try {
-          protocolService.setProtocolEnabled(args.slug as string, false);
-          return { ok: true, data: { slug: args.slug, enabled: false } };
-        } catch (e) {
-          return { ok: false, error: (e as Error).message };
-        }
+        protocolService.setProtocolEnabled(args.slug as string, false);
+        return { slug: args.slug, enabled: false };
       }
 
       // ── Executions ────────────────────────────────────────────────────────────
       case 'execution.list':
-        return { ok: true, data: protocolService.listExecutions(args.status as string | undefined) };
+        return protocolService.listExecutions(args.status as string | undefined);
 
       case 'execution.show': {
         const exec = protocolService.getExecution(args.id as string);
-        if (!exec) return { ok: false, error: `Execution not found: ${args.id}`, hint: 'Run `fleet protocols executions list` to see active executions' };
-        return { ok: true, data: exec };
+        if (!exec) {
+          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return exec;
       }
 
       case 'execution.update': {
         const exec = protocolService.getExecution(args.id as string);
-        if (!exec) return { ok: false, error: `Execution not found: ${args.id}` };
+        if (!exec) {
+          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
         if (args.step !== undefined) {
-          try {
-            protocolService.advanceStep(args.id as string, Number(args.step));
-          } catch (e) {
-            return { ok: false, error: (e as Error).message };
-          }
+          protocolService.advanceStep(args.id as string, Number(args.step));
         }
         if (args.status !== undefined) {
           protocolService.updateExecutionStatus(args.id as string, args.status as string);
@@ -943,11 +943,7 @@ export class SocketServer extends EventEmitter {
         if (args.context !== undefined) {
           protocolService.updateExecutionContext(args.id as string, args.context as string);
         }
-        return {
-          ok: true,
-          data: protocolService.getExecution(args.id as string),
-          hint: `Execution updated. Poll with \`fleet protocols executions show ${args.id}\` to check state.`
-        };
+        return protocolService.getExecution(args.id as string);
       }
 
       default: {
