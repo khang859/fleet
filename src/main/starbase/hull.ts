@@ -1,10 +1,63 @@
 import type Database from 'better-sqlite3'
 import { spawn, ChildProcess, execSync, ExecSyncOptions } from 'child_process'
-import { writeFileSync, unlinkSync, mkdirSync } from 'fs'
+import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { inferCommitType, deriveSummary, formatCommitMessage, formatCommitSubject } from './conventional-commits'
 import { generateSkillMd } from './workspace-templates'
+
+export function buildCargoHeader(db: Database.Database, missionId: number): string {
+  const deps = db
+    .prepare(
+      `SELECT md.depends_on_mission_id, m.summary
+       FROM mission_dependencies md
+       JOIN missions m ON m.id = md.depends_on_mission_id
+       WHERE md.mission_id = ?`
+    )
+    .all(missionId) as Array<{ depends_on_mission_id: number; summary: string }>
+
+  if (deps.length === 0) return ''
+
+  const lines: string[] = []
+
+  for (const dep of deps) {
+    const cargo = db
+      .prepare(
+        `SELECT manifest FROM cargo
+         WHERE mission_id = ? AND type = 'documentation_summary' AND verified = 1
+         LIMIT 1`
+      )
+      .get(dep.depends_on_mission_id) as { manifest: string } | undefined
+
+    if (!cargo) continue
+
+    let path: string | null = null
+    try {
+      const manifest = JSON.parse(cargo.manifest) as { path?: string }
+      if (manifest.path && existsSync(manifest.path)) {
+        path = manifest.path
+      }
+    } catch {
+      continue
+    }
+
+    if (!path) continue
+
+    lines.push(
+      `- Mission #${dep.depends_on_mission_id} "${dep.summary}"\n  Summary cargo: ${path}`
+    )
+  }
+
+  if (lines.length === 0) return ''
+
+  return [
+    'RESEARCH CONTEXT: The following research mission(s) completed before this code mission.',
+    'Use the Read tool to load their findings if your task requires context.',
+    '',
+    ...lines,
+    '',
+  ].join('\n')
+}
 
 // Stream-JSON message types emitted by Claude Code on stdout
 type ClaudeInitMessage = {
@@ -234,9 +287,12 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
       const researchGuidance = this.opts.missionType === 'research'
         ? `RESEARCH MISSION GUIDANCE: Your research findings will be captured as cargo from your terminal output. Print your findings to stdout using console.log, echo, or similar output commands. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT create pull requests or commit changes. Your mission is to investigate and report findings through your terminal output only.\n\n`
         : ''
+      const cargoHeader = this.opts.missionType === 'code' || this.opts.missionType == null
+        ? buildCargoHeader(db, missionId)
+        : ''
       const initMsg = JSON.stringify({
         type: 'user',
-        message: { role: 'user', content: `${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
+        message: { role: 'user', content: `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
         parent_tool_use_id: null,
         session_id: ''
       }) + '\n'

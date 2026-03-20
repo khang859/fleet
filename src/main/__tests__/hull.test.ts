@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { StarbaseDB } from '../starbase/db'
 import { SectorService } from '../starbase/sector-service'
 import { MissionService } from '../starbase/mission-service'
-import { rmSync, mkdirSync, writeFileSync } from 'fs'
+import { rmSync, mkdirSync, writeFileSync, unlinkSync } from 'fs'
 import { execSync } from 'child_process'
 import { join } from 'path'
 import { tmpdir } from 'os'
@@ -19,7 +19,7 @@ vi.mock('child_process', async (importOriginal) => {
 })
 
 // Import Hull AFTER mock is set up
-import { Hull, HullOpts } from '../starbase/hull'
+import { Hull, HullOpts, buildCargoHeader } from '../starbase/hull'
 
 const TEST_DIR = join(tmpdir(), 'fleet-test-hull')
 const WORKSPACE_DIR = join(TEST_DIR, 'workspace')
@@ -697,5 +697,73 @@ describe('Hull — Research mission cleanup', () => {
       .prepare('SELECT status FROM crew WHERE id = ?')
       .get(opts.crewId) as any
     expect(crew.status).toBe('error')
+  })
+})
+
+describe('buildCargoHeader', () => {
+  it('returns empty string when mission has no dependencies', () => {
+    const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code' })
+    const header = buildCargoHeader(db.getDb(), mission.id)
+    expect(header).toBe('')
+  })
+
+  it('returns empty string when dependency has no cargo', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    const header = buildCargoHeader(db.getDb(), code.id)
+    expect(header).toBe('')
+  })
+
+  it('returns empty string when cargo manifest has {content} but no {path}', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    db.getDb().prepare(
+      "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+    ).run('crew-1', r.id, 'api', JSON.stringify({ content: 'some findings' }))
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    expect(buildCargoHeader(db.getDb(), code.id)).toBe('')
+  })
+
+  it('returns empty string when cargo file path does not exist on disk', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    db.getDb().prepare(
+      "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+    ).run('crew-1', r.id, 'api', JSON.stringify({ path: '/nonexistent/path/summary.md' }))
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    expect(buildCargoHeader(db.getDb(), code.id)).toBe('')
+  })
+
+  it('returns header with path when cargo file exists on disk', () => {
+    const r = missionSvc.addMission({ sectorId: 'api', summary: 'Investigate auth', prompt: 'P', type: 'research' })
+    const cargoPath = join(tmpdir(), `fleet-test-cargo-${Date.now()}.md`)
+    writeFileSync(cargoPath, '## Findings\nsome content')
+    db.getDb().prepare(
+      "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+    ).run('crew-1', r.id, 'api', JSON.stringify({ path: cargoPath }))
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    const header = buildCargoHeader(db.getDb(), code.id)
+    expect(header).toContain('RESEARCH CONTEXT')
+    expect(header).toContain(`Mission #${r.id}`)
+    expect(header).toContain('Investigate auth')
+    expect(header).toContain(cargoPath)
+    try { unlinkSync(cargoPath) } catch {}
+  })
+
+  it('skips missing-file entries but still produces header for valid ones', () => {
+    const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
+    const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+    db.getDb().prepare(
+      "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+    ).run('crew-1', r1.id, 'api', JSON.stringify({ path: '/nonexistent/gone.md' }))
+    const cargoPath = join(tmpdir(), `fleet-test-cargo2-${Date.now()}.md`)
+    writeFileSync(cargoPath, 'findings')
+    db.getDb().prepare(
+      "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+    ).run('crew-2', r2.id, 'api', JSON.stringify({ path: cargoPath }))
+    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r1.id, r2.id] })
+    const header = buildCargoHeader(db.getDb(), code.id)
+    expect(header).toContain('RESEARCH CONTEXT')
+    expect(header).not.toContain('/nonexistent/gone.md')
+    expect(header).toContain(cargoPath)
+    try { unlinkSync(cargoPath) } catch {}
   })
 })
