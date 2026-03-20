@@ -261,6 +261,18 @@ fleet log groups list                  # List all log groups (Ships Log)
 fleet log groups show <id>             # Show entries for a log group
 \`\`\`
 
+### Protocols
+
+\`\`\`
+fleet protocols list                              # List all available protocols
+fleet protocols show <slug>                       # Show protocol details and steps
+fleet protocols enable <slug>
+fleet protocols disable <slug>
+fleet protocols executions list                   # List all active/recent executions
+fleet protocols executions list --status running  # Filter by status
+fleet protocols executions show <id>              # Show execution detail
+\`\`\`
+
 ## Mission Scoping & Deployment Workflow
 
 **Always create a Mission first, then deploy a Crew for it.** This two-step workflow ensures mission prompts are persisted and never lost.
@@ -364,6 +376,18 @@ The Starbase Sentinel is an automated watchdog that monitors system and crew hea
 fleet crew info <crew-id>      # Check last known status
 fleet crew recall <crew-id>    # Recall if stuck
 \`\`\`
+
+## Protocol Comms
+
+When you receive any of these comms types, take the indicated action:
+
+| Type | Action |
+|------|--------|
+| \`gate-pending\` | A Protocol execution needs your decision. Read the payload, present the Feature Brief or question to the operator, collect their response, then spawn a new Navigator invocation with the response in context. |
+| \`protocol-complete\` | A Protocol finished. Present the Feature Brief summary to the operator and offer to create missions from it. |
+| \`protocol-failed\` | A Protocol failed. Present the failure reason. Ask if the operator wants to retry. |
+| \`clarification-needed\` | Same as gate-pending — a clarification question needs human input before the execution can continue. |
+| \`gate-expired\` | A gate timed out with no response. The execution is cancelled. Notify the operator. |
 
 ## Handling Comms
 
