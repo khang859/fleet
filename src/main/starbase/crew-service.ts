@@ -267,8 +267,17 @@ export class CrewService {
       .prepare(
         `SELECT id, sector_id, prompt, summary FROM missions
          WHERE status = 'queued'
-         AND (depends_on_mission_id IS NULL
-              OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM mission_dependencies WHERE mission_id = missions.id
+           )
+           OR NOT EXISTS (
+             SELECT 1 FROM mission_dependencies md
+             JOIN missions dep ON dep.id = md.depends_on_mission_id
+             WHERE md.mission_id = missions.id
+               AND dep.status NOT IN ('completed', 'failed', 'aborted')
+           )
+         )
          ORDER BY priority ASC, created_at ASC
          LIMIT 1`,
       )
@@ -297,8 +306,17 @@ export class CrewService {
        WHERE id = (
          SELECT id FROM missions
          WHERE status = 'queued'
-         AND (depends_on_mission_id IS NULL
-              OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
+         AND (
+           NOT EXISTS (
+             SELECT 1 FROM mission_dependencies WHERE mission_id = missions.id
+           )
+           OR NOT EXISTS (
+             SELECT 1 FROM mission_dependencies md
+             JOIN missions dep ON dep.id = md.depends_on_mission_id
+             WHERE md.mission_id = missions.id
+               AND dep.status NOT IN ('completed', 'failed', 'aborted')
+           )
+         )
          ORDER BY priority ASC, created_at ASC
          LIMIT 1
        )
