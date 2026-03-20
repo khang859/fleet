@@ -628,7 +628,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
 // ── CLI entrypoint ────────────────────────────────────────────────────────────
 
-if (typeof process !== 'undefined' && /fleet-cli\.[jt]s$/.test(process.argv[1] ?? '')) {
+if (typeof process !== 'undefined' && /fleet-cli\.(mjs|[jt]s)$/.test(process.argv[1] ?? '')) {
   const sockPath = join(homedir(), '.fleet', 'fleet.sock');
   runCLI(process.argv.slice(2), sockPath, { retry: true }).then((output) => {
     if (output) process.stdout.write(output + '\n');
