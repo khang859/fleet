@@ -20,6 +20,8 @@ export type TransmissionRow = {
   repeat_count: number;
   last_repeated_at: string | null;
   created_at: string;
+  mission_id: number | null;
+  execution_id: string | null;
 };
 
 type SendOpts = {
@@ -29,6 +31,8 @@ type SendOpts = {
   payload: string;
   threadId?: string;
   inReplyTo?: number;
+  missionId?: number;
+  executionId?: string;
 };
 
 export class CommsService {
@@ -48,7 +52,7 @@ export class CommsService {
     // Deduplicate: if an identical message exists within 5 minutes, bump its repeat_count
     // Admiral messages are never deduplicated — they are intentional commands
     // Dedup runs before rate limit so coalesced duplicates don't consume rate limit budget
-    if (opts.from !== 'admiral') {
+    if (opts.from !== 'admiral' && opts.from !== 'navigator') {
       const existing = this.db
         .prepare(
           `SELECT id FROM comms
@@ -93,9 +97,9 @@ export class CommsService {
 
     const result = this.db
       .prepare(
-        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to, mission_id, execution_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       )
-      .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null);
+      .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null, opts.missionId ?? null, opts.executionId ?? null);
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return result.lastInsertRowid as number;
   }
@@ -182,6 +186,12 @@ export class CommsService {
       this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
     return result.changes;
+  }
+
+  getUnreadByExecution(executionId: string): TransmissionRow[] {
+    return this.db.prepare(
+      `SELECT * FROM comms WHERE execution_id = ? AND read = 0 ORDER BY created_at ASC`
+    ).all(executionId) as TransmissionRow[];
   }
 
   getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string; unread?: boolean }): TransmissionRow[] {
