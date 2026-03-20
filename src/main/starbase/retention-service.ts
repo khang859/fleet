@@ -10,7 +10,10 @@ const TABLES = [
   'comms',
   'cargo',
   'ships_log',
-  'starbase_config'
+  'starbase_config',
+  'protocol_executions',
+  'protocols',
+  'protocol_steps',
 ] as const
 
 export class RetentionService {
@@ -20,7 +23,7 @@ export class RetentionService {
     private dbPath: string
   ) {}
 
-  cleanup(): { comms: number; cargo: number; shipsLog: number; crew: number } {
+  cleanup(): { comms: number; cargo: number; shipsLog: number; crew: number; protocolExecutions: number } {
     const commsRetentionDays = (this.configService.get('comms_retention_days') as number) ?? 30
     const cargoRetentionDays = (this.configService.get('cargo_retention_days') as number) ?? 14
     const shipsLogRetentionDays =
@@ -47,11 +50,18 @@ export class RetentionService {
       )
       .run(crewRetentionDays)
 
+    const protocolExecutionsRetentionDays = (this.configService.get('protocol_executions_retention_days') as number) ?? 30
+
+    const protocolExecutionsResult = this.db
+      .prepare(`DELETE FROM protocol_executions WHERE status IN ('complete', 'failed', 'cancelled', 'gate-expired') AND created_at < datetime('now', '-' || ? || ' days')`)
+      .run(protocolExecutionsRetentionDays)
+
     return {
       comms: commsResult.changes,
       cargo: cargoResult.changes,
       shipsLog: shipsLogResult.changes,
-      crew: crewResult.changes
+      crew: crewResult.changes,
+      protocolExecutions: protocolExecutionsResult.changes
     }
   }
 

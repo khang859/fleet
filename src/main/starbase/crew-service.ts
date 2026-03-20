@@ -90,7 +90,15 @@ export class CrewService {
 
     // Read mission type for Hull
     const missionRow = missionService.getMission(missionId)!
-    const missionType = missionRow.type ?? 'code'
+    // opts.type (deployment role) takes precedence over missionRow.type (DB type).
+    // This lets review crews run as 'review' even though the underlying mission is 'code'.
+    const missionType = opts.type ?? missionRow.type ?? 'code'
+
+    // Guard: reject if the mission is already in a terminal status
+    const TERMINAL_MISSION_STATUSES = ['completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved']
+    if (TERMINAL_MISSION_STATUSES.includes(missionRow.status)) {
+      throw new Error(`Mission ${missionId} is already terminal (status: '${missionRow.status}'). Skipping deployment.`)
+    }
 
     // Guard: reject if the mission already has an active crew assigned
     if (missionRow.crew_id !== null) {

@@ -10,6 +10,7 @@ import type { CargoService } from './starbase/cargo-service';
 import type { SupplyRouteService } from './starbase/supply-route-service';
 import type { ConfigService } from './starbase/config-service';
 import type { ShipsLog } from './starbase/ships-log';
+import type { ProtocolService } from './starbase/protocol-service';
 
 export interface ServiceRegistry {
   crewService: CrewService;
@@ -20,6 +21,7 @@ export interface ServiceRegistry {
   supplyRouteService: SupplyRouteService;
   configService: ConfigService;
   shipsLog: ShipsLog;
+  protocolService: ProtocolService;
 }
 
 type Request = {
@@ -182,6 +184,7 @@ export class SocketServer extends EventEmitter {
       supplyRouteService,
       configService,
       shipsLog,
+      protocolService,
     } = this.services;
 
     switch (command) {
@@ -616,6 +619,12 @@ export class SocketServer extends EventEmitter {
 
       // ── Comms ─────────────────────────────────────────────────────────────────
       case 'comms.list': {
+        // if executionId arg provided, use getUnreadByExecution
+        const executionId = args.execution as string | undefined;
+        if (executionId) {
+          return commsService.getUnreadByExecution(executionId);
+        }
+        // fall through to existing getRecent logic
         const rows = commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
         return rows;
       }
@@ -877,6 +886,64 @@ export class SocketServer extends EventEmitter {
         };
         this.emit('file-open', payload);
         return { fileCount: files.length };
+      }
+
+      // ── Protocols ─────────────────────────────────────────────────────────────
+      case 'protocol.list':
+        return protocolService.listProtocols();
+
+      case 'protocol.show': {
+        const p = protocolService.getProtocolBySlug(args.slug as string);
+        if (!p) {
+          const err = new Error(`Protocol not found: ${args.slug}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        const steps = protocolService.listSteps(p.id);
+        return { ...p, steps };
+      }
+
+      case 'protocol.enable': {
+        protocolService.setProtocolEnabled(args.slug as string, true);
+        return { slug: args.slug, enabled: true };
+      }
+
+      case 'protocol.disable': {
+        protocolService.setProtocolEnabled(args.slug as string, false);
+        return { slug: args.slug, enabled: false };
+      }
+
+      // ── Executions ────────────────────────────────────────────────────────────
+      case 'execution.list':
+        return protocolService.listExecutions(args.status as string | undefined);
+
+      case 'execution.show': {
+        const exec = protocolService.getExecution(args.id as string);
+        if (!exec) {
+          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        return exec;
+      }
+
+      case 'execution.update': {
+        const exec = protocolService.getExecution(args.id as string);
+        if (!exec) {
+          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
+          err.code = 'NOT_FOUND';
+          throw err;
+        }
+        if (args.step !== undefined) {
+          protocolService.advanceStep(args.id as string, Number(args.step));
+        }
+        if (args.status !== undefined) {
+          protocolService.updateExecutionStatus(args.id as string, args.status as string);
+        }
+        if (args.context !== undefined) {
+          protocolService.updateExecutionContext(args.id as string, args.context as string);
+        }
+        return protocolService.getExecution(args.id as string);
       }
 
       default: {

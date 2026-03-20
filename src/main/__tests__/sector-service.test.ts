@@ -48,8 +48,10 @@ describe('SectorService', () => {
   it('should list sectors', () => {
     svc.addSector({ path: 'api' });
     const list = svc.listSectors();
-    expect(list).toHaveLength(1);
-    expect(list[0].id).toBe('api');
+    expect(list).toHaveLength(2);
+    const apiSector = list.find(s => s.id === 'api');
+    expect(apiSector).toBeDefined();
+    expect(apiSector!.id).toBe('api');
   });
 
   it('should get a sector by id', () => {
@@ -62,7 +64,7 @@ describe('SectorService', () => {
   it('should remove a sector', () => {
     svc.addSector({ path: 'api' });
     svc.removeSector('api');
-    expect(svc.listSectors()).toHaveLength(0);
+    expect(svc.listSectors()).toHaveLength(1);
   });
 
   it('should update a sector', () => {

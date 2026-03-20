@@ -8,6 +8,7 @@ import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/wo
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
+import { injectLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { Avatar } from './star-command/Avatar';
 import { getFileSave } from '../lib/file-save-registry';
@@ -122,8 +123,15 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
       const state = useWorkspaceStore.getState();
+      const workspaceWithCwds = {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot),
+        })),
+      };
       window.fleet.layout.save({
-        workspace: state.workspace,
+        workspace: workspaceWithCwds,
       }).then(() => {
         markClean();
         // Refresh saved workspaces list
