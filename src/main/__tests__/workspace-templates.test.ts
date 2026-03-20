@@ -68,6 +68,12 @@ describe('generateClaudeMd', () => {
     const result = generateClaudeMd({ starbaseName: 'Test', sectors: [] })
     expect(result).toContain('Rules')
   })
+
+  it('generateClaudeMd includes Research-First Workflow section', () => {
+    const md = generateClaudeMd({ starbaseName: 'test', sectors: [] })
+    expect(md).toContain('Research-First Workflow')
+    expect(md).toContain('--depends-on')
+  })
 })
 
 describe('updateAutoSection', () => {
@@ -173,6 +179,13 @@ describe('generateSkillMd', () => {
   it('includes Recovery / Fresh Start instructions', () => {
     const result = generateSkillMd()
     expect(result.toLowerCase()).toMatch(/recovery|fresh start/)
+  })
+
+  it('generateSkillMd includes --depends-on in missions add reference', () => {
+    const md = generateSkillMd()
+    expect(md).toContain('--depends-on')
+    expect(md).toContain('Research-First Workflow')
+    expect(md).toContain('summary cargo path is referenced')
   })
 })
 

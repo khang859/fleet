@@ -58,6 +58,26 @@ fleet crew deploy --sector <id> --mission <mission-id>
 - \`code\` — produces git commits (code changes, bug fixes, features)
 - \`research\` — produces documentation artifacts (investigation, analysis, no git changes expected)
 
+### Research-First Workflow (recommended for non-trivial code missions)
+
+For anything beyond a trivial change, create a research mission first to gather context, then create a code mission that depends on it. The code mission will not be scheduled until the research mission reaches a terminal state.
+
+\`\`\`bash
+# 1. Create the research mission
+fleet missions add --sector <id> --type research --summary "Investigate X" --prompt "Investigate..."
+
+# 2. Create the code mission that depends on the research
+fleet missions add --sector <id> --type code --summary "Implement X" --prompt "..." --depends-on <research-mission-id>
+
+# 3. Deploy the research crew first
+fleet crew deploy --sector <id> --mission <research-mission-id>
+
+# 4. When research completes, deploy the code crew
+fleet crew deploy --sector <id> --mission <code-mission-id>
+\`\`\`
+
+When the code crew starts, it receives a header listing the research cargo file paths and can use the Read tool to load findings if the task requires them.
+
 This ensures mission prompts are persisted in the database and never lost.
 
 ## Fleet CLI Reference
@@ -194,11 +214,12 @@ fleet missions list                    # List all Missions
 fleet missions list --sector <id>      # Filter by Sector
 fleet missions list --status queued    # Filter by status
 fleet missions add --sector <id> --type <code|research> --summary "..." --prompt "..."  # Create a Mission
+fleet missions add ... --depends-on <research-id>   # Link a research dependency (can repeat for multiple)
 fleet missions update <id> --status done    # Update Mission status
 fleet missions show <id>               # Show full Mission details
 \`\`\`
 
-**Required fields for \`missions add\`:** \`--type\` (code or research), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, and \`--type research\` for investigation/analysis that produces documentation artifacts.
+**Required fields for \`missions add\`:** \`--type\` (code or research), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, and \`--type research\` for investigation/analysis that produces documentation artifacts. Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
 
 ### Comms
 
@@ -261,6 +282,26 @@ fleet missions add --sector my-app --type code --summary "Add POST /api/settings
 # Step 2: Deploy crew to execute the mission
 fleet crew deploy --sector my-app --mission 42
 \`\`\`
+
+### Research-First Workflow (recommended for non-trivial code missions)
+
+For anything beyond a trivial change, create a research mission first to gather context, then create a code mission that depends on it. The code mission will not be scheduled until the research mission reaches a terminal state.
+
+\`\`\`bash
+# 1. Create the research mission
+fleet missions add --sector <id> --type research --summary "Investigate X" --prompt "Investigate..."
+
+# 2. Create the code mission that depends on the research
+fleet missions add --sector <id> --type code --summary "Implement X" --prompt "..." --depends-on <research-mission-id>
+
+# 3. Deploy the research crew first
+fleet crew deploy --sector <id> --mission <research-mission-id>
+
+# 4. When research completes, deploy the code crew
+fleet crew deploy --sector <id> --mission <code-mission-id>
+\`\`\`
+
+When the code crew starts, it receives a header listing the research cargo file paths and can use the Read tool to load findings if the task requires them.
 
 ### NEVER do this:
 \`\`\`bash
@@ -387,6 +428,8 @@ When \`FLEET_MISSION_TYPE=research\`, your findings are captured as **cargo** fr
 \`\`\`bash
 echo $FLEET_MISSION_TYPE   # 'research' or 'code'
 \`\`\`
+
+When a research mission completes, its summary cargo path is referenced in the initial message of any code missions that depend on it. The code crew can Read the file on demand if the task requires the findings.
 
 ## Crew Identity
 
