@@ -197,10 +197,18 @@ const fleetApi = {
     return () => ipcRenderer.removeListener('fleet:create-tab', handler)
   },
   file: {
+    read: (filePath: string): Promise<{ content: string } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
+    write: (filePath: string, content: string): Promise<{ success: boolean } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
+    stat: (filePath: string): Promise<{ size: number; mtime: number } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
+    readBinary: (filePath: string): Promise<{ data: string; mimeType: string } | { error: string }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
     openDialog: (opts: { defaultPath?: string } = {}): Promise<string[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
-    onOpenInTab: (callback: (payload: { files: string[] }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: { files: string[] }) =>
+    onOpenInTab: (callback: (payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) =>
         callback(payload)
       ipcRenderer.on(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)

@@ -476,6 +476,7 @@ function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance)
   const results: DiffFile[] = [];
 
   for (const fileDiff of parsed) {
+    if (fileDiff.hunks.length === 0) continue;
     try {
       const lang = getLanguageFromFilename(fileDiff.fileName);
       const diffFile = DiffFile.createInstance({
