@@ -138,8 +138,13 @@ export function registerIpcHandlers(
 
   // Layout handlers
   ipcMain.on(IPC_CHANNELS.LAYOUT_SAVE, (event, req: LayoutSaveRequest) => {
-    layoutStore.save(req.workspace)
-    event.returnValue = undefined
+    try {
+      layoutStore.save(req.workspace)
+      event.returnValue = undefined
+    } catch (err) {
+      console.error('[layout-save] Failed to save workspace:', err)
+      event.returnValue = undefined
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LOAD, (_event, workspaceId: string): Workspace | undefined => {
