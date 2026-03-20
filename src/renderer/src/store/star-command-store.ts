@@ -60,15 +60,14 @@ export type CommInfo = {
 };
 
 export type MemoInfo = {
-  id: string
+  id: number  // comms uses INTEGER PK
   crew_id: string | null
   mission_id: number | null
   event_type: string
   file_path: string
   status: string
-  retry_count: number
+  summary: string
   created_at: string
-  updated_at: string
 }
 
 export type FirstOfficerStatus = {

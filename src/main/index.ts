@@ -493,7 +493,8 @@ app.whenReady().then(async () => {
     supplyRouteService,
     cargoService,
     retentionService,
-    admiralStateDetector
+    admiralStateDetector,
+    starbaseDb
   )
 
   // Wire socket command handler to the window
