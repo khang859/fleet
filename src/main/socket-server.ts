@@ -503,7 +503,7 @@ export class SocketServer extends EventEmitter {
 
         // Check all dependencies via junction table
         const blockedDeps = missionService.getDependencies(missionId).filter(
-          dep => !['completed', 'failed', 'aborted'].includes(dep.status)
+          dep => !['completed', 'done', 'failed', 'aborted', 'failed-verification', 'escalated', 'approved'].includes(dep.status)
         )
         if (blockedDeps.length > 0) {
           const depList = blockedDeps.map(d => `#${d.id} (${d.status})`).join(', ')
