@@ -538,6 +538,7 @@ export class Sentinel {
         AND m.protocol_execution_id IS NOT NULL
         AND c.read = 0
         AND pe.status = 'running'
+      GROUP BY m.protocol_execution_id
     `).all() as { executionId: string; protocol_id: string; current_step: number; feature_request: string; context: string | null }[]
 
     for (const row of rows) {
