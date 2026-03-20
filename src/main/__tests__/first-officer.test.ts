@@ -4,6 +4,8 @@ import { ConfigService } from '../starbase/config-service';
 import { FirstOfficer, type ActionableEvent } from '../starbase/first-officer';
 import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
+import { SupplyRouteService } from '../starbase/supply-route-service';
+import { CargoService } from '../starbase/cargo-service';
 import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -18,6 +20,8 @@ let rawDb: ReturnType<StarbaseDB['getDb']>;
 let configService: ConfigService;
 let firstOfficer: FirstOfficer;
 let missionId: number;
+let missionService: MissionService;
+let cargoService: CargoService;
 const CREW_ID = 'api-crew-abcd';
 const SECTOR_ID = 'api';
 
@@ -56,13 +60,15 @@ beforeEach(() => {
   const sectorSvc = new SectorService(rawDb, WORKSPACE_DIR);
   sectorSvc.addSector({ path: 'api' });
 
-  const missionSvc = new MissionService(rawDb);
-  const mission = missionSvc.addMission({
+  missionService = new MissionService(rawDb);
+  const mission = missionService.addMission({
     sectorId: SECTOR_ID,
     summary: 'Add auth endpoint',
     prompt: 'Create a /auth endpoint',
   });
   missionId = mission.id;
+
+  cargoService = new CargoService(rawDb, new SupplyRouteService(rawDb), configService);
 
   // Insert crew row (minimal, no FK for crew table)
   rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run(
@@ -74,6 +80,12 @@ beforeEach(() => {
   firstOfficer = new FirstOfficer({
     db: rawDb,
     configService,
+    missionService,
+    cargoService,
+    crewService: {
+      recallCrew: () => {},
+      deployCrew: async () => ({ crewId: 'replacement', missionId }),
+    } as any,
     starbaseId: db.getStarbaseId(),
   });
 });
@@ -148,8 +160,8 @@ describe('FirstOfficer', () => {
     expect(result).toBe(false);
   });
 
-  it('writeHailingMemo() creates a hailing-memo comm and file', () => {
-    firstOfficer.writeHailingMemo({
+  it('writeHailingMemo() creates a hailing-memo comm and file', async () => {
+    await firstOfficer.writeHailingMemo({
       crewId: CREW_ID,
       missionId,
       sectorName: 'api',
@@ -171,8 +183,8 @@ describe('FirstOfficer', () => {
     expect(payload.summary).toContain('Unanswered hailing');
   });
 
-  it('getStatus() returns memo when there are unread memos', () => {
-    firstOfficer.writeHailingMemo({
+  it('getStatus() returns memo when there are unread memos', async () => {
+    await firstOfficer.writeHailingMemo({
       crewId: CREW_ID,
       missionId,
       sectorName: 'api',
@@ -187,8 +199,8 @@ describe('FirstOfficer', () => {
     expect(firstOfficer.getStatusText()).toBe('Idle');
   });
 
-  it('writeAutoEscalationComm() writes auto-escalation comm', () => {
-    firstOfficer.writeAutoEscalationComm({
+  it('writeAutoEscalationComm() writes auto-escalation comm', async () => {
+    await firstOfficer.writeAutoEscalationComm({
       crewId: CREW_ID,
       missionId,
       classification: 'persistent',
@@ -206,5 +218,31 @@ describe('FirstOfficer', () => {
     expect(payload.classification).toBe('persistent');
     expect(payload.fingerprint).toBe('abc123def456');
     expect(payload.eventType).toBe('auto-escalation');
+  });
+
+  it('falls back to escalate-and-dismiss when decision payload is invalid', async () => {
+    const decision = (firstOfficer as any).parseDecision('not-json', makeEvent());
+    expect(decision.decision).toBe('escalate-and-dismiss');
+  });
+
+  it('normalizes a recover-and-dismiss decision payload', async () => {
+    const decision = (firstOfficer as any).parseDecision(
+      JSON.stringify({
+        decision: 'recover-and-dismiss',
+        reason: 'useful partial output',
+        salvage: {
+          shouldCreateCargo: true,
+          title: 'Recovered notes',
+          contentMarkdown: '# Notes',
+          sourceKinds: ['crew-output'],
+          summary: 'Recovered summary',
+        },
+      }),
+      makeEvent(),
+    );
+
+    expect(decision.decision).toBe('recover-and-dismiss');
+    expect(decision.salvage.shouldCreateCargo).toBe(true);
+    expect(decision.salvage.title).toBe('Recovered notes');
   });
 });

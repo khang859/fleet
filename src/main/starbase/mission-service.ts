@@ -115,6 +115,15 @@ export class MissionService {
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
+  escalateMission(missionId: number, reason: string): void {
+    this.db
+      .prepare(
+        "UPDATE missions SET status = 'escalated', crew_id = NULL, result = ?, completed_at = datetime('now') WHERE id = ?"
+      )
+      .run(reason, missionId)
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  }
+
   getMission(missionId: number): MissionRow | undefined {
     return this.db.prepare('SELECT * FROM missions WHERE id = ?').get(missionId) as
       | MissionRow
@@ -184,7 +193,7 @@ export class MissionService {
   resetForRequeue(missionId: number): void {
     this.db
       .prepare(
-        'UPDATE missions SET crew_id = NULL, started_at = NULL, completed_at = NULL, result = NULL WHERE id = ?'
+        "UPDATE missions SET crew_id = NULL, status = 'queued', started_at = NULL, completed_at = NULL, result = NULL, verify_result = NULL WHERE id = ?"
       )
       .run(missionId)
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })

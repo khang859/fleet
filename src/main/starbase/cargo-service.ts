@@ -1,4 +1,6 @@
 import type Database from 'better-sqlite3'
+import { mkdir, writeFile } from 'fs/promises'
+import { join } from 'path'
 import type { SupplyRouteService } from './supply-route-service'
 import type { ConfigService } from './config-service'
 
@@ -21,6 +23,19 @@ type ProduceCargoOpts = {
   manifest?: string
 }
 
+type ProduceRecoveredCargoOpts = {
+  crewId: string
+  missionId: number
+  sectorId: string
+  title: string
+  contentMarkdown: string
+  summary: string
+  sourceKinds: string[]
+  fingerprint?: string | null
+  classification?: string | null
+  starbaseId: string
+}
+
 type ListCargoFilter = {
   sectorId?: string
   crewId?: string
@@ -28,7 +43,7 @@ type ListCargoFilter = {
   verified?: boolean
 }
 
-const FAILED_STATUSES = ['error', 'lost', 'timeout']
+const FAILED_STATUSES = ['error', 'lost', 'timeout', 'failed', 'failed-verification', 'escalated']
 
 export class CargoService {
   constructor(
@@ -67,6 +82,58 @@ export class CargoService {
     return this.db
       .prepare('SELECT * FROM cargo WHERE id = ?')
       .get(result.lastInsertRowid) as CargoRow
+  }
+
+  async produceRecoveredCargo(opts: ProduceRecoveredCargoOpts): Promise<CargoRow> {
+    const cargoDir = join(
+      process.env.HOME ?? '~',
+      '.fleet',
+      'starbases',
+      `starbase-${opts.starbaseId}`,
+      'cargo',
+      opts.sectorId,
+      String(opts.missionId),
+    )
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-')
+    const filePath = join(cargoDir, `recovered-${ts}.md`)
+
+    let manifest: string
+    try {
+      await mkdir(cargoDir, { recursive: true })
+      await writeFile(filePath, opts.contentMarkdown, 'utf-8')
+      manifest = JSON.stringify({
+        title: opts.title,
+        path: filePath,
+        summary: opts.summary,
+        sourceKinds: opts.sourceKinds,
+        originalCrewId: opts.crewId,
+        missionId: opts.missionId,
+        fingerprint: opts.fingerprint ?? null,
+        classification: opts.classification ?? null,
+        recoveredBy: 'first-officer',
+      })
+    } catch {
+      manifest = JSON.stringify({
+        title: opts.title,
+        content: opts.contentMarkdown,
+        summary: opts.summary,
+        sourceKinds: opts.sourceKinds,
+        originalCrewId: opts.crewId,
+        missionId: opts.missionId,
+        fingerprint: opts.fingerprint ?? null,
+        classification: opts.classification ?? null,
+        recoveredBy: 'first-officer',
+      })
+    }
+
+    return this.produceCargo({
+      crewId: opts.crewId,
+      missionId: opts.missionId,
+      sectorId: opts.sectorId,
+      type: 'recovered_cargo',
+      manifest,
+    })
   }
 
   getCargo(id: number): CargoRow | undefined {

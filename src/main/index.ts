@@ -240,6 +240,9 @@ app.whenReady().then(async () => {
     const firstOfficer = new FirstOfficer({
       db: starbaseDb.getDb(),
       configService,
+      missionService,
+      crewService,
+      cargoService,
       eventBus,
       starbaseId: starbaseDb.getStarbaseId(),
       crewEnv: crewEnv,

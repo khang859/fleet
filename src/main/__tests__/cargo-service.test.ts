@@ -134,6 +134,22 @@ describe('CargoService', () => {
       expect(cargo.verified).toBe(0)
     })
 
+    it('should set verified=false when mission has escalated status', () => {
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'escalated mission',
+        prompt: 'will escalate'
+      })
+      missionSvc.setStatus(mission.id, 'escalated')
+
+      const cargo = cargoSvc.produceCargo({
+        missionId: mission.id,
+        sectorId: 'api',
+        type: 'recovered_cargo'
+      })
+      expect(cargo.verified).toBe(0)
+    })
+
     it('should keep verified=true for completed missions', () => {
       const mission = missionSvc.addMission({
         sectorId: 'api',

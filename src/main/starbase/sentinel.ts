@@ -3,7 +3,6 @@ import { access } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
-import { join } from 'path';
 import { Notification } from 'electron';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
@@ -295,7 +294,6 @@ export class Sentinel {
     const { db, configService, firstOfficer } = this.deps
     if (!firstOfficer) return
 
-    const maxRetries = configService.get('first_officer_max_retries') as number
     const maxDeployments = configService.get('max_mission_deployments') as number ?? 8
 
     const failedCrew = db
@@ -311,8 +309,7 @@ export class Sentinel {
          JOIN sectors s ON s.id = c.sector_id
          WHERE c.status IN ('error', 'lost', 'timeout')
            AND m.status IN ('failed', 'failed-verification')
-           AND m.first_officer_retry_count < ?
-           AND m.mission_deployment_count < ?
+           AND m.first_officer_retry_count <= ?
            AND c.id = (
              SELECT c2.id FROM crew c2
              WHERE c2.mission_id = m.id
@@ -325,7 +322,7 @@ export class Sentinel {
              WHERE type = 'memo' AND mission_id = m.id AND read = 0
            )`
       )
-      .all(maxRetries, maxDeployments) as Array<{
+      .all(configService.get('first_officer_max_retries') as number) as Array<{
         crew_id: string
         sector_id: string
         mission_id: number
@@ -361,19 +358,6 @@ export class Sentinel {
       // Update fingerprint on the mission
       db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?')
         .run(fingerprint, row.mid)
-
-      // Non-retryable or persistent → auto-escalate without FO
-      if (classification !== 'transient') {
-        firstOfficer.writeAutoEscalationComm({
-          crewId: row.crew_id,
-          missionId: row.mid,
-          classification,
-          fingerprint,
-          summary: row.summary,
-          errorText: errorText.split('\n').slice(-30).join('\n'),
-        })
-        continue
-      }
 
       // Get crew output for FO context
       let crewOutput = row.result ?? 'No output captured'
@@ -424,6 +408,9 @@ export class Sentinel {
           reviewNotes: row.review_notes,
           retryCount: row.first_officer_retry_count,
           attemptHistory: attemptHistory || undefined,
+          fingerprint,
+          classification,
+          deploymentBudgetExhausted: row.mission_deployment_count >= maxDeployments,
         },
         {
           onExit: (code) => {
@@ -472,7 +459,7 @@ export class Sentinel {
       }>
 
     for (const hail of unansweredHailing) {
-      firstOfficer.writeHailingMemo({
+      await firstOfficer.writeHailingMemo({
         crewId: hail.from_crew,
         missionId: hail.mission_id,
         sectorName: hail.sector_name,

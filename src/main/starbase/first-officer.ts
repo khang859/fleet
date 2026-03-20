@@ -1,19 +1,24 @@
 import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, unlinkSync, readdirSync } from 'fs'
+import { access } from 'fs/promises'
+import { mkdir, unlink, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import type Database from 'better-sqlite3'
+import type { CargoService } from './cargo-service'
 import type { ConfigService } from './config-service'
+import type { CrewService } from './crew-service'
+import type { MissionService } from './mission-service'
 import type { EventBus } from '../event-bus'
 
 type FirstOfficerDeps = {
   db: Database.Database
   configService: ConfigService
+  missionService: MissionService
+  crewService: CrewService
+  cargoService: CargoService
   eventBus?: EventBus
   starbaseId: string
-  /** Enriched env with PATH containing claude binary */
   crewEnv?: Record<string, string>
-  /** Directory containing the fleet CLI binary */
   fleetBinDir?: string
 }
 
@@ -32,6 +37,22 @@ export type ActionableEvent = {
   reviewNotes: string | null
   retryCount: number
   attemptHistory?: string
+  fingerprint?: string | null
+  classification?: string | null
+  deploymentBudgetExhausted?: boolean
+}
+
+export type FirstOfficerDecision = {
+  decision: 'retry' | 'recover-and-dismiss' | 'escalate-and-dismiss'
+  reason: string
+  revisedPrompt?: string
+  salvage?: {
+    shouldCreateCargo: boolean
+    title?: string
+    contentMarkdown?: string
+    sourceKinds?: string[]
+    summary?: string
+  }
 }
 
 type RunningProcess = {
@@ -41,27 +62,27 @@ type RunningProcess = {
   startedAt: number
 }
 
+type DispatchCallbacks = {
+  onExit?: (code: number | null) => void
+}
+
 export class FirstOfficer {
   private running = new Map<string, RunningProcess>()
 
   constructor(private deps: FirstOfficerDeps) {}
 
-  /** Key for dedup map */
   private key(crewId: string, missionId: number): string {
     return `${crewId}:${missionId}`
   }
 
-  /** How many First Officer processes are currently running */
   get activeCount(): number {
     return this.running.size
   }
 
-  /** Is a process already running for this crew+mission? */
   isRunning(crewId: string, missionId: number): boolean {
     return this.running.has(this.key(crewId, missionId))
   }
 
-  /** Get status text for UI */
   getStatusText(): string {
     if (this.running.size === 0) return 'Idle'
     const entries = [...this.running.values()]
@@ -69,24 +90,15 @@ export class FirstOfficer {
     return `Triaging ${entries.length} issues`
   }
 
-  /** Get status for UI: 'idle' | 'working' | 'memo' */
   getStatus(): 'idle' | 'working' | 'memo' {
     if (this.running.size > 0) return 'working'
     const row = this.deps.db.prepare(
       "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
     ).get() as { cnt: number }
-    if (row.cnt > 0) return 'memo'
-    return 'idle'
+    return row.cnt > 0 ? 'memo' : 'idle'
   }
 
-  /**
-   * Spawn a First Officer process to handle an actionable event.
-   * Returns false if dedup/concurrency prevents spawning.
-   */
-  async dispatch(
-    event: ActionableEvent,
-    callbacks?: { onExit?: (code: number | null) => void },
-  ): Promise<boolean> {
+  async dispatch(event: ActionableEvent, callbacks?: DispatchCallbacks): Promise<boolean> {
     const { configService } = this.deps
     const maxConcurrent = configService.get('first_officer_max_concurrent') as number
     const maxRetries = configService.get('first_officer_max_retries') as number
@@ -94,41 +106,37 @@ export class FirstOfficer {
     const model = configService.get('first_officer_model') as string
 
     const k = this.key(event.crewId, event.missionId)
-
-    // Dedup: already running for this crew+mission
     if (this.running.has(k)) return false
-
-    // Concurrency limit
     if (this.running.size >= maxConcurrent) return false
 
-    // Retries exhausted — force escalation
     if (event.retryCount >= maxRetries) {
-      this.writeEscalationMemo(event, 'Maximum retries exhausted')
+      await this.resolveEscalation(
+        event,
+        'Maximum retries exhausted',
+        'Maximum retries exhausted before First Officer analysis.',
+      )
+      callbacks?.onExit?.(0)
       return true
     }
 
-    // Ensure workspace exists
     const workspace = this.getWorkspacePath()
     const memosDir = join(workspace, 'memos')
-    mkdirSync(memosDir, { recursive: true })
+    await mkdir(memosDir, { recursive: true })
 
-    // Ensure CLAUDE.md exists
     const claudeMdPath = join(workspace, 'CLAUDE.md')
-    if (!existsSync(claudeMdPath)) {
-      writeFileSync(claudeMdPath, this.generateClaudeMd(), 'utf-8')
+    try {
+      await access(claudeMdPath)
+    } catch {
+      await writeFile(claudeMdPath, this.generateClaudeMd(), 'utf-8')
     }
 
-    // Write system prompt to temp file
     const promptDir = join(tmpdir(), 'fleet-first-officer')
-    mkdirSync(promptDir, { recursive: true })
+    await mkdir(promptDir, { recursive: true })
     const spFile = join(promptDir, `${event.crewId}-sp.md`)
-    writeFileSync(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8')
-
-    // Write initial message to temp file
     const msgFile = join(promptDir, `${event.crewId}-msg.md`)
-    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8')
+    await writeFile(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8')
+    await writeFile(msgFile, this.buildInitialMessage(event), 'utf-8')
 
-    // Build CLI args
     const cmdArgs = [
       '--output-format', 'stream-json',
       '--verbose',
@@ -153,15 +161,17 @@ export class FirstOfficer {
         stdio: ['pipe', 'pipe', 'pipe'],
       })
 
-      const entry: RunningProcess = {
+      this.running.set(k, {
         proc,
         crewId: event.crewId,
         missionId: event.missionId,
         startedAt: Date.now(),
-      }
-      this.running.set(k, entry)
+      })
 
-      // Send initial message
+      let stdoutBuffer = ''
+      let assistantOutput = ''
+      let resultText = ''
+
       const initMsg = JSON.stringify({
         type: 'user',
         message: {
@@ -171,182 +181,92 @@ export class FirstOfficer {
         parent_tool_use_id: null,
         session_id: '',
       }) + '\n'
-      proc.stdin!.write(initMsg)
+      proc.stdin?.write(initMsg)
 
-      // Parse stdout for result message
-      let stdoutBuffer = ''
-      proc.stdout!.on('data', (chunk: Buffer) => {
+      proc.stdout?.on('data', (chunk: Buffer) => {
         stdoutBuffer += chunk.toString()
         const lines = stdoutBuffer.split('\n')
         stdoutBuffer = lines.pop() ?? ''
         for (const line of lines) {
           if (!line.trim()) continue
           try {
-            const msg = JSON.parse(line)
+            const msg = JSON.parse(line) as {
+              type?: string
+              result?: string
+              message?: { content?: Array<{ type?: string; text?: string }> }
+            }
+
+            if (msg.type === 'assistant' && msg.message?.content) {
+              const text = msg.message.content
+                .filter((part) => part.type === 'text' && part.text)
+                .map((part) => part.text)
+                .join('\n')
+              if (text) assistantOutput += `${text}\n`
+            }
+
             if (msg.type === 'result') {
+              if (typeof msg.result === 'string') resultText = msg.result
               try { proc.stdin?.end() } catch { /* ignore */ }
             }
-          } catch { /* non-JSON */ }
+          } catch {
+            // ignore startup noise and malformed lines
+          }
         }
       })
 
-      proc.stderr!.on('data', (chunk: Buffer) => {
+      proc.stderr?.on('data', (chunk: Buffer) => {
         console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim())
       })
 
-      // Hard timeout
       const timer = setTimeout(() => {
         if (!proc.killed) {
           console.warn(`[first-officer] Timeout for ${k}, killing`)
-          try { proc.kill('SIGTERM') } catch { /* already dead */ }
+          try { proc.kill('SIGTERM') } catch { /* ignore */ }
           setTimeout(() => {
-            if (!proc.killed) try { proc.kill('SIGKILL') } catch { /* ignore */ }
+            if (!proc.killed) {
+              try { proc.kill('SIGKILL') } catch { /* ignore */ }
+            }
           }, 5000)
         }
       }, timeout * 1000)
 
-      // Cleanup on exit
       proc.on('exit', (code) => {
         clearTimeout(timer)
-        this.running.delete(k)
-
-        // Clean up temp files
-        try { unlinkSync(spFile) } catch { /* ignore */ }
-        try { unlinkSync(msgFile) } catch { /* ignore */ }
-
-        if (code !== 0) {
-          // First Officer itself crashed — fallback escalation
-          this.writeEscalationMemo(event, `First Officer process crashed (exit code: ${code})`)
-        }
-
-        // Check if new memos were written and insert DB records
-        this.scanForNewMemos(event)
-
-        callbacks?.onExit?.(code)
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+        void this.handleProcessExit({
+          key: k,
+          code,
+          event,
+          spFile,
+          msgFile,
+          callbacks,
+          decisionText: resultText || assistantOutput,
+        })
       })
 
       proc.on('error', (err) => {
         clearTimeout(timer)
-        this.running.delete(k)
-        this.writeEscalationMemo(event, `First Officer spawn failed: ${err.message}`)
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+        void this.handleSpawnError(k, event, spFile, msgFile, err, callbacks)
       })
 
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
       return true
     } catch (err) {
-      this.writeEscalationMemo(
+      await this.resolveEscalation(
         event,
         `First Officer spawn failed: ${err instanceof Error ? err.message : 'unknown'}`,
+        'First Officer could not start, so this failure was escalated automatically.',
       )
       return false
     }
   }
 
-  /** Scan memos dir for files not yet in DB and insert records */
-  private scanForNewMemos(event: ActionableEvent): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    if (!existsSync(memosDir)) return
-
-    try {
-      const files = readdirSync(memosDir)
-      for (const file of files) {
-        if (!file.endsWith('.md')) continue
-        const filePath = join(memosDir, file)
-        // Check if already tracked
-        const existing = this.deps.db
-          .prepare(
-            `SELECT 1 FROM comms WHERE type = 'memo' AND mission_id = ? AND payload LIKE ? LIMIT 1`
-          )
-          .get(event.missionId, `%${filePath.replace(/"/g, '\\"')}%`)
-        if (existing) continue
-
-        this.deps.db.prepare(
-          `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
-           VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
-        ).run(
-          event.missionId,
-          JSON.stringify({
-            missionId: event.missionId,
-            crewId: event.crewId,
-            eventType: event.eventType,
-            summary: `New memo from ${event.crewId}`,
-            filePath,
-            retryCount: event.retryCount,
-          })
-        )
-      }
-    } catch { /* ignore scan errors */ }
-  }
-
-  /** Write a fallback escalation memo when the First Officer itself fails */
-  private writeEscalationMemo(event: ActionableEvent, reason: string): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    mkdirSync(memosDir, { recursive: true })
-
-    const slug = event.missionSummary
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .slice(0, 40)
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
-    const filename = `${ts}-${event.crewId}-${slug}.md`
-    const filePath = join(memosDir, filename)
-
-    const content = `## Triage Failed: ${event.missionSummary}
-
-**Crew:** ${event.crewId} · **Sector:** ${event.sectorName} · **Attempts:** ${event.retryCount}/${this.deps.configService.get('first_officer_max_retries')}
-
-### What happened
-${reason}
-
-### Failure type
-${event.eventType}
-
-### Last crew output (tail)
-\`\`\`
-${event.crewOutput.split('\n').slice(-30).join('\n')}
-\`\`\`
-
-### Recommendation
-Manual investigation required. The automated triage process was unable to resolve this issue.
-`
-
-    writeFileSync(filePath, content, 'utf-8')
-    this.deps.db.prepare(
-      `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
-       VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
-    ).run(
-      event.missionId,
-      JSON.stringify({
-        missionId: event.missionId,
-        crewId: event.crewId,
-        eventType: event.eventType,
-        summary: reason,
-        filePath,
-        retryCount: event.retryCount,
-        fingerprint: null,
-        classification: 'escalation',
-      })
-    )
-    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-  }
-
-  /** Write a memo for an unanswered hailing request (no process spawn needed) */
-  writeHailingMemo(opts: {
+  async writeHailingMemo(opts: {
     crewId: string
     missionId: number | null
     sectorName: string
     payload: string
     createdAt: string
-  }): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    mkdirSync(memosDir, { recursive: true })
-
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
-    const filename = `${ts}-${opts.crewId}-hailing.md`
-    const filePath = join(memosDir, filename)
-
+  }): Promise<void> {
     let payloadText = ''
     try {
       const parsed = JSON.parse(opts.payload)
@@ -355,7 +275,9 @@ Manual investigation required. The automated triage process was unable to resolv
       payloadText = opts.payload
     }
 
-    const content = `## Unanswered Hailing: ${opts.crewId}
+    const filePath = await this.writeMemoFile(
+      `${opts.crewId}-hailing`,
+      `## Unanswered Hailing: ${opts.crewId}
 
 **Crew:** ${opts.crewId} · **Sector:** ${opts.sectorName} · **Waiting since:** ${opts.createdAt}
 
@@ -364,8 +286,9 @@ ${payloadText}
 
 ### Action Required
 This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.
-`
-    writeFileSync(filePath, content, 'utf-8')
+`,
+    )
+
     this.deps.db.prepare(
       `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
        VALUES ('first-officer', 'admiral', 'hailing-memo', ?, ?)`
@@ -376,28 +299,22 @@ This crew has been waiting for a response for over 60 seconds. Please review and
         missionId: opts.missionId,
         summary: `Unanswered hailing from ${opts.crewId} in ${opts.sectorName}`,
         filePath,
-      })
+      }),
     )
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
-  writeAutoEscalationComm(opts: {
+  async writeAutoEscalationComm(opts: {
     crewId: string
     missionId: number
     classification: string
     fingerprint: string
     summary: string
     errorText: string
-  }): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    mkdirSync(memosDir, { recursive: true })
-
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
-    const slug = opts.summary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
-    const filename = `${ts}-auto-${slug}.md`
-    const filePath = join(memosDir, filename)
-
-    const content = `## Auto-Escalated: ${opts.summary}
+  }): Promise<void> {
+    const filePath = await this.writeMemoFile(
+      `auto-${opts.summary}`,
+      `## Auto-Escalated: ${opts.summary}
 
 **Classification:** ${opts.classification}
 **Fingerprint:** ${opts.fingerprint}
@@ -409,9 +326,9 @@ ${opts.errorText}
 \`\`\`
 
 ### Why Auto-Escalated
-${opts.classification === 'persistent' ? 'Same error fingerprint as previous attempt — retrying will not help.' : 'Error matches non-retryable pattern — requires manual intervention.'}
-`
-    writeFileSync(filePath, content, 'utf-8')
+${opts.classification === 'persistent' ? 'Same error fingerprint as previous attempt; retrying is unlikely to help.' : 'Error matches a non-retryable pattern and requires manual intervention.'}
+`,
+    )
 
     this.deps.db.prepare(
       `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
@@ -426,124 +343,478 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
         filePath,
         fingerprint: opts.fingerprint,
         classification: opts.classification,
-      })
+      }),
     )
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  }
+
+  shutdown(): void {
+    for (const [k, entry] of this.running) {
+      try { entry.proc.kill('SIGKILL') } catch { /* ignore */ }
+      this.running.delete(k)
+    }
+  }
+
+  reconcile(): void {
+    this.running.clear()
+  }
+
+  private async handleSpawnError(
+    key: string,
+    event: ActionableEvent,
+    spFile: string,
+    msgFile: string,
+    err: Error,
+    callbacks?: DispatchCallbacks,
+  ): Promise<void> {
+    this.running.delete(key)
+    await this.safeCleanupTempFiles(spFile, msgFile)
+    await this.resolveEscalation(
+      event,
+      `First Officer spawn failed: ${err.message}`,
+      'First Officer could not start, so this failure was escalated automatically.',
+    )
+    callbacks?.onExit?.(1)
+  }
+
+  private async handleProcessExit(opts: {
+    key: string
+    code: number | null
+    event: ActionableEvent
+    spFile: string
+    msgFile: string
+    callbacks?: DispatchCallbacks
+    decisionText: string
+  }): Promise<void> {
+    this.running.delete(opts.key)
+    await this.safeCleanupTempFiles(opts.spFile, opts.msgFile)
+
+    try {
+      if (opts.code !== 0) {
+        await this.resolveEscalation(
+          opts.event,
+          `First Officer process crashed (exit code: ${opts.code})`,
+          'First Officer failed during triage, so the mission was escalated automatically.',
+        )
+      } else {
+        const decision = this.parseDecision(opts.decisionText, opts.event)
+        await this.applyDecision(opts.event, decision)
+      }
+    } finally {
+      opts.callbacks?.onExit?.(opts.code)
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    }
+  }
+
+  private parseDecision(raw: string, event: ActionableEvent): FirstOfficerDecision {
+    const extracted = this.extractJsonObject(raw)
+    if (!extracted) {
+      return {
+        decision: 'escalate-and-dismiss',
+        reason: 'First Officer returned an invalid decision format.',
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(extracted) as Record<string, unknown>
+      const decision = this.normalizeDecision(parsed.decision)
+      const revisedPrompt = typeof parsed.revisedPrompt === 'string'
+        ? parsed.revisedPrompt.trim()
+        : typeof parsed.missionUpdate === 'string'
+          ? parsed.missionUpdate.trim()
+          : undefined
+      const salvageRaw = (parsed.salvage ?? {}) as Record<string, unknown>
+
+      if (!decision) {
+        return {
+          decision: 'escalate-and-dismiss',
+          reason: 'First Officer returned an unknown decision.',
+        }
+      }
+
+      if (decision === 'retry' && event.deploymentBudgetExhausted) {
+        return {
+          decision: 'escalate-and-dismiss',
+          reason: 'Retry was requested after the deployment budget was exhausted.',
+        }
+      }
+
+      return {
+        decision,
+        reason: typeof parsed.reason === 'string' && parsed.reason.trim().length > 0
+          ? parsed.reason.trim()
+          : 'No reason provided.',
+        revisedPrompt,
+        salvage: {
+          shouldCreateCargo: Boolean(salvageRaw.shouldCreateCargo),
+          title: typeof salvageRaw.title === 'string' ? salvageRaw.title.trim() : undefined,
+          contentMarkdown: typeof salvageRaw.contentMarkdown === 'string'
+            ? salvageRaw.contentMarkdown.trim()
+            : undefined,
+          sourceKinds: Array.isArray(salvageRaw.sourceKinds)
+            ? salvageRaw.sourceKinds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+            : undefined,
+          summary: typeof salvageRaw.summary === 'string' ? salvageRaw.summary.trim() : undefined,
+        },
+      }
+    } catch {
+      return {
+        decision: 'escalate-and-dismiss',
+        reason: 'First Officer returned malformed JSON.',
+      }
+    }
+  }
+
+  private normalizeDecision(value: unknown): FirstOfficerDecision['decision'] | null {
+    if (typeof value !== 'string') return null
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'retry') return 'retry'
+    if (normalized === 'recover-and-dismiss' || normalized === 'recover_and_dismiss') return 'recover-and-dismiss'
+    if (normalized === 'escalate-and-dismiss' || normalized === 'escalate_and_dismiss') return 'escalate-and-dismiss'
+    return null
+  }
+
+  private extractJsonObject(raw: string): string | null {
+    const trimmed = raw.trim()
+    if (!trimmed) return null
+
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    const candidate = fenced?.[1]?.trim() ?? trimmed
+    const start = candidate.indexOf('{')
+    const end = candidate.lastIndexOf('}')
+    if (start === -1 || end <= start) return null
+    return candidate.slice(start, end + 1)
+  }
+
+  private async applyDecision(event: ActionableEvent, decision: FirstOfficerDecision): Promise<void> {
+    if (decision.decision === 'retry') {
+      await this.resolveRetry(event, decision)
+      return
+    }
+
+    if (decision.decision === 'recover-and-dismiss') {
+      await this.resolveRecovery(event, decision)
+      return
+    }
+
+    await this.resolveEscalation(event, decision.reason, 'First Officer determined the mission is not safely recoverable.', decision)
+  }
+
+  private async resolveRetry(event: ActionableEvent, decision: FirstOfficerDecision): Promise<void> {
+    const revisedPrompt = decision.revisedPrompt?.trim() || event.missionPrompt
+    const summary = `Retrying mission #${event.missionId} after First Officer triage`
+    const memo = `## First Officer Retry: ${event.missionSummary}
+
+**Crew:** ${event.crewId}
+**Mission:** ${event.missionId}
+**Decision:** retry
+
+### Why
+${decision.reason}
+
+### Revised Prompt
+${revisedPrompt}
+`
+
+    await this.writeDecisionMemo(event, summary, memo, 'retry')
+
+    this.deps.crewService.recallCrew(event.crewId)
+    this.deps.missionService.updateMission(event.missionId, { prompt: revisedPrompt })
+    this.deps.missionService.resetForRequeue(event.missionId)
+
+    let deployResult: string
+    try {
+      await this.deps.crewService.deployCrew({
+        sectorId: event.sectorId,
+        prompt: revisedPrompt,
+        missionId: event.missionId,
+      })
+      deployResult = 'Crew re-deployed successfully.'
+    } catch (err) {
+      deployResult = `Redeploy attempt failed: ${err instanceof Error ? err.message : 'unknown error'}. Mission remains queued or escalated by caller state.`
+    }
+
+    this.deps.db.prepare(
+      "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_retried', ?)"
+    ).run(
+      event.crewId,
+      JSON.stringify({
+        missionId: event.missionId,
+        reason: decision.reason,
+        revisedPrompt,
+        deployResult,
+      }),
+    )
+  }
+
+  private async resolveRecovery(event: ActionableEvent, decision: FirstOfficerDecision): Promise<void> {
+    this.deps.crewService.recallCrew(event.crewId)
+    this.deps.missionService.escalateMission(event.missionId, decision.reason)
+
+    let cargoCreated = false
+    if (decision.salvage?.shouldCreateCargo) {
+      const content = decision.salvage.contentMarkdown?.trim() || this.buildFallbackSalvageContent(event)
+      const summary = decision.salvage.summary?.trim() || decision.reason
+      await this.deps.cargoService.produceRecoveredCargo({
+        crewId: event.crewId,
+        missionId: event.missionId,
+        sectorId: event.sectorId,
+        title: decision.salvage.title?.trim() || `Recovered cargo from ${event.crewId}`,
+        contentMarkdown: content,
+        summary,
+        sourceKinds: decision.salvage.sourceKinds?.length ? decision.salvage.sourceKinds : ['crew-output', 'verification-output'],
+        fingerprint: event.fingerprint ?? null,
+        classification: event.classification ?? null,
+        starbaseId: this.deps.starbaseId,
+      })
+      cargoCreated = true
+    }
+
+    const summary = cargoCreated
+      ? `Recovered partial cargo from ${event.crewId} and dismissed the crew`
+      : `Dismissed ${event.crewId} after unrecoverable failure`
+
+    const memo = `## First Officer Recovery: ${event.missionSummary}
+
+**Crew:** ${event.crewId}
+**Mission:** ${event.missionId}
+**Decision:** recover-and-dismiss
+**Recovered Cargo:** ${cargoCreated ? 'yes' : 'no'}
+
+### Why
+${decision.reason}
+
+### Recovery Notes
+${decision.salvage?.summary ?? 'Partial mission output was preserved for later operator review.'}
+`
+
+    await this.writeDecisionMemo(event, summary, memo, 'recover-and-dismiss')
+
+    this.deps.db.prepare(
+      "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_recovered', ?)"
+    ).run(
+      event.crewId,
+      JSON.stringify({
+        missionId: event.missionId,
+        reason: decision.reason,
+        cargoCreated,
+        fingerprint: event.fingerprint ?? null,
+        classification: event.classification ?? null,
+      }),
+    )
+  }
+
+  private async resolveEscalation(
+    event: ActionableEvent,
+    summaryReason: string,
+    recommendation: string,
+    decision?: FirstOfficerDecision,
+  ): Promise<void> {
+    this.deps.crewService.recallCrew(event.crewId)
+    this.deps.missionService.escalateMission(event.missionId, summaryReason)
+
+    let cargoCreated = false
+    if (decision?.salvage?.shouldCreateCargo) {
+      await this.deps.cargoService.produceRecoveredCargo({
+        crewId: event.crewId,
+        missionId: event.missionId,
+        sectorId: event.sectorId,
+        title: decision.salvage.title?.trim() || `Recovered cargo from ${event.crewId}`,
+        contentMarkdown: decision.salvage.contentMarkdown?.trim() || this.buildFallbackSalvageContent(event),
+        summary: decision.salvage.summary?.trim() || summaryReason,
+        sourceKinds: decision.salvage.sourceKinds?.length ? decision.salvage.sourceKinds : ['crew-output', 'verification-output'],
+        fingerprint: event.fingerprint ?? null,
+        classification: event.classification ?? null,
+        starbaseId: this.deps.starbaseId,
+      })
+      cargoCreated = true
+    }
+
+    const content = `## First Officer Escalation: ${event.missionSummary}
+
+**Crew:** ${event.crewId} · **Sector:** ${event.sectorName} · **Attempts:** ${event.retryCount}/${this.deps.configService.get('first_officer_max_retries')}
+**Decision:** escalate-and-dismiss
+**Recovered Cargo:** ${cargoCreated ? 'yes' : 'no'}
+
+### What happened
+${summaryReason}
+
+### Failure type
+${event.eventType}
+
+### Recommendation
+${recommendation}
+
+### Last crew output (tail)
+\`\`\`
+${event.crewOutput.split('\n').slice(-30).join('\n')}
+\`\`\`
+`
+
+    await this.writeDecisionMemo(
+      event,
+      cargoCreated ? `Escalated ${event.crewId} with recovered cargo` : summaryReason,
+      content,
+      'escalate-and-dismiss',
+      event.fingerprint ?? null,
+      event.classification ?? 'escalation',
+    )
+
+    this.deps.db.prepare(
+      "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dismissed', ?)"
+    ).run(
+      event.crewId,
+      JSON.stringify({
+        missionId: event.missionId,
+        reason: summaryReason,
+        cargoCreated,
+        fingerprint: event.fingerprint ?? null,
+        classification: event.classification ?? null,
+      }),
+    )
+  }
+
+  private async writeDecisionMemo(
+    event: ActionableEvent,
+    summary: string,
+    content: string,
+    eventType: string,
+    fingerprint?: string | null,
+    classification?: string | null,
+  ): Promise<void> {
+    const filePath = await this.writeMemoFile(`${event.crewId}-${event.missionSummary}`, content)
+
+    this.deps.db.prepare(
+      `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+       VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+    ).run(
+      event.missionId,
+      JSON.stringify({
+        missionId: event.missionId,
+        crewId: event.crewId,
+        eventType,
+        summary,
+        filePath,
+        retryCount: event.retryCount,
+        fingerprint: fingerprint ?? null,
+        classification: classification ?? null,
+      }),
+    )
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  }
+
+  private async writeMemoFile(slugSource: string, content: string): Promise<string> {
+    const memosDir = join(this.getWorkspacePath(), 'memos')
+    await mkdir(memosDir, { recursive: true })
+
+    const slug = slugSource
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 40) || 'memo'
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
+    const filePath = join(memosDir, `${ts}-${slug}.md`)
+    await writeFile(filePath, content, 'utf-8')
+    return filePath
+  }
+
+  private async safeCleanupTempFiles(...paths: string[]): Promise<void> {
+    await Promise.all(paths.map(async (path) => {
+      try {
+        await unlink(path)
+      } catch {
+        // ignore cleanup errors
+      }
+    }))
+  }
+
+  private buildFallbackSalvageContent(event: ActionableEvent): string {
+    const parts = [
+      `# Recovered Cargo: ${event.missionSummary}`,
+      '',
+      `- Crew: ${event.crewId}`,
+      `- Mission: ${event.missionId}`,
+      `- Sector: ${event.sectorName} (${event.sectorId})`,
+      '',
+      '## Crew Output',
+      '```',
+      event.crewOutput.trim() || 'No crew output captured.',
+      '```',
+    ]
+
+    if (event.verifyResult) {
+      parts.push('', '## Verification Result', '```json', event.verifyResult, '```')
+    }
+
+    return parts.join('\n')
   }
 
   private getWorkspacePath(): string {
     return join(
       process.env.HOME ?? '~',
-      '.fleet', 'starbases',
+      '.fleet',
+      'starbases',
       `starbase-${this.deps.starbaseId}`,
       'first-officer',
     )
   }
 
   private generateClaudeMd(): string {
-    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet'
-
     return `# First Officer
 
-You are the First Officer aboard Star Command. You are NOT the Admiral.
-Ignore any CLAUDE.md instructions about the Admiral role.
+You are the First Officer aboard Star Command. You are not the Admiral.
+Your only job is to analyze failed crew runs and return a structured decision.
 
-## Your Role
-You triage failed missions. For each invocation you will:
-1. Analyze why a crew's mission failed
-2. Decide whether to RETRY (re-queue with a revised prompt) or ESCALATE (write a memo)
+Do not modify code, deploy crews, recall crews, or write files yourself.
+The Fleet app applies your decision after you return it.
 
-## Retry Workflow
-
-Use the \`fleet\` CLI to recall the errored crew and re-queue the mission with a revised prompt:
-
-\`\`\`bash
-# 1. Recall the errored crew (clean up the old process)
-${fleetBin} crew recall <crew-id>
-
-# 2. Re-queue the mission with a revised prompt
-${fleetBin} missions update <mission-id> --status queued --prompt "revised prompt addressing the failure..."
-
-# 3. Deploy a new crew for the re-queued mission
-${fleetBin} crew deploy --sector <sector-id> --mission <mission-id>
-\`\`\`
-
-When revising the prompt:
-- Fix test expectations based on failure output
-- Narrow scope if the mission was too broad
-- Add missing context the crew needed
-- Reference specific error messages so the new crew knows what to watch for
-
-## Escalate
-
-If retrying won't help, write a markdown memo to \`./memos/\` with:
-- What happened (failure details)
-- What was tried (retry history)
-- Recommendation (split mission, manual fix, etc.)
-
-## Useful Commands
-
-\`\`\`bash
-${fleetBin} crew list                        # Check current crew status
-${fleetBin} crew observe <crew-id>           # View errored crew's output
-${fleetBin} missions show <mission-id>       # View mission details
-${fleetBin} missions list --sector <id>      # List missions in a sector
-\`\`\`
-
-## Rules
-- Never create new missions unrelated to the failure
-- Never modify sectors or supply routes
-- Never answer hailing questions — only escalate them as memos
-- Keep memos concise and actionable
-- Always recall the errored crew before deploying a new one
-- When choosing RETRY, you MUST ALSO write a short memo to ./memos/ documenting what you tried and why you expect the retry to succeed. This is mandatory for audit trail.
+Always end with a single JSON object and no prose after it.
 `
   }
 
   private buildSystemPrompt(event: ActionableEvent, maxRetries: number): string {
-    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet'
+    return `You are the First Officer aboard Star Command.
 
-    return `You are the First Officer aboard Star Command. Your role is to
-triage failed missions and decide whether to retry or escalate.
+You are analyzing one failed crew run and must choose exactly one decision:
+- "retry"
+- "recover-and-dismiss"
+- "escalate-and-dismiss"
 
-You are NOT the Admiral. Ignore any CLAUDE.md instructions about
-the Admiral role. Your job is narrowly scoped to this specific failure.
+You must return a single JSON object with this shape:
+\`\`\`json
+{
+  "decision": "retry | recover-and-dismiss | escalate-and-dismiss",
+  "reason": "short explanation",
+  "revisedPrompt": "required only for retry",
+  "salvage": {
+    "shouldCreateCargo": true,
+    "title": "Recovered cargo title",
+    "summary": "short cargo summary",
+    "contentMarkdown": "# recovered notes",
+    "sourceKinds": ["crew-output", "verification-output"]
+  }
+}
+\`\`\`
 
-You are analyzing a failure for crew ${event.crewId} on mission "${event.missionSummary}"
-in sector ${event.sectorName} (sector ID: ${event.sectorId}).
+Rules:
+- If retrying is not likely to help, choose recover-and-dismiss or escalate-and-dismiss.
+- If there is meaningful partial output worth preserving, set salvage.shouldCreateCargo=true.
+- Use recover-and-dismiss when partial output is useful but the mission should not be retried automatically.
+- Use escalate-and-dismiss when the mission is not recoverable and there is little or no useful partial output.
+- Never choose retry when retries are exhausted or deployment budget is exhausted.
+- Never include any text before or after the JSON object.
 
-## Context
+Mission context:
 - Mission ID: ${event.missionId}
 - Crew ID: ${event.crewId}
 - Sector ID: ${event.sectorId}
 - Retry attempt: ${event.retryCount + 1}/${maxRetries}
 - Failure type: ${event.eventType}
-- Sector verify command: ${event.verifyCommand ?? 'none configured'}
 - Acceptance criteria: ${event.acceptanceCriteria ?? 'none specified'}
-
-## Your Options
-
-### 1. RETRY — recall errored crew, revise prompt, deploy new crew
-\`\`\`bash
-# Step 1: Recall the errored crew
-${fleetBin} crew recall ${event.crewId}
-
-# Step 2: Re-queue with revised prompt
-${fleetBin} missions update ${event.missionId} --status queued --prompt "your revised prompt here"
-
-# Step 3: Deploy fresh crew
-${fleetBin} crew deploy --sector ${event.sectorId} --mission ${event.missionId}
-\`\`\`
-
-### 2. ESCALATE — write a memo to ./memos/ explaining what happened
-
-## Decision Rules
-- If this is a transient failure (crash, OOM, timeout on a reasonable scope), retry with the same or slightly adjusted prompt
-- If tests failed, read the test output and adjust the prompt to address specific failures
-- If you've seen the same failure pattern across retries, escalate
-- If the mission scope seems too large, recommend splitting in your memo
-- Never retry more than ${maxRetries} times total
-- Write memos in markdown
+- Verify command: ${event.verifyCommand ?? 'none configured'}
+- Error classification hint: ${event.classification ?? 'unknown'}
+- Error fingerprint hint: ${event.fingerprint ?? 'none'}
+- Deployment budget exhausted: ${event.deploymentBudgetExhausted ? 'yes' : 'no'}
 `
   }
 
@@ -560,7 +831,7 @@ ${fleetBin} crew deploy --sector ${event.sectorId} --mission ${event.missionId}
 ## Original Mission Prompt
 ${event.missionPrompt}
 
-## Crew Output (last lines)
+## Crew Output
 \`\`\`
 ${event.crewOutput}
 \`\`\`
@@ -578,22 +849,7 @@ ${event.crewOutput}
       msg += `\n## Previous Attempts\n| # | Action | Fingerprint | Classification |\n|---|--------|-------------|----------------|\n${event.attemptHistory}\n`
     }
 
-    msg += `\nAnalyze this failure and decide: RETRY or ESCALATE.\n`
+    msg += '\nReturn only the JSON decision object.\n'
     return msg
-  }
-
-  /** Kill all running processes (app shutdown) */
-  shutdown(): void {
-    for (const [k, entry] of this.running) {
-      try { entry.proc.kill('SIGKILL') } catch { /* already dead */ }
-      this.running.delete(k)
-    }
-  }
-
-  /** Clean up orphaned processes on startup (reconciliation) */
-  reconcile(): void {
-    // First Officer processes are ephemeral (max 120s) — if Fleet restarted,
-    // they're already dead. Just clear the map.
-    this.running.clear()
   }
 }
