@@ -391,7 +391,9 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
     if (line.startsWith('diff --git')) {
       // Save previous file
       if (currentFile) {
-        if (currentLines.length > 0) {
+        // Only push if there is actual diff content (not binary files)
+        const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+        if (hasDiffContent) {
           currentFile.hunks.push(currentLines.join('\n'));
         }
         files.push(currentFile);
@@ -413,7 +415,9 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
 
   // Save last file
   if (currentFile) {
-    if (currentLines.length > 0) {
+    // Only push if there is actual diff content (not binary files)
+    const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+    if (hasDiffContent) {
       currentFile.hunks.push(currentLines.join('\n'));
     }
     files.push(currentFile);

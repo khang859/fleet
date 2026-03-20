@@ -36,33 +36,33 @@ describe('parseUnifiedDiff', () => {
     expect(result[1].fileName).toBe('src/renderer/App.tsx');
   });
 
-  it('strips header lines from hunks (diff --git, index, ---, +++)', () => {
+  it('includes header lines in hunks (---, +++, index) but not the diff --git line', () => {
     const result = parseUnifiedDiff(MULTI_FILE_DIFF);
     for (const file of result) {
       for (const hunk of file.hunks) {
         expect(hunk).not.toMatch(/^diff --git/m);
-        expect(hunk).not.toMatch(/^index /m);
-        expect(hunk).not.toMatch(/^--- /m);
-        expect(hunk).not.toMatch(/^\+\+\+ /m);
+        expect(hunk).toMatch(/^index /m);
+        expect(hunk).toMatch(/^--- /m);
+        expect(hunk).toMatch(/^\+\+\+ /m);
       }
     }
   });
 
-  it('produces hunks that each start with @@', () => {
+  it('produces exactly 1 hunk per file containing the full per-file diff', () => {
     const result = parseUnifiedDiff(MULTI_FILE_DIFF);
     for (const file of result) {
-      expect(file.hunks.length).toBeGreaterThan(0);
-      for (const hunk of file.hunks) {
-        expect(hunk.startsWith('@@')).toBe(true);
-      }
+      expect(file.hunks).toHaveLength(1);
+      expect(file.hunks[0]).toMatch(/@@/);
     }
   });
 
-  it('correctly splits multiple hunks within a single file', () => {
+  it('produces 1 combined hunk per file regardless of @@ block count', () => {
     const result = parseUnifiedDiff(MULTI_FILE_DIFF);
-    // First file has two @@ hunks
-    expect(result[0].hunks).toHaveLength(2);
-    // Second file has one @@ hunk
+    // First file has two @@ sections — still produces 1 hunk
+    expect(result[0].hunks).toHaveLength(1);
+    expect(result[0].hunks[0]).toContain('@@ -10,6 +10,7 @@');
+    expect(result[0].hunks[0]).toContain('@@ -30,3 +31,4 @@');
+    // Second file has one @@ section — 1 hunk
     expect(result[1].hunks).toHaveLength(1);
   });
 
@@ -89,8 +89,9 @@ index 0000000..abc1234
     expect(result).toHaveLength(1);
     expect(result[0].fileName).toBe('new.ts');
     expect(result[0].hunks).toHaveLength(1);
-    expect(result[0].hunks[0].startsWith('@@')).toBe(true);
-    expect(result[0].hunks[0]).not.toContain('new file mode');
+    expect(result[0].hunks[0]).toContain('--- /dev/null');
+    expect(result[0].hunks[0]).toContain('+++ b/new.ts');
+    expect(result[0].hunks[0]).toContain('new file mode');
   });
 
   it('binary file diffs produce empty hunks array', () => {
@@ -122,8 +123,8 @@ index abc1234..def5678 100644
     expect(result).toHaveLength(1);
     expect(result[0].fileName).toBe('new-name.ts');
     expect(result[0].hunks).toHaveLength(1);
-    expect(result[0].hunks[0].startsWith('@@')).toBe(true);
-    expect(result[0].hunks[0]).not.toContain('rename from');
-    expect(result[0].hunks[0]).not.toContain('similarity index');
+    expect(result[0].hunks[0]).toContain('--- a/old-name.ts');
+    expect(result[0].hunks[0]).toContain('rename from old-name.ts');
+    expect(result[0].hunks[0]).toContain('similarity index 95%');
   });
 });
