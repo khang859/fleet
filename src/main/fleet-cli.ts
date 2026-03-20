@@ -320,24 +320,26 @@ function validateCommand(command: string, args: Record<string, unknown>): string
 
     // ── Missions ──────────────────────────────────────────────────────────
     case 'mission.create': {
-      const usage = 'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"';
+      const usage = 'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"';
       if (!args.sector && !args.sectorId)
         return `Error: missions add requires --sector <id>.\n\n${usage}`;
       if (!args.type) {
         return (
-          'Error: missions add requires --type <code|research>.\n\n' +
+          'Error: missions add requires --type <code|research|review>.\n\n' +
           'Mission types:\n' +
           '  code     — produces git commits (code changes, bug fixes, features)\n' +
-          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n\n' +
+          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+          '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n\n' +
           usage
         );
       }
-      if (args.type !== 'code' && args.type !== 'research') {
+      if (args.type !== 'code' && args.type !== 'research' && args.type !== 'review') {
         return (
-          `Error: invalid mission type "${args.type}". Must be "code" or "research".\n\n` +
+          `Error: invalid mission type "${args.type}". Must be "code", "research", or "review".\n\n` +
           'Mission types:\n' +
           '  code     — produces git commits (code changes, bug fixes, features)\n' +
-          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n\n' +
+          '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+          '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n\n' +
           usage
         );
       }

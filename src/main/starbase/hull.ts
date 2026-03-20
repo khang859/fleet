@@ -53,7 +53,7 @@ export type HullOpts = {
   allowedTools?: string
   /** Path to an MCP config JSON file */
   mcpConfig?: string
-  /** Mission type: 'code' (default) or 'research' */
+  /** Mission type: 'code' (default), 'research', or 'review' */
   missionType?: string
   /** PR branch name for review/fix crews working on an existing PR */
   prBranch?: string
@@ -332,7 +332,7 @@ export class Hull {
   appendOutput(data: string): void {
     const lines = data.split('\n')
     this.outputLines.push(...lines)
-    const maxLines = this.opts.missionType === 'research' ? 2000 : MAX_OUTPUT_LINES
+    const maxLines = (this.opts.missionType === 'research' || this.opts.missionType === 'review') ? 2000 : MAX_OUTPUT_LINES
     if (this.outputLines.length > maxLines) {
       this.outputLines = this.outputLines.slice(-maxLines)
     }
