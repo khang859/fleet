@@ -188,6 +188,20 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE missions ADD COLUMN review_round INTEGER DEFAULT 0;
       ALTER TABLE missions ADD COLUMN pr_branch TEXT;
     `
+  },
+  {
+    version: 9,
+    name: '009-mission-dependencies',
+    sql: `
+      CREATE TABLE IF NOT EXISTS mission_dependencies (
+        mission_id             INTEGER NOT NULL REFERENCES missions(id),
+        depends_on_mission_id  INTEGER NOT NULL REFERENCES missions(id),
+        PRIMARY KEY (mission_id, depends_on_mission_id)
+      );
+
+      INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id)
+      SELECT id, depends_on_mission_id FROM missions WHERE depends_on_mission_id IS NOT NULL;
+    `
   }
 ]
 
