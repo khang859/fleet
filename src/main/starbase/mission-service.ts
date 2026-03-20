@@ -29,7 +29,6 @@ type AddMissionOpts = {
   prompt: string
   acceptanceCriteria?: string
   priority?: number
-  dependsOnMissionId?: number
   dependsOnMissionIds?: number[]
   type?: string
   prBranch?: string
@@ -58,7 +57,7 @@ export class MissionService {
         opts.prompt,
         opts.acceptanceCriteria ?? null,
         opts.priority ?? 0,
-        opts.dependsOnMissionId ?? null,
+        null,
         opts.type ?? 'code',
         opts.prBranch ?? null
       )
@@ -143,7 +142,7 @@ export class MissionService {
     return this.db
       .prepare(
         `SELECT * FROM missions
-         WHERE sector_id = ? AND status = 'queued' AND type = 'code'
+         WHERE sector_id = ? AND status = 'queued'
          AND (
            NOT EXISTS (
              SELECT 1 FROM mission_dependencies WHERE mission_id = missions.id

@@ -84,7 +84,7 @@ describe('MissionService', () => {
       sectorId: 'api',
       summary: 'M2',
       prompt: 'P2',
-      dependsOnMissionId: m1.id,
+      dependsOnMissionIds: [m1.id],
     });
     // M2 depends on M1 which is still queued — nextMission should return M1
     const next = missionSvc.nextMission('api');
@@ -149,12 +149,15 @@ describe('MissionService — dependencies', () => {
 describe('MissionService — nextMission with junction table', () => {
   it('queues code mission until research dependency completes', () => {
     const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    missionSvc.activateMission(r.id, 'crew-r')  // simulate research deployed
     missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+    // Research is active (not completed) — code mission should not be next
     expect(missionSvc.nextMission('api')).toBeUndefined()
   })
 
   it('unblocks code mission when research dependency completes', () => {
     const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    missionSvc.activateMission(r.id, 'crew-r')
     const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
     missionSvc.completeMission(r.id, 'done')
     expect(missionSvc.nextMission('api')?.id).toBe(code.id)
@@ -162,6 +165,7 @@ describe('MissionService — nextMission with junction table', () => {
 
   it('unblocks code mission when research dependency fails (terminal state)', () => {
     const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
+    missionSvc.activateMission(r.id, 'crew-r')
     const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
     missionSvc.failMission(r.id, 'error')
     expect(missionSvc.nextMission('api')?.id).toBe(code.id)
@@ -174,11 +178,14 @@ describe('MissionService — nextMission with junction table', () => {
     expect(missionSvc.nextMission('api')?.id).toBe(code.id)
   })
 
-  it('stays blocked when one of two dependencies is still queued', () => {
+  it('stays blocked when one of two dependencies is still active', () => {
     const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
     const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+    missionSvc.activateMission(r1.id, 'crew-r1')
+    missionSvc.activateMission(r2.id, 'crew-r2')
     missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r1.id, r2.id] })
     missionSvc.completeMission(r1.id, 'done')
+    // r2 still active — code mission blocked
     expect(missionSvc.nextMission('api')).toBeUndefined()
   })
 
