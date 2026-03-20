@@ -38,7 +38,6 @@ import type { SupplyRouteService } from './starbase/supply-route-service'
 import type { CargoService } from './starbase/cargo-service'
 import type { RetentionService } from './starbase/retention-service'
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
-import type { MemoService } from './starbase/memo-service'
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -60,7 +59,7 @@ export function registerIpcHandlers(
   cargoService?: CargoService | null,
   retentionService?: RetentionService | null,
   admiralStateDetector?: AdmiralStateDetector | null,
-  memoService?: MemoService | null
+  starbaseDb?: { getDb: () => import('better-sqlite3').Database } | null
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -335,18 +334,29 @@ export function registerIpcHandlers(
     })
   }
 
-  // First Officer: Memo handlers
-  if (memoService) {
+  // First Officer: Memo handlers (backed by comms table)
+  if (starbaseDb) {
+    const memoDb = starbaseDb.getDb()
+
     ipcMain.handle(IPC_CHANNELS.MEMO_LIST, () => {
-      return memoService!.listAll()
+      return memoDb.prepare(
+        "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
+      ).all().map((row: any) => {
+        try {
+          const p = JSON.parse(row.payload ?? '{}')
+          return { ...row, file_path: p.filePath ?? '', status: row.read ? 'read' : 'unread', summary: p.summary ?? '' }
+        } catch { return { ...row, file_path: '', status: row.read ? 'read' : 'unread', summary: '' } }
+      })
     })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_READ, (_e, id: string) => {
-      memoService!.markRead(id)
+    ipcMain.handle(IPC_CHANNELS.MEMO_READ, (_e, id: number) => {
+      memoDb.prepare("UPDATE comms SET read = 1 WHERE id = ?").run(id)
+      eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
     })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, (_e, id: string) => {
-      memoService!.dismiss(id)
+    ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, (_e, id: number) => {
+      memoDb.prepare("DELETE FROM comms WHERE id = ?").run(id)
+      eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
     })
 
     ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {

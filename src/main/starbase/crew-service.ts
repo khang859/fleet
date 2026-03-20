@@ -194,6 +194,10 @@ export class CrewService {
     // 9. Start the Hull (headless — no paneId)
     await hull.start();
 
+    // Increment global mission deployment budget counter
+    db.prepare('UPDATE missions SET mission_deployment_count = mission_deployment_count + 1 WHERE id = ?')
+      .run(missionId);
+
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return { crewId, missionId };
   }

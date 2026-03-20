@@ -4,13 +4,11 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import type Database from 'better-sqlite3'
 import type { ConfigService } from './config-service'
-import type { MemoService } from './memo-service'
 import type { EventBus } from '../event-bus'
 
 type FirstOfficerDeps = {
   db: Database.Database
   configService: ConfigService
-  memoService: MemoService
   eventBus?: EventBus
   starbaseId: string
   /** Enriched env with PATH containing claude binary */
@@ -33,6 +31,7 @@ export type ActionableEvent = {
   verifyResult: string | null
   reviewNotes: string | null
   retryCount: number
+  attemptHistory?: string
 }
 
 type RunningProcess = {
@@ -73,7 +72,10 @@ export class FirstOfficer {
   /** Get status for UI: 'idle' | 'working' | 'memo' */
   getStatus(): 'idle' | 'working' | 'memo' {
     if (this.running.size > 0) return 'working'
-    if (this.deps.memoService.getUnreadCount() > 0) return 'memo'
+    const row = this.deps.db.prepare(
+      "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
+    ).get() as { cnt: number }
+    if (row.cnt > 0) return 'memo'
     return 'idle'
   }
 
@@ -81,7 +83,10 @@ export class FirstOfficer {
    * Spawn a First Officer process to handle an actionable event.
    * Returns false if dedup/concurrency prevents spawning.
    */
-  async dispatch(event: ActionableEvent): Promise<boolean> {
+  async dispatch(
+    event: ActionableEvent,
+    callbacks?: { onExit?: (code: number | null) => void },
+  ): Promise<boolean> {
     const { configService } = this.deps
     const maxConcurrent = configService.get('first_officer_max_concurrent') as number
     const maxRetries = configService.get('first_officer_max_retries') as number
@@ -217,6 +222,7 @@ export class FirstOfficer {
         // Check if new memos were written and insert DB records
         this.scanForNewMemos(event)
 
+        callbacks?.onExit?.(code)
         this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
       })
 
@@ -250,17 +256,26 @@ export class FirstOfficer {
         const filePath = join(memosDir, file)
         // Check if already tracked
         const existing = this.deps.db
-          .prepare('SELECT 1 FROM memos WHERE file_path = ? LIMIT 1')
-          .get(filePath)
+          .prepare(
+            `SELECT 1 FROM comms WHERE type = 'memo' AND mission_id = ? AND payload LIKE ? LIMIT 1`
+          )
+          .get(event.missionId, `%${filePath.replace(/"/g, '\\"')}%`)
         if (existing) continue
 
-        this.deps.memoService.insert({
-          crewId: event.crewId,
-          missionId: event.missionId,
-          eventType: event.eventType,
-          filePath,
-          retryCount: event.retryCount,
-        })
+        this.deps.db.prepare(
+          `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+           VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+        ).run(
+          event.missionId,
+          JSON.stringify({
+            missionId: event.missionId,
+            crewId: event.crewId,
+            eventType: event.eventType,
+            summary: `New memo from ${event.crewId}`,
+            filePath,
+            retryCount: event.retryCount,
+          })
+        )
       }
     } catch { /* ignore scan errors */ }
   }
@@ -298,13 +313,23 @@ Manual investigation required. The automated triage process was unable to resolv
 `
 
     writeFileSync(filePath, content, 'utf-8')
-    this.deps.memoService.insert({
-      crewId: event.crewId,
-      missionId: event.missionId,
-      eventType: event.eventType,
-      filePath,
-      retryCount: event.retryCount,
-    })
+    this.deps.db.prepare(
+      `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+       VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+    ).run(
+      event.missionId,
+      JSON.stringify({
+        missionId: event.missionId,
+        crewId: event.crewId,
+        eventType: event.eventType,
+        summary: reason,
+        filePath,
+        retryCount: event.retryCount,
+        fingerprint: null,
+        classification: 'escalation',
+      })
+    )
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   /** Write a memo for an unanswered hailing request (no process spawn needed) */
@@ -341,12 +366,69 @@ ${payloadText}
 This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.
 `
     writeFileSync(filePath, content, 'utf-8')
-    this.deps.memoService.insert({
-      crewId: opts.crewId,
-      missionId: opts.missionId,
-      eventType: 'unanswered-hailing',
-      filePath,
-    })
+    this.deps.db.prepare(
+      `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+       VALUES ('first-officer', 'admiral', 'hailing-memo', ?, ?)`
+    ).run(
+      opts.missionId,
+      JSON.stringify({
+        crewId: opts.crewId,
+        missionId: opts.missionId,
+        summary: `Unanswered hailing from ${opts.crewId} in ${opts.sectorName}`,
+        filePath,
+      })
+    )
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  }
+
+  writeAutoEscalationComm(opts: {
+    crewId: string
+    missionId: number
+    classification: string
+    fingerprint: string
+    summary: string
+    errorText: string
+  }): void {
+    const memosDir = join(this.getWorkspacePath(), 'memos')
+    mkdirSync(memosDir, { recursive: true })
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
+    const slug = opts.summary.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+    const filename = `${ts}-auto-${slug}.md`
+    const filePath = join(memosDir, filename)
+
+    const content = `## Auto-Escalated: ${opts.summary}
+
+**Classification:** ${opts.classification}
+**Fingerprint:** ${opts.fingerprint}
+**Crew:** ${opts.crewId}
+
+### Error Output (tail)
+\`\`\`
+${opts.errorText}
+\`\`\`
+
+### Why Auto-Escalated
+${opts.classification === 'persistent' ? 'Same error fingerprint as previous attempt — retrying will not help.' : 'Error matches non-retryable pattern — requires manual intervention.'}
+`
+    writeFileSync(filePath, content, 'utf-8')
+
+    this.deps.db.prepare(
+      `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+       VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+    ).run(
+      opts.missionId,
+      JSON.stringify({
+        missionId: opts.missionId,
+        crewId: opts.crewId,
+        eventType: 'auto-escalation',
+        summary: `Auto-escalated (${opts.classification}): ${opts.summary}`,
+        filePath,
+        fingerprint: opts.fingerprint,
+        classification: opts.classification,
+      })
+    )
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
   }
 
   private getWorkspacePath(): string {
@@ -414,6 +496,7 @@ ${fleetBin} missions list --sector <id>      # List missions in a sector
 - Never answer hailing questions — only escalate them as memos
 - Keep memos concise and actionable
 - Always recall the errored crew before deploying a new one
+- When choosing RETRY, you MUST ALSO write a short memo to ./memos/ documenting what you tried and why you expect the retry to succeed. This is mandatory for audit trail.
 `
   }
 
@@ -489,6 +572,10 @@ ${event.crewOutput}
 
     if (event.reviewNotes) {
       msg += `\n## Review Notes\n${event.reviewNotes}\n`
+    }
+
+    if (event.attemptHistory) {
+      msg += `\n## Previous Attempts\n| # | Action | Fingerprint | Classification |\n|---|--------|-------------|----------------|\n${event.attemptHistory}\n`
     }
 
     msg += `\nAnalyze this failure and decide: RETRY or ESCALATE.\n`

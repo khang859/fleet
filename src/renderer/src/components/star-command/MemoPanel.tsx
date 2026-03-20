@@ -9,7 +9,7 @@ type MemoPanelProps = {
 
 export function MemoPanel({ onClose }: MemoPanelProps) {
   const [memos, setMemos] = useState<MemoInfo[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<number | null>(null)
   const [content, setContent] = useState<string | null>(null)
 
   useEffect(() => {
@@ -34,7 +34,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     }
   }
 
-  async function dismissMemo(id: string) {
+  async function dismissMemo(id: number) {
     await window.fleet.starbase.memoDismiss(id)
     loadMemos()
     if (selectedId === id) {
@@ -43,7 +43,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     }
   }
 
-  const activeMemos = memos.filter((m) => m.status !== 'dismissed')
+  const activeMemos = memos
 
   return (
     <div className="flex flex-col h-full bg-neutral-900">
@@ -79,7 +79,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
                     <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
                   )}
                   <span className="text-xs text-neutral-300 truncate">
-                    {memo.event_type}
+                    {memo.summary || memo.event_type}
                   </span>
                 </div>
                 <div className="text-[10px] text-neutral-600 mt-0.5">

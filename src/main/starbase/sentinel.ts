@@ -12,6 +12,7 @@ import { getAvailableMemoryBytes } from './available-memory';
 import type { FirstOfficer } from './first-officer';
 import type { CrewService } from './crew-service';
 import type { SettingsStore } from '../settings-store';
+import { computeFingerprint, classifyError } from './error-fingerprint';
 
 const execFileAsync = promisify(execFile);
 
@@ -278,6 +279,7 @@ export class Sentinel {
     if (!firstOfficer) return
 
     const maxRetries = configService.get('first_officer_max_retries') as number
+    const maxDeployments = configService.get('max_mission_deployments') as number ?? 8
 
     const failedCrew = db
       .prepare(
@@ -285,6 +287,7 @@ export class Sentinel {
                 m.id as mid, m.summary, m.prompt, m.acceptance_criteria,
                 m.status as mission_status, m.result, m.verify_result,
                 m.review_notes, m.first_officer_retry_count,
+                m.last_error_fingerprint, m.mission_deployment_count,
                 s.name as sector_name, s.verify_command
          FROM crew c
          JOIN missions m ON m.id = c.mission_id
@@ -292,12 +295,20 @@ export class Sentinel {
          WHERE c.status IN ('error', 'lost', 'timeout')
            AND m.status IN ('failed', 'failed-verification')
            AND m.first_officer_retry_count < ?
+           AND m.mission_deployment_count < ?
+           AND c.id = (
+             SELECT c2.id FROM crew c2
+             WHERE c2.mission_id = m.id
+               AND c2.status IN ('error', 'lost', 'timeout')
+             ORDER BY c2.updated_at DESC
+             LIMIT 1
+           )
            AND NOT EXISTS (
-             SELECT 1 FROM memos
-             WHERE crew_id = c.id AND mission_id = m.id AND status = 'unread'
+             SELECT 1 FROM comms
+             WHERE type = 'memo' AND mission_id = m.id AND read = 0
            )`
       )
-      .all(maxRetries) as Array<{
+      .all(maxRetries, maxDeployments) as Array<{
         crew_id: string
         sector_id: string
         mission_id: number
@@ -310,6 +321,8 @@ export class Sentinel {
         verify_result: string | null
         review_notes: string | null
         first_officer_retry_count: number
+        last_error_fingerprint: string | null
+        mission_deployment_count: number
         sector_name: string
         verify_command: string | null
       }>
@@ -317,13 +330,40 @@ export class Sentinel {
     for (const row of failedCrew) {
       if (firstOfficer.isRunning(row.crew_id, row.mid)) continue
 
-      // Get crew output from Hull buffer (via CrewService) or fall back to mission result
+      // Compute error fingerprint from current failure
+      const errorText = (row.result ?? '') + '\n' + (row.verify_result ?? '')
+      const fingerprint = computeFingerprint(errorText)
+
+      // Classify the error
+      const classification = classifyError(
+        errorText,
+        fingerprint,
+        row.last_error_fingerprint ?? undefined,
+      )
+
+      // Update fingerprint on the mission
+      db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?')
+        .run(fingerprint, row.mid)
+
+      // Non-retryable or persistent → auto-escalate without FO
+      if (classification !== 'transient') {
+        firstOfficer.writeAutoEscalationComm({
+          crewId: row.crew_id,
+          missionId: row.mid,
+          classification,
+          fingerprint,
+          summary: row.summary,
+          errorText: errorText.split('\n').slice(-30).join('\n'),
+        })
+        continue
+      }
+
+      // Get crew output for FO context
       let crewOutput = row.result ?? 'No output captured'
       if (this.deps.crewService) {
         const hullOutput = this.deps.crewService.observeCrew(row.crew_id)
         if (hullOutput) crewOutput = hullOutput
       }
-      // Append verify_result if available (structured test output)
       if (row.verify_result) {
         try {
           const vr = JSON.parse(row.verify_result)
@@ -332,33 +372,57 @@ export class Sentinel {
         } catch { /* ignore parse errors */ }
       }
 
-      const dispatched = await firstOfficer.dispatch({
-        crewId: row.crew_id,
-        missionId: row.mid,
-        sectorId: row.sector_id,
-        sectorName: row.sector_name,
-        eventType: row.mission_status === 'failed-verification' ? 'verification-failed' : 'error',
-        missionSummary: row.summary,
-        missionPrompt: row.prompt,
-        acceptanceCriteria: row.acceptance_criteria,
-        verifyCommand: row.verify_command,
-        crewOutput,
-        verifyResult: row.verify_result,
-        reviewNotes: row.review_notes,
-        retryCount: row.first_officer_retry_count,
+      // Build attempt history from previous memo comms
+      const prevMemos = db.prepare(
+        `SELECT payload FROM comms
+         WHERE type = 'memo' AND mission_id = ? ORDER BY created_at ASC LIMIT 10`
+      ).all(row.mid) as Array<{ payload: string }>
+
+      const attemptHistory = prevMemos.map((m, i) => {
+        try {
+          const p = JSON.parse(m.payload)
+          return `| ${i + 1} | ${p.summary?.slice(0, 60) ?? 'unknown'} | ${p.fingerprint ?? '—'} | ${p.classification ?? '—'} |`
+        } catch { return null }
+      }).filter(Boolean).join('\n')
+
+      // Increment retry count BEFORE dispatch (prevents race on next sweep)
+      db.prepare(
+        'UPDATE missions SET first_officer_retry_count = first_officer_retry_count + 1 WHERE id = ?'
+      ).run(row.mid)
+
+      // Fire-and-forget dispatch (async, non-blocking)
+      firstOfficer.dispatch(
+        {
+          crewId: row.crew_id,
+          missionId: row.mid,
+          sectorId: row.sector_id,
+          sectorName: row.sector_name,
+          eventType: row.mission_status === 'failed-verification' ? 'verification-failed' : 'error',
+          missionSummary: row.summary,
+          missionPrompt: row.prompt,
+          acceptanceCriteria: row.acceptance_criteria,
+          verifyCommand: row.verify_command,
+          crewOutput,
+          verifyResult: row.verify_result,
+          reviewNotes: row.review_notes,
+          retryCount: row.first_officer_retry_count,
+          attemptHistory: attemptHistory || undefined,
+        },
+        {
+          onExit: (code) => {
+            db.prepare(
+              "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
+            ).run(row.crew_id, JSON.stringify({
+              missionId: row.mid,
+              retryCount: row.first_officer_retry_count + 1,
+              exitCode: code,
+            }))
+            this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+          },
+        },
+      ).catch(err => {
+        console.error(`[sentinel] FO dispatch error for mission ${row.mid}:`, err)
       })
-
-      if (dispatched) {
-        if (firstOfficer.isRunning(row.crew_id, row.mid)) {
-          db.prepare(
-            'UPDATE missions SET first_officer_retry_count = first_officer_retry_count + 1 WHERE id = ?'
-          ).run(row.mid)
-        }
-
-        db.prepare(
-          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
-        ).run(row.crew_id, JSON.stringify({ missionId: row.mid, retryCount: row.first_officer_retry_count + 1 }))
-      }
     }
 
     // Check for unanswered hailing > 60s (escalation only, no auto-answer)
@@ -373,10 +437,10 @@ export class Sentinel {
          WHERE c.type = 'hailing'
            AND c.read = 0
            AND c.created_at < datetime('now', '-60 seconds')
+           AND cr.mission_id IS NOT NULL
            AND NOT EXISTS (
-             SELECT 1 FROM memos
-             WHERE crew_id = c.from_crew AND event_type = 'unanswered-hailing'
-               AND status = 'unread'
+             SELECT 1 FROM comms
+             WHERE type = 'hailing-memo' AND mission_id = cr.mission_id AND read = 0
            )
          LIMIT 5`
       )
