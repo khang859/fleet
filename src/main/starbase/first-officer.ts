@@ -46,6 +46,7 @@ export type FirstOfficerDecision = {
   decision: 'retry' | 'recover-and-dismiss' | 'escalate-and-dismiss'
   reason: string
   revisedPrompt?: string
+  deleteCrew?: boolean
   salvage?: {
     shouldCreateCargo: boolean
     title?: string
@@ -549,6 +550,9 @@ ${revisedPrompt}
 
   private async resolveRecovery(event: ActionableEvent, decision: FirstOfficerDecision): Promise<void> {
     this.deps.crewService.recallCrew(event.crewId)
+    if (decision.deleteCrew) {
+      this.deps.crewService.deleteCrew(event.crewId)
+    }
     this.deps.missionService.escalateMission(event.missionId, decision.reason)
 
     let cargoCreated = false
@@ -611,6 +615,9 @@ ${decision.salvage?.summary ?? 'Partial mission output was preserved for later o
     decision?: FirstOfficerDecision,
   ): Promise<void> {
     this.deps.crewService.recallCrew(event.crewId)
+    if (decision?.deleteCrew) {
+      this.deps.crewService.deleteCrew(event.crewId)
+    }
     this.deps.missionService.escalateMission(event.missionId, summaryReason)
 
     let cargoCreated = false
@@ -786,6 +793,7 @@ You must return a single JSON object with this shape:
   "decision": "retry | recover-and-dismiss | escalate-and-dismiss",
   "reason": "short explanation",
   "revisedPrompt": "required only for retry",
+  "deleteCrew": true,
   "salvage": {
     "shouldCreateCargo": true,
     "title": "Recovered cargo title",
@@ -803,6 +811,7 @@ Rules:
 - Use escalate-and-dismiss when the mission is not recoverable and there is little or no useful partial output.
 - Never choose retry when retries are exhausted or deployment budget is exhausted.
 - Never include any text before or after the JSON object.
+- Set deleteCrew: true when the crew record should be permanently removed after recall (e.g. the failure was a transient environment issue and the crew entry has no long-term value). Omit or set to false to retain the crew record. Never set deleteCrew on retry decisions.
 
 Mission context:
 - Mission ID: ${event.missionId}
