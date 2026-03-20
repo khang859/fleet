@@ -12,6 +12,7 @@ import { StatusBar } from './star-command/StatusBar'
 import { DependencyCheckScreen } from './star-command/DependencyCheckScreen'
 import { MemoPanel } from './star-command/MemoPanel'
 import { useTerminal } from '../hooks/use-terminal'
+import { useTerminalDrop } from '../hooks/use-terminal-drop'
 
 function AdmiralTerminal({ paneId }: { paneId: string }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -50,6 +51,8 @@ export function StarCommandTab() {
     setDepCheck,
     setFirstOfficerStatus,
   } = useStarCommandStore()
+
+  const { isDragOver: isTerminalDragOver, handlers: terminalDragHandlers } = useTerminalDrop(admiralPaneId)
 
   const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions'>('terminal')
   const [showMemos, setShowMemos] = useState(false)
@@ -287,7 +290,7 @@ export function StarCommandTab() {
             ) : view === 'missions' ? (
               <MissionsPanel />
             ) : (
-              <div className="flex-1 relative min-h-0">
+              <div className="flex-1 relative min-h-0" {...terminalDragHandlers}>
                 {/* Dependency check screen (shown before Admiral starts) */}
                 {(depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
                   <DependencyCheckScreen
@@ -355,6 +358,12 @@ export function StarCommandTab() {
                 {showMemos && (
                   <div className="absolute inset-0 z-10">
                     <MemoPanel onClose={() => setShowMemos(false)} />
+                  </div>
+                )}
+
+                {isTerminalDragOver && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
+                    <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
                   </div>
                 )}
               </div>
