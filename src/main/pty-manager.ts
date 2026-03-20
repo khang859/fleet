@@ -40,7 +40,11 @@ export class PtyManager {
 
   create(opts: PtyCreateOptions): PtyCreateResult {
     if (this.ptys.has(opts.paneId)) {
-      throw new Error(`${opts.paneId} already exists`)
+      // Idempotent: return existing PTY info (handles HMR reloads in dev where the
+      // renderer-side createdPtys Set is reset but the main process map persists)
+      const existing = this.ptys.get(opts.paneId)!
+      console.log(`[pty] ${opts.paneId} already exists, returning existing pid ${existing.process.pid}`)
+      return { paneId: opts.paneId, pid: existing.process.pid }
     }
 
     const shell = opts.shell ?? getDefaultShell()

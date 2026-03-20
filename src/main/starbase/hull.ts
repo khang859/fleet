@@ -1090,8 +1090,8 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
           cwd: sectorPath,
           stdio: 'pipe'
         })
-        // PR exists — store pr_branch and set pending-review, skip creating a new PR
-        db.prepare("UPDATE missions SET pr_branch = ?, status = 'pending-review' WHERE id = ?")
+        // PR exists — store pr_branch, clear crew_id, and set pending-review, skip creating a new PR
+        db.prepare("UPDATE missions SET pr_branch = ?, status = 'pending-review', crew_id = NULL WHERE id = ?")
           .run(worktreeBranch, missionId)
         return
       } catch {
@@ -1130,7 +1130,7 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
           })
         )
 
-        db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId)
+        db.prepare("UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?").run(missionId)
       } catch {
         // PR view failed — skip review request, continue normally
       }
