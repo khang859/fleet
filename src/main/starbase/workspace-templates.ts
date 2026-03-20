@@ -354,6 +354,40 @@ If you are starting a new conversation and don't know the current state:
 
 Then summarize the state for the user before asking what to do next.
 
+## Research Mission Output Format
+
+When \`FLEET_MISSION_TYPE=research\`, your findings are captured as **cargo** from your terminal output. Follow these rules:
+
+**What gets captured:** All text you print to stdout — your analysis, findings, summaries, and conclusions.
+
+**What does NOT get captured:** Files written to disk. The git safety guard will discard any files you create or modify. Do not write files as your primary output method.
+
+**How to structure your research output:**
+
+1. Print findings directly to your terminal output using \`echo\`, \`console.log\`, or by writing text in your assistant responses
+2. Structure output clearly with headers, sections, and conclusions
+3. End your session with a clear summary of findings
+4. Do NOT create pull requests or commits — git changes are discarded automatically
+
+**Example output structure:**
+\`\`\`
+## Research Findings: [Topic]
+
+### Summary
+[Brief summary of key findings]
+
+### Details
+[Detailed investigation results]
+
+### Conclusions
+[Actionable conclusions and recommendations]
+\`\`\`
+
+**Checking your mission type:**
+\`\`\`bash
+echo $FLEET_MISSION_TYPE   # 'research' or 'code'
+\`\`\`
+
 ## Crew Identity
 
 When a Crewmate is deployed, the following environment variables are set in its session:
@@ -361,6 +395,7 @@ When a Crewmate is deployed, the following environment variables are set in its 
 - \`FLEET_CREW_ID\` — the Crewmate's unique ID (e.g. \`my-sector-crew-a1b2\`)
 - \`FLEET_SECTOR_ID\` — the Sector it was deployed to
 - \`FLEET_MISSION_ID\` — the Mission ID it is working on
+- \`FLEET_MISSION_TYPE\` — the mission type (\`research\` or \`code\`)
 
 Crew can use these to identify themselves in comms:
 

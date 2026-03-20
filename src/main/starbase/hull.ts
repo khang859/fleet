@@ -187,7 +187,8 @@ export class Hull {
         ...(this.opts.env ?? (process.env as Record<string, string>)),
         FLEET_CREW_ID: crewId,
         FLEET_SECTOR_ID: this.opts.sectorId,
-        FLEET_MISSION_ID: String(this.opts.missionId)
+        FLEET_MISSION_ID: String(this.opts.missionId),
+        FLEET_MISSION_TYPE: this.opts.missionType ?? 'code'
       }
 
       const proc = spawn('claude', cmdArgs, {
@@ -204,9 +205,12 @@ export class Hull {
 
       // Send initial user message via stream-json stdin
       const worktreeWarning = `IMPORTANT: You are in a git worktree. Your current directory is already the correct working directory for this mission (branch: ${worktreeBranch}). Do NOT cd to any other path. All file edits and git operations must happen in the current directory.\n\n`
+      const researchGuidance = this.opts.missionType === 'research'
+        ? `RESEARCH MISSION GUIDANCE: Your research findings will be captured as cargo from your terminal output. Print your findings to stdout using console.log, echo, or similar output commands. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT create pull requests or commit changes. Your mission is to investigate and report findings through your terminal output only.\n\n`
+        : ''
       const initMsg = JSON.stringify({
         type: 'user',
-        message: { role: 'user', content: `${worktreeWarning}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
+        message: { role: 'user', content: `${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
         parent_tool_use_id: null,
         session_id: ''
       }) + '\n'
@@ -635,8 +639,36 @@ export class Hull {
 
       // Safety guard: research crews should never push code — discard changes and produce cargo
       if (this.opts.missionType === 'research') {
+        // Capture what will be discarded before cleaning, for ships_log warning
+        let discardedFiles: string[] = []
+        try {
+          const statusOut = execSync('git status --porcelain', gitOpts).toString().trim()
+          const cleanOut = execSync('git clean -n -fd', gitOpts).toString().trim()
+          const statusFiles = statusOut
+            .split('\n')
+            .filter(l => l.trim())
+            .map(l => l.slice(3).trim())
+          const cleanFiles = cleanOut
+            .split('\n')
+            .filter(l => l.startsWith('Would remove'))
+            .map(l => l.replace(/^Would remove /, '').trim())
+          discardedFiles = [...new Set([...statusFiles, ...cleanFiles])].filter(Boolean)
+        } catch { /* ignore */ }
+
         try { execSync('git checkout -- .', gitOpts) } catch { /* ignore */ }
         try { execSync('git clean -fd', gitOpts) } catch { /* ignore */ }
+
+        if (discardedFiles.length > 0) {
+          db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'safety_guard', ?)").run(
+            crewId,
+            JSON.stringify({
+              warning: 'Research safety guard discarded file changes',
+              filesDiscarded: discardedFiles.length,
+              paths: discardedFiles.slice(0, 20),
+              recommendation: 'Research crews should print findings to stdout — do not write files to disk. Cargo is captured from terminal output.'
+            })
+          )
+        }
 
         if (status === 'error') {
           db.prepare(
