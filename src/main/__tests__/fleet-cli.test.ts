@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { FleetCLI, runCLI, parseArgs, validateCommand } from '../fleet-cli';
+import { FleetCLI, runCLI, parseArgs, validateCommand, getHelpText } from '../fleet-cli';
 import { SocketServer } from '../socket-server';
 import { StarbaseDB } from '../starbase/db';
 import { CommsService } from '../starbase/comms-service';
@@ -241,5 +241,97 @@ describe('runCLI', () => {
     // crew.list returns an array → should format as table
     const output = await runCLI(['crew', 'list'], socketPath);
     expect(typeof output).toBe('string');
+  });
+});
+
+// ── Help system tests ────────────────────────────────────────────────────────
+
+describe('getHelpText', () => {
+  it('returns null when no help flag present', () => {
+    expect(getHelpText(['sectors', 'list'])).toBeNull();
+  });
+
+  it('returns null for empty argv', () => {
+    expect(getHelpText([])).toBeNull();
+  });
+
+  it('returns top-level help for --help alone', () => {
+    const out = getHelpText(['--help']);
+    expect(out).toContain('Fleet CLI');
+    expect(out).toContain('sectors');
+    expect(out).toContain('missions');
+    expect(out).toContain('protocols');
+  });
+
+  it('-h is treated identically to --help', () => {
+    const out = getHelpText(['-h']);
+    expect(out).toContain('Fleet CLI');
+  });
+
+  it('returns group help for fleet protocols --help', () => {
+    const out = getHelpText(['protocols', '--help']);
+    expect(out).toContain('fleet protocols');
+    expect(out).toContain('protocols list');
+    expect(out).toContain('executions');
+  });
+
+  it('returns group help for fleet missions add --help', () => {
+    const out = getHelpText(['missions', 'add', '--help']);
+    expect(out).toContain('fleet missions');
+    expect(out).toContain('--type');
+    expect(out).toContain('--prompt');
+  });
+
+  it('returns group help for 3-part fleet protocols executions list --help', () => {
+    const out = getHelpText(['protocols', 'executions', 'list', '--help']);
+    expect(out).toContain('fleet protocols');
+    expect(out).toContain('executions');
+  });
+
+  it('detects --help anywhere in argv', () => {
+    const out = getHelpText(['missions', 'add', '--sector', 'foo', '--help']);
+    expect(out).toContain('fleet missions');
+  });
+
+  it('detects -h anywhere in argv', () => {
+    const out = getHelpText(['crew', 'deploy', '-h']);
+    expect(out).toContain('fleet crew');
+  });
+
+  it('detects -h mixed with flags', () => {
+    const out = getHelpText(['protocols', '-h', '--status', 'running']);
+    expect(out).toContain('fleet protocols');
+  });
+
+  it('falls back to top-level help for unknown group', () => {
+    const out = getHelpText(['unknown-group', '--help']);
+    expect(out).toContain('Fleet CLI');
+    expect(out).toContain('Command Groups');
+  });
+});
+
+describe('--help via runCLI', () => {
+  it('fleet --help returns help without needing a socket', async () => {
+    const out = await runCLI(['--help'], '/tmp/no-socket.sock');
+    expect(out).toContain('Fleet CLI');
+    expect(out).not.toContain('Error');
+  });
+
+  it('fleet protocols --help does not treat --help as action name', async () => {
+    // This was the bug: "protocols.--help" was sent to socket and failed
+    const out = await runCLI(['protocols', '--help'], '/tmp/no-socket.sock');
+    expect(out).toContain('fleet protocols');
+    expect(out).not.toContain('Error');
+    expect(out).not.toContain('Unknown command');
+  });
+
+  it('fleet protocols show --help returns help', async () => {
+    const out = await runCLI(['protocols', 'show', '--help'], '/tmp/no-socket.sock');
+    expect(out).toContain('fleet protocols');
+  });
+
+  it('fleet -h returns help', async () => {
+    const out = await runCLI(['-h'], '/tmp/no-socket.sock');
+    expect(out).toContain('Fleet CLI');
   });
 });
