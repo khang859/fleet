@@ -245,7 +245,25 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
 `
         : null
 
-      const combinedSystemPrompt = [researchPreamble, this.opts.systemPrompt]
+      const reviewPreamble = this.opts.missionType === 'review'
+        ? `# Review Mission Instructions
+
+You are a review crew deployed on a PR review mission (FLEET_MISSION_TYPE=review).
+
+## Output Format
+You MUST end your response with:
+
+VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
+NOTES: <specific file:line references for any issues found>
+
+## Constraints
+- Do NOT make code changes. This is a review mission.
+- Do NOT commit or push. Any changes will be discarded.
+- Use the gh CLI to read the PR diff: gh pr diff <branch>
+- Only report issues you are >=80% confident about.`
+        : null
+
+      const combinedSystemPrompt = [researchPreamble, reviewPreamble, this.opts.systemPrompt]
         .filter(Boolean)
         .join('\n\n')
 
