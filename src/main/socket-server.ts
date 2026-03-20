@@ -893,9 +893,10 @@ export class SocketServer extends EventEmitter {
         return protocolService.listProtocols();
 
       case 'protocol.show': {
-        const p = protocolService.getProtocolBySlug(args.slug as string);
+        const slug = (args.id ?? args.slug) as string;
+        const p = protocolService.getProtocolBySlug(slug);
         if (!p) {
-          const err = new Error(`Protocol not found: ${args.slug}`) as Error & { code: string };
+          const err = new Error(`Protocol not found: ${slug}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
           throw err;
         }
@@ -904,13 +905,15 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'protocol.enable': {
-        protocolService.setProtocolEnabled(args.slug as string, true);
-        return { slug: args.slug, enabled: true };
+        const slug = (args.id ?? args.slug) as string;
+        protocolService.setProtocolEnabled(slug, true);
+        return { slug, enabled: true };
       }
 
       case 'protocol.disable': {
-        protocolService.setProtocolEnabled(args.slug as string, false);
-        return { slug: args.slug, enabled: false };
+        const slug = (args.id ?? args.slug) as string;
+        protocolService.setProtocolEnabled(slug, false);
+        return { slug, enabled: false };
       }
 
       // ── Executions ────────────────────────────────────────────────────────────

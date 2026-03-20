@@ -8,7 +8,7 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, markPtyCreated, serializePane } from './hooks/use-terminal';
-import { initCwdListener } from './store/cwd-store';
+import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';

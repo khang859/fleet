@@ -308,10 +308,15 @@ const COMMAND_MAP: Record<string, string> = {
   'protocols.show': 'protocol.show',
   'protocol.show': 'protocol.show',
   'protocols.enable': 'protocol.enable',
+  'protocol.enable': 'protocol.enable',
   'protocols.disable': 'protocol.disable',
+  'protocol.disable': 'protocol.disable',
   'protocols.executions.list': 'execution.list',
   'protocols.executions.show': 'execution.show',
   'protocols.executions.update': 'execution.update',
+  'protocol.executions.list': 'execution.list',
+  'protocol.executions.show': 'execution.show',
+  'protocol.executions.update': 'execution.update',
 }
 
 function mapCommand(group: string, action: string): string {
@@ -492,6 +497,33 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return 'Error: cargo produce requires --path <path>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
       return null;
 
+    // ── Protocols ──────────────────────────────────────────────────────────
+    case 'protocol.show':
+      if (!args.id && !args.slug)
+        return 'Error: protocols show requires a protocol slug.\n\nUsage: fleet protocols show <slug>\nList protocols: fleet protocols list';
+      return null;
+
+    case 'protocol.enable':
+      if (!args.id && !args.slug)
+        return 'Error: protocols enable requires a protocol slug.\n\nUsage: fleet protocols enable <slug>\nList protocols: fleet protocols list';
+      return null;
+
+    case 'protocol.disable':
+      if (!args.id && !args.slug)
+        return 'Error: protocols disable requires a protocol slug.\n\nUsage: fleet protocols disable <slug>\nList protocols: fleet protocols list';
+      return null;
+
+    // ── Executions ────────────────────────────────────────────────────────
+    case 'execution.show':
+      if (!args.id)
+        return 'Error: executions show requires an execution ID.\n\nUsage: fleet protocols executions show <execution-id>\nList executions: fleet protocols executions list';
+      return null;
+
+    case 'execution.update':
+      if (!args.id)
+        return 'Error: executions update requires an execution ID.\n\nUsage: fleet protocols executions update <execution-id> --status <status>';
+      return null;
+
     // ── Config ────────────────────────────────────────────────────────────
     case 'config.get':
       if (!args.key)
@@ -593,8 +625,19 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
     }
   }
 
-  // Map CLI commands (plural groups, user-friendly actions) to server commands
-  const command = mapCommand(group, action);
+  // Map CLI commands — check for 3-part commands first (e.g. protocols executions list)
+  let command: string;
+  if (cleanRest.length > 0 && !cleanRest[0].startsWith('--')) {
+    const threePartKey = `${group}.${action}.${cleanRest[0]}`;
+    if (COMMAND_MAP[threePartKey]) {
+      command = COMMAND_MAP[threePartKey];
+      cleanRest = cleanRest.slice(1);
+    } else {
+      command = mapCommand(group, action);
+    }
+  } else {
+    command = mapCommand(group, action);
+  }
   const args = parseArgs(cleanRest);
 
   // ── Client-side validation ──────────────────────────────────────────────
@@ -651,8 +694,10 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
     if (inner.description) lines.push(inner.description + '\n');
     if (inner.help_text) lines.push(inner.help_text + '\n');
     if (inner.trigger_examples) {
-      const examples = JSON.parse(inner.trigger_examples) as string[];
-      if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
+      try {
+        const examples = JSON.parse(inner.trigger_examples) as string[];
+        if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
+      } catch { /* ignore malformed JSON */ }
     }
     lines.push('Steps:');
     for (const s of inner.steps) lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
