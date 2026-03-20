@@ -5,7 +5,7 @@ interface Props {
   onDismiss: () => void
 }
 
-const DEP_NAMES = ['node', 'claude', 'git', 'gh', 'fleet']
+const DEP_NAMES = ['node', 'claude', 'git', 'gh', 'fleet', 'fleet.sock']
 
 export function AppPreChecks({ onDismiss }: Props) {
   const [status, setStatus] = useState<'checking' | 'passed' | 'failed'>('checking')
