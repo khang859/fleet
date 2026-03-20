@@ -30,7 +30,6 @@ import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { ShipsLog } from './starbase/ships-log'
 import { Sentinel } from './starbase/sentinel'
 import { runReconciliation } from './starbase/reconciliation'
-import { MemoService } from './starbase/memo-service'
 import { FirstOfficer } from './starbase/first-officer'
 import { Lockfile } from './starbase/lockfile'
 import { SupplyRouteService } from './starbase/supply-route-service'
@@ -50,7 +49,6 @@ let socketSupervisor: SocketSupervisor | null = null
 let admiralProcess: AdmiralProcess | null = null
 let crewServiceRef: CrewService | null = null
 let firstOfficerRef: FirstOfficer | null = null
-let memoServiceRef: MemoService | null = null
 const ptyManager = new PtyManager()
 const layoutStore = new LayoutStore()
 const eventBus = new EventBus()
@@ -225,14 +223,16 @@ app.whenReady().then(async () => {
     const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
     commsService.setRateLimit(commsRateLimit)
 
-    // First Officer services
-    memoServiceRef = new MemoService(starbaseDb.getDb(), eventBus)
-    const memoService = memoServiceRef
+    // Helper: count unread memos from comms table
+    function getUnreadMemoCount(): number {
+      return (starbaseDb!.getDb().prepare(
+        "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
+      ).get() as { cnt: number }).cnt
+    }
 
     const firstOfficer = new FirstOfficer({
       db: starbaseDb.getDb(),
       configService,
-      memoService,
       eventBus,
       starbaseId: starbaseDb.getStarbaseId(),
       crewEnv: crewEnv,
@@ -364,7 +364,7 @@ app.whenReady().then(async () => {
 
     // Seed notification counters to avoid spurious notifications for pre-existing unread items
     lastUnreadCommsCount = commsService!.getUnread('admiral').length
-    lastUnreadMemosCount = memoService.getUnreadCount()
+    lastUnreadMemosCount = getUnreadMemoCount()
 
     // Push status updates to renderer whenever starbase data changes
     eventBus.on('starbase-changed', () => {
@@ -372,7 +372,7 @@ app.whenReady().then(async () => {
       if (!w || w.isDestroyed()) return
 
       const unreadComms = commsService!.getUnread('admiral')
-      const unreadMemosCount = memoService.getUnreadCount()
+      const unreadMemosCount = getUnreadMemoCount()
 
       w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
         crew: crewService!.listCrew(),
@@ -493,8 +493,7 @@ app.whenReady().then(async () => {
     supplyRouteService,
     cargoService,
     retentionService,
-    admiralStateDetector,
-    memoServiceRef
+    admiralStateDetector
   )
 
   // Wire socket command handler to the window
