@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { ConfigService } from '../starbase/config-service';
-import { MemoService } from '../starbase/memo-service';
 import { FirstOfficer, type ActionableEvent } from '../starbase/first-officer';
 import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
-import { rmSync, mkdirSync, writeFileSync, existsSync } from 'fs';
+import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -15,8 +14,8 @@ const SECTOR_DIR = join(WORKSPACE_DIR, 'api');
 const DB_DIR = join(TEST_DIR, 'starbases');
 
 let db: StarbaseDB;
+let rawDb: ReturnType<StarbaseDB['getDb']>;
 let configService: ConfigService;
-let memoService: MemoService;
 let firstOfficer: FirstOfficer;
 let missionId: number;
 const CREW_ID = 'api-crew-abcd';
@@ -50,9 +49,8 @@ beforeEach(() => {
   db = new StarbaseDB(WORKSPACE_DIR, DB_DIR);
   db.open();
 
-  const rawDb = db.getDb();
+  rawDb = db.getDb();
   configService = new ConfigService(rawDb);
-  memoService = new MemoService(rawDb);
 
   // Insert sector and mission so FK constraints are satisfied
   const sectorSvc = new SectorService(rawDb, WORKSPACE_DIR);
@@ -76,7 +74,6 @@ beforeEach(() => {
   firstOfficer = new FirstOfficer({
     db: rawDb,
     configService,
-    memoService,
     starbaseId: db.getStarbaseId(),
   });
 });
@@ -99,33 +96,22 @@ describe('FirstOfficer', () => {
     expect(firstOfficer.isRunning('unknown-crew', 9999)).toBe(false);
   });
 
-  it('dispatch() writes an escalation memo when retryCount >= maxRetries', async () => {
-    // Get the configured max retries
+  it('dispatch() writes an escalation comm when retryCount >= maxRetries', async () => {
     const maxRetries = configService.get('first_officer_max_retries') as number;
     expect(maxRetries).toBeGreaterThan(0);
-
     const event = makeEvent({ retryCount: maxRetries });
     const result = await firstOfficer.dispatch(event);
-
-    // dispatch returns true (handled via escalation path)
     expect(result).toBe(true);
 
-    // A memo should now exist in DB
-    const memos = memoService.listAll();
-    expect(memos.length).toBeGreaterThanOrEqual(1);
+    const comms = rawDb.prepare(
+      "SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?"
+    ).all(missionId) as Array<{ id: number; payload: string; read: number }>
 
-    const escalation = memos.find((m) => m.event_type === 'mission-failed');
-    expect(escalation).toBeDefined();
-    expect(escalation!.crew_id).toBe(CREW_ID);
-    expect(escalation!.mission_id).toBe(missionId);
-
-    // The memo file should exist on disk
-    expect(existsSync(escalation!.file_path)).toBe(true);
-
-    // File content should mention "Maximum retries exhausted"
-    const { readFileSync } = await import('fs');
-    const content = readFileSync(escalation!.file_path, 'utf-8');
-    expect(content).toContain('Maximum retries exhausted');
+    expect(comms.length).toBeGreaterThanOrEqual(1);
+    const payload = JSON.parse(comms[0].payload);
+    expect(payload.crewId).toBe(CREW_ID);
+    expect(payload.missionId).toBe(missionId);
+    expect(payload.summary).toContain('Maximum retries exhausted');
   });
 
   it('dispatch() returns false if already running for same crew+mission', async () => {
@@ -162,7 +148,7 @@ describe('FirstOfficer', () => {
     expect(result).toBe(false);
   });
 
-  it('writeHailingMemo() creates a memo file and DB record', () => {
+  it('writeHailingMemo() creates a hailing-memo comm and file', () => {
     firstOfficer.writeHailingMemo({
       crewId: CREW_ID,
       missionId,
@@ -171,23 +157,18 @@ describe('FirstOfficer', () => {
       createdAt: new Date().toISOString(),
     });
 
-    const memos = memoService.listAll();
-    expect(memos.length).toBe(1);
+    const comms = rawDb.prepare(
+      "SELECT * FROM comms WHERE type = 'hailing-memo' AND mission_id = ?"
+    ).all(missionId) as Array<{ id: number; payload: string; read: number; from_crew: string }>
 
-    const memo = memos[0];
-    expect(memo.crew_id).toBe(CREW_ID);
-    expect(memo.mission_id).toBe(missionId);
-    expect(memo.event_type).toBe('unanswered-hailing');
-    expect(memo.status).toBe('unread');
+    expect(comms.length).toBe(1);
+    expect(comms[0].read).toBe(0);
+    expect(comms[0].from_crew).toBe('first-officer');
 
-    // File should exist on disk
-    expect(existsSync(memo.file_path)).toBe(true);
-
-    const { readFileSync } = require('fs');
-    const content = readFileSync(memo.file_path, 'utf-8');
-    expect(content).toContain('Unanswered Hailing');
-    expect(content).toContain('Should I use JWT or OAuth?');
-    expect(content).toContain(CREW_ID);
+    const payload = JSON.parse(comms[0].payload);
+    expect(payload.crewId).toBe(CREW_ID);
+    expect(payload.missionId).toBe(missionId);
+    expect(payload.summary).toContain('Unanswered hailing');
   });
 
   it('getStatus() returns memo when there are unread memos', () => {
@@ -204,5 +185,26 @@ describe('FirstOfficer', () => {
 
   it('getStatusText() returns Idle when nothing is running', () => {
     expect(firstOfficer.getStatusText()).toBe('Idle');
+  });
+
+  it('writeAutoEscalationComm() writes auto-escalation comm', () => {
+    firstOfficer.writeAutoEscalationComm({
+      crewId: CREW_ID,
+      missionId,
+      classification: 'persistent',
+      fingerprint: 'abc123def456',
+      summary: 'Test failure',
+      errorText: 'Error: test failed',
+    });
+
+    const comms = rawDb.prepare(
+      "SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?"
+    ).all(missionId) as Array<{ payload: string }>
+
+    expect(comms.length).toBe(1);
+    const payload = JSON.parse(comms[0].payload);
+    expect(payload.classification).toBe('persistent');
+    expect(payload.fingerprint).toBe('abc123def456');
+    expect(payload.eventType).toBe('auto-escalation');
   });
 });

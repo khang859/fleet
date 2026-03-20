@@ -214,7 +214,7 @@ export const MIGRATIONS: Migration[] = [
       DROP TABLE IF EXISTS memos;
 
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('max_mission_deployments', '8');
-      UPDATE starbase_config SET value = 'claude-haiku-4-5' WHERE key = 'first_officer_model';
+      UPDATE starbase_config SET value = '"claude-haiku-4-5"' WHERE key = 'first_officer_model';
     `
   }
 ]
