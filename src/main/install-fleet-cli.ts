@@ -84,17 +84,18 @@ fi
       ? join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs')
       : join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js')
 
-    // Copy the compiled CLI to ~/.fleet/lib/fleet-cli.js
+    // Copy the compiled CLI to ~/.fleet/lib/fleet-cli.mjs
+    // Must use .mjs extension so Node loads it as ESM (it contains import statements)
     const { readFile } = await import('node:fs/promises')
     const compiledSource = await readFile(compiledPath, 'utf8')
-    cliEntrypoint = join(libDir, 'fleet-cli.js')
+    cliEntrypoint = join(libDir, 'fleet-cli.mjs')
     await writeFile(cliEntrypoint, compiledSource, 'utf8')
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
-exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
+exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
 `
   } else {
     // Dev mode: resolve the TypeScript source file
@@ -104,7 +105,8 @@ exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
     const tsSource = join(projectRoot, 'src', 'main', 'fleet-cli.ts')
 
     // Write a thin JS entrypoint that delegates to the TS source via tsx
-    cliEntrypoint = join(libDir, 'fleet-cli.js')
+    // Must use .mjs extension so Node loads it as ESM (it contains import statements)
+    cliEntrypoint = join(libDir, 'fleet-cli.mjs')
     const jsEntrypoint = `#!/usr/bin/env node
 // Fleet CLI entrypoint — dev mode, delegates to TypeScript source via tsx
 import { createRequire } from 'node:module';
@@ -130,7 +132,7 @@ process.exit(result.status ?? 1);
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
-exec node "$FLEET_DIR/lib/fleet-cli.js" "$@"
+exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
 `
   }
 
