@@ -70,6 +70,10 @@ Rough budget breakdown for a worst-case mission: initial crew (1) + 2 FO retries
 
 `mission_deployment_count` is **intentionally sticky** — it does NOT reset on `resetForRequeue()`. This counter tracks total resources spent on a mission regardless of how it was re-queued. If the Admiral manually cancels and creates a new mission, that's a fresh mission with a fresh counter. But re-queuing the same mission (whether via FO retry or manual `fleet missions update --status queued`) preserves the budget history.
 
+Similarly, `first_officer_retry_count` remains sticky across re-queues — it does NOT reset in `resetForRequeue()`. This is intentional: the FO retry count and the global budget are both hard ceilings that accumulate across the mission's lifetime. The effective FO retry limit for a mission is `min(first_officer_max_retries, remaining global budget)`.
+
+The `mission_deployment_count` increment is placed **after successful worktree creation** in `deployCrew()` — deploy failures due to memory pressure or worktree limits do not consume budget slots since no agent actually ran.
+
 ### 4. FO Dispatch Changes
 
 #### 4a. Async Fire-and-Forget
@@ -172,7 +176,7 @@ Full memo markdown files still get written to disk for detailed context. The com
 **Changes:**
 - Add `mission_id INTEGER` column to `comms` table (nullable FK to missions) — used for efficient dedup queries instead of JSON LIKE scanning
 - `firstOfficer.writeEscalationMemo()` and `scanForNewMemos()` insert comms rows instead of memos rows
-- `firstOfficer.writeHailingMemo()` also migrates to comms: `type = 'hailing-memo'`, same payload structure. The sentinel's hailing dedup guard (`sentinel.ts:376-381`) switches from memos to: `NOT EXISTS (SELECT 1 FROM comms WHERE type = 'hailing-memo' AND mission_id = m.id AND read = 0)`
+- `firstOfficer.writeHailingMemo()` also migrates to comms: `type = 'hailing-memo'`, same payload structure. The sentinel's hailing dedup guard (`sentinel.ts:376-381`) switches from memos to: `NOT EXISTS (SELECT 1 FROM comms WHERE type = 'hailing-memo' AND mission_id = cr.mission_id AND read = 0)` — note: the hailing query context uses `cr` (crew alias), not `m`, and `cr.mission_id` can be NULL so the outer query should add `AND cr.mission_id IS NOT NULL`
 - `hull.ts:623` review escalation writes migrate from `INSERT INTO memos` to `INSERT INTO comms` with `type = 'memo'`, `from_crew = 'first-officer'`, using the new `mission_id` column
 - Sentinel dedup query: `NOT EXISTS (SELECT 1 FROM comms WHERE type = 'memo' AND mission_id = m.id AND read = 0)` — proper indexed FK lookup, no JSON LIKE
 - `FirstOfficer.getStatus()` replaces `memoService.getUnreadCount()` with a direct DB query: `SELECT COUNT(*) FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0`
