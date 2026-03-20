@@ -8,10 +8,11 @@ import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/wo
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
+import { injectLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { Avatar } from './star-command/Avatar';
 import { getFileSave } from '../lib/file-save-registry';
-import type { Workspace, PaneLeaf, PaneNode, Tab } from '../../../shared/types';
+import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -27,21 +28,6 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
     return find(node.children[0]) ?? find(node.children[1]);
   }
   return find(tab.splitRoot);
-}
-
-function injectLiveCwd(node: PaneNode): PaneNode {
-  const cwds = useCwdStore.getState().cwds;
-  if (node.type === 'leaf') {
-    const liveCwd = cwds.get(node.id);
-    return liveCwd ? { ...node, cwd: liveCwd } : node;
-  }
-  return {
-    ...node,
-    children: [
-      injectLiveCwd(node.children[0]),
-      injectLiveCwd(node.children[1]),
-    ],
-  };
 }
 
 const AUTO_SAVE_DEBOUNCE_MS = 2000;

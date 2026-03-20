@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
+import { injectLiveCwd } from '../lib/workspace-utils';
 import type { Workspace } from '../../../shared/types';
 
 export function WorkspacePicker() {
@@ -46,7 +47,14 @@ export function WorkspacePicker() {
 
     // Save current workspace first
     const state = useWorkspaceStore.getState();
-    window.fleet.layout.save({ workspace: state.workspace });
+    const workspaceWithLiveCwds = {
+      ...state.workspace,
+      tabs: state.workspace.tabs.map((tab) => ({
+        ...tab,
+        splitRoot: injectLiveCwd(tab.splitRoot),
+      })),
+    };
+    window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
 
     // Kill current PTYs
     const currentPaneIds = state.getAllPaneIds();
@@ -70,14 +78,28 @@ export function WorkspacePicker() {
   };
 
   const handleSaveCurrent = async () => {
-    await window.fleet.layout.save({ workspace });
+    const workspaceWithLiveCwds = {
+      ...workspace,
+      tabs: workspace.tabs.map((tab) => ({
+        ...tab,
+        splitRoot: injectLiveCwd(tab.splitRoot),
+      })),
+    };
+    await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
     setMenuOpen(false);
   };
 
   const handleSwitchWorkspace = async (ws: Workspace) => {
     // Save current workspace first
     const state = useWorkspaceStore.getState();
-    await window.fleet.layout.save({ workspace: state.workspace });
+    const workspaceWithLiveCwds = {
+      ...state.workspace,
+      tabs: state.workspace.tabs.map((tab) => ({
+        ...tab,
+        splitRoot: injectLiveCwd(tab.splitRoot),
+      })),
+    };
+    await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
 
     // Kill current PTYs
     const currentPaneIds = state.getAllPaneIds();

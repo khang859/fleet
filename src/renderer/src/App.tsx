@@ -8,8 +8,9 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, markPtyCreated, serializePane } from './hooks/use-terminal';
-import { initCwdListener, useCwdStore } from './store/cwd-store';
+import { initCwdListener } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
+import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { SettingsModal } from './components/SettingsModal';
@@ -45,21 +46,6 @@ function injectSerializedContent(node: PaneNode): PaneNode {
     children: [
       injectSerializedContent(node.children[0]),
       injectSerializedContent(node.children[1]),
-    ],
-  };
-}
-
-function injectLiveCwd(node: PaneNode): PaneNode {
-  const cwds = useCwdStore.getState().cwds;
-  if (node.type === 'leaf') {
-    const liveCwd = cwds.get(node.id);
-    return liveCwd ? { ...node, cwd: liveCwd } : node;
-  }
-  return {
-    ...node,
-    children: [
-      injectLiveCwd(node.children[0]),
-      injectLiveCwd(node.children[1]),
     ],
   };
 }
