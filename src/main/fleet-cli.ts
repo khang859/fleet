@@ -542,9 +542,465 @@ export function validateCommand(command: string, args: Record<string, unknown>):
   }
 }
 
+// ── Help text ─────────────────────────────────────────────────────────────────
+
+const HELP_TOP = `# Fleet CLI
+
+Manage AI coding agents (Crew), Missions, Sectors, and Comms from the terminal.
+
+## When to use
+
+Use \`fleet\` to interact with a running Fleet Starbase — create Missions, deploy
+Crew to execute them, monitor progress via Comms, and manage Sectors (repos).
+
+## Usage
+
+  fleet <group> <action> [--key value ...]
+  fleet <group> --help
+  fleet <group> <action> --help
+
+## Command Groups
+
+| Group | Intent |
+|-------|--------|
+| sectors | Register and manage code repositories. Use when you need to add a repo, list available repos, or look up a Sector ID before creating a Mission. |
+| missions | Create and track agent Missions. Use when you want to define work for a Crew to execute — always create a Mission before deploying Crew. |
+| crew | Deploy, observe, and recall Crewmates. Use when you want to start an agent, check its progress, send it a follow-up message, or shut it down. |
+| comms | Read and send transmissions. Use when you need to check for messages from Crew, send directives, or manage your inbox. |
+| cargo | Inspect and produce Cargo artifacts. Use when you need to view outputs produced by research Missions or record new artifacts. |
+| log | View Ship's Log entries. Use when you want to see grouped log entries for debugging or auditing. |
+| protocols | Manage and execute multi-step Protocols. Use when you want to list available protocols, view their steps, enable/disable them, or check execution status. |
+| open | Open files or images in Fleet tabs. Use when you want to display a file in the Fleet UI. |
+
+## Core Workflow
+
+\`\`\`bash
+# 1. Check what repos are registered
+fleet sectors list
+
+# 2. Create a mission (returns the mission ID)
+fleet missions add --sector <id> --type code --summary "..." --prompt "..."
+
+# 3. Deploy crew to execute it
+fleet crew deploy --sector <id> --mission <mission-id>
+
+# 4. Monitor progress
+fleet crew list
+fleet comms inbox --unread
+\`\`\`
+
+## Research-First Workflow (recommended for non-trivial changes)
+
+\`\`\`bash
+# 1. Create a research mission
+fleet missions add --sector <id> --type research --summary "Investigate X" --prompt "..."
+
+# 2. Create a code mission that depends on the research
+fleet missions add --sector <id> --type code --summary "Implement X" --prompt "..." --depends-on <research-mission-id>
+
+# 3. Deploy research crew first
+fleet crew deploy --sector <id> --mission <research-mission-id>
+
+# 4. When research completes, deploy code crew
+fleet crew deploy --sector <id> --mission <code-mission-id>
+\`\`\`
+
+Run \`fleet <group> --help\` for detailed help on any command group.`;
+
+const HELP_GROUPS: Record<string, string> = {
+  sectors: `# fleet sectors
+
+Manage code repositories (Sectors) registered with this Starbase.
+
+## When to use
+
+Use \`fleet sectors\` when you need to register a new repo, list what repos are
+available, look up a Sector ID before creating a Mission, or check a Sector's
+agent configuration (model, system prompt, allowed tools).
+
+## Commands
+
+  fleet sectors list                     List all registered Sectors
+  fleet sectors add --path <path>        Register a new Sector (path must be a git repo)
+  fleet sectors remove <id>              Unregister a Sector
+  fleet sectors show <id>                Show full Sector details (model, config, base branch)
+
+## Arguments
+
+  <id>       Sector ID (shown in \`fleet sectors list\`)
+  --path     Absolute path to a git repository root
+
+## Examples
+
+\`\`\`bash
+fleet sectors list
+fleet sectors add --path /Users/me/projects/my-app
+fleet sectors show my-app
+fleet sectors remove my-app
+\`\`\``,
+
+  missions: `# fleet missions
+
+Create and track agent Missions — the unit of work in Fleet.
+
+## When to use
+
+Use \`fleet missions\` when you want to define work for a Crew to execute.
+**Always create a Mission first, then deploy Crew for it** — this two-step
+workflow ensures mission prompts are persisted and never lost.
+
+## Commands
+
+  fleet missions list                                List all Missions
+  fleet missions list --sector <id>                  Filter by Sector
+  fleet missions list --status <status>              Filter by status (queued, active, done, cancelled)
+  fleet missions add --sector <id> --type <type> --summary "..." --prompt "..."
+                                                     Create a new Mission
+  fleet missions add ... --depends-on <id>           Attach a research dependency (repeatable)
+  fleet missions show <id>                           Show full Mission details
+  fleet missions update <id> --status <status>       Update Mission status
+  fleet missions cancel <id>                         Cancel a Mission
+  fleet missions verdict <id> --verdict <v>          Record a review verdict
+
+## Mission Types
+
+  code      Produces git commits (code changes, bug fixes, features).
+            Use when the work should result in code changes.
+  research  Produces documentation artifacts (investigation, analysis).
+            Use when you need findings before writing code. No git changes expected.
+  review    Reviews a PR branch and produces a VERDICT.
+            Use when you need a code review on existing work.
+
+## Arguments for \`missions add\`
+
+  --sector <id>         Required. Sector ID to create the Mission in.
+  --type <type>         Required. One of: code, research, review.
+  --summary "..."       Required. Short title for the Mission.
+  --prompt "..."        Required. Detailed instructions with acceptance criteria.
+  --depends-on <id>     Optional. Numeric mission ID of a research dependency.
+                        Can be repeated for multiple dependencies.
+
+## Examples
+
+\`\`\`bash
+# Create a code mission
+fleet missions add --sector my-app --type code --summary "Add POST /api/settings" \\
+  --prompt "Add a POST /api/settings endpoint that accepts { theme, notifications }..."
+
+# Create a research mission, then a dependent code mission
+fleet missions add --sector my-app --type research --summary "Investigate auth" --prompt "..."
+fleet missions add --sector my-app --type code --summary "Implement auth" --prompt "..." --depends-on 1
+
+# List active missions
+fleet missions list --status active
+
+# Show a specific mission
+fleet missions show 42
+\`\`\`
+
+## Good vs Bad Mission Prompts
+
+**Good:** "Add a POST /api/settings endpoint that accepts \`{ theme: string, notifications: boolean }\`, validates input, persists to SQLite, and returns the updated settings. Tests must pass."
+
+**Bad:** "Add a settings feature"`,
+
+  crew: `# fleet crew
+
+Deploy, observe, and recall Crewmates — the AI agents that execute Missions.
+
+## When to use
+
+Use \`fleet crew\` when you want to start an agent session, check what agents are
+running, read their output, send follow-up messages, or shut them down.
+
+**Important:** Always create a Mission first with \`fleet missions add\`, then deploy
+Crew. Never pass a prompt string to \`--mission\` — it requires a numeric mission ID.
+
+## Commands
+
+  fleet crew list                                    List all deployed Crewmates
+  fleet crew list --sector <id>                      Filter by Sector
+  fleet crew deploy --sector <id> --mission <id>     Deploy a Crewmate to execute a Mission
+  fleet crew info <crew-id>                          Show details for a specific Crewmate
+  fleet crew observe <crew-id>                       View recent assistant output from a Crewmate
+  fleet crew recall <crew-id>                        Recall (terminate) a Crewmate
+  fleet crew message <crew-id> --message "..."       Send a follow-up message to an active Crewmate
+
+## Arguments for \`crew deploy\`
+
+  --sector <id>         Required. Sector ID to deploy into.
+  --mission <id>        Required. Numeric mission ID (from \`fleet missions add\`).
+  --execution <id>      Optional. Protocol execution ID (for Navigator-driven deploys).
+
+## Two-Step Deploy Workflow
+
+\`\`\`bash
+# Step 1: Create the mission (returns the mission ID)
+fleet missions add --sector my-app --type code --summary "Add tests" --prompt "..."
+
+# Step 2: Deploy crew to execute it
+fleet crew deploy --sector my-app --mission 42
+\`\`\`
+
+## Follow-Up Messaging
+
+Send a message to an active Crewmate without recalling them:
+
+\`\`\`bash
+fleet crew message <crew-id> --message "Actually, also add integration tests"
+\`\`\`
+
+## Examples
+
+\`\`\`bash
+fleet crew list
+fleet crew list --sector my-app
+fleet crew deploy --sector my-app --mission 42
+fleet crew info my-app-crew-a1b2
+fleet crew observe my-app-crew-a1b2
+fleet crew recall my-app-crew-a1b2
+fleet crew message my-app-crew-a1b2 --message "Focus on the auth module first"
+\`\`\``,
+
+  comms: `# fleet comms
+
+Read and send transmissions — the messaging system between Admiral, Crew, and system.
+
+## When to use
+
+Use \`fleet comms\` when you need to check for unread messages from Crew, send
+directives to active agents, respond to questions, or manage your inbox.
+
+## Commands
+
+  fleet comms inbox                                  List all transmissions (read and unread)
+  fleet comms inbox --unread                         List only unread transmissions
+  fleet comms check                                  Check unread count (silent if zero)
+  fleet comms check --quiet                          Exit silently (for scripting)
+  fleet comms send --to <crew-id> --message "..."    Send a directive to a Crewmate
+  fleet comms send --from <crew-id> --to admiral --message "..."
+                                                     Send as a Crewmate to Admiral
+  fleet comms resolve <id> --response "..."          Reply to a transmission and mark resolved
+  fleet comms read <id>                              Mark a transmission as read
+  fleet comms read-all                               Mark all transmissions as read
+  fleet comms read-all --crew <crew-id>              Mark all from a specific crew as read
+  fleet comms delete --id <id>                       Delete a single transmission
+  fleet comms clear                                  Delete all transmissions
+  fleet comms clear --crew <crew-id>                 Delete all transmissions for a crew
+  fleet comms show <id>                              Show details of a specific transmission
+
+## Arguments for \`comms send\`
+
+  --to <id>             Required. Recipient (crew ID or "admiral").
+  --from <id>           Optional. Sender (crew ID). Omit when sending as Admiral.
+  --message "..."       Required. Message content.
+  --type <type>         Optional. Comms type (e.g. awaiting_feedback, gate-pending).
+  --execution <id>      Optional. Protocol execution ID for protocol-related comms.
+  --payload '...'       Optional. JSON payload for structured data.
+
+## Examples
+
+\`\`\`bash
+fleet comms inbox --unread
+fleet comms send --to my-app-crew-a1b2 --message "Use the new API endpoint"
+fleet comms resolve 5 --response "Approved, go ahead"
+fleet comms read-all
+fleet comms clear --crew my-app-crew-a1b2
+\`\`\``,
+
+  cargo: `# fleet cargo
+
+Inspect and produce Cargo artifacts — outputs from Missions (research findings, files, etc).
+
+## When to use
+
+Use \`fleet cargo\` when you need to view what artifacts a Mission produced, check
+for undelivered cargo, or record a new artifact.
+
+## Commands
+
+  fleet cargo list                                   List all Cargo items
+  fleet cargo show <id>                              Inspect a specific Cargo item
+  fleet cargo pending --sector <id>                  Show undelivered Cargo for a Sector
+  fleet cargo produce --sector <id> --type <type> --path <path>
+                                                     Record a produced Cargo artifact
+
+## Arguments for \`cargo produce\`
+
+  --sector <id>         Required. Sector that produced the cargo.
+  --type <type>         Required. Cargo type identifier.
+  --path <path>         Required. Path to the artifact file.
+
+## Examples
+
+\`\`\`bash
+fleet cargo list
+fleet cargo show 3
+fleet cargo pending --sector my-app
+fleet cargo produce --sector my-app --type research-findings --path ./findings.md
+\`\`\``,
+
+  log: `# fleet log
+
+View Ship's Log entries — grouped log records for debugging and auditing.
+
+## When to use
+
+Use \`fleet log\` when you want to see grouped log entries, review what happened
+during a session, or audit past activity.
+
+## Commands
+
+  fleet log groups list                              List all log groups
+  fleet log groups show <id>                         Show entries for a specific log group
+
+## Examples
+
+\`\`\`bash
+fleet log groups list
+fleet log groups show 1
+\`\`\``,
+
+  protocols: `# fleet protocols
+
+Manage and execute multi-step Protocols — automated workflows with gates and steps.
+
+## When to use
+
+Use \`fleet protocols\` when you want to list available protocols, view their steps
+and configuration, enable or disable them, or manage protocol executions.
+
+Protocols define structured, multi-step workflows (e.g. feature development with
+research → implementation → review gates). Each protocol has ordered steps, and
+executions track progress through those steps.
+
+## Commands
+
+  fleet protocols list                               List all available protocols
+  fleet protocols show <slug>                        Show protocol details, steps, and help text
+  fleet protocols enable <slug>                      Enable a protocol
+  fleet protocols disable <slug>                     Disable a protocol
+
+### Protocol Executions (3-part commands)
+
+  fleet protocols executions list                    List all active/recent executions
+  fleet protocols executions list --status <status>  Filter by status (running, completed, failed)
+  fleet protocols executions show <id>               Show execution detail (current step, status)
+  fleet protocols executions update <id> --step <N>  Advance to step N (sequential guard enforced)
+  fleet protocols executions update <id> --status <s>  Update execution status
+
+## Arguments
+
+  <slug>                Protocol slug (shown in \`fleet protocols list\`)
+  <id>                  Execution ID (shown in \`fleet protocols executions list\`)
+  --status <status>     Filter or update status
+  --step <N>            Step number to advance to
+
+## Navigator Workflow
+
+The Navigator executes Protocols step by step:
+
+\`\`\`bash
+# 1. Read protocol and execution state
+fleet protocols show <slug>
+fleet protocols executions show <execution-id>
+
+# 2. Deploy crew for the current step
+fleet crew deploy --sector <id> --mission <id> --execution <execution-id>
+
+# 3. Poll for crew completion
+fleet comms inbox --execution <execution-id> --unread
+
+# 4. Advance to next step
+fleet protocols executions update <execution-id> --step <N+1>
+\`\`\`
+
+## Examples
+
+\`\`\`bash
+fleet protocols list
+fleet protocols show feature-dev
+fleet protocols enable feature-dev
+fleet protocols executions list
+fleet protocols executions list --status running
+fleet protocols executions show 7
+fleet protocols executions update 7 --step 3
+\`\`\``,
+
+  open: `# fleet open
+
+Open files or images in Fleet tabs.
+
+## When to use
+
+Use \`fleet open\` when you want to display a file or image in the Fleet app UI.
+Supports code files and common image formats (png, jpg, gif, webp, svg).
+
+## Usage
+
+  fleet open <path> [path2 ...]
+
+## Arguments
+
+  <path>    One or more file paths to open. Supports relative and absolute paths.
+            Images are opened in image viewer tabs; other files in code tabs.
+
+## Examples
+
+\`\`\`bash
+fleet open src/main.ts
+fleet open screenshot.png diagram.svg
+fleet open ./README.md ../other-repo/notes.txt
+\`\`\``,
+
+  config: `# fleet config
+
+Get and set Starbase configuration values.
+
+## When to use
+
+Use \`fleet config\` when you need to read or update Starbase-level settings.
+
+## Commands
+
+  fleet config get <key>                             Get a configuration value
+  fleet config set <key> --value <value>             Set a configuration value
+
+## Examples
+
+\`\`\`bash
+fleet config get worktree_budget_mb
+fleet config set worktree_budget_mb --value 5000
+\`\`\``,
+};
+
+export function getHelpText(argv: string[]): string | null {
+  const hasHelp = argv.includes('--help') || argv.includes('-h');
+  if (!hasHelp) return null;
+
+  // Collect positional tokens (non-flag entries)
+  const positionals = argv.filter(a => !a.startsWith('-'));
+  const [group] = positionals;
+
+  // No group → top-level help
+  if (!group) return HELP_TOP;
+
+  // Group-level help (covers 1-part, 2-part, and 3-part commands)
+  if (HELP_GROUPS[group]) {
+    return HELP_GROUPS[group];
+  }
+
+  // Unknown group → top-level help
+  return HELP_TOP;
+}
+
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
 export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: boolean }): Promise<string> {
+  // ── Help intercept (before any command routing) ───────────────────────────
+  const helpOutput = getHelpText(argv);
+  if (helpOutput !== null) return helpOutput;
+
   const [group, action, ...rest] = argv;
 
   // ── Top-level "open" command ─────────────────────────────────────────────
