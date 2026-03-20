@@ -97,8 +97,6 @@ const fleetApi = {
     ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
     restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
     reset: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
-    checkDependencies: (): Promise<{ name: string; found: boolean; version?: string; installHint: string }[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
     onStatusChanged: (callback: (payload: { status: string; paneId: string | null; error?: string; exitCode?: number }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { status: string; paneId: string | null; error?: string; exitCode?: number }) => callback(payload)
       ipcRenderer.on(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, handler)
@@ -186,26 +184,6 @@ const fleetApi = {
   },
   showFolderPicker: (): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
-  file: {
-    read: (filePath: string): Promise<{ success: boolean; data?: { content: string; size: number; modifiedAt: number }; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
-    write: (filePath: string, content: string): Promise<{ success: boolean; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
-    stat: (filePath: string): Promise<{ success: boolean; data?: { size: number; modifiedAt: number; mimeType: string }; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
-    openDialog: (opts?: { defaultPath?: string }): Promise<string[]> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts ?? {}),
-    list: (dirPath: string): Promise<{ success: boolean; files: { path: string; relativePath: string; name: string }[]; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
-    readBinary: (filePath: string): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
-    onOpenInTab: (callback: (payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) =>
-        callback(payload)
-      ipcRenderer.on(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
-      return () => ipcRenderer.removeListener(IPC_CHANNELS.FILE_OPEN_IN_TAB, handler)
-    },
-  },
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
   // This bridge remains for backwards compatibility but will not fire for new deployments.

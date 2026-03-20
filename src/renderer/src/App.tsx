@@ -8,8 +8,9 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, markPtyCreated, serializePane } from './hooks/use-terminal';
-import { initCwdListener, useCwdStore } from './store/cwd-store';
+import { initCwdListener } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
+import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
 import { SettingsModal } from './components/SettingsModal';
@@ -201,7 +202,7 @@ export function App() {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectSerializedContent(tab.splitRoot),
+          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot)),
         })),
       };
       window.fleet.layout.save({ workspace: workspaceWithContent });
