@@ -244,7 +244,8 @@ export class SocketServer extends EventEmitter {
         const summary = args.summary as string | undefined;
         const prompt = args.prompt as string | undefined;
         const type = args.type as string | undefined;
-        const VALID_MISSION_TYPES = ['code', 'research'];
+        const VALID_MISSION_TYPES = ['code', 'research', 'review'];
+        const prBranch = args['pr-branch'] as string | undefined;
 
         if (!sectorId) {
           const err = new Error('mission.create requires --sector <id>') as Error & { code: string };
@@ -253,21 +254,23 @@ export class SocketServer extends EventEmitter {
         }
         if (!type) {
           const err = new Error(
-            'mission.create requires --type <code|research>.\n' +
+            'mission.create requires --type <code|research|review>.\n' +
             'Mission types:\n' +
             '  code     — produces git commits (code changes, bug fixes, features)\n' +
             '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
+            '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n' +
+            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
         }
         if (!VALID_MISSION_TYPES.includes(type)) {
           const err = new Error(
-            `Invalid mission type "${type}". Must be "code" or "research".\n` +
+            `Invalid mission type "${type}". Must be "code", "research", or "review".\n` +
             'Mission types:\n' +
             '  code     — produces git commits (code changes, bug fixes, features)\n' +
-            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)'
+            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+            '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -275,7 +278,7 @@ export class SocketServer extends EventEmitter {
         if (!prompt || prompt.trim().length === 0) {
           const err = new Error(
             'mission.create requires a non-empty --prompt.\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
+            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -283,7 +286,7 @@ export class SocketServer extends EventEmitter {
         if (!summary || summary.trim().length === 0) {
           const err = new Error(
             'mission.create requires a non-empty --summary.\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research> --summary "short title" --prompt "detailed instructions"'
+            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
           ) as Error & { code: string };
           err.code = 'BAD_REQUEST';
           throw err;
@@ -295,6 +298,7 @@ export class SocketServer extends EventEmitter {
           prompt,
           dependsOnMissionId: args['depends-on'] ? Number(args['depends-on']) : undefined,
           type,
+          prBranch,
         });
         this.emit('state-change', 'mission:changed', { mission });
         return mission;
@@ -491,6 +495,7 @@ export class SocketServer extends EventEmitter {
           prompt,
           missionId,
           type: args.type as string | undefined,
+          prBranch: mission.pr_branch ?? undefined,
         });
         this.emit('state-change', 'crew:changed', result);
         return result;
