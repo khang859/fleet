@@ -278,9 +278,7 @@ export function StarCommandTab() {
               </div>
             </div>
 
-            {showMemos ? (
-              <MemoPanel onClose={() => setShowMemos(false)} />
-            ) : view === 'config' ? (
+            {view === 'config' ? (
               <StarCommandConfig />
             ) : view === 'comms' ? (
               <CommsPanel />
@@ -349,6 +347,12 @@ export function StarCommandTab() {
                   </div>
                 )}
 
+                {/* Memo overlay — rendered on top of AdmiralTerminal so the terminal stays mounted */}
+                {showMemos && (
+                  <div className="absolute inset-0 z-10">
+                    <MemoPanel onClose={() => setShowMemos(false)} />
+                  </div>
+                )}
               </div>
             )}
 
