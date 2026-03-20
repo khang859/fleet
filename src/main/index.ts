@@ -478,6 +478,7 @@ app.whenReady().then(async () => {
         firstOfficer,
         crewService,
         settingsStore,
+        navigator,
         onNudgeClick: () => {
           mainWindow?.show()
           mainWindow?.focus()

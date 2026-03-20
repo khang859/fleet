@@ -6,6 +6,7 @@ import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import type { Navigator } from '../starbase/navigator';
 
 const TEST_DIR = join(tmpdir(), 'fleet-test-sentinel');
 
@@ -167,5 +168,37 @@ describe('Sentinel', () => {
     await new Promise((r) => setTimeout(r, 250));
     sentinel.stop();
     // Should not throw after stop
+  });
+});
+
+describe('Navigator sweep', () => {
+  it('triggers Navigator when FO escalation exists for protocol mission', async () => {
+    // Set up: sector, mission with protocol_execution_id, crew, FO memo comms row
+    const sectorId = 'test-sector';
+    getDb().prepare(`INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES (?, ?, ?)`).run(sectorId, 'Test', join(TEST_DIR, 'workspace', 'api'));
+    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p1', 'test', 'Test')`).run();
+    getDb().prepare(`INSERT OR IGNORE INTO protocol_executions (id, protocol_id, feature_request) VALUES ('exec-1', 'p1', 'build auth')`).run();
+    const missionId = (getDb().prepare(`INSERT INTO missions (sector_id, summary, prompt, protocol_execution_id) VALUES (?, ?, ?, ?) RETURNING id`).get(sectorId, 'test', 'test', 'exec-1') as { id: number }).id;
+    getDb().prepare(`INSERT INTO comms (from_crew, to_crew, type, mission_id, payload) VALUES ('first-officer', 'admiral', 'memo', ?, ?)`).run(missionId, JSON.stringify({ reason: 'escalated' }));
+
+    const dispatchedIds: string[] = [];
+    const nav = { dispatch: vi.fn(async (event: { executionId: string }) => { dispatchedIds.push(event.executionId); return true; }), isRunning: vi.fn(() => false), activeCount: 0, reconcile: vi.fn(), shutdown: vi.fn() };
+
+    const sentinel = new Sentinel({ db: getDb(), configService, navigator: nav as unknown as Navigator });
+    await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
+
+    expect(dispatchedIds).toContain('exec-1');
+  });
+
+  it('expires stale gate-pending executions', async () => {
+    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p2', 'proto2', 'Proto2')`).run();
+    getDb().prepare(`INSERT INTO protocol_executions (id, protocol_id, feature_request, status) VALUES ('exec-stale', 'p2', 'test', 'gate-pending')`).run();
+    getDb().prepare(`UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = 'exec-stale'`).run();
+
+    const sentinel = new Sentinel({ db: getDb(), configService });
+    await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
+
+    const exec = getDb().prepare(`SELECT status FROM protocol_executions WHERE id = 'exec-stale'`).get() as { status: string };
+    expect(exec.status).toBe('gate-expired');
   });
 });

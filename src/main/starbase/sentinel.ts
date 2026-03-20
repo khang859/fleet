@@ -13,6 +13,8 @@ import type { FirstOfficer } from './first-officer';
 import type { CrewService } from './crew-service';
 import type { SettingsStore } from '../settings-store';
 import { computeFingerprint, classifyError } from './error-fingerprint';
+import type { Navigator } from './navigator';
+import { ProtocolService } from './protocol-service';
 
 const execFileAsync = promisify(execFile);
 
@@ -26,6 +28,7 @@ type SentinelDeps = {
   crewService?: CrewService;
   settingsStore?: SettingsStore;
   onNudgeClick?: () => void;
+  navigator?: Navigator;
 };
 
 type CrewRow = {
@@ -52,8 +55,19 @@ export class Sentinel {
   /** Last sent alert level per type — only re-send when level changes or clears */
   private lastAlertLevel: Record<string, string | null> = {};
   private lastNudgeAt = 0;
+  private protocolService: ProtocolService;
+  private navigator?: Navigator;
+  private db: Database.Database;
+  private eventBus?: EventBus;
+  private configService: ConfigService;
 
-  constructor(private deps: SentinelDeps) {}
+  constructor(private deps: SentinelDeps) {
+    this.db = deps.db;
+    this.eventBus = deps.eventBus;
+    this.configService = deps.configService;
+    this.navigator = deps.navigator;
+    this.protocolService = new ProtocolService(deps.db);
+  }
 
   start(intervalMs?: number): void {
     const ms = intervalMs ?? (this.deps.configService.get('lifesign_interval_sec') as number) * 1000;
@@ -208,6 +222,9 @@ export class Sentinel {
     if (this.deps.firstOfficer) {
       await this.firstOfficerSweep()
     }
+
+    // 11. Navigator sweep — crew-failed fan-out for protocol missions + gate expiry
+    await this.navigatorSweep()
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -492,6 +509,59 @@ export class Sentinel {
           }
         }
       }
+    }
+  }
+
+  private async navigatorSweep(): Promise<void> {
+    const gateExpirySeconds = this.configService.get('navigator_gate_expiry') as number
+
+    // Gate expiry — mark stale gate-pending executions as gate-expired
+    const stale = this.protocolService.getStaleGatePendingExecutions(gateExpirySeconds)
+    for (const exec of stale) {
+      this.protocolService.updateExecutionStatus(exec.id, 'gate-expired')
+      this.db.prepare(
+        `INSERT INTO comms (from_crew, to_crew, type, execution_id, payload)
+         VALUES ('navigator', 'admiral', 'gate-expired', ?, ?)`
+      ).run(exec.id, JSON.stringify({ executionId: exec.id, reason: 'Gate expired after inactivity', protocolId: exec.protocol_id }))
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    }
+
+    if (!this.navigator) return
+
+    // Crew-failed fan-out — detect FO escalations for protocol missions
+    const rows = this.db.prepare(`
+      SELECT m.protocol_execution_id as executionId, pe.protocol_id, pe.current_step, pe.feature_request, pe.context
+      FROM comms c
+      JOIN missions m ON c.mission_id = m.id
+      JOIN protocol_executions pe ON m.protocol_execution_id = pe.id
+      WHERE c.type = 'memo'
+        AND m.protocol_execution_id IS NOT NULL
+        AND c.read = 0
+        AND pe.status = 'running'
+    `).all() as { executionId: string; protocol_id: string; current_step: number; feature_request: string; context: string | null }[]
+
+    for (const row of rows) {
+      if (this.navigator.isRunning(row.executionId)) continue
+      const proto = this.db.prepare('SELECT slug FROM protocols WHERE id = ?').get(row.protocol_id) as { slug: string } | undefined
+      if (!proto) continue
+
+      // Mark triggering memo comms as read to prevent repeated fan-out on next sweep
+      this.db.prepare(
+        `UPDATE comms SET read = 1
+         WHERE type = 'memo' AND read = 0
+           AND mission_id IN (
+             SELECT id FROM missions WHERE protocol_execution_id = ?
+           )`
+      ).run(row.executionId)
+
+      await this.navigator.dispatch({
+        executionId: row.executionId,
+        protocolSlug: proto.slug,
+        featureRequest: row.feature_request,
+        currentStep: row.current_step,
+        context: row.context,
+        eventType: 'crew-failed',
+      })
     }
   }
 
