@@ -209,6 +209,48 @@ describe('CommsService', () => {
     });
   });
 
+  describe('execution_id', () => {
+    function insertExecution(id: string): void {
+      db.getDb()
+        .prepare("INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')")
+        .run(id);
+    }
+
+    it('stores execution_id on a transmission', () => {
+      insertExecution('exec-123');
+      const id = svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'test', executionId: 'exec-123' });
+      const row = db.getDb().prepare('SELECT execution_id FROM comms WHERE id = ?').get(id) as { execution_id: string };
+      expect(row.execution_id).toBe('exec-123');
+    });
+
+    it('filters unread comms by execution_id', () => {
+      insertExecution('exec-A');
+      insertExecution('exec-B');
+      svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'a', executionId: 'exec-A' });
+      svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'b', executionId: 'exec-B' });
+      const rows = svc.getUnreadByExecution('exec-A');
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toBe('a');
+    });
+  });
+
+  describe('dedup exclusion for navigator', () => {
+    function insertExecution(id: string): void {
+      db.getDb()
+        .prepare("INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')")
+        .run(id);
+    }
+
+    it('does not deduplicate identical messages from navigator', () => {
+      insertExecution('exec-1');
+      insertExecution('exec-2');
+      svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-1' });
+      svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-2' });
+      const rows = db.getDb().prepare("SELECT * FROM comms WHERE from_crew = 'navigator'").all() as { id: number }[];
+      expect(rows).toHaveLength(2);
+    });
+  });
+
   describe('rate limiting', () => {
     function ensureSector(): void {
       db.getDb()

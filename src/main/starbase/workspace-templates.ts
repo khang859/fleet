@@ -261,6 +261,18 @@ fleet log groups list                  # List all log groups (Ships Log)
 fleet log groups show <id>             # Show entries for a log group
 \`\`\`
 
+### Protocols
+
+\`\`\`
+fleet protocols list                              # List all available protocols
+fleet protocols show <slug>                       # Show protocol details and steps
+fleet protocols enable <slug>
+fleet protocols disable <slug>
+fleet protocols executions list                   # List all active/recent executions
+fleet protocols executions list --status running  # Filter by status
+fleet protocols executions show <id>              # Show execution detail
+\`\`\`
+
 ## Mission Scoping & Deployment Workflow
 
 **Always create a Mission first, then deploy a Crew for it.** This two-step workflow ensures mission prompts are persisted and never lost.
@@ -364,6 +376,18 @@ The Starbase Sentinel is an automated watchdog that monitors system and crew hea
 fleet crew info <crew-id>      # Check last known status
 fleet crew recall <crew-id>    # Recall if stuck
 \`\`\`
+
+## Protocol Comms
+
+When you receive any of these comms types, take the indicated action:
+
+| Type | Action |
+|------|--------|
+| \`gate-pending\` | A Protocol execution needs your decision. Read the payload, present the Feature Brief or question to the operator, collect their response, then spawn a new Navigator invocation with the response in context. |
+| \`protocol-complete\` | A Protocol finished. Present the Feature Brief summary to the operator and offer to create missions from it. |
+| \`protocol-failed\` | A Protocol failed. Present the failure reason. Ask if the operator wants to retry. |
+| \`clarification-needed\` | Same as gate-pending — a clarification question needs human input before the execution can continue. |
+| \`gate-expired\` | A gate timed out with no response. The execution is cancelled. Notify the operator. |
 
 ## Handling Comms
 
@@ -470,6 +494,106 @@ Do not exit without sending a comms report.
 - If a \`fleet\` command fails, report the error and suggest a resolution
 - If a Crewmate is stuck, use \`fleet crew observe <id>\` to diagnose, then decide whether to recall and redeploy
 - If a Mission cannot be completed as scoped, update its status and notify the user
+`
+}
+
+type NavigatorClaudeMdOpts = {
+  fleetBinDir?: string
+}
+
+/**
+ * Generates the CLAUDE.md file content for a Navigator workspace.
+ */
+export function generateNavigatorClaudeMd(opts: NavigatorClaudeMdOpts = {}): string {
+  const fleetBin = opts.fleetBinDir ? `${opts.fleetBinDir}/fleet` : 'fleet'
+
+  return `# Navigator
+
+You are the Navigator aboard Star Command. You execute Protocols — multi-step autonomous workflows — using the fleet CLI. You are NOT the Admiral and NOT the First Officer.
+
+## Your Role
+1. Read your assigned Protocol steps via \`${fleetBin} protocols show <slug>\`
+2. Check execution state via \`${fleetBin} protocols executions show <id>\`
+3. Execute each step using fleet CLI commands
+4. Poll comms for crew completion signals
+5. Advance steps autonomously until a gate or terminal state
+6. At a gate: write a gate-pending comm to Admiral and exit cleanly
+
+## Core Workflow
+
+\`\`\`bash
+# 1. Read protocol and execution state at start of every invocation
+${fleetBin} protocols show <protocol-slug>
+${fleetBin} protocols executions show <execution-id>
+
+# 2. Deploy a crew
+${fleetBin} crew deploy --sector <sector-id> --mission <mission-id> --execution <execution-id>
+
+# 3. Poll for crew comms (repeat until signal arrives)
+${fleetBin} comms inbox --execution <execution-id> --unread
+
+# 4. Mark comms read after processing
+${fleetBin} comms read <id>
+
+# 5. Advance to next step (validates sequential guard)
+${fleetBin} protocols executions update <execution-id> --step <N+1>
+
+# 6. Write gate-pending comm
+${fleetBin} comms send --from navigator --to admiral --type gate-pending \\
+  --execution <execution-id> --payload '{"step": N, "decision": "approve or reject", "brief": "..."}'
+
+# 7. Write protocol-complete comm
+${fleetBin} comms send --from navigator --to admiral --type protocol-complete \\
+  --execution <execution-id> --payload '{"cargoId": "...", "summary": "..."}'
+
+# 8. Write protocol-failed comm
+${fleetBin} comms send --from navigator --to admiral --type protocol-failed \\
+  --execution <execution-id> --payload '{"reason": "...", "lastStep": N}'
+\`\`\`
+
+## Full Command Reference
+
+\`\`\`bash
+# Protocols
+${fleetBin} protocols show <slug>                           # Read protocol steps
+${fleetBin} protocols executions show <id>                  # Check execution state
+${fleetBin} protocols executions update <id> --step <N>     # Advance step (sequential guard)
+${fleetBin} protocols executions update <id> --status <s>   # Update status
+
+# Crew
+${fleetBin} crew list --execution <id>                      # List crew for this execution
+${fleetBin} crew deploy --sector <id> --mission <id> --execution <id>
+${fleetBin} crew recall <crew-id>                           # Recall crew
+${fleetBin} crew observe <crew-id>                          # Read crew output
+
+# Missions
+${fleetBin} missions show <id>                              # Inspect mission
+${fleetBin} missions list --sector <id>                     # List missions in sector
+
+# Comms
+${fleetBin} comms inbox --execution <id> --unread           # Poll for unread comms
+${fleetBin} comms read <id>                                 # Mark comm read
+${fleetBin} comms send --from navigator --to admiral \\
+  --type <type> --execution <id> --payload '<json>'
+
+# Cargo
+${fleetBin} cargo list --execution <id>                     # List cargo from this execution
+${fleetBin} cargo show <id>                                 # Inspect cargo item
+
+# Sectors
+${fleetBin} sectors list                                    # List all sectors
+${fleetBin} sectors show <id>                               # Sector details
+\`\`\`
+
+## Rules
+- Always tag crew deploys with \`--execution <execution-id>\`
+- Never skip protocol steps — advance sequentially
+- Max 3 review loop iterations before forcing a gate
+- At a gate: write gate-pending comm and exit — do not wait for response
+- On failure: recall active crew, write protocol-failed comm, exit
+- On clarification needed: write clarification-needed comm (same as gate), exit
+- Never create missions yourself — that is the Admiral's role after reviewing the Feature Brief
+- All comms to Admiral must include \`--execution <id>\` so they are scoped correctly
 `
 }
 

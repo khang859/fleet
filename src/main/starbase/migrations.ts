@@ -216,6 +216,86 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('max_mission_deployments', '8');
       UPDATE starbase_config SET value = '"claude-haiku-4-5"' WHERE key = 'first_officer_model';
     `
+  },
+  {
+    version: 11,
+    name: '011-protocols-navigator',
+    sql: `
+      CREATE TABLE IF NOT EXISTS protocols (
+        id TEXT PRIMARY KEY,
+        slug TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT,
+        help_text TEXT,
+        trigger_examples TEXT,
+        enabled INTEGER DEFAULT 1,
+        built_in INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT (datetime('now')),
+        updated_at DATETIME DEFAULT (datetime('now'))
+      );
+
+      CREATE TABLE IF NOT EXISTS protocol_steps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        protocol_id TEXT REFERENCES protocols(id) ON DELETE CASCADE,
+        step_order INTEGER NOT NULL,
+        type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        description TEXT,
+        UNIQUE(protocol_id, step_order)
+      );
+
+      CREATE TABLE IF NOT EXISTS protocol_executions (
+        id TEXT PRIMARY KEY,
+        protocol_id TEXT REFERENCES protocols(id),
+        status TEXT NOT NULL DEFAULT 'running',
+        current_step INTEGER NOT NULL DEFAULT 1,
+        feature_request TEXT NOT NULL,
+        context TEXT,
+        active_crew_ids TEXT,
+        created_at DATETIME DEFAULT (datetime('now')),
+        updated_at DATETIME DEFAULT (datetime('now'))
+      );
+
+      INSERT OR IGNORE INTO sectors (id, name, root_path, stack)
+      VALUES ('global', 'Global', ':global:', 'none');
+
+      INSERT OR IGNORE INTO protocols (id, slug, name, description, help_text, trigger_examples, built_in)
+      VALUES (
+        'builtin-research-deploy',
+        'research-and-deploy',
+        'Research and Deploy',
+        'Research the codebase and produce a Feature Brief for implementation.',
+        'Use this protocol when a user asks to build or implement a feature. The Navigator deploys a research crew to investigate the codebase, then a review crew validates the brief, then gates for operator approval before the Admiral creates missions.',
+        '["build me X", "implement X feature", "add X to the codebase", "research how to build X"]',
+        1
+      );
+
+      INSERT OR IGNORE INTO protocol_steps (protocol_id, step_order, type, config, description) VALUES
+        ('builtin-research-deploy', 1, 'deploy-crew', '{"role": "research", "missionTemplate": "Research the codebase for: {featureRequest}. Document existing patterns, relevant files, and proposed approach."}', 'Deploy research crew'),
+        ('builtin-research-deploy', 2, 'await-comms', '{"signalType": "cargo", "timeout": 3600}', 'Wait for research cargo'),
+        ('builtin-research-deploy', 3, 'review', '{"role": "review", "missionTemplate": "Review this Feature Brief for completeness and accuracy: {brief}. Flag gaps, contradictions, or missing context.", "maxIterations": 3}', 'Deploy review crew'),
+        ('builtin-research-deploy', 4, 'await-comms', '{"signalType": "review-pass"}', 'Wait for review approval'),
+        ('builtin-research-deploy', 5, 'gate', '{"decision": "approve or reject Feature Brief"}', 'Gate — operator approves Feature Brief'),
+        ('builtin-research-deploy', 6, 'complete', '{}', 'Protocol complete');
+
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_model', '"claude-haiku-4-5"');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_max_concurrent', '2');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_timeout', '180');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_max_review_iterations', '3');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('navigator_gate_expiry', '86400');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('protocol_executions_retention_days', '30');
+    `
+  },
+  {
+    version: 12,
+    name: '012-protocol-fk-columns',
+    sql: `
+      ALTER TABLE missions ADD COLUMN protocol_execution_id TEXT REFERENCES protocol_executions(id);
+      ALTER TABLE comms ADD COLUMN execution_id TEXT REFERENCES protocol_executions(id);
+      ALTER TABLE cargo ADD COLUMN protocol_execution_id TEXT REFERENCES protocol_executions(id);
+      CREATE INDEX IF NOT EXISTS idx_comms_execution ON comms(execution_id, read);
+      CREATE INDEX IF NOT EXISTS idx_missions_execution ON missions(protocol_execution_id);
+    `
   }
 ]
 
@@ -242,5 +322,11 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   first_officer_timeout: 120,
   first_officer_model: 'claude-haiku-4-5',
   max_mission_deployments: 8,
-  review_crew_max_concurrent: 2
+  review_crew_max_concurrent: 2,
+  navigator_model: 'claude-haiku-4-5',
+  navigator_max_concurrent: 2,
+  navigator_timeout: 180,
+  navigator_max_review_iterations: 3,
+  navigator_gate_expiry: 86400,
+  protocol_executions_retention_days: 30,
 }

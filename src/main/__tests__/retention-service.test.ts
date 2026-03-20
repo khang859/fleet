@@ -123,7 +123,7 @@ describe('RetentionService', () => {
       expect(stats.tables).toHaveProperty('starbase_config')
 
       // All should be zero or have seeded config rows
-      expect(stats.tables.sectors).toBe(0)
+      expect(stats.tables.sectors).toBe(1)
       expect(stats.tables.starbase_config).toBeGreaterThan(0)
     })
 
@@ -142,7 +142,7 @@ describe('RetentionService', () => {
       )
 
       const stats = retentionService.getStats()
-      expect(stats.tables.sectors).toBe(1)
+      expect(stats.tables.sectors).toBe(2)
     })
   })
 })
