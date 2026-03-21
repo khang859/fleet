@@ -29,7 +29,7 @@ type FnCheck = {
 
 type Check = CmdCheck | FnCheck
 
-async function checkFleetSock(): Promise<SystemDepResult> {
+function attemptFleetSock(): Promise<SystemDepResult> {
   return new Promise((resolve) => {
     const socket = net.createConnection(SOCKET_PATH)
     let responded = false
@@ -83,6 +83,22 @@ async function checkFleetSock(): Promise<SystemDepResult> {
       if (!responded) fail()
     })
   })
+}
+
+async function checkFleetSock(maxAttempts = 3, delayMs = 1500): Promise<SystemDepResult> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await attemptFleetSock()
+    if (result.found) return result
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
+  }
+  return {
+    name: 'fleet.sock',
+    found: false,
+    installHint:
+      'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.'
+  }
 }
 
 const CHECKS: Check[] = [
