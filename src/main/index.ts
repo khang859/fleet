@@ -21,7 +21,7 @@ import { AdmiralProcess } from './starbase/admiral-process'
 import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { installFleetCLI } from './install-fleet-cli'
 import { enrichProcessEnv } from './shell-env'
-import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
+import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api'
 import { StarbaseRuntimeClient } from './starbase-runtime-client'
 import { createSocketRuntimeServices } from './starbase-runtime-socket-services'
 import pkg from 'electron-updater'
@@ -46,6 +46,11 @@ const admiralStateDetector = new AdmiralStateDetector(eventBus)
 const runtimeClient = new StarbaseRuntimeClient(new URL('./starbase-runtime-process.mjs', import.meta.url))
 
 let runtimeStatus: StarbaseRuntimeStatus = { state: 'starting' }
+
+ipcMain.handle(IPC_CHANNELS.APP_HOST_CONTEXT_GET, (): HostContextPayload => ({
+  homeDir: homedir(),
+  platform: process.platform as HostContextPayload['platform'],
+}))
 
 function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
   runtimeStatus = status
@@ -115,7 +120,9 @@ function createWindow(): void {
     icon: nativeImage.createFromPath(iconPath),
     webPreferences: {
       preload: fileURLToPath(new URL('../preload/index.mjs', import.meta.url)),
-      sandbox: false
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false
     },
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin'
@@ -384,7 +391,7 @@ app.whenReady().then(async () => {
     }
   }
 
-  ipcMain.handle('admiral:ensure-started', async () => {
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_ENSURE_STARTED, async () => {
     await Promise.all([envReady, cliReady])
     await bootstrapStarbase()
     const admiralProcessRef = admiralProcess
@@ -643,7 +650,7 @@ app.whenReady().then(async () => {
     sendUpdateStatus({ state: 'error', message: err?.message ?? 'Unknown error' })
   })
 
-  ipcMain.handle('fleet:update-check', async () => {
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     if (updateState === 'checking' || updateState === 'downloading') return
     try {
       await autoUpdater.checkForUpdates()
@@ -655,9 +662,9 @@ app.whenReady().then(async () => {
     }
   })
 
-  ipcMain.handle('fleet:get-version', () => app.getVersion())
+  ipcMain.handle(IPC_CHANNELS.GET_VERSION, () => app.getVersion())
 
-  ipcMain.on('fleet:install-update', () => {
+  ipcMain.on(IPC_CHANNELS.UPDATE_INSTALL, () => {
     autoUpdater.quitAndInstall()
   })
 

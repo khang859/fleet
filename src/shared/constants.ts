@@ -3,6 +3,7 @@ import { homedir } from 'os'
 import type { FleetSettings } from './types'
 
 export const IPC_CHANNELS = {
+  APP_HOST_CONTEXT_GET: 'app:host-context:get',
   PTY_CREATE: 'pty:create',
   PTY_DATA: 'pty:data',
   PTY_INPUT: 'pty:input',
@@ -60,6 +61,7 @@ export const IPC_CHANNELS = {
   ADMIRAL_RESET: 'admiral:reset',
   ADMIRAL_PANE_ID: 'admiral:pane-id',
   ADMIRAL_CHECK_DEPENDENCIES: 'admiral:check-dependencies',
+  ADMIRAL_ENSURE_STARTED: 'admiral:ensure-started',
   PTY_DRAIN: 'fleet:pty-drain',
   PTY_ATTACH: 'pty:attach',
   SHOW_FOLDER_PICKER: 'show-folder-picker',
@@ -79,6 +81,10 @@ export const IPC_CHANNELS = {
   FOCUS_FIRST_OFFICER: 'fleet:focus-first-officer',
   STARBASE_SHIPS_LOG: 'starbase:ships-log',
   STARBASE_LOG_ENTRY: 'starbase:log-entry',
+  UPDATE_CHECK: 'fleet:update-check',
+  UPDATE_STATUS: 'fleet:update-status',
+  UPDATE_INSTALL: 'fleet:install-update',
+  GET_VERSION: 'fleet:get-version',
 } as const
 
 export const DEFAULT_SCROLLBACK = 10_000

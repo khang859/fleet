@@ -7,6 +7,13 @@ export type PtyCreateRequest = {
   cmd?: string;
 };
 
+export type HostPlatform = 'darwin' | 'linux' | 'win32'
+
+export type HostContextPayload = {
+  homeDir: string
+  platform: HostPlatform
+}
+
 export type PtyCreateResponse = {
   paneId: string;
   pid: number;
@@ -144,6 +151,24 @@ export type AddMissionRequest = {
 export type AdmiralStateDetailPayload = {
   state: 'standby' | 'thinking' | 'speaking' | 'alert'
   statusText: string
+}
+
+export type AdmiralStatusPayload = {
+  status: string
+  paneId: string | null
+  error?: string
+  exitCode?: number
+}
+
+export type CreateTabPayload = {
+  tabId: string
+  label: string
+  cwd: string
+  avatarVariant?: string
+}
+
+export type FileOpenInTabPayload = {
+  files: Array<{ path: string; paneType: 'file' | 'image'; label: string }>
 }
 
 export type SystemDepResult = {
