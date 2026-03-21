@@ -45,6 +45,69 @@ type SectorRow = {
   root_path: string;
 };
 
+type FailedCrewRow = {
+  crew_id: string;
+  sector_id: string;
+  mission_id: number;
+  mid: number;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  mission_status: string;
+  result: string | null;
+  verify_result: string | null;
+  review_notes: string | null;
+  first_officer_retry_count: number;
+  last_error_fingerprint: string | null;
+  mission_deployment_count: number;
+  sector_name: string;
+  verify_command: string | null;
+};
+
+type UnansweredHailingRow = {
+  comm_id: number;
+  from_crew: string;
+  payload: string;
+  created_at: string;
+  sector_id: string;
+  mission_id: number | null;
+  sector_name: string;
+};
+
+type PendingReviewRow = {
+  id: number;
+  sector_id: string;
+  summary: string;
+  acceptance_criteria: string | null;
+  pr_branch: string;
+  review_round: number;
+  review_notes: string | null;
+  base_branch: string;
+  verify_command: string | null;
+  sector_name: string;
+};
+
+type ChangesRequestedRow = {
+  id: number;
+  sector_id: string;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  pr_branch: string;
+  review_round: number;
+  review_notes: string | null;
+  base_branch: string;
+  sector_name: string;
+};
+
+type NavigatorFanoutRow = {
+  executionId: string;
+  protocol_id: string;
+  current_step: number;
+  feature_request: string;
+  context: string | null;
+};
+
 export class Sentinel {
   private interval: ReturnType<typeof setInterval> | null = null;
   private sweepCount = 0;
@@ -103,11 +166,11 @@ export class Sentinel {
 
     // 1. Lifesign check
     const staleCrew = db
-      .prepare(
+      .prepare<[], CrewRow>(
         `SELECT id, sector_id FROM crew
          WHERE status = 'active' AND last_lifesign < datetime('now', '-${lifesignTimeout} seconds')`,
       )
-      .all() as CrewRow[];
+      .all();
 
     for (const crew of staleCrew) {
       db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(
@@ -124,11 +187,11 @@ export class Sentinel {
 
     // 2. Mission deadline check
     const expiredCrew = db
-      .prepare(
+      .prepare<[], CrewRow>(
         `SELECT id, sector_id, pid FROM crew
          WHERE status = 'active' AND deadline IS NOT NULL AND deadline < datetime('now')`,
       )
-      .all() as CrewRow[];
+      .all();
 
     for (const crew of expiredCrew) {
       // Try to kill the process
@@ -148,7 +211,7 @@ export class Sentinel {
     }
 
     // 3. Sector path validation
-    const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as SectorRow[];
+    const sectors = db.prepare<[], SectorRow>('SELECT id, root_path FROM sectors').all();
     for (const sector of sectors) {
       if (sector.id === GLOBAL_SECTOR_ID) continue;
       let pathExists = true;
@@ -299,7 +362,7 @@ export class Sentinel {
     const maxDeployments = configService.get('max_mission_deployments') as number ?? 8
 
     const failedCrew = db
-      .prepare(
+      .prepare<[number], FailedCrewRow>(
         `SELECT c.id as crew_id, c.sector_id, c.mission_id,
                 m.id as mid, m.summary, m.prompt, m.acceptance_criteria,
                 m.status as mission_status, m.result, m.verify_result,
@@ -324,24 +387,7 @@ export class Sentinel {
              WHERE type = 'memo' AND mission_id = m.id AND read = 0
            )`
       )
-      .all(configService.get('first_officer_max_retries') as number) as Array<{
-        crew_id: string
-        sector_id: string
-        mission_id: number
-        mid: number
-        summary: string
-        prompt: string
-        acceptance_criteria: string | null
-        mission_status: string
-        result: string | null
-        verify_result: string | null
-        review_notes: string | null
-        first_officer_retry_count: number
-        last_error_fingerprint: string | null
-        mission_deployment_count: number
-        sector_name: string
-        verify_command: string | null
-      }>
+      .all(configService.get('first_officer_max_retries') as number)
 
     for (const row of failedCrew) {
       if (firstOfficer.isRunning(row.crew_id, row.mid)) continue
@@ -376,10 +422,10 @@ export class Sentinel {
       }
 
       // Build attempt history from previous memo comms
-      const prevMemos = db.prepare(
+      const prevMemos = db.prepare<[number], { payload: string }>(
         `SELECT payload FROM comms
          WHERE type = 'memo' AND mission_id = ? ORDER BY created_at ASC LIMIT 10`
-      ).all(row.mid) as Array<{ payload: string }>
+      ).all(row.mid)
 
       const attemptHistory = prevMemos.map((m, i) => {
         try {
@@ -433,7 +479,7 @@ export class Sentinel {
 
     // Check for unanswered hailing > 60s (escalation only, no auto-answer)
     const unansweredHailing = db
-      .prepare(
+      .prepare<[], UnansweredHailingRow>(
         `SELECT c.id as comm_id, c.from_crew, c.payload, c.created_at,
                 cr.sector_id, cr.mission_id,
                 s.name as sector_name
@@ -450,15 +496,7 @@ export class Sentinel {
            )
          LIMIT 5`
       )
-      .all() as Array<{
-        comm_id: number
-        from_crew: string
-        payload: string
-        created_at: string
-        sector_id: string
-        mission_id: number | null
-        sector_name: string
-      }>
+      .all()
 
     for (const hail of unansweredHailing) {
       await firstOfficer.writeHailingMemo({
@@ -479,12 +517,12 @@ export class Sentinel {
         const now = Date.now();
         if (now - this.lastNudgeAt >= NUDGE_INTERVAL_MS) {
           const staleComms = db
-            .prepare(
+            .prepare<[], { from_crew: string | null }>(
               `SELECT from_crew FROM comms
                WHERE to_crew = 'admiral' AND read = 0
                  AND created_at < datetime('now', '-5 minutes')`
             )
-            .all() as Array<{ from_crew: string | null }>;
+            .all();
 
           if (staleComms.length > 0) {
             const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
@@ -518,7 +556,7 @@ export class Sentinel {
     if (!this.navigator) return
 
     // Crew-failed fan-out — detect FO escalations for protocol missions
-    const rows = this.db.prepare(`
+    const rows = this.db.prepare<[], NavigatorFanoutRow>(`
       SELECT m.protocol_execution_id as executionId, pe.protocol_id, pe.current_step, pe.feature_request, pe.context
       FROM comms c
       JOIN missions m ON c.mission_id = m.id
@@ -528,11 +566,11 @@ export class Sentinel {
         AND c.read = 0
         AND pe.status = 'running'
       GROUP BY m.protocol_execution_id
-    `).all() as { executionId: string; protocol_id: string; current_step: number; feature_request: string; context: string | null }[]
+    `).all()
 
     for (const row of rows) {
       if (this.navigator.isRunning(row.executionId)) continue
-      const proto = this.db.prepare('SELECT slug FROM protocols WHERE id = ?').get(row.protocol_id) as { slug: string } | undefined
+      const proto = this.db.prepare<[string], { slug: string }>('SELECT slug FROM protocols WHERE id = ?').get(row.protocol_id)
       if (!proto) continue
 
       // Mark triggering memo comms as read to prevent repeated fan-out on next sweep
@@ -563,15 +601,15 @@ export class Sentinel {
 
     // Count active review crews
     const activeReviewCount = (
-      db.prepare(
+      db.prepare<[], { cnt: number }>(
         "SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'"
-      ).get() as { cnt: number }
+      ).get()!
     ).cnt
 
     if (activeReviewCount >= maxConcurrent) return
 
     // Find missions needing review
-    const pendingReview = db.prepare(
+    const pendingReview = db.prepare<[number], PendingReviewRow>(
       `SELECT m.id, m.sector_id, m.summary, m.acceptance_criteria, m.pr_branch,
               m.review_round, m.review_notes,
               s.base_branch, s.verify_command, s.name as sector_name
@@ -582,23 +620,12 @@ export class Sentinel {
          AND m.type = 'code'
        ORDER BY m.priority ASC, m.completed_at ASC
        LIMIT ?`
-    ).all(maxConcurrent - activeReviewCount) as Array<{
-      id: number
-      sector_id: string
-      summary: string
-      acceptance_criteria: string | null
-      pr_branch: string
-      review_round: number
-      review_notes: string | null
-      base_branch: string
-      verify_command: string | null
-      sector_name: string
-    }>
+    ).all(maxConcurrent - activeReviewCount)
 
     for (const mission of pendingReview) {
       // Transition to reviewing (dedup guard)
       db.prepare("UPDATE missions SET status = 'reviewing' WHERE id = ? AND status = 'pending-review'").run(mission.id)
-      const changed = db.prepare('SELECT changes() as c').get() as { c: number }
+      const changed = db.prepare<[], { c: number }>('SELECT changes() as c').get()!
       if (changed.c === 0) continue // Another sweep already claimed it
 
       // Build review prompt
@@ -639,7 +666,7 @@ NOTES: <your review notes — specific file:line references for issues>`
     }
 
     // Find missions needing fix crews (changes-requested)
-    const changesRequested = db.prepare(
+    const changesRequested = db.prepare<[], ChangesRequestedRow>(
       `SELECT m.id, m.sector_id, m.summary, m.prompt, m.acceptance_criteria,
               m.pr_branch, m.review_round, m.review_notes,
               s.base_branch, s.name as sector_name
@@ -650,18 +677,7 @@ NOTES: <your review notes — specific file:line references for issues>`
          AND m.type = 'code'
        ORDER BY m.priority ASC
        LIMIT 5`
-    ).all() as Array<{
-      id: number
-      sector_id: string
-      summary: string
-      prompt: string
-      acceptance_criteria: string | null
-      pr_branch: string
-      review_round: number
-      review_notes: string | null
-      base_branch: string
-      sector_name: string
-    }>
+    ).all()
 
     for (const mission of changesRequested) {
       // Check max review rounds
@@ -731,11 +747,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
 
     // Auto-approved missions — transition to completed and notify admiral
     const autoApproved = db
-      .prepare(
+      .prepare<[], { id: number; summary: string; pr_branch: string | null }>(
         `SELECT id, summary, pr_branch FROM missions
          WHERE status = 'approved'`
       )
-      .all() as { id: number; summary: string; pr_branch: string | null }[]
+      .all()
 
     for (const mission of autoApproved) {
       db.prepare(

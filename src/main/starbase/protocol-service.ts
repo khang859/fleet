@@ -60,11 +60,11 @@ export class ProtocolService {
   constructor(private db: Database.Database) {}
 
   listProtocols(): ProtocolRow[] {
-    return this.db.prepare('SELECT * FROM protocols ORDER BY built_in DESC, name ASC').all() as ProtocolRow[];
+    return this.db.prepare<[], ProtocolRow>('SELECT * FROM protocols ORDER BY built_in DESC, name ASC').all();
   }
 
   getProtocolBySlug(slug: string): ProtocolRow | undefined {
-    return this.db.prepare('SELECT * FROM protocols WHERE slug = ?').get(slug) as ProtocolRow | undefined;
+    return this.db.prepare<[string], ProtocolRow>('SELECT * FROM protocols WHERE slug = ?').get(slug);
   }
 
   createProtocol(opts: CreateProtocolOpts): void {
@@ -85,9 +85,9 @@ export class ProtocolService {
   }
 
   listSteps(protocolId: string): ProtocolStepRow[] {
-    return this.db.prepare(
+    return this.db.prepare<[string], ProtocolStepRow>(
       'SELECT * FROM protocol_steps WHERE protocol_id = ? ORDER BY step_order ASC'
-    ).all(protocolId) as ProtocolStepRow[];
+    ).all(protocolId);
   }
 
   addStep(protocolId: string, opts: AddStepOpts): void {
@@ -107,14 +107,14 @@ export class ProtocolService {
   }
 
   getExecution(id: string): ProtocolExecutionRow | undefined {
-    return this.db.prepare('SELECT * FROM protocol_executions WHERE id = ?').get(id) as ProtocolExecutionRow | undefined;
+    return this.db.prepare<[string], ProtocolExecutionRow>('SELECT * FROM protocol_executions WHERE id = ?').get(id);
   }
 
   listExecutions(status?: string): ProtocolExecutionRow[] {
     if (status) {
-      return this.db.prepare('SELECT * FROM protocol_executions WHERE status = ? ORDER BY created_at DESC').all(status) as ProtocolExecutionRow[];
+      return this.db.prepare<[string], ProtocolExecutionRow>('SELECT * FROM protocol_executions WHERE status = ? ORDER BY created_at DESC').all(status);
     }
-    return this.db.prepare('SELECT * FROM protocol_executions ORDER BY created_at DESC').all() as ProtocolExecutionRow[];
+    return this.db.prepare<[], ProtocolExecutionRow>('SELECT * FROM protocol_executions ORDER BY created_at DESC').all();
   }
 
   advanceStep(executionId: string, toStep: number): void {
@@ -154,10 +154,10 @@ export class ProtocolService {
   }
 
   getStaleGatePendingExecutions(olderThanSeconds: number): ProtocolExecutionRow[] {
-    return this.db.prepare(
+    return this.db.prepare<[number], ProtocolExecutionRow>(
       `SELECT * FROM protocol_executions
        WHERE status = 'gate-pending'
          AND updated_at < datetime('now', '-' || ? || ' seconds')`
-    ).all(olderThanSeconds) as ProtocolExecutionRow[];
+    ).all(olderThanSeconds);
   }
 }

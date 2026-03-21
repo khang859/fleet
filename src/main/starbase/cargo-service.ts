@@ -57,8 +57,8 @@ export class CargoService {
 
     if (opts.missionId != null) {
       const mission = this.db
-        .prepare('SELECT status FROM missions WHERE id = ?')
-        .get(opts.missionId) as { status: string } | undefined
+        .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+        .get(opts.missionId)
 
       if (mission && FAILED_STATUSES.includes(mission.status)) {
         verified = 0
@@ -80,8 +80,8 @@ export class CargoService {
       )
 
     return this.db
-      .prepare('SELECT * FROM cargo WHERE id = ?')
-      .get(result.lastInsertRowid) as CargoRow
+      .prepare<[number | bigint], CargoRow>('SELECT * FROM cargo WHERE id = ?')
+      .get(result.lastInsertRowid)!
   }
 
   async produceRecoveredCargo(opts: ProduceRecoveredCargoOpts): Promise<CargoRow> {
@@ -137,7 +137,7 @@ export class CargoService {
   }
 
   getCargo(id: number): CargoRow | undefined {
-    return this.db.prepare('SELECT * FROM cargo WHERE id = ?').get(id) as CargoRow | undefined
+    return this.db.prepare<[number], CargoRow>('SELECT * FROM cargo WHERE id = ?').get(id)
   }
 
   listCargo(filter?: ListCargoFilter): CargoRow[] {
@@ -162,7 +162,7 @@ export class CargoService {
     }
 
     sql += ' ORDER BY created_at ASC, id ASC'
-    return this.db.prepare(sql).all(...params) as CargoRow[]
+    return this.db.prepare<unknown[], CargoRow>(sql).all(...params)
   }
 
   getUndelivered(sectorId: string): CargoRow[] {
@@ -174,12 +174,12 @@ export class CargoService {
 
     // Find the last deployment time in this sector (latest completed crew)
     const lastDeployment = this.db
-      .prepare(
+      .prepare<[string], { last_deploy: string | null }>(
         `SELECT MAX(updated_at) as last_deploy
          FROM crew
          WHERE sector_id = ? AND status = 'complete'`
       )
-      .get(sectorId) as { last_deploy: string | null }
+      .get(sectorId)!
 
     const forwardFailed = this.configService.get('forward_failed_cargo') as boolean | undefined
 
@@ -200,7 +200,7 @@ export class CargoService {
     }
 
     sql += ' ORDER BY created_at ASC, id ASC'
-    return this.db.prepare(sql).all(...params) as CargoRow[]
+    return this.db.prepare<unknown[], CargoRow>(sql).all(...params)
   }
 
   cleanup(olderThanDays: number = 14): number {

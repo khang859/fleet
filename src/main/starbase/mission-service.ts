@@ -125,9 +125,7 @@ export class MissionService {
   }
 
   getMission(missionId: number): MissionRow | undefined {
-    return this.db.prepare('SELECT * FROM missions WHERE id = ?').get(missionId) as
-      | MissionRow
-      | undefined
+    return this.db.prepare<[number], MissionRow>('SELECT * FROM missions WHERE id = ?').get(missionId)
   }
 
   listMissions(filter?: ListMissionsFilter): MissionRow[] {
@@ -144,12 +142,12 @@ export class MissionService {
     }
 
     sql += ' ORDER BY priority ASC, created_at ASC'
-    return this.db.prepare(sql).all(...params) as MissionRow[]
+    return this.db.prepare<unknown[], MissionRow>(sql).all(...params)
   }
 
   nextMission(sectorId: string): MissionRow | undefined {
     return this.db
-      .prepare(
+      .prepare<[string], MissionRow>(
         `SELECT * FROM missions
          WHERE sector_id = ? AND status = 'queued'
          AND (
@@ -166,27 +164,27 @@ export class MissionService {
          ORDER BY priority ASC, created_at ASC
          LIMIT 1`
       )
-      .get(sectorId) as MissionRow | undefined
+      .get(sectorId)
   }
 
   getDependencies(missionId: number): MissionRow[] {
     return this.db
-      .prepare(
+      .prepare<[number], MissionRow>(
         `SELECT m.* FROM missions m
          JOIN mission_dependencies md ON md.depends_on_mission_id = m.id
          WHERE md.mission_id = ?`
       )
-      .all(missionId) as MissionRow[]
+      .all(missionId)
   }
 
   getDependents(missionId: number): MissionRow[] {
     return this.db
-      .prepare(
+      .prepare<[number], MissionRow>(
         `SELECT m.* FROM missions m
          JOIN mission_dependencies md ON md.mission_id = m.id
          WHERE md.depends_on_mission_id = ?`
       )
-      .all(missionId) as MissionRow[]
+      .all(missionId)
   }
 
   /** Reset crew assignment and timestamps so the mission can be re-deployed */

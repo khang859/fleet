@@ -48,8 +48,8 @@ export class SupplyRouteService {
       .run(upstreamSectorId, downstreamSectorId, relationship ?? null)
 
     return this.db
-      .prepare('SELECT * FROM supply_routes WHERE id = ?')
-      .get(result.lastInsertRowid) as SupplyRouteRow
+      .prepare<[number | bigint], SupplyRouteRow>('SELECT * FROM supply_routes WHERE id = ?')
+      .get(result.lastInsertRowid)!
   }
 
   removeRoute(routeId: number): void {
@@ -62,32 +62,32 @@ export class SupplyRouteService {
   listRoutes(opts?: ListRoutesOpts): SupplyRouteRow[] {
     if (opts?.sectorId) {
       return this.db
-        .prepare(
+        .prepare<[string, string], SupplyRouteRow>(
           `SELECT * FROM supply_routes
            WHERE upstream_sector_id = ? OR downstream_sector_id = ?
            ORDER BY id`
         )
-        .all(opts.sectorId, opts.sectorId) as SupplyRouteRow[]
+        .all(opts.sectorId, opts.sectorId)
     }
-    return this.db.prepare('SELECT * FROM supply_routes ORDER BY id').all() as SupplyRouteRow[]
+    return this.db.prepare<[], SupplyRouteRow>('SELECT * FROM supply_routes ORDER BY id').all()
   }
 
   getDownstream(sectorId: string): SupplyRouteRow[] {
     return this.db
-      .prepare('SELECT * FROM supply_routes WHERE upstream_sector_id = ? ORDER BY id')
-      .all(sectorId) as SupplyRouteRow[]
+      .prepare<[string], SupplyRouteRow>('SELECT * FROM supply_routes WHERE upstream_sector_id = ? ORDER BY id')
+      .all(sectorId)
   }
 
   getUpstream(sectorId: string): SupplyRouteRow[] {
     return this.db
-      .prepare('SELECT * FROM supply_routes WHERE downstream_sector_id = ? ORDER BY id')
-      .all(sectorId) as SupplyRouteRow[]
+      .prepare<[string], SupplyRouteRow>('SELECT * FROM supply_routes WHERE downstream_sector_id = ? ORDER BY id')
+      .all(sectorId)
   }
 
   getGraph(): Record<string, string[]> {
     const rows = this.db
-      .prepare('SELECT upstream_sector_id, downstream_sector_id FROM supply_routes ORDER BY id')
-      .all() as { upstream_sector_id: string; downstream_sector_id: string }[]
+      .prepare<[], { upstream_sector_id: string; downstream_sector_id: string }>('SELECT upstream_sector_id, downstream_sector_id FROM supply_routes ORDER BY id')
+      .all()
 
     const graph: Record<string, string[]> = {}
     for (const row of rows) {

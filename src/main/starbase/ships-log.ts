@@ -56,12 +56,12 @@ export class ShipsLog {
       params.push(opts.limit);
     }
 
-    return this.db.prepare(sql).all(...params) as ShipsLogRow[];
+    return this.db.prepare<unknown[], ShipsLogRow>(sql).all(...params);
   }
 
   getRecent(limit: number): ShipsLogRow[] {
     return this.db
-      .prepare('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
-      .all(limit) as ShipsLogRow[];
+      .prepare<[number], ShipsLogRow>('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
+      .all(limit);
   }
 }

@@ -54,13 +54,13 @@ export class CommsService {
     // Dedup runs before rate limit so coalesced duplicates don't consume rate limit budget
     if (opts.from !== 'admiral' && opts.from !== 'navigator') {
       const existing = this.db
-        .prepare(
+        .prepare<[string, string, string, string], { id: number }>(
           `SELECT id FROM comms
            WHERE from_crew = ? AND to_crew = ? AND type = ? AND payload = ?
              AND created_at > datetime('now', '-5 minutes')
            ORDER BY created_at DESC LIMIT 1`,
         )
-        .get(opts.from, opts.to, opts.type, opts.payload) as { id: number } | undefined;
+        .get(opts.from, opts.to, opts.type, opts.payload);
 
       if (existing) {
         this.db
@@ -76,8 +76,8 @@ export class CommsService {
     // Check rate limit for the sender (after dedup, so coalesced messages don't count)
     if (this.rateLimit > 0 && opts.from !== 'admiral') {
       const row = this.db
-        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
-        .get(opts.from) as { comms_count_minute: number } | undefined;
+        .prepare<[string], { comms_count_minute: number }>('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get(opts.from);
 
       if (row && row.comms_count_minute >= this.rateLimit) {
         // Log the rejection
@@ -105,9 +105,7 @@ export class CommsService {
   }
 
   resolve(transmissionId: number, response: string): number {
-    const original = this.db.prepare('SELECT * FROM comms WHERE id = ?').get(transmissionId) as
-      | TransmissionRow
-      | undefined;
+    const original = this.db.prepare<[number], TransmissionRow>('SELECT * FROM comms WHERE id = ?').get(transmissionId);
     if (!original) throw new Error(`Transmission not found: ${transmissionId}`);
 
     this.markRead(transmissionId);
@@ -124,14 +122,14 @@ export class CommsService {
 
   getTransmission(transmissionId: number): TransmissionRow | undefined {
     return this.db
-      .prepare('SELECT * FROM comms WHERE id = ?')
-      .get(transmissionId) as TransmissionRow | undefined;
+      .prepare<[number], TransmissionRow>('SELECT * FROM comms WHERE id = ?')
+      .get(transmissionId);
   }
 
   getUnread(crewId: string): TransmissionRow[] {
     return this.db
-      .prepare('SELECT * FROM comms WHERE to_crew = ? AND read = 0 ORDER BY created_at ASC')
-      .all(crewId) as TransmissionRow[];
+      .prepare<[string], TransmissionRow>('SELECT * FROM comms WHERE to_crew = ? AND read = 0 ORDER BY created_at ASC')
+      .all(crewId);
   }
 
   markRead(transmissionId: number): boolean {
@@ -145,8 +143,8 @@ export class CommsService {
 
   getThread(threadId: string): TransmissionRow[] {
     return this.db
-      .prepare('SELECT * FROM comms WHERE thread_id = ? ORDER BY created_at ASC')
-      .all(threadId) as TransmissionRow[];
+      .prepare<[string], TransmissionRow>('SELECT * FROM comms WHERE thread_id = ? ORDER BY created_at ASC')
+      .all(threadId);
   }
 
   delete(transmissionId: number): boolean {
@@ -189,9 +187,9 @@ export class CommsService {
   }
 
   getUnreadByExecution(executionId: string): TransmissionRow[] {
-    return this.db.prepare(
+    return this.db.prepare<[string], TransmissionRow>(
       `SELECT * FROM comms WHERE execution_id = ? AND read = 0 ORDER BY created_at ASC`
-    ).all(executionId) as TransmissionRow[];
+    ).all(executionId);
   }
 
   getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string; unread?: boolean }): TransmissionRow[] {
@@ -223,7 +221,7 @@ export class CommsService {
     params.push(limit);
 
     return this.db
-      .prepare(`SELECT * FROM comms ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...params) as TransmissionRow[];
+      .prepare<unknown[], TransmissionRow>(`SELECT * FROM comms ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params);
   }
 }

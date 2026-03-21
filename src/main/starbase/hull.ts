@@ -8,13 +8,13 @@ import { generateSkillMd } from './workspace-templates'
 
 export function buildCargoHeader(db: Database.Database, missionId: number): string {
   const deps = db
-    .prepare(
+    .prepare<[number], { depends_on_mission_id: number; summary: string }>(
       `SELECT md.depends_on_mission_id, m.summary
        FROM mission_dependencies md
        JOIN missions m ON m.id = md.depends_on_mission_id
        WHERE md.mission_id = ?`
     )
-    .all(missionId) as Array<{ depends_on_mission_id: number; summary: string }>
+    .all(missionId)
 
   if (deps.length === 0) return ''
 
@@ -22,12 +22,12 @@ export function buildCargoHeader(db: Database.Database, missionId: number): stri
 
   for (const dep of deps) {
     const cargo = db
-      .prepare(
+      .prepare<[number], { manifest: string }>(
         `SELECT manifest FROM cargo
          WHERE mission_id = ? AND type = 'documentation_summary' AND verified = 1
          LIMIT 1`
       )
-      .get(dep.depends_on_mission_id) as { manifest: string } | undefined
+      .get(dep.depends_on_mission_id)
 
     if (!cargo) continue
 
@@ -1028,8 +1028,8 @@ NOTES: <specific file:line references for any issues found>
 
       // Update mission (but don't overwrite pending-review status set by Gate 3)
       const currentMission = db
-        .prepare('SELECT status FROM missions WHERE id = ?')
-        .get(missionId) as { status: string } | undefined
+        .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+        .get(missionId)
       const isPendingReview = currentMission?.status === 'pending-review'
       const missionStatus = isPendingReview
         ? 'pending-review'
@@ -1198,8 +1198,8 @@ NOTES: <specific file:line references for any issues found>
         db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId)
 
         const missionRow = db
-          .prepare('SELECT acceptance_criteria FROM missions WHERE id = ?')
-          .get(missionId) as { acceptance_criteria: string | null } | undefined
+          .prepare<[number], { acceptance_criteria: string | null }>('SELECT acceptance_criteria FROM missions WHERE id = ?')
+          .get(missionId)
 
         db.prepare(
           "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)"

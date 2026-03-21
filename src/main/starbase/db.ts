@@ -29,9 +29,15 @@ export class StarbaseDB {
     if (existsSync(this.dbPath)) {
       try {
         const testDb = new Database(this.dbPath);
-        const result = testDb.pragma('integrity_check') as { integrity_check: string }[];
+        const result: unknown = testDb.pragma('integrity_check');
         testDb.close();
-        if (result[0]?.integrity_check !== 'ok') {
+        const ok = Array.isArray(result) &&
+          result.length > 0 &&
+          typeof result[0] === 'object' &&
+          result[0] !== null &&
+          'integrity_check' in result[0] &&
+          result[0].integrity_check === 'ok';
+        if (!ok) {
           throw new Error('Integrity check failed');
         }
       } catch {
@@ -78,9 +84,7 @@ export class StarbaseDB {
 
     let currentVersion = 0;
     if (metaExists) {
-      const meta = db.prepare('SELECT schema_version FROM _meta').get() as
-        | { schema_version: number }
-        | undefined;
+      const meta = db.prepare<[], { schema_version: number }>('SELECT schema_version FROM _meta').get();
       currentVersion = meta?.schema_version ?? 0;
     }
 

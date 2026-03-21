@@ -52,6 +52,13 @@ type DeployResult = {
   missionId: number;
 };
 
+type QueuedMissionRow = {
+  id: number;
+  sector_id: string;
+  prompt: string;
+  summary: string;
+};
+
 const AVATAR_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'];
 
 export class CrewService {
@@ -225,9 +232,7 @@ export class CrewService {
 
     // Hull not in memory (post-restart recall): update DB record directly.
     const TERMINAL_STATUSES = ['error', 'complete', 'timeout', 'lost', 'aborted', 'dismissed'];
-    const row = this.deps.db.prepare('SELECT status FROM crew WHERE id = ?').get(crewId) as
-      | { status: string }
-      | undefined;
+    const row = this.deps.db.prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?').get(crewId);
     if (!row) return;
 
     if (TERMINAL_STATUSES.includes(row.status)) {
@@ -268,13 +273,11 @@ export class CrewService {
     }
 
     sql += ' ORDER BY created_at DESC';
-    return this.deps.db.prepare(sql).all(...params) as CrewRow[];
+    return this.deps.db.prepare<unknown[], CrewRow>(sql).all(...params);
   }
 
   getCrewStatus(crewId: string): CrewRow | undefined {
-    return this.deps.db.prepare('SELECT * FROM crew WHERE id = ?').get(crewId) as
-      | CrewRow
-      | undefined;
+    return this.deps.db.prepare<[string], CrewRow>('SELECT * FROM crew WHERE id = ?').get(crewId);
   }
 
   observeCrew(crewId: string): string {
@@ -283,9 +286,9 @@ export class CrewService {
   }
 
   /** Get the next queued mission across all sectors (global FIFO by priority) */
-  nextQueuedMission(): { id: number; sector_id: string; prompt: string; summary: string } | undefined {
+  nextQueuedMission(): QueuedMissionRow | undefined {
     return this.deps.db
-      .prepare(
+      .prepare<[], QueuedMissionRow>(
         `SELECT id, sector_id, prompt, summary FROM missions
          WHERE status = 'queued'
          AND (
@@ -302,7 +305,7 @@ export class CrewService {
          ORDER BY priority ASC, created_at ASC
          LIMIT 1`,
       )
-      .get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+      .get();
   }
 
   /** Immediately kill all active Hull processes (app shutdown). */
@@ -322,7 +325,7 @@ export class CrewService {
     const { db } = this.deps;
 
     // Atomically claim the next queued mission — prevents concurrent deployments from racing
-    const claim = db.prepare(
+    const claim = db.prepare<[], QueuedMissionRow>(
       `UPDATE missions SET status = 'deploying'
        WHERE id = (
          SELECT id FROM missions
@@ -342,7 +345,7 @@ export class CrewService {
          LIMIT 1
        )
        RETURNING id, sector_id, prompt, summary`,
-    ).get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
+    ).get();
 
     if (!claim) return;
 

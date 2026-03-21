@@ -74,8 +74,8 @@ export class SectorService {
 
     // Check for duplicate root_path
     const existing = this.db
-      .prepare('SELECT id FROM sectors WHERE root_path = ?')
-      .get(absolutePath) as { id: string } | undefined;
+      .prepare<[string], { id: string }>('SELECT id FROM sectors WHERE root_path = ?')
+      .get(absolutePath);
     if (existing) {
       throw new SectorValidationError(
         `Path already registered as sector '${existing.id}'`,
@@ -137,19 +137,17 @@ export class SectorService {
   }
 
   getSector(sectorId: string): SectorRow | undefined {
-    return this.db.prepare('SELECT * FROM sectors WHERE id = ?').get(sectorId) as
-      | SectorRow
-      | undefined;
+    return this.db.prepare<[string], SectorRow>('SELECT * FROM sectors WHERE id = ?').get(sectorId);
   }
 
   listSectors(): SectorRow[] {
-    return this.db.prepare('SELECT * FROM sectors ORDER BY name').all() as SectorRow[];
+    return this.db.prepare<[], SectorRow>('SELECT * FROM sectors ORDER BY name').all();
   }
 
   listVisibleSectors(): SectorRow[] {
     return this.db
-      .prepare('SELECT * FROM sectors WHERE id != ? ORDER BY name')
-      .all(GLOBAL_SECTOR_ID) as SectorRow[];
+      .prepare<[string], SectorRow>('SELECT * FROM sectors WHERE id != ? ORDER BY name')
+      .all(GLOBAL_SECTOR_ID);
   }
 
   isLogicalSector(sectorId: string): boolean {
