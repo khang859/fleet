@@ -1,7 +1,7 @@
 import chokidar, { type FSWatcher } from 'chokidar'
 import { existsSync } from 'fs'
 import { open, stat } from 'fs/promises'
-import { extname, basename, join } from 'path'
+import { basename, extname } from 'path'
 
 export type JsonlRecord = {
   type: string
@@ -43,14 +43,13 @@ export class JsonlWatcher {
 
   start(): void {
     if (!existsSync(this.watchDir)) return
-    const usePolling = process.env.VITEST === 'true'
     this.isReady = false
 
-    this.watcher = chokidar.watch([join(this.watchDir, '*.jsonl'), join(this.watchDir, '*', '*.jsonl')], {
+    this.watcher = chokidar.watch(this.watchDir, {
       persistent: false,
+      depth: 1,
       ignoreInitial: false,
-      usePolling,
-      interval: usePolling ? 50 : undefined,
+      ignored: (_path, stats) => stats?.isFile() === true && extname(_path) !== '.jsonl',
       awaitWriteFinish: { stabilityThreshold: 20, pollInterval: 10 },
     })
 
@@ -86,10 +85,11 @@ export class JsonlWatcher {
 
   private async handleAdd(filePath: string): Promise<void> {
     if (extname(filePath) !== '.jsonl') return
+    const isReadyAtEvent = this.isReady
 
     try {
       const fileStat = await stat(filePath)
-      if (!this.isReady) {
+      if (!isReadyAtEvent) {
         this.watchedFiles.set(filePath, {
           filePath,
           offset: fileStat.size,
