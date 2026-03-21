@@ -1,5 +1,5 @@
 import { createServer, type Server, type Socket } from 'net';
-import { mkdirSync } from 'fs';
+import { mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 
 export interface SocketCommandHandler {
@@ -11,6 +11,15 @@ export type SocketCommand = {
   id?: string;
   [key: string]: unknown;
 };
+
+function isSocketCommand(v: unknown): v is SocketCommand {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'type' in v &&
+    typeof (v as { type?: unknown }).type === 'string'
+  );
+}
 
 export type SocketResponse = {
   ok: boolean;
@@ -37,7 +46,9 @@ export class SocketApi {
     try {
       const { unlinkSync } = await import('fs');
       unlinkSync(this.socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
 
     return new Promise((resolve, reject) => {
       this.server = createServer((socket) => {
@@ -69,7 +80,6 @@ export class SocketApi {
       this.server.listen(this.socketPath, () => {
         // Set socket permissions to owner-only (Unix)
         if (process.platform !== 'win32') {
-          const { chmodSync } = require('fs');
           chmodSync(this.socketPath, 0o600);
         }
         resolve();
@@ -107,7 +117,12 @@ export class SocketApi {
   private async handleLine(socket: Socket, line: string): Promise<void> {
     let cmd: SocketCommand;
     try {
-      cmd = JSON.parse(line);
+      const parsed: unknown = JSON.parse(line);
+      if (!isSocketCommand(parsed)) {
+        this.sendResponse(socket, { ok: false, error: 'Invalid command' });
+        return;
+      }
+      cmd = parsed;
     } catch {
       this.sendResponse(socket, { ok: false, error: 'Invalid JSON' });
       return;

@@ -79,9 +79,11 @@ export class CargoService {
         verified
       );
 
-    return this.db
+    const cargo = this.db
       .prepare<[number | bigint], CargoRow>('SELECT * FROM cargo WHERE id = ?')
-      .get(result.lastInsertRowid)!;
+      .get(result.lastInsertRowid);
+    if (!cargo) throw new Error('Failed to retrieve inserted cargo');
+    return cargo;
   }
 
   async produceRecoveredCargo(opts: ProduceRecoveredCargoOpts): Promise<CargoRow> {
@@ -179,7 +181,7 @@ export class CargoService {
          FROM crew
          WHERE sector_id = ? AND status = 'complete'`
       )
-      .get(sectorId)!;
+      .get(sectorId) ?? { last_deploy: null };
 
     const forwardFailedRaw = this.configService.get('forward_failed_cargo');
     const forwardFailed = typeof forwardFailedRaw === 'boolean' ? forwardFailedRaw : undefined;
@@ -190,7 +192,7 @@ export class CargoService {
     const params: unknown[] = [...upstreamSectorIds];
 
     // Only cargo produced after last deployment
-    if (lastDeployment?.last_deploy) {
+    if (lastDeployment.last_deploy) {
       sql += ' AND created_at > ?';
       params.push(lastDeployment.last_deploy);
     }

@@ -7,6 +7,15 @@ import { MIGRATIONS, CONFIG_DEFAULTS } from './migrations';
 type IndexEntry = { workspacePath: string; starbaseId: string; dbPath: string };
 type IndexFile = { starbases: IndexEntry[] };
 
+function isIndexFile(v: unknown): v is IndexFile {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'starbases' in v &&
+    Array.isArray((v as { starbases?: unknown }).starbases)
+  );
+}
+
 export class StarbaseDB {
   private db: Database.Database | null = null;
   private starbaseId: string;
@@ -31,13 +40,12 @@ export class StarbaseDB {
         const testDb = new Database(this.dbPath);
         const result: unknown = testDb.pragma('integrity_check');
         testDb.close();
+        const first: unknown = Array.isArray(result) ? result[0] : undefined;
         const ok =
-          Array.isArray(result) &&
-          result.length > 0 &&
-          typeof result[0] === 'object' &&
-          result[0] !== null &&
-          'integrity_check' in result[0] &&
-          result[0].integrity_check === 'ok';
+          first != null &&
+          typeof first === 'object' &&
+          'integrity_check' in first &&
+          (first as { integrity_check: unknown }).integrity_check === 'ok';
         if (!ok) {
           throw new Error('Integrity check failed');
         }
@@ -126,7 +134,10 @@ export class StarbaseDB {
 
     if (existsSync(indexPath)) {
       try {
-        index = JSON.parse(readFileSync(indexPath, 'utf-8'));
+        const parsed: unknown = JSON.parse(readFileSync(indexPath, 'utf-8'));
+        if (isIndexFile(parsed)) {
+          index = parsed;
+        }
       } catch {
         index = { starbases: [] };
       }

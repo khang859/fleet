@@ -47,9 +47,11 @@ export class SupplyRouteService {
       )
       .run(upstreamSectorId, downstreamSectorId, relationship ?? null);
 
-    return this.db
+    const route = this.db
       .prepare<[number | bigint], SupplyRouteRow>('SELECT * FROM supply_routes WHERE id = ?')
-      .get(result.lastInsertRowid)!;
+      .get(result.lastInsertRowid);
+    if (!route) throw new Error('Failed to retrieve inserted supply route');
+    return route;
   }
 
   removeRoute(routeId: number): void {
@@ -90,7 +92,7 @@ export class SupplyRouteService {
       .all(sectorId);
   }
 
-  getGraph(): Record<string, string[]> {
+  getGraph(): Record<string, string[] | undefined> {
     const rows = this.db
       .prepare<
         [],
@@ -98,12 +100,10 @@ export class SupplyRouteService {
       >('SELECT upstream_sector_id, downstream_sector_id FROM supply_routes ORDER BY id')
       .all();
 
-    const graph: Record<string, string[]> = {};
+    const graph: Record<string, string[] | undefined> = {};
     for (const row of rows) {
-      if (!graph[row.upstream_sector_id]) {
-        graph[row.upstream_sector_id] = [];
-      }
-      graph[row.upstream_sector_id].push(row.downstream_sector_id);
+      graph[row.upstream_sector_id] ??= [];
+      graph[row.upstream_sector_id]?.push(row.downstream_sector_id);
     }
     return graph;
   }

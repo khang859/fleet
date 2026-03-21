@@ -5,7 +5,8 @@ describe('hasShipsLogBridgeApi', () => {
   it('returns true when the ships log bridge is fully available', () => {
     expect(
       hasShipsLogBridgeApi({
-        getShipsLog: async () => [],
+        // eslint-disable-next-line @typescript-eslint/promise-function-async
+        getShipsLog: () => Promise.resolve([]),
         onLogEntry: () => () => undefined
       })
     ).toBe(true);
@@ -22,7 +23,8 @@ describe('hasShipsLogBridgeApi', () => {
   it('returns false when the ships log bridge is missing onLogEntry', () => {
     expect(
       hasShipsLogBridgeApi({
-        getShipsLog: async () => []
+        // eslint-disable-next-line @typescript-eslint/promise-function-async
+        getShipsLog: () => Promise.resolve([])
       })
     ).toBe(false);
   });

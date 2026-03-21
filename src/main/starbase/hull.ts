@@ -105,7 +105,7 @@ function isClaudeStreamMessage(v: unknown): v is ClaudeStreamMessage {
 }
 
 function isClaudeInitMessage(msg: ClaudeStreamMessage): msg is ClaudeInitMessage {
-  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'init';
+  return msg.type === 'system' && 'subtype' in msg;
 }
 
 function isClaudeAssistantMessage(msg: ClaudeStreamMessage): msg is ClaudeAssistantMessage {
@@ -177,7 +177,7 @@ export class Hull {
    * Start the Hull lifecycle. Spawns a headless Claude Code process
    * using stream-json protocol for bidirectional communication.
    */
-  async start(): Promise<void> {
+  start(): void {
     const { crewId, sectorId, missionId, prompt, worktreePath, worktreeBranch, db } = this.opts;
     const lifesignSec = this.opts.lifesignIntervalSec ?? 10;
     const timeoutMin = this.opts.timeoutMin ?? 15;
@@ -521,8 +521,8 @@ NOTES: <specific file:line references for any issues found>
       this.sessionId = msg.session_id;
     } else if (isClaudeAssistantMessage(msg)) {
       const textParts = msg.message.content
-        .filter((c) => c.type === 'text' && c.text)
-        .map((c) => c.text!);
+        .filter((c): c is { type: string; text: string } => c.type === 'text' && c.text != null)
+        .map((c) => c.text);
       if (textParts.length > 0) {
         this.appendOutput(textParts.join('\n'));
       }
@@ -598,7 +598,7 @@ NOTES: <specific file:line references for any issues found>
       // Force kill after 5s if still alive
       const proc = this.process;
       setTimeout(() => {
-        if (proc && !proc.killed) {
+        if (!proc.killed) {
           proc.kill('SIGTERM');
         }
       }, 5000);
@@ -1091,10 +1091,10 @@ NOTES: <specific file:line references for any issues found>
           );
         } catch (verifyErr: unknown) {
           const duration = Date.now() - verifyStart;
-          const err =
-            verifyErr != null && typeof verifyErr === 'object'
-              ? (verifyErr as Record<string, unknown>)
-              : {};
+          function isErrObj(v: unknown): v is Record<string, unknown> {
+            return v != null && typeof v === 'object';
+          }
+          const err = isErrObj(verifyErr) ? verifyErr : {};
           const stdout = err.stdout instanceof Buffer ? err.stdout : undefined;
           const stderr = err.stderr instanceof Buffer ? err.stderr : undefined;
           const status = typeof err.status === 'number' ? err.status : 1;
@@ -1128,10 +1128,10 @@ NOTES: <specific file:line references for any issues found>
           }).toString();
         } catch (lintErr: unknown) {
           hasLintWarnings = true;
-          const lintErrObj =
-            lintErr != null && typeof lintErr === 'object'
-              ? (lintErr as Record<string, unknown>)
-              : {};
+          function isLintErrObj(v: unknown): v is Record<string, unknown> {
+            return v != null && typeof v === 'object';
+          }
+          const lintErrObj = isLintErrObj(lintErr) ? lintErr : {};
           const lintStdout =
             lintErrObj.stdout instanceof Buffer ? lintErrObj.stdout.toString() : '';
           const lintStderr =
@@ -1260,9 +1260,9 @@ NOTES: <specific file:line references for any issues found>
       );
 
       // Clean up worktree (skip if push failed — preserve for recovery)
-      const missionRow = db.prepare('SELECT status FROM missions WHERE id = ?').get(missionId) as
-        | { status: string }
-        | undefined;
+      const missionRow = db
+        .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+        .get(missionId);
       if (status !== 'error' || missionRow?.status !== 'push-pending') {
         try {
           execSync(`git worktree remove "${worktreePath}"`, { cwd: sectorPath, stdio: 'pipe' });
@@ -1322,13 +1322,22 @@ NOTES: <specific file:line references for any issues found>
     // Get verify result for PR body
     let verifySection = '- Build/Test: not configured';
     try {
-      const row = db.prepare('SELECT verify_result FROM missions WHERE id = ?').get(missionId) as
-        | { verify_result: string | null }
-        | undefined;
+      const row = db
+        .prepare<
+          [number],
+          { verify_result: string | null }
+        >('SELECT verify_result FROM missions WHERE id = ?')
+        .get(missionId);
       if (row?.verify_result) {
-        const vr = JSON.parse(row.verify_result);
+        const vr: unknown = JSON.parse(row.verify_result);
+        function isVrObj(v: unknown): v is Record<string, unknown> {
+          return v != null && typeof v === 'object' && !Array.isArray(v);
+        }
+        const vrObj = isVrObj(vr) ? vr : {};
         verifySection =
-          vr.exitCode === 0 ? '- Build/Test: passed' : `- Build/Test: failed (exit ${vr.exitCode})`;
+          vrObj.exitCode === 0
+            ? '- Build/Test: passed'
+            : `- Build/Test: failed (exit ${String(vrObj.exitCode)})`;
       }
     } catch {
       /* ignore */

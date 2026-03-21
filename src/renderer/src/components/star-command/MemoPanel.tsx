@@ -7,7 +7,7 @@ type MemoPanelProps = {
   onClose: () => void;
 };
 
-export function MemoPanel({ onClose }: MemoPanelProps) {
+export function MemoPanel({ onClose }: MemoPanelProps): React.JSX.Element {
   const [memos, setMemos] = useState<MemoInfo[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [content, setContent] = useState<string | null>(null);
@@ -16,7 +16,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     void loadMemos();
   }, []);
 
-  async function loadMemos() {
+  async function loadMemos(): Promise<void> {
     const list = await window.fleet.starbase.memoList();
     setMemos(list);
     if (list.length > 0 && !selectedId) {
@@ -24,7 +24,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     }
   }
 
-  async function selectMemo(memo: MemoInfo) {
+  async function selectMemo(memo: MemoInfo): Promise<void> {
     setSelectedId(memo.id);
     const text = await window.fleet.starbase.memoContent(memo.file_path);
     setContent(text);
@@ -34,7 +34,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     }
   }
 
-  async function dismissMemo(id: number) {
+  async function dismissMemo(id: number): Promise<void> {
     await window.fleet.starbase.memoDismiss(id);
     void loadMemos();
     if (selectedId === id) {
@@ -66,7 +66,9 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
             activeMemos.map((memo) => (
               <button
                 key={memo.id}
-                onClick={() => { void selectMemo(memo); }}
+                onClick={() => {
+                  void selectMemo(memo);
+                }}
                 className={`w-full text-left px-3 py-2 border-b border-neutral-800 hover:bg-neutral-800 transition-colors ${
                   selectedId === memo.id ? 'bg-neutral-800' : ''
                 }`}
@@ -100,7 +102,9 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
           {selectedId && (
             <div className="mt-4 pt-4 border-t border-neutral-800">
               <button
-                onClick={() => { void dismissMemo(selectedId); }}
+                onClick={() => {
+                  void dismissMemo(selectedId);
+                }}
                 className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-1 rounded border border-neutral-700 hover:border-neutral-600 transition-colors"
               >
                 Dismiss

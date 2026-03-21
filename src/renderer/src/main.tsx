@@ -13,7 +13,7 @@ window.addEventListener('error', (event) => {
 });
 
 window.addEventListener('unhandledrejection', (event) => {
-  const reason = event.reason;
+  const reason: unknown = event.reason;
   console.error('[renderer:unhandledrejection]', {
     message: reason instanceof Error ? reason.message : String(reason),
     stack: reason instanceof Error ? reason.stack : undefined

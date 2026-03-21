@@ -6,7 +6,7 @@ vi.mock('electron-store', () => {
   return {
     default: class MockStore {
       private data: Record<string, unknown> = {};
-      constructor(_opts?: unknown) {}
+      constructor() {}
       get(key: string, defaultVal?: unknown) {
         return this.data[key] ?? defaultVal;
       }

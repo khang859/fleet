@@ -6,7 +6,7 @@ import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
 import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'reference/**'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', 'reference/**', '.claude/**', '.worktrees/**', 'eslint.config.mjs'] },
   tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {
@@ -32,7 +32,9 @@ export default defineConfig(
       'react-refresh': eslintPluginReactRefresh
     },
     rules: {
-      ...eslintPluginReactHooks.configs.recommended.rules,
+      // Classic react-hooks rules only (not React Compiler rules from v7)
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       ...eslintPluginReactRefresh.configs.vite.rules
     }
   },

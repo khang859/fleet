@@ -64,12 +64,33 @@ export interface CLIResponse {
   code?: string;
 }
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function isCLIResponse(v: unknown): v is CLIResponse {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'ok' in v &&
+    typeof (v as { ok?: unknown }).ok === 'boolean'
+  );
+}
+
 export interface RetryOptions {
   maxRetries?: number;
   initialBackoffMs?: number;
   backoffMultiplier?: number;
   waitForAppMs?: number;
   pollIntervalMs?: number;
+}
+
+// ── Helper: coerce unknown to string ─────────────────────────────────────────
+
+function toStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return JSON.stringify(v);
 }
 
 // ── Helper: strip ANSI escape codes ──────────────────────────────────────────
@@ -82,7 +103,7 @@ export function stripAnsi(str: string): string {
 // ── Helper: format array of objects as aligned text table ────────────────────
 
 export function formatTable(rows: Array<Record<string, unknown>>, columns?: string[]): string {
-  if (!rows || rows.length === 0) return '';
+  if (rows.length === 0) return '';
 
   const cols = columns ?? Object.keys(rows[0]);
   if (cols.length === 0) return '';
@@ -92,13 +113,13 @@ export function formatTable(rows: Array<Record<string, unknown>>, columns?: stri
     const headerLen = col.length;
     const maxValLen = rows.reduce((max, row) => {
       const val = row[col];
-      const valStr = val == null ? '' : stripAnsi(String(val));
+      const valStr = stripAnsi(toStr(val));
       return Math.max(max, valStr.length);
     }, 0);
     return Math.max(headerLen, maxValLen);
   });
 
-  const pad = (str: string, width: number) => str.padEnd(width);
+  const pad = (str: string, width: number): string => str.padEnd(width);
   const separator = widths.map((w) => '-'.repeat(w)).join('  ');
   const header = cols.map((col, i) => pad(col, widths[i])).join('  ');
 
@@ -106,7 +127,7 @@ export function formatTable(rows: Array<Record<string, unknown>>, columns?: stri
     cols
       .map((col, i) => {
         const val = row[col];
-        const valStr = val == null ? '' : stripAnsi(String(val));
+        const valStr = stripAnsi(toStr(val));
         return pad(valStr, widths[i]);
       })
       .join('  ')
@@ -136,8 +157,8 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
             existing === undefined
               ? next
               : Array.isArray(existing)
-                ? [...existing, next]
-                : [String(existing), next];
+                ? [...existing.map((x: unknown) => toStr(x)), next]
+                : [toStr(existing), next];
         } else {
           result[key] = next;
         }
@@ -171,7 +192,7 @@ export class FleetCLI {
       let settled = false;
       let timer: ReturnType<typeof setTimeout> | null = null;
 
-      const settle = (response: CLIResponse) => {
+      const settle = (response: CLIResponse): void => {
         if (settled) return;
         settled = true;
         if (timer) clearTimeout(timer);
@@ -207,9 +228,11 @@ export class FleetCLI {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const parsed: CLIResponse = JSON.parse(line);
+            const parsedRaw: unknown = JSON.parse(line);
             socket.end();
-            settle(parsed);
+            settle(
+              isCLIResponse(parsedRaw) ? parsedRaw : { id, ok: false, error: 'Invalid response' }
+            );
           } catch {
             socket.end();
             settle({ id, ok: false, error: 'Invalid JSON response from server' });
@@ -412,7 +435,7 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       }
       if (args.type !== 'code' && args.type !== 'research' && args.type !== 'review') {
         return (
-          `Error: invalid mission type "${args.type}". Must be "code", "research", or "review".\n\n` +
+          `Error: invalid mission type "${toStr(args.type)}". Must be "code", "research", or "review".\n\n` +
           'Mission types:\n' +
           '  code     — produces git commits (code changes, bug fixes, features)\n' +
           '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
@@ -424,8 +447,8 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       if (!args.summary) return `Error: missions add requires --summary "...".\n\n${usage}`;
       if (args['depends-on'] !== undefined) {
         const depIds = Array.isArray(args['depends-on'])
-          ? args['depends-on'].map(String)
-          : [String(args['depends-on'])];
+          ? args['depends-on'].map(toStr)
+          : [toStr(args['depends-on'])];
         for (const depId of depIds) {
           const n = Number(depId);
           if (isNaN(n) || n <= 0) {
@@ -472,7 +495,7 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       const missionId = Number(rawMission);
       if (Number.isNaN(missionId) || missionId <= 0) {
         return (
-          `Error: --mission must be a numeric mission ID, got: "${rawMission}"\n\n` +
+          `Error: --mission must be a numeric mission ID, got: "${toStr(rawMission)}"\n\n` +
           'It looks like you passed a prompt string to --mission. Create a mission first:\n\n' +
           '  1. Create a mission:  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
           '  2. Deploy crew:       fleet crew deploy --sector <id> --mission <mission-id>'
@@ -1194,13 +1217,11 @@ export async function runCLI(
   // ── protocol.list formatting ──────────────────────────────────────────────
   if (command === 'protocol.list') {
     if (!Array.isArray(data) || data.length === 0) return 'No protocols registered.';
-    const protocols = data as Array<{
-      slug: string;
-      name: string;
-      enabled: number;
-      built_in: number;
-    }>;
-    return protocols
+    return data
+      .filter(
+        (p): p is { slug: string; name: string; enabled: number; built_in: number } =>
+          p != null && typeof p === 'object' && 'slug' in p && 'name' in p
+      )
       .map((p) => {
         const status = p.enabled ? '✓' : '✗';
         const tag = p.built_in ? ' [built-in]' : '';
@@ -1212,19 +1233,32 @@ export async function runCLI(
   // ── protocol.show formatting ──────────────────────────────────────────────
   if (command === 'protocol.show') {
     if (!data || typeof data !== 'object') return 'Protocol not found.';
-    const inner = data as {
+    type ProtocolShowData = {
       name: string;
       description?: string;
       help_text?: string;
       trigger_examples?: string;
       steps: Array<{ step_order: number; type: string; description?: string }>;
     };
-    const lines: string[] = [`\n${inner.name}\n`];
-    if (inner.description) lines.push(inner.description + '\n');
-    if (inner.help_text) lines.push(inner.help_text + '\n');
-    if (inner.trigger_examples) {
+    function isProtocolShowData(v: unknown): v is ProtocolShowData {
+      return (
+        v != null &&
+        typeof v === 'object' &&
+        'name' in v &&
+        'steps' in v &&
+        Array.isArray((v as { steps?: unknown }).steps)
+      );
+    }
+    if (!isProtocolShowData(data)) return 'Protocol not found.';
+    const lines: string[] = [`\n${data.name}\n`];
+    if (data.description) lines.push(data.description + '\n');
+    if (data.help_text) lines.push(data.help_text + '\n');
+    if (data.trigger_examples) {
       try {
-        const examples: string[] = JSON.parse(inner.trigger_examples);
+        const rawExamples: unknown = JSON.parse(data.trigger_examples);
+        const examples = Array.isArray(rawExamples)
+          ? rawExamples.filter((e): e is string => typeof e === 'string')
+          : [];
         if (examples.length) {
           lines.push('Examples:');
           examples.forEach((e) => lines.push(`  • "${e}"`));
@@ -1235,21 +1269,18 @@ export async function runCLI(
       }
     }
     lines.push('Steps:');
-    for (const s of inner.steps)
-      lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
+    for (const s of data.steps) lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
     return lines.join('\n');
   }
 
   // ── execution.list formatting ─────────────────────────────────────────────
   if (command === 'execution.list') {
     if (!Array.isArray(data) || data.length === 0) return 'No executions found.';
-    const execs = data as Array<{
-      id: string;
-      status: string;
-      current_step: number;
-      feature_request: string;
-    }>;
-    return execs
+    return data
+      .filter(
+        (e): e is { id: string; status: string; current_step: number; feature_request: string } =>
+          e != null && typeof e === 'object' && 'id' in e && 'status' in e
+      )
       .map(
         (e) =>
           `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
@@ -1261,7 +1292,9 @@ export async function runCLI(
   if (Array.isArray(data)) {
     if (data.length === 0) return `No ${group} found.`;
     if (typeof data[0] === 'object' && data[0] !== null) {
-      return formatTable(data as Array<Record<string, unknown>>);
+      return formatTable(
+        data.filter((d): d is Record<string, unknown> => d != null && typeof d === 'object')
+      );
     }
     return data.join('\n');
   }
@@ -1272,17 +1305,17 @@ export async function runCLI(
   }
 
   // ── Object → key: value lines ─────────────────────────────────────────────
-  if (data !== null && typeof data === 'object') {
-    return Object.entries(data as Record<string, unknown>) // after typeof 'object' + non-null check
+  if (isRecord(data)) {
+    return Object.entries(data)
       .map(([k, v]) => {
-        const valStr = typeof v === 'string' ? stripAnsi(v) : String(v ?? '');
+        const valStr = typeof v === 'string' ? stripAnsi(v) : toStr(v);
         return `${k}: ${valStr}`;
       })
       .join('\n');
   }
 
   // ── Default ───────────────────────────────────────────────────────────────
-  return String(data ?? 'OK');
+  return toStr(data);
 }
 
 // ── CLI entrypoint ────────────────────────────────────────────────────────────

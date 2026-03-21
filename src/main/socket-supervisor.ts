@@ -62,12 +62,11 @@ export class SocketSupervisor extends EventEmitter {
         this.server = null;
       }
 
-      if (this.isStopped) return;
-
       this.server = this.createServer();
       await this.server.start();
 
       this.restartTimestamps.push(Date.now());
+      // eslint-disable-next-line no-console
       console.log('[socket-supervisor] Server restarted successfully');
       this.emit('restarted');
     } catch (err) {

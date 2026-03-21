@@ -1,7 +1,7 @@
 import { getScSpriteSheetUrl, getScTileUrl } from './sc-sprite-loader';
 import { SC_SPRITE_ATLAS } from './sc-sprite-atlas';
 
-export function StatusBar() {
+export function StatusBar(): React.JSX.Element {
   const url = getScSpriteSheetUrl();
   const rivet = SC_SPRITE_ATLAS['statusbar-rivet'];
   const tileUrl = getScTileUrl('statusbar-tile');

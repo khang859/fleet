@@ -6,7 +6,7 @@ type VisualizerPanelProps = {
   onShipClick: (paneId: string) => void;
 };
 
-export function VisualizerPanel({ onShipClick }: VisualizerPanelProps) {
+export function VisualizerPanel({ onShipClick }: VisualizerPanelProps): React.JSX.Element | null {
   const { isVisible, panelMode } = useVisualizerStore();
   const [drawerHeight, setDrawerHeight] = useState(200);
 
@@ -16,12 +16,12 @@ export function VisualizerPanel({ onShipClick }: VisualizerPanelProps) {
       const startY = e.clientY;
       const startHeight = drawerHeight;
 
-      function onMove(moveEvent: PointerEvent) {
+      function onMove(moveEvent: PointerEvent): void {
         const delta = startY - moveEvent.clientY;
         setDrawerHeight(Math.max(100, Math.min(600, startHeight + delta)));
       }
 
-      function onUp() {
+      function onUp(): void {
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', onUp);
       }

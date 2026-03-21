@@ -380,14 +380,14 @@ describe('AdmiralProcess.start/stop/restart', () => {
     });
 
     const paneId = await admiral.start();
-    await admiral.stop();
+    admiral.stop();
 
     expect(mockPty.kill).toHaveBeenCalledWith(paneId);
     expect(admiral.status).toBe('stopped');
     expect(admiral.paneId).toBeNull();
   });
 
-  it('stop() on non-started admiral is a no-op', async () => {
+  it('stop() on non-started admiral is a no-op', () => {
     const workspace = path.join(tmpDir, 'starbase');
     const admiral = new AdmiralProcess({
       workspace,
@@ -397,7 +397,7 @@ describe('AdmiralProcess.start/stop/restart', () => {
       fleetBinPath: '/usr/local/bin'
     });
 
-    await expect(admiral.stop()).resolves.not.toThrow();
+    expect(() => admiral.stop()).not.toThrow();
     expect(admiral.status).toBe('stopped');
   });
 

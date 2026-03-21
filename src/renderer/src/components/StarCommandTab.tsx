@@ -15,7 +15,13 @@ import { LogsPanel } from './star-command/LogsPanel';
 import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 
-function AdmiralTerminal({ paneId, isActive }: { paneId: string; isActive: boolean }) {
+function AdmiralTerminal({
+  paneId,
+  isActive
+}: {
+  paneId: string;
+  isActive: boolean;
+}): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, {
     paneId,
@@ -33,7 +39,7 @@ function AdmiralTerminal({ paneId, isActive }: { paneId: string; isActive: boole
   );
 }
 
-export function StarCommandTab() {
+export function StarCommandTab(): React.JSX.Element {
   const {
     runtimeStatus,
     admiralPaneId,
@@ -64,7 +70,7 @@ export function StarCommandTab() {
   const [showMemos, setShowMemos] = useState(false);
   const [talkFrame, setTalkFrame] = useState(false);
   const [resetConfirm, setResetConfirm] = useState(false);
-  const [_isRestarting, setIsRestarting] = useState(false);
+  const [, setIsRestarting] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runtimeLaunchRef = useRef(false);
 
@@ -99,7 +105,7 @@ export function StarCommandTab() {
     const applyRuntimeStatus = (status: {
       state: 'starting' | 'ready' | 'error';
       error?: string;
-    }) => {
+    }): void => {
       setRuntimeStatus(status);
       if (status.state !== 'ready') {
         runtimeLaunchRef.current = false;
@@ -112,7 +118,7 @@ export function StarCommandTab() {
       }
     };
 
-    const launchAdmiral = () => {
+    const launchAdmiral = (): void => {
       if (runtimeLaunchRef.current) return;
       runtimeLaunchRef.current = true;
       setDepCheck('checking', []);

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useStarCommandStore } from '../../store/star-command-store';
 import type { CommInfo } from '../../store/star-command-store';
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
@@ -28,23 +28,29 @@ function typeColor(type: string): string {
   }
 }
 
-function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }) {
+function CommCard({
+  comm,
+  onRefresh
+}: {
+  comm: CommInfo;
+  onRefresh: () => void;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const [resolveText, setResolveText] = useState('');
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleMarkRead = async () => {
+  const handleMarkRead = async (): Promise<void> => {
     await window.fleet.starbase.markCommsRead(comm.id);
     onRefresh();
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (): Promise<void> => {
     await window.fleet.starbase.deleteComms(comm.id);
     onRefresh();
   };
 
-  const handleResolve = async () => {
+  const handleResolve = async (): Promise<void> => {
     if (!resolveText.trim()) return;
     setResolving(true);
     setError(null);
@@ -61,9 +67,13 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
 
   let payloadPreview = comm.payload;
   try {
-    const parsed = JSON.parse(comm.payload);
-    if (parsed.message) payloadPreview = parsed.message;
-    else if (typeof parsed === 'string') payloadPreview = parsed;
+    const parsed: unknown = JSON.parse(comm.payload);
+    if (typeof parsed === 'string') {
+      payloadPreview = parsed;
+    } else if (typeof parsed === 'object' && parsed !== null && 'message' in parsed) {
+      const msg = (parsed as Record<string, unknown>)['message'];
+      if (typeof msg === 'string') payloadPreview = msg;
+    }
   } catch {
     // raw string payload
   }
@@ -119,7 +129,9 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
               }}
             />
             <button
-              onClick={() => { void handleResolve(); }}
+              onClick={() => {
+                void handleResolve();
+              }}
               disabled={!resolveText.trim() || resolving}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs rounded transition-colors"
             >
@@ -132,14 +144,18 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
           <div className="flex items-center gap-2">
             {!comm.read && (
               <button
-                onClick={() => { void handleMarkRead(); }}
+                onClick={() => {
+                  void handleMarkRead();
+                }}
                 className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
               >
                 Mark Read
               </button>
             )}
             <button
-              onClick={() => { void handleDelete(); }}
+              onClick={() => {
+                void handleDelete();
+              }}
               className="text-xs text-red-400 hover:text-red-300 transition-colors"
             >
               Delete
@@ -151,7 +167,7 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
   );
 }
 
-export function CommsPanel() {
+export function CommsPanel(): React.JSX.Element {
   const { commsList, setCommsList, setUnreadCount } = useStarCommandStore();
   const [clearConfirm, setClearConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -171,12 +187,12 @@ export function CommsPanel() {
     void refresh();
   }, [refresh]);
 
-  const handleReadAll = async () => {
+  const handleReadAll = async (): Promise<void> => {
     await window.fleet.starbase.markAllCommsRead();
     void refresh();
   };
 
-  const handleClearAll = async () => {
+  const handleClearAll = async (): Promise<void> => {
     setError(null);
     try {
       await window.fleet.starbase.clearComms();
@@ -197,7 +213,9 @@ export function CommsPanel() {
         <div className="flex items-center gap-2">
           {unread.length > 0 && (
             <button
-              onClick={() => { void handleReadAll(); }}
+              onClick={() => {
+                void handleReadAll();
+              }}
               className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
             >
               Read All
@@ -207,7 +225,9 @@ export function CommsPanel() {
             <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
               <span className="text-[10px] text-red-300">Clear all?</span>
               <button
-                onClick={() => { void handleClearAll(); }}
+                onClick={() => {
+                  void handleClearAll();
+                }}
                 className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
               >
                 Confirm
@@ -238,7 +258,13 @@ export function CommsPanel() {
           <SectionHeader title="Unread" count={unread.length} />
           <div className="space-y-2">
             {unread.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={() => { void refresh(); }} />
+              <CommCard
+                key={c.id}
+                comm={c}
+                onRefresh={() => {
+                  void refresh();
+                }}
+              />
             ))}
           </div>
         </section>
@@ -250,7 +276,13 @@ export function CommsPanel() {
           <SectionHeader title="Read" count={read.length} />
           <div className="space-y-2">
             {read.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={() => { void refresh(); }} />
+              <CommCard
+                key={c.id}
+                comm={c}
+                onRefresh={() => {
+                  void refresh();
+                }}
+              />
             ))}
           </div>
         </section>

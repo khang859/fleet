@@ -13,7 +13,10 @@ function getAnimState(ship: Ship): 'idle' | 'thrust' | 'warp-in' | 'warp-out' {
     case 'reading':
     case 'waiting':
       return 'thrust';
-    default:
+    case 'idle':
+    case 'walking':
+    case 'needs-permission':
+    case 'not-agent':
       return 'idle';
   }
 }

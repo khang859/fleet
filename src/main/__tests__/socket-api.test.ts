@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SocketApi, type SocketCommandHandler } from '../socket-api';
-import { createServer, createConnection } from 'net';
+import { createConnection } from 'net';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { unlinkSync } from 'fs';
@@ -26,7 +26,9 @@ describe('SocketApi', () => {
     await api.stop();
     try {
       unlinkSync(socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('starts and accepts a connection', async () => {

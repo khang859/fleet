@@ -82,7 +82,7 @@ beforeEach(() => {
     cargoService,
     crewService: {
       recallCrew: () => {},
-      deployCrew: async () => ({ crewId: 'replacement', missionId })
+      deployCrew: () => ({ crewId: 'replacement', missionId })
     } as any,
     starbaseId: db.getStarbaseId()
   });
@@ -222,12 +222,12 @@ describe('FirstOfficer', () => {
     expect(payload.eventType).toBe('auto-escalation');
   });
 
-  it('falls back to escalate-and-dismiss when decision payload is invalid', async () => {
+  it('falls back to escalate-and-dismiss when decision payload is invalid', () => {
     const decision = (firstOfficer as any).parseDecision('not-json', makeEvent());
     expect(decision.decision).toBe('escalate-and-dismiss');
   });
 
-  it('normalizes a recover-and-dismiss decision payload', async () => {
+  it('normalizes a recover-and-dismiss decision payload', () => {
     const decision = (firstOfficer as any).parseDecision(
       JSON.stringify({
         decision: 'recover-and-dismiss',

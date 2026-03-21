@@ -19,13 +19,14 @@ import { css } from '@codemirror/lang-css';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
+import type { LanguageSupport } from '@codemirror/language';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
 
-function getLanguageExtension(filePath: string) {
+function getLanguageExtension(filePath: string): LanguageSupport | null {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
     case 'js':
@@ -96,7 +97,7 @@ type Props = {
   filePath: string;
 };
 
-export function FileEditorPane({ paneId, filePath }: Props) {
+export function FileEditorPane({ paneId, filePath }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);

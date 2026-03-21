@@ -7,7 +7,10 @@ const MAX_RECENT_FILES = 20;
 function loadRecentFiles(): string[] {
   try {
     const raw = localStorage.getItem(RECENT_FILES_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
   } catch {
     return [];
   }
@@ -228,7 +231,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
               tab: closedTab,
               index: tabIndex,
               closedAt: Date.now(),
-              serializedPanes: serializedPanes ?? new Map()
+              serializedPanes: serializedPanes ?? new Map<string, string>()
             }
           : null,
         isDirty: true

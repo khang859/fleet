@@ -135,11 +135,11 @@ describe('ShipManager', () => {
 
     // Ship drifts around its target — use its actual position for hit test
     const ship = sm.getShips()[0];
-    const hit = sm.hitTest(ship.currentX, ship.currentY, 400, 200);
+    const hit = sm.hitTest(ship.currentX, ship.currentY);
     expect(hit).toBe('pane-1');
 
     // Far away should miss
-    const miss = sm.hitTest(0, 0, 400, 200);
+    const miss = sm.hitTest(0, 0);
     expect(miss).toBeNull();
   });
 });

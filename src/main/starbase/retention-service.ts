@@ -84,8 +84,8 @@ export class RetentionService {
     for (const table of TABLES) {
       const row = this.db
         .prepare<[], { count: number }>(`SELECT COUNT(*) as count FROM ${table}`)
-        .get()!;
-      tables[table] = row.count;
+        .get();
+      tables[table] = row?.count ?? 0;
     }
 
     const dbSizeBytes = statSync(this.dbPath).size;

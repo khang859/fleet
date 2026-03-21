@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useNotificationStore } from '../store/notification-store';
 
-export function useNotifications() {
+export function useNotifications(): void {
   const { setNotification } = useNotificationStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -14,7 +14,7 @@ export function useNotifications() {
     const samples = sampleRate * duration;
     const buffer = new ArrayBuffer(44 + samples);
     const view = new DataView(buffer);
-    const writeString = (offset: number, str: string) => {
+    const writeString = (offset: number, str: string): void => {
       for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
     };
     writeString(0, 'RIFF');

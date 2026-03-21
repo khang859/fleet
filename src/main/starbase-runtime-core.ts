@@ -96,7 +96,7 @@ export class StarbaseRuntimeCore {
         return this.bootstrap({
           workspacePath: args.workspacePath,
           fleetBinPath: args.fleetBinPath,
-          env: args.env as Record<string, string>
+          env: toStringRecord(args.env)
         });
       }
       case 'runtime.getStatus':
@@ -816,14 +816,12 @@ export class StarbaseRuntimeCore {
     return {
       starbaseId: deps.starbaseDb.getStarbaseId(),
       starbaseName:
-        deps.configService.getOptionalString('starbase_name') ??
-        basename(this.workspacePath) ??
-        'Starbase',
+        deps.configService.getOptionalString('starbase_name') ?? basename(this.workspacePath),
       sectors: deps.sectorService.listVisibleSectors().map((sector) => ({
         name: sector.name,
         root_path: sector.root_path,
         stack: sector.stack ?? undefined,
-        base_branch: sector.base_branch ?? undefined
+        base_branch: sector.base_branch
       }))
     };
   }
@@ -846,7 +844,11 @@ export class StarbaseRuntimeCore {
       .all()
       .map((r) => {
         try {
-          const payload: { filePath?: string; summary?: string } = JSON.parse(r.payload ?? '{}');
+          const rawPayload: unknown = JSON.parse(r.payload ?? '{}');
+          const payload =
+            rawPayload != null && typeof rawPayload === 'object'
+              ? (rawPayload as { filePath?: string; summary?: string })
+              : {};
           return {
             ...r,
             file_path: payload.filePath ?? '',

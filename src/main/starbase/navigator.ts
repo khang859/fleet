@@ -132,10 +132,12 @@ export class Navigator {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const msg = JSON.parse(line);
+            const rawMsg: unknown = JSON.parse(line);
+            const msg =
+              rawMsg != null && typeof rawMsg === 'object' ? (rawMsg as { type?: string }) : {};
             if (msg.type === 'result') {
               try {
-                proc.stdin?.end();
+                proc.stdin.end();
               } catch {
                 /* ignore */
               }

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useStarCommandStore } from '../../store/star-command-store';
 import type { MissionInfo } from '../../store/star-command-store';
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
@@ -20,7 +20,7 @@ const STATUS_DOT: Record<string, string> = {
   aborted: 'bg-red-500'
 };
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({ status }: { status: string }): React.JSX.Element {
   return (
     <span
       className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[status] ?? 'bg-neutral-500'}`}
@@ -28,10 +28,10 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
-function MissionCard({ mission }: { mission: MissionInfo }) {
+function MissionCard({ mission }: { mission: MissionInfo }): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
 
-  const formatDate = (dt: string | null) => (dt ? new Date(dt).toLocaleString() : '—');
+  const formatDate = (dt: string | null): string => (dt ? new Date(dt).toLocaleString() : '—');
 
   return (
     <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
@@ -145,7 +145,7 @@ function MissionCard({ mission }: { mission: MissionInfo }) {
   );
 }
 
-export function MissionsPanel() {
+export function MissionsPanel(): React.JSX.Element {
   const { missionQueue, setMissionQueue } = useStarCommandStore();
 
   const refresh = useCallback(async () => {

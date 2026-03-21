@@ -35,7 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-500 animate-pulse'
 };
 
-function StatusDot({ color }: { color: string }) {
+function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
 
@@ -45,7 +45,7 @@ export function AdmiralSidebar({
 }: {
   avatarVariant: string;
   onMemoClick?: () => void;
-}) {
+}): React.JSX.Element {
   const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } =
     useStarCommandStore();
 

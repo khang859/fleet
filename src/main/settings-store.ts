@@ -26,7 +26,7 @@ export class SettingsStore {
       visualizer: {
         ...DEFAULT_SETTINGS.visualizer,
         ...saved.visualizer,
-        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...(saved.visualizer?.effects ?? {}) }
+        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer.effects }
       }
     };
   }

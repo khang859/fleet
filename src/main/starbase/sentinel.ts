@@ -425,7 +425,11 @@ export class Sentinel {
       }
       if (row.verify_result) {
         try {
-          const vr = JSON.parse(row.verify_result);
+          const rawVr: unknown = JSON.parse(row.verify_result);
+          const vr =
+            rawVr != null && typeof rawVr === 'object'
+              ? (rawVr as { stdout?: string; stderr?: string })
+              : {};
           if (vr.stdout) crewOutput += '\n\n--- Verification Output ---\n' + vr.stdout;
           if (vr.stderr) crewOutput += '\n\n--- Verification Stderr ---\n' + vr.stderr;
         } catch {
@@ -444,7 +448,11 @@ export class Sentinel {
       const attemptHistory = prevMemos
         .map((m, i) => {
           try {
-            const p = JSON.parse(m.payload);
+            const rawP: unknown = JSON.parse(m.payload);
+            const p =
+              rawP != null && typeof rawP === 'object'
+                ? (rawP as { summary?: string; fingerprint?: string; classification?: string })
+                : {};
             return `| ${i + 1} | ${p.summary?.slice(0, 60) ?? 'unknown'} | ${p.fingerprint ?? '—'} | ${p.classification ?? '—'} |`;
           } catch {
             return null;
@@ -642,12 +650,13 @@ export class Sentinel {
     const maxConcurrent = configService.getNumber('review_crew_max_concurrent');
 
     // Count active review crews
-    const activeReviewCount = db
-      .prepare<
-        [],
-        { cnt: number }
-      >("SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'")
-      .get()!.cnt;
+    const activeReviewCount =
+      db
+        .prepare<
+          [],
+          { cnt: number }
+        >("SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'")
+        .get()?.cnt ?? 0;
 
     if (activeReviewCount >= maxConcurrent) return;
 
@@ -672,8 +681,8 @@ export class Sentinel {
       db.prepare(
         "UPDATE missions SET status = 'reviewing' WHERE id = ? AND status = 'pending-review'"
       ).run(mission.id);
-      const changed = db.prepare<[], { c: number }>('SELECT changes() as c').get()!;
-      if (changed.c === 0) continue; // Another sweep already claimed it
+      const changed = db.prepare<[], { c: number }>('SELECT changes() as c').get();
+      if (!changed || changed.c === 0) continue; // Another sweep already claimed it
 
       // Build review prompt
       const reviewPrompt = `Review the PR on branch \`${mission.pr_branch}\` targeting \`${mission.base_branch}\`.
@@ -847,7 +856,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
           clearTimeout(timer);
           socket.end();
           try {
-            const parsed = JSON.parse(buffer.split('\n')[0]);
+            const rawParsed: unknown = JSON.parse(buffer.split('\n')[0]);
+            const parsed =
+              rawParsed != null && typeof rawParsed === 'object'
+                ? (rawParsed as { ok?: boolean; data?: { pong?: boolean } })
+                : {};
             resolve(parsed.ok === true && parsed.data?.pong === true);
           } catch {
             resolve(false);

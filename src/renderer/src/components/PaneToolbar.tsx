@@ -19,7 +19,7 @@ export function PaneToolbar({
   onClose,
   onSearch,
   onGitChanges
-}: PaneToolbarProps) {
+}: PaneToolbarProps): React.JSX.Element {
   return (
     <div
       className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}

@@ -26,7 +26,9 @@ describe('SocketApi subscriptions', () => {
     await api.stop();
     try {
       unlinkSync(socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('receives broadcast events after subscribing', async () => {

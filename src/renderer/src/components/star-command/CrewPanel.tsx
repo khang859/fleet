@@ -11,7 +11,7 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-500 animate-pulse'
 };
 
-function StatusDot({ status }: { status: string }) {
+function StatusDot({ status }: { status: string }): React.JSX.Element {
   return (
     <span
       className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[status] ?? 'bg-neutral-500'}`}
@@ -19,7 +19,7 @@ function StatusDot({ status }: { status: string }) {
   );
 }
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
@@ -28,7 +28,13 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
   );
 }
 
-function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void }) {
+function CrewCard({
+  crew,
+  onRefresh
+}: {
+  crew: CrewStatus;
+  onRefresh: () => void;
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
   const [recallConfirm, setRecallConfirm] = useState(false);
   const [output, setOutput] = useState<string | null>(null);
@@ -37,7 +43,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleRecall = async () => {
+  const handleRecall = async (): Promise<void> => {
     setError(null);
     try {
       await window.fleet.starbase.recallCrew(crew.id);
@@ -48,7 +54,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
     }
   };
 
-  const handleObserve = async () => {
+  const handleObserve = async (): Promise<void> => {
     setObserving(true);
     setError(null);
     try {
@@ -60,7 +66,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
     setObserving(false);
   };
 
-  const handleMessage = async () => {
+  const handleMessage = async (): Promise<void> => {
     if (!messageText.trim()) return;
     setSending(true);
     setError(null);
@@ -152,7 +158,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
               }}
             />
             <button
-              onClick={() => { void handleMessage(); }}
+              onClick={() => {
+                void handleMessage();
+              }}
               disabled={!messageText.trim() || sending}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs rounded transition-colors"
             >
@@ -164,7 +172,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
 
           <div className="flex items-center gap-2">
             <button
-              onClick={() => { void handleObserve(); }}
+              onClick={() => {
+                void handleObserve();
+              }}
               disabled={observing}
               className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
             >
@@ -175,7 +185,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
               <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1 ml-auto">
                 <span className="text-[10px] text-red-300">Recall crew?</span>
                 <button
-                  onClick={() => { void handleRecall(); }}
+                  onClick={() => {
+                    void handleRecall();
+                  }}
                   className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
                 >
                   Confirm
@@ -202,7 +214,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
   );
 }
 
-function DeploySection({ onRefresh }: { onRefresh: () => void }) {
+function DeploySection({ onRefresh }: { onRefresh: () => void }): React.JSX.Element {
   const { sectors } = useStarCommandStore();
   const [sectorId, setSectorId] = useState('');
   const [prompt, setPrompt] = useState('');
@@ -211,7 +223,7 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const handleDeploy = async () => {
+  const handleDeploy = async (): Promise<void> => {
     if (!sectorId || !prompt.trim()) return;
     setDeploying(true);
     setError(null);
@@ -269,7 +281,9 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
       {success && <p className="text-xs text-green-400">{success}</p>}
 
       <button
-        onClick={() => { void handleDeploy(); }}
+        onClick={() => {
+          void handleDeploy();
+        }}
         disabled={!sectorId || !prompt.trim() || deploying}
         className="w-full px-3 py-1.5 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
       >
@@ -279,7 +293,7 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
   );
 }
 
-function MissionQueueSection() {
+function MissionQueueSection(): React.JSX.Element {
   const { missionQueue } = useStarCommandStore();
 
   const statusColor: Record<string, string> = {
@@ -324,7 +338,7 @@ function MissionQueueSection() {
   );
 }
 
-export function CrewPanel() {
+export function CrewPanel(): React.JSX.Element {
   const { crewList, setCrewList, setMissionQueue } = useStarCommandStore();
 
   const refresh = useCallback(async () => {
@@ -353,14 +367,24 @@ export function CrewPanel() {
         <SectionHeader title="Active Crew" count={crewList.length} />
         <div className="space-y-2 mb-3">
           {crewList.map((c) => (
-            <CrewCard key={c.id} crew={c} onRefresh={() => { void refresh(); }} />
+            <CrewCard
+              key={c.id}
+              crew={c}
+              onRefresh={() => {
+                void refresh();
+              }}
+            />
           ))}
           {crewList.length === 0 && <p className="text-xs text-neutral-600">No crew deployed</p>}
         </div>
       </section>
 
       {/* Deploy section */}
-      <DeploySection onRefresh={() => { void refresh(); }} />
+      <DeploySection
+        onRefresh={() => {
+          void refresh();
+        }}
+      />
 
       {/* Mission queue */}
       <MissionQueueSection />

@@ -11,6 +11,10 @@ import type { MissionService } from './mission-service';
 import type { EventBus } from '../event-bus';
 import { filterEnv } from '../env-utils';
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
 type FirstOfficerDeps = {
   db: Database.Database;
   configService: ConfigService;
@@ -99,8 +103,8 @@ export class FirstOfficer {
         [],
         { cnt: number }
       >("SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0")
-      .get()!;
-    return row.cnt > 0 ? 'memo' : 'idle';
+      .get();
+    return row && row.cnt > 0 ? 'memo' : 'idle';
   }
 
   async dispatch(event: ActionableEvent, callbacks?: DispatchCallbacks): Promise<boolean> {
@@ -191,21 +195,23 @@ export class FirstOfficer {
           parent_tool_use_id: null,
           session_id: ''
         }) + '\n';
-      proc.stdin?.write(initMsg);
+      proc.stdin.write(initMsg);
 
-      proc.stdout?.on('data', (chunk: Buffer) => {
+      proc.stdout.on('data', (chunk: Buffer) => {
         stdoutBuffer += chunk.toString();
         const lines = stdoutBuffer.split('\n');
         stdoutBuffer = lines.pop() ?? '';
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const msg: {
+            type ParsedMsg = {
               type?: string;
               result?: string;
               message?: { content?: Array<{ type?: string; text?: string }> };
-            } | null = JSON.parse(line);
-            if (!msg) continue;
+            };
+            const rawMsg: unknown = JSON.parse(line);
+            if (!rawMsg || typeof rawMsg !== 'object') continue;
+            const msg = rawMsg as ParsedMsg;
 
             if (msg.type === 'assistant' && msg.message?.content) {
               const text = msg.message.content
@@ -218,7 +224,7 @@ export class FirstOfficer {
             if (msg.type === 'result') {
               if (typeof msg.result === 'string') resultText = msg.result;
               try {
-                proc.stdin?.end();
+                proc.stdin.end();
               } catch {
                 /* ignore */
               }
@@ -229,7 +235,7 @@ export class FirstOfficer {
         }
       });
 
-      proc.stderr?.on('data', (chunk: Buffer) => {
+      proc.stderr.on('data', (chunk: Buffer) => {
         console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim());
       });
 
@@ -292,8 +298,11 @@ export class FirstOfficer {
   }): Promise<void> {
     let payloadText = '';
     try {
-      const parsed = JSON.parse(opts.payload);
-      payloadText = parsed.message ?? parsed.question ?? JSON.stringify(parsed, null, 2);
+      const rawParsed: unknown = JSON.parse(opts.payload);
+      const parsed: Record<string, unknown> = isRecord(rawParsed) ? rawParsed : {};
+      const msg = typeof parsed['message'] === 'string' ? parsed['message'] : undefined;
+      const question = typeof parsed.question === 'string' ? parsed.question : undefined;
+      payloadText = msg ?? question ?? JSON.stringify(rawParsed, null, 2);
     } catch {
       payloadText = opts.payload;
     }
@@ -447,7 +456,8 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
     }
 
     try {
-      const parsed: Record<string, unknown> = JSON.parse(extracted);
+      const rawExtracted: unknown = JSON.parse(extracted);
+      const parsed: Record<string, unknown> = isRecord(rawExtracted) ? rawExtracted : {};
       const decision = this.normalizeDecision(parsed.decision);
       const revisedPrompt =
         typeof parsed.revisedPrompt === 'string'
@@ -456,10 +466,10 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
             ? parsed.missionUpdate.trim()
             : undefined;
       const salvageMaybe = parsed.salvage;
-      const salvageRaw: Record<string, unknown> =
-        salvageMaybe != null && typeof salvageMaybe === 'object' && !Array.isArray(salvageMaybe)
-          ? (salvageMaybe as Record<string, unknown>)
-          : {};
+      function isSalvageRecord(v: unknown): v is Record<string, unknown> {
+        return v != null && typeof v === 'object' && !Array.isArray(v);
+      }
+      const salvageRaw: Record<string, unknown> = isSalvageRecord(salvageMaybe) ? salvageMaybe : {};
 
       if (!decision) {
         return {
@@ -704,7 +714,7 @@ ${decision.salvage?.summary ?? 'Partial mission output was preserved for later o
 
     const content = `## First Officer Escalation: ${event.missionSummary}
 
-**Crew:** ${event.crewId} · **Sector:** ${event.sectorName} · **Attempts:** ${event.retryCount}/${this.deps.configService.get('first_officer_max_retries')}
+**Crew:** ${event.crewId} · **Sector:** ${event.sectorName} · **Attempts:** ${event.retryCount}/${String(this.deps.configService.get('first_officer_max_retries'))}
 **Decision:** escalate-and-dismiss
 **Recovered Cargo:** ${cargoCreated ? 'yes' : 'no'}
 

@@ -217,7 +217,7 @@ export class AdmiralProcess {
     }
   }
 
-  async stop(): Promise<void> {
+  stop(): void {
     if (this.paneId) {
       this.ptyManager.kill(this.paneId);
       this.paneId = null;
@@ -226,7 +226,7 @@ export class AdmiralProcess {
   }
 
   async restart(): Promise<string> {
-    await this.stop();
+    this.stop();
     return this.start();
   }
 
@@ -235,7 +235,7 @@ export class AdmiralProcess {
    * This regenerates CLAUDE.md, skills, settings, and re-inits git.
    */
   async reset(): Promise<string> {
-    await this.stop();
+    this.stop();
     await fsp.rm(this.workspace, { recursive: true, force: true });
     return this.start();
   }

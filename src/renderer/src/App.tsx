@@ -47,7 +47,7 @@ function injectSerializedContent(node: PaneNode): PaneNode {
   };
 }
 
-export function App() {
+export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
   const { loadSettings } = useSettingsStore();
@@ -111,42 +111,42 @@ export function App() {
 
   // Settings modal toggle
   useEffect(() => {
-    const handler = () => setSettingsOpen((prev) => !prev);
+    const handler = (): void => setSettingsOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-settings', handler);
     return () => document.removeEventListener('fleet:toggle-settings', handler);
   }, []);
 
   // Shortcuts panel toggle
   useEffect(() => {
-    const handler = () => setShortcutsOpen((prev) => !prev);
+    const handler = (): void => setShortcutsOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-shortcuts', handler);
     return () => document.removeEventListener('fleet:toggle-shortcuts', handler);
   }, []);
 
   // Command palette toggle
   useEffect(() => {
-    const handler = () => setCommandPaletteOpen((prev) => !prev);
+    const handler = (): void => setCommandPaletteOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-command-palette', handler);
     return () => document.removeEventListener('fleet:toggle-command-palette', handler);
   }, []);
 
   // Git changes modal toggle
   useEffect(() => {
-    const handler = () => setGitChangesOpen((prev) => !prev);
+    const handler = (): void => setGitChangesOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-git-changes', handler);
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
   useEffect(() => {
-    const handler = () => setQuickOpenOpen((prev) => !prev);
+    const handler = (): void => setQuickOpenOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-quick-open', handler);
     return () => document.removeEventListener('fleet:toggle-quick-open', handler);
   }, []);
 
   // Open file dialog (Cmd+O)
   useEffect(() => {
-    const handler = () => {
+    const handler = (): void => {
       const cwd = focusedPaneCwd ?? window.fleet.homeDir;
       void window.fleet.file.openDialog({ defaultPath: cwd }).then((filePaths) => {
         for (const filePath of filePaths) {
@@ -207,7 +207,7 @@ export function App() {
 
   // Best-effort flush on page hide; debounced autosave remains the primary durability path.
   useEffect(() => {
-    const flushWorkspace = () => {
+    const flushWorkspace = (): void => {
       const state = useWorkspaceStore.getState();
       const workspaceWithContent = {
         ...state.workspace,
@@ -218,10 +218,10 @@ export function App() {
       };
       void window.fleet.layout.save({ workspace: workspaceWithContent });
     };
-    const handlePageHide = () => {
+    const handlePageHide = (): void => {
       flushWorkspace();
     };
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = (): void => {
       if (document.visibilityState === 'hidden') {
         flushWorkspace();
       }
@@ -427,7 +427,7 @@ export function App() {
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
-                <span className="text-neutral-300">Closed "{lastClosedTab.tab.label}"</span>
+                <span className="text-neutral-300">Closed {'"'}{lastClosedTab.tab.label}{'"'}</span>
                 <button
                   className="text-blue-400 hover:text-blue-300 font-medium"
                   onClick={handleUndo}

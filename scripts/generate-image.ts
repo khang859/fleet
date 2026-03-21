@@ -51,7 +51,7 @@ interface GenerateResponse {
 function isGenerateResponse(value: unknown): value is GenerateResponse {
   if (typeof value !== 'object' || value === null) return false;
   if (!('images' in value) || !Array.isArray(value.images)) return false;
-  for (const img of value.images) {
+  for (const img of value.images as unknown[]) {
     if (typeof img !== 'object' || img === null) return false;
     if (!('url' in img) || typeof img.url !== 'string') return false;
   }
@@ -132,30 +132,46 @@ async function downloadImage(url: string, filepath: string): Promise<void> {
   writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
 }
 
-function parseArgs() {
+function parseArgs(): ApiOptions & { output: string; reference?: string } {
   const args = process.argv.slice(2);
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
+    // eslint-disable-next-line no-console
     console.log(
       'Usage: npx tsx scripts/generate-image.ts <prompt> --output <subdir/name.png> [options]'
     );
+    // eslint-disable-next-line no-console
     console.log('\nExamples:');
+    // eslint-disable-next-line no-console
     console.log('  # Base idle frame (text-to-image)');
+    // eslint-disable-next-line no-console
     console.log(
       '  npx tsx scripts/generate-image.ts "pixel art spaceship..." --output ships/parent-1-arrow-idle-1.png'
     );
+    // eslint-disable-next-line no-console
     console.log('');
+    // eslint-disable-next-line no-console
     console.log('  # Animation frame (image edit — uses edit endpoint)');
+    // eslint-disable-next-line no-console
     console.log('  npx tsx scripts/generate-image.ts "same ship, engines blazing..." \\');
+    // eslint-disable-next-line no-console
     console.log('    --output ships/parent-1-arrow-thrust-1.png \\');
+    // eslint-disable-next-line no-console
     console.log('    --reference ships/parent-1-arrow-idle-1.png');
+    // eslint-disable-next-line no-console
     console.log('\nOptions:');
+    // eslint-disable-next-line no-console
     console.log('  --output <path>        Required. Path relative to sprites-staging/');
+    // eslint-disable-next-line no-console
     console.log(
       '  --reference <path>     Reference image from sprites-staging/ (uses edit endpoint)'
     );
+    // eslint-disable-next-line no-console
     console.log('  --aspect-ratio <ratio> 1:1, 16:9, 9:16, auto (default: 1:1)');
+    // eslint-disable-next-line no-console
     console.log('  --resolution <res>     0.5K, 1K, 2K, 4K (default: 0.5K)');
+    // eslint-disable-next-line no-console
     console.log('  --seed <number>        Reproducible seed');
+    // eslint-disable-next-line no-console
     console.log('  --thinking high        Use high thinking level');
     process.exit(0);
   }
@@ -194,7 +210,7 @@ function parseArgs() {
   return parsed;
 }
 
-async function main() {
+async function main(): Promise<void> {
   const { output, reference, ...options } = parseArgs();
 
   const filepath = join(SPRITES_STAGING, output);
@@ -208,19 +224,26 @@ async function main() {
       console.error(`Reference image not found: sprites-staging/${reference}`);
       process.exit(1);
     }
+    // eslint-disable-next-line no-console
     console.log(`Generating (edit): ${output}`);
     result = await generateEdit(toDataUri(refPath), options);
   } else {
+    // eslint-disable-next-line no-console
     console.log(`Generating: ${output}`);
     result = await generateText2Image(options);
   }
 
-  if (result.description) console.log('Description:', result.description);
+  if (result.description) {
+    // eslint-disable-next-line no-console
+    console.log('Description:', result.description);
+  }
   await downloadImage(result.images[0].url, filepath);
+  // eslint-disable-next-line no-console
   console.log(`Saved → sprites-staging/${output}`);
 }
 
-main().catch((err) => {
-  console.error('Error:', err.message);
+main().catch((err: unknown) => {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('Error:', message);
   process.exit(1);
 });

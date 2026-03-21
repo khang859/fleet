@@ -121,7 +121,7 @@ function makeStatefulServices() {
   // ── Stub-only services (not exercised in these tests) ──
   const crewService = {
     listCrew: () => [],
-    deployCrew: async () => ({ crewId: 'crew-1', tabId: 'tab-1', missionId: 1 }),
+    deployCrew: () => ({ crewId: 'crew-1', tabId: 'tab-1', missionId: 1 }),
     recallCrew: () => {},
     observeCrew: () => ''
   };
@@ -155,7 +155,7 @@ function makeStatefulServices() {
     getRecent: () => []
   };
 
-  const createTab = (_label: string, _cwd: string) => 'tab-uuid';
+  const createTab = () => 'tab-uuid';
 
   return {
     sectorService,

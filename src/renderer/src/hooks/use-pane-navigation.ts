@@ -1,18 +1,18 @@
 import { useEffect } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
-import { ALL_SHORTCUTS, matchesShortcut } from '../lib/shortcuts';
+import { ALL_SHORTCUTS, matchesShortcut, type ShortcutDef } from '../lib/shortcuts';
 
-function sc(id: string) {
+function sc(id: string): ShortcutDef {
   return ALL_SHORTCUTS.find((s) => s.id === id)!;
 }
 
-export function usePaneNavigation() {
+export function usePaneNavigation(): void {
   const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
     useWorkspaceStore();
 
   useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
+    function handleKeyDown(e: KeyboardEvent): void {
       // F2 to rename active tab
       if (matchesShortcut(e, sc('rename-tab'))) {
         e.preventDefault();

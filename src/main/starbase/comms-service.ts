@@ -183,7 +183,7 @@ export class CommsService {
   }
 
   clear(opts?: { crewId?: string }): number {
-    let result;
+    let result: Database.RunResult;
     if (opts?.crewId) {
       result = this.db
         .prepare('DELETE FROM comms WHERE from_crew = ? OR to_crew = ?')
@@ -198,7 +198,7 @@ export class CommsService {
   }
 
   markAllRead(opts?: { crewId?: string }): number {
-    let result;
+    let result: Database.RunResult;
     if (opts?.crewId) {
       result = this.db
         .prepare('UPDATE comms SET read = 1 WHERE to_crew = ? AND read = 0')
@@ -228,7 +228,7 @@ export class CommsService {
     from?: string;
     unread?: boolean;
   }): TransmissionRow[] {
-    if (opts?.crewId && opts?.from) {
+    if (opts?.crewId && opts.from) {
       throw new Error(
         'Cannot filter by both crewId and from — crewId already matches from_crew and to_crew'
       );

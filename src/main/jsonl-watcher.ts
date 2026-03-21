@@ -173,6 +173,8 @@ export class JsonlWatcher {
           // Skip malformed lines
         }
       }
-    } catch {}
+    } catch {
+      // intentional
+    }
   }
 }

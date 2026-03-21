@@ -43,12 +43,13 @@ export class WorktreeManager {
 
     // Check concurrency limit
     if (this.db && this.maxConcurrent < Infinity) {
-      const activeCount = this.db
+      const row = this.db
         .prepare<
           [],
           { cnt: number }
         >("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-        .get()!.cnt;
+        .get();
+      const activeCount = row?.cnt ?? 0;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
           `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`
@@ -92,6 +93,7 @@ export class WorktreeManager {
       if (localBranches.trim()) {
         // Branch exists — append suffix
         let suffix = 2;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
           const candidate = `crew/${crewId}-${suffix}`;
           const { stdout: check } = await execAsync(`git branch --list "${candidate}"`, execOpts);
@@ -123,12 +125,13 @@ export class WorktreeManager {
 
     // Check concurrency limit (same as create())
     if (this.db && this.maxConcurrent < Infinity) {
-      const activeCount = this.db
+      const row = this.db
         .prepare<
           [],
           { cnt: number }
         >("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-        .get()!.cnt;
+        .get();
+      const activeCount = row?.cnt ?? 0;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
           `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`
@@ -245,6 +248,7 @@ export class WorktreeManager {
 
   /** Get a pooled worktree path for the given starbase */
   getPooled(_starbaseId: string): string | null {
+    void _starbaseId;
     if (!this.db) return null;
     const row = this.db
       .prepare<

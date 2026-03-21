@@ -85,7 +85,7 @@ export class AgentStateTracker {
     if (
       record.type === 'progress' &&
       record.data?.type === 'agent_progress' &&
-      record.data?.parentToolUseID
+      record.data.parentToolUseID
     ) {
       const subId = record.data.parentToolUseID;
       const toolName = this.extractToolName(record);
@@ -114,10 +114,12 @@ export class AgentStateTracker {
           if (oldestId) agent.subAgents.delete(oldestId);
         }
       } else {
-        const sub = agent.subAgents.get(subId)!;
-        sub.state = subState;
-        sub.currentTool = toolName;
-        sub.lastActivity = Date.now();
+        const sub = agent.subAgents.get(subId);
+        if (sub) {
+          sub.state = subState;
+          sub.currentTool = toolName;
+          sub.lastActivity = Date.now();
+        }
       }
 
       this.emitChange(paneId);

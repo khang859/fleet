@@ -1,5 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
+import type { Dirent } from 'fs';
 import { extname, join, relative } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -129,6 +130,7 @@ export function registerIpcHandlers(
   ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
     const killed = ptyManager.gc(new Set(activePaneIds));
     if (killed.length > 0) {
+      // eslint-disable-next-line no-console
       console.log(`[pty-gc] killed ${killed.length} orphaned PTY(s):`, killed);
       for (const paneId of killed) {
         eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
@@ -137,7 +139,7 @@ export function registerIpcHandlers(
   });
 
   // Layout handlers
-  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, async (_event, req: LayoutSaveRequest) => {
+  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
     try {
       layoutStore.save(req.workspace);
     } catch (err) {
@@ -201,18 +203,24 @@ export function registerIpcHandlers(
     await getBootstrapState().starbaseReady;
     return getStarbaseServices().runtime.invoke('sector.remove', sectorId);
   });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, async (_e, { sectorId, fields }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('sector.update', { sectorId, fields });
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.STARBASE_UPDATE_SECTOR,
+    async (_e, { sectorId, fields }: { sectorId: string; fields: Record<string, unknown> }) => {
+      await getBootstrapState().starbaseReady;
+      return getStarbaseServices().runtime.invoke('sector.update', { sectorId, fields });
+    }
+  );
   ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, async () => {
     await getBootstrapState().starbaseReady;
     return getStarbaseServices().runtime.invoke('config.getAll');
   });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, async (_e, { key, value }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('config.set', { key, value });
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.STARBASE_SET_CONFIG,
+    async (_e, { key, value }: { key: string; value: unknown }) => {
+      await getBootstrapState().starbaseReady;
+      return getStarbaseServices().runtime.invoke('config.set', { key, value });
+    }
+  );
 
   // Phase 2: Deploy/Recall/Crew/Missions handlers
   ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
@@ -226,10 +234,13 @@ export function registerIpcHandlers(
     return getStarbaseServices().runtime.invoke('crew.recall', crewId);
   });
 
-  ipcMain.handle(IPC_CHANNELS.STARBASE_MESSAGE_CREW, async (_e, { crewId, message }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('crew.message', { crewId, message });
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.STARBASE_MESSAGE_CREW,
+    async (_e, { crewId, message }: { crewId: string; message: string }) => {
+      await getBootstrapState().starbaseReady;
+      return getStarbaseServices().runtime.invoke('crew.message', { crewId, message });
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, async (_e, filter?) => {
     await getBootstrapState().starbaseReady;
@@ -319,10 +330,13 @@ export function registerIpcHandlers(
     await getBootstrapState().starbaseReady;
     return getStarbaseServices().runtime.invoke('comms.markRead', id);
   });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, async (_e, { id, response }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.resolve', { id, response });
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.STARBASE_RESOLVE_COMMS,
+    async (_e, { id, response }: { id: number; response: string }) => {
+      await getBootstrapState().starbaseReady;
+      return getStarbaseServices().runtime.invoke('comms.resolve', { id, response });
+    }
+  );
   ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, async (_e, { id }) => {
     await getBootstrapState().starbaseReady;
     return getStarbaseServices().runtime.invoke('comms.delete', id);
@@ -406,7 +420,8 @@ export function registerIpcHandlers(
   // Folder picker
   ipcMain.handle(IPC_CHANNELS.SHOW_FOLDER_PICKER, async (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
-    const result = await dialog.showOpenDialog(win!, {
+    if (!win) return null;
+    const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory']
     });
     return result.canceled ? null : result.filePaths[0];
@@ -417,7 +432,8 @@ export function registerIpcHandlers(
     IPC_CHANNELS.FILE_OPEN_DIALOG,
     async (event, { defaultPath }: { defaultPath?: string } = {}) => {
       const win = BrowserWindow.fromWebContents(event.sender);
-      const result = await dialog.showOpenDialog(win!, {
+      if (!win) return [];
+      const result = await dialog.showOpenDialog(win, {
         properties: ['openFile', 'multiSelections'],
         defaultPath: defaultPath ?? undefined
       });
@@ -461,7 +477,7 @@ export function registerIpcHandlers(
       const files: Array<{ path: string; relativePath: string; name: string }> = [];
 
       async function walk(dir: string, base: string): Promise<void> {
-        let entries;
+        let entries: Dirent[];
         try {
           entries = await readdir(dir, { withFileTypes: true });
         } catch {

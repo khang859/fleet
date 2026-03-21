@@ -53,7 +53,7 @@ function makeServices(db: StarbaseDB, dbDir: string) {
     listPtys: () => []
   } as any;
 
-  const createTab = (_label: string, _cwd: string) => 'tab-1';
+  const createTab = () => 'tab-1';
 
   return {
     commsService,

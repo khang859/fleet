@@ -99,7 +99,8 @@ export class SectorService {
         opts.mergeStrategy ?? 'pr'
       );
 
-    const sector = this.getSector(id)!;
+    const sector = this.getSector(id);
+    if (!sector) throw new SectorValidationError(`Failed to retrieve inserted sector: ${id}`);
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return sector;
   }
@@ -117,10 +118,8 @@ export class SectorService {
     const values: unknown[] = [];
 
     for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) {
-        sets.push(`${key} = ?`);
-        values.push(key === 'worktree_enabled' ? (value ? 1 : 0) : value);
-      }
+      sets.push(`${key} = ?`);
+      values.push(key === 'worktree_enabled' ? (value ? 1 : 0) : value);
     }
 
     if (sets.length === 0) return;

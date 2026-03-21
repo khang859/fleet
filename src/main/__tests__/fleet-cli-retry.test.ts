@@ -3,8 +3,7 @@ import { FleetCLI } from '../fleet-cli';
 import { SocketServer } from '../socket-server';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { unlinkSync, existsSync } from 'fs';
-import { createServer } from 'net';
+import { existsSync } from 'fs';
 
 function tmpSocket(): string {
   return join(
@@ -60,7 +59,9 @@ describe('FleetCLI.sendWithRetry', () => {
 
     // Start server after 300ms delay
     const server = new SocketServer(socketPath, makeMockServices());
-    setTimeout(() => { void server.start(); }, 300);
+    setTimeout(() => {
+      void server.start();
+    }, 300);
 
     const cli = new FleetCLI(socketPath);
     const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 3000, pollIntervalMs: 100 });

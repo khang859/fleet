@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { StarbaseLogEntry } from '../../../../shared/ipc-api';
 
@@ -53,11 +54,16 @@ function summarize(detail: unknown): string {
   if (!detail) return '';
   if (typeof detail === 'string') {
     try {
-      const parsed = JSON.parse(detail);
+      const parsed: unknown = JSON.parse(detail);
       if (typeof parsed === 'object' && parsed !== null) {
         const keys = ['summary', 'message', 'reason', 'status', 'exitCode'];
         for (const k of keys) {
-          if (k in parsed && parsed[k] != null) return String(parsed[k]).slice(0, 80);
+          if (k in parsed) {
+            const val: unknown = Object.getOwnPropertyDescriptor(parsed, k)?.value;
+            if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+              return String(val).slice(0, 80);
+            }
+          }
         }
         return detail.slice(0, 80);
       }
@@ -69,7 +75,7 @@ function summarize(detail: unknown): string {
   return JSON.stringify(detail).slice(0, 80);
 }
 
-function LogRow({ entry }: { entry: LogEntry }) {
+function LogRow({ entry }: { entry: LogEntry }): React.JSX.Element {
   const color = eventColor(entry);
   const time = formatTime(entry.timestamp);
   const eventLabel = entry.eventType.toUpperCase().padEnd(16);
@@ -86,7 +92,7 @@ function LogRow({ entry }: { entry: LogEntry }) {
   );
 }
 
-export function LogsPanel() {
+export function LogsPanel(): React.JSX.Element {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [bridgeUnavailable, setBridgeUnavailable] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);

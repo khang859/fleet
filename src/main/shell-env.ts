@@ -28,10 +28,9 @@ export async function enrichProcessEnv(): Promise<void> {
     // Merge shell env into process.env. Shell env wins for PATH (the whole
     // point), but we preserve any Electron-specific vars already set.
     for (const [key, value] of Object.entries(env)) {
-      if (value !== undefined) {
-        process.env[key] = value;
-      }
+      process.env[key] = value;
     }
+    // eslint-disable-next-line no-console
     console.log(`[shell-env] Resolved PATH (${process.env.PATH?.substring(0, 120)}…)`);
   } catch (err) {
     console.warn('[shell-env] Failed to resolve shell env, falling back to path probing:', err);
@@ -99,6 +98,7 @@ function applyFallbackPaths(): void {
   const existing = candidates.filter((p) => existsSync(p));
   if (existing.length > 0) {
     process.env.PATH = existing.join(':') + ':' + (process.env.PATH ?? '');
+    // eslint-disable-next-line no-console
     console.log(`[shell-env] Fallback PATH: ${process.env.PATH.substring(0, 120)}…`);
   }
 }
@@ -117,10 +117,10 @@ async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
           resolve(val);
         }
       },
-      (err) => {
+      (err: unknown) => {
         if (!settled) {
           clearTimeout(timer);
-          reject(err);
+          reject(err instanceof Error ? err : new Error(String(err)));
         }
       }
     );

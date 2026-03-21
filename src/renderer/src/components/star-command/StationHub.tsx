@@ -3,7 +3,7 @@ import { drawScSprite, isScSpriteReady, loadScSpriteSheet } from './sc-sprite-lo
 
 const HUB_SIZE = 128;
 
-export function StationHub() {
+export function StationHub(): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -18,7 +18,7 @@ export function StationHub() {
     let lastTime = 0;
     let rafId = 0;
 
-    function frame(now: number) {
+    function frame(now: number): void {
       const delta = lastTime ? now - lastTime : 0;
       lastTime = now;
       elapsed += delta;

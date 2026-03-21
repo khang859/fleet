@@ -56,7 +56,7 @@ export class GitService {
       // Build file list
       const files: GitFileStatus[] = statusResult.files.map((f) => {
         const isUntracked = untrackedPaths.has(f.path);
-        const stats = numstatMap.get(f.path) || { insertions: 0, deletions: 0 };
+        const stats = numstatMap.get(f.path) ?? { insertions: 0, deletions: 0 };
         return {
           path: f.path,
           status: resolveStatus(f, isUntracked),

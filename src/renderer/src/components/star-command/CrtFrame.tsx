@@ -19,7 +19,7 @@ function SpriteDiv({
   spriteKey: string;
   className?: string;
   style?: React.CSSProperties;
-}) {
+}): React.JSX.Element | null {
   const region = SC_SPRITE_ATLAS[spriteKey];
   if (!region) return null;
   return (
@@ -39,7 +39,7 @@ function SpriteDiv({
   );
 }
 
-export function CrtFrame({ children, className }: CrtFrameProps) {
+export function CrtFrame({ children, className }: CrtFrameProps): React.JSX.Element {
   const [ready, setReady] = useState(isScSpriteReady());
   useEffect(() => {
     if (ready) return;

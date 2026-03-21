@@ -237,7 +237,7 @@ describe('Navigator sweep', () => {
 
     const dispatchedIds: string[] = [];
     const nav = {
-      dispatch: vi.fn(async (event: { executionId: string }) => {
+      dispatch: vi.fn((event: { executionId: string }) => {
         dispatchedIds.push(event.executionId);
         return true;
       }),

@@ -3,9 +3,10 @@ import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import type { SocketServer as SocketServerType } from '../socket-server';
 
 // We need to import after creating mocks
-let SocketServer: typeof import('../socket-server').SocketServer;
+let SocketServer: typeof SocketServerType;
 
 function tmpSocket(): string {
   return join(tmpdir(), `fleet-ss-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
@@ -28,7 +29,7 @@ async function sendCommand(
         try {
           resolve(JSON.parse(lines[0]));
         } catch (e) {
-          reject(e);
+          reject(e instanceof Error ? e : new Error(String(e)));
         }
       }
     });
@@ -115,7 +116,7 @@ function makeMockServices() {
 
 describe('SocketServer', () => {
   let socketPath: string;
-  let server: InstanceType<typeof import('../socket-server').SocketServer>;
+  let server: InstanceType<typeof SocketServerType>;
   let services: ReturnType<typeof makeMockServices>;
 
   beforeEach(async () => {
@@ -129,7 +130,9 @@ describe('SocketServer', () => {
     await server.stop();
     try {
       unlinkSync(socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('starts and accepts connections', async () => {
@@ -304,7 +307,7 @@ describe('SocketServer', () => {
     const server = new SocketServer(sock, services);
     await server.start();
 
-    const resp = await sendCommand(sock, {
+    await sendCommand(sock, {
       command: 'mission.create',
       args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' }
     });

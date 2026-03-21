@@ -4,6 +4,7 @@ import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
 import { rmSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { execSync } from 'child_process';
+import type * as ChildProcess from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { EventEmitter } from 'events';
@@ -11,10 +12,10 @@ import { EventEmitter } from 'events';
 // Mock child_process.spawn before importing Hull (ESM modules need top-level mock)
 let mockProc: unknown = null;
 vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('child_process')>();
+  const actual = await importOriginal<typeof ChildProcess>();
   return {
     ...actual,
-    spawn: vi.fn((..._args: unknown[]) => mockProc)
+    spawn: vi.fn(() => mockProc)
   };
 });
 
@@ -219,7 +220,7 @@ describe('Hull Gate 2 — verify and lint', () => {
     const opts = makeOpts({ verifyCommand: 'echo "tests passed"' });
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     // Trigger exit on the mock process
     mockProc.emit('exit', 0);
 
@@ -244,7 +245,7 @@ describe('Hull Gate 2 — verify and lint', () => {
     const opts = makeOpts({ verifyCommand: 'exit 1' });
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 0);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -277,7 +278,7 @@ describe('Hull Gate 2 — verify and lint', () => {
       const opts = makeOpts({ verifyCommand: 'false' }); // exits with code 1
       const hull = new Hull(opts);
 
-      await hull.start();
+      hull.start();
       mockProc.emit('exit', 0);
 
       await new Promise((r) => setTimeout(r, 500));
@@ -298,7 +299,7 @@ describe('Hull Gate 2 — verify and lint', () => {
     const opts = makeOpts({ lintCommand: 'echo "warning: unused var" && exit 1' });
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 0);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -326,7 +327,7 @@ describe('Hull Gate 2 — verify and lint', () => {
     const opts = makeOpts(); // no verifyCommand, no lintCommand
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 0);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -349,7 +350,7 @@ describe('Hull Gate 2 — verify and lint', () => {
     });
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 0);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -443,7 +444,7 @@ describe('Hull Gate 3 — Admiral review', () => {
       const opts = makeOpts({ reviewMode: 'admiral-review' });
       const hull = new Hull(opts);
 
-      await hull.start();
+      hull.start();
       mockProc.emit('exit', 0);
 
       await new Promise((r) => setTimeout(r, 500));
@@ -472,7 +473,7 @@ describe('Hull Gate 3 — Admiral review', () => {
     const opts = makeOpts({ reviewMode: 'verify-only' });
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 0);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -500,7 +501,7 @@ describe('Hull Gate 3 — Admiral review', () => {
       const opts = makeOpts(); // no reviewMode
       const hull = new Hull(opts);
 
-      await hull.start();
+      hull.start();
       mockProc.emit('exit', 0);
 
       await new Promise((r) => setTimeout(r, 500));
@@ -578,7 +579,7 @@ describe('Hull — Research mission cleanup', () => {
       };
       const hull = new Hull(opts);
 
-      await hull.start();
+      hull.start();
       const outputMsg = JSON.stringify({
         type: 'assistant',
         message: {
@@ -652,7 +653,7 @@ describe('Hull — Research mission cleanup', () => {
     };
     const hull = new Hull(opts);
 
-    await hull.start();
+    hull.start();
     mockProc.emit('exit', 1);
 
     await new Promise((r) => setTimeout(r, 500));
@@ -701,7 +702,7 @@ describe('Hull — Research mission cleanup', () => {
       };
       const hull = new Hull(opts);
 
-      await hull.start();
+      hull.start();
       mockProc.emit('exit', 0);
 
       await new Promise((r) => setTimeout(r, 500));
@@ -824,7 +825,9 @@ describe('buildCargoHeader', () => {
     expect(header).toContain(cargoPath);
     try {
       unlinkSync(cargoPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('skips missing-file entries but still produces header for valid ones', () => {
@@ -865,6 +868,8 @@ describe('buildCargoHeader', () => {
     expect(header).toContain(cargoPath);
     try {
       unlinkSync(cargoPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 });

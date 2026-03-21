@@ -10,6 +10,7 @@ if (typeof OffscreenCanvas === 'undefined') {
     }
 
     getContext(_type: string): object {
+      void _type;
       return {
         clearRect: () => {},
         fillRect: () => {},
@@ -30,5 +31,5 @@ if (typeof OffscreenCanvas === 'undefined') {
     }
   }
 
-  (globalThis as any).OffscreenCanvas = FakeOffscreenCanvas;
+  Object.assign(globalThis, { OffscreenCanvas: FakeOffscreenCanvas });
 }

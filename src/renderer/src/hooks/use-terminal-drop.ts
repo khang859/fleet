@@ -36,7 +36,7 @@ export function useTerminalDrop(
 
   // Safety net: reset drag state on document-level drop/dragend to prevent stuck overlay
   useEffect(() => {
-    const resetDrag = () => {
+    const resetDrag = (): void => {
       dragCounterRef.current = 0;
       setIsDragOver(false);
     };

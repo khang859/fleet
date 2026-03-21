@@ -18,7 +18,7 @@ type ImageViewerPaneProps = {
   filePath: string;
 };
 
-export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
+export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -120,7 +120,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
-    const onWheel = (e: WheelEvent) => {
+    const onWheel = (e: WheelEvent): void => {
       e.preventDefault();
       const delta = e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
       setZoom((prev) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prev + delta)));
@@ -154,14 +154,14 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
 
   // Pan: mousemove / mouseup via document listeners
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
+    const onMove = (e: MouseEvent): void => {
       if (!isDragging) return;
       setOffset({
         x: e.clientX - dragAnchor.current.x,
         y: e.clientY - dragAnchor.current.y
       });
     };
-    const onUp = () => setIsDragging(false);
+    const onUp = (): void => setIsDragging(false);
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
     return () => {
@@ -183,7 +183,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
 
   // Keyboard shortcuts (always active unless focused on an input)
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent): void => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === '0') applyFit();
       else if (e.key === '+' || e.key === '=') adjustZoom(ZOOM_STEP);
@@ -296,7 +296,7 @@ function ToolbarButton({
   children: React.ReactNode;
   onClick: () => void;
   title?: string;
-}) {
+}): React.JSX.Element {
   return (
     <button
       className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors"

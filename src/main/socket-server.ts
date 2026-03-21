@@ -109,8 +109,23 @@ export type AsyncServiceRegistry = {
 type Request = {
   id?: string;
   command: string;
-  args: Record<string, unknown>;
+  args?: Record<string, unknown>;
 };
+
+function toStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return JSON.stringify(v);
+}
+
+function isRequest(v: unknown): v is Request {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'command' in v &&
+    typeof (v as { command?: unknown }).command === 'string'
+  );
+}
 
 type SuccessResponse = {
   id?: string;
@@ -197,8 +212,8 @@ export class SocketServer extends EventEmitter {
 
       this.server.listen(this.socketPath, () => {
         // Remove startup error handler and attach permanent one for post-startup errors
-        this.server!.off('error', reject);
-        this.server!.on('error', (err) => {
+        this.server?.off('error', reject);
+        this.server?.on('error', (err) => {
           this.emit('server-error', err);
         });
         this.startTime = Date.now();
@@ -234,7 +249,12 @@ export class SocketServer extends EventEmitter {
     let req: Request;
 
     try {
-      req = JSON.parse(line);
+      const parsed: unknown = JSON.parse(line);
+      if (!isRequest(parsed)) {
+        this.sendResponse(socket, { ok: false, error: 'Invalid request' });
+        return;
+      }
+      req = parsed;
     } catch {
       this.sendResponse(socket, { ok: false, error: 'Invalid JSON' });
       return;
@@ -432,7 +452,7 @@ export class SocketServer extends EventEmitter {
         }
         const mission = await missionService.getMission(Number(rawId));
         if (!mission) {
-          throw new CodedError(`Mission not found: ${rawId}`, 'NOT_FOUND');
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         return mission;
       }
@@ -449,7 +469,7 @@ export class SocketServer extends EventEmitter {
         const id = Number(rawId);
         const existing = await missionService.getMission(id);
         if (!existing) {
-          throw new CodedError(`Mission not found: ${rawId}`, 'NOT_FOUND');
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
 
         // Update editable fields (prompt, summary, etc.)
@@ -483,7 +503,7 @@ export class SocketServer extends EventEmitter {
         const id = Number(rawId);
         const existing = await missionService.getMission(id);
         if (!existing) {
-          throw new CodedError(`Mission not found: ${rawId}`, 'NOT_FOUND');
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         await missionService.abortMission(id);
         this.emit('state-change', 'mission:changed', { id });
@@ -547,7 +567,7 @@ export class SocketServer extends EventEmitter {
         const missionId = Number(rawMission);
         if (Number.isNaN(missionId) || missionId <= 0) {
           throw new CodedError(
-            `Invalid mission ID: "${rawMission}". --mission must be a numeric mission ID.\n` +
+            `Invalid mission ID: "${toStr(rawMission)}". --mission must be a numeric mission ID.\n` +
               'Create a mission first:\n' +
               '  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
               'Then deploy:\n' +
@@ -844,7 +864,7 @@ export class SocketServer extends EventEmitter {
         }
         const cargo = await cargoService.getCargo(Number(rawId));
         if (!cargo) {
-          throw new CodedError(`Cargo not found: ${rawId}`, 'NOT_FOUND');
+          throw new CodedError(`Cargo not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         return cargo;
       }
@@ -959,7 +979,9 @@ export class SocketServer extends EventEmitter {
         if (!Array.isArray(args.files) || args.files.length === 0) {
           throw new CodedError('file.open requires a non-empty files array', 'BAD_REQUEST');
         }
-        const files = args.files as Array<Record<string, unknown>>;
+        const files = args.files.filter(
+          (f): f is Record<string, unknown> => f != null && typeof f === 'object'
+        );
         const payload = {
           files: files.map((f) => {
             const filePath = typeof f.path === 'string' ? f.path : '';

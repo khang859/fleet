@@ -42,7 +42,9 @@ export class PtyManager {
     if (this.ptys.has(opts.paneId)) {
       // Idempotent: return existing PTY info (handles HMR reloads in dev where the
       // renderer-side createdPtys Set is reset but the main process map persists)
-      const existing = this.ptys.get(opts.paneId)!;
+      const existing = this.ptys.get(opts.paneId);
+      if (!existing) return { paneId: opts.paneId, pid: 0 };
+      // eslint-disable-next-line no-console
       console.log(
         `[pty] ${opts.paneId} already exists, returning existing pid ${existing.process.pid}`
       );
@@ -62,6 +64,7 @@ export class PtyManager {
       }
     }
 
+    // eslint-disable-next-line no-console
     console.log(
       `[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`
     );
@@ -186,9 +189,7 @@ export class PtyManager {
     this.dataCallbacks.set(paneId, callback);
 
     // Start shared flush timer if not already running
-    if (!this.flushTimer) {
-      this.flushTimer = setInterval(() => this.flushAll(), FLUSH_INTERVAL_MS);
-    }
+    this.flushTimer ??= setInterval(() => this.flushAll(), FLUSH_INTERVAL_MS);
   }
 
   /** Resume a paused PTY (called by renderer after consuming a batch). */

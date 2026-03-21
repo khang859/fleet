@@ -144,6 +144,7 @@ exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
   // 4. Make the shell wrapper executable (chmod 755)
   await chmod(wrapperPath, 0o755);
 
+  // eslint-disable-next-line no-console
   console.log(`[fleet-cli] Installed fleet CLI at ${wrapperPath}`);
 
   return binDir;

@@ -50,7 +50,7 @@ const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   memos: 'Memos'
 };
 
-export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+export function SettingsModal({ isOpen, onClose }: SettingsModalProps): React.JSX.Element | null {
   const { settings, updateSettings } = useSettingsStore();
   const [activeTab, setActiveTab] = useState<
     'general' | 'notifications' | 'socket' | 'visualizer' | 'updates'
@@ -76,7 +76,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   if (!isOpen || !settings) return null;
 
-  function effectToggle(key: keyof VisualizerEffects, label: string) {
+  function effectToggle(key: keyof VisualizerEffects, label: string): React.JSX.Element {
     return (
       <SettingRow label={label}>
         <input
@@ -380,7 +380,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </button>
               ) : (
                 <button
-                  onClick={() => { void window.fleet.updates.checkForUpdates(); }}
+                  onClick={() => {
+                    void window.fleet.updates.checkForUpdates();
+                  }}
                   disabled={
                     updateStatus.state === 'checking' || updateStatus.state === 'downloading'
                   }
@@ -391,7 +393,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               )}
 
               {updateStatus.state === 'not-available' && (
-                <div className="text-sm text-green-400">You're up to date.</div>
+                <div className="text-sm text-green-400">You{"'"}re up to date.</div>
               )}
 
               {updateStatus.state === 'error' && (
@@ -437,7 +439,13 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   );
 }
 
-function SettingRow({ label, children }: { label: string; children: React.ReactNode }) {
+function SettingRow({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
   return (
     <div className="flex items-center justify-between">
       <span className="text-sm text-neutral-300">{label}</span>
@@ -452,7 +460,7 @@ function FontFamilyPicker({
 }: {
   fontFamily: string;
   onChange: (v: string) => void;
-}) {
+}): React.JSX.Element {
   const parsed = parseFontSelection(fontFamily);
   const [customValue, setCustomValue] = useState(parsed.customValue);
 

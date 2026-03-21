@@ -17,7 +17,7 @@ type QuickOpenOverlayProps = {
 };
 
 /** Highlight matched characters in a string based on query. */
-function HighlightedText({ text, query }: { text: string; query: string }) {
+function HighlightedText({ text, query }: { text: string; query: string }): React.JSX.Element {
   if (!query) return <span>{text}</span>;
 
   const q = query.toLowerCase();
@@ -41,7 +41,11 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
   return <>{chars}</>;
 }
 
-export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayProps) {
+export function QuickOpenOverlay({
+  isOpen,
+  onClose,
+  rootDir
+}: QuickOpenOverlayProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [allFiles, setAllFiles] = useState<FileEntry[]>([]);
@@ -102,7 +106,7 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
     [onClose, openFile]
   );
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((i) => Math.min(i + 1, results.length - 1));

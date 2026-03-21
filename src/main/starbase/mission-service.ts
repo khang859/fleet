@@ -62,7 +62,8 @@ export class MissionService {
         opts.prBranch ?? null
       );
 
-    const mission = this.getMission(Number(result.lastInsertRowid))!;
+    const mission = this.getMission(Number(result.lastInsertRowid));
+    if (!mission) throw new Error('Failed to retrieve inserted mission');
 
     for (const depId of opts.dependsOnMissionIds ?? []) {
       this.db
@@ -217,10 +218,8 @@ export class MissionService {
     const values: unknown[] = [];
 
     for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) {
-        sets.push(`${key} = ?`);
-        values.push(value);
-      }
+      sets.push(`${key} = ?`);
+      values.push(value);
     }
 
     if (sets.length === 0) return;

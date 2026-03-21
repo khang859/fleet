@@ -8,7 +8,12 @@ type SearchBarProps = {
   onSearchPrevious: (query: string) => void;
 };
 
-export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: SearchBarProps) {
+export function SearchBar({
+  isOpen,
+  onClose,
+  onSearch,
+  onSearchPrevious
+}: SearchBarProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { ConfigService } from '../starbase/config-service';
 import { RetentionService } from '../starbase/retention-service';
-import { rmSync, mkdirSync, statSync } from 'fs';
+import { rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 

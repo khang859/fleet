@@ -7,7 +7,7 @@ interface Props {
 
 const DEP_NAMES = ['node', 'claude', 'git', 'gh', 'fleet', 'fleet.sock'];
 
-export function AppPreChecks({ onDismiss }: Props) {
+export function AppPreChecks({ onDismiss }: Props): React.JSX.Element {
   const [status, setStatus] = useState<'checking' | 'passed' | 'failed'>('checking');
   const [results, setResults] = useState<SystemDepResult[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -98,7 +98,7 @@ export function AppPreChecks({ onDismiss }: Props) {
   );
 }
 
-function DepRow({ dep }: { dep: SystemDepResult }) {
+function DepRow({ dep }: { dep: SystemDepResult }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-neutral-900 rounded-lg border border-neutral-800">
       <div className="flex items-center gap-2">
@@ -117,7 +117,7 @@ function DepRow({ dep }: { dep: SystemDepResult }) {
   );
 }
 
-function PlaceholderRow({ name }: { name: string }) {
+function PlaceholderRow({ name }: { name: string }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-neutral-900 rounded-lg border border-neutral-800">
       <div className="flex items-center gap-2">
@@ -129,14 +129,14 @@ function PlaceholderRow({ name }: { name: string }) {
   );
 }
 
-function StatusIcon({ found }: { found: boolean }) {
+function StatusIcon({ found }: { found: boolean }): React.JSX.Element {
   if (found) {
     return <span className="text-teal-400 text-sm leading-none">{'\u2713'}</span>;
   }
   return <span className="text-red-400 text-sm leading-none">{'\u2717'}</span>;
 }
 
-function Spinner() {
+function Spinner(): React.JSX.Element {
   return (
     <span
       className="inline-block w-3.5 h-3.5 border-2 border-neutral-600 border-t-neutral-300 rounded-full animate-spin"

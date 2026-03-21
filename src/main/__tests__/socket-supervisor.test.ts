@@ -3,8 +3,9 @@ import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync, unlinkSync } from 'node:fs';
+import type { SocketSupervisor as SocketSupervisorType } from '../socket-supervisor';
 
-let SocketSupervisor: typeof import('../socket-supervisor').SocketSupervisor;
+let SocketSupervisor: typeof SocketSupervisorType;
 
 function tmpSocket(): string {
   return join(tmpdir(), `fleet-sv-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
@@ -24,7 +25,7 @@ async function sendPing(socketPath: string): Promise<Record<string, unknown>> {
         try {
           resolve(JSON.parse(lines[0]));
         } catch (e) {
-          reject(e);
+          reject(e instanceof Error ? e : new Error(String(e)));
         }
       }
     });
@@ -68,7 +69,9 @@ describe('SocketSupervisor', () => {
     await supervisor?.stop();
     try {
       unlinkSync(socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('starts and accepts ping', async () => {

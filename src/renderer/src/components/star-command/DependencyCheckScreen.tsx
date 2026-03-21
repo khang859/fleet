@@ -5,7 +5,7 @@ interface Props {
   results: DepCheckResult[];
 }
 
-export function DependencyCheckScreen({ status, results }: Props) {
+export function DependencyCheckScreen({ status, results }: Props): React.JSX.Element {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
       <div className="w-full max-w-sm px-6">
@@ -55,7 +55,7 @@ export function DependencyCheckScreen({ status, results }: Props) {
   );
 }
 
-function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }) {
+function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-neutral-900 rounded-lg border border-neutral-800">
       <div className="flex items-center gap-2">
@@ -74,7 +74,7 @@ function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }) {
   );
 }
 
-function PlaceholderRow({ name }: { name: string }) {
+function PlaceholderRow({ name }: { name: string }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between py-2 px-3 bg-neutral-900 rounded-lg border border-neutral-800">
       <div className="flex items-center gap-2">
@@ -86,14 +86,14 @@ function PlaceholderRow({ name }: { name: string }) {
   );
 }
 
-function StatusIcon({ found }: { found: boolean }) {
+function StatusIcon({ found }: { found: boolean }): React.JSX.Element {
   if (found) {
     return <span className="text-teal-400 text-sm leading-none">{'\u2713'}</span>;
   }
   return <span className="text-red-400 text-sm leading-none">{'\u2717'}</span>;
 }
 
-function Spinner() {
+function Spinner(): React.JSX.Element {
   return (
     <span
       className="inline-block w-3.5 h-3.5 border-2 border-neutral-600 border-t-neutral-300 rounded-full animate-spin"

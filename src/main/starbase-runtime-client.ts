@@ -73,18 +73,20 @@ export class StarbaseRuntimeClient {
       trace('spawned child', { pid: child.pid, scriptPath });
 
       child.on('spawn', () => {
+        // eslint-disable-next-line no-console
         console.log(`[starbase-runtime] spawned pid=${child.pid ?? 'unknown'}`);
         trace('child spawn event', { pid: child.pid });
       });
 
-      child.stdout?.on('data', (chunk) => {
+      child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) {
+          // eslint-disable-next-line no-console
           console.log(`[starbase-runtime:stdout] ${text}`);
         }
       });
 
-      child.stderr?.on('data', (chunk) => {
+      child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) {
           console.error(`[starbase-runtime:stderr] ${text}`);
@@ -98,6 +100,7 @@ export class StarbaseRuntimeClient {
 
       child.on('message', (message: RuntimeMessageLike) => {
         trace('parent received raw message', this.describeMessage(message));
+        // eslint-disable-next-line no-console
         console.log('[starbase-runtime] parent received message', {
           rawType: typeof message,
           hasData: Boolean(message && typeof message === 'object' && 'data' in message)
@@ -135,7 +138,7 @@ export class StarbaseRuntimeClient {
     return this.bootstrapPromise;
   }
 
-  async stop(): Promise<void> {
+  stop(): void {
     const child = this.child;
     this.child = null;
     this.bootstrapPromise = null;
@@ -155,11 +158,16 @@ export class StarbaseRuntimeClient {
 
     const id = randomUUID();
     const request: RuntimeRequest = { id, method, args };
+    // eslint-disable-next-line no-console
     console.log('[starbase-runtime] parent sending request', { id, method });
     trace('parent sending request', { id, method });
 
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject });
+      const resolveFn: (value: unknown) => void = (value) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+        resolve(value as T);
+      };
+      this.pending.set(id, { resolve: resolveFn, reject });
       child.send?.(request, (error) => {
         if (error) {
           console.error('[starbase-runtime] send failed', { id, method, error });
@@ -200,6 +208,7 @@ export class StarbaseRuntimeClient {
     }
 
     if ('event' in message) {
+      // eslint-disable-next-line no-console
       console.log('[starbase-runtime] parent handling event', { event: message.event });
       trace('parent handling event', { event: message.event });
       if (message.event === 'runtime.status') {
@@ -220,13 +229,14 @@ export class StarbaseRuntimeClient {
     this.pending.delete(message.id);
 
     if (message.ok) {
+      // eslint-disable-next-line no-console
       console.log('[starbase-runtime] parent resolved request', { id: message.id });
       trace('parent resolved request', { id: message.id });
       pending.resolve(message.data);
       return;
     }
 
-    const error = new CodedError(message.error ?? 'Unknown error', message.code ?? 'UNKNOWN');
+    const error = new CodedError(message.error, message.code ?? 'UNKNOWN');
     console.error('[starbase-runtime] parent rejected request', {
       id: message.id,
       message: message.error,
@@ -272,9 +282,6 @@ export class StarbaseRuntimeClient {
   private describeMessage(message: RuntimeMessageLike): Record<string, unknown> {
     if (message === undefined) {
       return { kind: 'undefined' };
-    }
-    if (message === null) {
-      return { kind: 'null' };
     }
     if (typeof message !== 'object') {
       return { kind: typeof message, value: String(message) };

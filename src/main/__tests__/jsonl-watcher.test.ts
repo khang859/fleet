@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { appendFileSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import type { JsonlRecord } from '../jsonl-watcher';
+import type { JsonlRecord, JsonlWatcher as JsonlWatcherType } from '../jsonl-watcher';
 
 type EmittedRecord = {
   sessionId: string;
@@ -57,13 +57,13 @@ async function waitFor(assertion: () => void, timeoutMs = 2000, intervalMs = 20)
 }
 
 describe('JsonlWatcher', () => {
-  let JsonlWatcher: typeof import('../jsonl-watcher').JsonlWatcher;
+  let JsonlWatcher: typeof JsonlWatcherType;
   let dir: string;
   let projectDir: string;
   let emitted: EmittedRecord[];
   let fakeWatcher: FakeFsWatcher;
   let watchSpy: ReturnType<typeof vi.fn>;
-  let watcher: import('../jsonl-watcher').JsonlWatcher;
+  let watcher: JsonlWatcherType;
 
   beforeEach(async () => {
     vi.resetModules();

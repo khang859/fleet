@@ -6,7 +6,7 @@ type CommandPaletteProps = {
   onClose: () => void;
 };
 
-export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,7 +32,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   if (!isOpen) return null;
 
-  const executeSelected = () => {
+  const executeSelected = (): void => {
     const cmd = filtered[selectedIndex];
     if (cmd) {
       onClose();
@@ -40,7 +40,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));

@@ -53,7 +53,9 @@ describe('Sentinel socket health check', () => {
     await supervisor.stop();
     try {
       unlinkSync(socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
   });
 
   it('successful ping resets consecutive failure count', async () => {

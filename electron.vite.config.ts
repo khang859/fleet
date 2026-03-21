@@ -1,7 +1,7 @@
-import { resolve } from 'path'
-import { defineConfig } from 'electron-vite'
-import react from '@vitejs/plugin-react'
-import tailwindcss from '@tailwindcss/vite'
+import { resolve } from 'path';
+import { defineConfig } from 'electron-vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   main: {
@@ -10,7 +10,7 @@ export default defineConfig({
         input: {
           index: 'src/main/index.ts',
           'fleet-cli': 'src/main/fleet-cli.ts',
-          'starbase-runtime-process': 'src/main/starbase-runtime-process.ts',
+          'starbase-runtime-process': 'src/main/starbase-runtime-process.ts'
         },
         output: { format: 'es' }
       }
@@ -31,4 +31,4 @@ export default defineConfig({
     },
     plugins: [react(), tailwindcss()]
   }
-})
+});

@@ -10,7 +10,7 @@ type AvatarProps = {
   size?: number;
 };
 
-export function Avatar({ type, variant, size = 32 }: AvatarProps) {
+export function Avatar({ type, variant, size = 32 }: AvatarProps): React.JSX.Element | null {
   const url = getScSpriteSheetUrl();
 
   let key: string;

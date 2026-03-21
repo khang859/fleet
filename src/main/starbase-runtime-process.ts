@@ -26,6 +26,10 @@ type ParentPortLike = {
   postMessage: (message: RuntimeResponse | RuntimeEvent) => void;
 };
 
+function isRuntimeRequest(v: unknown): v is RuntimeRequest {
+  return v != null && typeof v === 'object' && 'id' in v && 'method' in v;
+}
+
 type ProcessLike = NodeJS.Process & {
   parentPort?: ParentPortLike;
   send?: (message: RuntimeResponse | RuntimeEvent) => void;
@@ -37,8 +41,11 @@ const parentPort = processRef.parentPort;
 const transport = parentPort
   ? {
       onMessage: (listener: (request: RuntimeRequest) => void) => {
-        parentPort.on('message', (event) => {
-          listener('data' in event && event.data !== undefined ? event.data : event);
+        parentPort.on('message', (event: RuntimeRequest | { data?: RuntimeRequest }) => {
+          const inner = 'data' in event && event.data !== undefined ? event.data : event;
+          if (!isRuntimeRequest(inner)) return;
+          const req: RuntimeRequest = inner;
+          listener(req);
         });
       },
       postMessage: (message: RuntimeResponse | RuntimeEvent) => parentPort.postMessage(message)
@@ -130,7 +137,7 @@ transport.onMessage((request) => {
       transport.postMessage({
         id: request.id,
         ok: false,
-        error: err.message ?? 'Unknown error',
+        error: err.message,
         code: err.code
       } satisfies RuntimeResponse);
     });

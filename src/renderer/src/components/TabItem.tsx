@@ -65,7 +65,7 @@ export function TabItem({
   onDragOver,
   onDrop,
   isDragOver
-}: TabItemProps) {
+}: TabItemProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -81,7 +81,7 @@ export function TabItem({
   // Listen for F2 rename event on the active tab
   useEffect(() => {
     if (!isActive) return;
-    const handleRenameEvent = () => {
+    const handleRenameEvent = (): void => {
       setEditValue(label);
       setIsEditing(true);
     };

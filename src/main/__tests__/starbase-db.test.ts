@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
-import { existsSync, rmSync, mkdirSync } from 'fs';
+import { rmSync, mkdirSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
@@ -19,7 +19,7 @@ describe('StarbaseDB', () => {
     db.open();
 
     // Verify database file exists
-    const files = require('fs').readdirSync(TEST_DIR);
+    const files = readdirSync(TEST_DIR);
     expect(files.some((f: string) => f.endsWith('.db'))).toBe(true);
 
     // Verify schema_version is set

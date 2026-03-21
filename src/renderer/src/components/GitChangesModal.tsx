@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { X, Loader2, GitBranch, AlertCircle } from 'lucide-react';
 import { DiffView, DiffModeEnum, DiffFile, type DiffHighlighter } from '@git-diff-view/react';
@@ -9,14 +10,12 @@ type DiffHighlighterInstance = Omit<DiffHighlighter, 'getHighlighterEngine'> | u
 // Lazy-load shiki highlighter
 let highlighterPromise: Promise<DiffHighlighterInstance> | null = null;
 
-function useShikiHighlighter() {
+function useShikiHighlighter(): DiffHighlighterInstance {
   const [highlighter, setHighlighter] = useState<DiffHighlighterInstance>(undefined);
   useEffect(() => {
-    if (!highlighterPromise) {
-      highlighterPromise = import('@git-diff-view/shiki').then(async (mod) => {
-        return mod.getDiffViewHighlighter();
-      });
-    }
+    highlighterPromise ??= import('@git-diff-view/shiki').then(async (mod) => {
+      return mod.getDiffViewHighlighter();
+    });
     void highlighterPromise.then(setHighlighter);
   }, []);
   return highlighter;
@@ -28,7 +27,7 @@ type GitChangesModalProps = {
   cwd: string | undefined;
 };
 
-export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) {
+export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps): React.JSX.Element | null {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<GitStatusPayload | null>(null);
   const [filterText, setFilterText] = useState('');
@@ -312,7 +311,7 @@ function ModalShell({
   onClose: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   modalRef: React.RefObject<HTMLDivElement | null>;
-}) {
+}): React.JSX.Element {
   useEffect(() => {
     modalRef.current?.focus();
   }, [modalRef]);
@@ -344,7 +343,7 @@ function StateMessage({
   icon: React.ReactNode;
   message: string;
   onClose?: () => void;
-}) {
+}): React.JSX.Element {
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 text-neutral-500">
       {icon}
@@ -382,7 +381,7 @@ function FileEntry({
   file: GitFileStatus;
   active: boolean;
   onClick: () => void;
-}) {
+}): React.JSX.Element {
   const parts = file.path.split('/');
   const filename = parts.pop()!;
   const dir = parts.join('/');
@@ -540,7 +539,7 @@ function DiffContent({
   diffFiles: DiffFile[];
   diffMode: DiffModeEnum;
   highlighter: DiffHighlighterInstance;
-}) {
+}): React.JSX.Element {
   if (diffFiles.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-neutral-600 text-sm">

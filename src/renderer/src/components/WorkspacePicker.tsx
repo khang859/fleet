@@ -5,7 +5,7 @@ import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd } from '../lib/workspace-utils';
 import type { Workspace } from '../../../shared/types';
 
-export function WorkspacePicker() {
+export function WorkspacePicker(): React.JSX.Element {
   const { workspace, activeTabId, setActiveTab, loadWorkspace, addTab, closeTab } =
     useWorkspaceStore();
   const { getTabBadge } = useNotificationStore();
@@ -23,7 +23,7 @@ export function WorkspacePicker() {
     });
   }, [menuOpen, workspace.id]);
 
-  const toggleExpanded = (id: string) => {
+  const toggleExpanded = (id: string): void => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -32,14 +32,14 @@ export function WorkspacePicker() {
     });
   };
 
-  const handleNewWorkspace = () => {
+  const handleNewWorkspace = (): void => {
     setMenuOpen(false);
     setNewName('');
     setShowNameInput(true);
     setTimeout(() => nameInputRef.current?.focus(), 0);
   };
 
-  const commitNewWorkspace = async () => {
+  const commitNewWorkspace = async (): Promise<void> => {
     const name = newName.trim();
     setShowNameInput(false);
     setNewName('');
@@ -77,7 +77,7 @@ export function WorkspacePicker() {
     }, 0);
   };
 
-  const handleSaveCurrent = async () => {
+  const handleSaveCurrent = async (): Promise<void> => {
     const workspaceWithLiveCwds = {
       ...workspace,
       tabs: workspace.tabs.map((tab) => ({
@@ -89,7 +89,7 @@ export function WorkspacePicker() {
     setMenuOpen(false);
   };
 
-  const handleSwitchWorkspace = async (ws: Workspace) => {
+  const handleSwitchWorkspace = async (ws: Workspace): Promise<void> => {
     // Save current workspace first
     const state = useWorkspaceStore.getState();
     const workspaceWithLiveCwds = {
@@ -118,12 +118,12 @@ export function WorkspacePicker() {
     }, 0);
   };
 
-  const handleDeleteWorkspace = async (wsId: string) => {
+  const handleDeleteWorkspace = async (wsId: string): Promise<void> => {
     await window.fleet.layout.delete(wsId);
     setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
   };
 
-  const handleCloseTab = (tabId: string) => {
+  const handleCloseTab = (tabId: string): void => {
     const tab = workspace.tabs.find((t) => t.id === tabId);
     if (!tab) return;
     const serializedPanes = new Map<string, string>();
@@ -173,7 +173,9 @@ export function WorkspacePicker() {
             </button>
             <button
               className="w-full px-3 py-1.5 text-sm text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => { void handleSaveCurrent(); }}
+              onClick={() => {
+                void handleSaveCurrent();
+              }}
             >
               Save Current
             </button>
@@ -198,7 +200,9 @@ export function WorkspacePicker() {
                     </button>
                     <button
                       className="px-2 text-neutral-600 hover:text-red-400 text-xs"
-                      onClick={() => { void handleDeleteWorkspace(ws.id); }}
+                      onClick={() => {
+                        void handleDeleteWorkspace(ws.id);
+                      }}
                     >
                       &times;
                     </button>
@@ -225,7 +229,9 @@ export function WorkspacePicker() {
                 setNewName('');
               }
             }}
-            onBlur={() => { void commitNewWorkspace(); }}
+            onBlur={() => {
+              void commitNewWorkspace();
+            }}
             placeholder="Workspace name..."
             className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
           />
@@ -323,7 +329,7 @@ export function WorkspacePicker() {
 
 // --- Small helper components ---
 
-function ChevronIcon({ expanded }: { expanded: boolean }) {
+function ChevronIcon({ expanded }: { expanded: boolean }): React.JSX.Element {
   return (
     <svg
       width="12"
@@ -344,7 +350,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function FileIcon() {
+function FileIcon(): React.JSX.Element {
   return (
     <svg
       width="10"
@@ -383,7 +389,7 @@ function TreeTab({
   paneCount: number;
   onClick: () => void;
   onClose: () => void;
-}) {
+}): React.JSX.Element {
   return (
     <div
       className={`

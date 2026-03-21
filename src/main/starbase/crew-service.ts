@@ -105,10 +105,11 @@ export class CrewService {
     }
 
     // Read mission type for Hull
-    const missionRow = missionService.getMission(missionId)!;
+    const missionRow = missionService.getMission(missionId);
+    if (!missionRow) throw new Error(`Mission ${missionId} not found`);
     // opts.type (deployment role) takes precedence over missionRow.type (DB type).
     // This lets review crews run as 'review' even though the underlying mission is 'code'.
-    const missionType = opts.type ?? missionRow.type ?? 'code';
+    const missionType = opts.type ?? missionRow.type;
 
     // Guard: reject if the mission is already in a terminal status
     const TERMINAL_MISSION_STATUSES = [
@@ -145,7 +146,7 @@ export class CrewService {
     const crewId = this.generateCrewId(sector.id, missionType);
 
     // 5. Create worktree
-    let worktreeResult;
+    let worktreeResult: { worktreePath: string; worktreeBranch: string };
     try {
       if (opts.prBranch) {
         // Review/fix crew: check out existing PR branch
@@ -240,7 +241,7 @@ export class CrewService {
     this.hulls.set(crewId, hull);
 
     // 9. Start the Hull (headless — no paneId)
-    await hull.start();
+    hull.start();
 
     // Increment global mission deployment budget counter
     db.prepare(

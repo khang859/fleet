@@ -38,7 +38,7 @@ export function Sidebar({
 }: {
   updateReady?: boolean;
   onCollapse?: () => void;
-}) {
+}): React.JSX.Element {
   const {
     workspace,
     activeTabId,
@@ -80,24 +80,21 @@ export function Sidebar({
     [dragIndex]
   );
 
-  const handleDrop = useCallback(
-    (_targetIndex: number) => {
-      if (dragIndex === null || !dropTarget) return;
-      const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
-      // Adjust toIndex if dragging from before the drop point
-      const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
-      if (dragIndex !== adjustedTo) {
-        reorderTab(dragIndex, adjustedTo);
-      }
-      setDragIndex(null);
-      setDropTarget(null);
-    },
-    [dragIndex, dropTarget, reorderTab]
-  );
+  const handleDrop = useCallback(() => {
+    if (dragIndex === null || !dropTarget) return;
+    const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+    // Adjust toIndex if dragging from before the drop point
+    const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
+    if (dragIndex !== adjustedTo) {
+      reorderTab(dragIndex, adjustedTo);
+    }
+    setDragIndex(null);
+    setDropTarget(null);
+  }, [dragIndex, dropTarget, reorderTab]);
 
   // Clear drag state on drag end (even if drop didn't fire)
   useEffect(() => {
-    const handleDragEnd = () => {
+    const handleDragEnd = (): void => {
       setDragIndex(null);
       setDropTarget(null);
     };
@@ -281,7 +278,7 @@ export function Sidebar({
   useEffect(() => {
     const el = tabListRef.current;
     if (!el) return;
-    const check = () => {
+    const check = (): void => {
       setHasScrollOverflow(
         el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 8
       );
@@ -607,7 +604,9 @@ export function Sidebar({
                   setNewWsName('');
                 }
               }}
-              onBlur={() => { void commitNewWorkspace(); }}
+              onBlur={() => {
+                void commitNewWorkspace();
+              }}
               placeholder="Workspace name..."
               className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
             />
@@ -625,7 +624,9 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                      onClick={() => { void doSwitchWorkspace(ws.id); }}
+                      onClick={() => {
+                        void doSwitchWorkspace(ws.id);
+                      }}
                     >
                       Yes
                     </button>
@@ -643,7 +644,9 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
-                      onClick={() => { void handleDeleteWorkspace(ws.id); }}
+                      onClick={() => {
+                        void handleDeleteWorkspace(ws.id);
+                      }}
                     >
                       Delete
                     </button>
@@ -666,7 +669,9 @@ export function Sidebar({
                       if (e.key === 'Enter') void commitSavedWsRename();
                       if (e.key === 'Escape') setRenamingWsId(null);
                     }}
-                    onBlur={() => { void commitSavedWsRename(); }}
+                    onBlur={() => {
+                      void commitSavedWsRename();
+                    }}
                     className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
                   />
                 </div>

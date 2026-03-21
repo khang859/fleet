@@ -14,7 +14,7 @@ export function StarCommandScene({
 }: {
   className?: string;
   isActive?: boolean;
-}) {
+}): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -47,7 +47,7 @@ export function StarCommandScene({
     const STAR_COUNT = 150;
     let stars: Star[] = [];
 
-    const scatterStars = (w: number, h: number) => {
+    const scatterStars = (w: number, h: number): void => {
       stars = Array.from({ length: STAR_COUNT }, () => ({
         x: Math.random() * w,
         y: Math.random() * h,
@@ -62,7 +62,7 @@ export function StarCommandScene({
     let lastStarRedraw = 0;
     let elapsed = 0;
 
-    const redrawStars = () => {
+    const redrawStars = (): void => {
       starCtx.clearRect(0, 0, starOffscreen.width, starOffscreen.height);
       for (const star of stars) {
         const brightness = 0.4 + 0.6 * Math.abs(Math.sin(elapsed * star.speed + star.phase));
@@ -73,7 +73,7 @@ export function StarCommandScene({
       }
     };
 
-    const applyResize = () => {
+    const applyResize = (): void => {
       canvas.width = container.clientWidth;
       canvas.height = container.clientHeight;
       pendingResizeRef.current = false;
@@ -95,7 +95,7 @@ export function StarCommandScene({
     const signalPulses = new SignalPulseRenderer();
     let lastPulseSpawn = 0;
 
-    function frame(now: number) {
+    function frame(now: number): void {
       if (stoppedRef.current) return;
       if (pendingResizeRef.current) applyResize();
 
@@ -178,7 +178,7 @@ export function StarCommandScene({
     }
     frameRef.current = frame;
 
-    const handleVisibility = () => {
+    const handleVisibility = (): void => {
       if (document.hidden) {
         stoppedRef.current = true;
         cancelAnimationFrame(rafRef.current);
@@ -188,11 +188,11 @@ export function StarCommandScene({
         rafRef.current = requestAnimationFrame(frame);
       }
     };
-    const handleBlur = () => {
+    const handleBlur = (): void => {
       stoppedRef.current = true;
       cancelAnimationFrame(rafRef.current);
     };
-    const handleFocus = () => {
+    const handleFocus = (): void => {
       if (!stoppedRef.current) return;
       stoppedRef.current = false;
       lastFrameRef.current = 0;

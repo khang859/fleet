@@ -29,9 +29,7 @@ const TINT_CANVAS_SIZE = 64; // max sprite dimension we need to tint
 let tintCanvas: OffscreenCanvas | null = null;
 
 function ensureTintCanvas(): void {
-  if (!tintCanvas) {
-    tintCanvas = new OffscreenCanvas(TINT_CANVAS_SIZE, TINT_CANVAS_SIZE);
-  }
+  tintCanvas ??= new OffscreenCanvas(TINT_CANVAS_SIZE, TINT_CANVAS_SIZE);
 }
 
 /** Get a tinted version of a sprite frame (lazy-cached). */

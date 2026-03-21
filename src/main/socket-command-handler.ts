@@ -10,12 +10,13 @@ import type { ConfigService } from './starbase/config-service';
 import type { CrewService } from './starbase/crew-service';
 import type { MissionService } from './starbase/mission-service';
 import type { StarbaseRuntimeClient } from './starbase-runtime-client';
+import type { BrowserWindow } from 'electron';
 
 export class FleetCommandHandler implements SocketCommandHandler {
   private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
   private tabs = new Map<string, Tab>();
 
-  private getWindow: (() => import('electron').BrowserWindow | null) | null = null;
+  private getWindow: (() => BrowserWindow | null) | null = null;
   private sectorService: SectorService | null = null;
   private configService: ConfigService | null = null;
   private crewService: CrewService | null = null;
@@ -43,7 +44,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     this.runtimeClient = runtimeClient;
   }
 
-  setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
+  setWindowGetter(getter: () => BrowserWindow | null): void {
     this.getWindow = getter;
   }
 

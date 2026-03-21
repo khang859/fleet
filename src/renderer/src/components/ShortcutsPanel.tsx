@@ -10,7 +10,7 @@ type ShortcutsPanelProps = {
   onClose: () => void;
 };
 
-export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps) {
+export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.JSX.Element | null {
   if (!isOpen) return null;
 
   return (

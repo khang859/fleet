@@ -362,10 +362,20 @@ function createTerminal(
   };
 }
 
+type UseTerminalReturn = {
+  focus: () => void;
+  fit: () => void;
+  scrollToBottom: () => void;
+  search: (query: string) => boolean | undefined;
+  searchPrevious: (query: string) => boolean | undefined;
+  clearSearch: () => void;
+  serialize: () => string | undefined;
+};
+
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
   options: UseTerminalOptions & { isActive?: boolean }
-) {
+): UseTerminalReturn {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const fitPreservingScrollRef = useRef<(() => void) | null>(null);

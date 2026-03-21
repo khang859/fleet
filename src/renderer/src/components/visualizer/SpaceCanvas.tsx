@@ -13,6 +13,7 @@ import { SpaceWeather } from './space-weather';
 import { AsteroidField } from './asteroids';
 import { loadSpriteSheet } from './sprite-loader';
 import { SectorOutpostRenderer, type SectorState } from './sector-outposts';
+import type { PaneNode } from '../../../../shared/types';
 import { ShuttleRenderer, type PodState } from './shuttles';
 import { SignalPulseRenderer } from './signal-pulses';
 import { computeSectorPositions, isValidPodStatus } from '../star-command/scene-utils';
@@ -65,7 +66,7 @@ function getDayNightBackground(): string {
 /** Convert workspace tabs/panes into AgentVisualState[] for the ship manager.
  *  Each tab = parent ship. Each pane in the tab = trailing subagent ship. */
 function workspaceToAgents(
-  tabs: Array<{ id: string; label: string; splitRoot: import('../../../../shared/types').PaneNode }>
+  tabs: Array<{ id: string; label: string; splitRoot: PaneNode }>
 ): AgentVisualState[] {
   return tabs.map((tab) => {
     const paneIds = collectPaneIds(tab.splitRoot);
@@ -97,7 +98,7 @@ function createThrottledLoop(
   let lastTime = 0;
   let accumulated = 0;
 
-  function loop(timestamp: number) {
+  function loop(timestamp: number): void {
     const rawDelta = lastTime ? timestamp - lastTime : 0;
     lastTime = timestamp;
     const delta = Math.min(rawDelta, interval * 2);
@@ -111,7 +112,7 @@ function createThrottledLoop(
     animFrame = requestAnimationFrame(loop);
   }
 
-  function restart() {
+  function restart(): void {
     cancelAnimationFrame(animFrame);
     lastTime = 0;
     accumulated = 0;
@@ -120,7 +121,7 @@ function createThrottledLoop(
 
   // Chromium may fully stop rAF for hidden/unfocused windows.
   // Restart the loop when the document becomes visible again.
-  function onVisibilityChange() {
+  function onVisibilityChange(): void {
     if (!document.hidden) restart();
   }
 
@@ -148,7 +149,7 @@ function sizeCanvas(canvas: HTMLCanvasElement): { w: number; h: number } {
   return { w: cw, h: ch };
 }
 
-export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
+export function SpaceCanvas({ onShipClick }: SpaceCanvasProps): React.JSX.Element {
   const bgCanvasRef = useRef<HTMLCanvasElement>(null);
   const midCanvasRef = useRef<HTMLCanvasElement>(null);
   const activeCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -245,9 +246,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    if (!starfieldRef.current) {
-      starfieldRef.current = new Starfield(canvas.clientWidth, canvas.clientHeight);
-    }
+    starfieldRef.current ??= new Starfield(canvas.clientWidth, canvas.clientHeight);
     loadSpriteSheet();
 
     const starfield = starfieldRef.current;
@@ -299,8 +298,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const shipManager = shipManagerRef.current;
     const spaceRenderer = spaceRendererRef.current;
     const spaceWeather = spaceWeatherRef.current;
-    const bloom = bloomRef.current ?? new BloomPass();
-    if (!bloomRef.current) bloomRef.current = bloom;
+    bloomRef.current ??= new BloomPass();
+    const bloom = bloomRef.current;
     const sectorOutpost = sectorOutpostRef.current;
     const shuttle = shuttleRef.current;
     const signalPulse = signalPulseRef.current;
@@ -376,7 +375,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
       const x = (e.clientX - rect.left) / zoom + camera.x;
       const y = (e.clientY - rect.top) / zoom + camera.y;
 
-      const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
+      const hit = shipManagerRef.current.hitTest(x, y);
       if (hit) {
         onShipClick(hit);
       } else {
@@ -397,7 +396,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const zoom = zoomRef.current;
     const x = (e.clientX - rect.left) / zoom + camera.x;
     const y = (e.clientY - rect.top) / zoom + camera.y;
-    const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
+    const hit = shipManagerRef.current.hitTest(x, y);
     if (hit) {
       camera.following = hit;
     }
@@ -407,7 +406,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   useEffect(() => {
     const canvas = activeCanvasRef.current;
     if (!canvas) return;
-    function onWheel(e: WheelEvent) {
+    function onWheel(e: WheelEvent): void {
       e.preventDefault();
       zoomRef.current = Math.max(0.5, Math.min(2.0, zoomRef.current + e.deltaY * -0.001));
     }
@@ -426,7 +425,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
     const x = (e.clientX - rect.left) / zoom + camera.x;
     const y = (e.clientY - rect.top) / zoom + camera.y;
 
-    const hit = shipManagerRef.current.hitTest(x, y, canvas.clientWidth, canvas.clientHeight);
+    const hit = shipManagerRef.current.hitTest(x, y);
     if (hit) {
       const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
       if (ship) {

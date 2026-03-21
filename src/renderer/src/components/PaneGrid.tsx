@@ -26,7 +26,7 @@ export function PaneGrid({
   serializedPanes,
   fontFamily,
   fontSize
-}: PaneGridProps) {
+}: PaneGridProps): React.JSX.Element {
   const { splitPane, closePane } = useWorkspaceStore();
 
   return (
@@ -65,7 +65,7 @@ function PaneNodeRenderer({
   fontFamily,
   fontSize,
   actions
-}: PaneNodeRendererProps) {
+}: PaneNodeRendererProps): React.JSX.Element {
   if (node.type === 'leaf') {
     if (node.paneType === 'file') {
       return <FileEditorPane paneId={node.id} filePath={node.filePath ?? ''} />;
@@ -139,7 +139,7 @@ type ResizeHandleProps = {
   path: number[];
 };
 
-function ResizeHandle({ direction, path }: ResizeHandleProps) {
+function ResizeHandle({ direction, path }: ResizeHandleProps): React.JSX.Element {
   const isHorizontal = direction === 'horizontal';
   const handleRef = useRef<HTMLDivElement>(null);
   const resizeSplit = useWorkspaceStore((s) => s.resizeSplit);
@@ -158,14 +158,14 @@ function ResizeHandle({ direction, path }: ResizeHandleProps) {
       const innerDiv = handleRef.current?.querySelector('div');
       if (innerDiv) innerDiv.classList.add('bg-blue-500');
 
-      const onMouseMove = (moveEvent: MouseEvent) => {
+      const onMouseMove = (moveEvent: MouseEvent): void => {
         const ratio = isHorizontal
           ? (moveEvent.clientX - rect.left) / rect.width
           : (moveEvent.clientY - rect.top) / rect.height;
         resizeSplit(path, ratio);
       };
 
-      const onMouseUp = () => {
+      const onMouseUp = (): void => {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
         if (innerDiv) innerDiv.classList.remove('bg-blue-500');

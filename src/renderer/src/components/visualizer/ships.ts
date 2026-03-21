@@ -95,7 +95,7 @@ export class ShipManager {
       if (!this.ships.has(agent.paneId)) {
         this.spawnShip(agent, i, finalTargetX, targetY, canvasW, canvasH);
       } else {
-        this.updateShip(agent, finalTargetX, targetY, canvasW, canvasH);
+        this.updateShip(agent, finalTargetX, targetY);
       }
 
       const maxSubs = Math.min(agent.subAgents.length, MAX_RENDERED_SUBS);
@@ -111,7 +111,7 @@ export class ShipManager {
         if (!this.ships.has(sub.paneId)) {
           this.spawnSubShip(sub, agent.paneId, si, subTargetX, subTargetY, canvasW, canvasH);
         } else {
-          this.updateShip(sub, subTargetX, subTargetY, canvasW, canvasH);
+          this.updateShip(sub, subTargetX, subTargetY);
         }
 
         if (si === maxSubs - 1 && agent.subAgents.length > MAX_RENDERED_SUBS) {
@@ -209,7 +209,7 @@ export class ShipManager {
     return Array.from(this.ships.values());
   }
 
-  hitTest(pixelX: number, pixelY: number, _canvasW: number, _canvasH: number): string | null {
+  hitTest(pixelX: number, pixelY: number): string | null {
     const ships = this.getShips().reverse();
     for (const ship of ships) {
       if (ship.despawning) continue;
@@ -333,13 +333,7 @@ export class ShipManager {
     });
   }
 
-  private updateShip(
-    agent: AgentVisualState,
-    targetX: number,
-    targetY: number,
-    _canvasW: number,
-    _canvasH: number
-  ): void {
+  private updateShip(agent: AgentVisualState, targetX: number, targetY: number): void {
     const ship = this.ships.get(agent.paneId);
     if (!ship || ship.despawning) return;
 
@@ -381,7 +375,7 @@ export class ShipManager {
 
     h = ((h * 360 + degrees) % 360) / 360;
 
-    const hue2rgb = (p: number, q: number, t: number) => {
+    const hue2rgb = (p: number, q: number, t: number): number => {
       if (t < 0) t += 1;
       if (t > 1) t -= 1;
       if (t < 1 / 6) return p + (q - p) * 6 * t;

@@ -29,7 +29,7 @@ export function TerminalPane({
   onSplitHorizontal,
   onSplitVertical,
   onClose
-}: TerminalPaneProps) {
+}: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(
@@ -70,9 +70,10 @@ export function TerminalPane({
   }, [currentCwd]);
   // Listen for search toggle events targeted at this pane
   useEffect(() => {
-    const handler = (e: Event) => {
+    const handler = (e: Event): void => {
       if (!(e instanceof CustomEvent)) return;
-      const detail: { paneId?: string } | undefined = e.detail;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const detail = e.detail as { paneId?: string } | undefined;
       if (detail?.paneId === paneId) {
         setSearchOpen((prev) => !prev);
       }

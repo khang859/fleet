@@ -10,6 +10,7 @@ const PERMISSION_PATTERNS = [
 ];
 
 // OSC 7 format: ESC ] 7 ; file://[host]/path BEL  or  ESC ] 7 ; file://[host]/path ST
+// eslint-disable-next-line no-control-regex
 const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
 
 export class NotificationDetector {

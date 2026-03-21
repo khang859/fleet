@@ -34,7 +34,7 @@ async function attemptFleetSock(): Promise<SystemDepResult> {
     const socket = net.createConnection(SOCKET_PATH);
     let responded = false;
 
-    const fail = () => {
+    const fail = (): void => {
       if (responded) return;
       responded = true;
       socket.destroy();
@@ -60,7 +60,11 @@ async function attemptFleetSock(): Promise<SystemDepResult> {
       buf += data.toString();
       const line = buf.split('\n')[0];
       try {
-        const msg = JSON.parse(line);
+        const rawMsg: unknown = JSON.parse(line);
+        const msg =
+          rawMsg != null && typeof rawMsg === 'object'
+            ? (rawMsg as { ok?: boolean; data?: { pong?: boolean; uptime?: number } })
+            : {};
         if (msg.ok === true && msg.data?.pong === true) {
           responded = true;
           socket.destroy();

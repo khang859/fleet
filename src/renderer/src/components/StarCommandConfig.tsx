@@ -136,7 +136,7 @@ type CleanupResult = StarbaseCleanupResult;
 
 // ---- Sub-components ----
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
@@ -155,7 +155,7 @@ function SectorCard({
   sector: SectorRow;
   onRemove: (id: string) => void;
   onUpdate: (id: string, fields: Record<string, unknown>) => void;
-}) {
+}): React.JSX.Element {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -333,7 +333,7 @@ function SectorCard({
   );
 }
 
-function SectorsSection() {
+function SectorsSection(): React.JSX.Element {
   const { sectors, setSectors } = useStarCommandStore();
   const [addPath, setAddPath] = useState('');
   const [addName, setAddName] = useState('');
@@ -347,7 +347,7 @@ function SectorsSection() {
     refresh();
   }, [refresh]);
 
-  const handleAdd = async () => {
+  const handleAdd = async (): Promise<void> => {
     if (!addPath.trim()) return;
     setError(null);
     try {
@@ -363,7 +363,7 @@ function SectorsSection() {
     }
   };
 
-  const handleRemove = async (sectorId: string) => {
+  const handleRemove = async (sectorId: string): Promise<void> => {
     try {
       await window.fleet.starbase.removeSector(sectorId);
       refresh();
@@ -372,7 +372,7 @@ function SectorsSection() {
     }
   };
 
-  const handleUpdate = async (sectorId: string, fields: Record<string, unknown>) => {
+  const handleUpdate = async (sectorId: string, fields: Record<string, unknown>): Promise<void> => {
     try {
       await window.fleet.starbase.updateSector(sectorId, fields);
       refresh();
@@ -391,7 +391,16 @@ function SectorsSection() {
 
       <div className="space-y-2 mb-3">
         {sectors.map((s) => (
-          <SectorCard key={s.id} sector={s} onRemove={(id) => { void handleRemove(id); }} onUpdate={(id, fields) => { void handleUpdate(id, fields); }} />
+          <SectorCard
+            key={s.id}
+            sector={s}
+            onRemove={(id) => {
+              void handleRemove(id);
+            }}
+            onUpdate={(id, fields) => {
+              void handleUpdate(id, fields);
+            }}
+          />
         ))}
         {sectors.length === 0 && <p className="text-xs text-neutral-600">No sectors registered</p>}
       </div>
@@ -424,7 +433,9 @@ function SectorsSection() {
             className="w-32 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
           />
           <button
-            onClick={() => { void handleAdd(); }}
+            onClick={() => {
+              void handleAdd();
+            }}
             disabled={!addPath.trim()}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
           >
@@ -438,7 +449,7 @@ function SectorsSection() {
 
 // ---- Supply Routes Section ----
 
-function SupplyRoutesSection() {
+function SupplyRoutesSection(): React.JSX.Element {
   const { sectors } = useStarCommandStore();
   const [routes, setRoutes] = useState<SupplyRoute[]>([]);
   const [graph, setGraph] = useState<Record<string, string[]>>({});
@@ -465,7 +476,7 @@ function SupplyRoutesSection() {
     void refresh();
   }, [refresh]);
 
-  const handleAdd = async () => {
+  const handleAdd = async (): Promise<void> => {
     if (!upstream || !downstream) return;
     setError(null);
     try {
@@ -481,7 +492,7 @@ function SupplyRoutesSection() {
     }
   };
 
-  const handleRemove = async (routeId: number) => {
+  const handleRemove = async (routeId: number): Promise<void> => {
     try {
       await window.fleet.starbase.removeSupplyRoute(routeId);
       void refresh();
@@ -543,7 +554,9 @@ function SupplyRoutesSection() {
               )}
             </div>
             <button
-              onClick={() => { void handleRemove(route.id); }}
+              onClick={() => {
+                void handleRemove(route.id);
+              }}
               className="text-neutral-500 hover:text-red-400 transition-colors px-1"
               title="Remove route"
             >
@@ -586,7 +599,9 @@ function SupplyRoutesSection() {
             ))}
           </select>
           <button
-            onClick={() => { void handleAdd(); }}
+            onClick={() => {
+              void handleAdd();
+            }}
             disabled={!upstream || !downstream}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
           >
@@ -634,7 +649,14 @@ const CONFIG_FIELDS: Array<{
   { key: 'ships_log_retention_days', label: 'Ships Log Retention (days)', type: 'number' }
 ];
 
-function StarbaseSettingsSection() {
+function toConfigString(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  return '';
+}
+
+function StarbaseSettingsSection(): React.JSX.Element {
   const [config, setConfig] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -645,7 +667,7 @@ function StarbaseSettingsSection() {
       .catch(() => {});
   }, []);
 
-  const handleChange = async (key: string, value: unknown) => {
+  const handleChange = async (key: string, value: unknown): Promise<void> => {
     setConfig((prev) => ({ ...prev, [key]: value }));
     setSaving(key);
     try {
@@ -671,8 +693,10 @@ function StarbaseSettingsSection() {
               </label>
               {field.type === 'select' ? (
                 <select
-                  value={String(config[field.key] ?? '')}
-                  onChange={(e) => { void handleChange(field.key, e.target.value); }}
+                  value={toConfigString(config[field.key])}
+                  onChange={(e) => {
+                    void handleChange(field.key, e.target.value);
+                  }}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
                 >
                   {field.options?.map((opt) => (
@@ -684,7 +708,7 @@ function StarbaseSettingsSection() {
               ) : field.type === 'password' ? (
                 <input
                   type="password"
-                  defaultValue={String(config[field.key] ?? '')}
+                  defaultValue={toConfigString(config[field.key])}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
                     if (v && v !== config[field.key]) void handleChange(field.key, v);
@@ -704,8 +728,10 @@ function StarbaseSettingsSection() {
               ) : (
                 <input
                   type="text"
-                  value={String(config[field.key] ?? '')}
-                  onChange={(e) => { void handleChange(field.key, e.target.value); }}
+                  value={toConfigString(config[field.key])}
+                  onChange={(e) => {
+                    void handleChange(field.key, e.target.value);
+                  }}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
               )}
@@ -725,7 +751,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function DatabaseSection() {
+function DatabaseSection(): React.JSX.Element {
   const [stats, setStats] = useState<RetentionStats | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [vacuuming, setVacuuming] = useState(false);
@@ -742,7 +768,7 @@ function DatabaseSection() {
     refresh();
   }, [refresh]);
 
-  const handleCleanup = async () => {
+  const handleCleanup = async (): Promise<void> => {
     setCleaning(true);
     try {
       const result = await window.fleet.starbase.retentionCleanup();
@@ -754,7 +780,7 @@ function DatabaseSection() {
     setCleaning(false);
   };
 
-  const handleVacuum = async () => {
+  const handleVacuum = async (): Promise<void> => {
     setVacuuming(true);
     try {
       await window.fleet.starbase.retentionVacuum();
@@ -807,14 +833,18 @@ function DatabaseSection() {
 
         <div className="flex gap-2">
           <button
-            onClick={() => { void handleCleanup(); }}
+            onClick={() => {
+              void handleCleanup();
+            }}
             disabled={cleaning}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-neutral-200 text-xs rounded transition-colors"
           >
             {cleaning ? 'Cleaning...' : 'Clean Now'}
           </button>
           <button
-            onClick={() => { void handleVacuum(); }}
+            onClick={() => {
+              void handleVacuum();
+            }}
             disabled={vacuuming}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-neutral-200 text-xs rounded transition-colors"
           >
@@ -828,7 +858,7 @@ function DatabaseSection() {
 
 // ---- Main Config Component ----
 
-export function StarCommandConfig() {
+export function StarCommandConfig(): React.JSX.Element {
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
       <div className="text-sm text-neutral-300 font-semibold mb-2">Starbase Configuration</div>
