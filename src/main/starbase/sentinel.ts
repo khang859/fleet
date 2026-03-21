@@ -829,7 +829,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
     }
   }
 
-  private pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
+  private async pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         socket.destroy();

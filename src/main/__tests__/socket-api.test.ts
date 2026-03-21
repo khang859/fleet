@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SocketApi, SocketCommandHandler } from '../socket-api';
+import { SocketApi, type SocketCommandHandler } from '../socket-api';
 import { createServer, createConnection } from 'net';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -68,14 +68,14 @@ describe('SocketApi', () => {
 });
 
 // Helper: send a JSON command and read the response
-function sendCommand(
+async function sendCommand(
   socketPath: string,
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   return sendRaw(socketPath, JSON.stringify(cmd) + '\n');
 }
 
-function sendRaw(socketPath: string, data: string): Promise<Record<string, unknown>> {
+async function sendRaw(socketPath: string, data: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const client = createConnection(socketPath, () => {
       client.write(data);

@@ -44,7 +44,7 @@ interface ApiOptions {
 }
 
 interface GenerateResponse {
-  images: { url: string }[];
+  images: Array<{ url: string }>;
   description: string;
 }
 

@@ -34,7 +34,7 @@ const fontVariants = [
 ];
 
 const fontLoads = fontFamilies.flatMap((family) =>
-  fontVariants.map(({ weight, style }) =>
+  fontVariants.map(async ({ weight, style }) =>
     document.fonts.load(`${style} ${weight} 16px "${family}"`)
   )
 );

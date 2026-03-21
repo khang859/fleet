@@ -98,7 +98,7 @@ async function generateStationFrames(sourcePath: string, count: number): Promise
   // Rotate at source resolution for best quality, then downscale to 64x64
   const source = await sharp(sourcePath).ensureAlpha().png().toBuffer();
   const sourceMeta = await sharp(source).metadata();
-  const srcSize = sourceMeta.width!; // assume square
+  const srcSize = sourceMeta.width; // assume square
   const frames: Buffer[] = [];
 
   for (let i = 0; i < count; i++) {
@@ -121,8 +121,8 @@ async function generateStationFrames(sourcePath: string, count: number): Promise
 
     // Center-crop back to srcSize x srcSize, then resize to 64x64
     const rotMeta = await sharp(rotated).metadata();
-    const left = Math.floor((rotMeta.width! - srcSize) / 2);
-    const top = Math.floor((rotMeta.height! - srcSize) / 2);
+    const left = Math.floor((rotMeta.width - srcSize) / 2);
+    const top = Math.floor((rotMeta.height - srcSize) / 2);
 
     const frame = await sharp(rotated)
       .extract({ left, top, width: srcSize, height: srcSize })
@@ -558,7 +558,7 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
           `  WARNING: ${entry.src!.replace(SPRITES_RAW + '/', '')} has no alpha channel`
         );
       }
-      inputBuffer = await sharp(entry.src!).ensureAlpha().png().toBuffer();
+      inputBuffer = await sharp(entry.src).ensureAlpha().png().toBuffer();
     }
 
     const resized = await sharp(inputBuffer)

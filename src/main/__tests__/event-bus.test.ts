@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { EventBus, FleetEvent } from '../event-bus';
+import { EventBus, type FleetEvent } from '../event-bus';
 
 describe('EventBus', () => {
   it('emits and receives typed events', () => {

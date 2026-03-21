@@ -143,7 +143,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.general.defaultShell || '(auto-detect)'}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     updateSettings({
                       general: { ...settings.general, defaultShell: e.target.value }
                     })
@@ -156,7 +156,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.fontSize}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     updateSettings({
                       general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 }
                     })
@@ -166,7 +166,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </SettingRow>
               <FontFamilyPicker
                 fontFamily={settings.general.fontFamily}
-                onChange={(fontFamily) =>
+                onChange={async (fontFamily) =>
                   updateSettings({ general: { ...settings.general, fontFamily } })
                 }
               />
@@ -174,7 +174,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.scrollbackSize}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     updateSettings({
                       general: {
                         ...settings.general,
@@ -243,7 +243,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="checkbox"
                   checked={settings.socketApi.enabled}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     updateSettings({
                       socketApi: { ...settings.socketApi, enabled: e.target.checked }
                     })
@@ -255,7 +255,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.socketApi.socketPath || '~/.fleet/fleet.sock'}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     updateSettings({
                       socketApi: { ...settings.socketApi, socketPath: e.target.value }
                     })
@@ -350,7 +350,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max="1"
                         step="0.05"
                         value={settings.visualizer.soundVolume}
-                        onChange={(e) =>
+                        onChange={async (e) =>
                           updateSettings({
                             visualizer: {
                               ...settings.visualizer,
@@ -380,7 +380,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </button>
               ) : (
                 <button
-                  onClick={() => window.fleet.updates.checkForUpdates()}
+                  onClick={async () => window.fleet.updates.checkForUpdates()}
                   disabled={
                     updateStatus.state === 'checking' || updateStatus.state === 'downloading'
                   }

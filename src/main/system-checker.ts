@@ -29,7 +29,7 @@ type FnCheck = {
 
 type Check = CmdCheck | FnCheck;
 
-function attemptFleetSock(): Promise<SystemDepResult> {
+async function attemptFleetSock(): Promise<SystemDepResult> {
   return new Promise((resolve) => {
     const socket = net.createConnection(SOCKET_PATH);
     let responded = false;

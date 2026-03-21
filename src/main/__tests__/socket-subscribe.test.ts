@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { SocketApi, SocketCommandHandler } from '../socket-api';
+import { SocketApi, type SocketCommandHandler } from '../socket-api';
 import { createConnection } from 'net';
 import { join } from 'path';
 import { tmpdir } from 'os';

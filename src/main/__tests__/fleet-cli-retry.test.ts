@@ -60,7 +60,7 @@ describe('FleetCLI.sendWithRetry', () => {
 
     // Start server after 300ms delay
     const server = new SocketServer(socketPath, makeMockServices());
-    setTimeout(() => server.start(), 300);
+    setTimeout(async () => server.start(), 300);
 
     const cli = new FleetCLI(socketPath);
     const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 3000, pollIntervalMs: 100 });

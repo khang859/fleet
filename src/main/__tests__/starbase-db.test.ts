@@ -30,9 +30,9 @@ describe('StarbaseDB', () => {
     expect(meta.schema_version).toBeGreaterThanOrEqual(1);
 
     // Verify sectors table exists
-    const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
+    const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{
       name: string;
-    }[];
+    }>;
     const tableNames = tables.map((t) => t.name);
     expect(tableNames).toContain('sectors');
     expect(tableNames).toContain('missions');

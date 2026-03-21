@@ -35,7 +35,7 @@ function createTempDir(): string {
   return mkdtempSync(join(tmpdir(), 'fleet-jsonl-test-'));
 }
 
-function sleep(ms: number): Promise<void> {
+async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 

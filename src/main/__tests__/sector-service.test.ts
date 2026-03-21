@@ -60,7 +60,7 @@ describe('SectorService', () => {
     const list = svc.listVisibleSectors();
 
     expect(list).toHaveLength(1);
-    expect(list[0]!.id).toBe('api');
+    expect(list[0].id).toBe('api');
   });
 
   it('should identify the global sentinel as a logical sector', () => {

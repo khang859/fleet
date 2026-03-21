@@ -607,7 +607,7 @@ export function Sidebar({
                   setNewWsName('');
                 }
               }}
-              onBlur={() => commitNewWorkspace()}
+              onBlur={async () => commitNewWorkspace()}
               placeholder="Workspace name..."
               className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
             />
@@ -625,7 +625,7 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                      onClick={() => doSwitchWorkspace(ws.id)}
+                      onClick={async () => doSwitchWorkspace(ws.id)}
                     >
                       Yes
                     </button>
@@ -643,7 +643,7 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
-                      onClick={() => handleDeleteWorkspace(ws.id)}
+                      onClick={async () => handleDeleteWorkspace(ws.id)}
                     >
                       Delete
                     </button>

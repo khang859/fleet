@@ -198,7 +198,7 @@ export function WorkspacePicker() {
                     </button>
                     <button
                       className="px-2 text-neutral-600 hover:text-red-400 text-xs"
-                      onClick={() => handleDeleteWorkspace(ws.id)}
+                      onClick={async () => handleDeleteWorkspace(ws.id)}
                     >
                       &times;
                     </button>
@@ -225,7 +225,7 @@ export function WorkspacePicker() {
                 setNewName('');
               }
             }}
-            onBlur={() => commitNewWorkspace()}
+            onBlur={async () => commitNewWorkspace()}
             placeholder="Workspace name..."
             className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
           />

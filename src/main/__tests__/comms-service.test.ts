@@ -312,7 +312,7 @@ describe('CommsService', () => {
       const rows = db
         .getDb()
         .prepare("SELECT * FROM comms WHERE from_crew = 'navigator'")
-        .all() as { id: number }[];
+        .all() as Array<{ id: number }>;
       expect(rows).toHaveLength(2);
     });
   });

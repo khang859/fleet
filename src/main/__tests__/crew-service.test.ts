@@ -118,7 +118,7 @@ describe('CrewService', () => {
     const missions = db
       .getDb()
       .prepare("SELECT status FROM missions WHERE sector_id = 'api'")
-      .all() as { status: string }[];
+      .all() as Array<{ status: string }>;
     expect(missions).toHaveLength(1);
     expect(missions[0].status).toBe('queued');
   });

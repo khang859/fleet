@@ -80,7 +80,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   await Promise.all(
     sectors
       .filter((sector) => sector.id !== GLOBAL_SECTOR_ID && existsSync(sector.root_path))
-      .map((sector) =>
+      .map(async (sector) =>
         execFileAsync('git', ['worktree', 'prune'], {
           cwd: sector.root_path,
           timeout: 10_000

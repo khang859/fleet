@@ -10,7 +10,7 @@ function tmpSocket(): string {
   return join(tmpdir(), `fleet-sv-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
 }
 
-function sendPing(socketPath: string): Promise<Record<string, unknown>> {
+async function sendPing(socketPath: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const client = createConnection(socketPath, () => {
       client.write(JSON.stringify({ id: 'ping-1', command: 'ping', args: {} }) + '\n');

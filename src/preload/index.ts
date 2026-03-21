@@ -65,13 +65,13 @@ function getHomeDir(): string {
 
 const fleetApi = {
   pty: {
-    create: (req: PtyCreateRequest): Promise<PtyCreateResponse> =>
+    create: async (req: PtyCreateRequest): Promise<PtyCreateResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.PTY_CREATE, req),
     input: (payload: PtyInputPayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_INPUT, payload),
     resize: (payload: PtyResizePayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
     kill: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
     gc: (activePaneIds: string[]): void => ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
-    attach: (paneId: string): Promise<{ data: string }> =>
+    attach: async (paneId: string): Promise<{ data: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.PTY_ATTACH, { paneId }),
     onData: (callback: (payload: PtyDataPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.PTY_DATA, callback),
@@ -81,12 +81,12 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.PTY_CWD, callback)
   },
   layout: {
-    save: (req: LayoutSaveRequest): Promise<void> =>
+    save: async (req: LayoutSaveRequest): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_SAVE, req),
-    load: (workspaceId: string): Promise<Workspace> =>
+    load: async (workspaceId: string): Promise<Workspace> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
-    list: (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
-    delete: (workspaceId: string): Promise<void> =>
+    list: async (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
+    delete: async (workspaceId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_DELETE, workspaceId)
   },
   notifications: {
@@ -109,70 +109,70 @@ const fleetApi = {
     getFilePath: (file: File): string => webUtils.getPathForFile(file)
   },
   settings: {
-    get: (): Promise<FleetSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
-    set: (settings: Partial<FleetSettings>): Promise<void> =>
+    get: async (): Promise<FleetSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    set: async (settings: Partial<FleetSettings>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings)
   },
   git: {
-    isRepo: (cwd: string): Promise<GitIsRepoPayload> =>
+    isRepo: async (cwd: string): Promise<GitIsRepoPayload> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
-    getStatus: (cwd: string): Promise<GitStatusPayload> =>
+    getStatus: async (cwd: string): Promise<GitStatusPayload> =>
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd)
   },
   admiral: {
-    checkDependencies: (): Promise<SystemDepResult[]> =>
+    checkDependencies: async (): Promise<SystemDepResult[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
-    getPaneId: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
-    ensureStarted: (): Promise<string | null> =>
+    getPaneId: async (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
+    ensureStarted: async (): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_ENSURE_STARTED),
-    restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
-    reset: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
+    restart: async (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
+    reset: async (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESET),
     onStatusChanged: (callback: (payload: AdmiralStatusPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, callback),
     onStateDetail: (callback: (payload: AdmiralStateDetailPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, callback)
   },
   starbase: {
-    getRuntimeStatus: (): Promise<StarbaseRuntimeStatus> =>
+    getRuntimeStatus: async (): Promise<StarbaseRuntimeStatus> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_GET),
-    retryRuntimeBootstrap: (): Promise<StarbaseRuntimeStatus> =>
+    retryRuntimeBootstrap: async (): Promise<StarbaseRuntimeStatus> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY),
     onRuntimeStatus: (callback: (payload: StarbaseRuntimeStatus) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, callback),
-    listSectors: (): Promise<StarbaseSectorRow[]> =>
+    listSectors: async (): Promise<StarbaseSectorRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
-    listCrew: (filter?: { sectorId?: string; status?: string }): Promise<StarbaseCrewRow[]> =>
+    listCrew: async (filter?: { sectorId?: string; status?: string }): Promise<StarbaseCrewRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW, filter),
-    listMissions: (filter?: {
+    listMissions: async (filter?: {
       sectorId?: string;
       status?: string;
     }): Promise<StarbaseMissionRow[]> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MISSIONS, filter),
-    getUnreadComms: (): Promise<StarbaseCommRow[]> =>
+    getUnreadComms: async (): Promise<StarbaseCommRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
-    listComms: (opts?: { limit?: number }): Promise<StarbaseCommRow[]> =>
+    listComms: async (opts?: { limit?: number }): Promise<StarbaseCommRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_COMMS, opts),
-    markCommsRead: (id: number): Promise<boolean> =>
+    markCommsRead: async (id: number): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, { id }),
-    resolveComms: (id: number, response: string): Promise<number> =>
+    resolveComms: async (id: number, response: string): Promise<number> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, { id, response }),
-    deleteComms: (id: number): Promise<boolean> =>
+    deleteComms: async (id: number): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_DELETE_COMMS, { id }),
-    markAllCommsRead: (): Promise<number> =>
+    markAllCommsRead: async (): Promise<number> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ),
-    clearComms: (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CLEAR_COMMS),
-    deployCrew: (opts: {
+    clearComms: async (): Promise<number> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CLEAR_COMMS),
+    deployCrew: async (opts: {
       sectorId: string;
       prompt: string;
       summary?: string;
       missionId?: number;
     }): Promise<DeployResponse> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_DEPLOY, opts),
-    recallCrew: (crewId: string): Promise<void> =>
+    recallCrew: async (crewId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RECALL, { crewId }),
-    observeCrew: (crewId: string): Promise<string> =>
+    observeCrew: async (crewId: string): Promise<string> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_OBSERVE, { crewId }),
-    messageCrew: (crewId: string, message: string): Promise<boolean> =>
+    messageCrew: async (crewId: string, message: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MESSAGE_CREW, { crewId, message }),
-    addMission: (req: {
+    addMission: async (req: {
       sectorId: string;
       summary: string;
       prompt: string;
@@ -182,53 +182,54 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_MISSION, req),
     onStatusUpdate: (callback: (payload: StarbaseStatusUpdatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_STATUS_UPDATE, callback),
-    listSupplyRoutes: (opts?: { sectorId?: string }): Promise<StarbaseSupplyRoute[]> =>
+    listSupplyRoutes: async (opts?: { sectorId?: string }): Promise<StarbaseSupplyRoute[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
-    addSupplyRoute: (opts: {
+    addSupplyRoute: async (opts: {
       upstreamSectorId: string;
       downstreamSectorId: string;
     }): Promise<{ routeId: number }> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, opts),
-    removeSupplyRoute: (routeId: number): Promise<void> =>
+    removeSupplyRoute: async (routeId: number): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, { routeId }),
-    getSupplyRouteGraph: (): Promise<Record<string, string[]>> =>
+    getSupplyRouteGraph: async (): Promise<Record<string, string[]>> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH),
-    listCargo: (filter?: { sectorId?: string }): Promise<Array<Record<string, unknown>>> =>
+    listCargo: async (filter?: { sectorId?: string }): Promise<Array<Record<string, unknown>>> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_CARGO, filter),
-    getRetentionStats: (): Promise<StarbaseRetentionStats> =>
+    getRetentionStats: async (): Promise<StarbaseRetentionStats> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_STATS),
-    retentionCleanup: (): Promise<StarbaseCleanupResult> =>
+    retentionCleanup: async (): Promise<StarbaseCleanupResult> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP),
-    retentionVacuum: (): Promise<void> =>
+    retentionVacuum: async (): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_VACUUM),
-    getConfig: (): Promise<Record<string, unknown>> =>
+    getConfig: async (): Promise<Record<string, unknown>> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_GET_CONFIG),
-    setConfig: (key: string, value: unknown): Promise<void> =>
+    setConfig: async (key: string, value: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SET_CONFIG, { key, value }),
-    addSector: (opts: {
+    addSector: async (opts: {
       path: string;
       name?: string;
       description?: string;
     }): Promise<StarbaseSectorRow> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SECTOR, opts),
-    removeSector: (sectorId: string): Promise<void> =>
+    removeSector: async (sectorId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
-    updateSector: (sectorId: string, fields: Record<string, unknown>): Promise<void> =>
+    updateSector: async (sectorId: string, fields: Record<string, unknown>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
-    memoList: (): Promise<StarbaseMemoRow[]> => ipcRenderer.invoke(IPC_CHANNELS.MEMO_LIST),
-    memoRead: (id: number): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.MEMO_READ, id),
-    memoDismiss: (id: number): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.MEMO_DISMISS, id),
-    memoContent: (filePath: string): Promise<string | null> =>
+    memoList: async (): Promise<StarbaseMemoRow[]> => ipcRenderer.invoke(IPC_CHANNELS.MEMO_LIST),
+    memoRead: async (id: number): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.MEMO_READ, id),
+    memoDismiss: async (id: number): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.MEMO_DISMISS, id),
+    memoContent: async (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_CONTENT, filePath),
-    getShipsLog: (opts?: { limit?: number }): Promise<StarbaseLogEntry[]> =>
+    getShipsLog: async (opts?: { limit?: number }): Promise<StarbaseLogEntry[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SHIPS_LOG, opts),
     onLogEntry: (callback: (entry: StarbaseLogEntry) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_LOG_ENTRY, callback)
   },
   system: {
-    check: (): Promise<Array<import('../shared/ipc-api').SystemDepResult>> =>
+    check: async (): Promise<Array<import('../shared/ipc-api').SystemDepResult>> =>
       ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_CHECK)
   },
-  showFolderPicker: (): Promise<string | null> =>
+  showFolderPicker: async (): Promise<string | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
   ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
@@ -240,20 +241,20 @@ const fleetApi = {
     return cleanup;
   },
   file: {
-    read: (
+    read: async (
       filePath: string
     ): Promise<
       | { success: true; data: { content: string; size: number; modifiedAt: number } }
       | { success: false; error: string }
     > => ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
-    write: (
+    write: async (
       filePath: string,
       content: string
     ): Promise<{ success: true } | { success: false; error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
-    openDialog: (opts: { defaultPath?: string } = {}): Promise<string[]> =>
+    openDialog: async (opts: { defaultPath?: string } = {}): Promise<string[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
-    list: (
+    list: async (
       dirPath: string
     ): Promise<{
       success: true;
@@ -261,11 +262,11 @@ const fleetApi = {
     }> => ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
     onOpenInTab: (callback: (payload: FileOpenInTabPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.FILE_OPEN_IN_TAB, callback),
-    readBinary: (
+    readBinary: async (
       filePath: string
     ): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
-    stat: (
+    stat: async (
       filePath: string
     ): Promise<{
       success: boolean;
@@ -274,12 +275,12 @@ const fleetApi = {
     }> => ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath)
   },
   updates: {
-    checkForUpdates: (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+    checkForUpdates: async (): Promise<void> => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
     onUpdateStatus: (callback: (status: import('../shared/types').UpdateStatus) => void) => {
       return onChannel(IPC_CHANNELS.UPDATE_STATUS, callback);
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
-    getVersion: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.GET_VERSION)
+    getVersion: async (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.GET_VERSION)
   }
 };
 

@@ -234,7 +234,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
 
   // Register save function so the close dialog can trigger it
   useEffect(() => {
-    registerFileSave(paneId, () => saveRef.current());
+    registerFileSave(paneId, async () => saveRef.current());
     return () => unregisterFileSave(paneId);
   }, [paneId]);
 

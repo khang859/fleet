@@ -542,7 +542,7 @@ function SupplyRoutesSection() {
               )}
             </div>
             <button
-              onClick={() => handleRemove(route.id)}
+              onClick={async () => handleRemove(route.id)}
               className="text-neutral-500 hover:text-red-400 transition-colors px-1"
               title="Remove route"
             >
@@ -671,7 +671,7 @@ function StarbaseSettingsSection() {
               {field.type === 'select' ? (
                 <select
                   value={String(config[field.key] ?? '')}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
+                  onChange={async (e) => handleChange(field.key, e.target.value)}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
                 >
                   {field.options?.map((opt) => (
@@ -695,7 +695,7 @@ function StarbaseSettingsSection() {
                 <input
                   type="number"
                   value={config[field.key] != null ? Number(config[field.key]) : ''}
-                  onChange={(e) =>
+                  onChange={async (e) =>
                     handleChange(field.key, e.target.value ? Number(e.target.value) : null)
                   }
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
@@ -704,7 +704,7 @@ function StarbaseSettingsSection() {
                 <input
                   type="text"
                   value={String(config[field.key] ?? '')}
-                  onChange={(e) => handleChange(field.key, e.target.value)}
+                  onChange={async (e) => handleChange(field.key, e.target.value)}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
               )}

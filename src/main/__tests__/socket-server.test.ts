@@ -11,7 +11,7 @@ function tmpSocket(): string {
   return join(tmpdir(), `fleet-ss-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
 }
 
-function sendCommand(
+async function sendCommand(
   socketPath: string,
   cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
@@ -52,15 +52,13 @@ function makeMockServices() {
   const missionService = {
     addMission: vi.fn().mockReturnValue({ id: 1, summary: 'test', status: 'queued' }),
     listMissions: vi.fn().mockReturnValue([]),
-    getMission: vi
-      .fn()
-      .mockReturnValue({
-        id: 1,
-        status: 'queued',
-        prompt: 'Do the stuff',
-        summary: 'test',
-        sector_id: 'alpha'
-      }),
+    getMission: vi.fn().mockReturnValue({
+      id: 1,
+      status: 'queued',
+      prompt: 'Do the stuff',
+      summary: 'test',
+      sector_id: 'alpha'
+    }),
     abortMission: vi.fn(),
     getDependencies: vi.fn().mockReturnValue([])
   };

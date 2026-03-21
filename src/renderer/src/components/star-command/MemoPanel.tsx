@@ -66,7 +66,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
             activeMemos.map((memo) => (
               <button
                 key={memo.id}
-                onClick={() => selectMemo(memo)}
+                onClick={async () => selectMemo(memo)}
                 className={`w-full text-left px-3 py-2 border-b border-neutral-800 hover:bg-neutral-800 transition-colors ${
                   selectedId === memo.id ? 'bg-neutral-800' : ''
                 }`}
@@ -100,7 +100,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
           {selectedId && (
             <div className="mt-4 pt-4 border-t border-neutral-800">
               <button
-                onClick={() => dismissMemo(selectedId)}
+                onClick={async () => dismissMemo(selectedId)}
                 className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-1 rounded border border-neutral-700 hover:border-neutral-600 transition-colors"
               >
                 Dismiss

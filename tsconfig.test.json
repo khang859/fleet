@@ -1,0 +1,8 @@
+{
+  "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
+  "include": ["src/main/__tests__/**/*", "src/test-setup.ts", "src/renderer/src/components/**/__tests__/**/*"],
+  "compilerOptions": {
+    "composite": true,
+    "types": ["electron-vite/node", "vitest/globals"]
+  }
+}

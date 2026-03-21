@@ -19,7 +19,7 @@ vi.mock('child_process', async (importOriginal) => {
 });
 
 // Import Hull AFTER mock is set up
-import { Hull, HullOpts, buildCargoHeader } from '../starbase/hull';
+import { Hull, type HullOpts, buildCargoHeader } from '../starbase/hull';
 
 const TEST_DIR = join(tmpdir(), 'fleet-test-hull');
 const WORKSPACE_DIR = join(TEST_DIR, 'workspace');

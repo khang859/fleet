@@ -68,7 +68,7 @@ describe('GitService', () => {
         'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
       );
       // diffSummary for tracked files
-      mockGit.raw.mockImplementation((args: string[]) => {
+      mockGit.raw.mockImplementation(async (args: string[]) => {
         if (args.includes('--numstat') && !args.includes('--no-index')) {
           return Promise.resolve('3\t1\tsrc/app.ts\n');
         }

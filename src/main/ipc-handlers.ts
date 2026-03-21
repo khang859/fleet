@@ -172,11 +172,11 @@ export function registerIpcHandlers(
   });
 
   // Git handlers
-  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, (_event, cwd: string) => {
+  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, async (_event, cwd: string) => {
     return gitService.checkIsRepo(cwd);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, (_event, cwd: string) => {
+  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, async (_event, cwd: string) => {
     return gitService.getFullStatus(cwd);
   });
 
@@ -252,10 +252,10 @@ export function registerIpcHandlers(
   });
 
   // System-level dependency check (app-wide pre-checks screen)
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, () => checkSystemDeps());
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, async () => checkSystemDeps());
 
   // Phase 3: Admiral + Comms handlers
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, () => checkDependencies());
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, async () => checkDependencies());
 
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, async () => {
     await getBootstrapState().starbaseReady;
