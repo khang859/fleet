@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron'
 import { readFile, writeFile, stat, readdir } from 'fs/promises'
-import { extname, join, relative, resolve } from 'path'
+import { extname, join, relative } from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 
@@ -27,18 +27,11 @@ import { SettingsStore } from './settings-store'
 import { CwdPoller } from './cwd-poller'
 import { GitService } from './git-service'
 import type { FleetSettings } from '../shared/types'
-import type { SectorService } from './starbase/sector-service'
-import type { ConfigService } from './starbase/config-service'
-import type { CrewService } from './starbase/crew-service'
-import type { MissionService } from './starbase/mission-service'
 import type { AdmiralProcess } from './starbase/admiral-process'
 import { checkDependencies } from './starbase/admiral-process'
 import { checkSystemDeps } from './system-checker'
-import type { CommsService } from './starbase/comms-service'
-import type { SupplyRouteService } from './starbase/supply-route-service'
-import type { CargoService } from './starbase/cargo-service'
-import type { RetentionService } from './starbase/retention-service'
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
+import type { StarbaseRuntimeClient } from './starbase-runtime-client'
 
 type BootstrapState = {
   envReady: Promise<void>
@@ -49,24 +42,9 @@ type BootstrapState = {
 }
 
 type StarbaseServices = {
-  sectorService?: SectorService | null
-  configService?: ConfigService | null
-  crewService?: CrewService | null
-  missionService?: MissionService | null
+  runtime: StarbaseRuntimeClient
   admiralProcess?: AdmiralProcess | null
-  commsService?: CommsService | null
-  supplyRouteService?: SupplyRouteService | null
-  cargoService?: CargoService | null
-  retentionService?: RetentionService | null
   admiralStateDetector?: AdmiralStateDetector | null
-  starbaseDb?: { getDb: () => import('better-sqlite3').Database } | null
-}
-
-function requireService<T>(service: T | null | undefined, label: string): T {
-  if (!service) {
-    throw new Error(`Star Command not ready: missing ${label}`)
-  }
-  return service
 }
 
 export function registerIpcHandlers(
@@ -212,72 +190,64 @@ export function registerIpcHandlers(
   // Starbase handlers
   ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().sectorService, 'sectorService').listVisibleSectors()
+    return getStarbaseServices().runtime.invoke('sector.listVisible')
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, async (_e, req) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().sectorService, 'sectorService').addSector(req)
+    return getStarbaseServices().runtime.invoke('sector.add', req)
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, async (_e, { sectorId }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().sectorService, 'sectorService').removeSector(sectorId)
+    return getStarbaseServices().runtime.invoke('sector.remove', sectorId)
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, async (_e, { sectorId, fields }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().sectorService, 'sectorService').updateSector(
-      sectorId,
-      fields
-    )
+    return getStarbaseServices().runtime.invoke('sector.update', { sectorId, fields })
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().configService, 'configService').getAll()
+    return getStarbaseServices().runtime.invoke('config.getAll')
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, async (_e, { key, value }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().configService, 'configService').set(key, value)
+    return getStarbaseServices().runtime.invoke('config.set', { key, value })
   })
 
   // Phase 2: Deploy/Recall/Crew/Missions handlers
   ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
     const bootstrap = getBootstrapState()
     await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
-    return requireService(getStarbaseServices().crewService, 'crewService').deployCrew(req)
+    return getStarbaseServices().runtime.invoke('crew.deploy', req)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_RECALL, async (_e, { crewId }) => {
     await getBootstrapState().starbaseReady
-    requireService(getStarbaseServices().crewService, 'crewService').recallCrew(crewId)
+    return getStarbaseServices().runtime.invoke('crew.recall', crewId)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_MESSAGE_CREW, async (_e, { crewId, message }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().crewService, 'crewService').messageCrew(
-      crewId,
-      message
-    )
+    return getStarbaseServices().runtime.invoke('crew.message', { crewId, message })
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, async (_e, filter?) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().crewService, 'crewService').listCrew(filter)
+    return getStarbaseServices().runtime.invoke('crew.list', filter)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_MISSIONS, async (_e, filter?) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().missionService, 'missionService').listMissions(
-      filter
-    )
+    return getStarbaseServices().runtime.invoke('mission.list', filter)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_MISSION, async (_e, req) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().missionService, 'missionService').addMission(req)
+    return getStarbaseServices().runtime.invoke('mission.add', req)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, async (_e, { crewId }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().crewService, 'crewService').observeCrew(crewId)
+    return getStarbaseServices().runtime.invoke('crew.observe', crewId)
   })
 
   // System-level dependency check (app-wide pre-checks screen)
@@ -314,7 +284,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
     const bootstrap = getBootstrapState()
     await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
-    const admiralProcess = requireService(getStarbaseServices().admiralProcess, 'admiralProcess')
+    const admiralProcess = getStarbaseServices().admiralProcess
+    if (!admiralProcess) {
+      throw new Error('Star Command not ready: missing admiralProcess')
+    }
     const paneId = await admiralProcess.restart()
     getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId)
     wireAdmiralPty(paneId)
@@ -323,7 +296,10 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
     const bootstrap = getBootstrapState()
     await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
-    const admiralProcess = requireService(getStarbaseServices().admiralProcess, 'admiralProcess')
+    const admiralProcess = getStarbaseServices().admiralProcess
+    if (!admiralProcess) {
+      throw new Error('Star Command not ready: missing admiralProcess')
+    }
     const paneId = await admiralProcess.reset()
     getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId)
     wireAdmiralPty(paneId)
@@ -332,137 +308,98 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').getUnread('admiral')
+    return getStarbaseServices().runtime.invoke('comms.getUnread', 'admiral')
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_COMMS, async (_e, opts?) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').getRecent(opts)
+    return getStarbaseServices().runtime.invoke('comms.getRecent', opts)
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, async (_e, { id }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').markRead(id)
+    return getStarbaseServices().runtime.invoke('comms.markRead', id)
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, async (_e, { id, response }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').resolve(
-      id,
-      response
-    )
+    return getStarbaseServices().runtime.invoke('comms.resolve', { id, response })
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, async (_e, { id }) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').delete(id)
+    return getStarbaseServices().runtime.invoke('comms.delete', id)
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').markAllRead()
+    return getStarbaseServices().runtime.invoke('comms.markAllRead')
   })
   ipcMain.handle(IPC_CHANNELS.STARBASE_CLEAR_COMMS, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().commsService, 'commsService').clear()
+    return getStarbaseServices().runtime.invoke('comms.clear')
   })
 
   // Phase 5: Supply routes, cargo, retention handlers
   ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, async (_e, opts?) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').listRoutes(
-      opts
-    )
+    return getStarbaseServices().runtime.invoke('supplyRoute.list', opts)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, async (_e, opts) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').addRoute(
-      opts
-    )
+    return getStarbaseServices().runtime.invoke('supplyRoute.add', opts)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, async (_e, { routeId }) => {
     await getBootstrapState().starbaseReady
-    requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').removeRoute(
-      routeId
-    )
+    return getStarbaseServices().runtime.invoke('supplyRoute.remove', routeId)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').getGraph()
+    return getStarbaseServices().runtime.invoke('supplyRoute.graph')
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_CARGO, async (_e, filter?) => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().cargoService, 'cargoService').listCargo(filter)
+    return getStarbaseServices().runtime.invoke('cargo.list', filter)
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_STATS, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().retentionService, 'retentionService').getStats()
+    return getStarbaseServices().runtime.invoke('retention.stats')
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP, async () => {
     await getBootstrapState().starbaseReady
-    return requireService(getStarbaseServices().retentionService, 'retentionService').cleanup()
+    return getStarbaseServices().runtime.invoke('retention.cleanup')
   })
 
   ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, async () => {
     await getBootstrapState().starbaseReady
-    requireService(getStarbaseServices().retentionService, 'retentionService').vacuum()
+    return getStarbaseServices().runtime.invoke('retention.vacuum')
   })
 
   // Logs: ships_log + comms UNION query
   ipcMain.handle(IPC_CHANNELS.STARBASE_SHIPS_LOG, async (_e, opts?: { limit?: number }) => {
     await getBootstrapState().starbaseReady
-    const db = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
-    const limit = opts?.limit ?? 200
-    return db.prepare(`
-        SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp
-        FROM ships_log
-        UNION ALL
-        SELECT 'comms', id, from_crew, to_crew, type, payload, created_at
-        FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
-        ORDER BY timestamp ASC LIMIT ?
-      `).all(limit)
+    return getStarbaseServices().runtime.invoke('shipsLog.combined', opts)
   })
 
   // First Officer: Memo handlers (backed by comms table)
   ipcMain.handle(IPC_CHANNELS.MEMO_LIST, async () => {
     await getBootstrapState().starbaseReady
-    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
-    return memoDb.prepare(
-        "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
-      ).all().map((row: any) => {
-        try {
-          const p = JSON.parse(row.payload ?? '{}')
-          return { ...row, file_path: p.filePath ?? '', status: row.read ? 'read' : 'unread', summary: p.summary ?? '' }
-        } catch { return { ...row, file_path: '', status: row.read ? 'read' : 'unread', summary: '' } }
-      })
+    return getStarbaseServices().runtime.invoke('memo.list')
   })
 
   ipcMain.handle(IPC_CHANNELS.MEMO_READ, async (_e, id: number) => {
     await getBootstrapState().starbaseReady
-    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
-    memoDb.prepare("UPDATE comms SET read = 1 WHERE id = ?").run(id)
-    eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    return getStarbaseServices().runtime.invoke('memo.read', id)
   })
 
   ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, async (_e, id: number) => {
     await getBootstrapState().starbaseReady
-    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
-    memoDb.prepare("DELETE FROM comms WHERE id = ?").run(id)
-    eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    return getStarbaseServices().runtime.invoke('memo.dismiss', id)
   })
 
   ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
-    const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
-    const resolved = resolve(filePath)
-    if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
-      return null
-    }
-    try {
-      return await readFile(resolved, 'utf-8')
-    } catch {
-      return null
-    }
+    return getStarbaseServices().runtime.invoke('memo.content', filePath)
   })
 
   // Folder picker

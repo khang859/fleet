@@ -9,6 +9,7 @@ import type { SectorService } from './starbase/sector-service';
 import type { ConfigService } from './starbase/config-service';
 import type { CrewService } from './starbase/crew-service';
 import type { MissionService } from './starbase/mission-service';
+import type { StarbaseRuntimeClient } from './starbase-runtime-client';
 
 export class FleetCommandHandler implements SocketCommandHandler {
   private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
@@ -19,6 +20,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
   private configService: ConfigService | null = null;
   private crewService: CrewService | null = null;
   private missionService: MissionService | null = null;
+  private runtimeClient: StarbaseRuntimeClient | null = null;
 
   constructor(
     private ptyManager: PtyManager,
@@ -35,6 +37,10 @@ export class FleetCommandHandler implements SocketCommandHandler {
   setPhase2Services(crewService: CrewService, missionService: MissionService): void {
     this.crewService = crewService;
     this.missionService = missionService;
+  }
+
+  setRuntimeClient(runtimeClient: StarbaseRuntimeClient): void {
+    this.runtimeClient = runtimeClient;
   }
 
   setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
@@ -205,14 +211,26 @@ export class FleetCommandHandler implements SocketCommandHandler {
 
       // Starbase commands
       case 'sectors':
+        if (this.runtimeClient) {
+          return { ok: true, sectors: await this.runtimeClient.invoke('sector.listVisible') };
+        }
         if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
         return { ok: true, sectors: this.sectorService.listVisibleSectors() };
 
       case 'add-sector':
+        if (this.runtimeClient) {
+          return { ok: true, sector: await this.runtimeClient.invoke('sector.add', cmd) };
+        }
         if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
         return { ok: true, sector: this.sectorService.addSector(cmd as any) };
 
       case 'config-get':
+        if (this.runtimeClient) {
+          if (cmd.key) {
+            return { ok: true, key: cmd.key, value: await this.runtimeClient.invoke('config.get', cmd.key as string) };
+          }
+          return { ok: true, config: await this.runtimeClient.invoke('config.getAll') };
+        }
         if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
         if (cmd.key) {
           return { ok: true, key: cmd.key, value: this.configService.get(cmd.key as string) };
@@ -220,12 +238,27 @@ export class FleetCommandHandler implements SocketCommandHandler {
         return { ok: true, config: this.configService.getAll() };
 
       case 'config-set':
+        if (this.runtimeClient) {
+          await this.runtimeClient.invoke('config.set', { key: cmd.key as string, value: cmd.value });
+          return { ok: true };
+        }
         if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
         this.configService.set(cmd.key as string, cmd.value);
         return { ok: true };
 
       // Phase 2: Deploy/Recall/Crew/Missions
       case 'deploy': {
+        if (this.runtimeClient) {
+          if (typeof cmd.missionId !== 'number') {
+            return { ok: false, error: 'deploy requires missionId' };
+          }
+          const result = await this.runtimeClient.invoke<Record<string, unknown>>('crew.deploy', {
+            sectorId: cmd.sectorId as string,
+            prompt: cmd.prompt as string,
+            missionId: cmd.missionId,
+          });
+          return { ok: true, ...result };
+        }
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
         if (typeof cmd.missionId !== 'number') {
           return { ok: false, error: 'deploy requires missionId' };
@@ -241,15 +274,28 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'recall':
+        if (this.runtimeClient) {
+          await this.runtimeClient.invoke('crew.recall', cmd.crewId as string);
+          return { ok: true };
+        }
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
         this.crewService.recallCrew(cmd.crewId as string);
         return { ok: true };
 
       case 'crew':
+        if (this.runtimeClient) {
+          return {
+            ok: true,
+            crew: await this.runtimeClient.invoke('crew.list', cmd.sectorId ? { sectorId: cmd.sectorId as string } : undefined),
+          };
+        }
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
         return { ok: true, crew: this.crewService.listCrew(cmd.sectorId ? { sectorId: cmd.sectorId as string } : undefined) };
 
       case 'missions':
+        if (this.runtimeClient) {
+          return { ok: true, missions: await this.runtimeClient.invoke('mission.list', cmd as any) };
+        }
         if (!this.missionService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
         return { ok: true, missions: this.missionService.listMissions(cmd as any) };
 

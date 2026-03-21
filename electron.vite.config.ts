@@ -7,7 +7,11 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: 'src/main/index.ts', 'fleet-cli': 'src/main/fleet-cli.ts' },
+        input: {
+          index: 'src/main/index.ts',
+          'fleet-cli': 'src/main/fleet-cli.ts',
+          'starbase-runtime-process': 'src/main/starbase-runtime-process.ts',
+        },
         output: { format: 'es' }
       }
     }
