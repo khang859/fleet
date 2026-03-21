@@ -1,49 +1,49 @@
-import type Database from 'better-sqlite3'
-import { mkdir, writeFile } from 'fs/promises'
-import { join } from 'path'
-import type { SupplyRouteService } from './supply-route-service'
-import type { ConfigService } from './config-service'
+import type Database from 'better-sqlite3';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
+import type { SupplyRouteService } from './supply-route-service';
+import type { ConfigService } from './config-service';
 
 type CargoRow = {
-  id: number
-  crew_id: string | null
-  mission_id: number | null
-  sector_id: string
-  type: string | null
-  manifest: string | null
-  verified: number
-  created_at: string
-}
+  id: number;
+  crew_id: string | null;
+  mission_id: number | null;
+  sector_id: string;
+  type: string | null;
+  manifest: string | null;
+  verified: number;
+  created_at: string;
+};
 
 type ProduceCargoOpts = {
-  crewId?: string
-  missionId?: number
-  sectorId: string
-  type?: string
-  manifest?: string
-}
+  crewId?: string;
+  missionId?: number;
+  sectorId: string;
+  type?: string;
+  manifest?: string;
+};
 
 type ProduceRecoveredCargoOpts = {
-  crewId: string
-  missionId: number
-  sectorId: string
-  title: string
-  contentMarkdown: string
-  summary: string
-  sourceKinds: string[]
-  fingerprint?: string | null
-  classification?: string | null
-  starbaseId: string
-}
+  crewId: string;
+  missionId: number;
+  sectorId: string;
+  title: string;
+  contentMarkdown: string;
+  summary: string;
+  sourceKinds: string[];
+  fingerprint?: string | null;
+  classification?: string | null;
+  starbaseId: string;
+};
 
 type ListCargoFilter = {
-  sectorId?: string
-  crewId?: string
-  type?: string
-  verified?: boolean
-}
+  sectorId?: string;
+  crewId?: string;
+  type?: string;
+  verified?: boolean;
+};
 
-const FAILED_STATUSES = ['error', 'lost', 'timeout', 'failed', 'failed-verification', 'escalated']
+const FAILED_STATUSES = ['error', 'lost', 'timeout', 'failed', 'failed-verification', 'escalated'];
 
 export class CargoService {
   constructor(
@@ -53,15 +53,15 @@ export class CargoService {
   ) {}
 
   produceCargo(opts: ProduceCargoOpts): CargoRow {
-    let verified = 1
+    let verified = 1;
 
     if (opts.missionId != null) {
       const mission = this.db
-        .prepare('SELECT status FROM missions WHERE id = ?')
-        .get(opts.missionId) as { status: string } | undefined
+        .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+        .get(opts.missionId);
 
       if (mission && FAILED_STATUSES.includes(mission.status)) {
-        verified = 0
+        verified = 0;
       }
     }
 
@@ -77,11 +77,13 @@ export class CargoService {
         opts.type ?? null,
         opts.manifest ?? null,
         verified
-      )
+      );
 
-    return this.db
-      .prepare('SELECT * FROM cargo WHERE id = ?')
-      .get(result.lastInsertRowid) as CargoRow
+    const cargo = this.db
+      .prepare<[number | bigint], CargoRow>('SELECT * FROM cargo WHERE id = ?')
+      .get(result.lastInsertRowid);
+    if (!cargo) throw new Error('Failed to retrieve inserted cargo');
+    return cargo;
   }
 
   async produceRecoveredCargo(opts: ProduceRecoveredCargoOpts): Promise<CargoRow> {
@@ -92,16 +94,16 @@ export class CargoService {
       `starbase-${opts.starbaseId}`,
       'cargo',
       opts.sectorId,
-      String(opts.missionId),
-    )
+      String(opts.missionId)
+    );
 
-    const ts = new Date().toISOString().replace(/[:.]/g, '-')
-    const filePath = join(cargoDir, `recovered-${ts}.md`)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const filePath = join(cargoDir, `recovered-${ts}.md`);
 
-    let manifest: string
+    let manifest: string;
     try {
-      await mkdir(cargoDir, { recursive: true })
-      await writeFile(filePath, opts.contentMarkdown, 'utf-8')
+      await mkdir(cargoDir, { recursive: true });
+      await writeFile(filePath, opts.contentMarkdown, 'utf-8');
       manifest = JSON.stringify({
         title: opts.title,
         path: filePath,
@@ -111,8 +113,8 @@ export class CargoService {
         missionId: opts.missionId,
         fingerprint: opts.fingerprint ?? null,
         classification: opts.classification ?? null,
-        recoveredBy: 'first-officer',
-      })
+        recoveredBy: 'first-officer'
+      });
     } catch {
       manifest = JSON.stringify({
         title: opts.title,
@@ -123,8 +125,8 @@ export class CargoService {
         missionId: opts.missionId,
         fingerprint: opts.fingerprint ?? null,
         classification: opts.classification ?? null,
-        recoveredBy: 'first-officer',
-      })
+        recoveredBy: 'first-officer'
+      });
     }
 
     return this.produceCargo({
@@ -132,82 +134,83 @@ export class CargoService {
       missionId: opts.missionId,
       sectorId: opts.sectorId,
       type: 'recovered_cargo',
-      manifest,
-    })
+      manifest
+    });
   }
 
   getCargo(id: number): CargoRow | undefined {
-    return this.db.prepare('SELECT * FROM cargo WHERE id = ?').get(id) as CargoRow | undefined
+    return this.db.prepare<[number], CargoRow>('SELECT * FROM cargo WHERE id = ?').get(id);
   }
 
   listCargo(filter?: ListCargoFilter): CargoRow[] {
-    let sql = 'SELECT * FROM cargo WHERE 1=1'
-    const params: unknown[] = []
+    let sql = 'SELECT * FROM cargo WHERE 1=1';
+    const params: unknown[] = [];
 
     if (filter?.sectorId) {
-      sql += ' AND sector_id = ?'
-      params.push(filter.sectorId)
+      sql += ' AND sector_id = ?';
+      params.push(filter.sectorId);
     }
     if (filter?.crewId) {
-      sql += ' AND crew_id = ?'
-      params.push(filter.crewId)
+      sql += ' AND crew_id = ?';
+      params.push(filter.crewId);
     }
     if (filter?.type) {
-      sql += ' AND type = ?'
-      params.push(filter.type)
+      sql += ' AND type = ?';
+      params.push(filter.type);
     }
     if (filter?.verified !== undefined) {
-      sql += ' AND verified = ?'
-      params.push(filter.verified ? 1 : 0)
+      sql += ' AND verified = ?';
+      params.push(filter.verified ? 1 : 0);
     }
 
-    sql += ' ORDER BY created_at ASC, id ASC'
-    return this.db.prepare(sql).all(...params) as CargoRow[]
+    sql += ' ORDER BY created_at ASC, id ASC';
+    return this.db.prepare<unknown[], CargoRow>(sql).all(...params);
   }
 
   getUndelivered(sectorId: string): CargoRow[] {
     // Get upstream sectors via supply routes
-    const upstreamRoutes = this.supplyRouteService.getUpstream(sectorId)
-    if (upstreamRoutes.length === 0) return []
+    const upstreamRoutes = this.supplyRouteService.getUpstream(sectorId);
+    if (upstreamRoutes.length === 0) return [];
 
-    const upstreamSectorIds = upstreamRoutes.map((r) => r.upstream_sector_id)
+    const upstreamSectorIds = upstreamRoutes.map((r) => r.upstream_sector_id);
 
     // Find the last deployment time in this sector (latest completed crew)
     const lastDeployment = this.db
-      .prepare(
+      .prepare<[string], { last_deploy: string | null }>(
         `SELECT MAX(updated_at) as last_deploy
          FROM crew
          WHERE sector_id = ? AND status = 'complete'`
       )
-      .get(sectorId) as { last_deploy: string | null }
+      .get(sectorId) ?? { last_deploy: null };
 
-    const forwardFailed = this.configService.get('forward_failed_cargo') as boolean | undefined
+    const forwardFailedRaw = this.configService.get('forward_failed_cargo');
+    const forwardFailed = typeof forwardFailedRaw === 'boolean' ? forwardFailedRaw : undefined;
 
     // Build query for cargo from upstream sectors
-    const placeholders = upstreamSectorIds.map(() => '?').join(', ')
-    let sql = `SELECT * FROM cargo WHERE sector_id IN (${placeholders})`
-    const params: unknown[] = [...upstreamSectorIds]
+    const placeholders = upstreamSectorIds.map(() => '?').join(', ');
+    let sql = `SELECT * FROM cargo WHERE sector_id IN (${placeholders})`;
+    const params: unknown[] = [...upstreamSectorIds];
 
     // Only cargo produced after last deployment
-    if (lastDeployment?.last_deploy) {
-      sql += ' AND created_at > ?'
-      params.push(lastDeployment.last_deploy)
+    if (lastDeployment.last_deploy) {
+      sql += ' AND created_at > ?';
+      params.push(lastDeployment.last_deploy);
     }
 
     // Filter out unverified cargo unless forward_failed_cargo is enabled
     if (!forwardFailed) {
-      sql += ' AND verified = 1'
+      sql += ' AND verified = 1';
     }
 
-    sql += ' ORDER BY created_at ASC, id ASC'
-    return this.db.prepare(sql).all(...params) as CargoRow[]
+    sql += ' ORDER BY created_at ASC, id ASC';
+    return this.db.prepare<unknown[], CargoRow>(sql).all(...params);
   }
 
-  cleanup(olderThanDays: number = 14): number {
+  cleanup(olderThanDays = 14): number {
     const result = this.db
       .prepare(`DELETE FROM cargo WHERE created_at < datetime('now', ?)`)
-      .run(`-${olderThanDays} days`)
+      .run(`-${olderThanDays} days`);
 
-    return result.changes
+    return result.changes;
   }
 }

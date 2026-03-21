@@ -37,11 +37,14 @@ type TabItemProps = {
 
 // Multi-signal badge config: color + size + shape + animation per severity level
 // so badge meaning is not conveyed by color alone (WCAG, Baymard, NNG)
-const BADGE_CONFIG: Record<NotificationLevel, { color: string; size: string; animate: string; label: string }> = {
+const BADGE_CONFIG: Record<
+  NotificationLevel,
+  { color: string; size: string; animate: string; label: string }
+> = {
   permission: { color: 'bg-amber-400', size: 'w-2.5 h-2.5', animate: 'animate-pulse', label: '?' },
-  error:      { color: 'bg-red-400',   size: 'w-2.5 h-2.5', animate: '',              label: '!' },
-  info:       { color: 'bg-blue-400',  size: 'w-2 h-2',     animate: '',              label: '' },
-  subtle:     { color: 'bg-neutral-500', size: 'w-1.5 h-1.5', animate: '',            label: '' },
+  error: { color: 'bg-red-400', size: 'w-2.5 h-2.5', animate: '', label: '!' },
+  info: { color: 'bg-blue-400', size: 'w-2 h-2', animate: '', label: '' },
+  subtle: { color: 'bg-neutral-500', size: 'w-1.5 h-1.5', animate: '', label: '' }
 };
 
 export function TabItem({
@@ -61,8 +64,8 @@ export function TabItem({
   onDragStart,
   onDragOver,
   onDrop,
-  isDragOver,
-}: TabItemProps) {
+  isDragOver
+}: TabItemProps): React.JSX.Element {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -78,7 +81,7 @@ export function TabItem({
   // Listen for F2 rename event on the active tab
   useEffect(() => {
     if (!isActive) return;
-    const handleRenameEvent = () => {
+    const handleRenameEvent = (): void => {
       setEditValue(label);
       setIsEditing(true);
     };
@@ -94,19 +97,25 @@ export function TabItem({
     setIsEditing(false);
   }, [editValue, label, onRename]);
 
-  const handleDoubleClick = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setEditValue(label);
-    setIsEditing(true);
-  }, [label]);
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setEditValue(label);
+      setIsEditing(true);
+    },
+    [label]
+  );
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      commitRename();
-    } else if (e.key === 'Escape') {
-      setIsEditing(false);
-    }
-  }, [commitRename]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        commitRename();
+      } else if (e.key === 'Escape') {
+        setIsEditing(false);
+      }
+    },
+    [commitRename]
+  );
 
   return (
     <ContextMenu.Root>
@@ -115,9 +124,11 @@ export function TabItem({
           data-tab-id={id}
           className={`
             group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
-            ${isActive
-              ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
-              : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+            ${
+              isActive
+                ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
+                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+            }
           `}
           onClick={onClick}
           title={labelIsCustom ? `${label} — ${cwd}` : cwd}
@@ -152,7 +163,9 @@ export function TabItem({
               aria-label={`${badge} notification`}
             >
               {BADGE_CONFIG[badge].label && (
-                <span className="text-[7px] font-bold text-black leading-none">{BADGE_CONFIG[badge].label}</span>
+                <span className="text-[7px] font-bold text-black leading-none">
+                  {BADGE_CONFIG[badge].label}
+                </span>
               )}
             </span>
           )}

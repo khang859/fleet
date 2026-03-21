@@ -3,11 +3,13 @@ import { FleetCLI } from '../fleet-cli';
 import { SocketServer } from '../socket-server';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { unlinkSync, existsSync } from 'fs';
-import { createServer } from 'net';
+import { existsSync } from 'fs';
 
 function tmpSocket(): string {
-  return join(tmpdir(), `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
+  return join(
+    tmpdir(),
+    `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`
+  );
 }
 
 function makeMockServices() {
@@ -19,7 +21,7 @@ function makeMockServices() {
     cargoService: { listCargo: () => [] },
     supplyRouteService: { listRoutes: () => [] },
     configService: { get: () => 'val', set: () => {} },
-    shipsLog: { query: () => [] },
+    shipsLog: { query: () => [] }
   } as any;
 }
 
@@ -43,7 +45,11 @@ describe('FleetCLI.sendWithRetry', () => {
     const socketPath = tmpSocket();
     // No server running, socket file doesn't exist
     const cli = new FleetCLI(socketPath);
-    const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 });
+    const result = await cli.sendWithRetry(
+      'ping',
+      {},
+      { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 }
+    );
     expect(result.ok).toBe(false);
   });
 
@@ -53,7 +59,9 @@ describe('FleetCLI.sendWithRetry', () => {
 
     // Start server after 300ms delay
     const server = new SocketServer(socketPath, makeMockServices());
-    setTimeout(() => server.start(), 300);
+    setTimeout(() => {
+      void server.start();
+    }, 300);
 
     const cli = new FleetCLI(socketPath);
     const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 3000, pollIntervalMs: 100 });

@@ -1,4 +1,4 @@
-import { EventBus } from './event-bus';
+import type { EventBus } from './event-bus';
 import type { AgentVisualState } from '../shared/types';
 
 // Duplicated from jsonl-watcher.ts to avoid circular dependency issues
@@ -46,7 +46,7 @@ export class AgentStateTracker {
         state: 'not-agent',
         subAgents: new Map(),
         createdAt: Date.now(),
-        lastActivity: Date.now(),
+        lastActivity: Date.now()
       });
 
       this.fallbackTimers.set(
@@ -56,7 +56,7 @@ export class AgentStateTracker {
             // Degraded mode — PTY patterns will serve as fallback
           }
           this.fallbackTimers.delete(event.paneId);
-        }, 30_000),
+        }, 30_000)
       );
     });
 
@@ -85,7 +85,7 @@ export class AgentStateTracker {
     if (
       record.type === 'progress' &&
       record.data?.type === 'agent_progress' &&
-      record.data?.parentToolUseID
+      record.data.parentToolUseID
     ) {
       const subId = record.data.parentToolUseID;
       const toolName = this.extractToolName(record);
@@ -99,7 +99,7 @@ export class AgentStateTracker {
           currentTool: toolName,
           subAgents: new Map(),
           createdAt: Date.now(),
-          lastActivity: Date.now(),
+          lastActivity: Date.now()
         });
         // Evict the entry with the oldest lastActivity when cap is exceeded
         if (agent.subAgents.size > 100) {
@@ -114,10 +114,12 @@ export class AgentStateTracker {
           if (oldestId) agent.subAgents.delete(oldestId);
         }
       } else {
-        const sub = agent.subAgents.get(subId)!;
-        sub.state = subState;
-        sub.currentTool = toolName;
-        sub.lastActivity = Date.now();
+        const sub = agent.subAgents.get(subId);
+        if (sub) {
+          sub.state = subState;
+          sub.currentTool = toolName;
+          sub.lastActivity = Date.now();
+        }
       }
 
       this.emitChange(paneId);
@@ -185,7 +187,7 @@ export class AgentStateTracker {
       setTimeout(() => {
         this.updateState(paneId, 'idle');
         this.idleTimers.delete(paneId);
-      }, 5000),
+      }, 5000)
     );
 
     // Also reset "gone" timer — if no JSONL activity for 30s after idle,
@@ -198,7 +200,7 @@ export class AgentStateTracker {
       setTimeout(() => {
         this.removeAgent(paneId);
         this.goneTimers.delete(paneId);
-      }, 30_000),
+      }, 30_000)
     );
   }
 
@@ -208,18 +210,27 @@ export class AgentStateTracker {
     this.hasJsonlData.delete(paneId);
 
     const idleTimer = this.idleTimers.get(paneId);
-    if (idleTimer) { clearTimeout(idleTimer); this.idleTimers.delete(paneId); }
+    if (idleTimer) {
+      clearTimeout(idleTimer);
+      this.idleTimers.delete(paneId);
+    }
     const goneTimer = this.goneTimers.get(paneId);
-    if (goneTimer) { clearTimeout(goneTimer); this.goneTimers.delete(paneId); }
+    if (goneTimer) {
+      clearTimeout(goneTimer);
+      this.goneTimers.delete(paneId);
+    }
     const fallbackTimer = this.fallbackTimers.get(paneId);
-    if (fallbackTimer) { clearTimeout(fallbackTimer); this.fallbackTimers.delete(paneId); }
+    if (fallbackTimer) {
+      clearTimeout(fallbackTimer);
+      this.fallbackTimers.delete(paneId);
+    }
 
     // Emit change so renderer gets updated (empty) agent list
     if (had) {
       this.eventBus.emit('agent-state-change', {
         type: 'agent-state-change',
         paneId,
-        state: 'not-agent',
+        state: 'not-agent'
       });
     }
   }
@@ -231,7 +242,7 @@ export class AgentStateTracker {
         type: 'agent-state-change',
         paneId,
         state: state.state,
-        tool: state.currentTool,
+        tool: state.currentTool
       });
     }
   }
@@ -243,7 +254,7 @@ export class AgentStateTracker {
       state: agent.state,
       currentTool: agent.currentTool,
       subAgents: Array.from(agent.subAgents.values()).map((s) => this.toVisualState(s)),
-      uptime: Date.now() - agent.createdAt,
+      uptime: Date.now() - agent.createdAt
     };
   }
 }

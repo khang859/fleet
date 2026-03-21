@@ -1,38 +1,32 @@
-import { getScSpriteSheetUrl } from './sc-sprite-loader'
-import { SC_SPRITE_ATLAS } from './sc-sprite-atlas'
+import { getScSpriteSheetUrl } from './sc-sprite-loader';
+import { SC_SPRITE_ATLAS } from './sc-sprite-atlas';
 
-const ADMIRAL_STATES = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const
-const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const
+const ADMIRAL_STATES: readonly string[] = ['default', 'speaking', 'thinking', 'alert', 'standby'];
+const CREW_VARIANTS: readonly string[] = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'];
 
 type AvatarProps = {
-  type: 'admiral' | 'crew'
-  variant?: string
-  size?: number
-}
+  type: 'admiral' | 'crew';
+  variant?: string;
+  size?: number;
+};
 
-export function Avatar({ type, variant, size = 32 }: AvatarProps) {
-  const url = getScSpriteSheetUrl()
+export function Avatar({ type, variant, size = 32 }: AvatarProps): React.JSX.Element | null {
+  const url = getScSpriteSheetUrl();
 
-  let key: string
+  let key: string;
   if (type === 'admiral') {
-    const state =
-      variant && ADMIRAL_STATES.includes(variant as (typeof ADMIRAL_STATES)[number])
-        ? variant
-        : 'default'
-    key = `admiral-${state}`
+    const state = variant && ADMIRAL_STATES.includes(variant) ? variant : 'default';
+    key = `admiral-${state}`;
   } else {
-    const v =
-      variant && CREW_VARIANTS.includes(variant as (typeof CREW_VARIANTS)[number])
-        ? variant
-        : 'hoodie'
-    key = `crew-${v}`
+    const v = variant && CREW_VARIANTS.includes(variant) ? variant : 'hoodie';
+    key = `crew-${v}`;
   }
 
-  const region = SC_SPRITE_ATLAS[key]
-  if (!region) return null
+  const region = SC_SPRITE_ATLAS[key];
+  if (!region) return null;
 
-  const scale = size / region.w
-  const scaledSheetW = 512 * scale
+  const scale = size / region.w;
+  const scaledSheetW = 512 * scale;
 
   return (
     <div
@@ -44,8 +38,8 @@ export function Avatar({ type, variant, size = 32 }: AvatarProps) {
         backgroundPosition: `-${region.x * scale}px -${region.y * scale}px`,
         imageRendering: 'pixelated',
         width: size,
-        height: size,
+        height: size
       }}
     />
-  )
+  );
 }

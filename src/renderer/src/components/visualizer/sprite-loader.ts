@@ -29,9 +29,7 @@ const TINT_CANVAS_SIZE = 64; // max sprite dimension we need to tint
 let tintCanvas: OffscreenCanvas | null = null;
 
 function ensureTintCanvas(): void {
-  if (!tintCanvas) {
-    tintCanvas = new OffscreenCanvas(TINT_CANVAS_SIZE, TINT_CANVAS_SIZE);
-  }
+  tintCanvas ??= new OffscreenCanvas(TINT_CANVAS_SIZE, TINT_CANVAS_SIZE);
 }
 
 /** Get a tinted version of a sprite frame (lazy-cached). */
@@ -39,7 +37,7 @@ function getTintedFrame(
   region: SpriteRegion,
   frameIndex: number,
   tintColor: string,
-  cacheKey: string,
+  cacheKey: string
 ): CanvasImageSource | null {
   if (!spriteSheet) return null;
 
@@ -85,7 +83,7 @@ export function drawSprite(
   dy: number,
   dw: number,
   dh: number,
-  tintColor?: string,
+  tintColor?: string
 ): void {
   if (!spriteSheet) return;
 
@@ -113,7 +111,7 @@ export function drawSpriteFrame(
   dx: number,
   dy: number,
   dw: number,
-  dh: number,
+  dh: number
 ): void {
   if (!spriteSheet) return;
   const sx = region.x + frame * region.w;

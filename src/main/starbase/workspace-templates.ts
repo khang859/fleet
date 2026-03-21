@@ -1,31 +1,31 @@
 export interface SectorInfo {
-  name: string
-  root_path: string
-  stack?: string
-  base_branch?: string
+  name: string;
+  root_path: string;
+  stack?: string;
+  base_branch?: string;
 }
 
 export interface ClaudeMdOptions {
-  starbaseName: string
-  sectors: SectorInfo[]
+  starbaseName: string;
+  sectors: SectorInfo[];
 }
 
 /**
  * Generates the CLAUDE.md file content for an Admiral workspace.
  */
 export function generateClaudeMd(opts: ClaudeMdOptions): string {
-  const { starbaseName, sectors } = opts
+  const { starbaseName, sectors } = opts;
 
   const sectorLines =
     sectors.length > 0
       ? sectors
           .map((s) => {
-            const stack = s.stack ?? 'unknown stack'
-            const base = s.base_branch ?? 'main'
-            return `- **${s.name}** — ${s.root_path} (${stack}, base: ${base})`
+            const stack = s.stack ?? 'unknown stack';
+            const base = s.base_branch ?? 'main';
+            return `- **${s.name}** — ${s.root_path} (${stack}, base: ${base})`;
           })
           .join('\n')
-      : '_No sectors registered._'
+      : '_No sectors registered._';
 
   return `# Admiral — ${starbaseName}
 
@@ -112,7 +112,7 @@ ${sectorLines}
 5. **Reuse existing Crew.** Before deploying a new Crewmate, check if there is already a Crew member deployed to the relevant Sector that can take on the work. Send them a new Mission or comms instead of spinning up a fresh Crewmate.
 6. **Write docs and learnings.** After completing work, ensure the Crew updates relevant docs and \`docs/learnings/\` files.
 7. **On fresh start:** Run \`fleet crew list\` to check for active Crewmates, then \`fleet missions list\` to see queued work before responding to the user.
-`
+`;
 }
 
 /**
@@ -495,18 +495,18 @@ Do not exit without sending a comms report.
 - If a \`fleet\` command fails, report the error and suggest a resolution
 - If a Crewmate is stuck, use \`fleet crew observe <id>\` to diagnose, then decide whether to recall and redeploy
 - If a Mission cannot be completed as scoped, update its status and notify the user
-`
+`;
 }
 
 type NavigatorClaudeMdOpts = {
-  fleetBinDir?: string
-}
+  fleetBinDir?: string;
+};
 
 /**
  * Generates the CLAUDE.md file content for a Navigator workspace.
  */
 export function generateNavigatorClaudeMd(opts: NavigatorClaudeMdOpts = {}): string {
-  const fleetBin = opts.fleetBinDir ? `${opts.fleetBinDir}/fleet` : 'fleet'
+  const fleetBin = opts.fleetBinDir ? `${opts.fleetBinDir}/fleet` : 'fleet';
 
   return `# Navigator
 
@@ -595,7 +595,7 @@ ${fleetBin} sectors show <id>                               # Sector details
 - On clarification needed: write clarification-needed comm (same as gate), exit
 - Never create missions yourself — that is the Admiral's role after reviewing the Feature Brief
 - All comms to Admiral must include \`--execution <id>\` so they are scoped correctly
-`
+`;
 }
 
 /**
@@ -607,7 +607,7 @@ export function generateSettings(fleetBinDir?: string): string {
   // Use full path to fleet binary so hooks and commands work even if
   // ~/.fleet/bin isn't on the system PATH (Claude Code inherits the PTY env
   // which has it, but hooks may spawn a fresh shell).
-  const fleetBin = fleetBinDir ? `${fleetBinDir}/fleet` : 'fleet'
+  const fleetBin = fleetBinDir ? `${fleetBinDir}/fleet` : 'fleet';
 
   const settings: Record<string, unknown> = {
     hooks: {
@@ -624,20 +624,17 @@ export function generateSettings(fleetBinDir?: string): string {
       ]
     },
     permissions: {
-      allow: [
-        'Bash(fleet:*)',
-        ...(fleetBinDir ? [`Bash(${fleetBinDir}/fleet:*)`] : [])
-      ]
+      allow: ['Bash(fleet:*)', ...(fleetBinDir ? [`Bash(${fleetBinDir}/fleet:*)`] : [])]
     }
-  }
+  };
 
   if (fleetBinDir) {
     settings.env = {
       FLEET_BIN_DIR: fleetBinDir
-    }
+    };
   }
 
-  return JSON.stringify(settings, null, 2)
+  return JSON.stringify(settings, null, 2);
 }
 
 /**
@@ -652,20 +649,20 @@ export function updateAutoSection(
   sectionName: string,
   newContent: string
 ): string {
-  const startMarker = `<!-- fleet:auto-start:${sectionName} -->`
-  const endMarker = `<!-- fleet:auto-end:${sectionName} -->`
+  const startMarker = `<!-- fleet:auto-start:${sectionName} -->`;
+  const endMarker = `<!-- fleet:auto-end:${sectionName} -->`;
 
-  const startIndex = content.indexOf(startMarker)
-  const endIndex = content.indexOf(endMarker)
+  const startIndex = content.indexOf(startMarker);
+  const endIndex = content.indexOf(endMarker);
 
   if (startIndex === -1 || endIndex === -1) {
-    return content
+    return content;
   }
 
-  const before = content.slice(0, startIndex + startMarker.length)
-  const after = content.slice(endIndex)
+  const before = content.slice(0, startIndex + startMarker.length);
+  const after = content.slice(endIndex);
 
-  const middle = newContent.length > 0 ? `\n${newContent}\n` : '\n'
+  const middle = newContent.length > 0 ? `\n${newContent}\n` : '\n';
 
-  return `${before}${middle}${after}`
+  return `${before}${middle}${after}`;
 }

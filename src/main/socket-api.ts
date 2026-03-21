@@ -1,5 +1,5 @@
-import { createServer, Server, Socket } from 'net';
-import { mkdirSync } from 'fs';
+import { createServer, type Server, type Socket } from 'net';
+import { mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 
 export interface SocketCommandHandler {
@@ -11,6 +11,15 @@ export type SocketCommand = {
   id?: string;
   [key: string]: unknown;
 };
+
+function isSocketCommand(v: unknown): v is SocketCommand {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'type' in v &&
+    typeof (v as { type?: unknown }).type === 'string'
+  );
+}
 
 export type SocketResponse = {
   ok: boolean;
@@ -26,7 +35,7 @@ export class SocketApi {
 
   constructor(
     private socketPath: string,
-    private handler: SocketCommandHandler,
+    private handler: SocketCommandHandler
   ) {}
 
   async start(): Promise<void> {
@@ -37,7 +46,9 @@ export class SocketApi {
     try {
       const { unlinkSync } = await import('fs');
       unlinkSync(this.socketPath);
-    } catch {}
+    } catch {
+      // intentional
+    }
 
     return new Promise((resolve, reject) => {
       this.server = createServer((socket) => {
@@ -51,7 +62,7 @@ export class SocketApi {
 
           for (const line of lines) {
             if (!line.trim()) continue;
-            this.handleLine(socket, line);
+            void this.handleLine(socket, line);
           }
         });
 
@@ -69,7 +80,6 @@ export class SocketApi {
       this.server.listen(this.socketPath, () => {
         // Set socket permissions to owner-only (Unix)
         if (process.platform !== 'win32') {
-          const { chmodSync } = require('fs');
           chmodSync(this.socketPath, 0o600);
         }
         resolve();
@@ -107,7 +117,12 @@ export class SocketApi {
   private async handleLine(socket: Socket, line: string): Promise<void> {
     let cmd: SocketCommand;
     try {
-      cmd = JSON.parse(line);
+      const parsed: unknown = JSON.parse(line);
+      if (!isSocketCommand(parsed)) {
+        this.sendResponse(socket, { ok: false, error: 'Invalid command' });
+        return;
+      }
+      cmd = parsed;
     } catch {
       this.sendResponse(socket, { ok: false, error: 'Invalid JSON' });
       return;
@@ -115,7 +130,9 @@ export class SocketApi {
 
     // Handle subscribe specially — accumulates event types across calls
     if (cmd.type === 'subscribe') {
-      const events = Array.isArray(cmd.events) ? cmd.events as string[] : [];
+      const events = Array.isArray(cmd.events)
+        ? cmd.events.filter((e): e is string => typeof e === 'string')
+        : [];
       const existing = this.subscriptions.get(socket) ?? new Set();
       for (const e of events) existing.add(e);
       this.subscriptions.set(socket, existing);
@@ -130,7 +147,7 @@ export class SocketApi {
       this.sendResponse(socket, {
         ok: false,
         id: cmd.id,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: err instanceof Error ? err.message : 'Unknown error'
       });
     }
   }

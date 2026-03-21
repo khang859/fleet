@@ -1,4 +1,4 @@
-import { createHash } from 'crypto'
+import { createHash } from 'crypto';
 
 /** Regex patterns that indicate non-retryable errors */
 const NON_RETRYABLE_PATTERNS = [
@@ -6,17 +6,17 @@ const NON_RETRYABLE_PATTERNS = [
   /MODULE_NOT_FOUND|Cannot find module/i,
   /\b401\b.*Unauthorized|\b403\b.*Forbidden/i,
   /config.*not found|missing.*configuration/i,
-  /no such file or directory/i,
-]
+  /no such file or directory/i
+];
 
 /** Patterns to strip before hashing (variable parts) */
 const STRIP_PATTERNS = [
-  /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.\dZ]*/g,         // ISO timestamps
-  /\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/g,           // datetime stamps
-  /\bpid[=: ]\d+/gi,                                         // PIDs
-  /0x[0-9a-fA-F]{8,}/g,                                      // memory addresses
-  /\b\d{4,}\b/g,                                              // large numbers (PIDs, ports)
-]
+  /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[.\dZ]*/g, // ISO timestamps
+  /\b\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\b/g, // datetime stamps
+  /\bpid[=: ]\d+/gi, // PIDs
+  /0x[0-9a-fA-F]{8,}/g, // memory addresses
+  /\b\d{4,}\b/g // large numbers (PIDs, ports)
+];
 
 /**
  * Compute a 16-char hex fingerprint from error output.
@@ -24,15 +24,15 @@ const STRIP_PATTERNS = [
  * Uses last 50 lines only.
  */
 export function computeFingerprint(errorOutput: string): string {
-  const lines = errorOutput.split('\n')
-  const tail = lines.slice(-50).join('\n')
+  const lines = errorOutput.split('\n');
+  const tail = lines.slice(-50).join('\n');
 
-  let normalized = tail
+  let normalized = tail;
   for (const pattern of STRIP_PATTERNS) {
-    normalized = normalized.replace(pattern, '')
+    normalized = normalized.replace(pattern, '');
   }
 
-  return createHash('sha256').update(normalized).digest('hex').slice(0, 16)
+  return createHash('sha256').update(normalized).digest('hex').slice(0, 16);
 }
 
 /**
@@ -44,17 +44,17 @@ export function computeFingerprint(errorOutput: string): string {
 export function classifyError(
   errorOutput: string,
   currentFingerprint?: string,
-  lastFingerprint?: string,
+  lastFingerprint?: string
 ): 'transient' | 'persistent' | 'non-retryable' {
   // Check non-retryable patterns first
   for (const pattern of NON_RETRYABLE_PATTERNS) {
-    if (pattern.test(errorOutput)) return 'non-retryable'
+    if (pattern.test(errorOutput)) return 'non-retryable';
   }
 
   // Check fingerprint match (persistent = same error repeating)
   if (currentFingerprint && lastFingerprint && currentFingerprint === lastFingerprint) {
-    return 'persistent'
+    return 'persistent';
   }
 
-  return 'transient'
+  return 'transient';
 }

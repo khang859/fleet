@@ -18,22 +18,22 @@
  *   --thinking high                 Thinking level: minimal or high
  */
 
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from "fs";
-import { join, dirname, extname } from "path";
-import { fileURLToPath } from "url";
-import { config } from "dotenv";
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'fs';
+import { join, dirname, extname } from 'path';
+import { fileURLToPath } from 'url';
+import { config } from 'dotenv';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-config({ path: join(__dirname, "../.env") });
+config({ path: join(__dirname, '../.env') });
 
 const FAL_KEY = process.env.FAL_KEY;
 if (!FAL_KEY) {
-  console.error("Error: FAL_KEY environment variable is required");
+  console.error('Error: FAL_KEY environment variable is required');
   process.exit(1);
 }
 
-const SPRITES_STAGING = join(__dirname, "../sprites-staging");
+const SPRITES_STAGING = join(__dirname, '../sprites-staging');
 
 interface ApiOptions {
   prompt: string;
@@ -44,68 +44,86 @@ interface ApiOptions {
 }
 
 interface GenerateResponse {
-  images: { url: string }[];
+  images: Array<{ url: string }>;
   description: string;
+}
+
+function isGenerateResponse(value: unknown): value is GenerateResponse {
+  if (typeof value !== 'object' || value === null) return false;
+  if (!('images' in value) || !Array.isArray(value.images)) return false;
+  for (const img of value.images as unknown[]) {
+    if (typeof img !== 'object' || img === null) return false;
+    if (!('url' in img) || typeof img.url !== 'string') return false;
+  }
+  return true;
 }
 
 function toDataUri(filepath: string): string {
   const data = readFileSync(filepath);
   const ext = extname(filepath).slice(1).toLowerCase();
-  const mimeType = ext === "jpg" ? "image/jpeg" : `image/${ext}`;
-  return `data:${mimeType};base64,${data.toString("base64")}`;
+  const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+  return `data:${mimeType};base64,${data.toString('base64')}`;
 }
 
 async function generateText2Image(options: ApiOptions): Promise<GenerateResponse> {
-  const response = await fetch("https://fal.run/fal-ai/nano-banana-2", {
-    method: "POST",
+  const response = await fetch('https://fal.run/fal-ai/nano-banana-2', {
+    method: 'POST',
     headers: {
-      "Authorization": `Key ${FAL_KEY}`,
-      "Content-Type": "application/json",
+      Authorization: `Key ${FAL_KEY}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       prompt: options.prompt,
       num_images: 1,
-      aspect_ratio: options.aspect_ratio ?? "1:1",
-      resolution: options.resolution ?? "0.5K",
-      output_format: "png",
+      aspect_ratio: options.aspect_ratio ?? '1:1',
+      resolution: options.resolution ?? '0.5K',
+      output_format: 'png',
       sync_mode: true,
       ...(options.seed !== undefined && { seed: options.seed }),
-      ...(options.thinking_level && { thinking_level: options.thinking_level }),
-    }),
+      ...(options.thinking_level && { thinking_level: options.thinking_level })
+    })
   });
 
   if (!response.ok) {
     throw new Error(`API error ${response.status}: ${await response.text()}`);
   }
 
-  return response.json() as Promise<GenerateResponse>;
+  const data: unknown = await response.json();
+  if (!isGenerateResponse(data)) {
+    throw new Error('Unexpected response format from text-to-image API');
+  }
+  return data;
 }
 
 async function generateEdit(imageUrl: string, options: ApiOptions): Promise<GenerateResponse> {
-  const response = await fetch("https://fal.run/fal-ai/nano-banana-2/edit", {
-    method: "POST",
+  const response = await fetch('https://fal.run/fal-ai/nano-banana-2/edit', {
+    method: 'POST',
     headers: {
-      "Authorization": `Key ${FAL_KEY}`,
-      "Content-Type": "application/json",
+      Authorization: `Key ${FAL_KEY}`,
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       prompt: options.prompt,
       image_urls: [imageUrl],
       num_images: 1,
-      aspect_ratio: options.aspect_ratio ?? "1:1",
-      resolution: options.resolution ?? "0.5K",
-      output_format: "png",
+      aspect_ratio: options.aspect_ratio ?? '1:1',
+      resolution: options.resolution ?? '0.5K',
+      output_format: 'png',
       sync_mode: true,
       ...(options.seed !== undefined && { seed: options.seed }),
-      ...(options.thinking_level && { thinking_level: options.thinking_level }),
-    }),
+      ...(options.thinking_level && { thinking_level: options.thinking_level })
+    })
   });
 
   if (!response.ok) {
     throw new Error(`API error ${response.status}: ${await response.text()}`);
   }
 
-  return response.json() as Promise<GenerateResponse>;
+  const data: unknown = await response.json();
+  if (!isGenerateResponse(data)) {
+    throw new Error('Unexpected response format from edit API');
+  }
+  return data;
 }
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
@@ -114,51 +132,85 @@ async function downloadImage(url: string, filepath: string): Promise<void> {
   writeFileSync(filepath, Buffer.from(await response.arrayBuffer()));
 }
 
-function parseArgs() {
+function parseArgs(): ApiOptions & { output: string; reference?: string } {
   const args = process.argv.slice(2);
-  if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
-    console.log("Usage: npx tsx scripts/generate-image.ts <prompt> --output <subdir/name.png> [options]");
-    console.log("\nExamples:");
+  if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
+    // eslint-disable-next-line no-console
+    console.log(
+      'Usage: npx tsx scripts/generate-image.ts <prompt> --output <subdir/name.png> [options]'
+    );
+    // eslint-disable-next-line no-console
+    console.log('\nExamples:');
+    // eslint-disable-next-line no-console
     console.log('  # Base idle frame (text-to-image)');
-    console.log('  npx tsx scripts/generate-image.ts "pixel art spaceship..." --output ships/parent-1-arrow-idle-1.png');
+    // eslint-disable-next-line no-console
+    console.log(
+      '  npx tsx scripts/generate-image.ts "pixel art spaceship..." --output ships/parent-1-arrow-idle-1.png'
+    );
+    // eslint-disable-next-line no-console
     console.log('');
+    // eslint-disable-next-line no-console
     console.log('  # Animation frame (image edit — uses edit endpoint)');
+    // eslint-disable-next-line no-console
     console.log('  npx tsx scripts/generate-image.ts "same ship, engines blazing..." \\');
+    // eslint-disable-next-line no-console
     console.log('    --output ships/parent-1-arrow-thrust-1.png \\');
+    // eslint-disable-next-line no-console
     console.log('    --reference ships/parent-1-arrow-idle-1.png');
-    console.log("\nOptions:");
-    console.log("  --output <path>        Required. Path relative to sprites-staging/");
-    console.log("  --reference <path>     Reference image from sprites-staging/ (uses edit endpoint)");
-    console.log("  --aspect-ratio <ratio> 1:1, 16:9, 9:16, auto (default: 1:1)");
-    console.log("  --resolution <res>     0.5K, 1K, 2K, 4K (default: 0.5K)");
-    console.log("  --seed <number>        Reproducible seed");
-    console.log("  --thinking high        Use high thinking level");
+    // eslint-disable-next-line no-console
+    console.log('\nOptions:');
+    // eslint-disable-next-line no-console
+    console.log('  --output <path>        Required. Path relative to sprites-staging/');
+    // eslint-disable-next-line no-console
+    console.log(
+      '  --reference <path>     Reference image from sprites-staging/ (uses edit endpoint)'
+    );
+    // eslint-disable-next-line no-console
+    console.log('  --aspect-ratio <ratio> 1:1, 16:9, 9:16, auto (default: 1:1)');
+    // eslint-disable-next-line no-console
+    console.log('  --resolution <res>     0.5K, 1K, 2K, 4K (default: 0.5K)');
+    // eslint-disable-next-line no-console
+    console.log('  --seed <number>        Reproducible seed');
+    // eslint-disable-next-line no-console
+    console.log('  --thinking high        Use high thinking level');
     process.exit(0);
   }
 
   const prompt = args[0];
-  const parsed: ApiOptions & { output: string; reference?: string } = { prompt, output: "" };
+  const parsed: ApiOptions & { output: string; reference?: string } = { prompt, output: '' };
 
   for (let i = 1; i < args.length; i++) {
     switch (args[i]) {
-      case "--output":       parsed.output = args[++i]; break;
-      case "--reference":    parsed.reference = args[++i]; break;
-      case "--aspect-ratio": parsed.aspect_ratio = args[++i]; break;
-      case "--resolution":   parsed.resolution = args[++i]; break;
-      case "--seed":         parsed.seed = parseInt(args[++i]); break;
-      case "--thinking":     parsed.thinking_level = args[++i]; break;
+      case '--output':
+        parsed.output = args[++i];
+        break;
+      case '--reference':
+        parsed.reference = args[++i];
+        break;
+      case '--aspect-ratio':
+        parsed.aspect_ratio = args[++i];
+        break;
+      case '--resolution':
+        parsed.resolution = args[++i];
+        break;
+      case '--seed':
+        parsed.seed = parseInt(args[++i]);
+        break;
+      case '--thinking':
+        parsed.thinking_level = args[++i];
+        break;
     }
   }
 
   if (!parsed.output) {
-    console.error("Error: --output <subdir/name.png> is required");
+    console.error('Error: --output <subdir/name.png> is required');
     process.exit(1);
   }
 
   return parsed;
 }
 
-async function main() {
+async function main(): Promise<void> {
   const { output, reference, ...options } = parseArgs();
 
   const filepath = join(SPRITES_STAGING, output);
@@ -172,19 +224,26 @@ async function main() {
       console.error(`Reference image not found: sprites-staging/${reference}`);
       process.exit(1);
     }
+    // eslint-disable-next-line no-console
     console.log(`Generating (edit): ${output}`);
     result = await generateEdit(toDataUri(refPath), options);
   } else {
+    // eslint-disable-next-line no-console
     console.log(`Generating: ${output}`);
     result = await generateText2Image(options);
   }
 
-  if (result.description) console.log("Description:", result.description);
+  if (result.description) {
+    // eslint-disable-next-line no-console
+    console.log('Description:', result.description);
+  }
   await downloadImage(result.images[0].url, filepath);
+  // eslint-disable-next-line no-console
   console.log(`Saved → sprites-staging/${output}`);
 }
 
-main().catch((err) => {
-  console.error("Error:", err.message);
+main().catch((err: unknown) => {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error('Error:', message);
   process.exit(1);
 });

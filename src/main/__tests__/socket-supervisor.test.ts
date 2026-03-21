@@ -3,14 +3,15 @@ import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { existsSync, unlinkSync } from 'node:fs';
+import type { SocketSupervisor as SocketSupervisorType } from '../socket-supervisor';
 
-let SocketSupervisor: typeof import('../socket-supervisor').SocketSupervisor;
+let SocketSupervisor: typeof SocketSupervisorType;
 
 function tmpSocket(): string {
   return join(tmpdir(), `fleet-sv-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
 }
 
-function sendPing(socketPath: string): Promise<Record<string, unknown>> {
+async function sendPing(socketPath: string): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const client = createConnection(socketPath, () => {
       client.write(JSON.stringify({ id: 'ping-1', command: 'ping', args: {} }) + '\n');
@@ -21,11 +22,18 @@ function sendPing(socketPath: string): Promise<Record<string, unknown>> {
       const lines = buffer.split('\n');
       if (lines.length > 1 && lines[0].trim()) {
         client.end();
-        try { resolve(JSON.parse(lines[0])); } catch (e) { reject(e); }
+        try {
+          resolve(JSON.parse(lines[0]));
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+        }
       }
     });
     client.on('error', reject);
-    setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 3000);
+    setTimeout(() => {
+      client.destroy();
+      reject(new Error('timeout'));
+    }, 3000);
   });
 }
 
@@ -33,12 +41,16 @@ function makeMockServices() {
   return {
     crewService: { listCrew: vi.fn().mockReturnValue([]) },
     missionService: { listMissions: vi.fn().mockReturnValue([]) },
-    commsService: { getRecent: vi.fn().mockReturnValue([]), getUnread: vi.fn().mockReturnValue([]), send: vi.fn().mockReturnValue(1) },
+    commsService: {
+      getRecent: vi.fn().mockReturnValue([]),
+      getUnread: vi.fn().mockReturnValue([]),
+      send: vi.fn().mockReturnValue(1)
+    },
     sectorService: { listSectors: vi.fn().mockReturnValue([]) },
     cargoService: { listCargo: vi.fn().mockReturnValue([]) },
     supplyRouteService: { listRoutes: vi.fn().mockReturnValue([]) },
     configService: { get: vi.fn().mockReturnValue('val'), set: vi.fn() },
-    shipsLog: { query: vi.fn().mockReturnValue([]) },
+    shipsLog: { query: vi.fn().mockReturnValue([]) }
   } as any;
 }
 
@@ -55,7 +67,11 @@ describe('SocketSupervisor', () => {
 
   afterEach(async () => {
     await supervisor?.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {
+      // intentional
+    }
   });
 
   it('starts and accepts ping', async () => {
@@ -77,11 +93,20 @@ describe('SocketSupervisor', () => {
     });
 
     const client = createConnection(socketPath, () => {
-      client.write(JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) + '\n');
+      client.write(
+        JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) +
+          '\n'
+      );
     });
     await new Promise<void>((resolve) => {
-      client.on('data', () => { client.end(); resolve(); });
-      setTimeout(() => { client.destroy(); resolve(); }, 2000);
+      client.on('data', () => {
+        client.end();
+        resolve();
+      });
+      setTimeout(() => {
+        client.destroy();
+        resolve();
+      }, 2000);
     });
 
     expect(events).toContain('comms:changed');

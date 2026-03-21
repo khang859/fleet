@@ -40,7 +40,10 @@ export function serializePane(paneId: string, scrollback?: number): string | und
   return serializeRegistry.get(paneId)?.serialize(scrollback != null ? { scrollback } : undefined);
 }
 
-function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
+function createTerminal(
+  container: HTMLElement,
+  options: UseTerminalOptions
+): {
   term: Terminal;
   fitAddon: FitAddon;
   fitPreservingScroll: () => void;
@@ -81,8 +84,8 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
       brightBlue: '#57c7ff',
       brightMagenta: '#ff6ac1',
       brightCyan: '#9aedfe',
-      brightWhite: '#f1f1f0',
-    },
+      brightWhite: '#f1f1f0'
+    }
   });
 
   const fitAddon = new FitAddon();
@@ -115,14 +118,11 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     term.options.cursorInactiveStyle = 'none';
     term.write('\x1b[?25l');
     // Intercept CSI ? 25 h (DECSET 25 = show cursor) and suppress it
-    cursorSuppressor = term.parser.registerCsiHandler(
-      { prefix: '?', final: 'h' },
-      (params) => {
-        // Only intercept DECTCEM (param 25); let other DECSET sequences through
-        if (params[0] === 25) return true; // swallow — keep cursor hidden
-        return false; // pass to default handler
-      }
-    );
+    cursorSuppressor = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+      // Only intercept DECTCEM (param 25); let other DECSET sequences through
+      if (params[0] === 25) return true; // swallow — keep cursor hidden
+      return false; // pass to default handler
+    });
   }
 
   // Wire IPC data flow.
@@ -168,9 +168,9 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
 
   if (!options.attachOnly && !isPreCreated) {
     createdPtys.add(options.paneId);
-    window.fleet.pty.create({
+    void window.fleet.pty.create({
       paneId: options.paneId,
-      cwd: options.cwd,
+      cwd: options.cwd
     });
   }
 
@@ -178,7 +178,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   // and transition to live streaming. This closes the race where PTY data
   // arrives before the renderer mounts the terminal.
   if (isPreCreated && !options.attachOnly) {
-    window.fleet.pty.attach(options.paneId).then(({ data }) => {
+    void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return; // terminal disposed during round-trip
       if (data) writeToTerm(data);
       attachResolved = true;
@@ -255,8 +255,11 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
   container.addEventListener('wheel', wheelHandler, { passive: true });
 
   const keyScrollHandler = (e: KeyboardEvent): void => {
-    if (e.key === 'PageUp' || e.key === 'PageDown' ||
-        ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))) {
+    if (
+      e.key === 'PageUp' ||
+      e.key === 'PageDown' ||
+      ((e.metaKey || e.ctrlKey) && (e.key === 'ArrowUp' || e.key === 'ArrowDown'))
+    ) {
       requestAnimationFrame(() => updatePinnedState());
     }
   };
@@ -278,7 +281,7 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
       window.fleet.pty.resize({
         paneId: options.paneId,
         cols: term.cols,
-        rows: term.rows,
+        rows: term.rows
       });
     }, 100);
   };
@@ -344,13 +347,35 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   };
 
-  return { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer, cursorSuppressor };
+  return {
+    term,
+    fitAddon,
+    fitPreservingScroll,
+    scrollToBottom,
+    searchAddon,
+    serializeAddon,
+    ipcCleanup,
+    scrollCleanup,
+    resizeObserver,
+    cleanupResizeTimer,
+    cursorSuppressor
+  };
 }
+
+type UseTerminalReturn = {
+  focus: () => void;
+  fit: () => void;
+  scrollToBottom: () => void;
+  search: (query: string) => boolean | undefined;
+  searchPrevious: (query: string) => boolean | undefined;
+  clearSearch: () => void;
+  serialize: () => string | undefined;
+};
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  options: UseTerminalOptions & { isActive?: boolean },
-) {
+  options: UseTerminalOptions & { isActive?: boolean }
+): UseTerminalReturn {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const fitPreservingScrollRef = useRef<(() => void) | null>(null);
@@ -362,8 +387,19 @@ export function useTerminal(
     const container = containerRef.current;
     if (!container) return;
 
-    const { term, fitAddon, fitPreservingScroll, scrollToBottom, searchAddon, serializeAddon, ipcCleanup, scrollCleanup, resizeObserver, cleanupResizeTimer, cursorSuppressor } =
-      createTerminal(container, options);
+    const {
+      term,
+      fitAddon,
+      fitPreservingScroll,
+      scrollToBottom,
+      searchAddon,
+      serializeAddon,
+      ipcCleanup,
+      scrollCleanup,
+      resizeObserver,
+      cleanupResizeTimer,
+      cursorSuppressor
+    } = createTerminal(container, options);
 
     termRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -393,7 +429,8 @@ export function useTerminal(
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    const newFamily = options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace';
+    const newFamily =
+      options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace';
     const newSize = options.fontSize ?? 14;
     if (term.options.fontFamily !== newFamily || term.options.fontSize !== newSize) {
       const primaryFamily = newFamily.split(',')[0].trim();
@@ -401,9 +438,9 @@ export function useTerminal(
         document.fonts.load(`16px "${primaryFamily}"`),
         document.fonts.load(`bold 16px "${primaryFamily}"`),
         document.fonts.load(`italic 16px "${primaryFamily}"`),
-        document.fonts.load(`bold italic 16px "${primaryFamily}"`),
+        document.fonts.load(`bold italic 16px "${primaryFamily}"`)
       ];
-      Promise.allSettled(fontLoads).then(() => {
+      void Promise.allSettled(fontLoads).then(() => {
         // Guard against terminal being disposed while fonts were loading
         if (!termRef.current) return;
         term.options.fontFamily = newFamily;
@@ -431,6 +468,6 @@ export function useTerminal(
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
     clearSearch: () => searchAddonRef.current?.clearDecorations(),
-    serialize: () => serializeAddonRef.current?.serialize(),
+    serialize: () => serializeAddonRef.current?.serialize()
   };
 }

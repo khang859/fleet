@@ -9,9 +9,6 @@ export function injectLiveCwd(node: PaneNode): PaneNode {
   }
   return {
     ...node,
-    children: [
-      injectLiveCwd(node.children[0]),
-      injectLiveCwd(node.children[1]),
-    ],
+    children: [injectLiveCwd(node.children[0]), injectLiveCwd(node.children[1])]
   };
 }

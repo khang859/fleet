@@ -1,4 +1,4 @@
-import { EventBus } from './event-bus';
+import type { EventBus } from './event-bus';
 import type { NotificationLevel } from '../shared/types';
 
 // Permission prompt patterns from Claude Code and similar tools
@@ -6,11 +6,12 @@ const PERMISSION_PATTERNS = [
   /Do you want to (?:allow|proceed|continue)/i,
   /\(y\/n\)\s*$/,
   /Allow this action\?/i,
-  /Press Enter to confirm/i,
+  /Press Enter to confirm/i
 ];
 
 // OSC 7 format: ESC ] 7 ; file://[host]/path BEL  or  ESC ] 7 ; file://[host]/path ST
-const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g;  // used via matchAll (no shared lastIndex)
+// eslint-disable-next-line no-control-regex
+const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
 
 export class NotificationDetector {
   private eventBus: EventBus;
@@ -45,7 +46,7 @@ export class NotificationDetector {
       type: 'notification',
       paneId,
       level,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
   }
 

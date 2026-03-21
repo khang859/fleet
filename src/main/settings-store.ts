@@ -9,8 +9,8 @@ export class SettingsStore {
     this.store = new Store<{ settings: FleetSettings }>({
       name: 'fleet-settings',
       defaults: {
-        settings: DEFAULT_SETTINGS,
-      },
+        settings: DEFAULT_SETTINGS
+      }
     });
   }
 
@@ -26,8 +26,8 @@ export class SettingsStore {
       visualizer: {
         ...DEFAULT_SETTINGS.visualizer,
         ...saved.visualizer,
-        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...(saved.visualizer?.effects ?? {}) },
-      },
+        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer.effects }
+      }
     };
   }
 
@@ -39,7 +39,7 @@ export class SettingsStore {
       general: { ...current.general, ...(partial.general ?? {}) },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
-      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) },
+      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) }
     };
     this.store.set('settings', merged);
   }

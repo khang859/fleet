@@ -37,7 +37,7 @@ describe('ProtocolService', () => {
         description: 'Research then build',
         helpText: null,
         triggerExamples: ['build me X'],
-        builtIn: false,
+        builtIn: false
       });
       const p = svc.getProtocolBySlug('test-research-deploy');
       expect(p?.name).toBe('Research and Deploy');
@@ -45,7 +45,15 @@ describe('ProtocolService', () => {
     });
 
     it('enables and disables a protocol', () => {
-      svc.createProtocol({ id: 'proto-2', slug: 'test-proto', name: 'Test', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-2',
+        slug: 'test-proto',
+        name: 'Test',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       svc.setProtocolEnabled('test-proto', false);
       expect(svc.getProtocolBySlug('test-proto')?.enabled).toBe(0);
       svc.setProtocolEnabled('test-proto', true);
@@ -59,8 +67,21 @@ describe('ProtocolService', () => {
 
   describe('protocol_steps', () => {
     it('adds and lists steps for a protocol', () => {
-      svc.createProtocol({ id: 'proto-3', slug: 'with-steps', name: 'With Steps', description: null, helpText: null, triggerExamples: [], builtIn: false });
-      svc.addStep('proto-3', { stepOrder: 1, type: 'deploy-crew', config: { mission: 'research' }, description: 'Deploy research crew' });
+      svc.createProtocol({
+        id: 'proto-3',
+        slug: 'with-steps',
+        name: 'With Steps',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
+      svc.addStep('proto-3', {
+        stepOrder: 1,
+        type: 'deploy-crew',
+        config: { mission: 'research' },
+        description: 'Deploy research crew'
+      });
       svc.addStep('proto-3', { stepOrder: 2, type: 'gate', config: {}, description: 'Gate' });
       const steps = svc.listSteps('proto-3');
       expect(steps).toHaveLength(2);
@@ -71,7 +92,15 @@ describe('ProtocolService', () => {
 
   describe('protocol_executions', () => {
     it('creates and retrieves an execution', () => {
-      svc.createProtocol({ id: 'proto-4', slug: 'exec-proto', name: 'Exec Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-4',
+        slug: 'exec-proto',
+        name: 'Exec Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-4', featureRequest: 'build auth' });
       const exec = svc.getExecution(id);
       expect(exec?.status).toBe('running');
@@ -80,7 +109,15 @@ describe('ProtocolService', () => {
     });
 
     it('advances step and validates guard', () => {
-      svc.createProtocol({ id: 'proto-5', slug: 'step-proto', name: 'Step Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-5',
+        slug: 'step-proto',
+        name: 'Step Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-5', featureRequest: 'test' });
       svc.advanceStep(id, 2);
       expect(svc.getExecution(id)?.current_step).toBe(2);
@@ -88,43 +125,87 @@ describe('ProtocolService', () => {
     });
 
     it('updates execution status', () => {
-      svc.createProtocol({ id: 'proto-6', slug: 'status-proto', name: 'Status Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-6',
+        slug: 'status-proto',
+        name: 'Status Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-6', featureRequest: 'test' });
       svc.updateExecutionStatus(id, 'gate-pending');
       expect(svc.getExecution(id)?.status).toBe('gate-pending');
     });
 
     it('lists stale gate-pending executions', () => {
-      svc.createProtocol({ id: 'proto-7', slug: 'stale-proto', name: 'Stale Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-7',
+        slug: 'stale-proto',
+        name: 'Stale Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-7', featureRequest: 'test' });
       svc.updateExecutionStatus(id, 'gate-pending');
-      db.getDb().prepare(`UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = ?`).run(id);
+      db.getDb()
+        .prepare(
+          `UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = ?`
+        )
+        .run(id);
       const stale = svc.getStaleGatePendingExecutions(3600);
-      expect(stale.some(e => e.id === id)).toBe(true);
+      expect(stale.some((e) => e.id === id)).toBe(true);
     });
 
     it('updates execution context', () => {
-      svc.createProtocol({ id: 'proto-8', slug: 'ctx-proto', name: 'Ctx', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-8',
+        slug: 'ctx-proto',
+        name: 'Ctx',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-8', featureRequest: 'test' });
       svc.updateExecutionContext(id, 'some context');
       expect(svc.getExecution(id)?.context).toBe('some context');
     });
 
     it('updates active crew ids', () => {
-      svc.createProtocol({ id: 'proto-9', slug: 'crew-proto', name: 'Crew', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-9',
+        slug: 'crew-proto',
+        name: 'Crew',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-9', featureRequest: 'test' });
       svc.updateActiveCrewIds(id, ['crew-1', 'crew-2']);
       expect(svc.getExecution(id)?.active_crew_ids).toBe('["crew-1","crew-2"]');
     });
 
     it('lists executions filtered by status', () => {
-      svc.createProtocol({ id: 'proto-10', slug: 'filter-proto', name: 'Filter', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-10',
+        slug: 'filter-proto',
+        name: 'Filter',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id1 = svc.createExecution({ protocolId: 'proto-10', featureRequest: 'test1' });
       const id2 = svc.createExecution({ protocolId: 'proto-10', featureRequest: 'test2' });
       svc.updateExecutionStatus(id2, 'complete');
       const running = svc.listExecutions('running');
-      expect(running.some(e => e.id === id1)).toBe(true);
-      expect(running.some(e => e.id === id2)).toBe(false);
+      expect(running.some((e) => e.id === id1)).toBe(true);
+      expect(running.some((e) => e.id === id2)).toBe(false);
     });
 
     it('throws on updateExecutionStatus with missing id', () => {

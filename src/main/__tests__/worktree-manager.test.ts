@@ -15,7 +15,9 @@ beforeEach(() => {
   mkdirSync(REPO_DIR, { recursive: true });
   // Initialize a git repo with one commit
   execSync('git init && git checkout -b main', { cwd: REPO_DIR });
-  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: REPO_DIR });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+    cwd: REPO_DIR
+  });
   writeFileSync(join(REPO_DIR, 'README.md'), '# Test');
   execSync('git add -A && git commit -m "initial"', { cwd: REPO_DIR });
 });
@@ -31,7 +33,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
 
     expect(result.worktreeBranch).toBe('crew/api-crew-a1b2');
@@ -46,14 +48,14 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     // Create second with same crewId — should get suffix
     const result = await mgr.create({
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2-2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     expect(result.worktreeBranch).toBe('crew/api-crew-a1b2-2');
   });
@@ -64,7 +66,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'rm-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     mgr.remove(result.worktreePath, REPO_DIR);
     expect(existsSync(result.worktreePath)).toBe(false);
@@ -76,7 +78,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'dep-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     // No lockfile — should return null (skip install)
     const cmd = mgr.detectInstallCommand(result.worktreePath);
@@ -93,7 +95,10 @@ describe('WorktreeManager with concurrency limits', () => {
     starbaseDb.open();
 
     // Insert a sector
-    starbaseDb.getDb().prepare('INSERT INTO sectors (id, name, root_path) VALUES (?, ?, ?)').run('api', 'api', REPO_DIR);
+    starbaseDb
+      .getDb()
+      .prepare('INSERT INTO sectors (id, name, root_path) VALUES (?, ?, ?)')
+      .run('api', 'api', REPO_DIR);
   });
 
   afterEach(() => {
@@ -105,8 +110,11 @@ describe('WorktreeManager with concurrency limits', () => {
     mgr.configure(starbaseDb.getDb(), 1);
 
     // Insert an active crew with worktree to simulate 1 active
-    starbaseDb.getDb()
-      .prepare("INSERT INTO crew (id, sector_id, status, worktree_path) VALUES ('existing', 'api', 'active', '/some/path')")
+    starbaseDb
+      .getDb()
+      .prepare(
+        "INSERT INTO crew (id, sector_id, status, worktree_path) VALUES ('existing', 'api', 'active', '/some/path')"
+      )
       .run();
 
     await expect(
@@ -114,8 +122,8 @@ describe('WorktreeManager with concurrency limits', () => {
         starbaseId: 'test-sb',
         crewId: 'new-crew',
         sectorPath: REPO_DIR,
-        baseBranch: 'main',
-      }),
+        baseBranch: 'main'
+      })
     ).rejects.toThrow(WorktreeLimitError);
   });
 
@@ -127,7 +135,7 @@ describe('WorktreeManager with concurrency limits', () => {
       starbaseId: 'test-sb',
       crewId: 'allowed-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     expect(existsSync(result.worktreePath)).toBe(true);
   });
@@ -141,12 +149,15 @@ describe('WorktreeManager with concurrency limits', () => {
       starbaseId: 'test-sb',
       crewId: 'pool-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
 
     // Insert crew record with worktree path
-    starbaseDb.getDb()
-      .prepare("INSERT INTO crew (id, sector_id, status, worktree_path) VALUES ('pool-crew', 'api', 'complete', ?)")
+    starbaseDb
+      .getDb()
+      .prepare(
+        "INSERT INTO crew (id, sector_id, status, worktree_path) VALUES ('pool-crew', 'api', 'complete', ?)"
+      )
       .run(result.worktreePath);
 
     // Mark as pooled
@@ -165,13 +176,19 @@ describe('WorktreeManager with concurrency limits', () => {
       starbaseId: 'test-sb',
       crewId: 'evict-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
 
     // Insert crew as pooled with old timestamp
-    const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
-    starbaseDb.getDb()
-      .prepare("INSERT INTO crew (id, sector_id, status, worktree_path, pool_status, pooled_at) VALUES ('evict-crew', 'api', 'complete', ?, 'pooled', ?)")
+    const oldTime = new Date(Date.now() - 2 * 60 * 60 * 1000)
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d{3}Z$/, '');
+    starbaseDb
+      .getDb()
+      .prepare(
+        "INSERT INTO crew (id, sector_id, status, worktree_path, pool_status, pooled_at) VALUES ('evict-crew', 'api', 'complete', ?, 'pooled', ?)"
+      )
       .run(result.worktreePath, oldTime);
 
     const evicted = mgr.evictStale(REPO_DIR);

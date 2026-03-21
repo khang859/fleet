@@ -1,90 +1,42 @@
 import { create } from 'zustand';
-import type { StarbaseRuntimeStatus } from '../../../shared/ipc-api';
+import type {
+  StarbaseRuntimeStatus,
+  StarbaseCrewRow,
+  StarbaseMissionRow,
+  StarbaseSectorRow,
+  StarbaseCommRow,
+  StarbaseMemoRow
+} from '../../../shared/ipc-api';
 
-export type CrewStatus = {
-  id: string;
-  tab_id: string | null;
-  sector_id: string;
-  mission_id?: number | null;
-  sector_path?: string | null;
-  worktree_path?: string | null;
-  worktree_branch?: string | null;
-  status: string;
-  mission_summary: string | null;
-  avatar_variant: string | null;
-  pid?: number | null;
-  deadline?: string | null;
+export type CrewStatus = StarbaseCrewRow & {
+  tab_id?: string | null;
   token_budget?: number;
   tokens_used?: number;
   last_lifesign?: string | null;
-  created_at: string;
-  updated_at?: string;
 };
 
-export type MissionInfo = {
-  id: number;
-  sector_id: string;
-  crew_id: string | null;
-  summary: string;
-  prompt: string;
-  acceptance_criteria: string | null;
-  status: string;
-  priority: number;
-  depends_on_mission_id: number | null;
-  result: string | null;
-  verify_result: string | null;
-  review_verdict: string | null;
-  review_notes: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-};
+export type MissionInfo = StarbaseMissionRow;
 
-export type SectorInfo = {
-  id: string;
-  name: string;
-  root_path: string;
-  stack: string | null;
-};
+export type SectorInfo = StarbaseSectorRow;
 
-export type CommInfo = {
-  id: number;
-  from_crew: string | null;
-  to_crew: string | null;
-  thread_id: string | null;
-  in_reply_to: number | null;
-  type: string;
-  payload: string;
-  read: number;
-  repeat_count: number;
-  created_at: string;
-};
+export type CommInfo = StarbaseCommRow;
 
-export type MemoInfo = {
-  id: number  // comms uses INTEGER PK
-  crew_id: string | null
-  mission_id: number | null
-  event_type: string
-  file_path: string
-  status: string
-  summary: string
-  created_at: string
-}
+export type MemoInfo = StarbaseMemoRow;
 
 export type FirstOfficerStatus = {
-  status: 'idle' | 'working' | 'memo'
-  statusText: string
-  unreadMemos: number
-}
+  status: 'idle' | 'working' | 'memo';
+  statusText: string;
+  unreadMemos: number;
+};
 
-type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
+type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert';
 
 export type DepCheckResult = {
-  name: string
-  found: boolean
-  version?: string
-  installHint: string
-}
+  name: string;
+  found: boolean;
+  version?: string;
+  installHint: string;
+};
 
 type StarCommandStore = {
   // Admiral PTY
@@ -102,8 +54,8 @@ type StarCommandStore = {
   commsList: CommInfo[];
 
   // Dependency check
-  depCheckStatus: 'pending' | 'checking' | 'passed' | 'failed'
-  depCheckResults: DepCheckResult[]
+  depCheckStatus: 'pending' | 'checking' | 'passed' | 'failed';
+  depCheckResults: DepCheckResult[];
 
   // Visual state
   admiralAvatarState: AdmiralAvatarState;
@@ -113,9 +65,17 @@ type StarCommandStore = {
   firstOfficerStatus: FirstOfficerStatus;
 
   // Actions
-  setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null, exitCode?: number | null) => void;
+  setAdmiralPty: (
+    paneId: string | null,
+    status: 'running' | 'stopped' | 'starting',
+    error?: string | null,
+    exitCode?: number | null
+  ) => void;
   setRuntimeStatus: (status: StarbaseRuntimeStatus) => void;
-  setDepCheck: (status: 'pending' | 'checking' | 'passed' | 'failed', results?: DepCheckResult[]) => void;
+  setDepCheck: (
+    status: 'pending' | 'checking' | 'passed' | 'failed',
+    results?: DepCheckResult[]
+  ) => void;
   setCrewList: (crew: CrewStatus[]) => void;
   setMissionQueue: (missions: MissionInfo[]) => void;
   setSectors: (sectors: SectorInfo[]) => void;
@@ -143,15 +103,23 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralStatusText: 'Standing by',
   firstOfficerStatus: { status: 'idle', statusText: 'Idle', unreadMemos: 0 },
 
-  setAdmiralPty: (paneId, status, error = null, exitCode = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error, admiralExitCode: exitCode }),
+  setAdmiralPty: (paneId, status, error = null, exitCode = null) =>
+    set({
+      admiralPaneId: paneId,
+      admiralStatus: status,
+      admiralError: error,
+      admiralExitCode: exitCode
+    }),
   setRuntimeStatus: (runtimeStatus) => set({ runtimeStatus }),
-  setDepCheck: (status, results) => set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
+  setDepCheck: (status, results) =>
+    set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
   setCrewList: (crew) => set({ crewList: crew }),
   setMissionQueue: (missions) => set({ missionQueue: missions }),
   setSectors: (sectors) => set({ sectors }),
   setUnreadCount: (count) => set({ unreadCount: count }),
   setCommsList: (comms) => set({ commsList: comms }),
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
-  setAdmiralState: (state, statusText) => set({ admiralAvatarState: state, admiralStatusText: statusText }),
-  setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status }),
+  setAdmiralState: (state, statusText) =>
+    set({ admiralAvatarState: state, admiralStatusText: statusText }),
+  setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status })
 }));

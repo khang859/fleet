@@ -26,7 +26,9 @@ beforeEach(() => {
   mkdirSync(sectorDir, { recursive: true });
   writeFileSync(join(sectorDir, 'index.ts'), '');
   execSync('git init && git checkout -b main', { cwd: sectorDir });
-  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: sectorDir });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+    cwd: sectorDir
+  });
   execSync('git add -A && git commit -m "init"', { cwd: sectorDir });
 
   starbaseDb = new StarbaseDB(join(TEST_DIR, 'workspace'), join(TEST_DIR, 'starbases'));
@@ -47,7 +49,10 @@ function insertSector(id: string, rootPath: string): void {
 
 /** Convert JS Date to SQLite datetime format */
 function sqliteDatetime(date: Date): string {
-  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+  return date
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, '');
 }
 
 function insertCrew(opts: {
@@ -62,7 +67,7 @@ function insertCrew(opts: {
   getDb()
     .prepare(
       `INSERT INTO crew (id, sector_id, status, last_lifesign, deadline, pid, comms_count_minute)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       opts.id,
@@ -71,7 +76,7 @@ function insertCrew(opts: {
       opts.lastLifesign ?? sqliteDatetime(new Date()),
       opts.deadline ?? null,
       opts.pid ?? process.pid,
-      opts.commsCountMinute ?? 0,
+      opts.commsCountMinute ?? 0
     );
 }
 
@@ -87,7 +92,9 @@ describe('Sentinel', () => {
     const sentinel = new Sentinel({ db: getDb(), configService });
     await sentinel.runSweep();
 
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
+      status: string;
+    };
     expect(crew.status).toBe('lost');
 
     // Should have a ships_log entry
@@ -106,7 +113,9 @@ describe('Sentinel', () => {
     const sentinel = new Sentinel({ db: getDb(), configService });
     await sentinel.runSweep();
 
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
+      status: string;
+    };
     expect(crew.status).toBe('active');
   });
 
@@ -121,7 +130,9 @@ describe('Sentinel', () => {
     const sentinel = new Sentinel({ db: getDb(), configService });
     await sentinel.runSweep();
 
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
+      status: string;
+    };
     expect(crew.status).toBe('timeout');
   });
 
@@ -132,7 +143,9 @@ describe('Sentinel', () => {
     const sentinel = new Sentinel({ db: getDb(), configService });
     await sentinel.runSweep();
 
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
+      status: string;
+    };
     expect(crew.status).toBe('lost');
 
     const logEntry = getDb()
@@ -147,11 +160,15 @@ describe('Sentinel', () => {
     const sentinel = new Sentinel({ db: getDb(), configService });
     await sentinel.runSweep();
 
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
+      status: string;
+    };
     expect(crew.status).toBe('active');
 
     const logEntry = getDb()
-      .prepare("SELECT * FROM ships_log WHERE event_type = 'sector_path_missing' AND detail LIKE '%\"sectorId\":\"global\"%'")
+      .prepare(
+        'SELECT * FROM ships_log WHERE event_type = \'sector_path_missing\' AND detail LIKE \'%"sectorId":"global"%\''
+      )
       .get();
     expect(logEntry).toBeUndefined();
   });
@@ -167,12 +184,16 @@ describe('Sentinel', () => {
     for (let i = 0; i < 5; i++) {
       await sentinel.runSweep();
     }
-    let crew = getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-1') as { comms_count_minute: number };
+    let crew = getDb()
+      .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
+      .get('crew-1') as { comms_count_minute: number };
     expect(crew.comms_count_minute).toBe(15);
 
     // 6th sweep — should reset
     await sentinel.runSweep();
-    crew = getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-1') as { comms_count_minute: number };
+    crew = getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-1') as {
+      comms_count_minute: number;
+    };
     expect(crew.comms_count_minute).toBe(0);
   });
 
@@ -190,30 +211,73 @@ describe('Navigator sweep', () => {
   it('triggers Navigator when FO escalation exists for protocol mission', async () => {
     // Set up: sector, mission with protocol_execution_id, crew, FO memo comms row
     const sectorId = 'test-sector';
-    getDb().prepare(`INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES (?, ?, ?)`).run(sectorId, 'Test', join(TEST_DIR, 'workspace', 'api'));
-    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p1', 'test', 'Test')`).run();
-    getDb().prepare(`INSERT OR IGNORE INTO protocol_executions (id, protocol_id, feature_request) VALUES ('exec-1', 'p1', 'build auth')`).run();
-    const missionId = (getDb().prepare(`INSERT INTO missions (sector_id, summary, prompt, protocol_execution_id) VALUES (?, ?, ?, ?) RETURNING id`).get(sectorId, 'test', 'test', 'exec-1') as { id: number }).id;
-    getDb().prepare(`INSERT INTO comms (from_crew, to_crew, type, mission_id, payload) VALUES ('first-officer', 'admiral', 'memo', ?, ?)`).run(missionId, JSON.stringify({ reason: 'escalated' }));
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES (?, ?, ?)`)
+      .run(sectorId, 'Test', join(TEST_DIR, 'workspace', 'api'));
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p1', 'test', 'Test')`)
+      .run();
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO protocol_executions (id, protocol_id, feature_request) VALUES ('exec-1', 'p1', 'build auth')`
+      )
+      .run();
+    const missionId = (
+      getDb()
+        .prepare(
+          `INSERT INTO missions (sector_id, summary, prompt, protocol_execution_id) VALUES (?, ?, ?, ?) RETURNING id`
+        )
+        .get(sectorId, 'test', 'test', 'exec-1') as { id: number }
+    ).id;
+    getDb()
+      .prepare(
+        `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload) VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+      )
+      .run(missionId, JSON.stringify({ reason: 'escalated' }));
 
     const dispatchedIds: string[] = [];
-    const nav = { dispatch: vi.fn(async (event: { executionId: string }) => { dispatchedIds.push(event.executionId); return true; }), isRunning: vi.fn(() => false), activeCount: 0, reconcile: vi.fn(), shutdown: vi.fn() };
+    const nav = {
+      dispatch: vi.fn((event: { executionId: string }) => {
+        dispatchedIds.push(event.executionId);
+        return true;
+      }),
+      isRunning: vi.fn(() => false),
+      activeCount: 0,
+      reconcile: vi.fn(),
+      shutdown: vi.fn()
+    };
 
-    const sentinel = new Sentinel({ db: getDb(), configService, navigator: nav as unknown as Navigator });
+    const sentinel = new Sentinel({
+      db: getDb(),
+      configService,
+      navigator: nav as unknown as Navigator
+    });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
 
     expect(dispatchedIds).toContain('exec-1');
   });
 
   it('expires stale gate-pending executions', async () => {
-    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p2', 'proto2', 'Proto2')`).run();
-    getDb().prepare(`INSERT INTO protocol_executions (id, protocol_id, feature_request, status) VALUES ('exec-stale', 'p2', 'test', 'gate-pending')`).run();
-    getDb().prepare(`UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = 'exec-stale'`).run();
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p2', 'proto2', 'Proto2')`)
+      .run();
+    getDb()
+      .prepare(
+        `INSERT INTO protocol_executions (id, protocol_id, feature_request, status) VALUES ('exec-stale', 'p2', 'test', 'gate-pending')`
+      )
+      .run();
+    getDb()
+      .prepare(
+        `UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = 'exec-stale'`
+      )
+      .run();
 
     const sentinel = new Sentinel({ db: getDb(), configService });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
 
-    const exec = getDb().prepare(`SELECT status FROM protocol_executions WHERE id = 'exec-stale'`).get() as { status: string };
+    const exec = getDb()
+      .prepare(`SELECT status FROM protocol_executions WHERE id = 'exec-stale'`)
+      .get() as { status: string };
     expect(exec.status).toBe('gate-expired');
   });
 });

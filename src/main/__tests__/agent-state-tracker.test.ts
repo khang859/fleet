@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { AgentStateTracker } from '../agent-state-tracker';
 import { EventBus } from '../event-bus';
 
@@ -25,8 +25,8 @@ describe('AgentStateTracker', () => {
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
       message: {
-        content: [{ type: 'tool_use', name: 'Write' }],
-      },
+        content: [{ type: 'tool_use', name: 'Write' }]
+      }
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('working');
@@ -38,8 +38,8 @@ describe('AgentStateTracker', () => {
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
       message: {
-        content: [{ type: 'tool_use', name: 'Read' }],
-      },
+        content: [{ type: 'tool_use', name: 'Read' }]
+      }
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('reading');
@@ -52,7 +52,7 @@ describe('AgentStateTracker', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('needs-permission');
@@ -70,18 +70,18 @@ describe('AgentStateTracker', () => {
 
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
-      message: { content: [{ type: 'tool_use', name: 'Edit' }] },
+      message: { content: [{ type: 'tool_use', name: 'Edit' }] }
     });
 
     tracker.handleJsonlRecord('pane-1', {
       type: 'progress',
       data: {
         type: 'agent_progress',
-        parentToolUseID: 'tool-abc',
+        parentToolUseID: 'tool-abc'
       },
       message: {
-        content: [{ type: 'tool_use', name: 'Read' }],
-      },
+        content: [{ type: 'tool_use', name: 'Read' }]
+      }
     });
 
     const state = tracker.getState('pane-1');
@@ -97,10 +97,10 @@ describe('AgentStateTracker', () => {
   });
 
   it('caps sub-agents at 100 per agent, evicting the oldest', () => {
-    const eventBus = new EventBus()
-    const tracker = new AgentStateTracker(eventBus)
+    const eventBus = new EventBus();
+    const tracker = new AgentStateTracker(eventBus);
 
-    eventBus.emit('pane-created', { type: 'pane-created', paneId: 'pane-1' })
+    eventBus.emit('pane-created', { type: 'pane-created', paneId: 'pane-1' });
 
     // Feed 150 sub-agent progress records
     for (let i = 0; i < 150; i++) {
@@ -108,15 +108,15 @@ describe('AgentStateTracker', () => {
         type: 'progress',
         data: {
           type: 'agent_progress',
-          parentToolUseID: `sub-${i}`,
+          parentToolUseID: `sub-${i}`
         },
         message: {
-          content: [{ type: 'tool_use', name: 'Read' }],
-        },
-      })
+          content: [{ type: 'tool_use', name: 'Read' }]
+        }
+      });
     }
 
-    const state = tracker.getState('pane-1')
-    expect(state?.subAgents.length).toBe(100)
-  })
+    const state = tracker.getState('pane-1');
+    expect(state?.subAgents.length).toBe(100);
+  });
 });

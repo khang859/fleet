@@ -18,10 +18,32 @@ type TerminalPaneProps = {
   onClose?: () => void;
 };
 
-export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent, fontFamily, fontSize, onSplitHorizontal, onSplitVertical, onClose }: TerminalPaneProps) {
+export function TerminalPane({
+  paneId,
+  cwd,
+  isActive,
+  onFocus,
+  serializedContent,
+  fontFamily,
+  fontSize,
+  onSplitHorizontal,
+  onSplitVertical,
+  onClose
+}: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
-  const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, { paneId, cwd, serializedContent, isActive, fontFamily, fontSize, onScrollStateChange: setIsScrolledUp });
+  const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(
+    containerRef,
+    {
+      paneId,
+      cwd,
+      serializedContent,
+      isActive,
+      fontFamily,
+      fontSize,
+      onScrollStateChange: setIsScrolledUp
+    }
+  );
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [isGitRepo, setIsGitRepo] = useState(false);
@@ -37,7 +59,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
 
     if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     gitCheckTimerRef.current = setTimeout(() => {
-      window.fleet.git.isRepo(currentCwd).then((result) => {
+      void window.fleet.git.isRepo(currentCwd).then((result) => {
         setIsGitRepo(result.isRepo);
       });
     }, 500);
@@ -48,8 +70,10 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
   }, [currentCwd]);
   // Listen for search toggle events targeted at this pane
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+    const handler = (e: Event): void => {
+      if (!(e instanceof CustomEvent)) return;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const detail = e.detail as { paneId?: string } | undefined;
       if (detail?.paneId === paneId) {
         setSearchOpen((prev) => !prev);
       }
@@ -103,7 +127,13 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
           aria-label="Scroll to bottom"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           <span>Bottom</span>
         </button>

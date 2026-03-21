@@ -29,7 +29,7 @@ export class ShipsLog {
     const result = this.db
       .prepare('INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, ?, ?)')
       .run(opts.crewId ?? null, opts.eventType, detail);
-    return result.lastInsertRowid as number;
+    return Number(result.lastInsertRowid);
   }
 
   query(opts: QueryOpts): ShipsLogRow[] {
@@ -56,12 +56,15 @@ export class ShipsLog {
       params.push(opts.limit);
     }
 
-    return this.db.prepare(sql).all(...params) as ShipsLogRow[];
+    return this.db.prepare<unknown[], ShipsLogRow>(sql).all(...params);
   }
 
   getRecent(limit: number): ShipsLogRow[] {
     return this.db
-      .prepare('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
-      .all(limit) as ShipsLogRow[];
+      .prepare<
+        [number],
+        ShipsLogRow
+      >('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
+      .all(limit);
   }
 }

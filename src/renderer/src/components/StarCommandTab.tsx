@@ -1,22 +1,28 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
-import { loadScSpriteSheet } from './star-command/sc-sprite-loader'
-import { useStarCommandStore } from '../store/star-command-store'
-import { StarCommandConfig } from './StarCommandConfig'
-import { CommsPanel } from './star-command/CommsPanel'
-import { CrewPanel } from './star-command/CrewPanel'
-import { MissionsPanel } from './star-command/MissionsPanel'
-import { CrtFrame } from './star-command/CrtFrame'
-import { Avatar } from './star-command/Avatar'
-import { AdmiralSidebar } from './star-command/AdmiralSidebar'
-import { StatusBar } from './star-command/StatusBar'
-import { DependencyCheckScreen } from './star-command/DependencyCheckScreen'
-import { MemoPanel } from './star-command/MemoPanel'
-import { LogsPanel } from './star-command/LogsPanel'
-import { useTerminal } from '../hooks/use-terminal'
-import { useTerminalDrop } from '../hooks/use-terminal-drop'
+import { useRef, useState, useEffect, useCallback } from 'react';
+import { loadScSpriteSheet } from './star-command/sc-sprite-loader';
+import { useStarCommandStore } from '../store/star-command-store';
+import { StarCommandConfig } from './StarCommandConfig';
+import { CommsPanel } from './star-command/CommsPanel';
+import { CrewPanel } from './star-command/CrewPanel';
+import { MissionsPanel } from './star-command/MissionsPanel';
+import { CrtFrame } from './star-command/CrtFrame';
+import { Avatar } from './star-command/Avatar';
+import { AdmiralSidebar } from './star-command/AdmiralSidebar';
+import { StatusBar } from './star-command/StatusBar';
+import { DependencyCheckScreen } from './star-command/DependencyCheckScreen';
+import { MemoPanel } from './star-command/MemoPanel';
+import { LogsPanel } from './star-command/LogsPanel';
+import { useTerminal } from '../hooks/use-terminal';
+import { useTerminalDrop } from '../hooks/use-terminal-drop';
 
-function AdmiralTerminal({ paneId, isActive }: { paneId: string; isActive: boolean }) {
-  const containerRef = useRef<HTMLDivElement>(null)
+function AdmiralTerminal({
+  paneId,
+  isActive
+}: {
+  paneId: string;
+  isActive: boolean;
+}): React.JSX.Element {
+  const containerRef = useRef<HTMLDivElement>(null);
   useTerminal(containerRef, {
     paneId,
     cwd: '',
@@ -24,16 +30,16 @@ function AdmiralTerminal({ paneId, isActive }: { paneId: string; isActive: boole
     isActive,
     // Claude Code draws its own TUI cursor; disable xterm's hardware cursor
     // to prevent a duplicate block cursor from appearing.
-    cursorHidden: true,
-  })
+    cursorHidden: true
+  });
   return (
     <div className="h-full w-full p-2">
       <div ref={containerRef} className="h-full w-full" />
     </div>
-  )
+  );
 }
 
-export function StarCommandTab() {
+export function StarCommandTab(): React.JSX.Element {
   const {
     runtimeStatus,
     admiralPaneId,
@@ -52,146 +58,144 @@ export function StarCommandTab() {
     depCheckStatus,
     depCheckResults,
     setDepCheck,
-    setFirstOfficerStatus,
-  } = useStarCommandStore()
+    setFirstOfficerStatus
+  } = useStarCommandStore();
 
-  const { isDragOver: isTerminalDragOver, handlers: terminalDragHandlers } = useTerminalDrop(admiralPaneId)
+  const { isDragOver: isTerminalDragOver, handlers: terminalDragHandlers } =
+    useTerminalDrop(admiralPaneId);
 
-  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions' | 'logs'>('terminal')
-  const [showMemos, setShowMemos] = useState(false)
-  const [talkFrame, setTalkFrame] = useState(false)
-  const [resetConfirm, setResetConfirm] = useState(false)
-  const [_isRestarting, setIsRestarting] = useState(false)
-  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const runtimeLaunchRef = useRef(false)
+  const [view, setView] = useState<'terminal' | 'config' | 'comms' | 'crew' | 'missions' | 'logs'>(
+    'terminal'
+  );
+  const [showMemos, setShowMemos] = useState(false);
+  const [talkFrame, setTalkFrame] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
+  const [, setIsRestarting] = useState(false);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const runtimeLaunchRef = useRef(false);
 
   // Auto-dismiss reset confirmation after 5s (Baymard: time-limited destructive states)
   useEffect(() => {
     if (resetConfirm) {
-      resetTimerRef.current = setTimeout(() => setResetConfirm(false), 5000)
+      resetTimerRef.current = setTimeout(() => setResetConfirm(false), 5000);
       return () => {
-        if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
-      }
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+      };
     }
-    return undefined
-  }, [resetConfirm])
+    return undefined;
+  }, [resetConfirm]);
 
   // Oscillate talk frame while admiral is speaking
   useEffect(() => {
-    if (admiralAvatarState !== 'speaking') { setTalkFrame(false); return }
-    const interval = setInterval(() => setTalkFrame((f) => !f), 300)
-    return () => clearInterval(interval)
-  }, [admiralAvatarState])
+    if (admiralAvatarState !== 'speaking') {
+      setTalkFrame(false);
+      return;
+    }
+    const interval = setInterval(() => setTalkFrame((f) => !f), 300);
+    return () => clearInterval(interval);
+  }, [admiralAvatarState]);
 
   // Load sprite sheet (previously done by StarCommandScene)
-  useEffect(() => { loadScSpriteSheet() }, [])
+  useEffect(() => {
+    loadScSpriteSheet();
+  }, []);
 
   // On mount: check dependencies first, then ensure Admiral is started
   useEffect(() => {
-    const applyRuntimeStatus = (status: { state: 'starting' | 'ready' | 'error'; error?: string }) => {
-      setRuntimeStatus(status)
+    const applyRuntimeStatus = (status: {
+      state: 'starting' | 'ready' | 'error';
+      error?: string;
+    }): void => {
+      setRuntimeStatus(status);
       if (status.state !== 'ready') {
-        runtimeLaunchRef.current = false
+        runtimeLaunchRef.current = false;
       }
       if (status.state !== 'ready') {
-        setDepCheck('pending', [])
+        setDepCheck('pending', []);
       }
       if (status.state === 'error') {
-        setAdmiralPty(null, 'stopped', status.error ?? 'Star Command failed to initialize')
+        setAdmiralPty(null, 'stopped', status.error ?? 'Star Command failed to initialize');
       }
-    }
+    };
 
-    const launchAdmiral = () => {
-      if (runtimeLaunchRef.current) return
-      runtimeLaunchRef.current = true
-      setDepCheck('checking', [])
-      window.fleet.admiral.checkDependencies().then((results) => {
-        const allPassed = results.every((r) => r.found)
-        setDepCheck(allPassed ? 'passed' : 'failed', results)
-        if (!allPassed) return
+    const launchAdmiral = (): void => {
+      if (runtimeLaunchRef.current) return;
+      runtimeLaunchRef.current = true;
+      setDepCheck('checking', []);
+      void window.fleet.admiral.checkDependencies().then((results) => {
+        const allPassed = results.every((r) => r.found);
+        setDepCheck(allPassed ? 'passed' : 'failed', results);
+        if (!allPassed) return;
 
         setTimeout(() => {
-          window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
+          void window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
             if (paneId) {
-              setAdmiralPty(paneId, 'running')
+              setAdmiralPty(paneId, 'running');
             }
-          })
-        }, 800)
-      })
-    }
+          });
+        }, 800);
+      });
+    };
 
-    window.fleet.starbase.getRuntimeStatus().then((status) => {
-      applyRuntimeStatus(status)
+    void window.fleet.starbase.getRuntimeStatus().then((status) => {
+      applyRuntimeStatus(status);
       if (status.state === 'ready') {
-        launchAdmiral()
+        launchAdmiral();
       }
-    })
+    });
 
     const runtimeCleanup = window.fleet.starbase.onRuntimeStatus((status) => {
-      applyRuntimeStatus(status)
+      applyRuntimeStatus(status);
       if (status.state === 'ready') {
-        launchAdmiral()
+        launchAdmiral();
       }
-    })
+    });
 
     const cleanup = window.fleet.admiral.onStatusChanged((data) => {
-      setAdmiralPty(
-        data.paneId,
-        data.status as 'running' | 'stopped' | 'starting',
-        data.error ?? null,
-        data.exitCode ?? null
-      )
-    })
+      const status =
+        data.status === 'running' || data.status === 'starting' ? data.status : 'stopped';
+      setAdmiralPty(data.paneId, status, data.error ?? null, data.exitCode ?? null);
+    });
 
     return () => {
-      runtimeCleanup()
-      cleanup()
-    }
-  }, [setAdmiralPty, setDepCheck, setRuntimeStatus])
+      runtimeCleanup();
+      cleanup();
+    };
+  }, [setAdmiralPty, setDepCheck, setRuntimeStatus]);
 
   // Listen for detailed admiral state changes (thinking, speaking, etc.)
   useEffect(() => {
     const cleanup = window.fleet.admiral.onStateDetail((data) => {
-      setAdmiralState(
-        data.state as 'standby' | 'thinking' | 'speaking' | 'alert',
-        data.statusText
-      )
-    })
-    return cleanup
-  }, [setAdmiralState])
+      setAdmiralState(data.state, data.statusText);
+    });
+    return cleanup;
+  }, [setAdmiralState]);
 
   // Listen for starbase status updates
   useEffect(() => {
-    const cleanup = window.fleet.starbase.onStatusUpdate((payload: unknown) => {
-      const p = payload as {
-        crew?: unknown[]
-        missions?: unknown[]
-        sectors?: unknown[]
-        unreadCount?: number
-        firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number }
-      }
-      if (p.crew) setCrewList(p.crew as never[])
-      if (p.missions) setMissionQueue(p.missions as never[])
-      if (p.sectors) setSectors(p.sectors as never[])
-      if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount)
-      if (p.firstOfficer !== undefined) setFirstOfficerStatus(p.firstOfficer)
-    })
+    const cleanup = window.fleet.starbase.onStatusUpdate((p) => {
+      if (p.crew) setCrewList(p.crew);
+      if (p.missions) setMissionQueue(p.missions);
+      if (p.sectors) setSectors(p.sectors);
+      if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount);
+      if (p.firstOfficer !== undefined) setFirstOfficerStatus(p.firstOfficer);
+    });
 
-    return cleanup
-  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus])
+    return cleanup;
+  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus]);
 
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {
-    if (runtimeStatus.state !== 'ready') return
-    window.fleet.starbase.listCrew().then((crew) => setCrewList(crew as never[]))
-    window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions as never[]))
-    window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors as never[]))
-    window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount((msgs as unknown[]).length))
-  }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount])
+    if (runtimeStatus.state !== 'ready') return;
+    void window.fleet.starbase.listCrew().then((crew) => setCrewList(crew));
+    void window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions));
+    void window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors));
+    void window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount(msgs.length));
+  }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount]);
 
   useEffect(() => {
-    refreshStatus()
-  }, [refreshStatus])
+    refreshStatus();
+  }, [refreshStatus]);
 
   return (
     <div className="h-full flex">
@@ -203,7 +207,7 @@ export function StarCommandTab() {
             {/* Header */}
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900 relative z-20"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <div className="flex items-center gap-2">
                 <span className="text-yellow-400 text-lg">{'\u2605'}</span>
@@ -282,17 +286,22 @@ export function StarCommandTab() {
                 {/* Two-step reset confirmation (NNG: explicit destructive action confirmation) */}
                 {resetConfirm ? (
                   <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded-md px-2 py-1">
-                    <span className="text-[10px] text-red-300 mr-1">Delete workspace &amp; restart?</span>
+                    <span className="text-[10px] text-red-300 mr-1">
+                      Delete workspace &amp; restart?
+                    </span>
                     <button
                       className="text-[10px] px-2 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors font-medium"
                       onClick={() => {
-                        setResetConfirm(false)
-                        setAdmiralPty(null, 'starting')
-                        window.fleet.admiral.reset().then((paneId) => {
-                          setAdmiralPty(paneId, 'running')
-                        }).catch((err: Error) => {
-                          setAdmiralPty(null, 'stopped', err.message)
-                        })
+                        setResetConfirm(false);
+                        setAdmiralPty(null, 'starting');
+                        window.fleet.admiral
+                          .reset()
+                          .then((paneId) => {
+                            setAdmiralPty(paneId, 'running');
+                          })
+                          .catch((err: Error) => {
+                            setAdmiralPty(null, 'stopped', err.message);
+                          });
                       }}
                     >
                       Confirm
@@ -342,115 +351,119 @@ export function StarCommandTab() {
               style={{ display: view === 'terminal' ? undefined : 'none' }}
               {...terminalDragHandlers}
             >
-                {/* Dependency check screen (shown before Admiral starts) */}
-                {runtimeStatus.state === 'starting' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
-                    <div className="w-full max-w-sm px-6 text-center">
-                      <span className="text-yellow-400 text-2xl">{'\u2605'}</span>
-                      <h2 className="text-sm font-semibold text-neutral-200 mt-2">Initializing Star Command</h2>
-                      <p className="text-xs text-neutral-500 mt-2">
-                        Window is ready. Starbase services are still booting in the background.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {runtimeStatus.state === 'error' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
-                    <div className="w-full max-w-sm px-6 text-center">
-                      <span className="text-red-400 text-2xl">{'\u2717'}</span>
-                      <h2 className="text-sm font-semibold text-neutral-200 mt-2">Star Command Unavailable</h2>
-                      <p className="text-xs text-red-300 mt-2">
-                        {runtimeStatus.error ?? 'Starbase bootstrap failed.'}
-                      </p>
-                      <button
-                        className="mt-5 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
-                        onClick={() => {
-                          setRuntimeStatus({ state: 'starting' })
-                          void window.fleet.starbase.retryRuntimeBootstrap()
-                        }}
-                      >
-                        Retry Bootstrap
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {runtimeStatus.state === 'ready' && (depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
-                  <DependencyCheckScreen
-                    status={depCheckStatus as 'checking' | 'passed' | 'failed'}
-                    results={depCheckResults}
-                  />
-                )}
-
-                {/* Admiral terminal */}
-                {admiralPaneId ? (
-                  <AdmiralTerminal paneId={admiralPaneId} isActive={view === 'terminal'} />
-                ) : depCheckStatus === 'pending' && runtimeStatus.state === 'ready' ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600">
-                    <p className="text-sm">
-                      {admiralStatus === 'starting' ? 'Starting Admiral...' : 'Admiral offline'}
+              {/* Dependency check screen (shown before Admiral starts) */}
+              {runtimeStatus.state === 'starting' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
+                  <div className="w-full max-w-sm px-6 text-center">
+                    <span className="text-yellow-400 text-2xl">{'\u2605'}</span>
+                    <h2 className="text-sm font-semibold text-neutral-200 mt-2">
+                      Initializing Star Command
+                    </h2>
+                    <p className="text-xs text-neutral-500 mt-2">
+                      Window is ready. Starbase services are still booting in the background.
                     </p>
-                    {admiralError && (
-                      <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
-                    )}
                   </div>
-                ) : null}
+                </div>
+              )}
 
-                {/* Offline overlay with restart button — shown whenever Admiral is stopped,
-                    even if paneId is still set (process exited from within terminal) */}
-                {admiralStatus === 'stopped' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/90 backdrop-blur-sm z-20">
-                    <Avatar
-                      type="admiral"
-                      variant="standby"
-                      size={64}
-                    />
-                    <p className="text-base font-semibold text-neutral-200 mt-4 tracking-wide">
-                      Station Dormant
+              {runtimeStatus.state === 'error' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
+                  <div className="w-full max-w-sm px-6 text-center">
+                    <span className="text-red-400 text-2xl">{'\u2717'}</span>
+                    <h2 className="text-sm font-semibold text-neutral-200 mt-2">
+                      Star Command Unavailable
+                    </h2>
+                    <p className="text-xs text-red-300 mt-2">
+                      {runtimeStatus.error ?? 'Starbase bootstrap failed.'}
                     </p>
-                    {admiralExitCode !== null && admiralExitCode !== 0 ? (
-                      <p className="text-xs text-red-400 mt-1">
-                        Admiral offline — exit code {admiralExitCode}
-                      </p>
-                    ) : (
-                      <p className="text-xs text-neutral-500 mt-1">Admiral session ended</p>
-                    )}
-                    {admiralError && (
-                      <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
-                    )}
                     <button
-                      className="mt-5 px-5 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors tracking-wide"
+                      className="mt-5 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
                       onClick={() => {
-                        setIsRestarting(true)
-                        setAdmiralPty(null, 'starting')
-                        window.fleet.admiral.restart().then((paneId) => {
-                          setAdmiralPty(paneId, 'running')
-                          setIsRestarting(false)
-                        }).catch((err: Error) => {
-                          setAdmiralPty(null, 'stopped', err.message)
-                          setIsRestarting(false)
-                        })
+                        setRuntimeStatus({ state: 'starting' });
+                        void window.fleet.starbase.retryRuntimeBootstrap();
                       }}
                     >
-                      Reactivate Command
+                      Retry Bootstrap
                     </button>
                   </div>
+                </div>
+              )}
+
+              {runtimeStatus.state === 'ready' &&
+                (depCheckStatus === 'checking' ||
+                  depCheckStatus === 'passed' ||
+                  depCheckStatus === 'failed') &&
+                !admiralPaneId && (
+                  <DependencyCheckScreen status={depCheckStatus} results={depCheckResults} />
                 )}
 
-                {/* Memo overlay — rendered on top of AdmiralTerminal so the terminal stays mounted */}
-                {showMemos && (
-                  <div className="absolute inset-0 z-10">
-                    <MemoPanel onClose={() => setShowMemos(false)} />
-                  </div>
-                )}
+              {/* Admiral terminal */}
+              {admiralPaneId ? (
+                <AdmiralTerminal paneId={admiralPaneId} isActive={view === 'terminal'} />
+              ) : depCheckStatus === 'pending' && runtimeStatus.state === 'ready' ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600">
+                  <p className="text-sm">
+                    {admiralStatus === 'starting' ? 'Starting Admiral...' : 'Admiral offline'}
+                  </p>
+                  {admiralError && (
+                    <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
+                  )}
+                </div>
+              ) : null}
 
-                {isTerminalDragOver && (
-                  <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
-                    <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
-                  </div>
-                )}
-              </div>
+              {/* Offline overlay with restart button — shown whenever Admiral is stopped,
+                    even if paneId is still set (process exited from within terminal) */}
+              {admiralStatus === 'stopped' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950/90 backdrop-blur-sm z-20">
+                  <Avatar type="admiral" variant="standby" size={64} />
+                  <p className="text-base font-semibold text-neutral-200 mt-4 tracking-wide">
+                    Station Dormant
+                  </p>
+                  {admiralExitCode !== null && admiralExitCode !== 0 ? (
+                    <p className="text-xs text-red-400 mt-1">
+                      Admiral offline — exit code {admiralExitCode}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-neutral-500 mt-1">Admiral session ended</p>
+                  )}
+                  {admiralError && (
+                    <p className="text-xs text-red-400 mt-1 max-w-xs text-center">{admiralError}</p>
+                  )}
+                  <button
+                    className="mt-5 px-5 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors tracking-wide"
+                    onClick={() => {
+                      setIsRestarting(true);
+                      setAdmiralPty(null, 'starting');
+                      window.fleet.admiral
+                        .restart()
+                        .then((paneId) => {
+                          setAdmiralPty(paneId, 'running');
+                          setIsRestarting(false);
+                        })
+                        .catch((err: Error) => {
+                          setAdmiralPty(null, 'stopped', err.message);
+                          setIsRestarting(false);
+                        });
+                    }}
+                  >
+                    Reactivate Command
+                  </button>
+                </div>
+              )}
+
+              {/* Memo overlay — rendered on top of AdmiralTerminal so the terminal stays mounted */}
+              {showMemos && (
+                <div className="absolute inset-0 z-10">
+                  <MemoPanel onClose={() => setShowMemos(false)} />
+                </div>
+              )}
+
+              {isTerminalDragOver && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
+                  <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
+                </div>
+              )}
+            </div>
 
             {/* Status bar */}
             <StatusBar />
@@ -459,9 +472,15 @@ export function StarCommandTab() {
       </CrtFrame>
 
       <AdmiralSidebar
-        avatarVariant={admiralAvatarState === 'speaking' ? (talkFrame ? 'speaking' : 'default') : admiralAvatarState}
+        avatarVariant={
+          admiralAvatarState === 'speaking'
+            ? talkFrame
+              ? 'speaking'
+              : 'default'
+            : admiralAvatarState
+        }
         onMemoClick={() => setShowMemos(true)}
       />
     </div>
-  )
+  );
 }

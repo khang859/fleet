@@ -7,6 +7,15 @@ import { MIGRATIONS, CONFIG_DEFAULTS } from './migrations';
 type IndexEntry = { workspacePath: string; starbaseId: string; dbPath: string };
 type IndexFile = { starbases: IndexEntry[] };
 
+function isIndexFile(v: unknown): v is IndexFile {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'starbases' in v &&
+    Array.isArray((v as { starbases?: unknown }).starbases)
+  );
+}
+
 export class StarbaseDB {
   private db: Database.Database | null = null;
   private starbaseId: string;
@@ -15,7 +24,7 @@ export class StarbaseDB {
 
   constructor(
     private workspacePath: string,
-    basePath?: string,
+    basePath?: string
   ) {
     this.basePath = basePath ?? join(process.env.HOME ?? '~', '.fleet', 'starbases');
     this.starbaseId = createHash('sha256').update(workspacePath).digest('hex').slice(0, 6);
@@ -29,9 +38,15 @@ export class StarbaseDB {
     if (existsSync(this.dbPath)) {
       try {
         const testDb = new Database(this.dbPath);
-        const result = testDb.pragma('integrity_check') as { integrity_check: string }[];
+        const result: unknown = testDb.pragma('integrity_check');
         testDb.close();
-        if (result[0]?.integrity_check !== 'ok') {
+        const first: unknown = Array.isArray(result) ? result[0] : undefined;
+        const ok =
+          first != null &&
+          typeof first === 'object' &&
+          'integrity_check' in first &&
+          (first as { integrity_check: unknown }).integrity_check === 'ok';
+        if (!ok) {
           throw new Error('Integrity check failed');
         }
       } catch {
@@ -78,9 +93,9 @@ export class StarbaseDB {
 
     let currentVersion = 0;
     if (metaExists) {
-      const meta = db.prepare('SELECT schema_version FROM _meta').get() as
-        | { schema_version: number }
-        | undefined;
+      const meta = db
+        .prepare<[], { schema_version: number }>('SELECT schema_version FROM _meta')
+        .get();
       currentVersion = meta?.schema_version ?? 0;
     }
 
@@ -94,11 +109,11 @@ export class StarbaseDB {
           // First migration — insert _meta row
           db.prepare('INSERT INTO _meta (schema_version, workspace_path) VALUES (?, ?)').run(
             migration.version,
-            this.workspacePath,
+            this.workspacePath
           );
           // Seed config defaults
           const insertConfig = db.prepare(
-            "INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)",
+            'INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)'
           );
           for (const [key, value] of Object.entries(CONFIG_DEFAULTS)) {
             insertConfig.run(key, JSON.stringify(value));
@@ -119,7 +134,10 @@ export class StarbaseDB {
 
     if (existsSync(indexPath)) {
       try {
-        index = JSON.parse(readFileSync(indexPath, 'utf-8'));
+        const parsed: unknown = JSON.parse(readFileSync(indexPath, 'utf-8'));
+        if (isIndexFile(parsed)) {
+          index = parsed;
+        }
       } catch {
         index = { starbases: [] };
       }
@@ -134,7 +152,7 @@ export class StarbaseDB {
       index.starbases.push({
         workspacePath: this.workspacePath,
         starbaseId: this.starbaseId,
-        dbPath: this.dbPath,
+        dbPath: this.dbPath
       });
     }
 

@@ -16,7 +16,7 @@ type Asteroid = {
   // Fallback fields
   rotation: number;
   rotationSpeed: number;
-  vertices: { x: number; y: number }[];
+  vertices: Array<{ x: number; y: number }>;
   size: number;
 };
 
@@ -55,7 +55,7 @@ export class AsteroidField {
   private spawnAsteroid(width: number, height: number): void {
     const size = 4 + Math.random() * 8;
     const vertexCount = 3 + Math.floor(Math.random() * 4);
-    const vertices: { x: number; y: number }[] = [];
+    const vertices: Array<{ x: number; y: number }> = [];
     for (let i = 0; i < vertexCount; i++) {
       const angle = (i / vertexCount) * Math.PI * 2;
       const r = size * (0.5 + Math.random() * 0.5);
@@ -74,7 +74,7 @@ export class AsteroidField {
       rotation: Math.random() * Math.PI * 2,
       rotationSpeed: (Math.random() - 0.5) * 1,
       vertices,
-      size,
+      size
     });
   }
 
@@ -93,9 +93,13 @@ export class AsteroidField {
         if (region) {
           const half = ASTEROID_RENDER_SIZE / 2;
           drawSprite(
-            ctx, region, a.animElapsed,
-            Math.round(a.x - half), Math.round(a.y - half),
-            ASTEROID_RENDER_SIZE, ASTEROID_RENDER_SIZE,
+            ctx,
+            region,
+            a.animElapsed,
+            Math.round(a.x - half),
+            Math.round(a.y - half),
+            ASTEROID_RENDER_SIZE,
+            ASTEROID_RENDER_SIZE
           );
         }
       } else {

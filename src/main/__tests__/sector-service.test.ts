@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { GLOBAL_SECTOR_ID, SectorService } from '../starbase/sector-service';
-import { rmSync, mkdirSync } from 'fs';
+import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -17,7 +17,7 @@ beforeEach(() => {
   rmSync(TEST_DIR, { recursive: true, force: true });
   mkdirSync(SECTOR_DIR, { recursive: true });
   // Create a dummy file so sector dir has content
-  require('fs').writeFileSync(join(SECTOR_DIR, 'index.ts'), '');
+  writeFileSync(join(SECTOR_DIR, 'index.ts'), '');
   db = new StarbaseDB(WORKSPACE_DIR, DB_DIR);
   db.open();
   svc = new SectorService(db.getDb(), WORKSPACE_DIR);
@@ -49,7 +49,7 @@ describe('SectorService', () => {
     svc.addSector({ path: 'api' });
     const list = svc.listSectors();
     expect(list).toHaveLength(2);
-    const apiSector = list.find(s => s.id === 'api');
+    const apiSector = list.find((s) => s.id === 'api');
     expect(apiSector).toBeDefined();
     expect(apiSector!.id).toBe('api');
   });
@@ -60,7 +60,7 @@ describe('SectorService', () => {
     const list = svc.listVisibleSectors();
 
     expect(list).toHaveLength(1);
-    expect(list[0]!.id).toBe('api');
+    expect(list[0].id).toBe('api');
   });
 
   it('should identify the global sentinel as a logical sector', () => {
@@ -90,7 +90,7 @@ describe('SectorService', () => {
   });
 
   it('should auto-detect stack from package.json', () => {
-    require('fs').writeFileSync(join(SECTOR_DIR, 'package.json'), '{}');
+    writeFileSync(join(SECTOR_DIR, 'package.json'), '{}');
     const sector = svc.addSector({ path: 'api' });
     expect(sector.stack).toBe('typescript/node');
   });

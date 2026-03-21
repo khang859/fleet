@@ -6,7 +6,7 @@ type CommandPaletteProps = {
   onClose: () => void;
 };
 
-export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose }: CommandPaletteProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,7 +32,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
 
   if (!isOpen) return null;
 
-  const executeSelected = () => {
+  const executeSelected = (): void => {
     const cmd = filtered[selectedIndex];
     if (cmd) {
       onClose();
@@ -40,7 +40,7 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex((i) => Math.min(i + 1, filtered.length - 1));
@@ -75,7 +75,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
         </div>
         <div className="overflow-y-auto py-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-4 text-sm text-neutral-500 text-center">No matching commands</div>
+            <div className="px-3 py-4 text-sm text-neutral-500 text-center">
+              No matching commands
+            </div>
           ) : (
             filtered.map((cmd, i) => {
               const shortcutLabel = formatCommandShortcut(cmd);
@@ -83,7 +85,9 @@ export function CommandPalette({ isOpen, onClose }: CommandPaletteProps) {
                 <button
                   key={cmd.id}
                   className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors ${
-                    i === selectedIndex ? 'bg-neutral-700 text-white' : 'text-neutral-300 hover:bg-neutral-800'
+                    i === selectedIndex
+                      ? 'bg-neutral-700 text-white'
+                      : 'text-neutral-300 hover:bg-neutral-800'
                   }`}
                   onMouseEnter={() => setSelectedIndex(i)}
                   onClick={() => {

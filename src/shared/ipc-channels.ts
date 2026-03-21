@@ -80,5 +80,5 @@ export const IPC_CHANNELS = {
   UPDATE_CHECK: 'fleet:update-check',
   UPDATE_STATUS: 'fleet:update-status',
   UPDATE_INSTALL: 'fleet:install-update',
-  GET_VERSION: 'fleet:get-version',
-} as const
+  GET_VERSION: 'fleet:get-version'
+} as const;

@@ -10,12 +10,13 @@ import type { ConfigService } from './starbase/config-service';
 import type { CrewService } from './starbase/crew-service';
 import type { MissionService } from './starbase/mission-service';
 import type { StarbaseRuntimeClient } from './starbase-runtime-client';
+import type { BrowserWindow } from 'electron';
 
 export class FleetCommandHandler implements SocketCommandHandler {
   private workspace: Workspace = { id: 'default', label: 'Default', tabs: [] };
   private tabs = new Map<string, Tab>();
 
-  private getWindow: (() => import('electron').BrowserWindow | null) | null = null;
+  private getWindow: (() => BrowserWindow | null) | null = null;
   private sectorService: SectorService | null = null;
   private configService: ConfigService | null = null;
   private crewService: CrewService | null = null;
@@ -26,7 +27,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     private ptyManager: PtyManager,
     private layoutStore: LayoutStore,
     private eventBus: EventBus,
-    private notificationState: NotificationStateManager,
+    private notificationState: NotificationStateManager
   ) {}
 
   setStarbaseServices(sectorService: SectorService, configService: ConfigService): void {
@@ -43,7 +44,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     this.runtimeClient = runtimeClient;
   }
 
-  setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
+  setWindowGetter(getter: () => BrowserWindow | null): void {
     this.getWindow = getter;
   }
 
@@ -53,7 +54,9 @@ export class FleetCommandHandler implements SocketCommandHandler {
         return { ok: true, workspaces: this.layoutStore.list() };
 
       case 'load-workspace': {
-        const ws = this.layoutStore.load(cmd.workspaceId as string);
+        if (typeof cmd.workspaceId !== 'string')
+          return { ok: false, error: 'workspaceId required' };
+        const ws = this.layoutStore.load(cmd.workspaceId);
         if (!ws) return { ok: false, error: `workspace not found: ${cmd.workspaceId}` };
         this.workspace = ws;
         this.eventBus.emit('workspace-loaded', { type: 'workspace-loaded', workspaceId: ws.id });
@@ -66,15 +69,15 @@ export class FleetCommandHandler implements SocketCommandHandler {
           tabs: this.workspace.tabs.map((t) => ({
             id: t.id,
             label: t.label,
-            cwd: t.cwd,
-          })),
+            cwd: t.cwd
+          }))
         };
 
       case 'new-tab': {
         const paneId = randomUUID();
         const tabId = randomUUID();
-        const cwd = (cmd.cwd as string) ?? '/';
-        const label = (cmd.label as string) ?? 'Shell';
+        const cwd = typeof cmd.cwd === 'string' ? cmd.cwd : '/';
+        const label = typeof cmd.label === 'string' ? cmd.label : 'Shell';
 
         const leaf: PaneLeaf = { type: 'leaf', id: paneId, cwd };
         const tab: Tab = { id: tabId, label, labelIsCustom: false, cwd, splitRoot: leaf };
@@ -86,7 +89,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         const ptyResult = this.ptyManager.create({
           paneId,
           cwd,
-          cmd: cmd.cmd as string | undefined,
+          cmd: typeof cmd.cmd === 'string' ? cmd.cmd : undefined
         });
 
         this.eventBus.emit('pane-created', { type: 'pane-created', paneId });
@@ -95,7 +98,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'close-tab': {
-        const tabId = cmd.tabId as string;
+        if (typeof cmd.tabId !== 'string') return { ok: false, error: 'tabId required' };
+        const tabId = cmd.tabId;
         const tabIndex = this.workspace.tabs.findIndex((t) => t.id === tabId);
         if (tabIndex === -1) return { ok: false, error: `tab not found: ${tabId}` };
 
@@ -111,7 +115,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'list-panes': {
-        const tabId = cmd.tabId as string;
+        if (typeof cmd.tabId !== 'string') return { ok: false, error: 'tabId required' };
+        const tabId = cmd.tabId;
         const tab = this.workspace.tabs.find((t) => t.id === tabId);
         if (!tab) return { ok: false, error: `tab not found: ${tabId}` };
 
@@ -122,20 +127,22 @@ export class FleetCommandHandler implements SocketCommandHandler {
             id: leaf.id,
             cwd: leaf.cwd,
             shell: leaf.shell,
-            hasProcess: this.ptyManager.has(leaf.id),
-          })),
+            hasProcess: this.ptyManager.has(leaf.id)
+          }))
         };
       }
 
       case 'new-pane': {
-        const parentPaneId = cmd.paneId as string;
+        if (typeof cmd.paneId !== 'string') return { ok: false, error: 'paneId required' };
+        const parentPaneId = cmd.paneId;
         if (!this.ptyManager.has(parentPaneId)) {
           return { ok: false, error: `pane not found: ${parentPaneId}` };
         }
 
         const newPaneId = randomUUID();
-        const cwd = (cmd.cwd as string) ?? '/';
-        const direction = (cmd.direction as 'horizontal' | 'vertical') ?? 'horizontal';
+        const cwd = typeof cmd.cwd === 'string' ? cmd.cwd : '/';
+        const direction: 'horizontal' | 'vertical' =
+          cmd.direction === 'vertical' ? 'vertical' : 'horizontal';
 
         // Insert new split node into the tab's split tree
         const newLeaf: PaneLeaf = { type: 'leaf', id: newPaneId, cwd };
@@ -148,7 +155,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         this.ptyManager.create({
           paneId: newPaneId,
           cwd,
-          cmd: cmd.cmd as string | undefined,
+          cmd: typeof cmd.cmd === 'string' ? cmd.cmd : undefined
         });
 
         this.eventBus.emit('pane-created', { type: 'pane-created', paneId: newPaneId });
@@ -157,7 +164,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'close-pane': {
-        const paneId = cmd.paneId as string;
+        if (typeof cmd.paneId !== 'string') return { ok: false, error: 'paneId required' };
+        const paneId = cmd.paneId;
         if (!this.ptyManager.has(paneId)) {
           return { ok: false, error: `pane not found: ${paneId}` };
         }
@@ -167,7 +175,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'focus-pane': {
-        const paneId = cmd.paneId as string;
+        if (typeof cmd.paneId !== 'string') return { ok: false, error: 'paneId required' };
+        const paneId = cmd.paneId;
         if (!this.ptyManager.has(paneId)) {
           return { ok: false, error: `pane not found: ${paneId}` };
         }
@@ -182,18 +191,20 @@ export class FleetCommandHandler implements SocketCommandHandler {
       }
 
       case 'send-input': {
-        const paneId = cmd.paneId as string;
+        if (typeof cmd.paneId !== 'string') return { ok: false, error: 'paneId required' };
+        if (typeof cmd.data !== 'string') return { ok: false, error: 'data required' };
+        const paneId = cmd.paneId;
         if (!this.ptyManager.has(paneId)) {
           return { ok: false, error: `pane not found: ${paneId}` };
         }
-        this.ptyManager.write(paneId, cmd.data as string);
+        this.ptyManager.write(paneId, cmd.data);
         return { ok: true };
       }
 
       case 'get-output': {
         return {
           ok: false,
-          error: 'get-output requires renderer IPC round-trip — not yet implemented',
+          error: 'get-output requires renderer IPC round-trip — not yet implemented'
         };
       }
 
@@ -203,10 +214,10 @@ export class FleetCommandHandler implements SocketCommandHandler {
           workspace: {
             id: this.workspace.id,
             label: this.workspace.label,
-            tabCount: this.workspace.tabs.length,
+            tabCount: this.workspace.tabs.length
           },
           panes: this.ptyManager.paneIds(),
-          notifications: this.notificationState.getAllStates(),
+          notifications: this.notificationState.getAllStates()
         };
 
       // Starbase commands
@@ -222,29 +233,44 @@ export class FleetCommandHandler implements SocketCommandHandler {
           return { ok: true, sector: await this.runtimeClient.invoke('sector.add', cmd) };
         }
         if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
-        return { ok: true, sector: this.sectorService.addSector(cmd as any) };
+        return {
+          ok: true,
+          sector: this.sectorService.addSector({
+            path: typeof cmd.path === 'string' ? cmd.path : '',
+            name: typeof cmd.name === 'string' ? cmd.name : undefined,
+            description: typeof cmd.description === 'string' ? cmd.description : undefined,
+            baseBranch: typeof cmd.baseBranch === 'string' ? cmd.baseBranch : undefined,
+            mergeStrategy: typeof cmd.mergeStrategy === 'string' ? cmd.mergeStrategy : undefined
+          })
+        };
 
       case 'config-get':
         if (this.runtimeClient) {
-          if (cmd.key) {
-            return { ok: true, key: cmd.key, value: await this.runtimeClient.invoke('config.get', cmd.key as string) };
+          if (typeof cmd.key === 'string') {
+            return {
+              ok: true,
+              key: cmd.key,
+              value: await this.runtimeClient.invoke('config.get', cmd.key)
+            };
           }
           return { ok: true, config: await this.runtimeClient.invoke('config.getAll') };
         }
         if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
-        if (cmd.key) {
-          return { ok: true, key: cmd.key, value: this.configService.get(cmd.key as string) };
+        if (typeof cmd.key === 'string') {
+          return { ok: true, key: cmd.key, value: this.configService.get(cmd.key) };
         }
         return { ok: true, config: this.configService.getAll() };
 
-      case 'config-set':
+      case 'config-set': {
+        if (typeof cmd.key !== 'string') return { ok: false, error: 'key required' };
         if (this.runtimeClient) {
-          await this.runtimeClient.invoke('config.set', { key: cmd.key as string, value: cmd.value });
+          await this.runtimeClient.invoke('config.set', { key: cmd.key, value: cmd.value });
           return { ok: true };
         }
         if (!this.configService) return { ok: false, error: 'Star Command not initialized' };
-        this.configService.set(cmd.key as string, cmd.value);
+        this.configService.set(cmd.key, cmd.value);
         return { ok: true };
+      }
 
       // Phase 2: Deploy/Recall/Crew/Missions
       case 'deploy': {
@@ -252,10 +278,12 @@ export class FleetCommandHandler implements SocketCommandHandler {
           if (typeof cmd.missionId !== 'number') {
             return { ok: false, error: 'deploy requires missionId' };
           }
+          if (typeof cmd.sectorId !== 'string') return { ok: false, error: 'sectorId required' };
+          if (typeof cmd.prompt !== 'string') return { ok: false, error: 'prompt required' };
           const result = await this.runtimeClient.invoke<Record<string, unknown>>('crew.deploy', {
-            sectorId: cmd.sectorId as string,
-            prompt: cmd.prompt as string,
-            missionId: cmd.missionId,
+            sectorId: cmd.sectorId,
+            prompt: cmd.prompt,
+            missionId: cmd.missionId
           });
           return { ok: true, ...result };
         }
@@ -263,41 +291,55 @@ export class FleetCommandHandler implements SocketCommandHandler {
         if (typeof cmd.missionId !== 'number') {
           return { ok: false, error: 'deploy requires missionId' };
         }
-        const result = await this.crewService.deployCrew(
-          {
-            sectorId: cmd.sectorId as string,
-            prompt: cmd.prompt as string,
-            missionId: cmd.missionId,
-          },
-        );
+        if (typeof cmd.sectorId !== 'string') return { ok: false, error: 'sectorId required' };
+        if (typeof cmd.prompt !== 'string') return { ok: false, error: 'prompt required' };
+        const result = await this.crewService.deployCrew({
+          sectorId: cmd.sectorId,
+          prompt: cmd.prompt,
+          missionId: cmd.missionId
+        });
         return { ok: true, ...result };
       }
 
-      case 'recall':
+      case 'recall': {
+        if (typeof cmd.crewId !== 'string') return { ok: false, error: 'crewId required' };
         if (this.runtimeClient) {
-          await this.runtimeClient.invoke('crew.recall', cmd.crewId as string);
+          await this.runtimeClient.invoke('crew.recall', cmd.crewId);
           return { ok: true };
         }
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
-        this.crewService.recallCrew(cmd.crewId as string);
+        this.crewService.recallCrew(cmd.crewId);
         return { ok: true };
+      }
 
-      case 'crew':
+      case 'crew': {
+        const sectorFilter =
+          typeof cmd.sectorId === 'string' ? { sectorId: cmd.sectorId } : undefined;
         if (this.runtimeClient) {
           return {
             ok: true,
-            crew: await this.runtimeClient.invoke('crew.list', cmd.sectorId ? { sectorId: cmd.sectorId as string } : undefined),
+            crew: await this.runtimeClient.invoke('crew.list', sectorFilter)
           };
         }
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
-        return { ok: true, crew: this.crewService.listCrew(cmd.sectorId ? { sectorId: cmd.sectorId as string } : undefined) };
+        return { ok: true, crew: this.crewService.listCrew(sectorFilter) };
+      }
 
-      case 'missions':
+      case 'missions': {
+        const missionFilter = {
+          sectorId: typeof cmd.sectorId === 'string' ? cmd.sectorId : undefined,
+          status: typeof cmd.status === 'string' ? cmd.status : undefined
+        };
         if (this.runtimeClient) {
-          return { ok: true, missions: await this.runtimeClient.invoke('mission.list', cmd as any) };
+          return {
+            ok: true,
+            missions: await this.runtimeClient.invoke('mission.list', missionFilter)
+          };
         }
-        if (!this.missionService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
-        return { ok: true, missions: this.missionService.listMissions(cmd as any) };
+        if (!this.missionService)
+          return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        return { ok: true, missions: this.missionService.listMissions(missionFilter) };
+      }
 
       default:
         return { ok: false, error: `Unknown command: ${cmd.type}` };
@@ -306,17 +348,14 @@ export class FleetCommandHandler implements SocketCommandHandler {
 
   private collectPaneIds(node: PaneNode): string[] {
     if (node.type === 'leaf') return [node.id];
-    return [
-      ...this.collectPaneIds(node.children[0]),
-      ...this.collectPaneIds(node.children[1]),
-    ];
+    return [...this.collectPaneIds(node.children[0]), ...this.collectPaneIds(node.children[1])];
   }
 
   private collectPaneLeaves(node: PaneNode): PaneLeaf[] {
     if (node.type === 'leaf') return [node];
     return [
       ...this.collectPaneLeaves(node.children[0]),
-      ...this.collectPaneLeaves(node.children[1]),
+      ...this.collectPaneLeaves(node.children[1])
     ];
   }
 
@@ -326,15 +365,16 @@ export class FleetCommandHandler implements SocketCommandHandler {
     node: PaneNode,
     targetPaneId: string,
     newLeaf: PaneLeaf,
-    direction: 'horizontal' | 'vertical',
+    direction: 'horizontal' | 'vertical'
   ): boolean {
     if (node.type === 'leaf' && node.id === targetPaneId) {
-      tab.splitRoot = this.replaceNode(tab.splitRoot, targetPaneId, {
+      const splitNode: PaneSplit = {
         type: 'split',
         direction,
         ratio: 0.5,
-        children: [node, newLeaf],
-      } as PaneSplit);
+        children: [node, newLeaf]
+      };
+      tab.splitRoot = this.replaceNode(tab.splitRoot, targetPaneId, splitNode);
       return true;
     }
     if (node.type === 'split') {
@@ -346,11 +386,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     return false;
   }
 
-  private replaceNode(
-    node: PaneNode,
-    targetId: string,
-    replacement: PaneNode,
-  ): PaneNode {
+  private replaceNode(node: PaneNode, targetId: string, replacement: PaneNode): PaneNode {
     if (node.type === 'leaf') {
       return node.id === targetId ? replacement : node;
     }
@@ -358,8 +394,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       ...node,
       children: [
         this.replaceNode(node.children[0], targetId, replacement),
-        this.replaceNode(node.children[1], targetId, replacement),
-      ],
+        this.replaceNode(node.children[1], targetId, replacement)
+      ]
     };
   }
 }

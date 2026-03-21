@@ -6,6 +6,17 @@ type LockData = {
   timestamp: string;
 };
 
+function isLockData(v: unknown): v is LockData {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'pid' in v &&
+    'timestamp' in v &&
+    typeof (v as { pid?: unknown }).pid === 'number' &&
+    typeof (v as { timestamp?: unknown }).timestamp === 'string'
+  );
+}
+
 type AcquireResult = 'acquired' | 'read-only';
 
 const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -21,7 +32,11 @@ export class Lockfile {
   acquire(): AcquireResult {
     if (existsSync(this.lockPath)) {
       try {
-        const data: LockData = JSON.parse(readFileSync(this.lockPath, 'utf-8'));
+        const rawData: unknown = JSON.parse(readFileSync(this.lockPath, 'utf-8'));
+        if (!isLockData(rawData)) {
+          throw new Error('Invalid lock file format');
+        }
+        const data = rawData;
         const lockAge = Date.now() - new Date(data.timestamp).getTime();
 
         // Stale if older than 24 hours (guards against PID reuse)
@@ -53,7 +68,7 @@ export class Lockfile {
   private writeLock(): void {
     const data: LockData = {
       pid: process.pid,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
     writeFileSync(this.lockPath, JSON.stringify(data));
   }

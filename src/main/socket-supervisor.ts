@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { SocketServer, type ServiceRegistry } from './socket-server';
+import { SocketServer, type ServiceRegistry, type AsyncServiceRegistry } from './socket-server';
 
 const MAX_RESTARTS = 5;
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -15,7 +15,7 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry,
+    private services: ServiceRegistry | AsyncServiceRegistry
   ) {
     super();
   }
@@ -62,12 +62,11 @@ export class SocketSupervisor extends EventEmitter {
         this.server = null;
       }
 
-      if (this.isStopped) return;
-
       this.server = this.createServer();
       await this.server.start();
 
       this.restartTimestamps.push(Date.now());
+      // eslint-disable-next-line no-console
       console.log('[socket-supervisor] Server restarted successfully');
       this.emit('restarted');
     } catch (err) {

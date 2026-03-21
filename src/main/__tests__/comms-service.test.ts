@@ -43,15 +43,33 @@ describe('CommsService', () => {
   });
 
   it('should resolve a transmission with reply', () => {
-    const id = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{"question":"help"}' });
+    const id = svc.send({
+      from: 'crew-1',
+      to: 'admiral',
+      type: 'hailing',
+      payload: '{"question":"help"}'
+    });
     svc.resolve(id, 'Here is your answer');
     const unread = svc.getUnread('admiral');
     expect(unread).toHaveLength(0);
   });
 
   it('should get thread messages', () => {
-    const id1 = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{}', threadId: 'thread-1' });
-    svc.send({ from: 'admiral', to: 'crew-1', type: 'directive', payload: '{}', threadId: 'thread-1', inReplyTo: id1 });
+    const id1 = svc.send({
+      from: 'crew-1',
+      to: 'admiral',
+      type: 'hailing',
+      payload: '{}',
+      threadId: 'thread-1'
+    });
+    svc.send({
+      from: 'admiral',
+      to: 'crew-1',
+      type: 'directive',
+      payload: '{}',
+      threadId: 'thread-1',
+      inReplyTo: id1
+    });
     const thread = svc.getThread('thread-1');
     expect(thread).toHaveLength(2);
   });
@@ -141,7 +159,9 @@ describe('CommsService', () => {
 
       // Backdate the existing message to 6 minutes ago
       db.getDb()
-        .prepare("UPDATE comms SET created_at = datetime('now', '-6 minutes') WHERE from_crew = 'crew-1'")
+        .prepare(
+          "UPDATE comms SET created_at = datetime('now', '-6 minutes') WHERE from_crew = 'crew-1'"
+        )
         .run();
 
       svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
@@ -163,10 +183,14 @@ describe('CommsService', () => {
     it('should not consume rate limit budget for deduplicated messages', () => {
       // Set up a crew with rate limiting
       db.getDb()
-        .prepare("INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')")
+        .prepare(
+          "INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')"
+        )
         .run();
       db.getDb()
-        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-dedup', 'test', 'active', 0)")
+        .prepare(
+          "INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-dedup', 'test', 'active', 0)"
+        )
         .run();
 
       svc.setRateLimit(2);
@@ -176,7 +200,10 @@ describe('CommsService', () => {
       // Send the same message — should dedup, counter stays at 1
       svc.send({ from: 'crew-dedup', to: 'admiral', type: 'hailing', payload: 'hello' });
 
-      const row = db.getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-dedup') as { comms_count_minute: number };
+      const row = db
+        .getDb()
+        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get('crew-dedup') as { comms_count_minute: number };
       expect(row.comms_count_minute).toBe(1);
     });
   });
@@ -204,7 +231,7 @@ describe('CommsService', () => {
 
     it('should throw when both crewId and from are provided', () => {
       expect(() => svc.getRecent({ crewId: 'crew-1', from: 'crew-1' })).toThrow(
-        'Cannot filter by both crewId and from',
+        'Cannot filter by both crewId and from'
       );
     });
   });
@@ -212,22 +239,44 @@ describe('CommsService', () => {
   describe('execution_id', () => {
     function insertExecution(id: string): void {
       db.getDb()
-        .prepare("INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')")
+        .prepare(
+          "INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')"
+        )
         .run(id);
     }
 
     it('stores execution_id on a transmission', () => {
       insertExecution('exec-123');
-      const id = svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'test', executionId: 'exec-123' });
-      const row = db.getDb().prepare('SELECT execution_id FROM comms WHERE id = ?').get(id) as { execution_id: string };
+      const id = svc.send({
+        from: 'navigator',
+        to: 'admiral',
+        type: 'gate-pending',
+        payload: 'test',
+        executionId: 'exec-123'
+      });
+      const row = db.getDb().prepare('SELECT execution_id FROM comms WHERE id = ?').get(id) as {
+        execution_id: string;
+      };
       expect(row.execution_id).toBe('exec-123');
     });
 
     it('filters unread comms by execution_id', () => {
       insertExecution('exec-A');
       insertExecution('exec-B');
-      svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'a', executionId: 'exec-A' });
-      svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'b', executionId: 'exec-B' });
+      svc.send({
+        from: 'navigator',
+        to: 'admiral',
+        type: 'gate-pending',
+        payload: 'a',
+        executionId: 'exec-A'
+      });
+      svc.send({
+        from: 'navigator',
+        to: 'admiral',
+        type: 'gate-pending',
+        payload: 'b',
+        executionId: 'exec-B'
+      });
       const rows = svc.getUnreadByExecution('exec-A');
       expect(rows).toHaveLength(1);
       expect(rows[0].payload).toBe('a');
@@ -237,16 +286,33 @@ describe('CommsService', () => {
   describe('dedup exclusion for navigator', () => {
     function insertExecution(id: string): void {
       db.getDb()
-        .prepare("INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')")
+        .prepare(
+          "INSERT OR IGNORE INTO protocol_executions (id, feature_request) VALUES (?, 'test')"
+        )
         .run(id);
     }
 
     it('does not deduplicate identical messages from navigator', () => {
       insertExecution('exec-1');
       insertExecution('exec-2');
-      svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-1' });
-      svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-2' });
-      const rows = db.getDb().prepare("SELECT * FROM comms WHERE from_crew = 'navigator'").all() as { id: number }[];
+      svc.send({
+        from: 'navigator',
+        to: 'admiral',
+        type: 'protocol-complete',
+        payload: 'done',
+        executionId: 'exec-1'
+      });
+      svc.send({
+        from: 'navigator',
+        to: 'admiral',
+        type: 'protocol-complete',
+        payload: 'done',
+        executionId: 'exec-2'
+      });
+      const rows = db
+        .getDb()
+        .prepare("SELECT * FROM comms WHERE from_crew = 'navigator'")
+        .all() as Array<{ id: number }>;
       expect(rows).toHaveLength(2);
     });
   });
@@ -254,26 +320,32 @@ describe('CommsService', () => {
   describe('rate limiting', () => {
     function ensureSector(): void {
       db.getDb()
-        .prepare("INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')")
+        .prepare(
+          "INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES ('test', 'test', '/tmp/test')"
+        )
         .run();
     }
 
     it('should reject transmissions above rate limit', () => {
       ensureSector();
       db.getDb()
-        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-rl', 'test', 'active', 5)")
+        .prepare(
+          "INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-rl', 'test', 'active', 5)"
+        )
         .run();
 
       svc.setRateLimit(5);
       expect(() =>
-        svc.send({ from: 'crew-rl', to: 'admiral', type: 'hailing', payload: '{}' }),
+        svc.send({ from: 'crew-rl', to: 'admiral', type: 'hailing', payload: '{}' })
       ).toThrow(CommsRateLimitError);
     });
 
     it('should allow transmissions below rate limit', () => {
       ensureSector();
       db.getDb()
-        .prepare("INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-ok', 'test', 'active', 0)")
+        .prepare(
+          "INSERT INTO crew (id, sector_id, status, comms_count_minute) VALUES ('crew-ok', 'test', 'active', 0)"
+        )
         .run();
 
       svc.setRateLimit(5);
@@ -281,7 +353,10 @@ describe('CommsService', () => {
       expect(id).toBeGreaterThan(0);
 
       // Counter should have incremented
-      const row = db.getDb().prepare('SELECT comms_count_minute FROM crew WHERE id = ?').get('crew-ok') as { comms_count_minute: number };
+      const row = db
+        .getDb()
+        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get('crew-ok') as { comms_count_minute: number };
       expect(row.comms_count_minute).toBe(1);
     });
 

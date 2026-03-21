@@ -39,13 +39,16 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     orphanedWorktrees: [],
     retriedPushes: [],
     requeuedMissions: [],
-    cleanedErroredCrew: [],
+    cleanedErroredCrew: []
   };
 
   // 1. Query all active crew
   const activeCrew = db
-    .prepare("SELECT id, sector_id, pid, worktree_path, worktree_branch, created_at FROM crew WHERE status = 'active'")
-    .all() as CrewRow[];
+    .prepare<
+      [],
+      CrewRow
+    >("SELECT id, sector_id, pid, worktree_path, worktree_branch, created_at FROM crew WHERE status = 'active'")
+    .all();
 
   // 2-3. Check PIDs, mark dead ones as lost
   for (const crew of activeCrew) {
@@ -55,10 +58,15 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     const isStale = age > STALE_THRESHOLD_MS;
 
     if (!isAlive || isStale) {
-      db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(crew.id);
+      db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(
+        crew.id
+      );
       db.prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'reconciliation', ?)",
-      ).run(crew.id, JSON.stringify({ reason: isAlive ? 'stale (PID reuse suspected)' : 'PID dead on restart' }));
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'reconciliation', ?)"
+      ).run(
+        crew.id,
+        JSON.stringify({ reason: isAlive ? 'stale (PID reuse suspected)' : 'PID dead on restart' })
+      );
       summary.lostCrew.push(crew.id);
     }
   }
@@ -66,15 +74,19 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   // 4. Preserve worktree branches for dead crew (do NOT clean up)
 
   // 5. Run git worktree prune on each sector
-  const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as { id: string; root_path: string }[];
+  const sectors = db
+    .prepare<[], { id: string; root_path: string }>('SELECT id, root_path FROM sectors')
+    .all();
   await Promise.all(
     sectors
       .filter((sector) => sector.id !== GLOBAL_SECTOR_ID && existsSync(sector.root_path))
-      .map((sector) =>
+      .map(async (sector) =>
         execFileAsync('git', ['worktree', 'prune'], {
           cwd: sector.root_path,
-          timeout: 10_000,
-        }).catch(() => { /* ignore prune failures */ })
+          timeout: 10_000
+        }).catch(() => {
+          /* ignore prune failures */
+        })
       )
   );
 
@@ -82,8 +94,12 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   const worktreeDir = join(worktreeBasePath, starbaseId);
   if (existsSync(worktreeDir)) {
     const trackedPaths = new Set(
-      (db.prepare("SELECT worktree_path FROM crew WHERE worktree_path IS NOT NULL").all() as { worktree_path: string }[])
-        .map((r) => r.worktree_path),
+      db
+        .prepare<[], { worktree_path: string }>(
+          'SELECT worktree_path FROM crew WHERE worktree_path IS NOT NULL'
+        )
+        .all()
+        .map((r) => r.worktree_path)
     );
 
     const entries = readdirSync(worktreeDir);
@@ -102,15 +118,23 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
 
   // 7. Retry push-pending missions
   const pushPending = db
-    .prepare("SELECT id, crew_id FROM missions WHERE status = 'push-pending'")
-    .all() as { id: number; crew_id: string | null }[];
+    .prepare<
+      [],
+      { id: number; crew_id: string | null }
+    >("SELECT id, crew_id FROM missions WHERE status = 'push-pending'")
+    .all();
 
   for (const mission of pushPending) {
     if (!mission.crew_id) continue;
-    const crew = db.prepare('SELECT worktree_branch, sector_id FROM crew WHERE id = ?').get(mission.crew_id) as {
-      worktree_branch: string | null;
-      sector_id: string;
-    } | undefined;
+    const crew = db
+      .prepare<
+        [string],
+        {
+          worktree_branch: string | null;
+          sector_id: string;
+        }
+      >('SELECT worktree_branch, sector_id FROM crew WHERE id = ?')
+      .get(mission.crew_id);
 
     if (!crew?.worktree_branch) continue;
 
@@ -120,11 +144,11 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     try {
       await execFileAsync('git', ['push', '-u', 'origin', crew.worktree_branch], {
         cwd: sector.root_path,
-        timeout: 10_000,
+        timeout: 10_000
       });
       db.prepare("UPDATE missions SET status = 'completed' WHERE id = ?").run(mission.id);
       db.prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'push_retried', ?)",
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'push_retried', ?)"
       ).run(mission.crew_id, JSON.stringify({ missionId: mission.id }));
       summary.retriedPushes.push(mission.id);
     } catch {
@@ -136,33 +160,36 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   const lostCrewIds = summary.lostCrew;
   for (const crewId of lostCrewIds) {
     const missions = db
-      .prepare("SELECT id FROM missions WHERE crew_id = ? AND status = 'active'")
-      .all(crewId) as { id: number }[];
+      .prepare<
+        [string],
+        { id: number }
+      >("SELECT id FROM missions WHERE crew_id = ? AND status = 'active'")
+      .all(crewId);
 
     for (const mission of missions) {
-      db.prepare("UPDATE missions SET status = 'queued', crew_id = NULL, started_at = NULL WHERE id = ?").run(mission.id);
+      db.prepare(
+        "UPDATE missions SET status = 'queued', crew_id = NULL, started_at = NULL WHERE id = ?"
+      ).run(mission.id);
       summary.requeuedMissions.push(mission.id);
     }
   }
 
   // 9. Clean up errored crew whose worktrees are still on disk but mission is not push-pending
   const erroredCrew = db
-    .prepare(
+    .prepare<[], { id: string; worktree_path: string; sector_id: string }>(
       `SELECT c.id, c.worktree_path, c.sector_id
        FROM crew c
        WHERE c.status IN ('error', 'timeout')
-         AND c.worktree_path IS NOT NULL`,
+         AND c.worktree_path IS NOT NULL`
     )
-    .all() as { id: string; worktree_path: string; sector_id: string }[];
+    .all();
 
   for (const crew of erroredCrew) {
     if (!existsSync(crew.worktree_path)) continue;
 
     // Skip if there is a push-pending mission — worktree needed for push retry
     const hasPushPending = db
-      .prepare(
-        "SELECT 1 FROM missions WHERE crew_id = ? AND status = 'push-pending' LIMIT 1",
-      )
+      .prepare("SELECT 1 FROM missions WHERE crew_id = ? AND status = 'push-pending' LIMIT 1")
       .get(crew.id);
     if (hasPushPending) continue;
 
@@ -170,7 +197,9 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
       rmSync(crew.worktree_path, { recursive: true, force: true });
       summary.cleanedErroredCrew.push(crew.id);
     } catch {
-      console.error(`[reconciliation] Failed to remove errored crew worktree: ${crew.worktree_path}`);
+      console.error(
+        `[reconciliation] Failed to remove errored crew worktree: ${crew.worktree_path}`
+      );
     }
   }
 

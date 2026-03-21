@@ -1,11 +1,4 @@
-import {
-  FileCode2,
-  FileImage,
-  FileJson,
-  FileText,
-  File,
-  type LucideIcon,
-} from 'lucide-react';
+import { FileCode2, FileImage, FileJson, FileText, File, type LucideIcon } from 'lucide-react';
 
 const ICON_MAP: Record<string, LucideIcon> = {
   // Code
@@ -51,7 +44,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   '.webp': FileImage,
   '.svg': FileImage,
   '.ico': FileImage,
-  '.bmp': FileImage,
+  '.bmp': FileImage
 };
 
 /** Returns a sized lucide icon for a given filename. */

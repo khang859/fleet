@@ -1,305 +1,629 @@
-import { dirname, join, basename, resolve } from 'node:path'
-import { appendFileSync, mkdirSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
-import type { RuntimeBootstrapArgs, RuntimeEvent } from '../shared/starbase-runtime'
-import { EventBus } from './event-bus'
-import { StarbaseDB } from './starbase/db'
-import { SectorService } from './starbase/sector-service'
-import { ConfigService } from './starbase/config-service'
-import { MissionService } from './starbase/mission-service'
-import { WorktreeManager } from './starbase/worktree-manager'
-import { CrewService } from './starbase/crew-service'
-import { CommsService } from './starbase/comms-service'
-import { runReconciliation } from './starbase/reconciliation'
-import { FirstOfficer } from './starbase/first-officer'
-import { Navigator } from './starbase/navigator'
-import { Lockfile } from './starbase/lockfile'
-import { SupplyRouteService } from './starbase/supply-route-service'
-import { CargoService } from './starbase/cargo-service'
-import { RetentionService } from './starbase/retention-service'
-import { ProtocolService } from './starbase/protocol-service'
-import { ShipsLog } from './starbase/ships-log'
-import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
+import { dirname, join, basename, resolve } from 'node:path';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
+import type { RuntimeBootstrapArgs, RuntimeEvent } from '../shared/starbase-runtime';
+import { EventBus } from './event-bus';
+import { StarbaseDB } from './starbase/db';
+import { SectorService } from './starbase/sector-service';
+import { ConfigService } from './starbase/config-service';
+import { MissionService } from './starbase/mission-service';
+import { WorktreeManager } from './starbase/worktree-manager';
+import { CrewService } from './starbase/crew-service';
+import { CommsService } from './starbase/comms-service';
+import { runReconciliation } from './starbase/reconciliation';
+import { FirstOfficer } from './starbase/first-officer';
+import { Navigator } from './starbase/navigator';
+import { Lockfile } from './starbase/lockfile';
+import { SupplyRouteService } from './starbase/supply-route-service';
+import { CargoService } from './starbase/cargo-service';
+import { RetentionService } from './starbase/retention-service';
+import { ProtocolService } from './starbase/protocol-service';
+import { ShipsLog } from './starbase/ships-log';
+import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
+import { CodedError, toError } from './errors';
 
-type RuntimeDeps = {
-  starbaseDb: StarbaseDB
-  sectorService: SectorService
-  configService: ConfigService
-  missionService: MissionService
-  crewService: CrewService
-  commsService: CommsService
-  supplyRouteService: SupplyRouteService
-  cargoService: CargoService
-  retentionService: RetentionService
-  protocolService: ProtocolService
-  shipsLog: ShipsLog
-  firstOfficer: FirstOfficer
-  navigator: Navigator
-  lockfile: Lockfile | null
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
-const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log'
+function toStringRecord(r: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (typeof v === 'string') result[k] = v;
+  }
+  return result;
+}
+
+type RuntimeDeps = {
+  starbaseDb: StarbaseDB;
+  sectorService: SectorService;
+  configService: ConfigService;
+  missionService: MissionService;
+  crewService: CrewService;
+  commsService: CommsService;
+  supplyRouteService: SupplyRouteService;
+  cargoService: CargoService;
+  retentionService: RetentionService;
+  protocolService: ProtocolService;
+  shipsLog: ShipsLog;
+  firstOfficer: FirstOfficer;
+  navigator: Navigator;
+  lockfile: Lockfile | null;
+};
+
+const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log';
 
 function trace(message: string, extra?: unknown): void {
-  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`
+  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`;
   try {
     appendFileSync(
       RUNTIME_TRACE_FILE,
       `[${new Date().toISOString()} pid=${process.pid}] core ${message}${suffix}\n`,
       'utf8'
-    )
+    );
   } catch {
     // Ignore trace write failures.
   }
 }
 
 export class StarbaseRuntimeCore {
-  private deps: RuntimeDeps | null = null
-  private eventBus = new EventBus()
-  private snapshotTimer: ReturnType<typeof setTimeout> | null = null
-  private status: StarbaseRuntimeStatus = { state: 'starting' }
-  private emitEvent: ((event: RuntimeEvent) => void) | null = null
-  private workspacePath = ''
+  private deps: RuntimeDeps | null = null;
+  private eventBus = new EventBus();
+  private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+  private status: StarbaseRuntimeStatus = { state: 'starting' };
+  private emitEvent: ((event: RuntimeEvent) => void) | null = null;
+  private workspacePath = '';
 
   setEventSink(emitEvent: (event: RuntimeEvent) => void): void {
-    this.emitEvent = emitEvent
+    this.emitEvent = emitEvent;
   }
 
   getStatus(): StarbaseRuntimeStatus {
-    return this.status
+    return this.status;
   }
 
   async invoke(method: string, args?: unknown): Promise<unknown> {
-    trace('invoke', { method })
+    trace('invoke', { method });
     switch (method) {
-      case 'runtime.bootstrap':
-        return this.bootstrap(args as RuntimeBootstrapArgs)
+      case 'runtime.bootstrap': {
+        if (!isRecord(args))
+          throw new CodedError('bootstrap args must be an object', 'BAD_REQUEST');
+        if (typeof args.workspacePath !== 'string')
+          throw new CodedError('workspacePath required', 'BAD_REQUEST');
+        if (typeof args.fleetBinPath !== 'string')
+          throw new CodedError('fleetBinPath required', 'BAD_REQUEST');
+        if (!isRecord(args.env)) throw new CodedError('env required', 'BAD_REQUEST');
+        return this.bootstrap({
+          workspacePath: args.workspacePath,
+          fleetBinPath: args.fleetBinPath,
+          env: toStringRecord(args.env)
+        });
+      }
       case 'runtime.getStatus':
-        return this.status
+        return this.status;
       case 'runtime.getAdmiralBootstrapData':
-        return this.getAdmiralBootstrapData()
+        return this.getAdmiralBootstrapData();
 
       case 'sector.listVisible':
-        return this.requireDeps().sectorService.listVisibleSectors()
-      case 'sector.get':
-        return this.requireDeps().sectorService.getSector(args as string)
-      case 'sector.add':
-        return this.requireDeps().sectorService.addSector(args as Parameters<SectorService['addSector']>[0])
-      case 'sector.remove':
-        return this.requireDeps().sectorService.removeSector(args as string)
+        return this.requireDeps().sectorService.listVisibleSectors();
+      case 'sector.get': {
+        if (typeof args !== 'string')
+          throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.getSector(args);
+      }
+      case 'sector.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.path !== 'string') throw new CodedError('path required', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.addSector({
+          path: args.path,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          description: typeof args.description === 'string' ? args.description : undefined,
+          baseBranch: typeof args.baseBranch === 'string' ? args.baseBranch : undefined,
+          mergeStrategy: typeof args.mergeStrategy === 'string' ? args.mergeStrategy : undefined
+        });
+      }
+      case 'sector.remove': {
+        if (typeof args !== 'string')
+          throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        this.requireDeps().sectorService.removeSector(args);
+        return;
+      }
       case 'sector.update': {
-        const { sectorId, fields } = args as { sectorId: string; fields: Record<string, unknown> }
-        return this.requireDeps().sectorService.updateSector(sectorId, fields)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const sectorId = args.sectorId;
+        const fields = args.fields;
+        if (typeof sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
+        this.requireDeps().sectorService.updateSector(sectorId, toStringRecord(fields));
+        return;
       }
 
-      case 'config.get':
-        return this.requireDeps().configService.get(args as string)
+      case 'config.get': {
+        if (typeof args !== 'string')
+          throw new CodedError('config key must be a string', 'BAD_REQUEST');
+        return this.requireDeps().configService.get(args);
+      }
       case 'config.getAll':
-        return this.requireDeps().configService.getAll()
+        return this.requireDeps().configService.getAll();
       case 'config.set': {
-        const { key, value } = args as { key: string; value: unknown }
-        return this.requireDeps().configService.set(key, value)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const key = args.key;
+        if (typeof key !== 'string') throw new CodedError('key required', 'BAD_REQUEST');
+        this.requireDeps().configService.set(key, args.value);
+        return;
       }
 
-      case 'mission.add':
-        return this.requireDeps().missionService.addMission(args as Parameters<MissionService['addMission']>[0])
-      case 'mission.list':
-        return this.requireDeps().missionService.listMissions(args as Parameters<MissionService['listMissions']>[0])
-      case 'mission.get':
-        return this.requireDeps().missionService.getMission(args as number)
+      case 'mission.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string')
+          throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (typeof args.summary !== 'string')
+          throw new CodedError('summary required', 'BAD_REQUEST');
+        if (typeof args.prompt !== 'string') throw new CodedError('prompt required', 'BAD_REQUEST');
+        return this.requireDeps().missionService.addMission({
+          sectorId: args.sectorId,
+          summary: args.summary,
+          prompt: args.prompt,
+          acceptanceCriteria:
+            typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
+          priority: typeof args.priority === 'number' ? args.priority : undefined,
+          dependsOnMissionIds: Array.isArray(args.dependsOnMissionIds)
+            ? args.dependsOnMissionIds.filter((v): v is number => typeof v === 'number')
+            : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          prBranch: typeof args.prBranch === 'string' ? args.prBranch : undefined
+        });
+      }
+      case 'mission.list': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args)
+          ? {
+              sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+              status: typeof args.status === 'string' ? args.status : undefined
+            }
+          : undefined;
+        return this.requireDeps().missionService.listMissions(filter);
+      }
+      case 'mission.get': {
+        if (typeof args !== 'number')
+          throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.getMission(args);
+      }
       case 'mission.update': {
-        const { missionId, fields } = args as { missionId: number; fields: Record<string, string> }
-        return this.requireDeps().missionService.updateMission(missionId, fields)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const fields = args.fields;
+        if (typeof missionId !== 'number')
+          throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
+        this.requireDeps().missionService.updateMission(missionId, toStringRecord(fields));
+        return;
       }
       case 'mission.setStatus': {
-        const { missionId, status } = args as { missionId: number; status: string }
-        return this.requireDeps().missionService.setStatus(missionId, status)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const status = args.status;
+        if (typeof missionId !== 'number')
+          throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (typeof status !== 'string') throw new CodedError('status required', 'BAD_REQUEST');
+        this.requireDeps().missionService.setStatus(missionId, status);
+        return;
       }
-      case 'mission.resetForRequeue':
-        return this.requireDeps().missionService.resetForRequeue(args as number)
-      case 'mission.abort':
-        return this.requireDeps().missionService.abortMission(args as number)
+      case 'mission.resetForRequeue': {
+        if (typeof args !== 'number')
+          throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        this.requireDeps().missionService.resetForRequeue(args);
+        return;
+      }
+      case 'mission.abort': {
+        if (typeof args !== 'number')
+          throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        this.requireDeps().missionService.abortMission(args);
+        return;
+      }
       case 'mission.setReviewVerdict': {
-        const { missionId, verdict, notes } = args as { missionId: number; verdict: string; notes: string }
-        return this.requireDeps().missionService.setReviewVerdict(missionId, verdict, notes)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const verdict = args.verdict;
+        const notes = args.notes;
+        if (typeof missionId !== 'number')
+          throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (typeof verdict !== 'string') throw new CodedError('verdict required', 'BAD_REQUEST');
+        if (typeof notes !== 'string') throw new CodedError('notes required', 'BAD_REQUEST');
+        this.requireDeps().missionService.setReviewVerdict(missionId, verdict, notes);
+        return;
       }
-      case 'mission.getDependencies':
-        return this.requireDeps().missionService.getDependencies(args as number)
+      case 'mission.getDependencies': {
+        if (typeof args !== 'number')
+          throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.getDependencies(args);
+      }
 
-      case 'crew.deploy':
-        return this.requireDeps().crewService.deployCrew(args as Parameters<CrewService['deployCrew']>[0])
-      case 'crew.recall':
-        return this.requireDeps().crewService.recallCrew(args as string)
-      case 'crew.list':
-        return this.requireDeps().crewService.listCrew(args as Parameters<CrewService['listCrew']>[0])
-      case 'crew.status':
-        return this.requireDeps().crewService.getCrewStatus(args as string)
-      case 'crew.observe':
-        return this.requireDeps().crewService.observeCrew(args as string)
+      case 'crew.deploy': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string')
+          throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (typeof args.prompt !== 'string') throw new CodedError('prompt required', 'BAD_REQUEST');
+        if (typeof args.missionId !== 'number')
+          throw new CodedError('missionId required', 'BAD_REQUEST');
+        return this.requireDeps().crewService.deployCrew({
+          sectorId: args.sectorId,
+          prompt: args.prompt,
+          missionId: args.missionId,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          prBranch: typeof args.prBranch === 'string' ? args.prBranch : undefined
+        });
+      }
+      case 'crew.recall': {
+        if (typeof args !== 'string')
+          throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        this.requireDeps().crewService.recallCrew(args);
+        return;
+      }
+      case 'crew.list': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args)
+          ? {
+              sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined
+            }
+          : undefined;
+        return this.requireDeps().crewService.listCrew(filter);
+      }
+      case 'crew.status': {
+        if (typeof args !== 'string')
+          throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().crewService.getCrewStatus(args);
+      }
+      case 'crew.observe': {
+        if (typeof args !== 'string')
+          throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().crewService.observeCrew(args);
+      }
       case 'crew.message': {
-        const { crewId, message } = args as { crewId: string; message: string }
-        return this.requireDeps().crewService.messageCrew(crewId, message)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const crewId = args.crewId;
+        const message = args.message;
+        if (typeof crewId !== 'string') throw new CodedError('crewId required', 'BAD_REQUEST');
+        if (typeof message !== 'string') throw new CodedError('message required', 'BAD_REQUEST');
+        return this.requireDeps().crewService.messageCrew(crewId, message);
       }
 
-      case 'comms.getUnread':
-        return this.requireDeps().commsService.getUnread(args as string)
-      case 'comms.getUnreadByExecution':
-        return this.requireDeps().commsService.getUnreadByExecution(args as string)
-      case 'comms.getRecent':
-        return this.requireDeps().commsService.getRecent(args as Parameters<CommsService['getRecent']>[0])
-      case 'comms.markRead':
-        return this.requireDeps().commsService.markRead(args as number)
+      case 'comms.getUnread': {
+        if (typeof args !== 'string')
+          throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getUnread(args);
+      }
+      case 'comms.getUnreadByExecution': {
+        if (typeof args !== 'string')
+          throw new CodedError('execution ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getUnreadByExecution(args);
+      }
+      case 'comms.getRecent': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args)
+          ? {
+              crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+              limit: typeof args.limit === 'number' ? args.limit : undefined,
+              type: typeof args.type === 'string' ? args.type : undefined,
+              from: typeof args.from === 'string' ? args.from : undefined,
+              unread: typeof args.unread === 'boolean' ? args.unread : undefined
+            }
+          : undefined;
+        return this.requireDeps().commsService.getRecent(opts);
+      }
+      case 'comms.markRead': {
+        if (typeof args !== 'number')
+          throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.markRead(args);
+      }
       case 'comms.resolve': {
-        const { id, response } = args as { id: number; response: string }
-        return this.requireDeps().commsService.resolve(id, response)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const response = args.response;
+        if (typeof id !== 'number') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof response !== 'string') throw new CodedError('response required', 'BAD_REQUEST');
+        return this.requireDeps().commsService.resolve(id, response);
       }
-      case 'comms.delete':
-        return this.requireDeps().commsService.delete(args as number)
-      case 'comms.markAllRead':
-        return this.requireDeps().commsService.markAllRead(args as Parameters<CommsService['markAllRead']>[0])
-      case 'comms.clear':
-        return this.requireDeps().commsService.clear(args as Parameters<CommsService['clear']>[0])
-      case 'comms.getTransmission':
-        return this.requireDeps().commsService.getTransmission(args as number)
-      case 'comms.send':
-        return this.requireDeps().commsService.send(args as Parameters<CommsService['send']>[0])
+      case 'comms.delete': {
+        if (typeof args !== 'number')
+          throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.delete(args);
+      }
+      case 'comms.markAllRead': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args)
+          ? {
+              crewId: typeof args.crewId === 'string' ? args.crewId : undefined
+            }
+          : undefined;
+        return this.requireDeps().commsService.markAllRead(opts);
+      }
+      case 'comms.clear': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args)
+          ? {
+              crewId: typeof args.crewId === 'string' ? args.crewId : undefined
+            }
+          : undefined;
+        return this.requireDeps().commsService.clear(opts);
+      }
+      case 'comms.getTransmission': {
+        if (typeof args !== 'number')
+          throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getTransmission(args);
+      }
+      case 'comms.send': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.from !== 'string') throw new CodedError('from required', 'BAD_REQUEST');
+        if (typeof args.to !== 'string') throw new CodedError('to required', 'BAD_REQUEST');
+        if (typeof args.type !== 'string') throw new CodedError('type required', 'BAD_REQUEST');
+        if (typeof args.payload !== 'string')
+          throw new CodedError('payload required', 'BAD_REQUEST');
+        return this.requireDeps().commsService.send({
+          from: args.from,
+          to: args.to,
+          type: args.type,
+          payload: args.payload,
+          threadId: typeof args.threadId === 'string' ? args.threadId : undefined,
+          inReplyTo: typeof args.inReplyTo === 'number' ? args.inReplyTo : undefined,
+          missionId: typeof args.missionId === 'number' ? args.missionId : undefined,
+          executionId: typeof args.executionId === 'string' ? args.executionId : undefined
+        });
+      }
 
-      case 'supplyRoute.list':
-        return this.requireDeps().supplyRouteService.listRoutes(args as Parameters<SupplyRouteService['listRoutes']>[0])
-      case 'supplyRoute.add':
-        return this.requireDeps().supplyRouteService.addRoute(args as Parameters<SupplyRouteService['addRoute']>[0])
-      case 'supplyRoute.remove':
-        return this.requireDeps().supplyRouteService.removeRoute(args as number)
+      case 'supplyRoute.list': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args)
+          ? {
+              sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined
+            }
+          : undefined;
+        return this.requireDeps().supplyRouteService.listRoutes(opts);
+      }
+      case 'supplyRoute.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.upstreamSectorId !== 'string')
+          throw new CodedError('upstreamSectorId required', 'BAD_REQUEST');
+        if (typeof args.downstreamSectorId !== 'string')
+          throw new CodedError('downstreamSectorId required', 'BAD_REQUEST');
+        return this.requireDeps().supplyRouteService.addRoute({
+          upstreamSectorId: args.upstreamSectorId,
+          downstreamSectorId: args.downstreamSectorId,
+          relationship: typeof args.relationship === 'string' ? args.relationship : undefined
+        });
+      }
+      case 'supplyRoute.remove': {
+        if (typeof args !== 'number')
+          throw new CodedError('route ID must be a number', 'BAD_REQUEST');
+        this.requireDeps().supplyRouteService.removeRoute(args);
+        return;
+      }
       case 'supplyRoute.graph':
-        return this.requireDeps().supplyRouteService.getGraph()
+        return this.requireDeps().supplyRouteService.getGraph();
 
-      case 'cargo.list':
-        return this.requireDeps().cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0])
-      case 'cargo.get':
-        return this.requireDeps().cargoService.getCargo(args as number)
-      case 'cargo.produce':
-        return this.requireDeps().cargoService.produceCargo(args as Parameters<CargoService['produceCargo']>[0])
-      case 'cargo.getUndelivered':
-        return this.requireDeps().cargoService.getUndelivered(args as string)
+      case 'cargo.list': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args)
+          ? {
+              sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+              crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+              type: typeof args.type === 'string' ? args.type : undefined,
+              verified: typeof args.verified === 'boolean' ? args.verified : undefined
+            }
+          : undefined;
+        return this.requireDeps().cargoService.listCargo(filter);
+      }
+      case 'cargo.get': {
+        if (typeof args !== 'number')
+          throw new CodedError('cargo ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.getCargo(args);
+      }
+      case 'cargo.produce': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string')
+          throw new CodedError('sectorId required', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.produceCargo({
+          sectorId: args.sectorId,
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          missionId: typeof args.missionId === 'number' ? args.missionId : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          manifest: typeof args.manifest === 'string' ? args.manifest : undefined
+        });
+      }
+      case 'cargo.getUndelivered': {
+        if (typeof args !== 'string')
+          throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.getUndelivered(args);
+      }
 
       case 'retention.stats':
-        return this.requireDeps().retentionService.getStats()
+        return this.requireDeps().retentionService.getStats();
       case 'retention.cleanup':
-        return this.requireDeps().retentionService.cleanup()
-      case 'retention.vacuum':
-        return this.requireDeps().retentionService.vacuum()
+        return this.requireDeps().retentionService.cleanup();
+      case 'retention.vacuum': {
+        this.requireDeps().retentionService.vacuum();
+        return;
+      }
 
-      case 'shipsLog.query':
-        return this.requireDeps().shipsLog.query(args as Parameters<ShipsLog['query']>[0])
+      case 'shipsLog.query': {
+        if (args != null && !isRecord(args))
+          throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args)
+          ? {
+              crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+              eventType: typeof args.eventType === 'string' ? args.eventType : undefined,
+              since: typeof args.since === 'string' ? args.since : undefined,
+              limit: typeof args.limit === 'number' ? args.limit : undefined
+            }
+          : {};
+        return this.requireDeps().shipsLog.query(opts);
+      }
       case 'shipsLog.combined': {
-        const limit = (args as { limit?: number } | undefined)?.limit ?? 200
-        return this.requireDeps().starbaseDb
-          .getDb()
-          .prepare(`
+        const limit = isRecord(args) && typeof args.limit === 'number' ? args.limit : 200;
+        return this.requireDeps()
+          .starbaseDb.getDb()
+          .prepare(
+            `
             SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp
             FROM ships_log
             UNION ALL
             SELECT 'comms', id, from_crew, to_crew, type, payload, created_at
             FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
             ORDER BY timestamp ASC LIMIT ?
-          `)
-          .all(limit)
+          `
+          )
+          .all(limit);
       }
 
       case 'protocol.list':
-        return this.requireDeps().protocolService.listProtocols()
-      case 'protocol.getBySlug':
-        return this.requireDeps().protocolService.getProtocolBySlug(args as string)
-      case 'protocol.listSteps':
-        return this.requireDeps().protocolService.listSteps(args as string)
-      case 'protocol.setEnabled': {
-        const { slug, enabled } = args as { slug: string; enabled: boolean }
-        return this.requireDeps().protocolService.setProtocolEnabled(slug, enabled)
+        return this.requireDeps().protocolService.listProtocols();
+      case 'protocol.getBySlug': {
+        if (typeof args !== 'string') throw new CodedError('slug must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.getProtocolBySlug(args);
       }
-      case 'protocol.listExecutions':
-        return this.requireDeps().protocolService.listExecutions(args as string | undefined)
-      case 'protocol.getExecution':
-        return this.requireDeps().protocolService.getExecution(args as string)
+      case 'protocol.listSteps': {
+        if (typeof args !== 'string')
+          throw new CodedError('protocol ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.listSteps(args);
+      }
+      case 'protocol.setEnabled': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const slug = args.slug;
+        const enabled = args.enabled;
+        if (typeof slug !== 'string') throw new CodedError('slug required', 'BAD_REQUEST');
+        if (typeof enabled !== 'boolean') throw new CodedError('enabled required', 'BAD_REQUEST');
+        this.requireDeps().protocolService.setProtocolEnabled(slug, enabled);
+        return;
+      }
+      case 'protocol.listExecutions': {
+        if (args != null && typeof args !== 'string')
+          throw new CodedError('status filter must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.listExecutions(args ?? undefined);
+      }
+      case 'protocol.getExecution': {
+        if (typeof args !== 'string')
+          throw new CodedError('execution ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.getExecution(args);
+      }
       case 'protocol.advanceStep': {
-        const { id, step } = args as { id: string; step: number }
-        return this.requireDeps().protocolService.advanceStep(id, step)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const step = args.step;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof step !== 'number') throw new CodedError('step required', 'BAD_REQUEST');
+        this.requireDeps().protocolService.advanceStep(id, step);
+        return;
       }
       case 'protocol.updateExecutionStatus': {
-        const { id, status } = args as { id: string; status: string }
-        return this.requireDeps().protocolService.updateExecutionStatus(id, status)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const status = args.status;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof status !== 'string') throw new CodedError('status required', 'BAD_REQUEST');
+        this.requireDeps().protocolService.updateExecutionStatus(id, status);
+        return;
       }
       case 'protocol.updateExecutionContext': {
-        const { id, context } = args as { id: string; context: string }
-        return this.requireDeps().protocolService.updateExecutionContext(id, context)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const context = args.context;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof context !== 'string') throw new CodedError('context required', 'BAD_REQUEST');
+        this.requireDeps().protocolService.updateExecutionContext(id, context);
+        return;
       }
 
       case 'memo.list':
-        return this.listMemos()
-      case 'memo.read':
-        return this.markMemoRead(args as number)
-      case 'memo.dismiss':
-        return this.dismissMemo(args as number)
-      case 'memo.content':
-        return this.getMemoContent(args as string)
+        return this.listMemos();
+      case 'memo.read': {
+        if (typeof args !== 'number')
+          throw new CodedError('memo ID must be a number', 'BAD_REQUEST');
+        this.markMemoRead(args);
+        return;
+      }
+      case 'memo.dismiss': {
+        if (typeof args !== 'number')
+          throw new CodedError('memo ID must be a number', 'BAD_REQUEST');
+        this.dismissMemo(args);
+        return;
+      }
+      case 'memo.content': {
+        if (typeof args !== 'string')
+          throw new CodedError('file path must be a string', 'BAD_REQUEST');
+        return this.getMemoContent(args);
+      }
 
       case 'starbase.snapshot':
-        return this.buildSnapshot()
+        return this.buildSnapshot();
       case 'starbase.logEntry':
-        return this.getRecentLogEntry()
+        return this.getRecentLogEntry();
 
       default: {
-        const error = new Error(`Unknown runtime method: ${method}`) as Error & { code?: string }
-        error.code = 'NOT_FOUND'
-        throw error
+        throw new CodedError(`Unknown runtime method: ${method}`, 'NOT_FOUND');
       }
     }
   }
 
   private async bootstrap(args: RuntimeBootstrapArgs): Promise<void> {
     if (this.deps) {
-      trace('bootstrap skipped: already initialized')
-      return
+      trace('bootstrap skipped: already initialized');
+      return;
     }
 
-    this.setStatus({ state: 'starting' })
-    this.workspacePath = args.workspacePath
+    this.setStatus({ state: 'starting' });
+    this.workspacePath = args.workspacePath;
     trace('bootstrap start', {
       workspacePath: args.workspacePath,
       fleetBinPath: args.fleetBinPath,
-      envKeys: Object.keys(args.env).length,
-    })
+      envKeys: Object.keys(args.env).length
+    });
 
-    let localStarbaseDb: StarbaseDB | null = null
-    let localLockfile: Lockfile | null = null
+    let localStarbaseDb: StarbaseDB | null = null;
+    let localLockfile: Lockfile | null = null;
 
     try {
-      trace('bootstrap creating db')
-      localStarbaseDb = new StarbaseDB(args.workspacePath)
-      localStarbaseDb.open()
+      trace('bootstrap creating db');
+      localStarbaseDb = new StarbaseDB(args.workspacePath);
+      localStarbaseDb.open();
       trace('bootstrap db opened', {
         dbPath: localStarbaseDb.getDbPath(),
-        starbaseId: localStarbaseDb.getStarbaseId(),
-      })
+        starbaseId: localStarbaseDb.getStarbaseId()
+      });
 
-      const sectorService = new SectorService(localStarbaseDb.getDb(), args.workspacePath, this.eventBus)
-      trace('bootstrap sectorService ready')
-      const configService = new ConfigService(localStarbaseDb.getDb())
-      trace('bootstrap configService ready')
-      const supplyRouteService = new SupplyRouteService(localStarbaseDb.getDb())
-      const cargoService = new CargoService(localStarbaseDb.getDb(), supplyRouteService, configService)
+      const sectorService = new SectorService(
+        localStarbaseDb.getDb(),
+        args.workspacePath,
+        this.eventBus
+      );
+      trace('bootstrap sectorService ready');
+      const configService = new ConfigService(localStarbaseDb.getDb());
+      trace('bootstrap configService ready');
+      const supplyRouteService = new SupplyRouteService(localStarbaseDb.getDb());
+      const cargoService = new CargoService(
+        localStarbaseDb.getDb(),
+        supplyRouteService,
+        configService
+      );
       const retentionService = new RetentionService(
         localStarbaseDb.getDb(),
         configService,
         localStarbaseDb.getDbPath()
-      )
-      const missionService = new MissionService(localStarbaseDb.getDb(), this.eventBus)
-      trace('bootstrap mission/cargo/retention ready')
+      );
+      const missionService = new MissionService(localStarbaseDb.getDb(), this.eventBus);
+      trace('bootstrap mission/cargo/retention ready');
 
-      const worktreeBasePath = join(dirname(localStarbaseDb.getDbPath()), 'worktrees')
-      const worktreeManager = new WorktreeManager(worktreeBasePath)
-      const maxConcurrent = configService.get('max_concurrent_worktrees') as number
-      worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent)
-      trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent })
+      const worktreeBasePath = join(dirname(localStarbaseDb.getDbPath()), 'worktrees');
+      const worktreeManager = new WorktreeManager(worktreeBasePath);
+      const maxConcurrent = configService.getNumber('max_concurrent_worktrees');
+      worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent);
+      trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent });
 
       const crewService = new CrewService({
         db: localStarbaseDb.getDb(),
@@ -309,15 +633,15 @@ export class StarbaseRuntimeCore {
         configService,
         worktreeManager,
         eventBus: this.eventBus,
-        crewEnv: args.env,
-      })
-      trace('bootstrap crewService ready')
+        crewEnv: args.env
+      });
+      trace('bootstrap crewService ready');
 
-      const commsService = new CommsService(localStarbaseDb.getDb(), this.eventBus)
-      commsService.setRateLimit(configService.get('comms_rate_limit_per_min') as number)
-      trace('bootstrap commsService ready')
+      const commsService = new CommsService(localStarbaseDb.getDb(), this.eventBus);
+      commsService.setRateLimit(configService.getNumber('comms_rate_limit_per_min'));
+      trace('bootstrap commsService ready');
 
-      const protocolService = new ProtocolService(localStarbaseDb.getDb())
+      const protocolService = new ProtocolService(localStarbaseDb.getDb());
       const firstOfficer = new FirstOfficer({
         db: localStarbaseDb.getDb(),
         configService,
@@ -327,36 +651,36 @@ export class StarbaseRuntimeCore {
         eventBus: this.eventBus,
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
-        fleetBinDir: args.fleetBinPath,
-      })
-      trace('bootstrap firstOfficer ready')
+        fleetBinDir: args.fleetBinPath
+      });
+      trace('bootstrap firstOfficer ready');
       const navigator = new Navigator({
         db: localStarbaseDb.getDb(),
         configService,
         eventBus: this.eventBus,
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
-        fleetBinDir: args.fleetBinPath,
-      })
-      const shipsLog = new ShipsLog(localStarbaseDb.getDb())
-      trace('bootstrap navigator/shipsLog ready')
+        fleetBinDir: args.fleetBinPath
+      });
+      const shipsLog = new ShipsLog(localStarbaseDb.getDb());
+      trace('bootstrap navigator/shipsLog ready');
 
-      const basePath = dirname(localStarbaseDb.getDbPath())
-      localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId())
-      const lockResult = localLockfile.acquire()
-      trace('bootstrap lock result', { lockResult, basePath })
+      const basePath = dirname(localStarbaseDb.getDbPath());
+      localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId());
+      const lockResult = localLockfile.acquire();
+      trace('bootstrap lock result', { lockResult, basePath });
       if (lockResult === 'acquired') {
-        trace('bootstrap reconciliation start')
+        trace('bootstrap reconciliation start');
         await runReconciliation({
           db: localStarbaseDb.getDb(),
           starbaseId: localStarbaseDb.getStarbaseId(),
-          worktreeBasePath,
-        })
-        trace('bootstrap reconciliation finished')
-        firstOfficer.reconcile()
-        trace('bootstrap firstOfficer reconciled')
-        navigator.reconcile()
-        trace('bootstrap navigator reconciled')
+          worktreeBasePath
+        });
+        trace('bootstrap reconciliation finished');
+        firstOfficer.reconcile();
+        trace('bootstrap firstOfficer reconciled');
+        navigator.reconcile();
+        trace('bootstrap navigator reconciled');
         mkdirSync(
           join(
             process.env.HOME ?? '~',
@@ -367,8 +691,8 @@ export class StarbaseRuntimeCore {
             'memos'
           ),
           { recursive: true }
-        )
-        trace('bootstrap memos dir ensured')
+        );
+        trace('bootstrap memos dir ensured');
       }
 
       this.deps = {
@@ -385,65 +709,65 @@ export class StarbaseRuntimeCore {
         shipsLog,
         firstOfficer,
         navigator,
-        lockfile: localLockfile,
-      }
-      trace('bootstrap deps assigned')
+        lockfile: localLockfile
+      };
+      trace('bootstrap deps assigned');
 
       this.eventBus.on('starbase-changed', () => {
-        this.scheduleSnapshot()
-      })
-      trace('bootstrap eventBus subscribed')
-      this.scheduleSnapshot()
-      trace('bootstrap initial snapshot scheduled')
-      this.setStatus({ state: 'ready' })
-      trace('bootstrap completed')
+        this.scheduleSnapshot();
+      });
+      trace('bootstrap eventBus subscribed');
+      this.scheduleSnapshot();
+      trace('bootstrap initial snapshot scheduled');
+      this.setStatus({ state: 'ready' });
+      trace('bootstrap completed');
     } catch (error) {
-      const err = error as Error
-      trace('bootstrap failed', { message: err.message, stack: err.stack })
+      const err = toError(error);
+      trace('bootstrap failed', { message: err.message, stack: err.stack });
       try {
-        localLockfile?.release()
+        localLockfile?.release();
       } catch {
         // Ignore cleanup errors.
       }
       try {
-        localStarbaseDb?.close()
+        localStarbaseDb?.close();
       } catch {
         // Ignore cleanup errors.
       }
-      const message = error instanceof Error ? error.message : String(error)
-      this.setStatus({ state: 'error', error: message })
-      throw error
+      const message = error instanceof Error ? error.message : String(error);
+      this.setStatus({ state: 'error', error: message });
+      throw error;
     }
   }
 
   private requireDeps(): RuntimeDeps {
     if (!this.deps) {
-      throw new Error('Starbase runtime not ready')
+      throw new Error('Starbase runtime not ready');
     }
-    return this.deps
+    return this.deps;
   }
 
   private setStatus(status: StarbaseRuntimeStatus): void {
-    this.status = status
-    this.emitEvent?.({ event: 'runtime.status', payload: status })
+    this.status = status;
+    this.emitEvent?.({ event: 'runtime.status', payload: status });
   }
 
   private scheduleSnapshot(): void {
-    if (this.snapshotTimer) return
+    if (this.snapshotTimer) return;
     this.snapshotTimer = setTimeout(() => {
-      this.snapshotTimer = null
-      const snapshot = this.buildSnapshot()
-      this.emitEvent?.({ event: 'starbase.snapshot', payload: snapshot })
-      const recentEntry = this.getRecentLogEntry()
+      this.snapshotTimer = null;
+      const snapshot = this.buildSnapshot();
+      this.emitEvent?.({ event: 'starbase.snapshot', payload: snapshot });
+      const recentEntry = this.getRecentLogEntry();
       if (recentEntry) {
-        this.emitEvent?.({ event: 'starbase.log-entry', payload: recentEntry })
+        this.emitEvent?.({ event: 'starbase.log-entry', payload: recentEntry });
       }
-    }, 25)
+    }, 25);
   }
 
   private buildSnapshot(): unknown {
-    const deps = this.requireDeps()
-    const unreadComms = deps.commsService.getUnread('admiral')
+    const deps = this.requireDeps();
+    const unreadComms = deps.commsService.getUnread('admiral');
     return {
       crew: deps.crewService.listCrew(),
       missions: deps.missionService.listMissions(),
@@ -452,100 +776,111 @@ export class StarbaseRuntimeCore {
       firstOfficer: {
         status: deps.firstOfficer.getStatus(),
         statusText: deps.firstOfficer.getStatusText(),
-        unreadMemos: this.getUnreadMemoCount(),
-      },
-    }
+        unreadMemos: this.getUnreadMemoCount()
+      }
+    };
   }
 
   private getUnreadMemoCount(): number {
     return (
       this.requireDeps()
-        .starbaseDb
-        .getDb()
-        .prepare(
-          "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
-        )
-        .get() as { cnt: number }
-    ).cnt
+        .starbaseDb.getDb()
+        .prepare<
+          [],
+          { cnt: number }
+        >("SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0")
+        .get()?.cnt ?? 0
+    );
   }
 
   private getRecentLogEntry(): unknown {
     return this.requireDeps()
-      .starbaseDb
-      .getDb()
-      .prepare(`
+      .starbaseDb.getDb()
+      .prepare(
+        `
         SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp FROM ships_log
         UNION ALL
         SELECT 'comms', id, from_crew, to_crew, type, payload, created_at FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
         ORDER BY timestamp DESC LIMIT 1
-      `)
-      .get()
+      `
+      )
+      .get();
   }
 
   private getAdmiralBootstrapData(): {
-    starbaseId: string
-    starbaseName: string
-    sectors: Array<{ name: string; root_path: string; stack?: string; base_branch?: string }>
+    starbaseId: string;
+    starbaseName: string;
+    sectors: Array<{ name: string; root_path: string; stack?: string; base_branch?: string }>;
   } {
-    const deps = this.requireDeps()
+    const deps = this.requireDeps();
     return {
       starbaseId: deps.starbaseDb.getStarbaseId(),
       starbaseName:
-        (deps.configService.get('starbase_name') as string | undefined) ??
-        basename(this.workspacePath) ??
-        'Starbase',
+        deps.configService.getOptionalString('starbase_name') ?? basename(this.workspacePath),
       sectors: deps.sectorService.listVisibleSectors().map((sector) => ({
         name: sector.name,
         root_path: sector.root_path,
         stack: sector.stack ?? undefined,
-        base_branch: sector.base_branch ?? undefined,
-      })),
-    }
+        base_branch: sector.base_branch
+      }))
+    };
   }
 
   private listMemos(): unknown[] {
+    type MemoRow = {
+      id: number;
+      crew_id: string;
+      mission_id: number | null;
+      event_type: string;
+      payload: string | null;
+      read: number;
+      created_at: string;
+    };
     return this.requireDeps()
-      .starbaseDb
-      .getDb()
-      .prepare(
+      .starbaseDb.getDb()
+      .prepare<[], MemoRow>(
         "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
       )
       .all()
-      .map((row: any) => {
+      .map((r) => {
         try {
-          const payload = JSON.parse(row.payload ?? '{}') as { filePath?: string; summary?: string }
+          const rawPayload: unknown = JSON.parse(r.payload ?? '{}');
+          const payload =
+            rawPayload != null && typeof rawPayload === 'object'
+              ? (rawPayload as { filePath?: string; summary?: string })
+              : {};
           return {
-            ...row,
+            ...r,
             file_path: payload.filePath ?? '',
-            status: row.read ? 'read' : 'unread',
-            summary: payload.summary ?? '',
-          }
+            status: r.read ? 'read' : 'unread',
+            summary: payload.summary ?? ''
+          };
         } catch {
-          return { ...row, file_path: '', status: row.read ? 'read' : 'unread', summary: '' }
+          return { ...r, file_path: '', status: r.read ? 'read' : 'unread', summary: '' };
         }
-      })
+      });
   }
 
   private markMemoRead(id: number): void {
-    this.requireDeps().starbaseDb.getDb().prepare('UPDATE comms SET read = 1 WHERE id = ?').run(id)
-    this.eventBus.emit('starbase-changed', { type: 'starbase-changed' })
+    this.requireDeps().starbaseDb.getDb().prepare('UPDATE comms SET read = 1 WHERE id = ?').run(id);
+    this.eventBus.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   private dismissMemo(id: number): void {
-    this.requireDeps().starbaseDb.getDb().prepare('DELETE FROM comms WHERE id = ?').run(id)
-    this.eventBus.emit('starbase-changed', { type: 'starbase-changed' })
+    this.requireDeps().starbaseDb.getDb().prepare('DELETE FROM comms WHERE id = ?').run(id);
+    this.eventBus.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   private async getMemoContent(filePath: string): Promise<string | null> {
-    const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
-    const resolved = resolve(filePath)
+    const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases');
+    const resolved = resolve(filePath);
     if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
-      return null
+      return null;
     }
     try {
-      return await readFile(resolved, 'utf-8')
+      return await readFile(resolved, 'utf-8');
     } catch {
-      return null
+      return null;
     }
   }
 }

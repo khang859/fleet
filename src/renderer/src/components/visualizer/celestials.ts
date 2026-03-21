@@ -18,12 +18,16 @@ type CelestialBody = {
 const BODY_SPRITES: Record<BodyKind, { key: string; renderW: number; renderH: number }> = {
   'gas-giant': { key: 'celestial-gas-giant', renderW: 64, renderH: 64 },
   'rocky-world': { key: 'celestial-rocky-world', renderW: 64, renderH: 64 },
-  'moon': { key: 'celestial-moon', renderW: 32, renderH: 32 },
+  moon: { key: 'celestial-moon', renderW: 32, renderH: 32 }
 };
 
 const BODY_KINDS: BodyKind[] = ['gas-giant', 'rocky-world', 'moon'];
 
-function randomBody(canvasWidth: number, canvasHeight: number, startOnScreen: boolean): CelestialBody {
+function randomBody(
+  canvasWidth: number,
+  canvasHeight: number,
+  startOnScreen: boolean
+): CelestialBody {
   const kind = BODY_KINDS[Math.floor(Math.random() * BODY_KINDS.length)];
   const info = BODY_SPRITES[kind];
   const radius = info.renderW / 2;
@@ -38,7 +42,7 @@ function randomBody(canvasWidth: number, canvasHeight: number, startOnScreen: bo
     opacity: 0.08 + Math.random() * 0.07,
     animElapsed: Math.random() * 10000,
     radius,
-    hue: Math.floor(Math.random() * 360),
+    hue: Math.floor(Math.random() * 360)
   };
 }
 
@@ -62,7 +66,7 @@ export class CelestialBodies {
     active: false,
     spawnTimer: 0,
     nextSpawn: 30 + Math.random() * 30,
-    animElapsed: 0,
+    animElapsed: 0
   };
 
   update(deltaMs: number, canvasWidth: number, canvasHeight: number): void {
@@ -129,7 +133,7 @@ export class CelestialBodies {
           0,
           Math.round(body.x),
           Math.round(body.y),
-          body.radius,
+          body.radius
         );
         grad.addColorStop(0, `hsl(${body.hue}, 20%, 35%)`);
         grad.addColorStop(1, `hsl(${body.hue}, 15%, 15%)`);

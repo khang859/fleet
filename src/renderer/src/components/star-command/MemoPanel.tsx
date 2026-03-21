@@ -1,49 +1,49 @@
-import { useState, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import type { MemoInfo } from '../../store/star-command-store'
+import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { MemoInfo } from '../../store/star-command-store';
 
 type MemoPanelProps = {
-  onClose: () => void
-}
+  onClose: () => void;
+};
 
-export function MemoPanel({ onClose }: MemoPanelProps) {
-  const [memos, setMemos] = useState<MemoInfo[]>([])
-  const [selectedId, setSelectedId] = useState<number | null>(null)
-  const [content, setContent] = useState<string | null>(null)
+export function MemoPanel({ onClose }: MemoPanelProps): React.JSX.Element {
+  const [memos, setMemos] = useState<MemoInfo[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
-    loadMemos()
-  }, [])
+    void loadMemos();
+  }, []);
 
-  async function loadMemos() {
-    const list = await window.fleet.starbase.memoList() as MemoInfo[]
-    setMemos(list)
+  async function loadMemos(): Promise<void> {
+    const list = await window.fleet.starbase.memoList();
+    setMemos(list);
     if (list.length > 0 && !selectedId) {
-      selectMemo(list[0])
+      void selectMemo(list[0]);
     }
   }
 
-  async function selectMemo(memo: MemoInfo) {
-    setSelectedId(memo.id)
-    const text = await window.fleet.starbase.memoContent(memo.file_path) as string | null
-    setContent(text)
+  async function selectMemo(memo: MemoInfo): Promise<void> {
+    setSelectedId(memo.id);
+    const text = await window.fleet.starbase.memoContent(memo.file_path);
+    setContent(text);
     if (memo.status === 'unread') {
-      await window.fleet.starbase.memoRead(memo.id)
-      loadMemos()
+      await window.fleet.starbase.memoRead(memo.id);
+      void loadMemos();
     }
   }
 
-  async function dismissMemo(id: number) {
-    await window.fleet.starbase.memoDismiss(id)
-    loadMemos()
+  async function dismissMemo(id: number): Promise<void> {
+    await window.fleet.starbase.memoDismiss(id);
+    void loadMemos();
     if (selectedId === id) {
-      setSelectedId(null)
-      setContent(null)
+      setSelectedId(null);
+      setContent(null);
     }
   }
 
-  const activeMemos = memos
+  const activeMemos = memos;
 
   return (
     <div className="flex flex-col h-full bg-neutral-900">
@@ -52,10 +52,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         <h2 className="text-sm font-mono text-teal-400 uppercase tracking-widest">
           First Officer Memos
         </h2>
-        <button
-          onClick={onClose}
-          className="text-neutral-500 hover:text-neutral-300 text-sm"
-        >
+        <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 text-sm">
           Close
         </button>
       </div>
@@ -69,7 +66,9 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
             activeMemos.map((memo) => (
               <button
                 key={memo.id}
-                onClick={() => selectMemo(memo)}
+                onClick={() => {
+                  void selectMemo(memo);
+                }}
                 className={`w-full text-left px-3 py-2 border-b border-neutral-800 hover:bg-neutral-800 transition-colors ${
                   selectedId === memo.id ? 'bg-neutral-800' : ''
                 }`}
@@ -94,20 +93,18 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         <div className="flex-1 overflow-y-auto p-6">
           {content ? (
             <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           ) : (
-            <div className="text-xs text-neutral-500">
-              Select a memo to read
-            </div>
+            <div className="text-xs text-neutral-500">Select a memo to read</div>
           )}
 
           {selectedId && (
             <div className="mt-4 pt-4 border-t border-neutral-800">
               <button
-                onClick={() => dismissMemo(selectedId)}
+                onClick={() => {
+                  void dismissMemo(selectedId);
+                }}
                 className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-1 rounded border border-neutral-700 hover:border-neutral-600 transition-colors"
               >
                 Dismiss
@@ -117,5 +114,5 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

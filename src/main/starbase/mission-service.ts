@@ -1,48 +1,48 @@
-import type Database from 'better-sqlite3'
-import type { EventBus } from '../event-bus'
+import type Database from 'better-sqlite3';
+import type { EventBus } from '../event-bus';
 
 type MissionRow = {
-  id: number
-  sector_id: string
-  crew_id: string | null
-  summary: string
-  prompt: string
-  acceptance_criteria: string | null
-  status: string
-  type: string
-  priority: number
-  depends_on_mission_id: number | null
-  result: string | null
-  verify_result: string | null
-  review_verdict: string | null
-  review_notes: string | null
-  review_round: number
-  pr_branch: string | null
-  created_at: string
-  started_at: string | null
-  completed_at: string | null
-}
+  id: number;
+  sector_id: string;
+  crew_id: string | null;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  status: string;
+  type: string;
+  priority: number;
+  depends_on_mission_id: number | null;
+  result: string | null;
+  verify_result: string | null;
+  review_verdict: string | null;
+  review_notes: string | null;
+  review_round: number;
+  pr_branch: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
 
 type AddMissionOpts = {
-  sectorId: string
-  summary: string
-  prompt: string
-  acceptanceCriteria?: string
-  priority?: number
-  dependsOnMissionIds?: number[]
-  type?: string
-  prBranch?: string
-}
+  sectorId: string;
+  summary: string;
+  prompt: string;
+  acceptanceCriteria?: string;
+  priority?: number;
+  dependsOnMissionIds?: number[];
+  type?: string;
+  prBranch?: string;
+};
 
 type ListMissionsFilter = {
-  sectorId?: string
-  status?: string
-}
+  sectorId?: string;
+  status?: string;
+};
 
 export class MissionService {
   constructor(
     private db: Database.Database,
-    private eventBus?: EventBus,
+    private eventBus?: EventBus
   ) {}
 
   addMission(opts: AddMissionOpts): MissionRow {
@@ -60,20 +60,21 @@ export class MissionService {
         null,
         opts.type ?? 'code',
         opts.prBranch ?? null
-      )
+      );
 
-    const mission = this.getMission(result.lastInsertRowid as number)!
+    const mission = this.getMission(Number(result.lastInsertRowid));
+    if (!mission) throw new Error('Failed to retrieve inserted mission');
 
     for (const depId of opts.dependsOnMissionIds ?? []) {
       this.db
         .prepare(
           'INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id) VALUES (?, ?)'
         )
-        .run(result.lastInsertRowid, depId)
+        .run(result.lastInsertRowid, depId);
     }
 
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-    return mission
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    return mission;
   }
 
   completeMission(missionId: number, result: string): void {
@@ -81,8 +82,8 @@ export class MissionService {
       .prepare(
         "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
-      .run(result, missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(result, missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   failMission(missionId: number, reason: string): void {
@@ -90,15 +91,15 @@ export class MissionService {
       .prepare(
         "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
-      .run(reason, missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(reason, missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   abortMission(missionId: number): void {
     this.db
       .prepare("UPDATE missions SET status = 'aborted' WHERE id = ? AND status = 'queued'")
-      .run(missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   activateMission(missionId: number, crewId: string): void {
@@ -106,13 +107,13 @@ export class MissionService {
       .prepare(
         "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
       )
-      .run(crewId, missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(crewId, missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   setStatus(missionId: number, status: string): void {
-    this.db.prepare('UPDATE missions SET status = ? WHERE id = ?').run(status, missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    this.db.prepare('UPDATE missions SET status = ? WHERE id = ?').run(status, missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   escalateMission(missionId: number, reason: string): void {
@@ -120,36 +121,36 @@ export class MissionService {
       .prepare(
         "UPDATE missions SET status = 'escalated', crew_id = NULL, result = ?, completed_at = datetime('now') WHERE id = ?"
       )
-      .run(reason, missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(reason, missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   getMission(missionId: number): MissionRow | undefined {
-    return this.db.prepare('SELECT * FROM missions WHERE id = ?').get(missionId) as
-      | MissionRow
-      | undefined
+    return this.db
+      .prepare<[number], MissionRow>('SELECT * FROM missions WHERE id = ?')
+      .get(missionId);
   }
 
   listMissions(filter?: ListMissionsFilter): MissionRow[] {
-    let sql = 'SELECT * FROM missions WHERE 1=1'
-    const params: unknown[] = []
+    let sql = 'SELECT * FROM missions WHERE 1=1';
+    const params: unknown[] = [];
 
     if (filter?.sectorId) {
-      sql += ' AND sector_id = ?'
-      params.push(filter.sectorId)
+      sql += ' AND sector_id = ?';
+      params.push(filter.sectorId);
     }
     if (filter?.status) {
-      sql += ' AND status = ?'
-      params.push(filter.status)
+      sql += ' AND status = ?';
+      params.push(filter.status);
     }
 
-    sql += ' ORDER BY priority ASC, created_at ASC'
-    return this.db.prepare(sql).all(...params) as MissionRow[]
+    sql += ' ORDER BY priority ASC, created_at ASC';
+    return this.db.prepare<unknown[], MissionRow>(sql).all(...params);
   }
 
   nextMission(sectorId: string): MissionRow | undefined {
     return this.db
-      .prepare(
+      .prepare<[string], MissionRow>(
         `SELECT * FROM missions
          WHERE sector_id = ? AND status = 'queued'
          AND (
@@ -166,27 +167,27 @@ export class MissionService {
          ORDER BY priority ASC, created_at ASC
          LIMIT 1`
       )
-      .get(sectorId) as MissionRow | undefined
+      .get(sectorId);
   }
 
   getDependencies(missionId: number): MissionRow[] {
     return this.db
-      .prepare(
+      .prepare<[number], MissionRow>(
         `SELECT m.* FROM missions m
          JOIN mission_dependencies md ON md.depends_on_mission_id = m.id
          WHERE md.mission_id = ?`
       )
-      .all(missionId) as MissionRow[]
+      .all(missionId);
   }
 
   getDependents(missionId: number): MissionRow[] {
     return this.db
-      .prepare(
+      .prepare<[number], MissionRow>(
         `SELECT m.* FROM missions m
          JOIN mission_dependencies md ON md.mission_id = m.id
          WHERE md.depends_on_mission_id = ?`
       )
-      .all(missionId) as MissionRow[]
+      .all(missionId);
   }
 
   /** Reset crew assignment and timestamps so the mission can be re-deployed */
@@ -195,40 +196,36 @@ export class MissionService {
       .prepare(
         "UPDATE missions SET crew_id = NULL, status = 'queued', started_at = NULL, completed_at = NULL, result = NULL, verify_result = NULL WHERE id = ?"
       )
-      .run(missionId)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(missionId);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   setReviewVerdict(missionId: number, verdict: string, notes: string): void {
     this.db
       .prepare('UPDATE missions SET review_verdict = ?, review_notes = ? WHERE id = ?')
-      .run(verdict, notes, missionId)
+      .run(verdict, notes, missionId);
   }
 
   setPrBranch(missionId: number, prBranch: string): void {
-    this.db
-      .prepare('UPDATE missions SET pr_branch = ? WHERE id = ?')
-      .run(prBranch, missionId)
+    this.db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(prBranch, missionId);
   }
 
   updateMission(
     missionId: number,
     fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>
   ): void {
-    const sets: string[] = []
-    const values: unknown[] = []
+    const sets: string[] = [];
+    const values: unknown[] = [];
 
     for (const [key, value] of Object.entries(fields)) {
-      if (value !== undefined) {
-        sets.push(`${key} = ?`)
-        values.push(value)
-      }
+      sets.push(`${key} = ?`);
+      values.push(value);
     }
 
-    if (sets.length === 0) return
-    values.push(missionId)
+    if (sets.length === 0) return;
+    values.push(missionId);
 
-    this.db.prepare(`UPDATE missions SET ${sets.join(', ')} WHERE id = ?`).run(...values)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+    this.db.prepare(`UPDATE missions SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 }

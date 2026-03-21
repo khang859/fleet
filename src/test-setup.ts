@@ -10,11 +10,12 @@ if (typeof OffscreenCanvas === 'undefined') {
     }
 
     getContext(_type: string): object {
+      void _type;
       return {
         clearRect: () => {},
         fillRect: () => {},
         createLinearGradient: () => ({
-          addColorStop: () => {},
+          addColorStop: () => {}
         }),
         drawImage: () => {},
         beginPath: () => {},
@@ -25,11 +26,10 @@ if (typeof OffscreenCanvas === 'undefined') {
         set strokeStyle(_v: unknown) {},
         set lineWidth(_v: unknown) {},
         set filter(_v: unknown) {},
-        set globalAlpha(_v: unknown) {},
+        set globalAlpha(_v: unknown) {}
       };
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (globalThis as any).OffscreenCanvas = FakeOffscreenCanvas;
+  Object.assign(globalThis, { OffscreenCanvas: FakeOffscreenCanvas });
 }

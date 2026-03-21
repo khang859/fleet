@@ -31,8 +31,14 @@ export class BloomPass {
 
       ctx.drawImage(
         sheet,
-        glowRegion.x, glowRegion.y, glowRegion.w, glowRegion.h,
-        gx, gy, glowSize, glowSize,
+        glowRegion.x,
+        glowRegion.y,
+        glowRegion.w,
+        glowRegion.h,
+        gx,
+        gy,
+        glowSize,
+        glowSize
       );
     }
 

@@ -1,7 +1,7 @@
-import { memo } from 'react'
-import { useStarCommandStore } from '../../store/star-command-store'
-import { getScSpriteSheetUrl } from './sc-sprite-loader'
-import { SC_SPRITE_ATLAS } from './sc-sprite-atlas'
+import { memo } from 'react';
+import { useStarCommandStore } from '../../store/star-command-store';
+import { getScSpriteSheetUrl } from './sc-sprite-loader';
+import { SC_SPRITE_ATLAS } from './sc-sprite-atlas';
 
 const STATUS_DOT_KEYS: Record<string, string> = {
   active: 'chip-dot-active',
@@ -9,28 +9,28 @@ const STATUS_DOT_KEYS: Record<string, string> = {
   error: 'chip-dot-error',
   complete: 'chip-dot-complete',
   idle: 'chip-dot-idle',
-  lost: 'chip-dot-lost',
-}
+  lost: 'chip-dot-lost'
+};
 
 export const CrewChips = memo(function CrewChips() {
-  const { crewList, sectors } = useStarCommandStore()
-  const url = getScSpriteSheetUrl()
-  const chipFrame = SC_SPRITE_ATLAS['chip-frame']
-  const divider = SC_SPRITE_ATLAS['statusbar-divider']
+  const { crewList, sectors } = useStarCommandStore();
+  const url = getScSpriteSheetUrl();
+  const chipFrame = SC_SPRITE_ATLAS['chip-frame'];
+  const divider = SC_SPRITE_ATLAS['statusbar-divider'];
 
-  if (crewList.length === 0) return null
+  if (crewList.length === 0) return null;
 
-  const bySector = new Map<string, typeof crewList>()
+  const bySector = new Map<string, typeof crewList>();
   for (const crew of crewList) {
-    const list = bySector.get(crew.sector_id) ?? []
-    list.push(crew)
-    bySector.set(crew.sector_id, list)
+    const list = bySector.get(crew.sector_id) ?? [];
+    list.push(crew);
+    bySector.set(crew.sector_id, list);
   }
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto px-2 py-0.5 scrollbar-none flex-1">
       {Array.from(bySector.entries()).map(([sectorId, sectorCrew], idx) => {
-        const sector = sectors.find((s) => s.id === sectorId)
+        const sector = sectors.find((s) => s.id === sectorId);
         return (
           <div key={sectorId} className="flex items-center gap-1 flex-shrink-0">
             {idx > 0 && divider && (
@@ -42,7 +42,7 @@ export const CrewChips = memo(function CrewChips() {
                   backgroundRepeat: 'no-repeat',
                   imageRendering: 'pixelated',
                   width: divider.w,
-                  height: divider.h,
+                  height: divider.h
                 }}
               />
             )}
@@ -50,8 +50,8 @@ export const CrewChips = memo(function CrewChips() {
               {sector?.name ?? sectorId}
             </span>
             {sectorCrew.map((crew) => {
-              const dotKey = STATUS_DOT_KEYS[crew.status] ?? 'chip-dot-idle'
-              const dot = SC_SPRITE_ATLAS[dotKey]
+              const dotKey = STATUS_DOT_KEYS[crew.status] ?? 'chip-dot-idle';
+              const dot = SC_SPRITE_ATLAS[dotKey];
               return (
                 <div
                   key={crew.id}
@@ -62,7 +62,7 @@ export const CrewChips = memo(function CrewChips() {
                     backgroundRepeat: 'no-repeat',
                     imageRendering: 'pixelated',
                     height: chipFrame.h,
-                    minWidth: chipFrame.w,
+                    minWidth: chipFrame.w
                   }}
                 >
                   {dot && (
@@ -73,7 +73,7 @@ export const CrewChips = memo(function CrewChips() {
                         backgroundRepeat: 'no-repeat',
                         imageRendering: 'pixelated',
                         width: dot.w,
-                        height: dot.h,
+                        height: dot.h
                       }}
                     />
                   )}
@@ -81,11 +81,11 @@ export const CrewChips = memo(function CrewChips() {
                     {crew.id}
                   </span>
                 </div>
-              )
+              );
             })}
           </div>
-        )
+        );
       })}
     </div>
-  )
-})
+  );
+});

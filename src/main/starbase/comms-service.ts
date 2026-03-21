@@ -36,11 +36,11 @@ type SendOpts = {
 };
 
 export class CommsService {
-  private rateLimit: number = 0; // 0 = disabled
+  private rateLimit = 0; // 0 = disabled
 
   constructor(
     private db: Database.Database,
-    private eventBus?: EventBus,
+    private eventBus?: EventBus
   ) {}
 
   /** Set the per-minute rate limit per crew. 0 = disabled. */
@@ -54,18 +54,18 @@ export class CommsService {
     // Dedup runs before rate limit so coalesced duplicates don't consume rate limit budget
     if (opts.from !== 'admiral' && opts.from !== 'navigator') {
       const existing = this.db
-        .prepare(
+        .prepare<[string, string, string, string], { id: number }>(
           `SELECT id FROM comms
            WHERE from_crew = ? AND to_crew = ? AND type = ? AND payload = ?
              AND created_at > datetime('now', '-5 minutes')
-           ORDER BY created_at DESC LIMIT 1`,
+           ORDER BY created_at DESC LIMIT 1`
         )
-        .get(opts.from, opts.to, opts.type, opts.payload) as { id: number } | undefined;
+        .get(opts.from, opts.to, opts.type, opts.payload);
 
       if (existing) {
         this.db
           .prepare(
-            `UPDATE comms SET repeat_count = repeat_count + 1, last_repeated_at = datetime('now') WHERE id = ?`,
+            `UPDATE comms SET repeat_count = repeat_count + 1, last_repeated_at = datetime('now') WHERE id = ?`
           )
           .run(existing.id);
         this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
@@ -76,15 +76,22 @@ export class CommsService {
     // Check rate limit for the sender (after dedup, so coalesced messages don't count)
     if (this.rateLimit > 0 && opts.from !== 'admiral') {
       const row = this.db
-        .prepare('SELECT comms_count_minute FROM crew WHERE id = ?')
-        .get(opts.from) as { comms_count_minute: number } | undefined;
+        .prepare<
+          [string],
+          { comms_count_minute: number }
+        >('SELECT comms_count_minute FROM crew WHERE id = ?')
+        .get(opts.from);
 
       if (row && row.comms_count_minute >= this.rateLimit) {
         // Log the rejection
-        this.db.prepare(
-          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'comms_failed', ?)",
-        ).run(opts.from, JSON.stringify({ reason: 'rate limit exceeded', limit: this.rateLimit }));
-        throw new CommsRateLimitError(`Rate limit exceeded for ${opts.from}: ${row.comms_count_minute}/${this.rateLimit} per minute`);
+        this.db
+          .prepare(
+            "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'comms_failed', ?)"
+          )
+          .run(opts.from, JSON.stringify({ reason: 'rate limit exceeded', limit: this.rateLimit }));
+        throw new CommsRateLimitError(
+          `Rate limit exceeded for ${opts.from}: ${row.comms_count_minute}/${this.rateLimit} per minute`
+        );
       }
 
       // Increment counter
@@ -97,17 +104,26 @@ export class CommsService {
 
     const result = this.db
       .prepare(
-        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to, mission_id, execution_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to, mission_id, execution_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
       )
-      .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null, opts.missionId ?? null, opts.executionId ?? null);
+      .run(
+        opts.from,
+        opts.to,
+        opts.type,
+        opts.payload,
+        opts.threadId ?? null,
+        opts.inReplyTo ?? null,
+        opts.missionId ?? null,
+        opts.executionId ?? null
+      );
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
-    return result.lastInsertRowid as number;
+    return Number(result.lastInsertRowid);
   }
 
   resolve(transmissionId: number, response: string): number {
-    const original = this.db.prepare('SELECT * FROM comms WHERE id = ?').get(transmissionId) as
-      | TransmissionRow
-      | undefined;
+    const original = this.db
+      .prepare<[number], TransmissionRow>('SELECT * FROM comms WHERE id = ?')
+      .get(transmissionId);
     if (!original) throw new Error(`Transmission not found: ${transmissionId}`);
 
     this.markRead(transmissionId);
@@ -118,24 +134,29 @@ export class CommsService {
       type: 'directive',
       payload: response,
       threadId: original.thread_id ?? String(transmissionId),
-      inReplyTo: transmissionId,
+      inReplyTo: transmissionId
     });
   }
 
   getTransmission(transmissionId: number): TransmissionRow | undefined {
     return this.db
-      .prepare('SELECT * FROM comms WHERE id = ?')
-      .get(transmissionId) as TransmissionRow | undefined;
+      .prepare<[number], TransmissionRow>('SELECT * FROM comms WHERE id = ?')
+      .get(transmissionId);
   }
 
   getUnread(crewId: string): TransmissionRow[] {
     return this.db
-      .prepare('SELECT * FROM comms WHERE to_crew = ? AND read = 0 ORDER BY created_at ASC')
-      .all(crewId) as TransmissionRow[];
+      .prepare<
+        [string],
+        TransmissionRow
+      >('SELECT * FROM comms WHERE to_crew = ? AND read = 0 ORDER BY created_at ASC')
+      .all(crewId);
   }
 
   markRead(transmissionId: number): boolean {
-    const result = this.db.prepare('UPDATE comms SET read = 1 WHERE id = ? AND read = 0').run(transmissionId);
+    const result = this.db
+      .prepare('UPDATE comms SET read = 1 WHERE id = ? AND read = 0')
+      .run(transmissionId);
     if (result.changes > 0) {
       this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
       return true;
@@ -145,8 +166,11 @@ export class CommsService {
 
   getThread(threadId: string): TransmissionRow[] {
     return this.db
-      .prepare('SELECT * FROM comms WHERE thread_id = ? ORDER BY created_at ASC')
-      .all(threadId) as TransmissionRow[];
+      .prepare<
+        [string],
+        TransmissionRow
+      >('SELECT * FROM comms WHERE thread_id = ? ORDER BY created_at ASC')
+      .all(threadId);
   }
 
   delete(transmissionId: number): boolean {
@@ -159,7 +183,7 @@ export class CommsService {
   }
 
   clear(opts?: { crewId?: string }): number {
-    let result;
+    let result: Database.RunResult;
     if (opts?.crewId) {
       result = this.db
         .prepare('DELETE FROM comms WHERE from_crew = ? OR to_crew = ?')
@@ -174,7 +198,7 @@ export class CommsService {
   }
 
   markAllRead(opts?: { crewId?: string }): number {
-    let result;
+    let result: Database.RunResult;
     if (opts?.crewId) {
       result = this.db
         .prepare('UPDATE comms SET read = 1 WHERE to_crew = ? AND read = 0')
@@ -189,14 +213,25 @@ export class CommsService {
   }
 
   getUnreadByExecution(executionId: string): TransmissionRow[] {
-    return this.db.prepare(
-      `SELECT * FROM comms WHERE execution_id = ? AND read = 0 ORDER BY created_at ASC`
-    ).all(executionId) as TransmissionRow[];
+    return this.db
+      .prepare<
+        [string],
+        TransmissionRow
+      >(`SELECT * FROM comms WHERE execution_id = ? AND read = 0 ORDER BY created_at ASC`)
+      .all(executionId);
   }
 
-  getRecent(opts?: { crewId?: string; limit?: number; type?: string; from?: string; unread?: boolean }): TransmissionRow[] {
-    if (opts?.crewId && opts?.from) {
-      throw new Error('Cannot filter by both crewId and from — crewId already matches from_crew and to_crew');
+  getRecent(opts?: {
+    crewId?: string;
+    limit?: number;
+    type?: string;
+    from?: string;
+    unread?: boolean;
+  }): TransmissionRow[] {
+    if (opts?.crewId && opts.from) {
+      throw new Error(
+        'Cannot filter by both crewId and from — crewId already matches from_crew and to_crew'
+      );
     }
 
     const limit = opts?.limit ?? 50;
@@ -223,7 +258,10 @@ export class CommsService {
     params.push(limit);
 
     return this.db
-      .prepare(`SELECT * FROM comms ${where} ORDER BY created_at DESC LIMIT ?`)
-      .all(...params) as TransmissionRow[];
+      .prepare<
+        unknown[],
+        TransmissionRow
+      >(`SELECT * FROM comms ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params);
   }
 }

@@ -12,19 +12,25 @@ vi.mock('node-pty', () => ({
     onExit: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
-    kill: vi.fn(),
-  })),
+    kill: vi.fn()
+  }))
 }));
 
 vi.mock('electron-store', () => {
   return {
     default: class MockStore {
       private data: Record<string, unknown> = {};
-      constructor(_opts?: unknown) {}
-      get(key: string, defaultVal?: unknown) { return this.data[key] ?? defaultVal; }
-      set(key: string, value: unknown) { this.data[key] = value; }
-      delete(key: string) { delete this.data[key]; }
-    },
+      constructor() {}
+      get(key: string, defaultVal?: unknown) {
+        return this.data[key] ?? defaultVal;
+      }
+      set(key: string, value: unknown) {
+        this.data[key] = value;
+      }
+      delete(key: string) {
+        delete this.data[key];
+      }
+    }
   };
 });
 
@@ -53,7 +59,7 @@ describe('FleetCommandHandler', () => {
       type: 'new-tab',
       label: 'test',
       cmd: 'echo hello',
-      cwd: '/tmp',
+      cwd: '/tmp'
     });
     expect(result.ok).toBe(true);
     expect(result.tabId).toBeDefined();
@@ -64,11 +70,11 @@ describe('FleetCommandHandler', () => {
     const tabResult = await handler.handleCommand({
       type: 'new-tab',
       label: 'test',
-      cwd: '/tmp',
+      cwd: '/tmp'
     });
     const result = await handler.handleCommand({
       type: 'list-panes',
-      tabId: tabResult.tabId,
+      tabId: tabResult.tabId
     });
     expect(result.ok).toBe(true);
     expect(result.panes).toHaveLength(1);
@@ -90,7 +96,7 @@ describe('FleetCommandHandler', () => {
   it('returns error for invalid paneId', async () => {
     const result = await handler.handleCommand({
       type: 'focus-pane',
-      paneId: 'does-not-exist',
+      paneId: 'does-not-exist'
     });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('not found');

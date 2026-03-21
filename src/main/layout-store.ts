@@ -13,8 +13,8 @@ export class LayoutStore {
     this.store = new Store<StoreSchema>({
       name: 'fleet-layouts',
       defaults: {
-        workspaces: {},
-      },
+        workspaces: {}
+      }
     });
   }
 
@@ -54,7 +54,7 @@ export class LayoutStore {
       labelIsCustom: true,
       cwd,
       type: 'star-command',
-      splitRoot: { type: 'leaf', id: paneId, cwd },
+      splitRoot: { type: 'leaf', id: paneId, cwd }
     };
 
     workspace.tabs.unshift(starTab);

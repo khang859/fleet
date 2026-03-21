@@ -1,77 +1,78 @@
-import { readlink } from 'fs/promises'
-import pidCwd from 'pid-cwd'
-import { EventBus } from './event-bus'
-import type { PtyManager } from './pty-manager'
+import { readlink } from 'fs/promises';
+import pidCwd from 'pid-cwd';
+import type { EventBus } from './event-bus';
+import type { PtyManager } from './pty-manager';
 
-const POLL_INTERVAL_MS = 5000
+const POLL_INTERVAL_MS = 5000;
 
 export class CwdPoller {
-  private timers = new Map<string, ReturnType<typeof setInterval>>()
-  private osc7Seen = new Set<string>()
+  private timers = new Map<string, ReturnType<typeof setInterval>>();
+  private osc7Seen = new Set<string>();
 
   constructor(
     private eventBus: EventBus,
-    private ptyManager: PtyManager,
+    private ptyManager: PtyManager
   ) {}
 
   startPolling(paneId: string, pid: number): void {
-    if (this.timers.has(paneId)) return
+    if (this.timers.has(paneId)) return;
 
-    const timer = setInterval(async () => {
+    const timer = setInterval(() => {
       if (this.osc7Seen.has(paneId)) {
-        this.stopPolling(paneId)
-        return
+        this.stopPolling(paneId);
+        return;
       }
-      const cwd = await readProcCwd(pid)
-      if (cwd) {
-        const current = this.ptyManager.getCwd(paneId)
-        if (cwd !== current) {
-          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd })
+      void readProcCwd(pid).then((cwd) => {
+        if (cwd) {
+          const current = this.ptyManager.getCwd(paneId);
+          if (cwd !== current) {
+            this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+          }
         }
-      }
-    }, POLL_INTERVAL_MS)
+      });
+    }, POLL_INTERVAL_MS);
 
-    this.timers.set(paneId, timer)
+    this.timers.set(paneId, timer);
   }
 
   markOsc7Seen(paneId: string): void {
-    this.osc7Seen.add(paneId)
+    this.osc7Seen.add(paneId);
   }
 
   stopPolling(paneId: string): void {
-    const timer = this.timers.get(paneId)
+    const timer = this.timers.get(paneId);
     if (timer) {
-      clearInterval(timer)
-      this.timers.delete(paneId)
+      clearInterval(timer);
+      this.timers.delete(paneId);
     }
-    this.osc7Seen.delete(paneId)
+    this.osc7Seen.delete(paneId);
   }
 
   stopAll(): void {
     for (const paneId of this.timers.keys()) {
-      clearInterval(this.timers.get(paneId)!)
+      clearInterval(this.timers.get(paneId));
     }
-    this.timers.clear()
-    this.osc7Seen.clear()
+    this.timers.clear();
+    this.osc7Seen.clear();
   }
 }
 
 async function readProcCwd(pid: number): Promise<string | null> {
   if (process.platform === 'linux') {
     try {
-      return await readlink(`/proc/${pid}/cwd`)
+      return await readlink(`/proc/${pid}/cwd`);
     } catch {
-      return null
+      return null;
     }
   }
 
   if (process.platform === 'darwin') {
     try {
-      return await pidCwd(pid)
+      return await pidCwd(pid);
     } catch {
-      return null
+      return null;
     }
   }
 
-  return null
+  return null;
 }

@@ -7,11 +7,11 @@ const mockGit = {
   branch: vi.fn(),
   status: vi.fn(),
   diff: vi.fn(),
-  raw: vi.fn(),
+  raw: vi.fn()
 };
 
 vi.mock('simple-git', () => ({
-  simpleGit: vi.fn(() => mockGit),
+  simpleGit: vi.fn(() => mockGit)
 }));
 
 describe('GitService', () => {
@@ -50,7 +50,7 @@ describe('GitService', () => {
         isRepo: false,
         branch: '',
         files: [],
-        diff: '',
+        diff: ''
       });
     });
 
@@ -60,19 +60,23 @@ describe('GitService', () => {
       mockGit.status.mockResolvedValue({
         files: [
           { path: 'src/app.ts', index: ' ', working_dir: 'M' },
-          { path: 'new-file.ts', index: '?', working_dir: '?' },
+          { path: 'new-file.ts', index: '?', working_dir: '?' }
         ],
-        not_added: ['new-file.ts'],
+        not_added: ['new-file.ts']
       });
-      mockGit.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n');
+      mockGit.diff.mockResolvedValue(
+        'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
+      );
       // diffSummary for tracked files
-      mockGit.raw.mockImplementation((args: string[]) => {
+      mockGit.raw.mockImplementation(async (args: string[]) => {
         if (args.includes('--numstat') && !args.includes('--no-index')) {
           return Promise.resolve('3\t1\tsrc/app.ts\n');
         }
         // For untracked file diff
         if (args.includes('--no-index')) {
-          return Promise.resolve('diff --git a/new-file.ts b/new-file.ts\nnew file\n--- /dev/null\n+++ b/new-file.ts\n@@ -0,0 +1 @@\n+content\n');
+          return Promise.resolve(
+            'diff --git a/new-file.ts b/new-file.ts\nnew file\n--- /dev/null\n+++ b/new-file.ts\n@@ -0,0 +1 @@\n+content\n'
+          );
         }
         return Promise.resolve('');
       });

@@ -22,7 +22,9 @@ beforeEach(() => {
   mkdirSync(sectorDir, { recursive: true });
   writeFileSync(join(sectorDir, 'index.ts'), '');
   execSync('git init && git checkout -b main', { cwd: sectorDir });
-  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: sectorDir });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+    cwd: sectorDir
+  });
   writeFileSync(join(sectorDir, 'README.md'), '# Test');
   execSync('git add -A && git commit -m "initial"', { cwd: sectorDir });
 
@@ -43,7 +45,7 @@ beforeEach(() => {
     sectorService: sectorSvc,
     missionService: missionSvc,
     configService: configSvc,
-    worktreeManager: wtMgr,
+    worktreeManager: wtMgr
   });
 });
 
@@ -69,21 +71,29 @@ describe('CrewService', () => {
 
   it('should dismiss a terminal crew record when no hull is in memory (post-restart recall)', () => {
     const rawDb = db.getDb();
-    rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run('fleet-crew-old', 'api', 'error');
+    rawDb
+      .prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)')
+      .run('fleet-crew-old', 'api', 'error');
 
     crewSvc.recallCrew('fleet-crew-old');
 
-    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-old') as { status: string };
+    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-old') as {
+      status: string;
+    };
     expect(row.status).toBe('dismissed');
   });
 
   it('should mark active crew with no hull as lost when recalled post-restart', () => {
     const rawDb = db.getDb();
-    rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run('fleet-crew-active', 'api', 'active');
+    rawDb
+      .prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)')
+      .run('fleet-crew-active', 'api', 'active');
 
     crewSvc.recallCrew('fleet-crew-active');
 
-    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-active') as { status: string };
+    const row = rawDb.prepare('SELECT status FROM crew WHERE id = ?').get('fleet-crew-active') as {
+      status: string;
+    };
     expect(row.status).toBe('lost');
   });
 
@@ -94,14 +104,21 @@ describe('CrewService', () => {
 
     // Create a mission first (mission-first workflow)
     const missionSvc = crewSvc['deps'].missionService;
-    const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Test mission', prompt: 'do something' });
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test mission',
+      prompt: 'do something'
+    });
 
     await expect(
       crewSvc.deployCrew({ sectorId: 'api', prompt: 'do something', missionId: mission.id })
     ).rejects.toBeInstanceOf(InsufficientMemoryError);
 
     // Mission should be queued (not failed)
-    const missions = db.getDb().prepare("SELECT status FROM missions WHERE sector_id = 'api'").all() as { status: string }[];
+    const missions = db
+      .getDb()
+      .prepare("SELECT status FROM missions WHERE sector_id = 'api'")
+      .all() as Array<{ status: string }>;
     expect(missions).toHaveLength(1);
     expect(missions[0].status).toBe('queued');
   });
@@ -114,7 +131,11 @@ describe('CrewService', () => {
 
   it('should reject deployCrew with an empty prompt', async () => {
     const missionSvc = crewSvc['deps'].missionService;
-    const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Test', prompt: 'real prompt' });
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'real prompt'
+    });
 
     await expect(
       crewSvc.deployCrew({ sectorId: 'api', prompt: '', missionId: mission.id })

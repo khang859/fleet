@@ -7,7 +7,7 @@ import {
   highlightActiveLineGutter,
   highlightSpecialChars,
   drawSelection,
-  highlightActiveLine,
+  highlightActiveLine
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
@@ -19,13 +19,14 @@ import { css } from '@codemirror/lang-css';
 import { json } from '@codemirror/lang-json';
 import { markdown } from '@codemirror/lang-markdown';
 import { python } from '@codemirror/lang-python';
+import type { LanguageSupport } from '@codemirror/language';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
 
-function getLanguageExtension(filePath: string) {
+function getLanguageExtension(filePath: string): LanguageSupport | null {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
     case 'js':
@@ -60,18 +61,34 @@ function getLanguageExtension(filePath: string) {
 function getLanguageName(filePath: string): string {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
   switch (ext) {
-    case 'js': case 'mjs': case 'cjs': return 'JavaScript';
-    case 'ts': return 'TypeScript';
-    case 'tsx': return 'TSX';
-    case 'jsx': return 'JSX';
-    case 'html': case 'htm': return 'HTML';
-    case 'css': return 'CSS';
-    case 'scss': return 'SCSS';
-    case 'less': return 'Less';
-    case 'json': return 'JSON';
-    case 'md': case 'markdown': return 'Markdown';
-    case 'py': return 'Python';
-    default: return 'Plain Text';
+    case 'js':
+    case 'mjs':
+    case 'cjs':
+      return 'JavaScript';
+    case 'ts':
+      return 'TypeScript';
+    case 'tsx':
+      return 'TSX';
+    case 'jsx':
+      return 'JSX';
+    case 'html':
+    case 'htm':
+      return 'HTML';
+    case 'css':
+      return 'CSS';
+    case 'scss':
+      return 'SCSS';
+    case 'less':
+      return 'Less';
+    case 'json':
+      return 'JSON';
+    case 'md':
+    case 'markdown':
+      return 'Markdown';
+    case 'py':
+      return 'Python';
+    default:
+      return 'Plain Text';
   }
 }
 
@@ -80,7 +97,7 @@ type Props = {
   filePath: string;
 };
 
-export function FileEditorPane({ paneId, filePath }: Props) {
+export function FileEditorPane({ paneId, filePath }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
@@ -125,7 +142,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
 
   // Load file on mount
   useEffect(() => {
-    window.fleet.file.read(filePath).then((result) => {
+    void window.fleet.file.read(filePath).then((result) => {
       if (result.success && result.data) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
@@ -163,11 +180,17 @@ export function FileEditorPane({ paneId, filePath }: Props) {
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           search(),
           keymap.of([
-            { key: 'Mod-s', run: () => { saveRef.current(); return true; } },
+            {
+              key: 'Mod-s',
+              run: () => {
+                void saveRef.current();
+                return true;
+              }
+            },
             indentWithTab,
             ...defaultKeymap,
             ...historyKeymap,
-            ...searchKeymap,
+            ...searchKeymap
           ]),
           oneDark,
           EditorView.updateListener.of((update) => {
@@ -179,7 +202,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
             if (dirty) {
               if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
               autoSaveTimerRef.current = setTimeout(() => {
-                saveRef.current();
+                void saveRef.current();
               }, AUTO_SAVE_DELAY);
             }
           }),
@@ -192,12 +215,12 @@ export function FileEditorPane({ paneId, filePath }: Props) {
           }),
           EditorView.theme({
             '&': { height: '100%' },
-            '.cm-scroller': { overflow: 'auto' },
+            '.cm-scroller': { overflow: 'auto' }
           }),
-          ...(langExt ? [langExt] : []),
-        ],
+          ...(langExt ? [langExt] : [])
+        ]
       }),
-      parent: containerRef.current,
+      parent: containerRef.current
     });
 
     viewRef.current = view;
@@ -207,12 +230,12 @@ export function FileEditorPane({ paneId, filePath }: Props) {
       view.destroy();
       viewRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, tooLarge, error]);
 
   // Register save function so the close dialog can trigger it
   useEffect(() => {
-    registerFileSave(paneId, () => saveRef.current());
+    registerFileSave(paneId, async () => saveRef.current());
     return () => unregisterFileSave(paneId);
   }, [paneId]);
 
@@ -256,15 +279,17 @@ export function FileEditorPane({ paneId, filePath }: Props) {
   const saveStatus = isSaving
     ? { label: 'Saving...', className: 'text-neutral-500' }
     : isDirty
-    ? { label: 'Modified', className: 'text-amber-400' }
-    : { label: 'Saved', className: 'text-emerald-500' };
+      ? { label: 'Modified', className: 'text-amber-400' }
+      : { label: 'Saved', className: 'text-emerald-500' };
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
         <span className="text-neutral-300">{langLabel}</span>
-        <span className="text-neutral-500">Ln {cursorPos.line}, Col {cursorPos.col}</span>
+        <span className="text-neutral-500">
+          Ln {cursorPos.line}, Col {cursorPos.col}
+        </span>
         <span className={`ml-auto flex items-center gap-1.5 ${saveStatus.className}`}>
           {saveStatus.label === 'Modified' && (
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />

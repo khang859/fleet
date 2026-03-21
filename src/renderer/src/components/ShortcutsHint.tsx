@@ -1,6 +1,6 @@
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
-export function ShortcutsHint() {
+export function ShortcutsHint(): React.JSX.Element {
   const shortcutsDef = getShortcut('shortcuts');
   const hint = shortcutsDef ? formatShortcut(shortcutsDef) : 'Ctrl+/';
 

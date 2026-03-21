@@ -33,7 +33,11 @@ function createCloudCanvas(color: string): OffscreenCanvas {
   return canvas;
 }
 
-function randomCloud(canvasWidth: number, canvasHeight: number, startOnScreen: boolean): NebulaCloud {
+function randomCloud(
+  canvasWidth: number,
+  canvasHeight: number,
+  startOnScreen: boolean
+): NebulaCloud {
   const color = NEBULA_COLORS[Math.floor(Math.random() * NEBULA_COLORS.length)];
   const cloud = createCloudCanvas(color);
   const w = 200;
@@ -46,7 +50,7 @@ function randomCloud(canvasWidth: number, canvasHeight: number, startOnScreen: b
     opacity: 0.03 + Math.random() * 0.03,
     canvas: cloud,
     width: w,
-    height: h,
+    height: h
   };
 }
 

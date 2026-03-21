@@ -2,17 +2,17 @@
 
 export interface SpriteRegion {
   /** X position in the sprite sheet */
-  x: number
+  x: number;
   /** Y position in the sprite sheet */
-  y: number
+  y: number;
   /** Width of a single frame */
-  w: number
+  w: number;
   /** Height of a single frame */
-  h: number
+  h: number;
   /** Number of animation frames (sequential, left to right) */
-  frames: number
+  frames: number;
   /** Milliseconds per frame (0 = static) */
-  frameDuration: number
+  frameDuration: number;
 }
 
 export const SPRITE_ATLAS: Record<string, SpriteRegion> = {
@@ -59,18 +59,24 @@ export const SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'particle-spawn-burst': { x: 28, y: 296, w: 8, h: 8, frames: 4, frameDuration: 100 },
   'particle-warp-streak': { x: 12, y: 296, w: 8, h: 2, frames: 2, frameDuration: 150 },
   'effect-bloom-glow': { x: 76, y: 296, w: 16, h: 16, frames: 1, frameDuration: 0 },
-  'effect-shooting-star': { x: 60, y: 296, w: 16, h: 4, frames: 1, frameDuration: 0 },
-}
+  'effect-shooting-star': { x: 60, y: 296, w: 16, h: 4, frames: 1, frameDuration: 0 }
+};
 
-export const PARENT_HULL_COUNT = 6
-export const SUBAGENT_HULL_COUNT = 2
+export const PARENT_HULL_COUNT = 6;
+export const SUBAGENT_HULL_COUNT = 2;
 
 /** Get sprite region for a parent ship hull (1-indexed) */
-export function getParentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion {
-  return SPRITE_ATLAS[`parent-${hullIndex}-${anim}`]
+export function getParentSprite(
+  hullIndex: number,
+  anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'
+): SpriteRegion {
+  return SPRITE_ATLAS[`parent-${hullIndex}-${anim}`];
 }
 
 /** Get sprite region for a subagent ship hull (1-indexed) */
-export function getSubagentSprite(hullIndex: number, anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'): SpriteRegion {
-  return SPRITE_ATLAS[`subagent-${hullIndex}-${anim}`]
+export function getSubagentSprite(
+  hullIndex: number,
+  anim: 'idle' | 'thrust' | 'warp-in' | 'warp-out'
+): SpriteRegion {
+  return SPRITE_ATLAS[`subagent-${hullIndex}-${anim}`];
 }

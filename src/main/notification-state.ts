@@ -1,4 +1,4 @@
-import { EventBus } from './event-bus';
+import type { EventBus } from './event-bus';
 import type { NotificationLevel } from '../shared/types';
 
 type NotificationRecord = {
@@ -11,7 +11,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
   permission: 3,
   error: 2,
   info: 1,
-  subtle: 0,
+  subtle: 0
 };
 
 export class NotificationStateManager {
@@ -24,7 +24,7 @@ export class NotificationStateManager {
         this.states.set(event.paneId, {
           paneId: event.paneId,
           level: event.level,
-          timestamp: event.timestamp,
+          timestamp: event.timestamp
         });
       }
     });

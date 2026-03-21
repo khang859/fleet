@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { NotificationStateManager } from '../notification-state';
 import { EventBus } from '../event-bus';
 
@@ -14,10 +14,16 @@ describe('NotificationStateManager — extended', () => {
   describe('priority enforcement', () => {
     it('does NOT downgrade from permission to info', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'permission', timestamp: 1000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'permission',
+        timestamp: 1000
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 2000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 2000
       });
 
       expect(manager.getState('p1')?.level).toBe('permission');
@@ -26,10 +32,16 @@ describe('NotificationStateManager — extended', () => {
 
     it('does NOT downgrade from error to info', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'error', timestamp: 1000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'error',
+        timestamp: 1000
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 2000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 2000
       });
 
       expect(manager.getState('p1')?.level).toBe('error');
@@ -37,10 +49,16 @@ describe('NotificationStateManager — extended', () => {
 
     it('does NOT downgrade from error to subtle', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'error', timestamp: 1000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'error',
+        timestamp: 1000
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'subtle', timestamp: 2000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'subtle',
+        timestamp: 2000
       });
 
       expect(manager.getState('p1')?.level).toBe('error');
@@ -48,32 +66,50 @@ describe('NotificationStateManager — extended', () => {
 
     it('upgrades from subtle → info → error → permission', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'subtle', timestamp: 1,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'subtle',
+        timestamp: 1
       });
       expect(manager.getState('p1')?.level).toBe('subtle');
 
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 2,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 2
       });
       expect(manager.getState('p1')?.level).toBe('info');
 
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'error', timestamp: 3,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'error',
+        timestamp: 3
       });
       expect(manager.getState('p1')?.level).toBe('error');
 
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'permission', timestamp: 4,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'permission',
+        timestamp: 4
       });
       expect(manager.getState('p1')?.level).toBe('permission');
     });
 
     it('updates timestamp on equal-priority re-notification', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 1000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 1000
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 5000,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 5000
       });
 
       expect(manager.getState('p1')?.timestamp).toBe(5000);
@@ -83,10 +119,16 @@ describe('NotificationStateManager — extended', () => {
   describe('multi-pane state isolation', () => {
     it('clearing one pane does not affect another', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'error', timestamp: 1,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'error',
+        timestamp: 1
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p2', level: 'permission', timestamp: 2,
+        type: 'notification',
+        paneId: 'p2',
+        level: 'permission',
+        timestamp: 2
       });
 
       manager.clearPane('p1');
@@ -97,10 +139,16 @@ describe('NotificationStateManager — extended', () => {
 
     it('pane-closed event for one pane does not affect others', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 1,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 1
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p2', level: 'info', timestamp: 2,
+        type: 'notification',
+        paneId: 'p2',
+        level: 'info',
+        timestamp: 2
       });
 
       eventBus.emit('pane-closed', { type: 'pane-closed', paneId: 'p1' });
@@ -111,13 +159,22 @@ describe('NotificationStateManager — extended', () => {
 
     it('getAllStates reflects clearPane calls', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 1,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 1
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p2', level: 'error', timestamp: 2,
+        type: 'notification',
+        paneId: 'p2',
+        level: 'error',
+        timestamp: 2
       });
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p3', level: 'permission', timestamp: 3,
+        type: 'notification',
+        paneId: 'p3',
+        level: 'permission',
+        timestamp: 3
       });
 
       manager.clearPane('p2');
@@ -140,14 +197,20 @@ describe('NotificationStateManager — extended', () => {
 
     it('can re-notify after clearing', () => {
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'permission', timestamp: 1,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'permission',
+        timestamp: 1
       });
       manager.clearPane('p1');
       expect(manager.getState('p1')).toBeUndefined();
 
       // New notification after clear should be tracked
       eventBus.emit('notification', {
-        type: 'notification', paneId: 'p1', level: 'info', timestamp: 2,
+        type: 'notification',
+        paneId: 'p1',
+        level: 'info',
+        timestamp: 2
       });
       expect(manager.getState('p1')?.level).toBe('info');
     });

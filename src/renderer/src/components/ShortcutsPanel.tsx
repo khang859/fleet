@@ -1,26 +1,32 @@
 import { ALL_SHORTCUTS, formatShortcut } from '../lib/shortcuts';
 
-const SHORTCUTS = ALL_SHORTCUTS
-  .filter((s) => s.id !== 'command-palette')
-  .map((s) => ({ keys: formatShortcut(s), action: s.label }));
+const SHORTCUTS = ALL_SHORTCUTS.filter((s) => s.id !== 'command-palette').map((s) => ({
+  keys: formatShortcut(s),
+  action: s.label
+}));
 
 type ShortcutsPanelProps = {
   isOpen: boolean;
   onClose: () => void;
 };
 
-export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps) {
+export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.JSX.Element | null {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="bg-neutral-900 border border-neutral-700 rounded-lg w-[360px] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">&times;</button>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+            &times;
+          </button>
         </div>
         <div className="p-4 space-y-2">
           {SHORTCUTS.map(({ keys, action }) => (

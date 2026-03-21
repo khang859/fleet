@@ -77,7 +77,11 @@ describe('ShipsLog', () => {
   });
 
   it('should store detail as JSON string', () => {
-    log.log({ crewId: 'crew-1', eventType: 'deployed', detail: { sectorId: 'api', missionId: 42 } });
+    log.log({
+      crewId: 'crew-1',
+      eventType: 'deployed',
+      detail: { sectorId: 'api', missionId: 42 }
+    });
     const entries = log.query({ crewId: 'crew-1' });
     const parsed = JSON.parse(entries[0].detail!);
     expect(parsed.sectorId).toBe('api');

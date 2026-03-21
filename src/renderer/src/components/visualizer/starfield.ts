@@ -21,15 +21,15 @@ export type StarLayer = {
 const LAYER_CONFIGS = [
   { speed: 5, brightness: 0.3, size: 1, density: 10 },
   { speed: 15, brightness: 0.6, size: 1.5, density: 20 },
-  { speed: 30, brightness: 0.9, size: 2, density: 30 },
+  { speed: 30, brightness: 0.9, size: 2, density: 30 }
 ];
 
-const STAR_COLORS: [number, number, number, number][] = [
-  [0.70, 255, 255, 255], // white
-  [0.80, 170, 221, 255], // pale blue
-  [0.90, 255, 238, 170], // pale yellow
+const STAR_COLORS: Array<[number, number, number, number]> = [
+  [0.7, 255, 255, 255], // white
+  [0.8, 170, 221, 255], // pale blue
+  [0.9, 255, 238, 170], // pale yellow
   [0.95, 255, 187, 187], // pale red
-  [1.00, 255, 221, 187], // pale orange
+  [1.0, 255, 221, 187] // pale orange
 ];
 
 function randomStarColor(): { r: number; g: number; b: number } {
@@ -81,7 +81,7 @@ function makeStar(
   y: number,
   config: { size: number; brightness: number },
   color: { r: number; g: number; b: number },
-  twinkle: { twinklePhase: number; twinkleSpeed: number },
+  twinkle: { twinklePhase: number; twinkleSpeed: number }
 ): Star {
   const star: Star = {
     x,
@@ -89,7 +89,7 @@ function makeStar(
     size: config.size + (Math.random() - 0.5) * 0.5,
     brightness: config.brightness + (Math.random() - 0.5) * 0.15,
     ...color,
-    ...twinkle,
+    ...twinkle
   };
   if (star.twinkleSpeed === 0) {
     star.cachedFillStyle = makeCachedFillStyle(star);
@@ -107,7 +107,7 @@ export class Starfield {
   private farCacheDirty = true;
 
   // Task 2: Constellation edge caching
-  private constellationEdges: [number, number][] = [];
+  private constellationEdges: Array<[number, number]> = [];
   private constellationTimer = 500; // start at interval so first update() triggers a recompute
   private readonly CONSTELLATION_INTERVAL = 500;
 
@@ -126,20 +126,16 @@ export class Starfield {
       for (let i = 0; i < count; i++) {
         const color = randomStarColor();
         const twinkle = randomTwinkle();
-        stars.push(makeStar(
-          Math.random() * this.width,
-          Math.random() * this.height,
-          config,
-          color,
-          twinkle,
-        ));
+        stars.push(
+          makeStar(Math.random() * this.width, Math.random() * this.height, config, color, twinkle)
+        );
       }
 
       return {
         stars,
         speed: config.speed,
         brightness: config.brightness,
-        size: config.size,
+        size: config.size
       };
     });
   }
@@ -153,7 +149,7 @@ export class Starfield {
   }
 
   // Task 2: Public accessor
-  getConstellationEdges(): [number, number][] {
+  getConstellationEdges(): Array<[number, number]> {
     return this.constellationEdges;
   }
 
@@ -209,13 +205,9 @@ export class Starfield {
       while (layer.stars.length < targetCount) {
         const color = randomStarColor();
         const twinkle = randomTwinkle();
-        layer.stars.push(makeStar(
-          Math.random() * width,
-          Math.random() * height,
-          config,
-          color,
-          twinkle,
-        ));
+        layer.stars.push(
+          makeStar(Math.random() * width, Math.random() * height, config, color, twinkle)
+        );
       }
 
       if (layer.stars.length > targetCount) {
@@ -224,8 +216,12 @@ export class Starfield {
     }
   }
 
-  getWidth(): number { return this.width; }
-  getHeight(): number { return this.height; }
+  getWidth(): number {
+    return this.width;
+  }
+  getHeight(): number {
+    return this.height;
+  }
 
   getLayers(): StarLayer[] {
     return this.layers;
@@ -235,7 +231,8 @@ export class Starfield {
   // Always allocates a new canvas so callers can detect a rebuild via object identity.
   private rebuildFarCache(): void {
     this.farCache = new OffscreenCanvas(this.width, this.height);
-    const offCtx = this.farCache.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const offCtx = this.farCache.getContext('2d');
+    if (!offCtx) return;
     offCtx.clearRect(0, 0, this.width, this.height);
     offCtx.filter = 'blur(1px)';
 
@@ -243,7 +240,12 @@ export class Starfield {
       const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
       const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
       offCtx.fillStyle = star.cachedFillStyle ?? getTwinkleFillStyle(star.r, star.g, star.b, alpha);
-      offCtx.fillRect(Math.round(star.x), Math.round(star.y), Math.round(star.size), Math.round(star.size));
+      offCtx.fillRect(
+        Math.round(star.x),
+        Math.round(star.y),
+        Math.round(star.size),
+        Math.round(star.size)
+      );
     }
 
     offCtx.filter = 'none';
@@ -259,7 +261,7 @@ export class Starfield {
     }
 
     const stars = midLayer.stars;
-    const newEdges: [number, number][] = [];
+    const newEdges: Array<[number, number]> = [];
     const distSqThreshold = 40 * 40; // 1600
 
     for (let i = 0; i < stars.length; i++) {
@@ -292,8 +294,14 @@ export class Starfield {
         for (const star of layer.stars) {
           const twinkleMod = star.twinkleSpeed > 0 ? 0.15 * Math.sin(star.twinklePhase) : 0;
           const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
-          ctx.fillStyle = star.cachedFillStyle ?? getTwinkleFillStyle(star.r, star.g, star.b, alpha);
-          ctx.fillRect(Math.round(star.x), Math.round(star.y), Math.round(star.size), Math.round(star.size));
+          ctx.fillStyle =
+            star.cachedFillStyle ?? getTwinkleFillStyle(star.r, star.g, star.b, alpha);
+          ctx.fillRect(
+            Math.round(star.x),
+            Math.round(star.y),
+            Math.round(star.size),
+            Math.round(star.size)
+          );
         }
       }
     }

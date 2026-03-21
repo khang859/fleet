@@ -85,7 +85,7 @@ describe('Notification pipeline integration', () => {
         type: 'notification',
         paneId: event.paneId,
         level,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     });
 
@@ -101,7 +101,7 @@ describe('Notification pipeline integration', () => {
         type: 'notification',
         paneId: event.paneId,
         level,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     });
 
@@ -116,7 +116,7 @@ describe('Notification pipeline integration', () => {
         type: 'notification',
         paneId: event.paneId,
         level: event.exitCode !== 0 ? 'error' : 'subtle',
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     });
 
@@ -134,7 +134,7 @@ describe('Notification pipeline integration', () => {
         type: 'notification',
         paneId: event.paneId,
         level: event.exitCode !== 0 ? 'error' : 'subtle',
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     });
 
@@ -154,7 +154,7 @@ describe('Notification pipeline integration', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: expect.any(Number),
+      timestamp: expect.any(Number)
     });
   });
 });

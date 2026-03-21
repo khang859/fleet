@@ -1,4 +1,4 @@
-import { createServer, Server, Socket } from 'node:net';
+import { createServer, type Server, type Socket } from 'node:net';
 import { mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -11,6 +11,7 @@ import type { SupplyRouteService } from './starbase/supply-route-service';
 import type { ConfigService } from './starbase/config-service';
 import type { ShipsLog } from './starbase/ships-log';
 import type { ProtocolService } from './starbase/protocol-service';
+import { CodedError } from './errors';
 
 export interface ServiceRegistry {
   crewService: CrewService;
@@ -24,11 +25,107 @@ export interface ServiceRegistry {
   protocolService: ProtocolService;
 }
 
+/** Wrap every method's return type in Promise (idempotent for already-async methods). */
+type Promisified<T> = {
+  [M in keyof T]: T[M] extends (...args: infer A) => infer R
+    ? (...args: A) => Promise<Awaited<R>>
+    : T[M];
+};
+
+/**
+ * Async subset of ServiceRegistry for use by socket runtime proxies.
+ * Each service only exposes the methods the socket dispatch actually calls,
+ * and all return types are wrapped in Promise.
+ */
+export type AsyncServiceRegistry = {
+  crewService: Promisified<
+    Pick<
+      ServiceRegistry['crewService'],
+      'listCrew' | 'deployCrew' | 'recallCrew' | 'getCrewStatus' | 'observeCrew' | 'messageCrew'
+    >
+  >;
+  missionService: Promisified<
+    Pick<
+      ServiceRegistry['missionService'],
+      | 'addMission'
+      | 'listMissions'
+      | 'getMission'
+      | 'updateMission'
+      | 'setStatus'
+      | 'resetForRequeue'
+      | 'abortMission'
+      | 'setReviewVerdict'
+      | 'getDependencies'
+    >
+  >;
+  commsService: Promisified<
+    Pick<
+      ServiceRegistry['commsService'],
+      | 'getUnreadByExecution'
+      | 'getRecent'
+      | 'markRead'
+      | 'send'
+      | 'delete'
+      | 'clear'
+      | 'markAllRead'
+      | 'getTransmission'
+      | 'getUnread'
+      | 'resolve'
+    >
+  >;
+  sectorService: Promisified<
+    Pick<
+      ServiceRegistry['sectorService'],
+      'listVisibleSectors' | 'getSector' | 'addSector' | 'removeSector'
+    >
+  >;
+  cargoService: Promisified<
+    Pick<
+      ServiceRegistry['cargoService'],
+      'listCargo' | 'getCargo' | 'produceCargo' | 'getUndelivered'
+    >
+  >;
+  supplyRouteService: Promisified<
+    Pick<ServiceRegistry['supplyRouteService'], 'listRoutes' | 'addRoute' | 'removeRoute'>
+  >;
+  configService: Promisified<Pick<ServiceRegistry['configService'], 'get' | 'set'>>;
+  shipsLog: Promisified<Pick<ServiceRegistry['shipsLog'], 'query'>>;
+  protocolService: Promisified<
+    Pick<
+      ServiceRegistry['protocolService'],
+      | 'listProtocols'
+      | 'getProtocolBySlug'
+      | 'listSteps'
+      | 'setProtocolEnabled'
+      | 'listExecutions'
+      | 'getExecution'
+      | 'advanceStep'
+      | 'updateExecutionStatus'
+      | 'updateExecutionContext'
+    >
+  >;
+};
+
 type Request = {
   id?: string;
   command: string;
-  args: Record<string, unknown>;
+  args?: Record<string, unknown>;
 };
+
+function toStr(v: unknown): string {
+  if (v == null) return '';
+  if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') return String(v);
+  return JSON.stringify(v);
+}
+
+function isRequest(v: unknown): v is Request {
+  return (
+    v != null &&
+    typeof v === 'object' &&
+    'command' in v &&
+    typeof (v as { command?: unknown }).command === 'string'
+  );
+}
 
 type SuccessResponse = {
   id?: string;
@@ -65,7 +162,7 @@ export class SocketServer extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry,
+    private services: ServiceRegistry | AsyncServiceRegistry
   ) {
     super();
   }
@@ -93,7 +190,7 @@ export class SocketServer extends EventEmitter {
 
           for (const line of lines) {
             if (!line.trim()) continue;
-            this.handleLine(socket, line);
+            void this.handleLine(socket, line);
           }
         });
 
@@ -115,8 +212,8 @@ export class SocketServer extends EventEmitter {
 
       this.server.listen(this.socketPath, () => {
         // Remove startup error handler and attach permanent one for post-startup errors
-        this.server!.off('error', reject);
-        this.server!.on('error', (err) => {
+        this.server?.off('error', reject);
+        this.server?.on('error', (err) => {
           this.emit('server-error', err);
         });
         this.startTime = Date.now();
@@ -152,7 +249,12 @@ export class SocketServer extends EventEmitter {
     let req: Request;
 
     try {
-      req = JSON.parse(line);
+      const parsed: unknown = JSON.parse(line);
+      if (!isRequest(parsed)) {
+        this.sendResponse(socket, { ok: false, error: 'Invalid request' });
+        return;
+      }
+      req = parsed;
     } catch {
       this.sendResponse(socket, { ok: false, error: 'Invalid JSON' });
       return;
@@ -162,9 +264,13 @@ export class SocketServer extends EventEmitter {
       const data = await this.dispatch(req.command, req.args ?? {});
       this.sendResponse(socket, { id: req.id, ok: true, data });
     } catch (err) {
-      const error = err instanceof Error ? err.message : 'Unknown error';
-      const code = (err as { code?: string }).code ?? undefined;
-      this.sendResponse(socket, { id: req.id, ok: false, error, code });
+      const coded =
+        err instanceof CodedError
+          ? err
+          : err instanceof Error
+            ? new CodedError(err.message, 'UNKNOWN')
+            : new CodedError(String(err), 'UNKNOWN');
+      this.sendResponse(socket, { id: req.id, ok: false, error: coded.message, code: coded.code });
     }
   }
 
@@ -184,7 +290,7 @@ export class SocketServer extends EventEmitter {
       supplyRouteService,
       configService,
       shipsLog,
-      protocolService,
+      protocolService
     } = this.services;
 
     switch (command) {
@@ -196,122 +302,117 @@ export class SocketServer extends EventEmitter {
         return sectorService.listVisibleSectors();
 
       case 'sector.info': {
-        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
-        if (!sectorId) {
-          const err = new Error(
-            'sector.info requires a sector ID.\n' +
-            'Usage: fleet sectors show <sector-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+        const rawSectorId = args.id ?? args.sectorId ?? args.name;
+        if (typeof rawSectorId !== 'string' || !rawSectorId) {
+          throw new CodedError(
+            'sector.info requires a sector ID.\n' + 'Usage: fleet sectors show <sector-id>',
+            'BAD_REQUEST'
+          );
         }
-        const sector = await sectorService.getSector(sectorId);
+        const sector = await sectorService.getSector(rawSectorId);
         if (!sector) {
-          const err = new Error(`Sector not found: ${sectorId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Sector not found: ${rawSectorId}`, 'NOT_FOUND');
         }
         return sector;
       }
 
       case 'sector.add': {
-        const path = (args.path ?? args.id) as string | undefined;
-        if (!path) {
-          const err = new Error(
+        const path = args.path ?? args.id;
+        if (typeof path !== 'string' || !path) {
+          throw new CodedError(
             'sector.add requires --path <path>.\n' +
-            'Usage: fleet sectors add --path /path/to/repo'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet sectors add --path /path/to/repo',
+            'BAD_REQUEST'
+          );
         }
-        return sectorService.addSector(args as Parameters<SectorService['addSector']>[0]);
+        return sectorService.addSector({
+          path,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          description: typeof args.description === 'string' ? args.description : undefined,
+          baseBranch: typeof args.baseBranch === 'string' ? args.baseBranch : undefined,
+          mergeStrategy: typeof args.mergeStrategy === 'string' ? args.mergeStrategy : undefined
+        });
       }
 
       case 'sector.remove': {
-        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
-        if (!sectorId) {
-          const err = new Error(
-            'sector.remove requires a sector ID.\n' +
-            'Usage: fleet sectors remove <sector-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+        const rawSectorId = args.id ?? args.sectorId ?? args.name;
+        if (typeof rawSectorId !== 'string' || !rawSectorId) {
+          throw new CodedError(
+            'sector.remove requires a sector ID.\n' + 'Usage: fleet sectors remove <sector-id>',
+            'BAD_REQUEST'
+          );
         }
-        sectorService.removeSector(sectorId);
+        await sectorService.removeSector(rawSectorId);
         return null;
       }
 
       // ── Missions ─────────────────────────────────────────────────────────────
       case 'mission.create': {
-        const sectorId = (args.sector ?? args.sectorId) as string;
-        const summary = args.summary as string | undefined;
-        const prompt = args.prompt as string | undefined;
-        const type = args.type as string | undefined;
+        const rawSector = args.sector ?? args.sectorId;
+        const sectorId = typeof rawSector === 'string' ? rawSector : undefined;
+        const summary = typeof args.summary === 'string' ? args.summary : undefined;
+        const prompt = typeof args.prompt === 'string' ? args.prompt : undefined;
+        const type = typeof args.type === 'string' ? args.type : undefined;
         const VALID_MISSION_TYPES = ['code', 'research', 'review'];
-        const prBranch = args['pr-branch'] as string | undefined;
+        const rawPrBranch = args['pr-branch'];
+        const prBranch = typeof rawPrBranch === 'string' ? rawPrBranch : undefined;
 
         if (!sectorId) {
-          const err = new Error('mission.create requires --sector <id>') as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError('mission.create requires --sector <id>', 'BAD_REQUEST');
         }
         if (!type) {
-          const err = new Error(
+          throw new CodedError(
             'mission.create requires --type <code|research|review>.\n' +
-            'Mission types:\n' +
-            '  code     — produces git commits (code changes, bug fixes, features)\n' +
-            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
-            '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Mission types:\n' +
+              '  code     — produces git commits (code changes, bug fixes, features)\n' +
+              '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+              '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n' +
+              'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"',
+            'BAD_REQUEST'
+          );
         }
         if (!VALID_MISSION_TYPES.includes(type)) {
-          const err = new Error(
+          throw new CodedError(
             `Invalid mission type "${type}". Must be "code", "research", or "review".\n` +
-            'Mission types:\n' +
-            '  code     — produces git commits (code changes, bug fixes, features)\n' +
-            '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
-            '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Mission types:\n' +
+              '  code     — produces git commits (code changes, bug fixes, features)\n' +
+              '  research — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
+              '  review   — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)',
+            'BAD_REQUEST'
+          );
         }
         if (!prompt || prompt.trim().length === 0) {
-          const err = new Error(
+          throw new CodedError(
             'mission.create requires a non-empty --prompt.\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"',
+            'BAD_REQUEST'
+          );
         }
         if (!summary || summary.trim().length === 0) {
-          const err = new Error(
+          throw new CodedError(
             'mission.create requires a non-empty --summary.\n' +
-            'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"',
+            'BAD_REQUEST'
+          );
         }
 
         // Parse --depends-on (may be a single string or array of strings)
-        const rawDeps = args['depends-on']
-        const dependsOnMissionIds: number[] = rawDeps == null
-          ? []
-          : (Array.isArray(rawDeps) ? rawDeps : [rawDeps])
-              .map(Number)
-              .filter(n => !isNaN(n) && n > 0)
+        const rawDeps = args['depends-on'];
+        const dependsOnMissionIds: number[] =
+          rawDeps == null
+            ? []
+            : (Array.isArray(rawDeps) ? rawDeps : [rawDeps])
+                .map(Number)
+                .filter((n) => !isNaN(n) && n > 0);
 
         // Validate each dependency ID exists
         for (const depId of dependsOnMissionIds) {
-          const dep = await missionService.getMission(depId)
+          const dep = await missionService.getMission(depId);
           if (!dep) {
-            const err = new Error(
-              `Cannot link dependency: mission ${depId} does not exist.`
-            ) as Error & { code: string }
-            err.code = 'BAD_REQUEST'
-            throw err
+            throw new CodedError(
+              `Cannot link dependency: mission ${depId} does not exist.`,
+              'BAD_REQUEST'
+            );
           }
         }
 
@@ -321,35 +422,37 @@ export class SocketServer extends EventEmitter {
           prompt,
           dependsOnMissionIds,
           type,
-          prBranch,
+          prBranch
         });
 
-        const nudge = type === 'code' && dependsOnMissionIds.length === 0
-          ? 'Tip: Consider attaching a research mission to provide context before this code mission runs. Use --depends-on <research-mission-id> to link one. Skip this for trivial changes.'
-          : undefined
+        const nudge =
+          type === 'code' && dependsOnMissionIds.length === 0
+            ? 'Tip: Consider attaching a research mission to provide context before this code mission runs. Use --depends-on <research-mission-id> to link one. Skip this for trivial changes.'
+            : undefined;
 
         this.emit('state-change', 'mission:changed', { mission });
-        return nudge ? { ...mission, dependencies: dependsOnMissionIds, nudge } : { ...mission, dependencies: dependsOnMissionIds }
+        return nudge
+          ? { ...mission, dependencies: dependsOnMissionIds, nudge }
+          : { ...mission, dependencies: dependsOnMissionIds };
       }
 
       case 'mission.list':
-        return missionService.listMissions(args as Parameters<MissionService['listMissions']>[0]);
+        return missionService.listMissions({
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          status: typeof args.status === 'string' ? args.status : undefined
+        });
 
       case 'mission.status': {
         const rawId = args.id ?? args.missionId;
         if (rawId == null) {
-          const err = new Error(
-            'mission.status requires a mission ID.\n' +
-            'Usage: fleet missions show <mission-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError(
+            'mission.status requires a mission ID.\n' + 'Usage: fleet missions show <mission-id>',
+            'BAD_REQUEST'
+          );
         }
         const mission = await missionService.getMission(Number(rawId));
         if (!mission) {
-          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         return mission;
       }
@@ -357,31 +460,28 @@ export class SocketServer extends EventEmitter {
       case 'mission.update': {
         const rawId = args.id ?? args.missionId;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'mission.update requires a mission ID.\n' +
-            'Usage: fleet missions update <mission-id> --status <status> [--prompt "..."] [--summary "..."]'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet missions update <mission-id> --status <status> [--prompt "..."] [--summary "..."]',
+            'BAD_REQUEST'
+          );
         }
         const id = Number(rawId);
         const existing = await missionService.getMission(id);
         if (!existing) {
-          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
 
         // Update editable fields (prompt, summary, etc.)
         const fields: Record<string, string> = {};
-        if (args.prompt) fields.prompt = args.prompt as string;
-        if (args.summary) fields.summary = args.summary as string;
+        if (typeof args.prompt === 'string') fields.prompt = args.prompt;
+        if (typeof args.summary === 'string') fields.summary = args.summary;
         if (Object.keys(fields).length > 0) {
           await missionService.updateMission(id, fields);
         }
 
-        if (args.status) {
-          const newStatus = args.status as string;
+        if (typeof args.status === 'string') {
+          const newStatus = args.status;
           await missionService.setStatus(id, newStatus);
           // When re-queuing a mission, reset crew assignment so autoDeployNext() picks it up
           if (newStatus === 'queued') {
@@ -395,19 +495,15 @@ export class SocketServer extends EventEmitter {
       case 'mission.cancel': {
         const rawId = args.id ?? args.missionId;
         if (rawId == null) {
-          const err = new Error(
-            'mission.cancel requires a mission ID.\n' +
-            'Usage: fleet missions cancel <mission-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError(
+            'mission.cancel requires a mission ID.\n' + 'Usage: fleet missions cancel <mission-id>',
+            'BAD_REQUEST'
+          );
         }
         const id = Number(rawId);
         const existing = await missionService.getMission(id);
         if (!existing) {
-          const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Mission not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         await missionService.abortMission(id);
         this.emit('state-change', 'mission:changed', { id });
@@ -417,23 +513,21 @@ export class SocketServer extends EventEmitter {
       case 'mission.verdict': {
         const rawId = args.id ?? args.missionId;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'mission.verdict requires a mission ID.\n' +
-            'Usage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated> --notes "..."'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated> --notes "..."',
+            'BAD_REQUEST'
+          );
         }
-        const id = typeof rawId === 'string' ? parseInt(rawId, 10) : (rawId as number);
-        const verdict = args.verdict as string;
-        const notes = (args.notes as string) ?? '';
+        const id = typeof rawId === 'string' ? parseInt(rawId, 10) : Number(rawId);
+        const verdict = typeof args.verdict === 'string' ? args.verdict : '';
+        const notes = typeof args.notes === 'string' ? args.notes : '';
 
         if (!verdict || !['approved', 'changes-requested', 'escalated'].includes(verdict)) {
-          const err = new Error(
-            'Invalid verdict. Must be one of: approved, changes-requested, escalated'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError(
+            'Invalid verdict. Must be one of: approved, changes-requested, escalated',
+            'BAD_REQUEST'
+          );
         }
 
         await missionService.setReviewVerdict(id, verdict, notes);
@@ -447,8 +541,8 @@ export class SocketServer extends EventEmitter {
             payload: JSON.stringify({
               missionId: id,
               summary: mission?.summary ?? '',
-              pr_branch: mission?.pr_branch ?? null,
-            }),
+              pr_branch: mission?.pr_branch ?? null
+            })
           });
         } else {
           await missionService.setStatus(id, verdict);
@@ -464,155 +558,161 @@ export class SocketServer extends EventEmitter {
       case 'crew.deploy': {
         const rawMission = args.mission ?? args.missionId;
         if (rawMission == null) {
-          const err = new Error(
-            'crew.deploy requires --mission <id>. Create a mission first with: fleet missions add --sector <id> --summary "..." --prompt "..."'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError(
+            'crew.deploy requires --mission <id>. Create a mission first with: fleet missions add --sector <id> --summary "..." --prompt "..."',
+            'BAD_REQUEST'
+          );
         }
 
         const missionId = Number(rawMission);
         if (Number.isNaN(missionId) || missionId <= 0) {
-          const err = new Error(
-            `Invalid mission ID: "${rawMission}". --mission must be a numeric mission ID.\n` +
-            'Create a mission first:\n' +
-            '  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
-            'Then deploy:\n' +
-            '  fleet crew deploy --sector <id> --mission <mission-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+          throw new CodedError(
+            `Invalid mission ID: "${toStr(rawMission)}". --mission must be a numeric mission ID.\n` +
+              'Create a mission first:\n' +
+              '  fleet missions add --sector <id> --summary "..." --prompt "..."\n' +
+              'Then deploy:\n' +
+              '  fleet crew deploy --sector <id> --mission <mission-id>',
+            'BAD_REQUEST'
+          );
         }
 
         const mission = await missionService.getMission(missionId);
         if (!mission) {
-          const err = new Error(`Mission not found: ${missionId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Mission not found: ${missionId}`, 'NOT_FOUND');
         }
 
         const prompt = mission.prompt;
         if (!prompt || prompt.trim().length === 0) {
-          const err = new Error(
+          throw new CodedError(
             `Mission ${missionId} has an empty prompt. Update it first:\n` +
-            `  fleet missions update ${missionId} --prompt "..."`
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              `  fleet missions update ${missionId} --prompt "..."`,
+            'BAD_REQUEST'
+          );
         }
 
         // Check all dependencies via junction table
         const allDeps = await missionService.getDependencies(missionId);
         const blockedDeps = allDeps.filter(
-          dep => !['completed', 'done', 'failed', 'aborted', 'failed-verification', 'escalated', 'approved'].includes(dep.status)
-        )
+          (dep) =>
+            ![
+              'completed',
+              'done',
+              'failed',
+              'aborted',
+              'failed-verification',
+              'escalated',
+              'approved'
+            ].includes(dep.status)
+        );
         if (blockedDeps.length > 0) {
-          const depList = blockedDeps.map(d => `#${d.id} (${d.status})`).join(', ')
+          const depList = blockedDeps.map((d) => `#${d.id} (${d.status})`).join(', ');
           throw new Error(
             `Cannot deploy: mission ${missionId} depends on mission(s) ${depList} which have not reached a terminal state.`
-          )
+          );
         }
 
         // Guard: reject if mission already has a crew assigned or is already active
-        if (mission.crew_id != null || mission.status === 'active' || mission.status === 'deploying') {
-          const err = new Error(
+        if (
+          mission.crew_id != null ||
+          mission.status === 'active' ||
+          mission.status === 'deploying'
+        ) {
+          throw new CodedError(
             `Mission ${missionId} already has a crew assigned (status: ${mission.status}). ` +
-            'Recall the existing crew before deploying a new one.'
-          ) as Error & { code: string };
-          err.code = 'CONFLICT';
-          throw err;
+              'Recall the existing crew before deploying a new one.',
+            'CONFLICT'
+          );
         }
 
+        const deploySectorId = args.sector ?? args.sectorId ?? mission.sector_id;
+        if (typeof deploySectorId !== 'string') {
+          throw new CodedError('crew.deploy requires a valid sector ID', 'BAD_REQUEST');
+        }
         const result = await crewService.deployCrew({
-          sectorId: (args.sector ?? args.sectorId ?? mission.sector_id) as string,
+          sectorId: deploySectorId,
           prompt,
           missionId,
-          type: args.type as string | undefined,
-          prBranch: mission.pr_branch ?? undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          prBranch: mission.pr_branch ?? undefined
         });
         this.emit('state-change', 'crew:changed', result);
         return result;
       }
 
       case 'crew.recall': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
-          const err = new Error(
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
+          throw new CodedError(
             'crew.recall requires a crew ID.\n' +
-            'Usage: fleet crew recall <crew-id>\n' +
-            'List crew: fleet crew list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet crew recall <crew-id>\n' +
+              'List crew: fleet crew list',
+            'BAD_REQUEST'
+          );
         }
-        crewService.recallCrew(crewId);
-        this.emit('state-change', 'crew:changed', { crewId, status: 'recalled' });
+        await crewService.recallCrew(rawCrewId);
+        this.emit('state-change', 'crew:changed', { crewId: rawCrewId, status: 'recalled' });
         return null;
       }
 
       case 'crew.info': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
-          const err = new Error(
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
+          throw new CodedError(
             'crew.info requires a crew ID.\n' +
-            'Usage: fleet crew info <crew-id>\n' +
-            'List crew: fleet crew list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet crew info <crew-id>\n' +
+              'List crew: fleet crew list',
+            'BAD_REQUEST'
+          );
         }
-        const info = await crewService.getCrewStatus(crewId);
+        const info = await crewService.getCrewStatus(rawCrewId);
         if (!info) {
-          const err = new Error(`Crew not found: ${crewId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Crew not found: ${rawCrewId}`, 'NOT_FOUND');
         }
         return info;
       }
 
       case 'crew.observe': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
-          const err = new Error(
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
+          throw new CodedError(
             'crew.observe requires a crew ID.\n' +
-            'Usage: fleet crew observe <crew-id>\n' +
-            'List crew: fleet crew list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet crew observe <crew-id>\n' +
+              'List crew: fleet crew list',
+            'BAD_REQUEST'
+          );
         }
-        const raw = await crewService.observeCrew(crewId);
+        const raw = await crewService.observeCrew(rawCrewId);
         return stripAnsi(raw);
       }
 
       case 'crew.message': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        const message = (args.message ?? args.text) as string | undefined;
+        const rawCrewId = args.id ?? args.crewId;
+        const rawMessage = args.message ?? args.text;
+        const crewId = typeof rawCrewId === 'string' ? rawCrewId : undefined;
+        const message = typeof rawMessage === 'string' ? rawMessage : undefined;
         if (!crewId) {
-          const err = new Error(
+          throw new CodedError(
             'crew.message requires a crew ID.\n' +
-            'Usage: fleet crew message <crew-id> --message "..."\n' +
-            'List crew: fleet crew list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet crew message <crew-id> --message "..."\n' +
+              'List crew: fleet crew list',
+            'BAD_REQUEST'
+          );
         }
         if (!message || message.trim().length === 0) {
-          const err = new Error(
+          throw new CodedError(
             'crew.message requires a non-empty --message.\n' +
-            'Usage: fleet crew message <crew-id> --message "your message here"'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet crew message <crew-id> --message "your message here"',
+            'BAD_REQUEST'
+          );
         }
         const sent = await crewService.messageCrew(crewId, message);
         if (!sent) {
-          const err = new Error(
+          throw new CodedError(
             `Crew not active: ${crewId}. Only active crew can receive messages.\n` +
-            'Check crew status: fleet crew info ' + crewId
-          ) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+              'Check crew status: fleet crew info ' +
+              crewId,
+            'NOT_FOUND'
+          );
         }
         this.emit('state-change', 'crew:changed', { crewId });
         return { sent: true };
@@ -621,25 +721,29 @@ export class SocketServer extends EventEmitter {
       // ── Comms ─────────────────────────────────────────────────────────────────
       case 'comms.list': {
         // if executionId arg provided, use getUnreadByExecution
-        const executionId = args.execution as string | undefined;
-        if (executionId) {
-          return commsService.getUnreadByExecution(executionId);
+        if (typeof args.execution === 'string' && args.execution) {
+          return commsService.getUnreadByExecution(args.execution);
         }
         // fall through to existing getRecent logic
-        const rows = commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
+        const rows = commsService.getRecent({
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          limit: typeof args.limit === 'number' ? args.limit : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          from: typeof args.from === 'string' ? args.from : undefined,
+          unread: typeof args.unread === 'boolean' ? args.unread : undefined
+        });
         return rows;
       }
 
       case 'comms.read': {
         const rawId = args.id ?? args.transmissionId;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'comms.read requires a transmission ID.\n' +
-            'Usage: fleet comms read <transmission-id>\n' +
-            'List transmissions: fleet comms inbox'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet comms read <transmission-id>\n' +
+              'List transmissions: fleet comms inbox',
+            'BAD_REQUEST'
+          );
         }
         const transmissionId = Number(rawId);
         const changed = await commsService.markRead(transmissionId);
@@ -648,29 +752,30 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.send': {
-        const to = args.to as string | undefined;
+        const to = typeof args.to === 'string' ? args.to : undefined;
         if (!to) {
-          const err = new Error(
+          throw new CodedError(
             'comms.send requires --to <crew-id|admiral>.\n' +
-            'Usage: fleet comms send --to <crew-id> --message "..."'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet comms send --to <crew-id> --message "..."',
+            'BAD_REQUEST'
+          );
         }
-        const payload = (args.message ?? args.payload) as string | undefined;
+        const rawPayload = args.message ?? args.payload;
+        const payload = typeof rawPayload === 'string' ? rawPayload : undefined;
         if (!payload || payload.trim().length === 0) {
-          const err = new Error(
+          throw new CodedError(
             'comms.send requires a non-empty --message.\n' +
-            'Usage: fleet comms send --to <crew-id> --message "your message"'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet comms send --to <crew-id> --message "your message"',
+            'BAD_REQUEST'
+          );
         }
+        const from = typeof args.from === 'string' ? args.from : 'admiral';
+        const msgType = typeof args.type === 'string' ? args.type : 'directive';
         const id = await commsService.send({
-          from: (args.from ?? 'admiral') as string,
+          from,
           to,
-          type: (args.type ?? 'directive') as string,
-          payload,
+          type: msgType,
+          payload
         });
         this.emit('state-change', 'comms:changed', { id });
 
@@ -686,13 +791,12 @@ export class SocketServer extends EventEmitter {
       case 'comms.delete': {
         const rawId = args.id ?? args.transmissionId;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'comms.delete requires a transmission ID.\n' +
-            'Usage: fleet comms delete --id <transmission-id>\n' +
-            'List transmissions: fleet comms inbox'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet comms delete --id <transmission-id>\n' +
+              'List transmissions: fleet comms inbox',
+            'BAD_REQUEST'
+          );
         }
         const transmissionId = Number(rawId);
         const deleted = await commsService.delete(transmissionId);
@@ -702,7 +806,7 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.clear': {
         const count = await commsService.clear(
-          args.crew ? { crewId: args.crew as string } : undefined,
+          typeof args.crew === 'string' ? { crewId: args.crew } : undefined
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
         return { deleted: count };
@@ -710,7 +814,7 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.read-all': {
         const count = await commsService.markAllRead(
-          args.crew ? { crewId: args.crew as string } : undefined,
+          typeof args.crew === 'string' ? { crewId: args.crew } : undefined
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
         return { marked: count };
@@ -719,20 +823,17 @@ export class SocketServer extends EventEmitter {
       case 'comms.info': {
         const rawId = args.id ?? args.transmissionId;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'comms.info requires a transmission ID.\n' +
-            'Usage: fleet comms show <transmission-id>\n' +
-            'List transmissions: fleet comms inbox'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet comms show <transmission-id>\n' +
+              'List transmissions: fleet comms inbox',
+            'BAD_REQUEST'
+          );
         }
         const transmissionId = Number(rawId);
         const transmission = await commsService.getTransmission(transmissionId);
         if (!transmission) {
-          const err = new Error(`Transmission not found: ${transmissionId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Transmission not found: ${transmissionId}`, 'NOT_FOUND');
         }
         return transmission;
       }
@@ -744,56 +845,59 @@ export class SocketServer extends EventEmitter {
 
       // ── Cargo ─────────────────────────────────────────────────────────────────
       case 'cargo.list':
-        return cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0]);
+        return cargoService.listCargo({
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          verified: typeof args.verified === 'boolean' ? args.verified : undefined
+        });
 
       case 'cargo.inspect': {
         const rawId = args.cargoId ?? args.id;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'cargo.inspect requires a cargo ID.\n' +
-            'Usage: fleet cargo show <cargo-id>\n' +
-            'List cargo: fleet cargo list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet cargo show <cargo-id>\n' +
+              'List cargo: fleet cargo list',
+            'BAD_REQUEST'
+          );
         }
         const cargo = await cargoService.getCargo(Number(rawId));
         if (!cargo) {
-          const err = new Error(`Cargo not found: ${rawId}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Cargo not found: ${toStr(rawId)}`, 'NOT_FOUND');
         }
         return cargo;
       }
 
       case 'cargo.produce': {
-        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
-        if (!sectorId || !args.type || !args.path) {
-          const err = new Error(
+        const rawCargoSector = args.sector ?? args.sectorId;
+        const cargoSectorId = typeof rawCargoSector === 'string' ? rawCargoSector : undefined;
+        const cargoType = typeof args.type === 'string' ? args.type : undefined;
+        const cargoPath = typeof args.path === 'string' ? args.path : undefined;
+        if (!cargoSectorId || !cargoType || !cargoPath) {
+          throw new CodedError(
             'cargo.produce requires --sector <sector-id>, --type <type>, and --path <path>.\n' +
-            'Usage: fleet cargo produce --sector <sector-id> --type <type> --path <path>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet cargo produce --sector <sector-id> --type <type> --path <path>',
+            'BAD_REQUEST'
+          );
         }
         return cargoService.produceCargo({
-          sectorId,
-          type: args.type as string,
-          manifest: args.path as string,
+          sectorId: cargoSectorId,
+          type: cargoType,
+          manifest: cargoPath
         });
       }
 
       case 'cargo.pending': {
-        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
-        if (!sectorId) {
-          const err = new Error(
+        const rawPendingSector = args.sector ?? args.sectorId;
+        if (typeof rawPendingSector !== 'string' || !rawPendingSector) {
+          throw new CodedError(
             'cargo.pending requires --sector <sector-id>.\n' +
-            'Usage: fleet cargo pending --sector <sector-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet cargo pending --sector <sector-id>',
+            'BAD_REQUEST'
+          );
         }
-        return cargoService.getUndelivered(sectorId);
+        return cargoService.getUndelivered(rawPendingSector);
       }
 
       // ── Supply Routes ─────────────────────────────────────────────────────────
@@ -801,91 +905,93 @@ export class SocketServer extends EventEmitter {
         return supplyRouteService.listRoutes();
 
       case 'supply-route.add': {
-        const fromSector = (args.from ?? args.fromSector) as string | undefined;
-        const toSector = (args.to ?? args.toSector) as string | undefined;
+        const rawFrom = args.from ?? args.fromSector;
+        const rawTo = args.to ?? args.toSector;
+        const fromSector = typeof rawFrom === 'string' ? rawFrom : undefined;
+        const toSector = typeof rawTo === 'string' ? rawTo : undefined;
         if (!fromSector || !toSector) {
-          const err = new Error(
+          throw new CodedError(
             'supply-route.add requires --from <sector-id> and --to <sector-id>.\n' +
-            'Usage: fleet supply-route add --from <sector-id> --to <sector-id>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet supply-route add --from <sector-id> --to <sector-id>',
+            'BAD_REQUEST'
+          );
         }
-        return supplyRouteService.addRoute(
-          args as Parameters<SupplyRouteService['addRoute']>[0],
-        );
+        return supplyRouteService.addRoute({
+          upstreamSectorId: fromSector,
+          downstreamSectorId: toSector,
+          relationship: typeof args.relationship === 'string' ? args.relationship : undefined
+        });
       }
 
       case 'supply-route.remove': {
         const rawId = args.routeId ?? args.id;
         if (rawId == null) {
-          const err = new Error(
+          throw new CodedError(
             'supply-route.remove requires a route ID.\n' +
-            'Usage: fleet supply-route remove <route-id>\n' +
-            'List routes: fleet supply-route list'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet supply-route remove <route-id>\n' +
+              'List routes: fleet supply-route list',
+            'BAD_REQUEST'
+          );
         }
-        supplyRouteService.removeRoute(Number(rawId));
+        await supplyRouteService.removeRoute(Number(rawId));
         return null;
       }
 
       // ── Config ────────────────────────────────────────────────────────────────
       case 'config.get': {
-        if (!args.key) {
-          const err = new Error(
-            'config.get requires --key <key>.\n' +
-            'Usage: fleet config get --key <config-key>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+        if (typeof args.key !== 'string' || !args.key) {
+          throw new CodedError(
+            'config.get requires --key <key>.\n' + 'Usage: fleet config get --key <config-key>',
+            'BAD_REQUEST'
+          );
         }
-        return configService.get(args.key as string);
+        return configService.get(args.key);
       }
 
       case 'config.set': {
-        if (!args.key) {
-          const err = new Error(
+        if (typeof args.key !== 'string' || !args.key) {
+          throw new CodedError(
             'config.set requires --key <key> and --value <value>.\n' +
-            'Usage: fleet config set --key <config-key> --value <value>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet config set --key <config-key> --value <value>',
+            'BAD_REQUEST'
+          );
         }
         if (args.value === undefined) {
-          const err = new Error(
+          throw new CodedError(
             'config.set requires --value <value>.\n' +
-            'Usage: fleet config set --key <config-key> --value <value>'
-          ) as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+              'Usage: fleet config set --key <config-key> --value <value>',
+            'BAD_REQUEST'
+          );
         }
-        configService.set(args.key as string, args.value);
+        await configService.set(args.key, args.value);
         return null;
       }
 
       // ── Log ───────────────────────────────────────────────────────────────────
       case 'log.show': {
-        const limit = (args.limit as number) ?? 50;
-        const crewFilter = args.crew as string | undefined;
+        const limit = typeof args.limit === 'number' ? args.limit : 50;
+        const crewFilter = typeof args.crew === 'string' ? args.crew : undefined;
         return shipsLog.query({ crewId: crewFilter, limit });
       }
 
       // ── File Open ──────────────────────────────────────────────────────────────
       case 'file.open': {
-        const files = args.files as Array<{ path: string; paneType: 'file' | 'image' }>;
-        if (!files || !Array.isArray(files) || files.length === 0) {
-          const err = new Error('file.open requires a non-empty files array') as Error & { code: string };
-          err.code = 'BAD_REQUEST';
-          throw err;
+        if (!Array.isArray(args.files) || args.files.length === 0) {
+          throw new CodedError('file.open requires a non-empty files array', 'BAD_REQUEST');
         }
+        const files = args.files.filter(
+          (f): f is Record<string, unknown> => f != null && typeof f === 'object'
+        );
         const payload = {
-          files: files.map((f) => ({
-            path: f.path,
-            paneType: f.paneType,
-            label: f.path.split('/').pop() ?? f.path,
-          })),
+          files: files.map((f) => {
+            const filePath = typeof f.path === 'string' ? f.path : '';
+            const paneType: 'file' | 'image' = f.paneType === 'image' ? 'image' : 'file';
+            return {
+              path: filePath,
+              paneType,
+              label: filePath.split('/').pop() ?? filePath
+            };
+          })
         };
         this.emit('file-open', payload);
         return { fileCount: files.length };
@@ -896,66 +1002,71 @@ export class SocketServer extends EventEmitter {
         return protocolService.listProtocols();
 
       case 'protocol.show': {
-        const slug = (args.id ?? args.slug) as string;
-        const p = await protocolService.getProtocolBySlug(slug);
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string')
+          throw new CodedError('protocol.show requires a slug', 'BAD_REQUEST');
+        const p = await protocolService.getProtocolBySlug(rawSlug);
         if (!p) {
-          const err = new Error(`Protocol not found: ${slug}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Protocol not found: ${rawSlug}`, 'NOT_FOUND');
         }
         const steps = await protocolService.listSteps(p.id);
         return { ...p, steps };
       }
 
       case 'protocol.enable': {
-        const slug = (args.id ?? args.slug) as string;
-        protocolService.setProtocolEnabled(slug, true);
-        return { slug, enabled: true };
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string')
+          throw new CodedError('protocol.enable requires a slug', 'BAD_REQUEST');
+        await protocolService.setProtocolEnabled(rawSlug, true);
+        return { slug: rawSlug, enabled: true };
       }
 
       case 'protocol.disable': {
-        const slug = (args.id ?? args.slug) as string;
-        protocolService.setProtocolEnabled(slug, false);
-        return { slug, enabled: false };
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string')
+          throw new CodedError('protocol.disable requires a slug', 'BAD_REQUEST');
+        await protocolService.setProtocolEnabled(rawSlug, false);
+        return { slug: rawSlug, enabled: false };
       }
 
       // ── Executions ────────────────────────────────────────────────────────────
       case 'execution.list':
-        return protocolService.listExecutions(args.status as string | undefined);
+        return protocolService.listExecutions(
+          typeof args.status === 'string' ? args.status : undefined
+        );
 
       case 'execution.show': {
-        const exec = await protocolService.getExecution(args.id as string);
+        if (typeof args.id !== 'string')
+          throw new CodedError('execution.show requires an execution ID', 'BAD_REQUEST');
+        const exec = await protocolService.getExecution(args.id);
         if (!exec) {
-          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Execution not found: ${args.id}`, 'NOT_FOUND');
         }
         return exec;
       }
 
       case 'execution.update': {
-        const exec = await protocolService.getExecution(args.id as string);
+        if (typeof args.id !== 'string')
+          throw new CodedError('execution.update requires an execution ID', 'BAD_REQUEST');
+        const execId = args.id;
+        const exec = await protocolService.getExecution(execId);
         if (!exec) {
-          const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
-          err.code = 'NOT_FOUND';
-          throw err;
+          throw new CodedError(`Execution not found: ${execId}`, 'NOT_FOUND');
         }
         if (args.step !== undefined) {
-          await protocolService.advanceStep(args.id as string, Number(args.step));
+          await protocolService.advanceStep(execId, Number(args.step));
         }
-        if (args.status !== undefined) {
-          await protocolService.updateExecutionStatus(args.id as string, args.status as string);
+        if (typeof args.status === 'string') {
+          await protocolService.updateExecutionStatus(execId, args.status);
         }
-        if (args.context !== undefined) {
-          await protocolService.updateExecutionContext(args.id as string, args.context as string);
+        if (typeof args.context === 'string') {
+          await protocolService.updateExecutionContext(execId, args.context);
         }
-        return protocolService.getExecution(args.id as string);
+        return protocolService.getExecution(execId);
       }
 
       default: {
-        const err = new Error(`Unknown command: ${command}`) as Error & { code: string };
-        err.code = 'NOT_FOUND';
-        throw err;
+        throw new CodedError(`Unknown command: ${command}`, 'NOT_FOUND');
       }
     }
   }

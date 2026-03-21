@@ -46,7 +46,7 @@ function makeStatefulServices() {
   // ── Sectors ──
   const sectors = [
     { id: 'alpha', name: 'Alpha', path: '/workspace/alpha' },
-    { id: 'beta', name: 'Beta', path: '/workspace/beta' },
+    { id: 'beta', name: 'Beta', path: '/workspace/beta' }
   ];
 
   const sectorService = {
@@ -54,14 +54,18 @@ function makeStatefulServices() {
     listVisibleSectors: () => sectors,
     getSector: (id: string) => sectors.find((s) => s.id === id) ?? null,
     addSector: (args: { path: string; name?: string }) => {
-      const sector = { id: args.path, name: args.name ?? args.path, path: `/workspace/${args.path}` };
+      const sector = {
+        id: args.path,
+        name: args.name ?? args.path,
+        path: `/workspace/${args.path}`
+      };
       sectors.push(sector);
       return sector;
     },
     removeSector: (id: string) => {
       const idx = sectors.findIndex((s) => s.id === id);
       if (idx !== -1) sectors.splice(idx, 1);
-    },
+    }
   };
 
   // ── Missions ──
@@ -75,7 +79,7 @@ function makeStatefulServices() {
         sectorId: args.sectorId,
         summary: args.summary,
         prompt: args.prompt,
-        status: 'queued',
+        status: 'queued'
       };
       missions.push(mission);
       return mission;
@@ -90,7 +94,7 @@ function makeStatefulServices() {
     abortMission: (id: number) => {
       const m = missions.find((mm) => mm.id === id);
       if (m) m.status = 'aborted';
-    },
+    }
   };
 
   // ── Comms ──
@@ -111,47 +115,47 @@ function makeStatefulServices() {
     markRead: (id: number) => {
       const m = commsMessages.find((msg) => msg.id === id);
       if (m) m.read = true;
-    },
+    }
   };
 
   // ── Stub-only services (not exercised in these tests) ──
   const crewService = {
     listCrew: () => [],
-    deployCrew: async () => ({ crewId: 'crew-1', tabId: 'tab-1', missionId: 1 }),
+    deployCrew: () => ({ crewId: 'crew-1', tabId: 'tab-1', missionId: 1 }),
     recallCrew: () => {},
-    observeCrew: () => '',
+    observeCrew: () => ''
   };
 
   const cargoService = {
     listCargo: () => [],
-    getCargo: () => null,
+    getCargo: () => null
   };
 
   const supplyRouteService = {
     listRoutes: () => [],
     addRoute: () => ({ id: 1 }),
-    removeRoute: () => {},
+    removeRoute: () => {}
   };
 
   const configService = {
     get: () => null,
-    set: () => {},
+    set: () => {}
   };
 
   const ptyManager = {
     create: () => {},
     kill: () => {},
     write: () => {},
-    has: () => false,
+    has: () => false
   };
 
   const shipsLog = {
     query: () => [],
     log: () => 1,
-    getRecent: () => [],
+    getRecent: () => []
   };
 
-  const createTab = (_label: string, _cwd: string) => 'tab-uuid';
+  const createTab = () => 'tab-uuid';
 
   return {
     sectorService,
@@ -166,7 +170,7 @@ function makeStatefulServices() {
     createTab,
     // Expose internal state for assertions
     _missions: missions,
-    _commsMessages: commsMessages,
+    _commsMessages: commsMessages
   };
 }
 
@@ -210,7 +214,7 @@ describe('Admiral Integration', () => {
       sector: 'alpha',
       summary: 'Implement auth',
       prompt: 'Add JWT-based authentication to the API',
-      type: 'code',
+      type: 'code'
     });
     expect(createResp.ok).toBe(true);
     const created = createResp.data as MockMission;
@@ -245,7 +249,7 @@ describe('Admiral Integration', () => {
       sector: 'beta',
       summary: 'Refactor service',
       prompt: 'Extract service layer from controllers',
-      type: 'code',
+      type: 'code'
     });
 
     expect(resp.ok).toBe(true);
@@ -270,13 +274,13 @@ describe('Admiral Integration', () => {
       sector: 'alpha',
       summary: 'Task One',
       prompt: 'Do task one',
-      type: 'code',
+      type: 'code'
     });
     await cli.send('mission.create', {
       sector: 'alpha',
       summary: 'Task Two',
       prompt: 'Do task two',
-      type: 'code',
+      type: 'code'
     });
 
     // Both should appear in the list

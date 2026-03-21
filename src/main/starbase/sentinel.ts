@@ -45,6 +45,69 @@ type SectorRow = {
   root_path: string;
 };
 
+type FailedCrewRow = {
+  crew_id: string;
+  sector_id: string;
+  mission_id: number;
+  mid: number;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  mission_status: string;
+  result: string | null;
+  verify_result: string | null;
+  review_notes: string | null;
+  first_officer_retry_count: number;
+  last_error_fingerprint: string | null;
+  mission_deployment_count: number;
+  sector_name: string;
+  verify_command: string | null;
+};
+
+type UnansweredHailingRow = {
+  comm_id: number;
+  from_crew: string;
+  payload: string;
+  created_at: string;
+  sector_id: string;
+  mission_id: number | null;
+  sector_name: string;
+};
+
+type PendingReviewRow = {
+  id: number;
+  sector_id: string;
+  summary: string;
+  acceptance_criteria: string | null;
+  pr_branch: string;
+  review_round: number;
+  review_notes: string | null;
+  base_branch: string;
+  verify_command: string | null;
+  sector_name: string;
+};
+
+type ChangesRequestedRow = {
+  id: number;
+  sector_id: string;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  pr_branch: string;
+  review_round: number;
+  review_notes: string | null;
+  base_branch: string;
+  sector_name: string;
+};
+
+type NavigatorFanoutRow = {
+  executionId: string;
+  protocol_id: string;
+  current_step: number;
+  feature_request: string;
+  context: string | null;
+};
+
 export class Sentinel {
   private interval: ReturnType<typeof setInterval> | null = null;
   private sweepCount = 0;
@@ -70,7 +133,7 @@ export class Sentinel {
   }
 
   start(intervalMs?: number): void {
-    const ms = intervalMs ?? (this.deps.configService.get('lifesign_interval_sec') as number) * 1000;
+    const ms = intervalMs ?? this.deps.configService.getNumber('lifesign_interval_sec') * 1000;
     this.interval = setInterval(() => {
       this.runSweep().catch((err) => {
         console.error('[sentinel] Sweep failed:', err);
@@ -99,36 +162,36 @@ export class Sentinel {
     this.sweepCount++;
     const { db, configService } = this.deps;
 
-    const lifesignTimeout = configService.get('lifesign_timeout_sec') as number;
+    const lifesignTimeout = configService.getNumber('lifesign_timeout_sec');
 
     // 1. Lifesign check
     const staleCrew = db
-      .prepare(
+      .prepare<[], CrewRow>(
         `SELECT id, sector_id FROM crew
-         WHERE status = 'active' AND last_lifesign < datetime('now', '-${lifesignTimeout} seconds')`,
+         WHERE status = 'active' AND last_lifesign < datetime('now', '-${lifesignTimeout} seconds')`
       )
-      .all() as CrewRow[];
+      .all();
 
     for (const crew of staleCrew) {
       db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(
-        crew.id,
+        crew.id
       );
       db.prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'lifesign_lost', ?)",
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'lifesign_lost', ?)"
       ).run(crew.id, JSON.stringify({ sectorId: crew.sector_id }));
       // Send transmission to Admiral
       db.prepare(
-        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'lifesign_lost', ?)",
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'lifesign_lost', ?)"
       ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
     }
 
     // 2. Mission deadline check
     const expiredCrew = db
-      .prepare(
+      .prepare<[], CrewRow>(
         `SELECT id, sector_id, pid FROM crew
-         WHERE status = 'active' AND deadline IS NOT NULL AND deadline < datetime('now')`,
+         WHERE status = 'active' AND deadline IS NOT NULL AND deadline < datetime('now')`
       )
-      .all() as CrewRow[];
+      .all();
 
     for (const crew of expiredCrew) {
       // Try to kill the process
@@ -139,16 +202,16 @@ export class Sentinel {
           // Process already dead
         }
       }
-      db.prepare("UPDATE crew SET status = 'timeout', updated_at = datetime('now') WHERE id = ?").run(
-        crew.id,
-      );
       db.prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)",
+        "UPDATE crew SET status = 'timeout', updated_at = datetime('now') WHERE id = ?"
+      ).run(crew.id);
+      db.prepare(
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)"
       ).run(crew.id, JSON.stringify({ reason: 'deadline expired' }));
     }
 
     // 3. Sector path validation
-    const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as SectorRow[];
+    const sectors = db.prepare<[], SectorRow>('SELECT id, root_path FROM sectors').all();
     for (const sector of sectors) {
       if (sector.id === GLOBAL_SECTOR_ID) continue;
       let pathExists = true;
@@ -160,13 +223,13 @@ export class Sentinel {
       if (!pathExists) {
         // Mark all crew in this sector as lost
         db.prepare(
-          "UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE sector_id = ? AND status = 'active'",
+          "UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE sector_id = ? AND status = 'active'"
         ).run(sector.id);
         db.prepare(
-          "INSERT INTO ships_log (event_type, detail) VALUES ('sector_path_missing', ?)",
+          "INSERT INTO ships_log (event_type, detail) VALUES ('sector_path_missing', ?)"
         ).run(JSON.stringify({ sectorId: sector.id, path: sector.root_path }));
         db.prepare(
-          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'sector_path_missing', ?)",
+          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'sector_path_missing', ?)"
         ).run(JSON.stringify({ sectorId: sector.id, path: sector.root_path }));
       }
     }
@@ -174,7 +237,7 @@ export class Sentinel {
     // 4. Dependency deadlock detection (skip — Phase 5)
 
     // 5. Disk usage check
-    const diskBudgetGb = configService.get('worktree_disk_budget_gb') as number;
+    const diskBudgetGb = configService.getNumber('worktree_disk_budget_gb');
     const diskBytes = await this.getDiskUsage();
     if (diskBytes !== null) {
       const usedGb = diskBytes / (1024 * 1024 * 1024);
@@ -183,8 +246,14 @@ export class Sentinel {
       if (diskLevel && this.lastAlertLevel['disk_warning'] !== diskLevel) {
         this.lastAlertLevel['disk_warning'] = diskLevel;
         db.prepare(
-          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'disk_warning', ?)",
-        ).run(JSON.stringify({ usedGb: usedGb.toFixed(2), budgetGb: diskBudgetGb, percent: pct.toFixed(0) }));
+          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'disk_warning', ?)"
+        ).run(
+          JSON.stringify({
+            usedGb: usedGb.toFixed(2),
+            budgetGb: diskBudgetGb,
+            percent: pct.toFixed(0)
+          })
+        );
       } else if (!diskLevel) {
         this.lastAlertLevel['disk_warning'] = null;
       }
@@ -197,7 +266,7 @@ export class Sentinel {
     if (memLevel && this.lastAlertLevel['memory_warning'] !== memLevel) {
       this.lastAlertLevel['memory_warning'] = memLevel;
       db.prepare(
-        "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'memory_warning', ?)",
+        "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'memory_warning', ?)"
       ).run(JSON.stringify({ freeMemoryGb: availableGb.toFixed(2), level: memLevel }));
     } else if (!memLevel) {
       this.lastAlertLevel['memory_warning'] = null;
@@ -216,16 +285,16 @@ export class Sentinel {
 
     // 9. PR Review sweep — dispatch review/fix crews for pending-review and changes-requested missions
     if (this.deps.crewService) {
-      await this.reviewSweep()
+      await this.reviewSweep();
     }
 
     // 10. First Officer triage — detect actionable failures and dispatch
     if (this.deps.firstOfficer) {
-      await this.firstOfficerSweep()
+      await this.firstOfficerSweep();
     }
 
     // 11. Navigator sweep — crew-failed fan-out for protocol missions + gate expiry
-    await this.navigatorSweep()
+    await this.navigatorSweep();
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -278,12 +347,14 @@ export class Sentinel {
       const alertLevel = 'warning';
       if (this.lastAlertLevel['socket_health'] !== alertLevel) {
         this.lastAlertLevel['socket_health'] = alertLevel;
-        this.deps.db.prepare(
-          "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'socket_restart', ?)",
-        ).run(JSON.stringify({ reason: '3 consecutive ping failures' }));
-        this.deps.db.prepare(
-          "INSERT INTO ships_log (event_type, detail) VALUES ('socket_restart', ?)",
-        ).run(JSON.stringify({ reason: '3 consecutive ping failures' }));
+        this.deps.db
+          .prepare(
+            "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'socket_restart', ?)"
+          )
+          .run(JSON.stringify({ reason: '3 consecutive ping failures' }));
+        this.deps.db
+          .prepare("INSERT INTO ships_log (event_type, detail) VALUES ('socket_restart', ?)")
+          .run(JSON.stringify({ reason: '3 consecutive ping failures' }));
       }
 
       supervisor.restart().catch((err) => {
@@ -293,13 +364,13 @@ export class Sentinel {
   }
 
   private async firstOfficerSweep(): Promise<void> {
-    const { db, configService, firstOfficer } = this.deps
-    if (!firstOfficer) return
+    const { db, configService, firstOfficer } = this.deps;
+    if (!firstOfficer) return;
 
-    const maxDeployments = configService.get('max_mission_deployments') as number ?? 8
+    const maxDeployments = configService.getNumber('max_mission_deployments');
 
     const failedCrew = db
-      .prepare(
+      .prepare<[number], FailedCrewRow>(
         `SELECT c.id as crew_id, c.sector_id, c.mission_id,
                 m.id as mid, m.summary, m.prompt, m.acceptance_criteria,
                 m.status as mission_status, m.result, m.verify_result,
@@ -324,116 +395,124 @@ export class Sentinel {
              WHERE type = 'memo' AND mission_id = m.id AND read = 0
            )`
       )
-      .all(configService.get('first_officer_max_retries') as number) as Array<{
-        crew_id: string
-        sector_id: string
-        mission_id: number
-        mid: number
-        summary: string
-        prompt: string
-        acceptance_criteria: string | null
-        mission_status: string
-        result: string | null
-        verify_result: string | null
-        review_notes: string | null
-        first_officer_retry_count: number
-        last_error_fingerprint: string | null
-        mission_deployment_count: number
-        sector_name: string
-        verify_command: string | null
-      }>
+      .all(configService.getNumber('first_officer_max_retries'));
 
     for (const row of failedCrew) {
-      if (firstOfficer.isRunning(row.crew_id, row.mid)) continue
+      if (firstOfficer.isRunning(row.crew_id, row.mid)) continue;
 
       // Compute error fingerprint from current failure
-      const errorText = (row.result ?? '') + '\n' + (row.verify_result ?? '')
-      const fingerprint = computeFingerprint(errorText)
+      const errorText = (row.result ?? '') + '\n' + (row.verify_result ?? '');
+      const fingerprint = computeFingerprint(errorText);
 
       // Classify the error
       const classification = classifyError(
         errorText,
         fingerprint,
-        row.last_error_fingerprint ?? undefined,
-      )
+        row.last_error_fingerprint ?? undefined
+      );
 
       // Update fingerprint on the mission
-      db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?')
-        .run(fingerprint, row.mid)
+      db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?').run(
+        fingerprint,
+        row.mid
+      );
 
       // Get crew output for FO context
-      let crewOutput = row.result ?? 'No output captured'
+      let crewOutput = row.result ?? 'No output captured';
       if (this.deps.crewService) {
-        const hullOutput = this.deps.crewService.observeCrew(row.crew_id)
-        if (hullOutput) crewOutput = hullOutput
+        const hullOutput = this.deps.crewService.observeCrew(row.crew_id);
+        if (hullOutput) crewOutput = hullOutput;
       }
       if (row.verify_result) {
         try {
-          const vr = JSON.parse(row.verify_result)
-          if (vr.stdout) crewOutput += '\n\n--- Verification Output ---\n' + vr.stdout
-          if (vr.stderr) crewOutput += '\n\n--- Verification Stderr ---\n' + vr.stderr
-        } catch { /* ignore parse errors */ }
+          const rawVr: unknown = JSON.parse(row.verify_result);
+          const vr =
+            rawVr != null && typeof rawVr === 'object'
+              ? (rawVr as { stdout?: string; stderr?: string })
+              : {};
+          if (vr.stdout) crewOutput += '\n\n--- Verification Output ---\n' + vr.stdout;
+          if (vr.stderr) crewOutput += '\n\n--- Verification Stderr ---\n' + vr.stderr;
+        } catch {
+          /* ignore parse errors */
+        }
       }
 
       // Build attempt history from previous memo comms
-      const prevMemos = db.prepare(
-        `SELECT payload FROM comms
+      const prevMemos = db
+        .prepare<[number], { payload: string }>(
+          `SELECT payload FROM comms
          WHERE type = 'memo' AND mission_id = ? ORDER BY created_at ASC LIMIT 10`
-      ).all(row.mid) as Array<{ payload: string }>
+        )
+        .all(row.mid);
 
-      const attemptHistory = prevMemos.map((m, i) => {
-        try {
-          const p = JSON.parse(m.payload)
-          return `| ${i + 1} | ${p.summary?.slice(0, 60) ?? 'unknown'} | ${p.fingerprint ?? '—'} | ${p.classification ?? '—'} |`
-        } catch { return null }
-      }).filter(Boolean).join('\n')
+      const attemptHistory = prevMemos
+        .map((m, i) => {
+          try {
+            const rawP: unknown = JSON.parse(m.payload);
+            const p =
+              rawP != null && typeof rawP === 'object'
+                ? (rawP as { summary?: string; fingerprint?: string; classification?: string })
+                : {};
+            return `| ${i + 1} | ${p.summary?.slice(0, 60) ?? 'unknown'} | ${p.fingerprint ?? '—'} | ${p.classification ?? '—'} |`;
+          } catch {
+            return null;
+          }
+        })
+        .filter(Boolean)
+        .join('\n');
 
       // Increment retry count BEFORE dispatch (prevents race on next sweep)
       db.prepare(
         'UPDATE missions SET first_officer_retry_count = first_officer_retry_count + 1 WHERE id = ?'
-      ).run(row.mid)
+      ).run(row.mid);
 
       // Fire-and-forget dispatch (async, non-blocking)
-      firstOfficer.dispatch(
-        {
-          crewId: row.crew_id,
-          missionId: row.mid,
-          sectorId: row.sector_id,
-          sectorName: row.sector_name,
-          eventType: row.mission_status === 'failed-verification' ? 'verification-failed' : 'error',
-          missionSummary: row.summary,
-          missionPrompt: row.prompt,
-          acceptanceCriteria: row.acceptance_criteria,
-          verifyCommand: row.verify_command,
-          crewOutput,
-          verifyResult: row.verify_result,
-          reviewNotes: row.review_notes,
-          retryCount: row.first_officer_retry_count,
-          attemptHistory: attemptHistory || undefined,
-          fingerprint,
-          classification,
-          deploymentBudgetExhausted: row.mission_deployment_count >= maxDeployments,
-        },
-        {
-          onExit: (code) => {
-            db.prepare(
-              "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
-            ).run(row.crew_id, JSON.stringify({
-              missionId: row.mid,
-              retryCount: row.first_officer_retry_count + 1,
-              exitCode: code,
-            }))
-            this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      firstOfficer
+        .dispatch(
+          {
+            crewId: row.crew_id,
+            missionId: row.mid,
+            sectorId: row.sector_id,
+            sectorName: row.sector_name,
+            eventType:
+              row.mission_status === 'failed-verification' ? 'verification-failed' : 'error',
+            missionSummary: row.summary,
+            missionPrompt: row.prompt,
+            acceptanceCriteria: row.acceptance_criteria,
+            verifyCommand: row.verify_command,
+            crewOutput,
+            verifyResult: row.verify_result,
+            reviewNotes: row.review_notes,
+            retryCount: row.first_officer_retry_count,
+            attemptHistory: attemptHistory || undefined,
+            fingerprint,
+            classification,
+            deploymentBudgetExhausted: row.mission_deployment_count >= maxDeployments
           },
-        },
-      ).catch(err => {
-        console.error(`[sentinel] FO dispatch error for mission ${row.mid}:`, err)
-      })
+          {
+            onExit: (code) => {
+              db.prepare(
+                "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
+              ).run(
+                row.crew_id,
+                JSON.stringify({
+                  missionId: row.mid,
+                  retryCount: row.first_officer_retry_count + 1,
+                  exitCode: code
+                })
+              );
+              this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+            }
+          }
+        )
+        .catch((err) => {
+          console.error(`[sentinel] FO dispatch error for mission ${row.mid}:`, err);
+        });
     }
 
     // Check for unanswered hailing > 60s (escalation only, no auto-answer)
     const unansweredHailing = db
-      .prepare(
+      .prepare<[], UnansweredHailingRow>(
         `SELECT c.id as comm_id, c.from_crew, c.payload, c.created_at,
                 cr.sector_id, cr.mission_id,
                 s.name as sector_name
@@ -450,15 +529,7 @@ export class Sentinel {
            )
          LIMIT 5`
       )
-      .all() as Array<{
-        comm_id: number
-        from_crew: string
-        payload: string
-        created_at: string
-        sector_id: string
-        mission_id: number | null
-        sector_name: string
-      }>
+      .all();
 
     for (const hail of unansweredHailing) {
       await firstOfficer.writeHailingMemo({
@@ -466,8 +537,8 @@ export class Sentinel {
         missionId: hail.mission_id,
         sectorName: hail.sector_name,
         payload: hail.payload,
-        createdAt: hail.created_at,
-      })
+        createdAt: hail.created_at
+      });
     }
 
     // Nudge: summary notification for comms unread >5 minutes
@@ -479,12 +550,12 @@ export class Sentinel {
         const now = Date.now();
         if (now - this.lastNudgeAt >= NUDGE_INTERVAL_MS) {
           const staleComms = db
-            .prepare(
+            .prepare<[], { from_crew: string | null }>(
               `SELECT from_crew FROM comms
                WHERE to_crew = 'admiral' AND read = 0
                  AND created_at < datetime('now', '-5 minutes')`
             )
-            .all() as Array<{ from_crew: string | null }>;
+            .all();
 
           if (staleComms.length > 0) {
             const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
@@ -502,23 +573,34 @@ export class Sentinel {
   }
 
   private async navigatorSweep(): Promise<void> {
-    const gateExpirySeconds = this.configService.get('navigator_gate_expiry') as number
+    const gateExpirySeconds = this.configService.getNumber('navigator_gate_expiry');
 
     // Gate expiry — mark stale gate-pending executions as gate-expired
-    const stale = this.protocolService.getStaleGatePendingExecutions(gateExpirySeconds)
+    const stale = this.protocolService.getStaleGatePendingExecutions(gateExpirySeconds);
     for (const exec of stale) {
-      this.protocolService.updateExecutionStatus(exec.id, 'gate-expired')
-      this.db.prepare(
-        `INSERT INTO comms (from_crew, to_crew, type, execution_id, payload)
+      this.protocolService.updateExecutionStatus(exec.id, 'gate-expired');
+      this.db
+        .prepare(
+          `INSERT INTO comms (from_crew, to_crew, type, execution_id, payload)
          VALUES ('navigator', 'admiral', 'gate-expired', ?, ?)`
-      ).run(exec.id, JSON.stringify({ executionId: exec.id, reason: 'Gate expired after inactivity', protocolId: exec.protocol_id }))
-      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+        )
+        .run(
+          exec.id,
+          JSON.stringify({
+            executionId: exec.id,
+            reason: 'Gate expired after inactivity',
+            protocolId: exec.protocol_id
+          })
+        );
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
-    if (!this.navigator) return
+    if (!this.navigator) return;
 
     // Crew-failed fan-out — detect FO escalations for protocol missions
-    const rows = this.db.prepare(`
+    const rows = this.db
+      .prepare<[], NavigatorFanoutRow>(
+        `
       SELECT m.protocol_execution_id as executionId, pe.protocol_id, pe.current_step, pe.feature_request, pe.context
       FROM comms c
       JOIN missions m ON c.mission_id = m.id
@@ -528,21 +610,27 @@ export class Sentinel {
         AND c.read = 0
         AND pe.status = 'running'
       GROUP BY m.protocol_execution_id
-    `).all() as { executionId: string; protocol_id: string; current_step: number; feature_request: string; context: string | null }[]
+    `
+      )
+      .all();
 
     for (const row of rows) {
-      if (this.navigator.isRunning(row.executionId)) continue
-      const proto = this.db.prepare('SELECT slug FROM protocols WHERE id = ?').get(row.protocol_id) as { slug: string } | undefined
-      if (!proto) continue
+      if (this.navigator.isRunning(row.executionId)) continue;
+      const proto = this.db
+        .prepare<[string], { slug: string }>('SELECT slug FROM protocols WHERE id = ?')
+        .get(row.protocol_id);
+      if (!proto) continue;
 
       // Mark triggering memo comms as read to prevent repeated fan-out on next sweep
-      this.db.prepare(
-        `UPDATE comms SET read = 1
+      this.db
+        .prepare(
+          `UPDATE comms SET read = 1
          WHERE type = 'memo' AND read = 0
            AND mission_id IN (
              SELECT id FROM missions WHERE protocol_execution_id = ?
            )`
-      ).run(row.executionId)
+        )
+        .run(row.executionId);
 
       await this.navigator.dispatch({
         executionId: row.executionId,
@@ -550,29 +638,32 @@ export class Sentinel {
         featureRequest: row.feature_request,
         currentStep: row.current_step,
         context: row.context,
-        eventType: 'crew-failed',
-      })
+        eventType: 'crew-failed'
+      });
     }
   }
 
   private async reviewSweep(): Promise<void> {
-    const { db, configService, crewService } = this.deps
-    if (!crewService) return
+    const { db, configService, crewService } = this.deps;
+    if (!crewService) return;
 
-    const maxConcurrent = (configService.get('review_crew_max_concurrent') as number) ?? 2
+    const maxConcurrent = configService.getNumber('review_crew_max_concurrent');
 
     // Count active review crews
-    const activeReviewCount = (
-      db.prepare(
-        "SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'"
-      ).get() as { cnt: number }
-    ).cnt
+    const activeReviewCount =
+      db
+        .prepare<
+          [],
+          { cnt: number }
+        >("SELECT COUNT(*) as cnt FROM crew c JOIN missions m ON m.id = c.mission_id WHERE c.status = 'active' AND m.type = 'review'")
+        .get()?.cnt ?? 0;
 
-    if (activeReviewCount >= maxConcurrent) return
+    if (activeReviewCount >= maxConcurrent) return;
 
     // Find missions needing review
-    const pendingReview = db.prepare(
-      `SELECT m.id, m.sector_id, m.summary, m.acceptance_criteria, m.pr_branch,
+    const pendingReview = db
+      .prepare<[number], PendingReviewRow>(
+        `SELECT m.id, m.sector_id, m.summary, m.acceptance_criteria, m.pr_branch,
               m.review_round, m.review_notes,
               s.base_branch, s.verify_command, s.name as sector_name
        FROM missions m
@@ -582,24 +673,16 @@ export class Sentinel {
          AND m.type = 'code'
        ORDER BY m.priority ASC, m.completed_at ASC
        LIMIT ?`
-    ).all(maxConcurrent - activeReviewCount) as Array<{
-      id: number
-      sector_id: string
-      summary: string
-      acceptance_criteria: string | null
-      pr_branch: string
-      review_round: number
-      review_notes: string | null
-      base_branch: string
-      verify_command: string | null
-      sector_name: string
-    }>
+      )
+      .all(maxConcurrent - activeReviewCount);
 
     for (const mission of pendingReview) {
       // Transition to reviewing (dedup guard)
-      db.prepare("UPDATE missions SET status = 'reviewing' WHERE id = ? AND status = 'pending-review'").run(mission.id)
-      const changed = db.prepare('SELECT changes() as c').get() as { c: number }
-      if (changed.c === 0) continue // Another sweep already claimed it
+      db.prepare(
+        "UPDATE missions SET status = 'reviewing' WHERE id = ? AND status = 'pending-review'"
+      ).run(mission.id);
+      const changed = db.prepare<[], { c: number }>('SELECT changes() as c').get();
+      if (!changed || changed.c === 0) continue; // Another sweep already claimed it
 
       // Build review prompt
       const reviewPrompt = `Review the PR on branch \`${mission.pr_branch}\` targeting \`${mission.base_branch}\`.
@@ -617,7 +700,7 @@ Acceptance Criteria: ${mission.acceptance_criteria ?? 'None specified'}
 6. Output your verdict in this exact format:
 
 VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
-NOTES: <your review notes — specific file:line references for issues>`
+NOTES: <your review notes — specific file:line references for issues>`;
 
       try {
         await crewService.deployCrew({
@@ -625,22 +708,23 @@ NOTES: <your review notes — specific file:line references for issues>`
           prompt: reviewPrompt,
           missionId: mission.id,
           type: 'review',
-          prBranch: mission.pr_branch,
-        })
+          prBranch: mission.pr_branch
+        });
 
         db.prepare(
           "INSERT INTO ships_log (event_type, detail) VALUES ('review_crew_dispatched', ?)"
-        ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch }))
+        ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch }));
       } catch (err) {
         // Deployment failed — revert to pending-review so next sweep retries
-        db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id)
-        console.error(`[sentinel] Review crew deploy failed for mission ${mission.id}:`, err)
+        db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id);
+        console.error(`[sentinel] Review crew deploy failed for mission ${mission.id}:`, err);
       }
     }
 
     // Find missions needing fix crews (changes-requested)
-    const changesRequested = db.prepare(
-      `SELECT m.id, m.sector_id, m.summary, m.prompt, m.acceptance_criteria,
+    const changesRequested = db
+      .prepare<[], ChangesRequestedRow>(
+        `SELECT m.id, m.sector_id, m.summary, m.prompt, m.acceptance_criteria,
               m.pr_branch, m.review_round, m.review_notes,
               s.base_branch, s.name as sector_name
        FROM missions m
@@ -650,46 +734,40 @@ NOTES: <your review notes — specific file:line references for issues>`
          AND m.type = 'code'
        ORDER BY m.priority ASC
        LIMIT 5`
-    ).all() as Array<{
-      id: number
-      sector_id: string
-      summary: string
-      prompt: string
-      acceptance_criteria: string | null
-      pr_branch: string
-      review_round: number
-      review_notes: string | null
-      base_branch: string
-      sector_name: string
-    }>
+      )
+      .all();
 
     for (const mission of changesRequested) {
       // Check max review rounds
       if (mission.review_round >= 2) {
-        db.prepare("UPDATE missions SET status = 'escalated' WHERE id = ?").run(mission.id)
+        db.prepare("UPDATE missions SET status = 'escalated' WHERE id = ?").run(mission.id);
 
         // Send escalation comms
         db.prepare(
           "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES ('first-officer', 'admiral', 'review_escalated', ?)"
-        ).run(JSON.stringify({
-          missionId: mission.id,
-          reason: `Max review rounds (${mission.review_round}) reached`,
-          reviewNotes: mission.review_notes,
-          prBranch: mission.pr_branch,
-        }))
+        ).run(
+          JSON.stringify({
+            missionId: mission.id,
+            reason: `Max review rounds (${mission.review_round}) reached`,
+            reviewNotes: mission.review_notes,
+            prBranch: mission.pr_branch
+          })
+        );
 
-        db.prepare(
-          "INSERT INTO ships_log (event_type, detail) VALUES ('review_escalated', ?)"
-        ).run(JSON.stringify({ missionId: mission.id, reviewRound: mission.review_round }))
-        continue
+        db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('review_escalated', ?)").run(
+          JSON.stringify({ missionId: mission.id, reviewRound: mission.review_round })
+        );
+        continue;
       }
 
       // Atomically claim the mission — skip if another process already claimed it
-      const claim = db.prepare(
-        "UPDATE missions SET status = 'deploying' WHERE id = ? AND status = 'changes-requested'"
-      ).run(mission.id)
+      const claim = db
+        .prepare(
+          "UPDATE missions SET status = 'deploying' WHERE id = ? AND status = 'changes-requested'"
+        )
+        .run(mission.id);
       if (claim.changes === 0) {
-        continue
+        continue;
       }
 
       // Deploy fix crew on the same PR branch
@@ -706,7 +784,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
 1. Read the review feedback carefully
 2. Address each issue mentioned
 3. Run the verify command to ensure tests still pass
-4. Commit and push your fixes to the existing branch`
+4. Commit and push your fixes to the existing branch`;
 
       try {
         await crewService.deployCrew({
@@ -714,41 +792,53 @@ ${mission.review_notes ?? 'No specific notes provided'}
           prompt: fixPrompt,
           missionId: mission.id,
           type: 'code',
-          prBranch: mission.pr_branch,
-        })
+          prBranch: mission.pr_branch
+        });
 
         db.prepare(
           "INSERT INTO ships_log (event_type, detail) VALUES ('fix_crew_dispatched', ?)"
-        ).run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round }))
+        ).run(
+          JSON.stringify({
+            missionId: mission.id,
+            prBranch: mission.pr_branch,
+            round: mission.review_round
+          })
+        );
       } catch (err) {
         // Deploy failed — revert to changes-requested for next sweep
         db.prepare(
           "UPDATE missions SET status = 'changes-requested' WHERE id = ? AND status = 'deploying'"
-        ).run(mission.id)
-        console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err)
+        ).run(mission.id);
+        console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err);
       }
     }
 
     // Auto-approved missions — transition to completed and notify admiral
     const autoApproved = db
-      .prepare(
+      .prepare<[], { id: number; summary: string; pr_branch: string | null }>(
         `SELECT id, summary, pr_branch FROM missions
          WHERE status = 'approved'`
       )
-      .all() as { id: number; summary: string; pr_branch: string | null }[]
+      .all();
 
     for (const mission of autoApproved) {
       db.prepare(
         "UPDATE missions SET status = 'completed', completed_at = datetime('now') WHERE id = ?"
-      ).run(mission.id)
+      ).run(mission.id);
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES ('admiral', 'admiral', 'mission_approved', ?)"
-      ).run(JSON.stringify({ missionId: mission.id, summary: mission.summary, pr_branch: mission.pr_branch }))
-      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      ).run(
+        JSON.stringify({
+          missionId: mission.id,
+          summary: mission.summary,
+          pr_branch: mission.pr_branch
+        })
+      );
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
   }
 
-  private pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
+  private async pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         socket.destroy();
@@ -766,7 +856,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
           clearTimeout(timer);
           socket.end();
           try {
-            const parsed = JSON.parse(buffer.split('\n')[0]);
+            const rawParsed: unknown = JSON.parse(buffer.split('\n')[0]);
+            const parsed =
+              rawParsed != null && typeof rawParsed === 'object'
+                ? (rawParsed as { ok?: boolean; data?: { pong?: boolean } })
+                : {};
             resolve(parsed.ok === true && parsed.data?.pong === true);
           } catch {
             resolve(false);

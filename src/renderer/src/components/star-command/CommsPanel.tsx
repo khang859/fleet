@@ -1,70 +1,88 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useStarCommandStore } from '../../store/star-command-store'
-import type { CommInfo } from '../../store/star-command-store'
+import { useState, useCallback, useEffect } from 'react';
+import { useStarCommandStore } from '../../store/star-command-store';
+import type { CommInfo } from '../../store/star-command-store';
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
       {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  )
+  );
 }
 
 function typeColor(type: string): string {
   switch (type) {
-    case 'awaiting_feedback': return 'text-yellow-400'
-    case 'hailing': return 'text-teal-400'
-    case 'status': return 'text-blue-400'
-    case 'blocker': return 'text-red-400'
-    case 'directive': return 'text-purple-400'
-    default: return 'text-neutral-400'
+    case 'awaiting_feedback':
+      return 'text-yellow-400';
+    case 'hailing':
+      return 'text-teal-400';
+    case 'status':
+      return 'text-blue-400';
+    case 'blocker':
+      return 'text-red-400';
+    case 'directive':
+      return 'text-purple-400';
+    default:
+      return 'text-neutral-400';
   }
 }
 
-function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const [resolveText, setResolveText] = useState('')
-  const [resolving, setResolving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+function CommCard({
+  comm,
+  onRefresh
+}: {
+  comm: CommInfo;
+  onRefresh: () => void;
+}): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+  const [resolveText, setResolveText] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleMarkRead = async () => {
-    await window.fleet.starbase.markCommsRead(comm.id)
-    onRefresh()
-  }
+  const handleMarkRead = async (): Promise<void> => {
+    await window.fleet.starbase.markCommsRead(comm.id);
+    onRefresh();
+  };
 
-  const handleDelete = async () => {
-    await window.fleet.starbase.deleteComms(comm.id)
-    onRefresh()
-  }
+  const handleDelete = async (): Promise<void> => {
+    await window.fleet.starbase.deleteComms(comm.id);
+    onRefresh();
+  };
 
-  const handleResolve = async () => {
-    if (!resolveText.trim()) return
-    setResolving(true)
-    setError(null)
+  const handleResolve = async (): Promise<void> => {
+    if (!resolveText.trim()) return;
+    setResolving(true);
+    setError(null);
     try {
-      await window.fleet.starbase.resolveComms(comm.id, resolveText.trim())
-      setResolveText('')
-      setExpanded(false)
-      onRefresh()
+      await window.fleet.starbase.resolveComms(comm.id, resolveText.trim());
+      setResolveText('');
+      setExpanded(false);
+      onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resolve')
+      setError(err instanceof Error ? err.message : 'Failed to resolve');
     }
-    setResolving(false)
-  }
+    setResolving(false);
+  };
 
-  let payloadPreview = comm.payload
+  let payloadPreview = comm.payload;
   try {
-    const parsed = JSON.parse(comm.payload)
-    if (parsed.message) payloadPreview = parsed.message
-    else if (typeof parsed === 'string') payloadPreview = parsed
+    const parsed: unknown = JSON.parse(comm.payload);
+    if (typeof parsed === 'string') {
+      payloadPreview = parsed;
+    } else if (typeof parsed === 'object' && parsed !== null && 'message' in parsed) {
+      const msg = (parsed as Record<string, unknown>)['message'];
+      if (typeof msg === 'string') payloadPreview = msg;
+    }
   } catch {
     // raw string payload
   }
-  if (payloadPreview.length > 80) payloadPreview = payloadPreview.slice(0, 80) + '…'
+  if (payloadPreview.length > 80) payloadPreview = payloadPreview.slice(0, 80) + '…';
 
   return (
-    <div className={`bg-neutral-800 rounded-lg border overflow-hidden ${comm.read ? 'border-neutral-700' : 'border-teal-700'}`}>
+    <div
+      className={`bg-neutral-800 rounded-lg border overflow-hidden ${comm.read ? 'border-neutral-700' : 'border-teal-700'}`}
+    >
       <button
         className="w-full text-left px-3 py-2 flex items-start justify-between hover:bg-neutral-750 transition-colors gap-2"
         onClick={() => setExpanded(!expanded)}
@@ -86,7 +104,9 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
           </div>
           <p className="text-xs text-neutral-400 mt-0.5 truncate">{payloadPreview}</p>
         </div>
-        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">{expanded ? '▲' : '▼'}</span>
+        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">
+          {expanded ? '▲' : '▼'}
+        </span>
       </button>
 
       {expanded && (
@@ -104,10 +124,14 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
               onChange={(e) => setResolveText(e.target.value)}
               placeholder="Response message..."
               className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleResolve() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleResolve();
+              }}
             />
             <button
-              onClick={handleResolve}
+              onClick={() => {
+                void handleResolve();
+              }}
               disabled={!resolveText.trim() || resolving}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs rounded transition-colors"
             >
@@ -120,14 +144,18 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
           <div className="flex items-center gap-2">
             {!comm.read && (
               <button
-                onClick={handleMarkRead}
+                onClick={() => {
+                  void handleMarkRead();
+                }}
                 className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
               >
                 Mark Read
               </button>
             )}
             <button
-              onClick={handleDelete}
+              onClick={() => {
+                void handleDelete();
+              }}
               className="text-xs text-red-400 hover:text-red-300 transition-colors"
             >
               Delete
@@ -136,45 +164,47 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export function CommsPanel() {
-  const { commsList, setCommsList, setUnreadCount } = useStarCommandStore()
-  const [clearConfirm, setClearConfirm] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function CommsPanel(): React.JSX.Element {
+  const { commsList, setCommsList, setUnreadCount } = useStarCommandStore();
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const all = await window.fleet.starbase.listComms({ limit: 100 })
-      setCommsList(all as never[])
-      const unread = await window.fleet.starbase.getUnreadComms()
-      setUnreadCount((unread as unknown[]).length)
+      const all = await window.fleet.starbase.listComms({ limit: 100 });
+      setCommsList(all);
+      const unread = await window.fleet.starbase.getUnreadComms();
+      setUnreadCount(unread.length);
     } catch {
       // ignore
     }
-  }, [setCommsList, setUnreadCount])
+  }, [setCommsList, setUnreadCount]);
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const handleReadAll = async () => {
-    await window.fleet.starbase.markAllCommsRead()
-    refresh()
-  }
+  const handleReadAll = async (): Promise<void> => {
+    await window.fleet.starbase.markAllCommsRead();
+    void refresh();
+  };
 
-  const handleClearAll = async () => {
-    setError(null)
+  const handleClearAll = async (): Promise<void> => {
+    setError(null);
     try {
-      await window.fleet.starbase.clearComms()
-      setClearConfirm(false)
-      refresh()
+      await window.fleet.starbase.clearComms();
+      setClearConfirm(false);
+      void refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear')
+      setError(err instanceof Error ? err.message : 'Failed to clear');
     }
-  }
+  };
 
-  const unread = (commsList as CommInfo[]).filter((c) => !c.read)
-  const read = (commsList as CommInfo[]).filter((c) => c.read)
+  const unread = commsList.filter((c) => !c.read);
+  const read = commsList.filter((c) => c.read);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -183,7 +213,9 @@ export function CommsPanel() {
         <div className="flex items-center gap-2">
           {unread.length > 0 && (
             <button
-              onClick={handleReadAll}
+              onClick={() => {
+                void handleReadAll();
+              }}
               className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
             >
               Read All
@@ -193,7 +225,9 @@ export function CommsPanel() {
             <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
               <span className="text-[10px] text-red-300">Clear all?</span>
               <button
-                onClick={handleClearAll}
+                onClick={() => {
+                  void handleClearAll();
+                }}
                 className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
               >
                 Confirm
@@ -224,7 +258,13 @@ export function CommsPanel() {
           <SectionHeader title="Unread" count={unread.length} />
           <div className="space-y-2">
             {unread.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={refresh} />
+              <CommCard
+                key={c.id}
+                comm={c}
+                onRefresh={() => {
+                  void refresh();
+                }}
+              />
             ))}
           </div>
         </section>
@@ -236,7 +276,13 @@ export function CommsPanel() {
           <SectionHeader title="Read" count={read.length} />
           <div className="space-y-2">
             {read.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={refresh} />
+              <CommCard
+                key={c.id}
+                comm={c}
+                onRefresh={() => {
+                  void refresh();
+                }}
+              />
             ))}
           </div>
         </section>
@@ -246,5 +292,5 @@ export function CommsPanel() {
         <p className="text-xs text-neutral-600 text-center py-8">No transmissions</p>
       )}
     </div>
-  )
+  );
 }

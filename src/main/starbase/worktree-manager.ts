@@ -27,7 +27,7 @@ type CreateResult = {
 
 export class WorktreeManager {
   private db: Database.Database | null = null;
-  private maxConcurrent: number = Infinity;
+  private maxConcurrent = Infinity;
 
   constructor(private worktreeBasePath: string) {}
 
@@ -43,14 +43,16 @@ export class WorktreeManager {
 
     // Check concurrency limit
     if (this.db && this.maxConcurrent < Infinity) {
-      const activeCount = (
-        this.db
-          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-          .get() as { cnt: number }
-      ).cnt;
+      const row = this.db
+        .prepare<
+          [],
+          { cnt: number }
+        >("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+        .get();
+      const activeCount = row?.cnt ?? 0;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
-          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`,
+          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`
         );
       }
     }
@@ -84,10 +86,14 @@ export class WorktreeManager {
 
     // Check if branch exists locally
     try {
-      const { stdout: localBranches } = await execAsync(`git branch --list "${branchName}"`, execOpts);
+      const { stdout: localBranches } = await execAsync(
+        `git branch --list "${branchName}"`,
+        execOpts
+      );
       if (localBranches.trim()) {
         // Branch exists — append suffix
         let suffix = 2;
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         while (true) {
           const candidate = `crew/${crewId}-${suffix}`;
           const { stdout: check } = await execAsync(`git branch --list "${candidate}"`, execOpts);
@@ -103,25 +109,32 @@ export class WorktreeManager {
     }
 
     // Create worktree
-    await execAsync(`git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`, execOpts);
+    await execAsync(
+      `git worktree add "${worktreePath}" -b "${branchName}" "${baseBranch}"`,
+      execOpts
+    );
 
     return { worktreePath, worktreeBranch: branchName };
   }
 
-  async createForExistingBranch(opts: CreateOpts & { existingBranch: string }): Promise<CreateResult> {
+  async createForExistingBranch(
+    opts: CreateOpts & { existingBranch: string }
+  ): Promise<CreateResult> {
     const { starbaseId, crewId, sectorPath, existingBranch } = opts;
     const execOpts = { cwd: sectorPath };
 
     // Check concurrency limit (same as create())
     if (this.db && this.maxConcurrent < Infinity) {
-      const activeCount = (
-        this.db
-          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-          .get() as { cnt: number }
-      ).cnt;
+      const row = this.db
+        .prepare<
+          [],
+          { cnt: number }
+        >("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+        .get();
+      const activeCount = row?.cnt ?? 0;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
-          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`,
+          `Worktree limit reached: ${activeCount}/${this.maxConcurrent} active`
         );
       }
     }
@@ -183,18 +196,18 @@ export class WorktreeManager {
     try {
       await execAsync(cmd, {
         cwd: worktreePath,
-        timeout: timeoutMs,
+        timeout: timeoutMs
       });
     } catch {
       // Retry once
       try {
         await execAsync(cmd, {
           cwd: worktreePath,
-          timeout: timeoutMs,
+          timeout: timeoutMs
         });
       } catch (retryErr) {
         throw new Error(
-          `Dependency install failed after retry: ${retryErr instanceof Error ? retryErr.message : 'unknown'}`,
+          `Dependency install failed after retry: ${retryErr instanceof Error ? retryErr.message : 'unknown'}`
         );
       }
     }
@@ -235,17 +248,23 @@ export class WorktreeManager {
 
   /** Get a pooled worktree path for the given starbase */
   getPooled(_starbaseId: string): string | null {
+    void _starbaseId;
     if (!this.db) return null;
     const row = this.db
-      .prepare(
-        "SELECT worktree_path FROM crew WHERE pool_status = 'pooled' AND worktree_path IS NOT NULL ORDER BY pooled_at ASC LIMIT 1",
-      )
-      .get() as { worktree_path: string } | undefined;
+      .prepare<
+        [],
+        { worktree_path: string }
+      >("SELECT worktree_path FROM crew WHERE pool_status = 'pooled' AND worktree_path IS NOT NULL ORDER BY pooled_at ASC LIMIT 1")
+      .get();
     return row?.worktree_path ?? null;
   }
 
   /** Recycle a pooled worktree: reset to base branch and create new branch */
-  async recycle(worktreePath: string, baseBranch: string, newCrewId: string): Promise<CreateResult | null> {
+  async recycle(
+    worktreePath: string,
+    baseBranch: string,
+    newCrewId: string
+  ): Promise<CreateResult | null> {
     if (!existsSync(worktreePath)) return null;
     const execOpts = { cwd: worktreePath };
 
@@ -259,7 +278,7 @@ export class WorktreeManager {
       // Clear pool status for the old crew entry
       if (this.db) {
         this.db
-          .prepare("UPDATE crew SET pool_status = NULL WHERE worktree_path = ?")
+          .prepare('UPDATE crew SET pool_status = NULL WHERE worktree_path = ?')
           .run(worktreePath);
       }
 
@@ -272,12 +291,16 @@ export class WorktreeManager {
   /** Remove pooled worktrees older than maxAgeMs (default 1 hour) */
   evictStale(sectorPath: string, maxAgeMs: number = 60 * 60 * 1000): string[] {
     if (!this.db) return [];
-    const cutoff = new Date(Date.now() - maxAgeMs).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+    const cutoff = new Date(Date.now() - maxAgeMs)
+      .toISOString()
+      .replace('T', ' ')
+      .replace(/\.\d{3}Z$/, '');
     const stale = this.db
-      .prepare(
-        "SELECT id, worktree_path FROM crew WHERE pool_status = 'pooled' AND pooled_at < ?",
-      )
-      .all(cutoff) as { id: string; worktree_path: string }[];
+      .prepare<
+        [string],
+        { id: string; worktree_path: string }
+      >("SELECT id, worktree_path FROM crew WHERE pool_status = 'pooled' AND pooled_at < ?")
+      .all(cutoff);
 
     const evicted: string[] = [];
     for (const entry of stale) {
@@ -285,7 +308,9 @@ export class WorktreeManager {
         this.remove(entry.worktree_path, sectorPath);
         evicted.push(entry.worktree_path);
       }
-      this.db.prepare("UPDATE crew SET pool_status = NULL, worktree_path = NULL WHERE id = ?").run(entry.id);
+      this.db
+        .prepare('UPDATE crew SET pool_status = NULL, worktree_path = NULL WHERE id = ?')
+        .run(entry.id);
     }
     return evicted;
   }

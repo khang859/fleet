@@ -1,14 +1,14 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useStarCommandStore } from '../../store/star-command-store'
-import type { MissionInfo } from '../../store/star-command-store'
+import { useState, useCallback, useEffect } from 'react';
+import { useStarCommandStore } from '../../store/star-command-store';
+import type { MissionInfo } from '../../store/star-command-store';
 
-function SectionHeader({ title, count }: { title: string; count?: number }) {
+function SectionHeader({ title, count }: { title: string; count?: number }): React.JSX.Element {
   return (
     <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-3">
       {title}
       {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  )
+  );
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -17,18 +17,21 @@ const STATUS_DOT: Record<string, string> = {
   completed: 'bg-teal-400',
   done: 'bg-teal-400',
   failed: 'bg-red-500',
-  aborted: 'bg-red-500',
+  aborted: 'bg-red-500'
+};
+
+function StatusDot({ status }: { status: string }): React.JSX.Element {
+  return (
+    <span
+      className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[status] ?? 'bg-neutral-500'}`}
+    />
+  );
 }
 
-function StatusDot({ status }: { status: string }) {
-  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[status] ?? 'bg-neutral-500'}`} />
-}
+function MissionCard({ mission }: { mission: MissionInfo }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
 
-function MissionCard({ mission }: { mission: MissionInfo }) {
-  const [expanded, setExpanded] = useState(false)
-
-  const formatDate = (dt: string | null) =>
-    dt ? new Date(dt).toLocaleString() : '—'
+  const formatDate = (dt: string | null): string => (dt ? new Date(dt).toLocaleString() : '—');
 
   return (
     <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
@@ -54,7 +57,9 @@ function MissionCard({ mission }: { mission: MissionInfo }) {
             </p>
           )}
         </div>
-        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">{expanded ? '▲' : '▼'}</span>
+        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">
+          {expanded ? '▲' : '▼'}
+        </span>
       </button>
 
       {expanded && (
@@ -123,7 +128,9 @@ function MissionCard({ mission }: { mission: MissionInfo }) {
             <div className="text-xs">
               <label className="text-neutral-500 block mb-1">Review</label>
               <div className="flex items-center gap-2">
-                <span className={`font-mono text-[10px] uppercase ${mission.review_verdict === 'approved' ? 'text-green-400' : 'text-red-400'}`}>
+                <span
+                  className={`font-mono text-[10px] uppercase ${mission.review_verdict === 'approved' ? 'text-green-400' : 'text-red-400'}`}
+                >
                   {mission.review_verdict}
                 </span>
                 {mission.review_notes && (
@@ -135,29 +142,31 @@ function MissionCard({ mission }: { mission: MissionInfo }) {
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export function MissionsPanel() {
-  const { missionQueue, setMissionQueue } = useStarCommandStore()
+export function MissionsPanel(): React.JSX.Element {
+  const { missionQueue, setMissionQueue } = useStarCommandStore();
 
   const refresh = useCallback(async () => {
     try {
-      const missions = await window.fleet.starbase.listMissions()
-      setMissionQueue(missions as never[])
+      const missions = await window.fleet.starbase.listMissions();
+      setMissionQueue(missions);
     } catch {
       // ignore
     }
-  }, [setMissionQueue])
+  }, [setMissionQueue]);
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
-  const missions = missionQueue as MissionInfo[]
+  const missions = missionQueue;
 
-  const active = missions.filter((m) => m.status === 'active')
-  const queued = missions.filter((m) => m.status === 'queued')
-  const completed = missions.filter((m) => m.status === 'completed' || m.status === 'done')
-  const failed = missions.filter((m) => m.status === 'failed' || m.status === 'aborted')
+  const active = missions.filter((m) => m.status === 'active');
+  const queued = missions.filter((m) => m.status === 'queued');
+  const completed = missions.filter((m) => m.status === 'completed' || m.status === 'done');
+  const failed = missions.filter((m) => m.status === 'failed' || m.status === 'aborted');
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
@@ -167,7 +176,9 @@ export function MissionsPanel() {
         <section>
           <SectionHeader title="Active" count={active.length} />
           <div className="space-y-2">
-            {active.map((m) => <MissionCard key={m.id} mission={m} />)}
+            {active.map((m) => (
+              <MissionCard key={m.id} mission={m} />
+            ))}
           </div>
         </section>
       )}
@@ -176,7 +187,9 @@ export function MissionsPanel() {
         <section>
           <SectionHeader title="Queued" count={queued.length} />
           <div className="space-y-2">
-            {queued.map((m) => <MissionCard key={m.id} mission={m} />)}
+            {queued.map((m) => (
+              <MissionCard key={m.id} mission={m} />
+            ))}
           </div>
         </section>
       )}
@@ -185,7 +198,9 @@ export function MissionsPanel() {
         <section>
           <SectionHeader title="Completed" count={completed.length} />
           <div className="space-y-2">
-            {completed.map((m) => <MissionCard key={m.id} mission={m} />)}
+            {completed.map((m) => (
+              <MissionCard key={m.id} mission={m} />
+            ))}
           </div>
         </section>
       )}
@@ -194,7 +209,9 @@ export function MissionsPanel() {
         <section>
           <SectionHeader title="Failed" count={failed.length} />
           <div className="space-y-2">
-            {failed.map((m) => <MissionCard key={m.id} mission={m} />)}
+            {failed.map((m) => (
+              <MissionCard key={m.id} mission={m} />
+            ))}
           </div>
         </section>
       )}
@@ -203,5 +220,5 @@ export function MissionsPanel() {
         <p className="text-xs text-neutral-600 text-center py-8">No missions</p>
       )}
     </div>
-  )
+  );
 }

@@ -18,7 +18,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
   permission: 3,
   error: 2,
   info: 1,
-  subtle: 0,
+  subtle: 0
 };
 
 export const useNotificationStore = create<NotificationStore>((set, get) => ({
@@ -56,5 +56,5 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       }
     }
     return highest;
-  },
+  }
 }));

@@ -9,12 +9,10 @@ const STATE_COLORS: Record<string, string> = {
   walking: '#9ca3af',
   'needs-permission': '#fbbf24',
   waiting: '#34d399',
-  'not-agent': '#9ca3af',
+  'not-agent': '#9ca3af'
 };
 
-const ACCENT_PALETTES = [
-  '#f87171', '#fb923c', '#a78bfa', '#f472b6', '#2dd4bf', '#facc15',
-];
+const ACCENT_PALETTES = ['#f87171', '#fb923c', '#a78bfa', '#f472b6', '#2dd4bf', '#facc15'];
 
 const X_START = 0.15;
 const X_RANGE = 0.7;
@@ -78,20 +76,26 @@ export class ShipManager {
 
       const col = i % cols;
       const row = Math.floor(i / cols);
-      const targetX = n === 1
-        ? X_START + X_RANGE / 2
-        : cols === 1 ? X_START + X_RANGE / 2 : X_START + (col / (cols - 1)) * X_RANGE;
-      const targetY = n === 1
-        ? Y_START + Y_RANGE / 2
-        : rows === 1 ? Y_START + Y_RANGE / 2 : Y_START + (row / (rows - 1)) * Y_RANGE;
+      const targetX =
+        n === 1
+          ? X_START + X_RANGE / 2
+          : cols === 1
+            ? X_START + X_RANGE / 2
+            : X_START + (col / (cols - 1)) * X_RANGE;
+      const targetY =
+        n === 1
+          ? Y_START + Y_RANGE / 2
+          : rows === 1
+            ? Y_START + Y_RANGE / 2
+            : Y_START + (row / (rows - 1)) * Y_RANGE;
       // Stagger odd rows slightly for a more organic feel
-      const staggerX = row % 2 === 1 && cols > 1 ? X_RANGE / (cols - 1) * 0.3 : 0;
+      const staggerX = row % 2 === 1 && cols > 1 ? (X_RANGE / (cols - 1)) * 0.3 : 0;
       const finalTargetX = Math.min(targetX + staggerX, X_START + X_RANGE);
 
       if (!this.ships.has(agent.paneId)) {
         this.spawnShip(agent, i, finalTargetX, targetY, canvasW, canvasH);
       } else {
-        this.updateShip(agent, finalTargetX, targetY, canvasW, canvasH);
+        this.updateShip(agent, finalTargetX, targetY);
       }
 
       const maxSubs = Math.min(agent.subAgents.length, MAX_RENDERED_SUBS);
@@ -107,7 +111,7 @@ export class ShipManager {
         if (!this.ships.has(sub.paneId)) {
           this.spawnSubShip(sub, agent.paneId, si, subTargetX, subTargetY, canvasW, canvasH);
         } else {
-          this.updateShip(sub, subTargetX, subTargetY, canvasW, canvasH);
+          this.updateShip(sub, subTargetX, subTargetY);
         }
 
         if (si === maxSubs - 1 && agent.subAgents.length > MAX_RENDERED_SUBS) {
@@ -116,7 +120,9 @@ export class ShipManager {
         }
       }
 
-      const activeSubIds = new Set(agent.subAgents.slice(0, MAX_RENDERED_SUBS).map((s) => s.paneId));
+      const activeSubIds = new Set(
+        agent.subAgents.slice(0, MAX_RENDERED_SUBS).map((s) => s.paneId)
+      );
       for (const [id, ship] of this.ships) {
         if (ship.isSubAgent && id.startsWith(agent.paneId + ':sub:') && !activeSubIds.has(id)) {
           if (!ship.despawning) {
@@ -133,7 +139,7 @@ export class ShipManager {
         ship.despawning = true;
         ship.warp.startWarpOut(
           ship.currentX || ship.targetX * canvasW,
-          ship.currentY || ship.targetY * canvasH,
+          ship.currentY || ship.targetY * canvasH
         );
       }
     }
@@ -143,10 +149,7 @@ export class ShipManager {
       if (ship.spawnDelayElapsed < ship.spawnDelay) {
         ship.spawnDelayElapsed += deltaMs;
         if (ship.spawnDelayElapsed >= ship.spawnDelay) {
-          ship.warp.startWarpIn(
-            ship.targetX * canvasW,
-            ship.targetY * canvasH,
-          );
+          ship.warp.startWarpIn(ship.targetX * canvasW, ship.targetY * canvasH);
         }
         continue;
       }
@@ -166,11 +169,13 @@ export class ShipManager {
 
         ship.tiltAngle = isIdle ? Math.sin(ship.driftPhaseX * 0.5) * 0.08 : 0;
 
-        const driftX = Math.sin(ship.driftPhaseX) * driftAmountX
-          + Math.sin(ship.driftPhaseX * 0.37) * driftAmountX * 0.4;
-        const driftY = Math.sin(ship.driftPhaseY) * driftAmountY
-          + Math.sin(ship.driftPhaseX * 0.53) * driftAmountY * 0.3
-          + Math.cos(ship.driftPhaseY * 0.71) * driftAmountY * 0.2;
+        const driftX =
+          Math.sin(ship.driftPhaseX) * driftAmountX +
+          Math.sin(ship.driftPhaseX * 0.37) * driftAmountX * 0.4;
+        const driftY =
+          Math.sin(ship.driftPhaseY) * driftAmountY +
+          Math.sin(ship.driftPhaseX * 0.53) * driftAmountY * 0.3 +
+          Math.cos(ship.driftPhaseY * 0.71) * driftAmountY * 0.2;
 
         const margin = ship.width;
         const tx = Math.max(margin, Math.min(canvasW - margin, ship.targetX * canvasW + driftX));
@@ -204,7 +209,7 @@ export class ShipManager {
     return Array.from(this.ships.values());
   }
 
-  hitTest(pixelX: number, pixelY: number, _canvasW: number, _canvasH: number): string | null {
+  hitTest(pixelX: number, pixelY: number): string | null {
     const ships = this.getShips().reverse();
     for (const ship of ships) {
       if (ship.despawning) continue;
@@ -212,10 +217,7 @@ export class ShipManager {
       const sx = ship.currentX - ship.width / 2;
       const sy = ship.currentY - ship.height / 2;
 
-      if (
-        pixelX >= sx && pixelX <= sx + ship.width &&
-        pixelY >= sy && pixelY <= sy + ship.height
-      ) {
+      if (pixelX >= sx && pixelX <= sx + ship.width && pixelY >= sy && pixelY <= sy + ship.height) {
         return ship.paneId;
       }
     }
@@ -238,7 +240,7 @@ export class ShipManager {
     targetX: number,
     targetY: number,
     canvasW: number,
-    canvasH: number,
+    canvasH: number
   ): void {
     const warp = new WarpEffect();
     const delay = this.nextSpawnDelay;
@@ -271,7 +273,7 @@ export class ShipManager {
       driftSpeedX: 0.15 + Math.random() * 0.1,
       driftSpeedY: 0.2 + Math.random() * 0.12,
       tiltAngle: 0,
-      animElapsed: 0,
+      animElapsed: 0
     };
 
     if (delay === 0) {
@@ -289,7 +291,7 @@ export class ShipManager {
     targetX: number,
     targetY: number,
     canvasW: number,
-    canvasH: number,
+    canvasH: number
   ): void {
     const parent = this.ships.get(parentPaneId);
     const parentIndex = this.spawnOrder.indexOf(parentPaneId);
@@ -327,11 +329,11 @@ export class ShipManager {
       driftSpeedX: 0.18 + Math.random() * 0.1,
       driftSpeedY: 0.22 + Math.random() * 0.12,
       tiltAngle: 0,
-      animElapsed: 0,
+      animElapsed: 0
     });
   }
 
-  private updateShip(agent: AgentVisualState, targetX: number, targetY: number, _canvasW: number, _canvasH: number): void {
+  private updateShip(agent: AgentVisualState, targetX: number, targetY: number): void {
     const ship = this.ships.get(agent.paneId);
     if (!ship || ship.despawning) return;
 
@@ -373,7 +375,7 @@ export class ShipManager {
 
     h = ((h * 360 + degrees) % 360) / 360;
 
-    const hue2rgb = (p: number, q: number, t: number) => {
+    const hue2rgb = (p: number, q: number, t: number): number => {
       if (t < 0) t += 1;
       if (t > 1) t -= 1;
       if (t < 1 / 6) return p + (q - p) * 6 * t;
