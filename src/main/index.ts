@@ -23,6 +23,7 @@ import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { installFleetCLI } from './install-fleet-cli'
 import { enrichProcessEnv } from './shell-env'
 import { normalizeRuntimeEnv } from './runtime-env'
+import { resolveBootstrapWorkspacePath } from './workspace-path'
 import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api'
 import { StarbaseRuntimeClient } from './starbase-runtime-client'
 import { createSocketRuntimeServices } from './starbase-runtime-socket-services'
@@ -225,7 +226,11 @@ app.whenReady().then(async () => {
   }
 
   const gitService = new GitService()
-  const workspacePath = process.cwd()
+  const workspacePath = resolveBootstrapWorkspacePath({
+    cwd: process.cwd(),
+    pwd: process.env.PWD,
+    isPackaged: app.isPackaged,
+  })
   const envReady = enrichProcessEnv()
   const cliReady = installFleetCLI()
     .catch((err) => {

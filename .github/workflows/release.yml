@@ -33,6 +33,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Rebuild native Electron deps
+        run: npx electron-builder install-app-deps
       - name: Build app
         run: npx electron-vite build
       - name: Package, sign, notarize and publish
@@ -61,6 +63,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Rebuild native Electron deps
+        run: npx electron-builder install-app-deps
       - name: Build app
         run: npx electron-vite build
       - name: Package, sign, notarize and publish
