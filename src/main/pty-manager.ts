@@ -8,7 +8,7 @@ export type PtyCreateOptions = {
   cmd?: string
   cols?: number
   rows?: number
-  env?: Record<string, string>
+  env?: Record<string, string | undefined>
   /** If true, the PTY exits when cmd finishes instead of falling back to a shell.
    *  Used for crew PTYs where we need onExit to fire for cleanup. */
   exitOnComplete?: boolean
@@ -66,7 +66,7 @@ export class PtyManager {
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: opts.env ?? (process.env as Record<string, string>),
+      env: opts.env ?? process.env,
     })
 
     const entry: PtyEntry = {

@@ -9,6 +9,7 @@ import type { ConfigService } from './config-service'
 import type { CrewService } from './crew-service'
 import type { MissionService } from './mission-service'
 import type { EventBus } from '../event-bus'
+import { filterEnv } from '../env-utils'
 
 type FirstOfficerDeps = {
   db: Database.Database
@@ -93,18 +94,18 @@ export class FirstOfficer {
 
   getStatus(): 'idle' | 'working' | 'memo' {
     if (this.running.size > 0) return 'working'
-    const row = this.deps.db.prepare(
+    const row = this.deps.db.prepare<[], { cnt: number }>(
       "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
-    ).get() as { cnt: number }
+    ).get()!
     return row.cnt > 0 ? 'memo' : 'idle'
   }
 
   async dispatch(event: ActionableEvent, callbacks?: DispatchCallbacks): Promise<boolean> {
     const { configService } = this.deps
-    const maxConcurrent = configService.get('first_officer_max_concurrent') as number
-    const maxRetries = configService.get('first_officer_max_retries') as number
-    const timeout = configService.get('first_officer_timeout') as number
-    const model = configService.get('first_officer_model') as string
+    const maxConcurrent = configService.getNumber('first_officer_max_concurrent')
+    const maxRetries = configService.getNumber('first_officer_max_retries')
+    const timeout = configService.getNumber('first_officer_timeout')
+    const model = configService.getString('first_officer_model')
 
     const k = this.key(event.crewId, event.missionId)
     if (this.running.has(k)) return false
@@ -148,7 +149,7 @@ export class FirstOfficer {
     ]
 
     const mergedEnv: Record<string, string> = {
-      ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
+      ...(this.deps.crewEnv ?? filterEnv()),
       FLEET_FIRST_OFFICER: '1',
       FLEET_CREW_ID: event.crewId,
       FLEET_MISSION_ID: String(event.missionId),
@@ -191,11 +192,12 @@ export class FirstOfficer {
         for (const line of lines) {
           if (!line.trim()) continue
           try {
-            const msg = JSON.parse(line) as {
+            const msg: {
               type?: string
               result?: string
               message?: { content?: Array<{ type?: string; text?: string }> }
-            }
+            } | null = JSON.parse(line)
+            if (!msg) continue
 
             if (msg.type === 'assistant' && msg.message?.content) {
               const text = msg.message.content
@@ -417,14 +419,17 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
     }
 
     try {
-      const parsed = JSON.parse(extracted) as Record<string, unknown>
+      const parsed: Record<string, unknown> = JSON.parse(extracted)
       const decision = this.normalizeDecision(parsed.decision)
       const revisedPrompt = typeof parsed.revisedPrompt === 'string'
         ? parsed.revisedPrompt.trim()
         : typeof parsed.missionUpdate === 'string'
           ? parsed.missionUpdate.trim()
           : undefined
-      const salvageRaw = (parsed.salvage ?? {}) as Record<string, unknown>
+      const salvageMaybe = parsed.salvage
+      const salvageRaw: Record<string, unknown> = (salvageMaybe != null && typeof salvageMaybe === 'object' && !Array.isArray(salvageMaybe))
+        ? (salvageMaybe as Record<string, unknown>)
+        : {}
 
       if (!decision) {
         return {

@@ -45,8 +45,8 @@ export class WorktreeManager {
     if (this.db && this.maxConcurrent < Infinity) {
       const activeCount = (
         this.db
-          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-          .get() as { cnt: number }
+          .prepare<[], { cnt: number }>("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+          .get()!
       ).cnt;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
@@ -116,8 +116,8 @@ export class WorktreeManager {
     if (this.db && this.maxConcurrent < Infinity) {
       const activeCount = (
         this.db
-          .prepare("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
-          .get() as { cnt: number }
+          .prepare<[], { cnt: number }>("SELECT COUNT(*) as cnt FROM crew WHERE status = 'active' AND worktree_path IS NOT NULL")
+          .get()!
       ).cnt;
       if (activeCount >= this.maxConcurrent) {
         throw new WorktreeLimitError(
@@ -237,10 +237,10 @@ export class WorktreeManager {
   getPooled(_starbaseId: string): string | null {
     if (!this.db) return null;
     const row = this.db
-      .prepare(
+      .prepare<[], { worktree_path: string }>(
         "SELECT worktree_path FROM crew WHERE pool_status = 'pooled' AND worktree_path IS NOT NULL ORDER BY pooled_at ASC LIMIT 1",
       )
-      .get() as { worktree_path: string } | undefined;
+      .get();
     return row?.worktree_path ?? null;
   }
 
@@ -274,10 +274,10 @@ export class WorktreeManager {
     if (!this.db) return [];
     const cutoff = new Date(Date.now() - maxAgeMs).toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
     const stale = this.db
-      .prepare(
+      .prepare<[string], { id: string; worktree_path: string }>(
         "SELECT id, worktree_path FROM crew WHERE pool_status = 'pooled' AND pooled_at < ?",
       )
-      .all(cutoff) as { id: string; worktree_path: string }[];
+      .all(cutoff);
 
     const evicted: string[] = [];
     for (const entry of stale) {

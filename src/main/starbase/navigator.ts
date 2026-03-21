@@ -5,6 +5,7 @@ import { tmpdir } from 'os'
 import type Database from 'better-sqlite3'
 import type { ConfigService } from './config-service'
 import type { EventBus } from '../event-bus'
+import { filterEnv } from '../env-utils'
 
 type NavigatorDeps = {
   db: Database.Database
@@ -49,9 +50,9 @@ export class Navigator {
     callbacks?: { onExit?: (code: number | null) => void },
   ): Promise<boolean> {
     const { configService } = this.deps
-    const maxConcurrent = configService.get('navigator_max_concurrent') as number
-    const timeout = configService.get('navigator_timeout') as number
-    const model = configService.get('navigator_model') as string
+    const maxConcurrent = configService.getNumber('navigator_max_concurrent')
+    const timeout = configService.getNumber('navigator_timeout')
+    const model = configService.getString('navigator_model')
 
     if (this.running.has(event.executionId)) return false
     if (this.running.size >= maxConcurrent) return false
@@ -83,7 +84,7 @@ export class Navigator {
     ]
 
     const mergedEnv: Record<string, string> = {
-      ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
+      ...(this.deps.crewEnv ?? filterEnv()),
       FLEET_NAVIGATOR: '1',
       FLEET_EXECUTION_ID: event.executionId,
       FLEET_STARBASE_ID: this.deps.starbaseId,

@@ -71,9 +71,15 @@ traceStarbase('startup marker', {
 
 let runtimeStatus: StarbaseRuntimeStatus = { state: 'starting' }
 
+function getHostPlatform(): HostContextPayload['platform'] {
+  const p = process.platform
+  if (p === 'darwin' || p === 'linux' || p === 'win32') return p
+  throw new Error(`Unsupported platform: ${p}`)
+}
+
 ipcMain.handle(IPC_CHANNELS.APP_HOST_CONTEXT_GET, (): HostContextPayload => ({
   homeDir: homedir(),
-  platform: process.platform as HostContextPayload['platform'],
+  platform: getHostPlatform(),
 }))
 
 function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
@@ -85,7 +91,7 @@ function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
   }
 }
 
-async function handleStarbaseSnapshot(snapshot: any): Promise<void> {
+async function handleStarbaseSnapshot(snapshot: Record<string, unknown>): Promise<void> {
   const windowRef = mainWindow
   if (!windowRef || windowRef.isDestroyed()) {
     return
@@ -93,18 +99,20 @@ async function handleStarbaseSnapshot(snapshot: any): Promise<void> {
 
   windowRef.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, snapshot)
 
-  const unreadCount = Number(snapshot?.unreadCount ?? 0)
-  const unreadMemosCount = Number(snapshot?.firstOfficer?.unreadMemos ?? 0)
+  const unreadCount = Number(snapshot.unreadCount ?? 0)
+  const foRaw = snapshot.firstOfficer
+  const unreadMemosCount = Number(
+    (foRaw != null && typeof foRaw === 'object' && 'unreadMemos' in foRaw ? foRaw.unreadMemos : 0) ?? 0
+  )
 
   if (unreadCount > lastUnreadCommsCount && Notification.isSupported()) {
     const settings = settingsStore.get()
     if (settings.notifications.comms.os) {
-      const newComms = (await runtimeClient.invoke<any[]>('comms.getUnread', 'admiral')).slice(
-        lastUnreadCommsCount
-      )
+      const allUnread = await runtimeClient.invoke<Array<{ from_crew?: string }>>('comms.getUnread', 'admiral')
+      const newComms = (Array.isArray(allUnread) ? allUnread : []).slice(lastUnreadCommsCount)
       const body =
         newComms.length === 1
-          ? `New transmission from ${newComms[0].from_crew ?? 'crew'}`
+          ? `New transmission from ${newComms[0]?.from_crew ?? 'crew'}`
           : `${newComms.length} new transmissions`
       const notif = new Notification({ title: 'Fleet', body })
       notif.on('click', () => {
@@ -356,18 +364,24 @@ app.whenReady().then(async () => {
         console.log('[starbase] bootstrap: runtime client bound to command handler')
         traceStarbase('runtime client bound to command handler')
 
-        lastUnreadCommsCount = (await runtimeClient.invoke<any[]>('comms.getUnread', 'admiral')).length
+        const initialUnread = await runtimeClient.invoke<unknown[]>('comms.getUnread', 'admiral')
+        lastUnreadCommsCount = Array.isArray(initialUnread) ? initialUnread.length : 0
         console.log('[starbase] bootstrap: unread comms fetched', { lastUnreadCommsCount })
         traceStarbase('unread comms fetched', { lastUnreadCommsCount })
+        const initSnapshot = await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot')
+        const initFo = initSnapshot != null && typeof initSnapshot === 'object' && 'firstOfficer' in initSnapshot ? initSnapshot.firstOfficer : null
         lastUnreadMemosCount = Number(
-          ((await runtimeClient.invoke<any>('starbase.snapshot')) as any)?.firstOfficer?.unreadMemos ?? 0
+          (initFo != null && typeof initFo === 'object' && 'unreadMemos' in initFo ? initFo.unreadMemos : 0) ?? 0
         )
         console.log('[starbase] bootstrap: unread memos fetched', { lastUnreadMemosCount })
         traceStarbase('unread memos fetched', { lastUnreadMemosCount })
         layoutStore.ensureStarCommandTab('default', workspacePath)
         console.log('[starbase] bootstrap: ensured star command tab')
         traceStarbase('ensured star command tab')
-        await handleStarbaseSnapshot(await runtimeClient.invoke('starbase.snapshot'))
+        const snapshotData = await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot')
+        if (snapshotData != null && typeof snapshotData === 'object') {
+          await handleStarbaseSnapshot(snapshotData as Record<string, unknown>)
+        }
         console.log('[starbase] bootstrap: initial snapshot handled')
         traceStarbase('initial snapshot handled')
         setRuntimeStatus({ state: 'ready' })
@@ -428,7 +442,9 @@ app.whenReady().then(async () => {
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow)
   runtimeClient.on('starbase.snapshot', (snapshot) => {
-    void handleStarbaseSnapshot(snapshot)
+    if (snapshot != null && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+      void handleStarbaseSnapshot(snapshot as Record<string, unknown>)
+    }
   })
   runtimeClient.on('starbase.log-entry', (entry) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -498,7 +514,7 @@ app.whenReady().then(async () => {
     // Correlate by matching the record's cwd to a pane's cwd
     // Use the most specific (longest) matching pane CWD to avoid
     // parent dirs like ~ matching everything.
-    const recordCwd = (record as { cwd?: string }).cwd
+    const recordCwd = 'cwd' in record && typeof record.cwd === 'string' ? record.cwd : undefined
     if (recordCwd) {
       const mappedPanes = new Set(sessionToPaneMap.values())
       const activePanes = ptyManager.paneIds()
@@ -641,12 +657,13 @@ app.whenReady().then(async () => {
   eventBus.on('notification', (event) => {
     const settings = settingsStore.get()
 
-    const settingsKey = {
+    const notifKeyMap: Record<import('../shared/types').NotificationLevel, keyof typeof settings.notifications> = {
       permission: 'needsPermission',
       error: 'processExitError',
       info: 'taskComplete',
       subtle: 'processExitClean'
-    }[event.level] as keyof typeof settings.notifications
+    }
+    const settingsKey = notifKeyMap[event.level]
 
     const config = settings.notifications[settingsKey]
 
@@ -667,11 +684,11 @@ app.whenReady().then(async () => {
   let pendingReleaseNotes = ''
 
   function normalizeReleaseNotes(
-    notes: string | Array<{ note: string }> | null | undefined
+    notes: string | Array<{ note: string | null }> | null | undefined
   ): string {
     if (!notes) return ''
     if (typeof notes === 'string') return notes
-    if (Array.isArray(notes)) return notes.map((n) => n.note).join('\n')
+    if (Array.isArray(notes)) return notes.map((n) => n.note ?? '').join('\n')
     return ''
   }
 
@@ -691,7 +708,7 @@ app.whenReady().then(async () => {
     updateState = 'downloading'
     pendingVersion = info.version
     pendingReleaseNotes = normalizeReleaseNotes(
-      info.releaseNotes as string | Array<{ note: string }> | null
+      info.releaseNotes
     )
     sendUpdateStatus({
       state: 'downloading',

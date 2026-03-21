@@ -19,6 +19,11 @@ export type JsonlRecord = {
   [key: string]: unknown
 }
 
+function isJsonlRecord(v: unknown): v is JsonlRecord {
+  if (v == null || typeof v !== 'object') return false
+  return 'type' in v && typeof v.type === 'string'
+}
+
 type RecordCallback = (sessionId: string, record: JsonlRecord) => void
 
 type WatchedFile = {
@@ -158,7 +163,9 @@ export class JsonlWatcher {
       for (const line of lines) {
         if (!line.trim()) continue
         try {
-          const record = JSON.parse(line) as JsonlRecord
+          const parsed: unknown = JSON.parse(line)
+          if (!isJsonlRecord(parsed)) continue
+          const record = parsed
           for (const cb of this.callbacks) {
             cb(sessionId, record)
           }

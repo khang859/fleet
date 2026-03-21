@@ -181,7 +181,8 @@ export class CargoService {
       )
       .get(sectorId)!
 
-    const forwardFailed = this.configService.get('forward_failed_cargo') as boolean | undefined
+    const forwardFailedRaw = this.configService.get('forward_failed_cargo')
+    const forwardFailed = typeof forwardFailedRaw === 'boolean' ? forwardFailedRaw : undefined
 
     // Build query for cargo from upstream sectors
     const placeholders = upstreamSectorIds.map(() => '?').join(', ')

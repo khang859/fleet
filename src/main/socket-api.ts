@@ -115,7 +115,7 @@ export class SocketApi {
 
     // Handle subscribe specially — accumulates event types across calls
     if (cmd.type === 'subscribe') {
-      const events = Array.isArray(cmd.events) ? cmd.events as string[] : [];
+      const events = Array.isArray(cmd.events) ? cmd.events.filter((e): e is string => typeof e === 'string') : [];
       const existing = this.subscriptions.get(socket) ?? new Set();
       for (const e of events) existing.add(e);
       this.subscriptions.set(socket, existing);

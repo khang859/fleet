@@ -26,6 +26,14 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
+function toStringRecord(r: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [k, v] of Object.entries(r)) {
+    if (typeof v === 'string') result[k] = v;
+  }
+  return result;
+}
+
 type RuntimeDeps = {
   starbaseDb: StarbaseDB
   sectorService: SectorService
@@ -79,7 +87,10 @@ export class StarbaseRuntimeCore {
     switch (method) {
       case 'runtime.bootstrap': {
         if (!isRecord(args)) throw new CodedError('bootstrap args must be an object', 'BAD_REQUEST');
-        return this.bootstrap(args as RuntimeBootstrapArgs)
+        if (typeof args.workspacePath !== 'string') throw new CodedError('workspacePath required', 'BAD_REQUEST');
+        if (typeof args.fleetBinPath !== 'string') throw new CodedError('fleetBinPath required', 'BAD_REQUEST');
+        if (!isRecord(args.env)) throw new CodedError('env required', 'BAD_REQUEST');
+        return this.bootstrap({ workspacePath: args.workspacePath, fleetBinPath: args.fleetBinPath, env: args.env as Record<string, string> })
       }
       case 'runtime.getStatus':
         return this.status
@@ -113,7 +124,7 @@ export class StarbaseRuntimeCore {
         const fields = args.fields;
         if (typeof sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
         if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
-        return this.requireDeps().sectorService.updateSector(sectorId, fields as Record<string, string>)
+        return this.requireDeps().sectorService.updateSector(sectorId, toStringRecord(fields))
       }
 
       case 'config.get': {
@@ -140,7 +151,7 @@ export class StarbaseRuntimeCore {
           prompt: args.prompt,
           acceptanceCriteria: typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
           priority: typeof args.priority === 'number' ? args.priority : undefined,
-          dependsOnMissionIds: Array.isArray(args.dependsOnMissionIds) ? args.dependsOnMissionIds as number[] : undefined,
+          dependsOnMissionIds: Array.isArray(args.dependsOnMissionIds) ? args.dependsOnMissionIds.filter((v): v is number => typeof v === 'number') : undefined,
           type: typeof args.type === 'string' ? args.type : undefined,
           prBranch: typeof args.prBranch === 'string' ? args.prBranch : undefined,
         })
@@ -163,7 +174,7 @@ export class StarbaseRuntimeCore {
         const fields = args.fields;
         if (typeof missionId !== 'number') throw new CodedError('missionId required', 'BAD_REQUEST');
         if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
-        return this.requireDeps().missionService.updateMission(missionId, fields as Record<string, string>)
+        return this.requireDeps().missionService.updateMission(missionId, toStringRecord(fields))
       }
       case 'mission.setStatus': {
         if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
@@ -513,7 +524,7 @@ export class StarbaseRuntimeCore {
 
       const worktreeBasePath = join(dirname(localStarbaseDb.getDbPath()), 'worktrees')
       const worktreeManager = new WorktreeManager(worktreeBasePath)
-      const maxConcurrent = configService.get('max_concurrent_worktrees') as number
+      const maxConcurrent = configService.getNumber('max_concurrent_worktrees')
       worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent)
       trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent })
 
@@ -530,7 +541,7 @@ export class StarbaseRuntimeCore {
       trace('bootstrap crewService ready')
 
       const commsService = new CommsService(localStarbaseDb.getDb(), this.eventBus)
-      commsService.setRateLimit(configService.get('comms_rate_limit_per_min') as number)
+      commsService.setRateLimit(configService.getNumber('comms_rate_limit_per_min'))
       trace('bootstrap commsService ready')
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb())
@@ -678,11 +689,11 @@ export class StarbaseRuntimeCore {
       this.requireDeps()
         .starbaseDb
         .getDb()
-        .prepare(
+        .prepare<[], { cnt: number }>(
           "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
         )
-        .get() as { cnt: number }
-    ).cnt
+        .get()
+    )?.cnt ?? 0
   }
 
   private getRecentLogEntry(): unknown {
@@ -707,7 +718,7 @@ export class StarbaseRuntimeCore {
     return {
       starbaseId: deps.starbaseDb.getStarbaseId(),
       starbaseName:
-        (deps.configService.get('starbase_name') as string | undefined) ??
+        deps.configService.getOptionalString('starbase_name') ??
         basename(this.workspacePath) ??
         'Starbase',
       sectors: deps.sectorService.listVisibleSectors().map((sector) => ({
@@ -720,17 +731,17 @@ export class StarbaseRuntimeCore {
   }
 
   private listMemos(): unknown[] {
+    type MemoRow = { id: number; crew_id: string; mission_id: number | null; event_type: string; payload: string | null; read: number; created_at: string }
     return this.requireDeps()
       .starbaseDb
       .getDb()
-      .prepare(
+      .prepare<[], MemoRow>(
         "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
       )
       .all()
-      .map((row: unknown) => {
-        const r = row as { id: number; crew_id: string; mission_id: number | null; event_type: string; payload: string | null; read: number; created_at: string }
+      .map((r) => {
         try {
-          const payload = JSON.parse(r.payload ?? '{}') as { filePath?: string; summary?: string }
+          const payload: { filePath?: string; summary?: string } = JSON.parse(r.payload ?? '{}')
           return {
             ...r,
             file_path: payload.filePath ?? '',

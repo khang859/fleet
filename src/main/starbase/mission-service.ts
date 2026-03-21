@@ -62,7 +62,7 @@ export class MissionService {
         opts.prBranch ?? null
       )
 
-    const mission = this.getMission(result.lastInsertRowid as number)!
+    const mission = this.getMission(Number(result.lastInsertRowid))!
 
     for (const depId of opts.dependsOnMissionIds ?? []) {
       this.db

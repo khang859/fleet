@@ -90,8 +90,8 @@ export class GitService {
           // git diff --no-index exits with code 1 when files differ (which is always
           // the case for /dev/null vs a real file). simple-git throws on non-zero exit.
           // The stderr/stdout still contains the diff, so extract it from the error.
-          if (e && typeof e === 'object' && 'message' in e) {
-            const msg = (e as { message: string }).message;
+          if (e && typeof e === 'object' && 'message' in e && typeof e.message === 'string') {
+            const msg = e.message;
             // Extract the actual diff output from the error message
             const diffMatch = msg.match(/(diff --git[\s\S]*)/);
             if (diffMatch) {

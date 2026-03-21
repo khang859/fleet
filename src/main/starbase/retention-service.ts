@@ -24,11 +24,10 @@ export class RetentionService {
   ) {}
 
   cleanup(): { comms: number; cargo: number; shipsLog: number; crew: number; protocolExecutions: number } {
-    const commsRetentionDays = (this.configService.get('comms_retention_days') as number) ?? 30
-    const cargoRetentionDays = (this.configService.get('cargo_retention_days') as number) ?? 14
-    const shipsLogRetentionDays =
-      (this.configService.get('ships_log_retention_days') as number) ?? 30
-    const crewRetentionDays = (this.configService.get('crew_retention_days') as number) ?? 7
+    const commsRetentionDays = this.configService.getNumber('comms_retention_days')
+    const cargoRetentionDays = this.configService.getNumber('cargo_retention_days')
+    const shipsLogRetentionDays = this.configService.getNumber('ships_log_retention_days')
+    const crewRetentionDays = this.configService.getNumber('crew_retention_days')
 
     const commsResult = this.db
       .prepare(`DELETE FROM comms WHERE created_at < datetime('now', '-' || ? || ' days')`)
@@ -50,7 +49,7 @@ export class RetentionService {
       )
       .run(crewRetentionDays)
 
-    const protocolExecutionsRetentionDays = (this.configService.get('protocol_executions_retention_days') as number) ?? 30
+    const protocolExecutionsRetentionDays = this.configService.getNumber('protocol_executions_retention_days')
 
     const protocolExecutionsResult = this.db
       .prepare(`DELETE FROM protocol_executions WHERE status IN ('complete', 'failed', 'cancelled', 'gate-expired') AND created_at < datetime('now', '-' || ? || ' days')`)
@@ -73,9 +72,7 @@ export class RetentionService {
     const tables: Record<string, number> = {}
 
     for (const table of TABLES) {
-      const row = this.db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as {
-        count: number
-      }
+      const row = this.db.prepare<[], { count: number }>(`SELECT COUNT(*) as count FROM ${table}`).get()!
       tables[table] = row.count
     }
 

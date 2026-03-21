@@ -29,7 +29,7 @@ type RuntimeMessageLike = RuntimeEnvelope | { data?: RuntimeEnvelope } | undefin
 
 function isRuntimeEnvelope(value: unknown): value is RuntimeEnvelope {
   if (!value || typeof value !== 'object') return false
-  return ('event' in value && typeof (value as RuntimeEvent).event === 'string') ||
+  return ('event' in value && typeof value.event === 'string') ||
          ('id' in value && 'ok' in value)
 }
 

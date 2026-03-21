@@ -29,7 +29,7 @@ export class ShipsLog {
     const result = this.db
       .prepare('INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, ?, ?)')
       .run(opts.crewId ?? null, opts.eventType, detail);
-    return result.lastInsertRowid as number;
+    return Number(result.lastInsertRowid);
   }
 
   query(opts: QueryOpts): ShipsLogRow[] {

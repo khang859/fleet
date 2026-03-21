@@ -101,7 +101,7 @@ export class CommsService {
       )
       .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null, opts.missionId ?? null, opts.executionId ?? null);
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
-    return result.lastInsertRowid as number;
+    return Number(result.lastInsertRowid);
   }
 
   resolve(transmissionId: number, response: string): number {

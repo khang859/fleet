@@ -3,6 +3,7 @@ import * as path from 'path'
 import { exec } from 'child_process'
 import { promisify } from 'util'
 import type { PtyManager } from '../pty-manager'
+import { filterEnv } from '../env-utils'
 
 const execAsync = promisify(exec)
 
@@ -167,7 +168,7 @@ export class AdmiralProcess {
 
       // process.env.PATH already has ~/.fleet/bin prepended at startup
       const env: Record<string, string> = {
-        ...(process.env as Record<string, string>),
+        ...filterEnv(),
       }
 
       try {
@@ -180,7 +181,7 @@ export class AdmiralProcess {
       } catch (err) {
         const isEnoent =
           err instanceof Error &&
-          (err.message.includes('ENOENT') || (err as NodeJS.ErrnoException).code === 'ENOENT')
+          (err.message.includes('ENOENT') || ('code' in err && err.code === 'ENOENT'))
         const errorMsg = isEnoent ? 'Claude Code not found' : (err instanceof Error ? err.message : String(err))
         this.notify('stopped', errorMsg)
         throw new Error(errorMsg)

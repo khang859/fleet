@@ -5,6 +5,7 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import { inferCommitType, deriveSummary, formatCommitMessage, formatCommitSubject } from './conventional-commits'
 import { generateSkillMd } from './workspace-templates'
+import { filterEnv } from '../env-utils'
 
 export function buildCargoHeader(db: Database.Database, missionId: number): string {
   const deps = db
@@ -33,9 +34,10 @@ export function buildCargoHeader(db: Database.Database, missionId: number): stri
 
     let path: string | null = null
     try {
-      const manifest = JSON.parse(cargo.manifest) as { path?: string }
-      if (manifest.path && existsSync(manifest.path)) {
-        path = manifest.path
+      const manifest: unknown = JSON.parse(cargo.manifest)
+      const manifestPath = manifest != null && typeof manifest === 'object' && 'path' in manifest && typeof manifest.path === 'string' ? manifest.path : undefined
+      if (manifestPath && existsSync(manifestPath)) {
+        path = manifestPath
       }
     } catch {
       continue
@@ -81,6 +83,23 @@ type ClaudeResultMessage = {
 }
 
 type ClaudeStreamMessage = ClaudeInitMessage | ClaudeAssistantMessage | ClaudeResultMessage | { type: string }
+
+function isClaudeStreamMessage(v: unknown): v is ClaudeStreamMessage {
+  if (v == null || typeof v !== 'object') return false
+  return 'type' in v && typeof v.type === 'string'
+}
+
+function isClaudeInitMessage(msg: ClaudeStreamMessage): msg is ClaudeInitMessage {
+  return msg.type === 'system' && 'subtype' in msg && msg.subtype === 'init'
+}
+
+function isClaudeAssistantMessage(msg: ClaudeStreamMessage): msg is ClaudeAssistantMessage {
+  return msg.type === 'assistant' && 'message' in msg
+}
+
+function isClaudeResultMessage(msg: ClaudeStreamMessage): msg is ClaudeResultMessage {
+  return msg.type === 'result' && 'is_error' in msg
+}
 
 export type HullOpts = {
   crewId: string
@@ -281,7 +300,7 @@ NOTES: <specific file:line references for any issues found>
       }
 
       const mergedEnv: Record<string, string> = {
-        ...(this.opts.env ?? (process.env as Record<string, string>)),
+        ...(this.opts.env ?? filterEnv()),
         FLEET_CREW_ID: crewId,
         FLEET_SECTOR_ID: this.opts.sectorId,
         FLEET_MISSION_ID: String(this.opts.missionId),
@@ -325,8 +344,10 @@ NOTES: <specific file:line references for any issues found>
         for (const line of lines) {
           if (!line.trim()) continue
           try {
-            const msg = JSON.parse(line) as ClaudeStreamMessage
-            this.handleStreamMessage(msg)
+            const msg: unknown = JSON.parse(line)
+            if (isClaudeStreamMessage(msg)) {
+              this.handleStreamMessage(msg)
+            }
           } catch {
             // non-JSON line (e.g. claude startup noise) — ignore
           }
@@ -447,19 +468,18 @@ NOTES: <specific file:line references for any issues found>
   }
 
   private handleStreamMessage(msg: ClaudeStreamMessage): void {
-    if (msg.type === 'system' && (msg as ClaudeInitMessage).subtype === 'init') {
-      this.sessionId = (msg as ClaudeInitMessage).session_id
-    } else if (msg.type === 'assistant') {
-      const am = msg as ClaudeAssistantMessage
-      const textParts = am.message.content
+    if (isClaudeInitMessage(msg)) {
+      this.sessionId = msg.session_id
+    } else if (isClaudeAssistantMessage(msg)) {
+      const textParts = msg.message.content
         .filter(c => c.type === 'text' && c.text)
         .map(c => c.text!)
       if (textParts.length > 0) {
         this.appendOutput(textParts.join('\n'))
       }
-    } else if (msg.type === 'result') {
+    } else if (isClaudeResultMessage(msg)) {
       // Capture result text for research mission cargo
-      const rm = msg as ClaudeResultMessage
+      const rm = msg
       if (rm.result) {
         this.resultText = rm.result
       }
@@ -917,18 +937,16 @@ NOTES: <specific file:line references for any issues found>
           )
         } catch (verifyErr: unknown) {
           const duration = Date.now() - verifyStart
-          const err = verifyErr as {
-            stdout?: Buffer
-            stderr?: Buffer
-            status?: number
-            killed?: boolean
-          }
+          const err = verifyErr != null && typeof verifyErr === 'object' ? verifyErr as Record<string, unknown> : {}
+          const stdout = err.stdout instanceof Buffer ? err.stdout : undefined
+          const stderr = err.stderr instanceof Buffer ? err.stderr : undefined
+          const status = typeof err.status === 'number' ? err.status : 1
           const timedOut = err.killed === true
           db.prepare('UPDATE missions SET verify_result = ? WHERE id = ?').run(
             JSON.stringify({
-              stdout: err.stdout?.toString() ?? '',
-              stderr: err.stderr?.toString() ?? '',
-              exitCode: err.status ?? 1,
+              stdout: stdout?.toString() ?? '',
+              stderr: stderr?.toString() ?? '',
+              exitCode: status,
               duration,
               timedOut
             }),
@@ -953,8 +971,10 @@ NOTES: <specific file:line references for any issues found>
           }).toString()
         } catch (lintErr: unknown) {
           hasLintWarnings = true
-          const err = lintErr as { stdout?: Buffer; stderr?: Buffer }
-          lintOutput = err.stdout?.toString() || err.stderr?.toString() || ''
+          const lintErrObj = lintErr != null && typeof lintErr === 'object' ? lintErr as Record<string, unknown> : {}
+          const lintStdout = lintErrObj.stdout instanceof Buffer ? lintErrObj.stdout.toString() : ''
+          const lintStderr = lintErrObj.stderr instanceof Buffer ? lintErrObj.stderr.toString() : ''
+          lintOutput = lintStdout || lintStderr || ''
         }
       }
 
@@ -1193,7 +1213,10 @@ NOTES: <specific file:line references for any issues found>
           cwd: sectorPath,
           stdio: 'pipe'
         }).toString()
-        const prData = JSON.parse(prViewOutput) as { number: number; url: string }
+        const prDataRaw: unknown = JSON.parse(prViewOutput)
+        const prNumber = prDataRaw != null && typeof prDataRaw === 'object' && 'number' in prDataRaw && typeof prDataRaw.number === 'number' ? prDataRaw.number : 0
+        const prUrl = prDataRaw != null && typeof prDataRaw === 'object' && 'url' in prDataRaw && typeof prDataRaw.url === 'string' ? prDataRaw.url : ''
+        const prData = { number: prNumber, url: prUrl }
 
         db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId)
 

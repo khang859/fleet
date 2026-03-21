@@ -93,7 +93,7 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
             ? next
             : Array.isArray(existing)
               ? [...existing, next]
-              : [existing as string, next]
+              : [String(existing), next]
         } else {
           result[key] = next
         }
@@ -159,7 +159,7 @@ export class FleetCLI {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const parsed = JSON.parse(line) as CLIResponse;
+            const parsed: CLIResponse = JSON.parse(line);
             socket.end();
             settle(parsed);
           } catch {
@@ -375,8 +375,8 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return `Error: missions add requires --summary "...".\n\n${usage}`;
       if (args['depends-on'] !== undefined) {
         const depIds = Array.isArray(args['depends-on'])
-          ? args['depends-on'] as string[]
-          : [args['depends-on'] as string]
+          ? args['depends-on'].map(String)
+          : [String(args['depends-on'])]
         for (const depId of depIds) {
           const n = Number(depId)
           if (isNaN(n) || n <= 0) {
@@ -1126,15 +1126,15 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── comms.check special formatting ───────────────────────────────────────
   if (command === 'comms.check') {
-    const unread = (data as { unread: number })?.unread ?? 0;
+    const unread = (data != null && typeof data === 'object' && 'unread' in data && typeof data.unread === 'number') ? data.unread : 0;
     if (unread === 0) return '';
     return `${unread} unread transmission(s) — run: fleet comms list --unread`;
   }
 
   // ── protocol.list formatting ──────────────────────────────────────────────
   if (command === 'protocol.list') {
+    if (!Array.isArray(data) || data.length === 0) return 'No protocols registered.';
     const protocols = data as { slug: string; name: string; enabled: number; built_in: number }[];
-    if (!protocols || protocols.length === 0) return 'No protocols registered.';
     return protocols.map(p => {
       const status = p.enabled ? '✓' : '✗';
       const tag = p.built_in ? ' [built-in]' : '';
@@ -1144,14 +1144,14 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── protocol.show formatting ──────────────────────────────────────────────
   if (command === 'protocol.show') {
+    if (!data || typeof data !== 'object') return 'Protocol not found.';
     const inner = data as { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] };
-    if (!inner) return 'Protocol not found.';
     const lines: string[] = [`\n${inner.name}\n`];
     if (inner.description) lines.push(inner.description + '\n');
     if (inner.help_text) lines.push(inner.help_text + '\n');
     if (inner.trigger_examples) {
       try {
-        const examples = JSON.parse(inner.trigger_examples) as string[];
+        const examples: string[] = JSON.parse(inner.trigger_examples);
         if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
       } catch { /* ignore malformed JSON */ }
     }
@@ -1162,8 +1162,8 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── execution.list formatting ─────────────────────────────────────────────
   if (command === 'execution.list') {
+    if (!Array.isArray(data) || data.length === 0) return 'No executions found.';
     const execs = data as { id: string; status: string; current_step: number; feature_request: string }[];
-    if (!execs || execs.length === 0) return 'No executions found.';
     return execs.map(e =>
       `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
     ).join('\n');
@@ -1185,7 +1185,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── Object → key: value lines ─────────────────────────────────────────────
   if (data !== null && typeof data === 'object') {
-    return Object.entries(data as Record<string, unknown>)
+    return Object.entries(data as Record<string, unknown>)  // after typeof 'object' + non-null check
       .map(([k, v]) => {
         const valStr = typeof v === 'string' ? stripAnsi(v) : String(v ?? '');
         return `${k}: ${valStr}`;

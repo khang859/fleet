@@ -133,7 +133,7 @@ export class Sentinel {
   }
 
   start(intervalMs?: number): void {
-    const ms = intervalMs ?? (this.deps.configService.get('lifesign_interval_sec') as number) * 1000;
+    const ms = intervalMs ?? this.deps.configService.getNumber('lifesign_interval_sec') * 1000;
     this.interval = setInterval(() => {
       this.runSweep().catch((err) => {
         console.error('[sentinel] Sweep failed:', err);
@@ -162,7 +162,7 @@ export class Sentinel {
     this.sweepCount++;
     const { db, configService } = this.deps;
 
-    const lifesignTimeout = configService.get('lifesign_timeout_sec') as number;
+    const lifesignTimeout = configService.getNumber('lifesign_timeout_sec');
 
     // 1. Lifesign check
     const staleCrew = db
@@ -237,7 +237,7 @@ export class Sentinel {
     // 4. Dependency deadlock detection (skip — Phase 5)
 
     // 5. Disk usage check
-    const diskBudgetGb = configService.get('worktree_disk_budget_gb') as number;
+    const diskBudgetGb = configService.getNumber('worktree_disk_budget_gb');
     const diskBytes = await this.getDiskUsage();
     if (diskBytes !== null) {
       const usedGb = diskBytes / (1024 * 1024 * 1024);
@@ -359,7 +359,7 @@ export class Sentinel {
     const { db, configService, firstOfficer } = this.deps
     if (!firstOfficer) return
 
-    const maxDeployments = configService.get('max_mission_deployments') as number ?? 8
+    const maxDeployments = configService.getNumber('max_mission_deployments')
 
     const failedCrew = db
       .prepare<[number], FailedCrewRow>(
@@ -387,7 +387,7 @@ export class Sentinel {
              WHERE type = 'memo' AND mission_id = m.id AND read = 0
            )`
       )
-      .all(configService.get('first_officer_max_retries') as number)
+      .all(configService.getNumber('first_officer_max_retries'))
 
     for (const row of failedCrew) {
       if (firstOfficer.isRunning(row.crew_id, row.mid)) continue
@@ -540,7 +540,7 @@ export class Sentinel {
   }
 
   private async navigatorSweep(): Promise<void> {
-    const gateExpirySeconds = this.configService.get('navigator_gate_expiry') as number
+    const gateExpirySeconds = this.configService.getNumber('navigator_gate_expiry')
 
     // Gate expiry — mark stale gate-pending executions as gate-expired
     const stale = this.protocolService.getStaleGatePendingExecutions(gateExpirySeconds)
@@ -597,7 +597,7 @@ export class Sentinel {
     const { db, configService, crewService } = this.deps
     if (!crewService) return
 
-    const maxConcurrent = (configService.get('review_crew_max_concurrent') as number) ?? 2
+    const maxConcurrent = configService.getNumber('review_crew_max_concurrent')
 
     // Count active review crews
     const activeReviewCount = (

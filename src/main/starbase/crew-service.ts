@@ -113,7 +113,7 @@ export class CrewService {
     }
 
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
-    const minFreeGb = configService.get('min_deploy_free_memory_gb') as number;
+    const minFreeGb = configService.getNumber('min_deploy_free_memory_gb');
     const availableGb = (await getAvailableMemoryBytes()) / (1024 * 1024 * 1024);
     if (availableGb < minFreeGb) {
       db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
@@ -170,8 +170,8 @@ export class CrewService {
     const avatar = AVATAR_VARIANTS[Math.floor(Math.random() * AVATAR_VARIANTS.length)];
 
     // 8. Create Hull (headless — no tab, no PtyManager)
-    const timeoutMin = configService.get('default_mission_timeout_min') as number;
-    const lifesignSec = configService.get('lifesign_interval_sec') as number;
+    const timeoutMin = configService.getNumber('default_mission_timeout_min');
+    const lifesignSec = configService.getNumber('lifesign_interval_sec');
 
     const hull = new Hull({
       crewId,
