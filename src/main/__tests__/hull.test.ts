@@ -9,12 +9,12 @@ import { tmpdir } from 'os'
 import { EventEmitter } from 'events'
 
 // Mock child_process.spawn before importing Hull (ESM modules need top-level mock)
-let mockProc: any = null
+let mockProc: unknown = null
 vi.mock('child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('child_process')>()
   return {
     ...actual,
-    spawn: vi.fn((..._args: any[]) => mockProc),
+    spawn: vi.fn((..._args: unknown[]) => mockProc),
   }
 })
 
@@ -599,8 +599,8 @@ describe('Hull — Research mission cleanup', () => {
       .prepare('SELECT * FROM cargo WHERE mission_id = ?')
       .all(mission.id) as any[]
     expect(cargo.length).toBe(2)
-    expect(cargo.map((c: any) => c.type).sort()).toEqual(['documentation_full', 'documentation_summary'])
-    expect(cargo.every((c: any) => c.verified === 1)).toBe(true)
+    expect(cargo.map((c: { type: string; verified: number }) => c.type).sort()).toEqual(['documentation_full', 'documentation_summary'])
+    expect(cargo.every((c: { type: string; verified: number }) => c.verified === 1)).toBe(true)
 
     const comms = db.getDb()
       .prepare("SELECT payload FROM comms WHERE from_crew = ? AND type = 'mission_complete'")
