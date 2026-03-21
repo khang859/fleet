@@ -1,7 +1,24 @@
-import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import './index.css';
+
+window.addEventListener('error', (event) => {
+  console.error('[renderer:error]', {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    stack: event.error instanceof Error ? event.error.stack : undefined,
+  });
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  console.error('[renderer:unhandledrejection]', {
+    message: reason instanceof Error ? reason.message : String(reason),
+    stack: reason instanceof Error ? reason.stack : undefined,
+  });
+});
 
 // Force-load bundled Nerd Fonts before rendering.
 // xterm.js draws on <canvas> which doesn't trigger @font-face downloads
@@ -33,10 +50,6 @@ Promise.race([
 ]).then(() => {
   const root = document.getElementById('root');
   if (root) {
-    createRoot(root).render(
-      <StrictMode>
-        <App />
-      </StrictMode>
-    );
+    createRoot(root).render(<App />);
   }
 });

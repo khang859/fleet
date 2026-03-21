@@ -19,7 +19,7 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        output: { format: 'es' }
+        output: { format: 'cjs' }
       }
     }
   },

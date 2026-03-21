@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC_CHANNELS } from '../shared/constants'
+import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type {
   AdmiralStatusPayload,
   PtyCreateRequest,
@@ -33,9 +33,24 @@ function onChannel<T>(channel: string, callback: (payload: T) => void): Unsubscr
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
-const hostContext = await ipcRenderer.invoke(
-  IPC_CHANNELS.APP_HOST_CONTEXT_GET
-) as HostContextPayload
+function getHomeDir(): string {
+  if (process.platform === 'win32') {
+    const userProfile = process.env.USERPROFILE
+    if (userProfile) {
+      return userProfile
+    }
+
+    const homeDrive = process.env.HOMEDRIVE
+    const homePath = process.env.HOMEPATH
+    if (homeDrive && homePath) {
+      return homeDrive + homePath
+    }
+
+    return ''
+  }
+
+  return process.env.HOME ?? ''
+}
 
 const fleetApi = {
   pty: {
@@ -73,8 +88,8 @@ const fleetApi = {
     onStateUpdate: (callback: (payload: AgentStatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.AGENT_STATE, callback)
   },
-  homeDir: hostContext.homeDir,
-  platform: hostContext.platform,
+  homeDir: getHomeDir(),
+  platform: process.platform as HostContextPayload['platform'],
   utils: {
     getFilePath: (file: File): string => webUtils.getPathForFile(file)
   },

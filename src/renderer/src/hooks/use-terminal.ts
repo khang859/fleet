@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 
-import { CanvasAddon } from '@xterm/addon-canvas';
 import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
@@ -284,11 +283,10 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }, 100);
   };
 
-  // Defer canvas addon, initial fit, and ResizeObserver to next frame.
+  // Defer initial fit and ResizeObserver to next frame.
   // xterm's render service needs a full layout pass before dimensions are
-  // available. Loading CanvasAddon synchronously after open() triggers
-  // internal xterm events (Viewport.syncScrollArea) before the new
-  // renderer's dimensions are initialized, causing:
+  // available. Swapping renderers too early has previously triggered
+  // internal xterm events before dimensions were initialized, causing:
   //   "Cannot read properties of undefined (reading 'dimensions')"
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {
@@ -301,26 +299,37 @@ function createTerminal(container: HTMLElement, options: UseTerminalOptions): {
     }
   });
 
-  requestAnimationFrame(() => {
-    // Load canvas renderer after layout pass — avoids dimensions race
-    try {
-      term.loadAddon(new CanvasAddon());
-    } catch {
-      // Canvas addon failed, terminal will use default renderer
+  const hasRenderableSize = (): boolean => {
+    const rect = container.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+  };
+
+  const startTerminalWhenReady = (attempt = 0): void => {
+    if (!term.element) return;
+
+    if (!hasRenderableSize()) {
+      if (attempt < 10) {
+        requestAnimationFrame(() => startTerminalWhenReady(attempt + 1));
+      } else {
+        resizeObserver.observe(container);
+      }
+      return;
     }
 
     try {
       fitPreservingScroll();
-      // Always send resize to PTY — on reconnect (undo) this triggers
-      // SIGWINCH so the shell redraws its prompt.
       debouncedPtyResize();
     } catch {
-      // Render service may not be ready yet; ResizeObserver will retry
+      if (attempt < 10) {
+        requestAnimationFrame(() => startTerminalWhenReady(attempt + 1));
+        return;
+      }
     }
 
-    // Start observing resizes only after initial setup is complete
     resizeObserver.observe(container);
-  });
+  };
+
+  requestAnimationFrame(() => startTerminalWhenReady());
 
   const scrollToBottom = (): void => {
     term.scrollToBottom();
