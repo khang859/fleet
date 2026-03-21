@@ -30,7 +30,7 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
   return find(tab.splitRoot);
 }
 
-const AUTO_SAVE_DEBOUNCE_MS = 2000;
+const AUTO_SAVE_DEBOUNCE_MS = 500;
 
 export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; onCollapse?: () => void }) {
   const {
@@ -156,7 +156,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     }
   }, [showNewWsInput]);
 
-  const commitNewWorkspace = useCallback(() => {
+  const commitNewWorkspace = useCallback(async () => {
     const name = newWsName.trim();
     setShowNewWsInput(false);
     setNewWsName('');
@@ -164,7 +164,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
 
     // Save current workspace first
     const state = useWorkspaceStore.getState();
-    window.fleet.layout.save({ workspace: state.workspace });
+    await window.fleet.layout.save({ workspace: state.workspace });
 
     // Kill current PTYs
     const currentPaneIds = state.getAllPaneIds();

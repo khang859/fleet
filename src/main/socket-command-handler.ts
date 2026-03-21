@@ -227,8 +227,15 @@ export class FleetCommandHandler implements SocketCommandHandler {
       // Phase 2: Deploy/Recall/Crew/Missions
       case 'deploy': {
         if (!this.crewService) return { ok: false, error: 'Star Command Phase 2 not initialized' };
+        if (typeof cmd.missionId !== 'number') {
+          return { ok: false, error: 'deploy requires missionId' };
+        }
         const result = await this.crewService.deployCrew(
-          { sectorId: cmd.sectorId as string, prompt: cmd.prompt as string, missionId: cmd.missionId as number | undefined },
+          {
+            sectorId: cmd.sectorId as string,
+            prompt: cmd.prompt as string,
+            missionId: cmd.missionId,
+          },
         );
         return { ok: true, ...result };
       }

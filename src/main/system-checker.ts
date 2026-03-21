@@ -66,7 +66,13 @@ async function checkFleetSock(): Promise<SystemDepResult> {
           socket.destroy()
           const uptime = msg.data.uptime
           const version = uptime !== undefined ? `uptime: ${Math.round(uptime)}s` : undefined
-          resolve({ name: 'fleet.sock', found: true, version })
+          resolve({
+            name: 'fleet.sock',
+            found: true,
+            version,
+            installHint:
+              'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.',
+          })
         }
       } catch {
         // keep buffering

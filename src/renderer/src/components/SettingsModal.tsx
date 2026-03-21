@@ -32,6 +32,8 @@ const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   needsPermission: 'Needs Permission',
   processExitError: 'Process Exit (Error)',
   processExitClean: 'Process Exit (Clean)',
+  comms: 'Comms',
+  memos: 'Memos',
 };
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {

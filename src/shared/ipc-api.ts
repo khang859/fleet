@@ -41,6 +41,11 @@ export type LayoutListResponse = {
   workspaces: Workspace[];
 };
 
+export type StarbaseRuntimeStatus = {
+  state: 'starting' | 'ready' | 'error';
+  error?: string;
+};
+
 export type NotificationPayload = NotificationEvent;
 
 export type PaneFocusedPayload = {

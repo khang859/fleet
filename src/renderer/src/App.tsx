@@ -194,9 +194,9 @@ export function App() {
     });
   }, []);
 
-  // Auto-save workspace on quit
+  // Best-effort flush on page hide; debounced autosave remains the primary durability path.
   useEffect(() => {
-    const handleBeforeUnload = () => {
+    const flushWorkspace = () => {
       const state = useWorkspaceStore.getState();
       const workspaceWithContent = {
         ...state.workspace,
@@ -205,10 +205,22 @@ export function App() {
           splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot)),
         })),
       };
-      window.fleet.layout.save({ workspace: workspaceWithContent });
+      void window.fleet.layout.save({ workspace: workspaceWithContent });
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    const handlePageHide = () => {
+      flushWorkspace();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushWorkspace();
+      }
+    };
+    window.addEventListener('pagehide', handlePageHide);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // Track pane IDs pending kill so we can clean up the previous batch

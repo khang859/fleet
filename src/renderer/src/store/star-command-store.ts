@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { StarbaseRuntimeStatus } from '../../../shared/ipc-api';
 
 export type CrewStatus = {
   id: string;
@@ -93,6 +94,7 @@ type StarCommandStore = {
   admiralExitCode: number | null;
 
   // Starbase state
+  runtimeStatus: StarbaseRuntimeStatus;
   crewList: CrewStatus[];
   missionQueue: MissionInfo[];
   sectors: SectorInfo[];
@@ -112,6 +114,7 @@ type StarCommandStore = {
 
   // Actions
   setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null, exitCode?: number | null) => void;
+  setRuntimeStatus: (status: StarbaseRuntimeStatus) => void;
   setDepCheck: (status: 'pending' | 'checking' | 'passed' | 'failed', results?: DepCheckResult[]) => void;
   setCrewList: (crew: CrewStatus[]) => void;
   setMissionQueue: (missions: MissionInfo[]) => void;
@@ -128,6 +131,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralStatus: 'stopped',
   admiralError: null,
   admiralExitCode: null,
+  runtimeStatus: { state: 'starting' },
   crewList: [],
   missionQueue: [],
   sectors: [],
@@ -140,6 +144,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   firstOfficerStatus: { status: 'idle', statusText: 'Idle', unreadMemos: 0 },
 
   setAdmiralPty: (paneId, status, error = null, exitCode = null) => set({ admiralPaneId: paneId, admiralStatus: status, admiralError: error, admiralExitCode: exitCode }),
+  setRuntimeStatus: (runtimeStatus) => set({ runtimeStatus }),
   setDepCheck: (status, results) => set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
   setCrewList: (crew) => set({ crewList: crew }),
   setMissionQueue: (missions) => set({ missionQueue: missions }),

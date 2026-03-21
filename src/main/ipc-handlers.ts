@@ -14,7 +14,8 @@ import type {
   PtyExitPayload,
   LayoutSaveRequest,
   LayoutListResponse,
-  PaneFocusedPayload
+  PaneFocusedPayload,
+  StarbaseRuntimeStatus
 } from '../shared/ipc-api'
 import type { Workspace } from '../shared/types'
 import { PtyManager } from './pty-manager'
@@ -39,6 +40,35 @@ import type { CargoService } from './starbase/cargo-service'
 import type { RetentionService } from './starbase/retention-service'
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
 
+type BootstrapState = {
+  envReady: Promise<void>
+  cliReady: Promise<string>
+  starbaseReady: Promise<void>
+  getRuntimeStatus: () => StarbaseRuntimeStatus
+  retryStarbaseBootstrap: () => Promise<StarbaseRuntimeStatus>
+}
+
+type StarbaseServices = {
+  sectorService?: SectorService | null
+  configService?: ConfigService | null
+  crewService?: CrewService | null
+  missionService?: MissionService | null
+  admiralProcess?: AdmiralProcess | null
+  commsService?: CommsService | null
+  supplyRouteService?: SupplyRouteService | null
+  cargoService?: CargoService | null
+  retentionService?: RetentionService | null
+  admiralStateDetector?: AdmiralStateDetector | null
+  starbaseDb?: { getDb: () => import('better-sqlite3').Database } | null
+}
+
+function requireService<T>(service: T | null | undefined, label: string): T {
+  if (!service) {
+    throw new Error(`Star Command not ready: missing ${label}`)
+  }
+  return service
+}
+
 export function registerIpcHandlers(
   ptyManager: PtyManager,
   layoutStore: LayoutStore,
@@ -49,20 +79,12 @@ export function registerIpcHandlers(
   cwdPoller: CwdPoller,
   gitService: GitService,
   getWindow: () => BrowserWindow | null,
-  sectorService?: SectorService | null,
-  configService?: ConfigService | null,
-  crewService?: CrewService | null,
-  missionService?: MissionService | null,
-  admiralProcess?: AdmiralProcess | null,
-  commsService?: CommsService | null,
-  supplyRouteService?: SupplyRouteService | null,
-  cargoService?: CargoService | null,
-  retentionService?: RetentionService | null,
-  admiralStateDetector?: AdmiralStateDetector | null,
-  starbaseDb?: { getDb: () => import('better-sqlite3').Database } | null
+  getBootstrapState: () => BootstrapState,
+  getStarbaseServices: () => StarbaseServices
 ): void {
   // PTY handlers
-  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
+  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+    await getBootstrapState().envReady
     const result = ptyManager.create(req)
 
     ptyManager.onData(req.paneId, (data) => {
@@ -136,13 +158,11 @@ export function registerIpcHandlers(
   })
 
   // Layout handlers
-  ipcMain.on(IPC_CHANNELS.LAYOUT_SAVE, (event, req: LayoutSaveRequest) => {
+  ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, async (_event, req: LayoutSaveRequest) => {
     try {
       layoutStore.save(req.workspace)
-      event.returnValue = undefined
     } catch (err) {
       console.error('[layout-save] Failed to save workspace:', err)
-      event.returnValue = undefined
     }
   })
 
@@ -181,52 +201,84 @@ export function registerIpcHandlers(
     return gitService.getFullStatus(cwd)
   })
 
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_GET, () => {
+    return getBootstrapState().getRuntimeStatus()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY, async () => {
+    return getBootstrapState().retryStarbaseBootstrap()
+  })
+
   // Starbase handlers
-  if (sectorService && configService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, () => sectorService.listVisibleSectors())
-    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, (_e, req) => sectorService.addSector(req))
-    ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, (_e, { sectorId }) =>
-      sectorService.removeSector(sectorId)
+  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().sectorService, 'sectorService').listVisibleSectors()
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, async (_e, req) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().sectorService, 'sectorService').addSector(req)
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, async (_e, { sectorId }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().sectorService, 'sectorService').removeSector(sectorId)
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, async (_e, { sectorId, fields }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().sectorService, 'sectorService').updateSector(
+      sectorId,
+      fields
     )
-    ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, (_e, { sectorId, fields }) =>
-      sectorService.updateSector(sectorId, fields)
-    )
-    ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, () => configService.getAll())
-    ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, (_e, { key, value }) =>
-      configService.set(key, value)
-    )
-  }
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().configService, 'configService').getAll()
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, async (_e, { key, value }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().configService, 'configService').set(key, value)
+  })
 
   // Phase 2: Deploy/Recall/Crew/Missions handlers
-  if (crewService && missionService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
-      return crewService.deployCrew(req)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
+    const bootstrap = getBootstrapState()
+    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
+    return requireService(getStarbaseServices().crewService, 'crewService').deployCrew(req)
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_RECALL, (_e, { crewId }) => {
-      crewService.recallCrew(crewId)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RECALL, async (_e, { crewId }) => {
+    await getBootstrapState().starbaseReady
+    requireService(getStarbaseServices().crewService, 'crewService').recallCrew(crewId)
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_MESSAGE_CREW, (_e, { crewId, message }) => {
-      return crewService.messageCrew(crewId, message)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_MESSAGE_CREW, async (_e, { crewId, message }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().crewService, 'crewService').messageCrew(
+      crewId,
+      message
+    )
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, (_e, filter?) => {
-      return crewService.listCrew(filter)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, async (_e, filter?) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().crewService, 'crewService').listCrew(filter)
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_MISSIONS, (_e, filter?) => {
-      return missionService.listMissions(filter)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_MISSIONS, async (_e, filter?) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().missionService, 'missionService').listMissions(
+      filter
+    )
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_MISSION, (_e, req) => {
-      return missionService.addMission(req)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_MISSION, async (_e, req) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().missionService, 'missionService').addMission(req)
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, (_e, { crewId }) => {
-      return crewService.observeCrew(crewId)
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, async (_e, { crewId }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().crewService, 'crewService').observeCrew(crewId)
+  })
 
   // System-level dependency check (app-wide pre-checks screen)
   ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, () => checkSystemDeps())
@@ -234,112 +286,135 @@ export function registerIpcHandlers(
   // Phase 3: Admiral + Comms handlers
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, () => checkDependencies())
 
-  if (admiralProcess) {
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, () => admiralProcess.paneId)
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, async () => {
+    await getBootstrapState().starbaseReady
+    return getStarbaseServices().admiralProcess?.paneId ?? null
+  })
 
-    // Wire PTY data forwarding for a newly started Admiral pane
-    const wireAdmiralPty = (paneId: string): void => {
-      ptyManager.onData(paneId, (data) => {
-        notificationDetector.scan(paneId, data)
-        admiralStateDetector?.scan(paneId, data)
-        const w = getWindow()
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
-        }
-      })
-      ptyManager.onExit(paneId, (exitCode) => {
-        const w = getWindow()
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
-        }
-        eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
-      })
-      cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
-    }
-
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
-      const paneId = await admiralProcess.restart()
-      admiralStateDetector?.setAdmiralPaneId(paneId)
-      wireAdmiralPty(paneId)
-      return paneId
+  // Wire PTY data forwarding for a newly started Admiral pane
+  const wireAdmiralPty = (paneId: string): void => {
+    ptyManager.onData(paneId, (data) => {
+      notificationDetector.scan(paneId, data)
+      getStarbaseServices().admiralStateDetector?.scan(paneId, data)
+      const w = getWindow()
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+      }
     })
-    ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
-      const paneId = await admiralProcess.reset()
-      admiralStateDetector?.setAdmiralPaneId(paneId)
-      wireAdmiralPty(paneId)
-      return paneId
+    ptyManager.onExit(paneId, (exitCode) => {
+      const w = getWindow()
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+      }
+      eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
     })
+    cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
   }
 
-  if (commsService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, () => {
-      return commsService.getUnread('admiral')
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_COMMS, (_e, opts?) => {
-      return commsService.getRecent(opts)
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, (_e, { id }) => {
-      return commsService.markRead(id)
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, (_e, { id, response }) => {
-      return commsService.resolve(id, response)
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, (_e, { id }) => {
-      return commsService.delete(id)
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ, () => {
-      return commsService.markAllRead()
-    })
-    ipcMain.handle(IPC_CHANNELS.STARBASE_CLEAR_COMMS, () => {
-      return commsService.clear()
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
+    const bootstrap = getBootstrapState()
+    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
+    const admiralProcess = requireService(getStarbaseServices().admiralProcess, 'admiralProcess')
+    const paneId = await admiralProcess.restart()
+    getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId)
+    wireAdmiralPty(paneId)
+    return paneId
+  })
+  ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
+    const bootstrap = getBootstrapState()
+    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady])
+    const admiralProcess = requireService(getStarbaseServices().admiralProcess, 'admiralProcess')
+    const paneId = await admiralProcess.reset()
+    getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId)
+    wireAdmiralPty(paneId)
+    return paneId
+  })
+
+  ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').getUnread('admiral')
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_COMMS, async (_e, opts?) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').getRecent(opts)
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, async (_e, { id }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').markRead(id)
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, async (_e, { id, response }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').resolve(
+      id,
+      response
+    )
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, async (_e, { id }) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').delete(id)
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').markAllRead()
+  })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_CLEAR_COMMS, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().commsService, 'commsService').clear()
+  })
 
   // Phase 5: Supply routes, cargo, retention handlers
-  if (supplyRouteService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, (_e, opts?) => {
-      return supplyRouteService.listRoutes(opts)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, async (_e, opts?) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').listRoutes(
+      opts
+    )
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, (_e, opts) => {
-      return supplyRouteService.addRoute(opts)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, async (_e, opts) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').addRoute(
+      opts
+    )
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, (_e, { routeId }) => {
-      supplyRouteService.removeRoute(routeId)
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, async (_e, { routeId }) => {
+    await getBootstrapState().starbaseReady
+    requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').removeRoute(
+      routeId
+    )
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH, () => {
-      return supplyRouteService.getGraph()
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().supplyRouteService, 'supplyRouteService').getGraph()
+  })
 
-  if (cargoService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_CARGO, (_e, filter?) => {
-      return cargoService.listCargo(filter)
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_CARGO, async (_e, filter?) => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().cargoService, 'cargoService').listCargo(filter)
+  })
 
-  if (retentionService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_STATS, () => {
-      return retentionService.getStats()
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_STATS, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().retentionService, 'retentionService').getStats()
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP, () => {
-      return retentionService.cleanup()
-    })
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP, async () => {
+    await getBootstrapState().starbaseReady
+    return requireService(getStarbaseServices().retentionService, 'retentionService').cleanup()
+  })
 
-    ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, () => {
-      retentionService.vacuum()
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, async () => {
+    await getBootstrapState().starbaseReady
+    requireService(getStarbaseServices().retentionService, 'retentionService').vacuum()
+  })
 
   // Logs: ships_log + comms UNION query
-  if (starbaseDb) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_SHIPS_LOG, (_e, opts?: { limit?: number }) => {
-      const db = starbaseDb.getDb()
-      const limit = opts?.limit ?? 200
-      return db.prepare(`
+  ipcMain.handle(IPC_CHANNELS.STARBASE_SHIPS_LOG, async (_e, opts?: { limit?: number }) => {
+    await getBootstrapState().starbaseReady
+    const db = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
+    const limit = opts?.limit ?? 200
+    return db.prepare(`
         SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp
         FROM ships_log
         UNION ALL
@@ -347,15 +422,13 @@ export function registerIpcHandlers(
         FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
         ORDER BY timestamp ASC LIMIT ?
       `).all(limit)
-    })
-  }
+  })
 
   // First Officer: Memo handlers (backed by comms table)
-  if (starbaseDb) {
-    const memoDb = starbaseDb.getDb()
-
-    ipcMain.handle(IPC_CHANNELS.MEMO_LIST, () => {
-      return memoDb.prepare(
+  ipcMain.handle(IPC_CHANNELS.MEMO_LIST, async () => {
+    await getBootstrapState().starbaseReady
+    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
+    return memoDb.prepare(
         "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
       ).all().map((row: any) => {
         try {
@@ -363,31 +436,34 @@ export function registerIpcHandlers(
           return { ...row, file_path: p.filePath ?? '', status: row.read ? 'read' : 'unread', summary: p.summary ?? '' }
         } catch { return { ...row, file_path: '', status: row.read ? 'read' : 'unread', summary: '' } }
       })
-    })
+  })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_READ, (_e, id: number) => {
-      memoDb.prepare("UPDATE comms SET read = 1 WHERE id = ?").run(id)
-      eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-    })
+  ipcMain.handle(IPC_CHANNELS.MEMO_READ, async (_e, id: number) => {
+    await getBootstrapState().starbaseReady
+    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
+    memoDb.prepare("UPDATE comms SET read = 1 WHERE id = ?").run(id)
+    eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, (_e, id: number) => {
-      memoDb.prepare("DELETE FROM comms WHERE id = ?").run(id)
-      eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-    })
+  ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, async (_e, id: number) => {
+    await getBootstrapState().starbaseReady
+    const memoDb = requireService(getStarbaseServices().starbaseDb, 'starbaseDb').getDb()
+    memoDb.prepare("DELETE FROM comms WHERE id = ?").run(id)
+    eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+  })
 
-    ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
-      const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
-      const resolved = resolve(filePath)
-      if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
-        return null
-      }
-      try {
-        return await readFile(resolved, 'utf-8')
-      } catch {
-        return null
-      }
-    })
-  }
+  ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
+    const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
+    const resolved = resolve(filePath)
+    if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
+      return null
+    }
+    try {
+      return await readFile(resolved, 'utf-8')
+    } catch {
+      return null
+    }
+  })
 
   // Folder picker
   ipcMain.handle(IPC_CHANNELS.SHOW_FOLDER_PICKER, async (event) => {

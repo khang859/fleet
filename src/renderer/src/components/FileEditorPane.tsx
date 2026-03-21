@@ -134,7 +134,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
           initialContentRef.current = result.data.content;
         }
       } else {
-        setError(result.error ?? 'Failed to read file');
+        setError(('error' in result ? result.error : undefined) ?? 'Failed to read file');
       }
       setLoading(false);
     });

@@ -39,6 +39,7 @@ import { RetentionService } from './starbase/retention-service'
 import { ProtocolService } from './starbase/protocol-service'
 import { installFleetCLI } from './install-fleet-cli'
 import { enrichProcessEnv } from './shell-env'
+import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
 import pkg from 'electron-updater'
 const { autoUpdater } = pkg
 
@@ -63,6 +64,152 @@ const cwdPoller = new CwdPoller(eventBus, ptyManager)
 const agentTracker = new AgentStateTracker(eventBus)
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR)
 const admiralStateDetector = new AdmiralStateDetector(eventBus)
+
+type StarbaseServiceRefs = {
+  starbaseDb: StarbaseDB | null
+  sectorService: SectorService | null
+  configService: ConfigService | null
+  missionService: MissionService | null
+  crewService: CrewService | null
+  commsService: CommsService | null
+  supplyRouteService: SupplyRouteService | null
+  cargoService: CargoService | null
+  retentionService: RetentionService | null
+  protocolService: ProtocolService | null
+  admiralProcess: AdmiralProcess | null
+  firstOfficer: FirstOfficer | null
+  navigator: Navigator | null
+}
+
+const starbaseServices: StarbaseServiceRefs = {
+  starbaseDb: null,
+  sectorService: null,
+  configService: null,
+  missionService: null,
+  crewService: null,
+  commsService: null,
+  supplyRouteService: null,
+  cargoService: null,
+  retentionService: null,
+  protocolService: null,
+  admiralProcess: null,
+  firstOfficer: null,
+  navigator: null,
+}
+
+let runtimeStatus: StarbaseRuntimeStatus = { state: 'starting' }
+
+function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
+  runtimeStatus = status
+  const windowRef = mainWindow
+  if (windowRef && !windowRef.isDestroyed()) {
+    windowRef.webContents.send(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, status)
+  }
+}
+
+let starbaseSnapshotTimer: ReturnType<typeof setTimeout> | null = null
+
+function getUnreadMemoCount(): number {
+  const db = starbaseServices.starbaseDb?.getDb()
+  if (!db) return 0
+  return (
+    db
+      .prepare(
+        "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
+      )
+      .get() as { cnt: number }
+  ).cnt
+}
+
+function flushStarbaseSnapshot(): void {
+  starbaseSnapshotTimer = null
+
+  const windowRef = mainWindow
+  const { crewService, missionService, sectorService, commsService, firstOfficer, starbaseDb } =
+    starbaseServices
+  if (
+    !windowRef ||
+    windowRef.isDestroyed() ||
+    !crewService ||
+    !missionService ||
+    !sectorService ||
+    !commsService ||
+    !firstOfficer
+  ) {
+    return
+  }
+
+  const unreadComms = commsService.getUnread('admiral')
+  const unreadMemosCount = getUnreadMemoCount()
+
+  windowRef.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+    crew: crewService.listCrew(),
+    missions: missionService.listMissions(),
+    sectors: sectorService.listVisibleSectors(),
+    unreadCount: unreadComms.length,
+    firstOfficer: {
+      status: firstOfficer.getStatus(),
+      statusText: firstOfficer.getStatusText(),
+      unreadMemos: unreadMemosCount,
+    },
+  })
+
+  if (starbaseDb) {
+    const recentEntry = starbaseDb
+      .getDb()
+      .prepare(`
+        SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp FROM ships_log
+        UNION ALL
+        SELECT 'comms', id, from_crew, to_crew, type, payload, created_at FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
+        ORDER BY timestamp DESC LIMIT 1
+      `)
+      .get()
+    if (recentEntry) {
+      windowRef.webContents.send(IPC_CHANNELS.STARBASE_LOG_ENTRY, recentEntry)
+    }
+  }
+
+  if (unreadComms.length > lastUnreadCommsCount && Notification.isSupported()) {
+    const settings = settingsStore.get()
+    if (settings.notifications.comms.os) {
+      const newComms = unreadComms.slice(lastUnreadCommsCount)
+      const body =
+        newComms.length === 1
+          ? `New transmission from ${newComms[0].from_crew ?? 'crew'}`
+          : `${newComms.length} new transmissions`
+      const notif = new Notification({ title: 'Fleet', body })
+      notif.on('click', () => {
+        mainWindow?.show()
+        mainWindow?.focus()
+        mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
+      })
+      notif.show()
+    }
+  }
+  lastUnreadCommsCount = unreadComms.length
+
+  if (unreadMemosCount > lastUnreadMemosCount && Notification.isSupported()) {
+    const settings = settingsStore.get()
+    if (settings.notifications.memos.os) {
+      const notif = new Notification({
+        title: 'Fleet — First Officer',
+        body: 'New memo requires review',
+      })
+      notif.on('click', () => {
+        mainWindow?.show()
+        mainWindow?.focus()
+        mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_FIRST_OFFICER)
+      })
+      notif.show()
+    }
+  }
+  lastUnreadMemosCount = unreadMemosCount
+}
+
+function scheduleStarbaseSnapshot(): void {
+  if (starbaseSnapshotTimer) return
+  starbaseSnapshotTimer = setTimeout(() => flushStarbaseSnapshot(), 25)
+}
 
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -132,9 +279,7 @@ function createWindow(): void {
 app.setName('Fleet')
 
 app.whenReady().then(async () => {
-  // Resolve the user's login shell PATH before anything spawns subprocesses.
-  // Packaged Electron apps inherit a minimal PATH from launchd.
-  await enrichProcessEnv()
+  createWindow()
 
   // Set dock icon on macOS
   if (process.platform === 'darwin') {
@@ -146,365 +291,291 @@ app.whenReady().then(async () => {
   }
 
   const gitService = new GitService()
-
-  // Initialize Star Command database
-  let starbaseDb: StarbaseDB | null = null
-  let sectorService: SectorService | null = null
-  let configService: ConfigService | null = null
-  let missionService: MissionService | null = null
-  let crewService: CrewService | null = null
-  let commsService: CommsService | null = null
-  let supplyRouteService: SupplyRouteService | null = null
-  let cargoService: CargoService | null = null
-  let retentionService: RetentionService | null = null
-  let protocolService: ProtocolService | null = null
-
-  try {
-    const workspacePath = process.cwd()
-    starbaseDb = new StarbaseDB(workspacePath)
-    starbaseDb.open()
-    sectorService = new SectorService(starbaseDb.getDb(), workspacePath, eventBus)
-    configService = new ConfigService(starbaseDb.getDb())
-
-    // Phase 5 services
-    supplyRouteService = new SupplyRouteService(starbaseDb.getDb())
-    cargoService = new CargoService(starbaseDb.getDb(), supplyRouteService, configService)
-    retentionService = new RetentionService(
-      starbaseDb.getDb(),
-      configService,
-      starbaseDb.getDbPath()
-    )
-
-    // Acquire lockfile
-    const basePath = dirname(starbaseDb.getDbPath())
-    lockfile = new Lockfile(basePath, starbaseDb.getStarbaseId())
-    const lockResult = lockfile.acquire()
-    if (lockResult === 'read-only') {
-      console.warn('[starbase] Another Fleet instance manages this Starbase — read-only mode')
-    }
-
-    // Install fleet CLI binary early — needed for both crew PTYs and Admiral's PATH
-    const fleetBinPath = await installFleetCLI().catch((err) => {
+  const workspacePath = process.cwd()
+  const envReady = enrichProcessEnv()
+  const cliReady = installFleetCLI()
+    .catch((err) => {
       console.error('[fleet-cli] Failed to install CLI binary:', err)
       return join(homedir(), '.fleet', 'bin')
     })
-
-    // Add ~/.fleet/bin to the main process PATH so all PTYs (including normal tabs)
-    // can find the `fleet` CLI binary without needing explicit env enrichment.
-    const pathDirs = (process.env.PATH ?? '').split(':')
-    if (!pathDirs.includes(fleetBinPath)) {
-      process.env.PATH = fleetBinPath + ':' + (process.env.PATH ?? '')
-    }
-
-    // Phase 2 services
-    missionService = new MissionService(starbaseDb.getDb(), eventBus)
-    const worktreeBasePath = join(basePath, 'worktrees')
-    const worktreeManager = new WorktreeManager(worktreeBasePath)
-
-    // Configure worktree manager with concurrency limits
-    const maxConcurrent = configService.get('max_concurrent_worktrees') as number
-    worktreeManager.configure(starbaseDb.getDb(), maxConcurrent)
-
-    // Crew PTYs inherit the main process env (which already has ~/.fleet/bin on PATH)
-    const crewEnv: Record<string, string> = {
-      ...(process.env as Record<string, string>),
-    }
-
-    // Crews are headless (stream-json, no PTY/tab). No PTY buffer wiring needed.
-    crewServiceRef = crewService = new CrewService({
-      db: starbaseDb.getDb(),
-      starbaseId: starbaseDb.getStarbaseId(),
-      sectorService,
-      missionService,
-      configService,
-      worktreeManager,
-      eventBus,
-      crewEnv,
-    })
-
-    // Phase 3 services
-    commsService = new CommsService(starbaseDb.getDb(), eventBus)
-    const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
-    commsService.setRateLimit(commsRateLimit)
-
-    // Protocol service
-    protocolService = new ProtocolService(starbaseDb.getDb())
-
-    // Helper: count unread memos from comms table
-    function getUnreadMemoCount(): number {
-      return (starbaseDb!.getDb().prepare(
-        "SELECT COUNT(*) as cnt FROM comms WHERE type IN ('memo', 'hailing-memo') AND to_crew = 'admiral' AND read = 0"
-      ).get() as { cnt: number }).cnt
-    }
-
-    const firstOfficer = new FirstOfficer({
-      db: starbaseDb.getDb(),
-      configService,
-      missionService,
-      crewService,
-      cargoService,
-      eventBus,
-      starbaseId: starbaseDb.getStarbaseId(),
-      crewEnv: crewEnv,
-      fleetBinDir: fleetBinPath,
-    })
-    firstOfficerRef = firstOfficer
-
-    const navigator = new Navigator({
-      db: starbaseDb.getDb(),
-      configService,
-      eventBus,
-      starbaseId: starbaseDb.getStarbaseId(),
-      crewEnv,
-      fleetBinDir: fleetBinPath,
-    })
-    navigatorRef = navigator
-
-    // Socket Supervisor (wraps SocketServer with auto-restart)
-    const shipsLog = new ShipsLog(starbaseDb.getDb())
-    socketSupervisor = new SocketSupervisor(SOCKET_PATH, {
-      crewService: crewService!,
-      missionService: missionService!,
-      commsService: commsService!,
-      sectorService: sectorService!,
-      cargoService: cargoService!,
-      supplyRouteService: supplyRouteService!,
-      configService: configService!,
-      shipsLog,
-      protocolService: protocolService!,
-    })
-
-    socketSupervisor.on('state-change', (event: string, data: unknown) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
+    .then((fleetBinPath) => {
+      const pathDirs = (process.env.PATH ?? '').split(':')
+      if (!pathDirs.includes(fleetBinPath)) {
+        process.env.PATH = fleetBinPath + ':' + (process.env.PATH ?? '')
       }
+      return fleetBinPath
     })
 
-    socketSupervisor.on('restarted', () => {
-      console.log('[socket-supervisor] Socket server restarted')
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-          event: 'socket:restarted',
-          data: {},
-        })
-      }
-    })
+  let starbaseReadyPromise: Promise<void> = Promise.resolve()
+  let starbaseBootstrapInFlight: Promise<void> | null = null
 
-    socketSupervisor.on('failed', () => {
-      console.error('[socket-supervisor] Socket server permanently failed')
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-          event: 'socket:failed',
-          data: {},
-        })
-      }
-    })
+  const bootstrapStarbase = async (): Promise<void> => {
+    if (runtimeStatus.state === 'ready') return
+    if (starbaseBootstrapInFlight) return starbaseBootstrapInFlight
 
-    socketSupervisor.on('file-open', (payload: unknown) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload)
-      }
-    })
+    setRuntimeStatus({ state: 'starting' })
+    starbaseBootstrapInFlight = (async () => {
+      let localStarbaseDb: StarbaseDB | null = null
+      let localLockfile: Lockfile | null = null
+      let localSocketSupervisor: SocketSupervisor | null = null
+      let localAdmiralProcess: AdmiralProcess | null = null
+      let localFirstOfficer: FirstOfficer | null = null
+      let localNavigator: Navigator | null = null
+      let localSentinel: Sentinel | null = null
 
-    socketSupervisor.start().catch((err) => {
-      console.error('[socket-supervisor] Failed to start:', err)
-    })
-
-    // Admiral Process
-    const starbaseId = starbaseDb.getStarbaseId()
-    const admiralWorkspace = join(homedir(), '.fleet', 'starbases', `starbase-${starbaseId}`, 'admiral')
-    const starbaseName = (configService.get('starbase_name') as string | undefined) ?? basename(workspacePath)
-
-    admiralProcess = new AdmiralProcess({
-      workspace: admiralWorkspace,
-      starbaseName,
-      sectors: sectorService.listVisibleSectors().map((s) => ({
-        name: s.name,
-        root_path: s.root_path,
-        stack: s.stack ?? undefined,
-        base_branch: s.base_branch ?? undefined,
-      })),
-      ptyManager,
-      fleetBinPath,
-    })
-
-    admiralProcess.setOnStatusChange((status, error, exitCode) => {
-      if (status === 'stopped') {
-        admiralStateDetector.reset()
-        admiralStateDetector.setAdmiralPaneId(null)
-      }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
-          status,
-          paneId: admiralProcess!.paneId,
-          error,
-          exitCode,
-        })
-      }
-    })
-
-    // Start the Admiral on demand and wire PTY data forwarding to renderer
-    const startAdmiralAndWire = async (): Promise<string | null> => {
       try {
-        const paneId = await admiralProcess!.start()
-        admiralStateDetector.setAdmiralPaneId(paneId)
-        // Forward admiral PTY data to renderer (same as PTY_CREATE handler does for regular panes)
-        ptyManager.onData(paneId, (data) => {
-          notificationDetector.scan(paneId, data)
-          admiralStateDetector.scan(paneId, data)
-          const w = mainWindow
-          if (w && !w.isDestroyed()) {
-            w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+        await Promise.all([envReady, cliReady])
+        const fleetBinPath = await cliReady
+
+        localStarbaseDb = new StarbaseDB(workspacePath)
+        localStarbaseDb.open()
+        const sectorService = new SectorService(localStarbaseDb.getDb(), workspacePath, eventBus)
+        const configService = new ConfigService(localStarbaseDb.getDb())
+        const supplyRouteService = new SupplyRouteService(localStarbaseDb.getDb())
+        const cargoService = new CargoService(localStarbaseDb.getDb(), supplyRouteService, configService)
+        const retentionService = new RetentionService(
+          localStarbaseDb.getDb(),
+          configService,
+          localStarbaseDb.getDbPath()
+        )
+
+        const basePath = dirname(localStarbaseDb.getDbPath())
+        localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId())
+        const lockResult = localLockfile.acquire()
+        if (lockResult === 'read-only') {
+          console.warn('[starbase] Another Fleet instance manages this Starbase — read-only mode')
+        }
+
+        const missionService = new MissionService(localStarbaseDb.getDb(), eventBus)
+        const worktreeBasePath = join(basePath, 'worktrees')
+        const worktreeManager = new WorktreeManager(worktreeBasePath)
+        const maxConcurrent = configService.get('max_concurrent_worktrees') as number
+        worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent)
+
+        const crewEnv: Record<string, string> = {
+          ...(process.env as Record<string, string>),
+        }
+
+        const crewService = new CrewService({
+          db: localStarbaseDb.getDb(),
+          starbaseId: localStarbaseDb.getStarbaseId(),
+          sectorService,
+          missionService,
+          configService,
+          worktreeManager,
+          eventBus,
+          crewEnv,
+        })
+
+        const commsService = new CommsService(localStarbaseDb.getDb(), eventBus)
+        const commsRateLimit = configService.get('comms_rate_limit_per_min') as number
+        commsService.setRateLimit(commsRateLimit)
+
+        const protocolService = new ProtocolService(localStarbaseDb.getDb())
+        localFirstOfficer = new FirstOfficer({
+          db: localStarbaseDb.getDb(),
+          configService,
+          missionService,
+          crewService,
+          cargoService,
+          eventBus,
+          starbaseId: localStarbaseDb.getStarbaseId(),
+          crewEnv,
+          fleetBinDir: fleetBinPath,
+        })
+
+        localNavigator = new Navigator({
+          db: localStarbaseDb.getDb(),
+          configService,
+          eventBus,
+          starbaseId: localStarbaseDb.getStarbaseId(),
+          crewEnv,
+          fleetBinDir: fleetBinPath,
+        })
+
+        const shipsLog = new ShipsLog(localStarbaseDb.getDb())
+        localSocketSupervisor = new SocketSupervisor(SOCKET_PATH, {
+          crewService,
+          missionService,
+          commsService,
+          sectorService,
+          cargoService,
+          supplyRouteService,
+          configService,
+          shipsLog,
+          protocolService,
+        })
+
+        localSocketSupervisor.on('state-change', (event: string, data: unknown) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
           }
         })
-        ptyManager.onExit(paneId, (exitCode) => {
-          const w = mainWindow
-          if (w && !w.isDestroyed()) {
-            w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+
+        localSocketSupervisor.on('restarted', () => {
+          console.log('[socket-supervisor] Socket server restarted')
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+              event: 'socket:restarted',
+              data: {},
+            })
           }
-          eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
         })
-        cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
-        return paneId
+
+        localSocketSupervisor.on('failed', () => {
+          console.error('[socket-supervisor] Socket server permanently failed')
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
+              event: 'socket:failed',
+              data: {},
+            })
+          }
+        })
+
+        localSocketSupervisor.on('file-open', (payload: unknown) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload)
+          }
+        })
+
+        localSocketSupervisor.start().catch((err) => {
+          console.error('[socket-supervisor] Failed to start:', err)
+        })
+
+        const starbaseId = localStarbaseDb.getStarbaseId()
+        const admiralWorkspace = join(
+          homedir(),
+          '.fleet',
+          'starbases',
+          `starbase-${starbaseId}`,
+          'admiral'
+        )
+        const starbaseName =
+          (configService.get('starbase_name') as string | undefined) ?? basename(workspacePath)
+
+        localAdmiralProcess = new AdmiralProcess({
+          workspace: admiralWorkspace,
+          starbaseName,
+          sectors: sectorService.listVisibleSectors().map((s) => ({
+            name: s.name,
+            root_path: s.root_path,
+            stack: s.stack ?? undefined,
+            base_branch: s.base_branch ?? undefined,
+          })),
+          ptyManager,
+          fleetBinPath,
+        })
+
+        localAdmiralProcess.setOnStatusChange((status, error, exitCode) => {
+          if (status === 'stopped') {
+            admiralStateDetector.reset()
+            admiralStateDetector.setAdmiralPaneId(null)
+          }
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
+              status,
+              paneId: localAdmiralProcess!.paneId,
+              error,
+              exitCode,
+            })
+          }
+        })
+
+        if (lockResult === 'acquired') {
+          runReconciliation({
+            db: localStarbaseDb.getDb(),
+            starbaseId: localStarbaseDb.getStarbaseId(),
+            worktreeBasePath,
+          })
+            .then((summary) => {
+              if (summary.lostCrew.length > 0 || summary.requeuedMissions.length > 0) {
+                console.log('[starbase] Reconciliation summary:', JSON.stringify(summary))
+              }
+            })
+            .catch((err) => {
+              console.error('[starbase] Reconciliation failed:', err)
+            })
+
+          localFirstOfficer.reconcile()
+          localNavigator.reconcile()
+
+          const foWorkspace = join(
+            process.env.HOME ?? '~',
+            '.fleet',
+            'starbases',
+            `starbase-${localStarbaseDb.getStarbaseId()}`,
+            'first-officer'
+          )
+          mkdirSync(join(foWorkspace, 'memos'), { recursive: true })
+
+          localSentinel = new Sentinel({
+            db: localStarbaseDb.getDb(),
+            configService,
+            eventBus,
+            supervisor: localSocketSupervisor ?? undefined,
+            socketPath: SOCKET_PATH,
+            firstOfficer: localFirstOfficer,
+            crewService,
+            settingsStore,
+            navigator: localNavigator,
+            onNudgeClick: () => {
+              mainWindow?.show()
+              mainWindow?.focus()
+              mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
+            },
+          })
+          localSentinel.start()
+        }
+
+        starbaseServices.starbaseDb = localStarbaseDb
+        starbaseServices.sectorService = sectorService
+        starbaseServices.configService = configService
+        starbaseServices.missionService = missionService
+        starbaseServices.crewService = crewService
+        starbaseServices.commsService = commsService
+        starbaseServices.supplyRouteService = supplyRouteService
+        starbaseServices.cargoService = cargoService
+        starbaseServices.retentionService = retentionService
+        starbaseServices.protocolService = protocolService
+        starbaseServices.admiralProcess = localAdmiralProcess
+        starbaseServices.firstOfficer = localFirstOfficer
+        starbaseServices.navigator = localNavigator
+
+        lockfile = localLockfile
+        socketSupervisor = localSocketSupervisor
+        admiralProcess = localAdmiralProcess
+        crewServiceRef = crewService
+        firstOfficerRef = localFirstOfficer
+        navigatorRef = localNavigator
+        sentinel = localSentinel
+
+        commandHandler.setStarbaseServices(sectorService, configService)
+        commandHandler.setPhase2Services(crewService, missionService)
+
+        lastUnreadCommsCount = commsService.getUnread('admiral').length
+        lastUnreadMemosCount = getUnreadMemoCount()
+        layoutStore.ensureStarCommandTab('default', workspacePath)
+        scheduleStarbaseSnapshot()
+        setRuntimeStatus({ state: 'ready' })
       } catch (err) {
-        console.error('[admiral] Failed to start:', err)
-        return null
+        localSentinel?.stop()
+        localFirstOfficer?.shutdown()
+        localNavigator?.shutdown()
+        localSocketSupervisor?.stop().catch(() => {})
+        localAdmiralProcess?.stop().catch(() => {})
+        localLockfile?.release()
+        localStarbaseDb?.close()
+        const message = err instanceof Error ? err.message : String(err)
+        console.error('[starbase] Failed to initialize Star Command database:', err)
+        setRuntimeStatus({ state: 'error', error: message })
+        throw err
+      } finally {
+        starbaseBootstrapInFlight = null
       }
-    }
+    })()
 
-    ipcMain.handle('admiral:ensure-started', async () => {
-      if (!admiralProcess) return null
-      // Already running — return existing paneId
-      if (admiralProcess.paneId) return admiralProcess.paneId
-      // Currently starting — don't double-spawn; return null
-      // StarCommandTab listens to onStatusChanged and will receive the paneId when done
-      if (admiralProcess.status === 'starting') return null
-      // Not started — start it
-      return startAdmiralAndWire()
-    })
-
-    // Seed notification counters to avoid spurious notifications for pre-existing unread items
-    lastUnreadCommsCount = commsService!.getUnread('admiral').length
-    lastUnreadMemosCount = getUnreadMemoCount()
-
-    // Push status updates to renderer whenever starbase data changes
-    eventBus.on('starbase-changed', () => {
-      const w = mainWindow
-      if (!w || w.isDestroyed()) return
-
-      const unreadComms = commsService!.getUnread('admiral')
-      const unreadMemosCount = getUnreadMemoCount()
-
-      w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-        crew: crewService!.listCrew(),
-        missions: missionService!.listMissions(),
-        sectors: sectorService!.listVisibleSectors(),
-        unreadCount: unreadComms.length,
-        firstOfficer: {
-          status: firstOfficer.getStatus(),
-          statusText: firstOfficer.getStatusText(),
-          unreadMemos: unreadMemosCount,
-        },
-      })
-
-      if (starbaseDb) {
-        const recentEntry = starbaseDb.getDb().prepare(`
-          SELECT 'ships_log' as source, id, crew_id as actor, NULL as target, event_type as eventType, detail, created_at as timestamp FROM ships_log
-          UNION ALL
-          SELECT 'comms', id, from_crew, to_crew, type, payload, created_at FROM comms WHERE type NOT IN ('memo', 'hailing-memo')
-          ORDER BY timestamp DESC LIMIT 1
-        `).get()
-        if (recentEntry) w.webContents.send(IPC_CHANNELS.STARBASE_LOG_ENTRY, recentEntry)
-      }
-
-      // OS notifications for new comms
-      if (unreadComms.length > lastUnreadCommsCount && Notification.isSupported()) {
-        const settings = settingsStore.get()
-        if (settings.notifications.comms.os) {
-          const newComms = unreadComms.slice(lastUnreadCommsCount)
-          const body =
-            newComms.length === 1
-              ? `New transmission from ${newComms[0].from_crew ?? 'crew'}`
-              : `${newComms.length} new transmissions`
-          const notif = new Notification({ title: 'Fleet', body })
-          notif.on('click', () => {
-            mainWindow?.show()
-            mainWindow?.focus()
-            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
-          })
-          notif.show()
-        }
-      }
-      lastUnreadCommsCount = unreadComms.length
-
-      // OS notifications for new memos
-      if (unreadMemosCount > lastUnreadMemosCount && Notification.isSupported()) {
-        const settings = settingsStore.get()
-        if (settings.notifications.memos.os) {
-          const notif = new Notification({ title: 'Fleet — First Officer', body: 'New memo requires review' })
-          notif.on('click', () => {
-            mainWindow?.show()
-            mainWindow?.focus()
-            mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_FIRST_OFFICER)
-          })
-          notif.show()
-        }
-      }
-      lastUnreadMemosCount = unreadMemosCount
-    })
-
-    // Phase 4: Run reconciliation on startup
-    if (lockResult === 'acquired') {
-      runReconciliation({
-        db: starbaseDb.getDb(),
-        starbaseId: starbaseDb.getStarbaseId(),
-        worktreeBasePath
-      })
-        .then((summary) => {
-          if (summary.lostCrew.length > 0 || summary.requeuedMissions.length > 0) {
-            console.log('[starbase] Reconciliation summary:', JSON.stringify(summary))
-          }
-        })
-        .catch((err) => {
-          console.error('[starbase] Reconciliation failed:', err)
-        })
-
-      firstOfficer.reconcile()
-      navigator.reconcile()
-
-      // Ensure First Officer workspace exists
-      const foWorkspace = join(
-        process.env.HOME ?? '~',
-        '.fleet', 'starbases',
-        `starbase-${starbaseDb.getStarbaseId()}`,
-        'first-officer',
-      )
-      mkdirSync(join(foWorkspace, 'memos'), { recursive: true })
-
-      // Start Sentinel watchdog
-      sentinel = new Sentinel({
-        db: starbaseDb.getDb(),
-        configService,
-        eventBus,
-        supervisor: socketSupervisor ?? undefined,
-        socketPath: SOCKET_PATH,
-        firstOfficer,
-        crewService,
-        settingsStore,
-        navigator,
-        onNudgeClick: () => {
-          mainWindow?.show()
-          mainWindow?.focus()
-          mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS)
-        },
-      })
-      sentinel.start()
-    }
-
-    // Auto-create Star Command tab on workspace load
-    layoutStore.ensureStarCommandTab('default', workspacePath)
-  } catch (err) {
-    console.error('[starbase] Failed to initialize Star Command database:', err)
+    starbaseReadyPromise = starbaseBootstrapInFlight
+    return starbaseReadyPromise
   }
 
   registerIpcHandlers(
@@ -517,31 +588,82 @@ app.whenReady().then(async () => {
     cwdPoller,
     gitService,
     () => mainWindow,
-    sectorService,
-    configService,
-    crewService,
-    missionService,
-    admiralProcess,
-    commsService,
-    supplyRouteService,
-    cargoService,
-    retentionService,
-    admiralStateDetector,
-    starbaseDb
+    () => ({
+      envReady,
+      cliReady,
+      starbaseReady: starbaseReadyPromise,
+      getRuntimeStatus: () => runtimeStatus,
+      retryStarbaseBootstrap: async () => {
+        try {
+          await bootstrapStarbase()
+        } catch {
+          // status is already updated for renderer consumption
+        }
+        return runtimeStatus
+      },
+    }),
+    () => ({
+      sectorService: starbaseServices.sectorService,
+      configService: starbaseServices.configService,
+      crewService: starbaseServices.crewService,
+      missionService: starbaseServices.missionService,
+      admiralProcess: starbaseServices.admiralProcess,
+      commsService: starbaseServices.commsService,
+      supplyRouteService: starbaseServices.supplyRouteService,
+      cargoService: starbaseServices.cargoService,
+      retentionService: starbaseServices.retentionService,
+      admiralStateDetector,
+      starbaseDb: starbaseServices.starbaseDb,
+    })
   )
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow)
 
-  // Wire starbase services to socket command handler
-  if (sectorService && configService) {
-    commandHandler.setStarbaseServices(sectorService, configService)
+  const startAdmiralAndWire = async (): Promise<string | null> => {
+    const admiralProcessRef = starbaseServices.admiralProcess
+    if (!admiralProcessRef) return null
+    try {
+      const paneId = await admiralProcessRef.start()
+      admiralStateDetector.setAdmiralPaneId(paneId)
+      ptyManager.onData(paneId, (data) => {
+        notificationDetector.scan(paneId, data)
+        admiralStateDetector.scan(paneId, data)
+        const w = mainWindow
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+        }
+      })
+      ptyManager.onExit(paneId, (exitCode) => {
+        const w = mainWindow
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+        }
+        eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
+      })
+      cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
+      return paneId
+    } catch (err) {
+      console.error('[admiral] Failed to start:', err)
+      return null
+    }
   }
 
-  // Wire Phase 2 services to socket command handler
-  if (crewService && missionService) {
-    commandHandler.setPhase2Services(crewService, missionService)
-  }
+  ipcMain.handle('admiral:ensure-started', async () => {
+    await Promise.all([envReady, cliReady])
+    await bootstrapStarbase()
+    const admiralProcessRef = starbaseServices.admiralProcess
+    if (!admiralProcessRef) return null
+    if (admiralProcessRef.paneId) return admiralProcessRef.paneId
+    if (admiralProcessRef.status === 'starting') return null
+    return startAdmiralAndWire()
+  })
+
+  eventBus.on('starbase-changed', () => {
+    scheduleStarbaseSnapshot()
+  })
+
+  void bootstrapStarbase()
 
 
   // Wire JSONL watcher to agent state tracker
@@ -718,8 +840,6 @@ app.whenReady().then(async () => {
       }
     }
   })
-
-  createWindow()
 
   // --- Auto-updater: unified status pipeline ---
   // Allow checking for updates in dev mode via dev-app-update.yml

@@ -35,11 +35,13 @@ function AdmiralTerminal({ paneId }: { paneId: string }) {
 
 export function StarCommandTab() {
   const {
+    runtimeStatus,
     admiralPaneId,
     admiralStatus,
     admiralError,
     admiralExitCode,
     setAdmiralPty,
+    setRuntimeStatus,
     setCrewList,
     setMissionQueue,
     setSectors,
@@ -61,6 +63,7 @@ export function StarCommandTab() {
   const [resetConfirm, setResetConfirm] = useState(false)
   const [_isRestarting, setIsRestarting] = useState(false)
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const runtimeLaunchRef = useRef(false)
 
   // Auto-dismiss reset confirmation after 5s (Baymard: time-limited destructive states)
   useEffect(() => {
@@ -85,20 +88,50 @@ export function StarCommandTab() {
 
   // On mount: check dependencies first, then ensure Admiral is started
   useEffect(() => {
-    setDepCheck('checking', [])
-    window.fleet.admiral.checkDependencies().then((results) => {
-      const allPassed = results.every((r) => r.found)
-      setDepCheck(allPassed ? 'passed' : 'failed', results)
-      if (!allPassed) return
+    const applyRuntimeStatus = (status: { state: 'starting' | 'ready' | 'error'; error?: string }) => {
+      setRuntimeStatus(status)
+      if (status.state !== 'ready') {
+        runtimeLaunchRef.current = false
+      }
+      if (status.state !== 'ready') {
+        setDepCheck('pending', [])
+      }
+      if (status.state === 'error') {
+        setAdmiralPty(null, 'stopped', status.error ?? 'Star Command failed to initialize')
+      }
+    }
 
-      // Brief pause so user can see the "passed" state, then launch
-      setTimeout(() => {
-        window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
-          if (paneId) {
-            setAdmiralPty(paneId, 'running')
-          }
-        })
-      }, 800)
+    const launchAdmiral = () => {
+      if (runtimeLaunchRef.current) return
+      runtimeLaunchRef.current = true
+      setDepCheck('checking', [])
+      window.fleet.admiral.checkDependencies().then((results) => {
+        const allPassed = results.every((r) => r.found)
+        setDepCheck(allPassed ? 'passed' : 'failed', results)
+        if (!allPassed) return
+
+        setTimeout(() => {
+          window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
+            if (paneId) {
+              setAdmiralPty(paneId, 'running')
+            }
+          })
+        }, 800)
+      })
+    }
+
+    window.fleet.starbase.getRuntimeStatus().then((status) => {
+      applyRuntimeStatus(status)
+      if (status.state === 'ready') {
+        launchAdmiral()
+      }
+    })
+
+    const runtimeCleanup = window.fleet.starbase.onRuntimeStatus((status) => {
+      applyRuntimeStatus(status)
+      if (status.state === 'ready') {
+        launchAdmiral()
+      }
     })
 
     const cleanup = window.fleet.admiral.onStatusChanged((data) => {
@@ -110,8 +143,11 @@ export function StarCommandTab() {
       )
     })
 
-    return cleanup
-  }, [setAdmiralPty, setDepCheck])
+    return () => {
+      runtimeCleanup()
+      cleanup()
+    }
+  }, [setAdmiralPty, setDepCheck, setRuntimeStatus])
 
   // Listen for detailed admiral state changes (thinking, speaking, etc.)
   useEffect(() => {
@@ -146,11 +182,12 @@ export function StarCommandTab() {
 
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {
+    if (runtimeStatus.state !== 'ready') return
     window.fleet.starbase.listCrew().then((crew) => setCrewList(crew as never[]))
     window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions as never[]))
     window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors as never[]))
     window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount((msgs as unknown[]).length))
-  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount])
+  }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount])
 
   useEffect(() => {
     refreshStatus()
@@ -305,7 +342,40 @@ export function StarCommandTab() {
             ) : (
               <div className="flex-1 relative min-h-0" {...terminalDragHandlers}>
                 {/* Dependency check screen (shown before Admiral starts) */}
-                {(depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
+                {runtimeStatus.state === 'starting' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
+                    <div className="w-full max-w-sm px-6 text-center">
+                      <span className="text-yellow-400 text-2xl">{'\u2605'}</span>
+                      <h2 className="text-sm font-semibold text-neutral-200 mt-2">Initializing Star Command</h2>
+                      <p className="text-xs text-neutral-500 mt-2">
+                        Window is ready. Starbase services are still booting in the background.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {runtimeStatus.state === 'error' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
+                    <div className="w-full max-w-sm px-6 text-center">
+                      <span className="text-red-400 text-2xl">{'\u2717'}</span>
+                      <h2 className="text-sm font-semibold text-neutral-200 mt-2">Star Command Unavailable</h2>
+                      <p className="text-xs text-red-300 mt-2">
+                        {runtimeStatus.error ?? 'Starbase bootstrap failed.'}
+                      </p>
+                      <button
+                        className="mt-5 px-4 py-2 bg-teal-700 hover:bg-teal-600 text-white text-sm font-medium rounded-lg transition-colors"
+                        onClick={() => {
+                          setRuntimeStatus({ state: 'starting' })
+                          void window.fleet.starbase.retryRuntimeBootstrap()
+                        }}
+                      >
+                        Retry Bootstrap
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {runtimeStatus.state === 'ready' && (depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
                   <DependencyCheckScreen
                     status={depCheckStatus as 'checking' | 'passed' | 'failed'}
                     results={depCheckResults}
@@ -315,7 +385,7 @@ export function StarCommandTab() {
                 {/* Admiral terminal */}
                 {admiralPaneId ? (
                   <AdmiralTerminal paneId={admiralPaneId} />
-                ) : depCheckStatus === 'pending' ? (
+                ) : depCheckStatus === 'pending' && runtimeStatus.state === 'ready' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600">
                     <p className="text-sm">
                       {admiralStatus === 'starting' ? 'Starting Admiral...' : 'Admiral offline'}

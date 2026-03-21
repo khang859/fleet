@@ -16,7 +16,9 @@ import type {
   AgentStatePayload,
   GitStatusPayload,
   GitIsRepoPayload,
-  AdmiralStateDetailPayload
+  AdmiralStateDetailPayload,
+  StarbaseRuntimeStatus,
+  SystemDepResult
 } from '../shared/ipc-api'
 import type { Workspace, FleetSettings } from '../shared/types'
 
@@ -50,8 +52,8 @@ const fleetApi = {
     }
   },
   layout: {
-    save: (req: LayoutSaveRequest): void =>
-      ipcRenderer.sendSync(IPC_CHANNELS.LAYOUT_SAVE, req),
+    save: (req: LayoutSaveRequest): Promise<void> =>
+      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_SAVE, req),
     load: (workspaceId: string): Promise<Workspace> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
     list: (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
@@ -93,7 +95,8 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.GIT_STATUS, cwd)
   },
   admiral: {
-    checkDependencies: (): Promise<unknown> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
+    checkDependencies: (): Promise<SystemDepResult[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
     getPaneId: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
     ensureStarted: (): Promise<string | null> => ipcRenderer.invoke('admiral:ensure-started'),
     restart: (): Promise<string> => ipcRenderer.invoke(IPC_CHANNELS.ADMIRAL_RESTART),
@@ -110,6 +113,18 @@ const fleetApi = {
     },
   },
   starbase: {
+    getRuntimeStatus: (): Promise<StarbaseRuntimeStatus> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_GET),
+    retryRuntimeBootstrap: (): Promise<StarbaseRuntimeStatus> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY),
+    onRuntimeStatus: (callback: (payload: StarbaseRuntimeStatus) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: StarbaseRuntimeStatus) =>
+        callback(payload)
+      ipcRenderer.on(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, handler)
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, handler)
+      }
+    },
     listSectors: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
     listCrew: (filter?: unknown): Promise<unknown[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW, filter),
@@ -204,16 +219,24 @@ const fleetApi = {
     return () => ipcRenderer.removeListener('fleet:create-tab', handler)
   },
   file: {
-    read: (filePath: string): Promise<{ content: string } | { error: string }> =>
+    read: (
+      filePath: string
+    ): Promise<
+      | { success: true; data: { content: string; size: number; modifiedAt: number } }
+      | { success: false; error: string }
+    > =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_READ, filePath),
-    write: (filePath: string, content: string): Promise<{ success: boolean } | { error: string }> =>
+    write: (
+      filePath: string,
+      content: string
+    ): Promise<{ success: true } | { success: false; error: string }> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
-    stat: (filePath: string): Promise<{ size: number; mtime: number } | { error: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_STAT, filePath),
-    readBinary: (filePath: string): Promise<{ data: string; mimeType: string } | { error: string }> =>
-      ipcRenderer.invoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
     openDialog: (opts: { defaultPath?: string } = {}): Promise<string[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
+    list: (
+      dirPath: string
+    ): Promise<{ success: true; files: Array<{ path: string; relativePath: string; name: string }> }> =>
+      ipcRenderer.invoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
     onOpenInTab: (callback: (payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, payload: { files: Array<{ path: string; paneType: 'file' | 'image'; label: string }> }) =>
         callback(payload)

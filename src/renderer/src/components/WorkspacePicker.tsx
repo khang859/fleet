@@ -39,7 +39,7 @@ export function WorkspacePicker() {
     setTimeout(() => nameInputRef.current?.focus(), 0);
   };
 
-  const commitNewWorkspace = () => {
+  const commitNewWorkspace = async () => {
     const name = newName.trim();
     setShowNameInput(false);
     setNewName('');
@@ -54,7 +54,7 @@ export function WorkspacePicker() {
         splitRoot: injectLiveCwd(tab.splitRoot),
       })),
     };
-    window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
+    await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
 
     // Kill current PTYs
     const currentPaneIds = state.getAllPaneIds();
