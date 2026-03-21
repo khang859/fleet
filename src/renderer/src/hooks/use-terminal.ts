@@ -414,10 +414,13 @@ export function useTerminal(
     }
   }, [options.fontFamily, options.fontSize]);
 
-  // Focus the xterm instance when this pane becomes active
+  // Focus and refresh the xterm instance when this pane becomes active.
+  // The refresh call is needed when the terminal was hidden with display:none and
+  // then shown again — the canvas may not repaint automatically.
   useEffect(() => {
     if (options.isActive && termRef.current) {
       termRef.current.focus();
+      termRef.current.refresh(0, termRef.current.rows - 1);
     }
   }, [options.isActive]);
 

@@ -15,13 +15,13 @@ import { LogsPanel } from './star-command/LogsPanel'
 import { useTerminal } from '../hooks/use-terminal'
 import { useTerminalDrop } from '../hooks/use-terminal-drop'
 
-function AdmiralTerminal({ paneId }: { paneId: string }) {
+function AdmiralTerminal({ paneId, isActive }: { paneId: string; isActive: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null)
   useTerminal(containerRef, {
     paneId,
     cwd: '',
     attachOnly: true,
-    isActive: true,
+    isActive,
     // Claude Code draws its own TUI cursor; disable xterm's hardware cursor
     // to prevent a duplicate block cursor from appearing.
     cursorHidden: true,
@@ -329,18 +329,19 @@ export function StarCommandTab() {
               </div>
             </div>
 
-            {view === 'config' ? (
-              <StarCommandConfig />
-            ) : view === 'comms' ? (
-              <CommsPanel />
-            ) : view === 'crew' ? (
-              <CrewPanel />
-            ) : view === 'missions' ? (
-              <MissionsPanel />
-            ) : view === 'logs' ? (
-              <LogsPanel />
-            ) : (
-              <div className="flex-1 relative min-h-0" {...terminalDragHandlers}>
+            {/* Non-terminal panels — conditionally rendered */}
+            {view === 'config' && <StarCommandConfig />}
+            {view === 'comms' && <CommsPanel />}
+            {view === 'crew' && <CrewPanel />}
+            {view === 'missions' && <MissionsPanel />}
+            {view === 'logs' && <LogsPanel />}
+
+            {/* Terminal view — always mounted so xterm.js canvas is preserved across tab switches */}
+            <div
+              className="flex-1 relative min-h-0"
+              style={{ display: view === 'terminal' ? undefined : 'none' }}
+              {...terminalDragHandlers}
+            >
                 {/* Dependency check screen (shown before Admiral starts) */}
                 {runtimeStatus.state === 'starting' && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 z-10">
@@ -384,7 +385,7 @@ export function StarCommandTab() {
 
                 {/* Admiral terminal */}
                 {admiralPaneId ? (
-                  <AdmiralTerminal paneId={admiralPaneId} />
+                  <AdmiralTerminal paneId={admiralPaneId} isActive={view === 'terminal'} />
                 ) : depCheckStatus === 'pending' && runtimeStatus.state === 'ready' ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-neutral-600">
                     <p className="text-sm">
@@ -450,7 +451,6 @@ export function StarCommandTab() {
                   </div>
                 )}
               </div>
-            )}
 
             {/* Status bar */}
             <StatusBar />
