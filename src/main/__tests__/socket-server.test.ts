@@ -43,6 +43,7 @@ function sendCommand(
 function makeMockServices() {
   const sectorService = {
     listSectors: vi.fn().mockReturnValue([{ id: 'alpha', name: 'Alpha' }]),
+    listVisibleSectors: vi.fn().mockReturnValue([{ id: 'alpha', name: 'Alpha' }]),
     getSector: vi.fn().mockReturnValue({ id: 'alpha', name: 'Alpha' }),
     addSector: vi.fn().mockReturnValue({ id: 'new-sector', name: 'New Sector' }),
     removeSector: vi.fn(),
@@ -153,7 +154,7 @@ describe('SocketServer', () => {
     expect(response.id).toBe('req-1');
     expect(response.ok).toBe(true);
     expect(response.data).toEqual([{ id: 'alpha', name: 'Alpha' }]);
-    expect(services.sectorService.listSectors).toHaveBeenCalled();
+    expect(services.sectorService.listVisibleSectors).toHaveBeenCalled();
   });
 
   it('returns error response for unknown commands', async () => {

@@ -51,6 +51,7 @@ function makeStatefulServices() {
 
   const sectorService = {
     listSectors: () => sectors,
+    listVisibleSectors: () => sectors,
     getSector: (id: string) => sectors.find((s) => s.id === id) ?? null,
     addSector: (args: { path: string; name?: string }) => {
       const sector = { id: args.path, name: args.name ?? args.path, path: `/workspace/${args.path}` };
