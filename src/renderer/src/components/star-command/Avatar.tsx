@@ -1,8 +1,8 @@
 import { getScSpriteSheetUrl } from './sc-sprite-loader'
 import { SC_SPRITE_ATLAS } from './sc-sprite-atlas'
 
-const ADMIRAL_STATES = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const
-const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const
+const ADMIRAL_STATES: readonly string[] = ['default', 'speaking', 'thinking', 'alert', 'standby']
+const CREW_VARIANTS: readonly string[] = ['hoodie', 'headphones', 'robot', 'cap', 'glasses']
 
 type AvatarProps = {
   type: 'admiral' | 'crew'
@@ -16,13 +16,13 @@ export function Avatar({ type, variant, size = 32 }: AvatarProps) {
   let key: string
   if (type === 'admiral') {
     const state =
-      variant && ADMIRAL_STATES.includes(variant as (typeof ADMIRAL_STATES)[number])
+      variant && ADMIRAL_STATES.includes(variant)
         ? variant
         : 'default'
     key = `admiral-${state}`
   } else {
     const v =
-      variant && CREW_VARIANTS.includes(variant as (typeof CREW_VARIANTS)[number])
+      variant && CREW_VARIANTS.includes(variant)
         ? variant
         : 'hoodie'
     key = `crew-${v}`

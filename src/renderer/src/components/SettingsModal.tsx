@@ -27,6 +27,9 @@ type SettingsModalProps = {
 
 type NotificationKey = keyof FleetSettings['notifications'];
 
+const NOTIFICATION_KEYS = ['taskComplete', 'needsPermission', 'processExitError', 'processExitClean', 'comms', 'memos'] as const satisfies readonly NotificationKey[];
+const NOTIFICATION_CHANNELS = ['badge', 'sound', 'os'] as const;
+
 const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   taskComplete: 'Task Complete',
   needsPermission: 'Needs Permission',
@@ -146,7 +149,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <SettingRow label="Theme">
                 <select
                   value={settings.general.theme}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, theme: e.target.value as 'dark' | 'light' } })}
+                  onChange={(e) => {
+                    const theme = e.target.value === 'light' ? 'light' : 'dark';
+                    updateSettings({ general: { ...settings.general, theme } });
+                  }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
                   <option value="dark">Dark</option>
@@ -164,10 +170,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <div className="text-center">Sound</div>
                 <div className="text-center">OS</div>
               </div>
-              {(Object.keys(NOTIFICATION_LABELS) as NotificationKey[]).map((key) => (
+              {NOTIFICATION_KEYS.map((key) => (
                 <div key={key} className="grid grid-cols-4 gap-2 items-center">
                   <div className="text-sm text-neutral-300">{NOTIFICATION_LABELS[key]}</div>
-                  {(['badge', 'sound', 'os'] as const).map((channel) => (
+                  {NOTIFICATION_CHANNELS.map((channel) => (
                     <div key={channel} className="flex justify-center">
                       <input
                         type="checkbox"
@@ -219,7 +225,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               <SettingRow label="Panel Mode">
                 <select
                   value={settings.visualizer.panelMode}
-                  onChange={(e) => updateSettings({ visualizer: { ...settings.visualizer, panelMode: e.target.value as 'drawer' | 'tab' } })}
+                  onChange={(e) => {
+                    const panelMode = e.target.value === 'tab' ? 'tab' : 'drawer';
+                    updateSettings({ visualizer: { ...settings.visualizer, panelMode } });
+                  }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
                   <option value="drawer">Bottom Drawer</option>

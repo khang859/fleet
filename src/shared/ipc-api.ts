@@ -177,3 +177,122 @@ export type SystemDepResult = {
   version?: string
   installHint: string
 }
+
+// ---- Starbase data shapes (used by preload bridge + renderer) ----
+
+export type StarbaseSectorRow = {
+  id: string
+  name: string
+  root_path: string
+  stack: string | null
+  description: string | null
+  base_branch: string
+  merge_strategy: string
+  verify_command: string | null
+  lint_command: string | null
+  review_mode: string
+  worktree_enabled: number
+  model: string | null
+  system_prompt: string | null
+  allowed_tools: string | null
+  mcp_config: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type StarbaseCrewRow = {
+  id: string
+  sector_id: string
+  mission_id: number | null
+  sector_path: string | null
+  worktree_path: string | null
+  worktree_branch: string | null
+  status: string
+  mission_summary: string | null
+  avatar_variant: string | null
+  pid: number | null
+  deadline: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type StarbaseMissionRow = {
+  id: number
+  sector_id: string
+  crew_id: string | null
+  summary: string
+  prompt: string
+  acceptance_criteria: string | null
+  status: string
+  priority: number
+  depends_on_mission_id: number | null
+  result: string | null
+  verify_result: string | null
+  review_verdict: string | null
+  review_notes: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export type StarbaseCommRow = {
+  id: number
+  from_crew: string | null
+  to_crew: string | null
+  thread_id: string | null
+  in_reply_to: number | null
+  type: string
+  payload: string
+  read: number
+  repeat_count: number
+  created_at: string
+}
+
+export type StarbaseMemoRow = {
+  id: number
+  crew_id: string | null
+  mission_id: number | null
+  event_type: string
+  file_path: string
+  status: string
+  summary: string
+  created_at: string
+}
+
+export type StarbaseSupplyRoute = {
+  id: number
+  upstream_sector_id: string
+  downstream_sector_id: string
+  relationship: string | null
+  created_at: string
+}
+
+export type StarbaseRetentionStats = {
+  tables: Record<string, number>
+  dbSizeBytes: number
+  dbPath: string
+}
+
+export type StarbaseCleanupResult = {
+  comms: number
+  cargo: number
+  shipsLog: number
+}
+
+export type StarbaseLogEntry = {
+  id: number
+  source: 'ships_log' | 'comms'
+  timestamp: string
+  eventType: string
+  actor: string | null
+  target?: string | null
+  detail: unknown
+}
+
+export type StarbaseStatusUpdatePayload = {
+  crew?: StarbaseCrewRow[]
+  missions?: StarbaseMissionRow[]
+  sectors?: StarbaseSectorRow[]
+  unreadCount?: number
+  firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number }
+}

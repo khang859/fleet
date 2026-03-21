@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useStarCommandStore } from '../store/star-command-store'
+import type {
+  StarbaseSectorRow,
+  StarbaseSupplyRoute,
+  StarbaseRetentionStats,
+  StarbaseCleanupResult,
+} from '../../../shared/ipc-api'
 
 // ---- Agent Prompt Templates ----
 
@@ -121,47 +127,12 @@ ${FLEET_CONTEXT}`
   }
 ]
 
-// ---- Types ----
+// ---- Types (imported from shared/ipc-api) ----
 
-type SectorRow = {
-  id: string
-  name: string
-  root_path: string
-  stack: string | null
-  description: string | null
-  base_branch: string
-  merge_strategy: string
-  verify_command: string | null
-  lint_command: string | null
-  review_mode: string
-  worktree_enabled: number
-  model: string | null
-  system_prompt: string | null
-  allowed_tools: string | null
-  mcp_config: string | null
-  created_at: string
-  updated_at: string
-}
-
-type SupplyRoute = {
-  id: number
-  upstream_sector_id: string
-  downstream_sector_id: string
-  relationship: string | null
-  created_at: string
-}
-
-type RetentionStats = {
-  tables: Record<string, number>
-  dbSizeBytes: number
-  dbPath: string
-}
-
-type CleanupResult = {
-  comms: number
-  cargo: number
-  shipsLog: number
-}
+type SectorRow = StarbaseSectorRow
+type SupplyRoute = StarbaseSupplyRoute
+type RetentionStats = StarbaseRetentionStats
+type CleanupResult = StarbaseCleanupResult
 
 // ---- Sub-components ----
 
@@ -369,7 +340,7 @@ function SectorsSection() {
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
-    window.fleet.starbase.listSectors().then((s) => setSectors(s as never[]))
+    window.fleet.starbase.listSectors().then((s) => setSectors(s))
   }, [setSectors])
 
   useEffect(() => {
@@ -412,14 +383,14 @@ function SectorsSection() {
 
   return (
     <section>
-      <SectionHeader title="Sectors" count={(sectors as SectorRow[]).length} />
+      <SectionHeader title="Sectors" count={sectors.length} />
 
       {error && (
         <div className="text-xs text-red-400 bg-red-900/20 rounded px-2 py-1 mb-2">{error}</div>
       )}
 
       <div className="space-y-2 mb-3">
-        {(sectors as SectorRow[]).map((s) => (
+        {sectors.map((s) => (
           <SectorCard key={s.id} sector={s} onRemove={handleRemove} onUpdate={handleUpdate} />
         ))}
         {sectors.length === 0 && <p className="text-xs text-neutral-600">No sectors registered</p>}
@@ -474,7 +445,7 @@ function SupplyRoutesSection() {
   const [downstream, setDownstream] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const sectorList = sectors as SectorRow[]
+  const sectorList = sectors
 
   const refresh = useCallback(async () => {
     try {
@@ -482,7 +453,7 @@ function SupplyRoutesSection() {
         window.fleet.starbase.listSupplyRoutes(),
         window.fleet.starbase.getSupplyRouteGraph()
       ])
-      setRoutes(r as SupplyRoute[])
+      setRoutes(r)
       setGraph(g)
     } catch {
       // services may not be initialized
@@ -699,7 +670,7 @@ function StarbaseSettingsSection() {
               </label>
               {field.type === 'select' ? (
                 <select
-                  value={(config[field.key] as string) ?? ''}
+                  value={String(config[field.key] ?? '')}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
                 >
@@ -712,7 +683,7 @@ function StarbaseSettingsSection() {
               ) : field.type === 'password' ? (
                 <input
                   type="password"
-                  defaultValue={(config[field.key] as string) ?? ''}
+                  defaultValue={String(config[field.key] ?? '')}
                   onBlur={(e) => {
                     const v = e.target.value.trim()
                     if (v && v !== config[field.key]) handleChange(field.key, v)
@@ -723,7 +694,7 @@ function StarbaseSettingsSection() {
               ) : field.type === 'number' ? (
                 <input
                   type="number"
-                  value={(config[field.key] as number) ?? ''}
+                  value={config[field.key] != null ? Number(config[field.key]) : ''}
                   onChange={(e) =>
                     handleChange(field.key, e.target.value ? Number(e.target.value) : null)
                   }
@@ -732,7 +703,7 @@ function StarbaseSettingsSection() {
               ) : (
                 <input
                   type="text"
-                  value={(config[field.key] as string) ?? ''}
+                  value={String(config[field.key] ?? '')}
                   onChange={(e) => handleChange(field.key, e.target.value)}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
@@ -762,7 +733,7 @@ function DatabaseSection() {
   const refresh = useCallback(() => {
     window.fleet.starbase
       .getRetentionStats()
-      .then((s) => setStats(s as RetentionStats))
+      .then((s) => setStats(s))
       .catch(() => {})
   }, [])
 
@@ -773,7 +744,7 @@ function DatabaseSection() {
   const handleCleanup = async () => {
     setCleaning(true)
     try {
-      const result = (await window.fleet.starbase.retentionCleanup()) as CleanupResult
+      const result = await window.fleet.starbase.retentionCleanup()
       setLastCleanup(result)
       refresh()
     } catch {

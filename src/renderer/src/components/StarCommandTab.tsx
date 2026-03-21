@@ -135,9 +135,10 @@ export function StarCommandTab() {
     })
 
     const cleanup = window.fleet.admiral.onStatusChanged((data) => {
+      const status = data.status === 'running' || data.status === 'starting' ? data.status : 'stopped'
       setAdmiralPty(
         data.paneId,
-        data.status as 'running' | 'stopped' | 'starting',
+        status,
         data.error ?? null,
         data.exitCode ?? null
       )
@@ -152,27 +153,17 @@ export function StarCommandTab() {
   // Listen for detailed admiral state changes (thinking, speaking, etc.)
   useEffect(() => {
     const cleanup = window.fleet.admiral.onStateDetail((data) => {
-      setAdmiralState(
-        data.state as 'standby' | 'thinking' | 'speaking' | 'alert',
-        data.statusText
-      )
+      setAdmiralState(data.state, data.statusText)
     })
     return cleanup
   }, [setAdmiralState])
 
   // Listen for starbase status updates
   useEffect(() => {
-    const cleanup = window.fleet.starbase.onStatusUpdate((payload: unknown) => {
-      const p = payload as {
-        crew?: unknown[]
-        missions?: unknown[]
-        sectors?: unknown[]
-        unreadCount?: number
-        firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number }
-      }
-      if (p.crew) setCrewList(p.crew as never[])
-      if (p.missions) setMissionQueue(p.missions as never[])
-      if (p.sectors) setSectors(p.sectors as never[])
+    const cleanup = window.fleet.starbase.onStatusUpdate((p) => {
+      if (p.crew) setCrewList(p.crew)
+      if (p.missions) setMissionQueue(p.missions)
+      if (p.sectors) setSectors(p.sectors)
       if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount)
       if (p.firstOfficer !== undefined) setFirstOfficerStatus(p.firstOfficer)
     })
@@ -183,10 +174,10 @@ export function StarCommandTab() {
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {
     if (runtimeStatus.state !== 'ready') return
-    window.fleet.starbase.listCrew().then((crew) => setCrewList(crew as never[]))
-    window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions as never[]))
-    window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors as never[]))
-    window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount((msgs as unknown[]).length))
+    window.fleet.starbase.listCrew().then((crew) => setCrewList(crew))
+    window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions))
+    window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors))
+    window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount(msgs.length))
   }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount])
 
   useEffect(() => {
@@ -203,7 +194,7 @@ export function StarCommandTab() {
             {/* Header */}
             <div
               className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 bg-neutral-900 relative z-20"
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              style={{ WebkitAppRegion: 'no-drag' }}
             >
               <div className="flex items-center gap-2">
                 <span className="text-yellow-400 text-lg">{'\u2605'}</span>
@@ -378,7 +369,7 @@ export function StarCommandTab() {
 
                 {runtimeStatus.state === 'ready' && (depCheckStatus === 'checking' || depCheckStatus === 'passed' || depCheckStatus === 'failed') && !admiralPaneId && (
                   <DependencyCheckScreen
-                    status={depCheckStatus as 'checking' | 'passed' | 'failed'}
+                    status={depCheckStatus}
                     results={depCheckResults}
                   />
                 )}

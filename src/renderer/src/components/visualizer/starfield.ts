@@ -235,7 +235,8 @@ export class Starfield {
   // Always allocates a new canvas so callers can detect a rebuild via object identity.
   private rebuildFarCache(): void {
     this.farCache = new OffscreenCanvas(this.width, this.height);
-    const offCtx = this.farCache.getContext('2d') as OffscreenCanvasRenderingContext2D;
+    const offCtx = this.farCache.getContext('2d');
+    if (!offCtx) return;
     offCtx.clearRect(0, 0, this.width, this.height);
     offCtx.filter = 'blur(1px)';
 

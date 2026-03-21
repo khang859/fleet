@@ -60,7 +60,9 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     if (dragIndex === null) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const target = e.currentTarget;
+    if (!(target instanceof HTMLElement)) return;
+    const rect = target.getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const position = e.clientY < midY ? 'above' : 'below';
     setDropTarget({ index, position });
@@ -318,7 +320,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
       <div
         className="px-3 pt-2 pb-3 flex items-center justify-between"
       >
-        <div style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties} className="flex-1 min-w-0 mr-2">
+        <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 min-w-0 mr-2">
           {isEditingWsLabel ? (
             <input
               ref={wsLabelInputRef}
@@ -357,7 +359,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
             </ContextMenu.Root>
           )}
         </div>
-        <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
           {/* Dirty state indicator */}
           {isDirty && (
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Unsaved changes" />

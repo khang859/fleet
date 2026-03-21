@@ -81,8 +81,8 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   // Keyboard handler
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isInputFocused = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+      const target = e.target;
+      const isInputFocused = target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
 
       if (e.key === 'Escape') {
         e.preventDefault();

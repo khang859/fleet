@@ -89,8 +89,8 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
 
   // Scroll selected item into view
   useEffect(() => {
-    const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
-    el?.scrollIntoView({ block: 'nearest' });
+    const child = listRef.current?.children[selectedIndex];
+    if (child instanceof HTMLElement) child.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
   const handleSelect = useCallback(

@@ -1,18 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import type { StarbaseLogEntry } from '../../../../shared/ipc-api'
 
-type LogEntry = {
-  id: number
-  source: 'ships_log' | 'comms'
-  timestamp: string
-  eventType: string
-  actor: string | null
-  target?: string | null
-  detail: unknown
-}
+type LogEntry = StarbaseLogEntry
 
 type ShipsLogBridge = {
-  getShipsLog?: (opts?: { limit?: number }) => Promise<unknown[]>
-  onLogEntry?: (cb: (entry: unknown) => void) => (() => void) | undefined
+  getShipsLog?: (opts?: { limit?: number }) => Promise<StarbaseLogEntry[]>
+  onLogEntry?: (cb: (entry: StarbaseLogEntry) => void) => (() => void) | undefined
 }
 
 export function hasShipsLogBridgeApi(starbase: ShipsLogBridge | null | undefined): starbase is Required<ShipsLogBridge> {
@@ -88,8 +81,8 @@ export function LogsPanel() {
   const seenIds = useRef<Set<string>>(new Set())
 
   const loadAll = useCallback(() => {
-    const starbase = window.fleet?.starbase as ShipsLogBridge | undefined
-    if (!hasShipsLogBridgeApi(starbase)) {
+    const starbase = window.fleet?.starbase
+    if (!starbase?.getShipsLog || !starbase?.onLogEntry) {
       setBridgeUnavailable(true)
       return
     }
@@ -97,9 +90,8 @@ export function LogsPanel() {
     setBridgeUnavailable(false)
     starbase.getShipsLog({ limit: 200 })
       .then((rows) => {
-        const typed = rows as LogEntry[]
-        seenIds.current = new Set(typed.map(e => `${e.source}:${e.id}`))
-        setEntries(typed)
+        seenIds.current = new Set(rows.map(e => `${e.source}:${e.id}`))
+        setEntries(rows)
       })
       .catch(() => {
         setEntries([])
@@ -111,14 +103,13 @@ export function LogsPanel() {
   }, [loadAll])
 
   useEffect(() => {
-    const starbase = window.fleet?.starbase as ShipsLogBridge | undefined
-    if (!hasShipsLogBridgeApi(starbase)) {
+    const starbase = window.fleet?.starbase
+    if (!starbase?.getShipsLog || !starbase?.onLogEntry) {
       setBridgeUnavailable(true)
       return
     }
 
-    const unsub = starbase.onLogEntry((raw) => {
-      const entry = raw as LogEntry
+    const unsub = starbase.onLogEntry((entry) => {
       const key = `${entry.source}:${entry.id}`
       if (seenIds.current.has(key)) return
       seenIds.current.add(key)

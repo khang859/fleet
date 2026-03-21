@@ -16,12 +16,23 @@ import type {
   AgentStatePayload,
   GitStatusPayload,
   GitIsRepoPayload,
-  HostContextPayload,
+  HostPlatform,
   AdmiralStateDetailPayload,
   StarbaseRuntimeStatus,
   SystemDepResult,
   CreateTabPayload,
-  FileOpenInTabPayload
+  FileOpenInTabPayload,
+  StarbaseSectorRow,
+  StarbaseCrewRow,
+  StarbaseMissionRow,
+  StarbaseCommRow,
+  StarbaseMemoRow,
+  StarbaseSupplyRoute,
+  StarbaseRetentionStats,
+  StarbaseCleanupResult,
+  StarbaseLogEntry,
+  StarbaseStatusUpdatePayload,
+  DeployResponse,
 } from '../shared/ipc-api'
 import type { Workspace, FleetSettings } from '../shared/types'
 
@@ -89,7 +100,11 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.AGENT_STATE, callback)
   },
   homeDir: getHomeDir(),
-  platform: process.platform as HostContextPayload['platform'],
+  platform: ((): HostPlatform => {
+    const p = process.platform
+    if (p === 'darwin' || p === 'linux' || p === 'win32') return p
+    return 'linux' // fallback for unsupported platforms
+  })(),
   utils: {
     getFilePath: (file: File): string => webUtils.getPathForFile(file)
   },
@@ -123,14 +138,15 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY),
     onRuntimeStatus: (callback: (payload: StarbaseRuntimeStatus) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, callback),
-    listSectors: (): Promise<unknown[]> => ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
-    listCrew: (filter?: unknown): Promise<unknown[]> =>
+    listSectors: (): Promise<StarbaseSectorRow[]> =>
+      ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
+    listCrew: (filter?: { sectorId?: string; status?: string }): Promise<StarbaseCrewRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CREW, filter),
-    listMissions: (filter?: unknown): Promise<unknown[]> =>
+    listMissions: (filter?: { sectorId?: string; status?: string }): Promise<StarbaseMissionRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MISSIONS, filter),
-    getUnreadComms: (): Promise<unknown[]> =>
+    getUnreadComms: (): Promise<StarbaseCommRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
-    listComms: (opts?: unknown): Promise<unknown[]> =>
+    listComms: (opts?: { limit?: number }): Promise<StarbaseCommRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_COMMS, opts),
     markCommsRead: (id: number): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, { id }),
@@ -142,7 +158,7 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ),
     clearComms: (): Promise<number> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_CLEAR_COMMS),
-    deployCrew: (opts: unknown): Promise<unknown> =>
+    deployCrew: (opts: { sectorId: string; prompt: string; summary?: string; missionId?: number }): Promise<DeployResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_DEPLOY, opts),
     recallCrew: (crewId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RECALL, { crewId }),
@@ -150,23 +166,23 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_OBSERVE, { crewId }),
     messageCrew: (crewId: string, message: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_MESSAGE_CREW, { crewId, message }),
-    addMission: (req: unknown): Promise<unknown> =>
+    addMission: (req: { sectorId: string; summary: string; prompt: string; priority?: number; dependsOnMissionId?: number }): Promise<{ missionId: number }> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_MISSION, req),
-    onStatusUpdate: (callback: (payload: unknown) => void): Unsubscribe =>
+    onStatusUpdate: (callback: (payload: StarbaseStatusUpdatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_STATUS_UPDATE, callback),
-    listSupplyRoutes: (opts?: unknown): Promise<unknown[]> =>
+    listSupplyRoutes: (opts?: { sectorId?: string }): Promise<StarbaseSupplyRoute[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
-    addSupplyRoute: (opts: unknown): Promise<unknown> =>
+    addSupplyRoute: (opts: { upstreamSectorId: string; downstreamSectorId: string }): Promise<{ routeId: number }> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, opts),
     removeSupplyRoute: (routeId: number): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, { routeId }),
     getSupplyRouteGraph: (): Promise<Record<string, string[]>> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH),
-    listCargo: (filter?: unknown): Promise<unknown[]> =>
+    listCargo: (filter?: { sectorId?: string }): Promise<Record<string, unknown>[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_LIST_CARGO, filter),
-    getRetentionStats: (): Promise<unknown> =>
+    getRetentionStats: (): Promise<StarbaseRetentionStats> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_STATS),
-    retentionCleanup: (): Promise<unknown> =>
+    retentionCleanup: (): Promise<StarbaseCleanupResult> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP),
     retentionVacuum: (): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_RETENTION_VACUUM),
@@ -174,13 +190,13 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_GET_CONFIG),
     setConfig: (key: string, value: unknown): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SET_CONFIG, { key, value }),
-    addSector: (opts: unknown): Promise<unknown> =>
+    addSector: (opts: { path: string; name?: string; description?: string }): Promise<StarbaseSectorRow> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_ADD_SECTOR, opts),
     removeSector: (sectorId: string): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
-    updateSector: (sectorId: string, fields: unknown): Promise<void> =>
+    updateSector: (sectorId: string, fields: Record<string, unknown>): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
-    memoList: (): Promise<unknown[]> =>
+    memoList: (): Promise<StarbaseMemoRow[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_LIST),
     memoRead: (id: number): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_READ, id),
@@ -188,9 +204,9 @@ const fleetApi = {
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_DISMISS, id),
     memoContent: (filePath: string): Promise<string | null> =>
       ipcRenderer.invoke(IPC_CHANNELS.MEMO_CONTENT, filePath),
-    getShipsLog: (opts?: { limit?: number }): Promise<unknown[]> =>
+    getShipsLog: (opts?: { limit?: number }): Promise<StarbaseLogEntry[]> =>
       ipcRenderer.invoke(IPC_CHANNELS.STARBASE_SHIPS_LOG, opts),
-    onLogEntry: (callback: (entry: unknown) => void): Unsubscribe =>
+    onLogEntry: (callback: (entry: StarbaseLogEntry) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_LOG_ENTRY, callback),
   },
   system: {

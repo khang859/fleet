@@ -147,9 +147,9 @@ export function CommsPanel() {
   const refresh = useCallback(async () => {
     try {
       const all = await window.fleet.starbase.listComms({ limit: 100 })
-      setCommsList(all as never[])
+      setCommsList(all)
       const unread = await window.fleet.starbase.getUnreadComms()
-      setUnreadCount((unread as unknown[]).length)
+      setUnreadCount(unread.length)
     } catch {
       // ignore
     }
@@ -173,8 +173,8 @@ export function CommsPanel() {
     }
   }
 
-  const unread = (commsList as CommInfo[]).filter((c) => !c.read)
-  const read = (commsList as CommInfo[]).filter((c) => c.read)
+  const unread = commsList.filter((c) => !c.read)
+  const read = commsList.filter((c) => c.read)
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">

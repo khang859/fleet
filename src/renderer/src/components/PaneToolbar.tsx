@@ -1,4 +1,3 @@
-import React from 'react';
 import { Columns2, Rows2, Search, X, GitBranch } from 'lucide-react';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
@@ -16,7 +15,7 @@ export function PaneToolbar({ visible, isGitRepo, onSplitHorizontal, onSplitVert
   return (
     <div
       className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      style={{ WebkitAppRegion: 'no-drag' }}
     >
       <button
         onClick={(e) => { e.stopPropagation(); onSplitHorizontal(); }}

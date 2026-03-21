@@ -142,7 +142,7 @@ export function WorkspacePicker() {
       {/* Current workspace header */}
       <div
         className="flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-neutral-400 uppercase tracking-wider"
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        style={{ WebkitAppRegion: 'no-drag' }}
       >
         <button
           className="flex items-center gap-1 flex-1 text-left hover:text-neutral-200 transition-colors"

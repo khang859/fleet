@@ -144,7 +144,7 @@ export function MissionsPanel() {
   const refresh = useCallback(async () => {
     try {
       const missions = await window.fleet.starbase.listMissions()
-      setMissionQueue(missions as never[])
+      setMissionQueue(missions)
     } catch {
       // ignore
     }
@@ -152,7 +152,7 @@ export function MissionsPanel() {
 
   useEffect(() => { refresh() }, [refresh])
 
-  const missions = missionQueue as MissionInfo[]
+  const missions = missionQueue
 
   const active = missions.filter((m) => m.status === 'active')
   const queued = missions.filter((m) => m.status === 'queued')

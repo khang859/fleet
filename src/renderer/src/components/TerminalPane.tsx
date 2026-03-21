@@ -49,7 +49,8 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus, serializedContent
   // Listen for search toggle events targeted at this pane
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
+      if (!(e instanceof CustomEvent)) return;
+      const detail: { paneId?: string } | undefined = e.detail;
       if (detail?.paneId === paneId) {
         setSearchOpen((prev) => !prev);
       }

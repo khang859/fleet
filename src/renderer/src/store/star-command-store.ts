@@ -1,75 +1,27 @@
 import { create } from 'zustand';
-import type { StarbaseRuntimeStatus } from '../../../shared/ipc-api';
+import type {
+  StarbaseRuntimeStatus,
+  StarbaseCrewRow,
+  StarbaseMissionRow,
+  StarbaseSectorRow,
+  StarbaseCommRow,
+  StarbaseMemoRow,
+} from '../../../shared/ipc-api';
 
-export type CrewStatus = {
-  id: string;
-  tab_id: string | null;
-  sector_id: string;
-  mission_id?: number | null;
-  sector_path?: string | null;
-  worktree_path?: string | null;
-  worktree_branch?: string | null;
-  status: string;
-  mission_summary: string | null;
-  avatar_variant: string | null;
-  pid?: number | null;
-  deadline?: string | null;
+export type CrewStatus = StarbaseCrewRow & {
+  tab_id?: string | null;
   token_budget?: number;
   tokens_used?: number;
   last_lifesign?: string | null;
-  created_at: string;
-  updated_at?: string;
 };
 
-export type MissionInfo = {
-  id: number;
-  sector_id: string;
-  crew_id: string | null;
-  summary: string;
-  prompt: string;
-  acceptance_criteria: string | null;
-  status: string;
-  priority: number;
-  depends_on_mission_id: number | null;
-  result: string | null;
-  verify_result: string | null;
-  review_verdict: string | null;
-  review_notes: string | null;
-  created_at: string;
-  started_at: string | null;
-  completed_at: string | null;
-};
+export type MissionInfo = StarbaseMissionRow;
 
-export type SectorInfo = {
-  id: string;
-  name: string;
-  root_path: string;
-  stack: string | null;
-};
+export type SectorInfo = StarbaseSectorRow;
 
-export type CommInfo = {
-  id: number;
-  from_crew: string | null;
-  to_crew: string | null;
-  thread_id: string | null;
-  in_reply_to: number | null;
-  type: string;
-  payload: string;
-  read: number;
-  repeat_count: number;
-  created_at: string;
-};
+export type CommInfo = StarbaseCommRow;
 
-export type MemoInfo = {
-  id: number  // comms uses INTEGER PK
-  crew_id: string | null
-  mission_id: number | null
-  event_type: string
-  file_path: string
-  status: string
-  summary: string
-  created_at: string
-}
+export type MemoInfo = StarbaseMemoRow;
 
 export type FirstOfficerStatus = {
   status: 'idle' | 'working' | 'memo'

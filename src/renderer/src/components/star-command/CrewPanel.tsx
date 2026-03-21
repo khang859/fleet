@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useStarCommandStore } from '../../store/star-command-store'
-import type { MissionInfo, SectorInfo } from '../../store/star-command-store'
+import type { CrewStatus } from '../../store/star-command-store'
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-400',
@@ -24,23 +24,7 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
   )
 }
 
-type FullCrewRow = {
-  id: string
-  sector_id: string
-  mission_id: number | null
-  sector_path: string | null
-  worktree_path: string | null
-  worktree_branch: string | null
-  status: string
-  mission_summary: string | null
-  avatar_variant: string | null
-  pid: number | null
-  deadline: string | null
-  created_at: string
-  updated_at: string
-}
-
-function CrewCard({ crew, onRefresh }: { crew: FullCrewRow; onRefresh: () => void }) {
+function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void }) {
   const [expanded, setExpanded] = useState(false)
   const [recallConfirm, setRecallConfirm] = useState(false)
   const [output, setOutput] = useState<string | null>(null)
@@ -65,7 +49,7 @@ function CrewCard({ crew, onRefresh }: { crew: FullCrewRow; onRefresh: () => voi
     setError(null)
     try {
       const result = await window.fleet.starbase.observeCrew(crew.id)
-      setOutput(result as string)
+      setOutput(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to observe')
     }
@@ -227,7 +211,7 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
         sectorId,
         prompt: prompt.trim(),
         summary: summary.trim() || prompt.trim().slice(0, 80),
-      }) as { crewId: string; missionId: number }
+      })
       setSuccess(`Deployed ${result.crewId}`)
       setPrompt('')
       setSummary('')
@@ -248,7 +232,7 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
         className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
       >
         <option value="">Select sector...</option>
-        {(sectors as SectorInfo[]).map((s) => (
+        {sectors.map((s) => (
           <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
         ))}
       </select>
@@ -303,7 +287,7 @@ function MissionQueueSection() {
     <section>
       <SectionHeader title="Mission Queue" count={missionQueue.length} />
       <div className="space-y-1.5">
-        {(missionQueue as MissionInfo[]).map((m) => (
+        {missionQueue.map((m) => (
           <div key={m.id} className="bg-neutral-800 rounded border border-neutral-700 px-3 py-2 text-xs">
             <div className="flex items-center justify-between gap-2 mb-0.5">
               <span className="font-mono text-neutral-500">#{m.id}</span>
@@ -332,8 +316,8 @@ export function CrewPanel() {
         window.fleet.starbase.listCrew(),
         window.fleet.starbase.listMissions(),
       ])
-      setCrewList(crew as never[])
-      setMissionQueue(missions as never[])
+      setCrewList(crew)
+      setMissionQueue(missions)
     } catch {
       // ignore
     }
@@ -349,7 +333,7 @@ export function CrewPanel() {
       <section>
         <SectionHeader title="Active Crew" count={crewList.length} />
         <div className="space-y-2 mb-3">
-          {(crewList as unknown as FullCrewRow[]).map((c) => (
+          {crewList.map((c) => (
             <CrewCard key={c.id} crew={c} onRefresh={refresh} />
           ))}
           {crewList.length === 0 && (

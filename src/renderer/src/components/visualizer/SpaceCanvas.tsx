@@ -15,7 +15,7 @@ import { loadSpriteSheet } from './sprite-loader'
 import { SectorOutpostRenderer, type SectorState } from './sector-outposts'
 import { ShuttleRenderer, type PodState } from './shuttles'
 import { SignalPulseRenderer } from './signal-pulses'
-import { computeSectorPositions } from '../star-command/scene-utils'
+import { computeSectorPositions, isValidPodStatus } from '../star-command/scene-utils'
 import { useStarCommandStore } from '../../store/star-command-store'
 import type { AgentVisualState } from '../../../../shared/types'
 
@@ -165,7 +165,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   const sectorOutpostRef = useRef(new SectorOutpostRenderer())
   const shuttleRef = useRef(new ShuttleRenderer())
   const signalPulseRef = useRef(new SignalPulseRenderer())
-  const cameraRef = useRef({ x: 0, y: 0, targetX: 0, targetY: 0, following: null as string | null })
+  const cameraRef = useRef<{ x: number; y: number; targetX: number; targetY: number; following: string | null }>({ x: 0, y: 0, targetX: 0, targetY: 0, following: null })
   const zoomRef = useRef(1)
   const [tooltip, setTooltip] = useState<Tooltip | null>(null)
 
@@ -189,12 +189,10 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
   }))
 
   const podStatesRef = useRef<PodState[]>([])
-  podStatesRef.current = crewList.map((c) => ({
+  podStatesRef.current = crewList.map((c): PodState => ({
     crewId: c.id,
     sectorId: c.sector_id,
-    status: (['active', 'hailing', 'error', 'complete', 'lost', 'idle'].includes(c.status)
-      ? c.status
-      : 'idle') as PodState['status']
+    status: isValidPodStatus(c.status) ? c.status : 'idle'
   }))
 
   // Background loop (10fps) — aurora + nebula + bg fill

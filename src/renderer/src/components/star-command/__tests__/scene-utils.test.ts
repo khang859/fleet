@@ -4,9 +4,15 @@ import type { SectorInfo, CrewStatus } from '../../../store/star-command-store'
 
 const makeSector = (id: string, name = id): SectorInfo => ({
   id, name, root_path: '/tmp', stack: null,
+  description: null, base_branch: 'main', merge_strategy: 'pr',
+  verify_command: null, lint_command: null, review_mode: 'manual',
+  worktree_enabled: 0, model: null, system_prompt: null,
+  allowed_tools: null, mcp_config: null, created_at: '', updated_at: '',
 })
 const makeCrew = (id: string, sector_id: string, status: string): CrewStatus => ({
-  id, sector_id, status, mission_summary: null, tab_id: null, avatar_variant: null, created_at: '',
+  id, sector_id, status, mission_summary: null, avatar_variant: null, created_at: '',
+  mission_id: null, sector_path: null, worktree_path: null, worktree_branch: null,
+  pid: null, deadline: null, updated_at: '',
 })
 
 describe('mapSectors', () => {

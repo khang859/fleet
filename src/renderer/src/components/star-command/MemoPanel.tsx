@@ -17,7 +17,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
   }, [])
 
   async function loadMemos() {
-    const list = await window.fleet.starbase.memoList() as MemoInfo[]
+    const list = await window.fleet.starbase.memoList()
     setMemos(list)
     if (list.length > 0 && !selectedId) {
       selectMemo(list[0])
@@ -26,7 +26,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
 
   async function selectMemo(memo: MemoInfo) {
     setSelectedId(memo.id)
-    const text = await window.fleet.starbase.memoContent(memo.file_path) as string | null
+    const text = await window.fleet.starbase.memoContent(memo.file_path)
     setContent(text)
     if (memo.status === 'unread') {
       await window.fleet.starbase.memoRead(memo.id)

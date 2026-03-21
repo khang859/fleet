@@ -305,7 +305,7 @@ export function App() {
       {/* Top bar — drag region for window movement, houses OS window controls */}
       <div
         className="h-9 shrink-0 bg-neutral-950 flex items-center"
-        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
+        style={{ WebkitAppRegion: 'drag' }}
       />
       <div className="flex flex-1 min-h-0">
       {showSidebar ? (
@@ -313,7 +313,7 @@ export function App() {
       ) : (
         <div
           className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          style={{ WebkitAppRegion: 'no-drag' }}
         >
           {/* Expand sidebar button */}
           <button
