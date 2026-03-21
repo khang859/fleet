@@ -25,6 +25,30 @@ export interface ServiceRegistry {
   protocolService: ProtocolService;
 }
 
+/** Wrap every method's return type in Promise (idempotent for already-async methods). */
+type Promisified<T> = {
+  [M in keyof T]: T[M] extends (...args: infer A) => infer R
+    ? (...args: A) => Promise<Awaited<R>>
+    : T[M];
+};
+
+/**
+ * Async subset of ServiceRegistry for use by socket runtime proxies.
+ * Each service only exposes the methods the socket dispatch actually calls,
+ * and all return types are wrapped in Promise.
+ */
+export type AsyncServiceRegistry = {
+  crewService: Promisified<Pick<ServiceRegistry['crewService'], 'listCrew' | 'deployCrew' | 'recallCrew' | 'getCrewStatus' | 'observeCrew' | 'messageCrew'>>;
+  missionService: Promisified<Pick<ServiceRegistry['missionService'], 'addMission' | 'listMissions' | 'getMission' | 'updateMission' | 'setStatus' | 'resetForRequeue' | 'abortMission' | 'setReviewVerdict' | 'getDependencies'>>;
+  commsService: Promisified<Pick<ServiceRegistry['commsService'], 'getUnreadByExecution' | 'getRecent' | 'markRead' | 'send' | 'delete' | 'clear' | 'markAllRead' | 'getTransmission' | 'getUnread' | 'resolve'>>;
+  sectorService: Promisified<Pick<ServiceRegistry['sectorService'], 'listVisibleSectors' | 'getSector' | 'addSector' | 'removeSector'>>;
+  cargoService: Promisified<Pick<ServiceRegistry['cargoService'], 'listCargo' | 'getCargo' | 'produceCargo' | 'getUndelivered'>>;
+  supplyRouteService: Promisified<Pick<ServiceRegistry['supplyRouteService'], 'listRoutes' | 'addRoute' | 'removeRoute'>>;
+  configService: Promisified<Pick<ServiceRegistry['configService'], 'get' | 'set'>>;
+  shipsLog: Promisified<Pick<ServiceRegistry['shipsLog'], 'query'>>;
+  protocolService: Promisified<Pick<ServiceRegistry['protocolService'], 'listProtocols' | 'getProtocolBySlug' | 'listSteps' | 'setProtocolEnabled' | 'listExecutions' | 'getExecution' | 'advanceStep' | 'updateExecutionStatus' | 'updateExecutionContext'>>;
+};
+
 type Request = {
   id?: string;
   command: string;
@@ -66,7 +90,7 @@ export class SocketServer extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry,
+    private services: ServiceRegistry | AsyncServiceRegistry,
   ) {
     super();
   }
@@ -196,45 +220,53 @@ export class SocketServer extends EventEmitter {
         return sectorService.listVisibleSectors();
 
       case 'sector.info': {
-        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
-        if (!sectorId) {
+        const rawSectorId = args.id ?? args.sectorId ?? args.name;
+        if (typeof rawSectorId !== 'string' || !rawSectorId) {
           throw new CodedError('sector.info requires a sector ID.\n' +
             'Usage: fleet sectors show <sector-id>', 'BAD_REQUEST')
         }
-        const sector = await sectorService.getSector(sectorId);
+        const sector = await sectorService.getSector(rawSectorId);
         if (!sector) {
-          throw new CodedError(`Sector not found: ${sectorId}`, 'NOT_FOUND')
+          throw new CodedError(`Sector not found: ${rawSectorId}`, 'NOT_FOUND')
         }
         return sector;
       }
 
       case 'sector.add': {
-        const path = (args.path ?? args.id) as string | undefined;
-        if (!path) {
+        const path = args.path ?? args.id;
+        if (typeof path !== 'string' || !path) {
           throw new CodedError('sector.add requires --path <path>.\n' +
             'Usage: fleet sectors add --path /path/to/repo', 'BAD_REQUEST')
         }
-        return sectorService.addSector(args as Parameters<SectorService['addSector']>[0]);
+        return sectorService.addSector({
+          path,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          description: typeof args.description === 'string' ? args.description : undefined,
+          baseBranch: typeof args.baseBranch === 'string' ? args.baseBranch : undefined,
+          mergeStrategy: typeof args.mergeStrategy === 'string' ? args.mergeStrategy : undefined,
+        });
       }
 
       case 'sector.remove': {
-        const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
-        if (!sectorId) {
+        const rawSectorId = args.id ?? args.sectorId ?? args.name;
+        if (typeof rawSectorId !== 'string' || !rawSectorId) {
           throw new CodedError('sector.remove requires a sector ID.\n' +
             'Usage: fleet sectors remove <sector-id>', 'BAD_REQUEST')
         }
-        sectorService.removeSector(sectorId);
+        sectorService.removeSector(rawSectorId);
         return null;
       }
 
       // ── Missions ─────────────────────────────────────────────────────────────
       case 'mission.create': {
-        const sectorId = (args.sector ?? args.sectorId) as string;
-        const summary = args.summary as string | undefined;
-        const prompt = args.prompt as string | undefined;
-        const type = args.type as string | undefined;
+        const rawSector = args.sector ?? args.sectorId;
+        const sectorId = typeof rawSector === 'string' ? rawSector : undefined;
+        const summary = typeof args.summary === 'string' ? args.summary : undefined;
+        const prompt = typeof args.prompt === 'string' ? args.prompt : undefined;
+        const type = typeof args.type === 'string' ? args.type : undefined;
         const VALID_MISSION_TYPES = ['code', 'research', 'review'];
-        const prBranch = args['pr-branch'] as string | undefined;
+        const rawPrBranch = args['pr-branch'];
+        const prBranch = typeof rawPrBranch === 'string' ? rawPrBranch : undefined;
 
         if (!sectorId) {
           throw new CodedError('mission.create requires --sector <id>', 'BAD_REQUEST')
@@ -297,7 +329,10 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'mission.list':
-        return missionService.listMissions(args as Parameters<MissionService['listMissions']>[0]);
+        return missionService.listMissions({
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          status: typeof args.status === 'string' ? args.status : undefined,
+        });
 
       case 'mission.status': {
         const rawId = args.id ?? args.missionId;
@@ -326,14 +361,14 @@ export class SocketServer extends EventEmitter {
 
         // Update editable fields (prompt, summary, etc.)
         const fields: Record<string, string> = {};
-        if (args.prompt) fields.prompt = args.prompt as string;
-        if (args.summary) fields.summary = args.summary as string;
+        if (typeof args.prompt === 'string') fields.prompt = args.prompt;
+        if (typeof args.summary === 'string') fields.summary = args.summary;
         if (Object.keys(fields).length > 0) {
           await missionService.updateMission(id, fields);
         }
 
-        if (args.status) {
-          const newStatus = args.status as string;
+        if (typeof args.status === 'string') {
+          const newStatus = args.status;
           await missionService.setStatus(id, newStatus);
           // When re-queuing a mission, reset crew assignment so autoDeployNext() picks it up
           if (newStatus === 'queued') {
@@ -366,9 +401,9 @@ export class SocketServer extends EventEmitter {
           throw new CodedError('mission.verdict requires a mission ID.\n' +
             'Usage: fleet missions verdict <mission-id> --verdict <approved|changes-requested|escalated> --notes "..."', 'BAD_REQUEST')
         }
-        const id = typeof rawId === 'string' ? parseInt(rawId, 10) : (rawId as number);
-        const verdict = args.verdict as string;
-        const notes = (args.notes as string) ?? '';
+        const id = typeof rawId === 'string' ? parseInt(rawId, 10) : Number(rawId);
+        const verdict = typeof args.verdict === 'string' ? args.verdict : '';
+        const notes = typeof args.notes === 'string' ? args.notes : '';
 
         if (!verdict || !['approved', 'changes-requested', 'escalated'].includes(verdict)) {
           throw new CodedError('Invalid verdict. Must be one of: approved, changes-requested, escalated', 'BAD_REQUEST')
@@ -443,11 +478,15 @@ export class SocketServer extends EventEmitter {
             'Recall the existing crew before deploying a new one.', 'CONFLICT')
         }
 
+        const deploySectorId = args.sector ?? args.sectorId ?? mission.sector_id;
+        if (typeof deploySectorId !== 'string') {
+          throw new CodedError('crew.deploy requires a valid sector ID', 'BAD_REQUEST')
+        }
         const result = await crewService.deployCrew({
-          sectorId: (args.sector ?? args.sectorId ?? mission.sector_id) as string,
+          sectorId: deploySectorId,
           prompt,
           missionId,
-          type: args.type as string | undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
           prBranch: mission.pr_branch ?? undefined,
         });
         this.emit('state-change', 'crew:changed', result);
@@ -455,45 +494,47 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'crew.recall': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
           throw new CodedError('crew.recall requires a crew ID.\n' +
             'Usage: fleet crew recall <crew-id>\n' +
             'List crew: fleet crew list', 'BAD_REQUEST')
         }
-        crewService.recallCrew(crewId);
-        this.emit('state-change', 'crew:changed', { crewId, status: 'recalled' });
+        crewService.recallCrew(rawCrewId);
+        this.emit('state-change', 'crew:changed', { crewId: rawCrewId, status: 'recalled' });
         return null;
       }
 
       case 'crew.info': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
           throw new CodedError('crew.info requires a crew ID.\n' +
             'Usage: fleet crew info <crew-id>\n' +
             'List crew: fleet crew list', 'BAD_REQUEST')
         }
-        const info = await crewService.getCrewStatus(crewId);
+        const info = await crewService.getCrewStatus(rawCrewId);
         if (!info) {
-          throw new CodedError(`Crew not found: ${crewId}`, 'NOT_FOUND')
+          throw new CodedError(`Crew not found: ${rawCrewId}`, 'NOT_FOUND')
         }
         return info;
       }
 
       case 'crew.observe': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        if (!crewId) {
+        const rawCrewId = args.id ?? args.crewId;
+        if (typeof rawCrewId !== 'string' || !rawCrewId) {
           throw new CodedError('crew.observe requires a crew ID.\n' +
             'Usage: fleet crew observe <crew-id>\n' +
             'List crew: fleet crew list', 'BAD_REQUEST')
         }
-        const raw = await crewService.observeCrew(crewId);
+        const raw = await crewService.observeCrew(rawCrewId);
         return stripAnsi(raw);
       }
 
       case 'crew.message': {
-        const crewId = (args.id ?? args.crewId) as string | undefined;
-        const message = (args.message ?? args.text) as string | undefined;
+        const rawCrewId = args.id ?? args.crewId;
+        const rawMessage = args.message ?? args.text;
+        const crewId = typeof rawCrewId === 'string' ? rawCrewId : undefined;
+        const message = typeof rawMessage === 'string' ? rawMessage : undefined;
         if (!crewId) {
           throw new CodedError('crew.message requires a crew ID.\n' +
             'Usage: fleet crew message <crew-id> --message "..."\n' +
@@ -515,12 +556,17 @@ export class SocketServer extends EventEmitter {
       // ── Comms ─────────────────────────────────────────────────────────────────
       case 'comms.list': {
         // if executionId arg provided, use getUnreadByExecution
-        const executionId = args.execution as string | undefined;
-        if (executionId) {
-          return commsService.getUnreadByExecution(executionId);
+        if (typeof args.execution === 'string' && args.execution) {
+          return commsService.getUnreadByExecution(args.execution);
         }
         // fall through to existing getRecent logic
-        const rows = commsService.getRecent(args as Parameters<CommsService['getRecent']>[0]);
+        const rows = commsService.getRecent({
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          limit: typeof args.limit === 'number' ? args.limit : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          from: typeof args.from === 'string' ? args.from : undefined,
+          unread: typeof args.unread === 'boolean' ? args.unread : undefined,
+        });
         return rows;
       }
 
@@ -538,20 +584,23 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.send': {
-        const to = args.to as string | undefined;
+        const to = typeof args.to === 'string' ? args.to : undefined;
         if (!to) {
           throw new CodedError('comms.send requires --to <crew-id|admiral>.\n' +
             'Usage: fleet comms send --to <crew-id> --message "..."', 'BAD_REQUEST')
         }
-        const payload = (args.message ?? args.payload) as string | undefined;
+        const rawPayload = args.message ?? args.payload;
+        const payload = typeof rawPayload === 'string' ? rawPayload : undefined;
         if (!payload || payload.trim().length === 0) {
           throw new CodedError('comms.send requires a non-empty --message.\n' +
             'Usage: fleet comms send --to <crew-id> --message "your message"', 'BAD_REQUEST')
         }
+        const from = typeof args.from === 'string' ? args.from : 'admiral';
+        const msgType = typeof args.type === 'string' ? args.type : 'directive';
         const id = await commsService.send({
-          from: (args.from ?? 'admiral') as string,
+          from,
           to,
-          type: (args.type ?? 'directive') as string,
+          type: msgType,
           payload,
         });
         this.emit('state-change', 'comms:changed', { id });
@@ -580,7 +629,7 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.clear': {
         const count = await commsService.clear(
-          args.crew ? { crewId: args.crew as string } : undefined,
+          typeof args.crew === 'string' ? { crewId: args.crew } : undefined,
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
         return { deleted: count };
@@ -588,7 +637,7 @@ export class SocketServer extends EventEmitter {
 
       case 'comms.read-all': {
         const count = await commsService.markAllRead(
-          args.crew ? { crewId: args.crew as string } : undefined,
+          typeof args.crew === 'string' ? { crewId: args.crew } : undefined,
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
         return { marked: count };
@@ -616,7 +665,12 @@ export class SocketServer extends EventEmitter {
 
       // ── Cargo ─────────────────────────────────────────────────────────────────
       case 'cargo.list':
-        return cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0]);
+        return cargoService.listCargo({
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          verified: typeof args.verified === 'boolean' ? args.verified : undefined,
+        });
 
       case 'cargo.inspect': {
         const rawId = args.cargoId ?? args.id;
@@ -633,25 +687,28 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'cargo.produce': {
-        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
-        if (!sectorId || !args.type || !args.path) {
+        const rawCargoSector = args.sector ?? args.sectorId;
+        const cargoSectorId = typeof rawCargoSector === 'string' ? rawCargoSector : undefined;
+        const cargoType = typeof args.type === 'string' ? args.type : undefined;
+        const cargoPath = typeof args.path === 'string' ? args.path : undefined;
+        if (!cargoSectorId || !cargoType || !cargoPath) {
           throw new CodedError('cargo.produce requires --sector <sector-id>, --type <type>, and --path <path>.\n' +
             'Usage: fleet cargo produce --sector <sector-id> --type <type> --path <path>', 'BAD_REQUEST')
         }
         return cargoService.produceCargo({
-          sectorId,
-          type: args.type as string,
-          manifest: args.path as string,
+          sectorId: cargoSectorId,
+          type: cargoType,
+          manifest: cargoPath,
         });
       }
 
       case 'cargo.pending': {
-        const sectorId = (args.sector ?? args.sectorId) as string | undefined;
-        if (!sectorId) {
+        const rawPendingSector = args.sector ?? args.sectorId;
+        if (typeof rawPendingSector !== 'string' || !rawPendingSector) {
           throw new CodedError('cargo.pending requires --sector <sector-id>.\n' +
             'Usage: fleet cargo pending --sector <sector-id>', 'BAD_REQUEST')
         }
-        return cargoService.getUndelivered(sectorId);
+        return cargoService.getUndelivered(rawPendingSector);
       }
 
       // ── Supply Routes ─────────────────────────────────────────────────────────
@@ -659,15 +716,19 @@ export class SocketServer extends EventEmitter {
         return supplyRouteService.listRoutes();
 
       case 'supply-route.add': {
-        const fromSector = (args.from ?? args.fromSector) as string | undefined;
-        const toSector = (args.to ?? args.toSector) as string | undefined;
+        const rawFrom = args.from ?? args.fromSector;
+        const rawTo = args.to ?? args.toSector;
+        const fromSector = typeof rawFrom === 'string' ? rawFrom : undefined;
+        const toSector = typeof rawTo === 'string' ? rawTo : undefined;
         if (!fromSector || !toSector) {
           throw new CodedError('supply-route.add requires --from <sector-id> and --to <sector-id>.\n' +
             'Usage: fleet supply-route add --from <sector-id> --to <sector-id>', 'BAD_REQUEST')
         }
-        return supplyRouteService.addRoute(
-          args as Parameters<SupplyRouteService['addRoute']>[0],
-        );
+        return supplyRouteService.addRoute({
+          upstreamSectorId: fromSector,
+          downstreamSectorId: toSector,
+          relationship: typeof args.relationship === 'string' ? args.relationship : undefined,
+        });
       }
 
       case 'supply-route.remove': {
@@ -683,15 +744,15 @@ export class SocketServer extends EventEmitter {
 
       // ── Config ────────────────────────────────────────────────────────────────
       case 'config.get': {
-        if (!args.key) {
+        if (typeof args.key !== 'string' || !args.key) {
           throw new CodedError('config.get requires --key <key>.\n' +
             'Usage: fleet config get --key <config-key>', 'BAD_REQUEST')
         }
-        return configService.get(args.key as string);
+        return configService.get(args.key);
       }
 
       case 'config.set': {
-        if (!args.key) {
+        if (typeof args.key !== 'string' || !args.key) {
           throw new CodedError('config.set requires --key <key> and --value <value>.\n' +
             'Usage: fleet config set --key <config-key> --value <value>', 'BAD_REQUEST')
         }
@@ -699,29 +760,32 @@ export class SocketServer extends EventEmitter {
           throw new CodedError('config.set requires --value <value>.\n' +
             'Usage: fleet config set --key <config-key> --value <value>', 'BAD_REQUEST')
         }
-        configService.set(args.key as string, args.value);
+        configService.set(args.key, args.value);
         return null;
       }
 
       // ── Log ───────────────────────────────────────────────────────────────────
       case 'log.show': {
-        const limit = (args.limit as number) ?? 50;
-        const crewFilter = args.crew as string | undefined;
+        const limit = typeof args.limit === 'number' ? args.limit : 50;
+        const crewFilter = typeof args.crew === 'string' ? args.crew : undefined;
         return shipsLog.query({ crewId: crewFilter, limit });
       }
 
       // ── File Open ──────────────────────────────────────────────────────────────
       case 'file.open': {
-        const files = args.files as Array<{ path: string; paneType: 'file' | 'image' }>;
-        if (!files || !Array.isArray(files) || files.length === 0) {
+        if (!Array.isArray(args.files) || args.files.length === 0) {
           throw new CodedError('file.open requires a non-empty files array', 'BAD_REQUEST')
         }
+        const files = args.files as Array<Record<string, unknown>>;
         const payload = {
-          files: files.map((f) => ({
-            path: f.path,
-            paneType: f.paneType,
-            label: f.path.split('/').pop() ?? f.path,
-          })),
+          files: files.map((f) => {
+            const filePath = typeof f.path === 'string' ? f.path : '';
+            return {
+              path: filePath,
+              paneType: (f.paneType === 'image' ? 'image' : 'file') as 'file' | 'image',
+              label: filePath.split('/').pop() ?? filePath,
+            };
+          }),
         };
         this.emit('file-open', payload);
         return { fileCount: files.length };
@@ -732,33 +796,37 @@ export class SocketServer extends EventEmitter {
         return protocolService.listProtocols();
 
       case 'protocol.show': {
-        const slug = (args.id ?? args.slug) as string;
-        const p = await protocolService.getProtocolBySlug(slug);
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string') throw new CodedError('protocol.show requires a slug', 'BAD_REQUEST');
+        const p = await protocolService.getProtocolBySlug(rawSlug);
         if (!p) {
-          throw new CodedError(`Protocol not found: ${slug}`, 'NOT_FOUND')
+          throw new CodedError(`Protocol not found: ${rawSlug}`, 'NOT_FOUND')
         }
         const steps = await protocolService.listSteps(p.id);
         return { ...p, steps };
       }
 
       case 'protocol.enable': {
-        const slug = (args.id ?? args.slug) as string;
-        protocolService.setProtocolEnabled(slug, true);
-        return { slug, enabled: true };
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string') throw new CodedError('protocol.enable requires a slug', 'BAD_REQUEST');
+        protocolService.setProtocolEnabled(rawSlug, true);
+        return { slug: rawSlug, enabled: true };
       }
 
       case 'protocol.disable': {
-        const slug = (args.id ?? args.slug) as string;
-        protocolService.setProtocolEnabled(slug, false);
-        return { slug, enabled: false };
+        const rawSlug = args.id ?? args.slug;
+        if (typeof rawSlug !== 'string') throw new CodedError('protocol.disable requires a slug', 'BAD_REQUEST');
+        protocolService.setProtocolEnabled(rawSlug, false);
+        return { slug: rawSlug, enabled: false };
       }
 
       // ── Executions ────────────────────────────────────────────────────────────
       case 'execution.list':
-        return protocolService.listExecutions(args.status as string | undefined);
+        return protocolService.listExecutions(typeof args.status === 'string' ? args.status : undefined);
 
       case 'execution.show': {
-        const exec = await protocolService.getExecution(args.id as string);
+        if (typeof args.id !== 'string') throw new CodedError('execution.show requires an execution ID', 'BAD_REQUEST');
+        const exec = await protocolService.getExecution(args.id);
         if (!exec) {
           throw new CodedError(`Execution not found: ${args.id}`, 'NOT_FOUND')
         }
@@ -766,20 +834,22 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'execution.update': {
-        const exec = await protocolService.getExecution(args.id as string);
+        if (typeof args.id !== 'string') throw new CodedError('execution.update requires an execution ID', 'BAD_REQUEST');
+        const execId = args.id;
+        const exec = await protocolService.getExecution(execId);
         if (!exec) {
-          throw new CodedError(`Execution not found: ${args.id}`, 'NOT_FOUND')
+          throw new CodedError(`Execution not found: ${execId}`, 'NOT_FOUND')
         }
         if (args.step !== undefined) {
-          await protocolService.advanceStep(args.id as string, Number(args.step));
+          await protocolService.advanceStep(execId, Number(args.step));
         }
-        if (args.status !== undefined) {
-          await protocolService.updateExecutionStatus(args.id as string, args.status as string);
+        if (typeof args.status === 'string') {
+          await protocolService.updateExecutionStatus(execId, args.status);
         }
-        if (args.context !== undefined) {
-          await protocolService.updateExecutionContext(args.id as string, args.context as string);
+        if (typeof args.context === 'string') {
+          await protocolService.updateExecutionContext(execId, args.context);
         }
-        return protocolService.getExecution(args.id as string);
+        return protocolService.getExecution(execId);
       }
 
       default: {

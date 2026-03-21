@@ -22,6 +22,10 @@ import { ShipsLog } from './starbase/ships-log'
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
 import { CodedError, toError } from './errors'
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
 type RuntimeDeps = {
   starbaseDb: StarbaseDB
   sectorService: SectorService
@@ -73,8 +77,10 @@ export class StarbaseRuntimeCore {
   async invoke(method: string, args?: unknown): Promise<unknown> {
     trace('invoke', { method })
     switch (method) {
-      case 'runtime.bootstrap':
+      case 'runtime.bootstrap': {
+        if (!isRecord(args)) throw new CodedError('bootstrap args must be an object', 'BAD_REQUEST');
         return this.bootstrap(args as RuntimeBootstrapArgs)
+      }
       case 'runtime.getStatus':
         return this.status
       case 'runtime.getAdmiralBootstrapData':
@@ -82,106 +88,279 @@ export class StarbaseRuntimeCore {
 
       case 'sector.listVisible':
         return this.requireDeps().sectorService.listVisibleSectors()
-      case 'sector.get':
-        return this.requireDeps().sectorService.getSector(args as string)
-      case 'sector.add':
-        return this.requireDeps().sectorService.addSector(args as Parameters<SectorService['addSector']>[0])
-      case 'sector.remove':
-        return this.requireDeps().sectorService.removeSector(args as string)
+      case 'sector.get': {
+        if (typeof args !== 'string') throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.getSector(args)
+      }
+      case 'sector.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.path !== 'string') throw new CodedError('path required', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.addSector({
+          path: args.path,
+          name: typeof args.name === 'string' ? args.name : undefined,
+          description: typeof args.description === 'string' ? args.description : undefined,
+          baseBranch: typeof args.baseBranch === 'string' ? args.baseBranch : undefined,
+          mergeStrategy: typeof args.mergeStrategy === 'string' ? args.mergeStrategy : undefined,
+        })
+      }
+      case 'sector.remove': {
+        if (typeof args !== 'string') throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.removeSector(args)
+      }
       case 'sector.update': {
-        const { sectorId, fields } = args as { sectorId: string; fields: Record<string, unknown> }
-        return this.requireDeps().sectorService.updateSector(sectorId, fields)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const sectorId = args.sectorId;
+        const fields = args.fields;
+        if (typeof sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
+        return this.requireDeps().sectorService.updateSector(sectorId, fields as Record<string, string>)
       }
 
-      case 'config.get':
-        return this.requireDeps().configService.get(args as string)
+      case 'config.get': {
+        if (typeof args !== 'string') throw new CodedError('config key must be a string', 'BAD_REQUEST');
+        return this.requireDeps().configService.get(args)
+      }
       case 'config.getAll':
         return this.requireDeps().configService.getAll()
       case 'config.set': {
-        const { key, value } = args as { key: string; value: unknown }
-        return this.requireDeps().configService.set(key, value)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const key = args.key;
+        if (typeof key !== 'string') throw new CodedError('key required', 'BAD_REQUEST');
+        return this.requireDeps().configService.set(key, args.value)
       }
 
-      case 'mission.add':
-        return this.requireDeps().missionService.addMission(args as Parameters<MissionService['addMission']>[0])
-      case 'mission.list':
-        return this.requireDeps().missionService.listMissions(args as Parameters<MissionService['listMissions']>[0])
-      case 'mission.get':
-        return this.requireDeps().missionService.getMission(args as number)
+      case 'mission.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (typeof args.summary !== 'string') throw new CodedError('summary required', 'BAD_REQUEST');
+        if (typeof args.prompt !== 'string') throw new CodedError('prompt required', 'BAD_REQUEST');
+        return this.requireDeps().missionService.addMission({
+          sectorId: args.sectorId,
+          summary: args.summary,
+          prompt: args.prompt,
+          acceptanceCriteria: typeof args.acceptanceCriteria === 'string' ? args.acceptanceCriteria : undefined,
+          priority: typeof args.priority === 'number' ? args.priority : undefined,
+          dependsOnMissionIds: Array.isArray(args.dependsOnMissionIds) ? args.dependsOnMissionIds as number[] : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          prBranch: typeof args.prBranch === 'string' ? args.prBranch : undefined,
+        })
+      }
+      case 'mission.list': {
+        if (args != null && !isRecord(args)) throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args) ? {
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          status: typeof args.status === 'string' ? args.status : undefined,
+        } : undefined;
+        return this.requireDeps().missionService.listMissions(filter)
+      }
+      case 'mission.get': {
+        if (typeof args !== 'number') throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.getMission(args)
+      }
       case 'mission.update': {
-        const { missionId, fields } = args as { missionId: number; fields: Record<string, string> }
-        return this.requireDeps().missionService.updateMission(missionId, fields)
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const fields = args.fields;
+        if (typeof missionId !== 'number') throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (!isRecord(fields)) throw new CodedError('fields required', 'BAD_REQUEST');
+        return this.requireDeps().missionService.updateMission(missionId, fields as Record<string, string>)
       }
       case 'mission.setStatus': {
-        const { missionId, status } = args as { missionId: number; status: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const status = args.status;
+        if (typeof missionId !== 'number') throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (typeof status !== 'string') throw new CodedError('status required', 'BAD_REQUEST');
         return this.requireDeps().missionService.setStatus(missionId, status)
       }
-      case 'mission.resetForRequeue':
-        return this.requireDeps().missionService.resetForRequeue(args as number)
-      case 'mission.abort':
-        return this.requireDeps().missionService.abortMission(args as number)
+      case 'mission.resetForRequeue': {
+        if (typeof args !== 'number') throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.resetForRequeue(args)
+      }
+      case 'mission.abort': {
+        if (typeof args !== 'number') throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.abortMission(args)
+      }
       case 'mission.setReviewVerdict': {
-        const { missionId, verdict, notes } = args as { missionId: number; verdict: string; notes: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const missionId = args.missionId;
+        const verdict = args.verdict;
+        const notes = args.notes;
+        if (typeof missionId !== 'number') throw new CodedError('missionId required', 'BAD_REQUEST');
+        if (typeof verdict !== 'string') throw new CodedError('verdict required', 'BAD_REQUEST');
+        if (typeof notes !== 'string') throw new CodedError('notes required', 'BAD_REQUEST');
         return this.requireDeps().missionService.setReviewVerdict(missionId, verdict, notes)
       }
-      case 'mission.getDependencies':
-        return this.requireDeps().missionService.getDependencies(args as number)
+      case 'mission.getDependencies': {
+        if (typeof args !== 'number') throw new CodedError('mission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().missionService.getDependencies(args)
+      }
 
-      case 'crew.deploy':
-        return this.requireDeps().crewService.deployCrew(args as Parameters<CrewService['deployCrew']>[0])
-      case 'crew.recall':
-        return this.requireDeps().crewService.recallCrew(args as string)
-      case 'crew.list':
-        return this.requireDeps().crewService.listCrew(args as Parameters<CrewService['listCrew']>[0])
-      case 'crew.status':
-        return this.requireDeps().crewService.getCrewStatus(args as string)
-      case 'crew.observe':
-        return this.requireDeps().crewService.observeCrew(args as string)
+      case 'crew.deploy': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
+        if (typeof args.prompt !== 'string') throw new CodedError('prompt required', 'BAD_REQUEST');
+        if (typeof args.missionId !== 'number') throw new CodedError('missionId required', 'BAD_REQUEST');
+        return this.requireDeps().crewService.deployCrew({
+          sectorId: args.sectorId,
+          prompt: args.prompt,
+          missionId: args.missionId,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          prBranch: typeof args.prBranch === 'string' ? args.prBranch : undefined,
+        })
+      }
+      case 'crew.recall': {
+        if (typeof args !== 'string') throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().crewService.recallCrew(args)
+      }
+      case 'crew.list': {
+        if (args != null && !isRecord(args)) throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args) ? {
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+        } : undefined;
+        return this.requireDeps().crewService.listCrew(filter)
+      }
+      case 'crew.status': {
+        if (typeof args !== 'string') throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().crewService.getCrewStatus(args)
+      }
+      case 'crew.observe': {
+        if (typeof args !== 'string') throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().crewService.observeCrew(args)
+      }
       case 'crew.message': {
-        const { crewId, message } = args as { crewId: string; message: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const crewId = args.crewId;
+        const message = args.message;
+        if (typeof crewId !== 'string') throw new CodedError('crewId required', 'BAD_REQUEST');
+        if (typeof message !== 'string') throw new CodedError('message required', 'BAD_REQUEST');
         return this.requireDeps().crewService.messageCrew(crewId, message)
       }
 
-      case 'comms.getUnread':
-        return this.requireDeps().commsService.getUnread(args as string)
-      case 'comms.getUnreadByExecution':
-        return this.requireDeps().commsService.getUnreadByExecution(args as string)
-      case 'comms.getRecent':
-        return this.requireDeps().commsService.getRecent(args as Parameters<CommsService['getRecent']>[0])
-      case 'comms.markRead':
-        return this.requireDeps().commsService.markRead(args as number)
+      case 'comms.getUnread': {
+        if (typeof args !== 'string') throw new CodedError('crew ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getUnread(args)
+      }
+      case 'comms.getUnreadByExecution': {
+        if (typeof args !== 'string') throw new CodedError('execution ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getUnreadByExecution(args)
+      }
+      case 'comms.getRecent': {
+        if (args != null && !isRecord(args)) throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args) ? {
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          limit: typeof args.limit === 'number' ? args.limit : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          from: typeof args.from === 'string' ? args.from : undefined,
+          unread: typeof args.unread === 'boolean' ? args.unread : undefined,
+        } : undefined;
+        return this.requireDeps().commsService.getRecent(opts)
+      }
+      case 'comms.markRead': {
+        if (typeof args !== 'number') throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.markRead(args)
+      }
       case 'comms.resolve': {
-        const { id, response } = args as { id: number; response: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const response = args.response;
+        if (typeof id !== 'number') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof response !== 'string') throw new CodedError('response required', 'BAD_REQUEST');
         return this.requireDeps().commsService.resolve(id, response)
       }
-      case 'comms.delete':
-        return this.requireDeps().commsService.delete(args as number)
-      case 'comms.markAllRead':
-        return this.requireDeps().commsService.markAllRead(args as Parameters<CommsService['markAllRead']>[0])
-      case 'comms.clear':
-        return this.requireDeps().commsService.clear(args as Parameters<CommsService['clear']>[0])
-      case 'comms.getTransmission':
-        return this.requireDeps().commsService.getTransmission(args as number)
-      case 'comms.send':
-        return this.requireDeps().commsService.send(args as Parameters<CommsService['send']>[0])
+      case 'comms.delete': {
+        if (typeof args !== 'number') throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.delete(args)
+      }
+      case 'comms.markAllRead': {
+        if (args != null && !isRecord(args)) throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args) ? {
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+        } : undefined;
+        return this.requireDeps().commsService.markAllRead(opts)
+      }
+      case 'comms.clear': {
+        if (args != null && !isRecord(args)) throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args) ? {
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+        } : undefined;
+        return this.requireDeps().commsService.clear(opts)
+      }
+      case 'comms.getTransmission': {
+        if (typeof args !== 'number') throw new CodedError('transmission ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().commsService.getTransmission(args)
+      }
+      case 'comms.send': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.from !== 'string') throw new CodedError('from required', 'BAD_REQUEST');
+        if (typeof args.to !== 'string') throw new CodedError('to required', 'BAD_REQUEST');
+        if (typeof args.type !== 'string') throw new CodedError('type required', 'BAD_REQUEST');
+        if (typeof args.payload !== 'string') throw new CodedError('payload required', 'BAD_REQUEST');
+        return this.requireDeps().commsService.send({
+          from: args.from,
+          to: args.to,
+          type: args.type,
+          payload: args.payload,
+          threadId: typeof args.threadId === 'string' ? args.threadId : undefined,
+          inReplyTo: typeof args.inReplyTo === 'number' ? args.inReplyTo : undefined,
+          missionId: typeof args.missionId === 'number' ? args.missionId : undefined,
+          executionId: typeof args.executionId === 'string' ? args.executionId : undefined,
+        })
+      }
 
-      case 'supplyRoute.list':
-        return this.requireDeps().supplyRouteService.listRoutes(args as Parameters<SupplyRouteService['listRoutes']>[0])
-      case 'supplyRoute.add':
-        return this.requireDeps().supplyRouteService.addRoute(args as Parameters<SupplyRouteService['addRoute']>[0])
-      case 'supplyRoute.remove':
-        return this.requireDeps().supplyRouteService.removeRoute(args as number)
+      case 'supplyRoute.list': {
+        if (args != null && !isRecord(args)) throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args) ? {
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+        } : undefined;
+        return this.requireDeps().supplyRouteService.listRoutes(opts)
+      }
+      case 'supplyRoute.add': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.upstreamSectorId !== 'string') throw new CodedError('upstreamSectorId required', 'BAD_REQUEST');
+        if (typeof args.downstreamSectorId !== 'string') throw new CodedError('downstreamSectorId required', 'BAD_REQUEST');
+        return this.requireDeps().supplyRouteService.addRoute({
+          upstreamSectorId: args.upstreamSectorId,
+          downstreamSectorId: args.downstreamSectorId,
+          relationship: typeof args.relationship === 'string' ? args.relationship : undefined,
+        })
+      }
+      case 'supplyRoute.remove': {
+        if (typeof args !== 'number') throw new CodedError('route ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().supplyRouteService.removeRoute(args)
+      }
       case 'supplyRoute.graph':
         return this.requireDeps().supplyRouteService.getGraph()
 
-      case 'cargo.list':
-        return this.requireDeps().cargoService.listCargo(args as Parameters<CargoService['listCargo']>[0])
-      case 'cargo.get':
-        return this.requireDeps().cargoService.getCargo(args as number)
-      case 'cargo.produce':
-        return this.requireDeps().cargoService.produceCargo(args as Parameters<CargoService['produceCargo']>[0])
-      case 'cargo.getUndelivered':
-        return this.requireDeps().cargoService.getUndelivered(args as string)
+      case 'cargo.list': {
+        if (args != null && !isRecord(args)) throw new CodedError('filter must be an object', 'BAD_REQUEST');
+        const filter = isRecord(args) ? {
+          sectorId: typeof args.sectorId === 'string' ? args.sectorId : undefined,
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          verified: typeof args.verified === 'boolean' ? args.verified : undefined,
+        } : undefined;
+        return this.requireDeps().cargoService.listCargo(filter)
+      }
+      case 'cargo.get': {
+        if (typeof args !== 'number') throw new CodedError('cargo ID must be a number', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.getCargo(args)
+      }
+      case 'cargo.produce': {
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        if (typeof args.sectorId !== 'string') throw new CodedError('sectorId required', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.produceCargo({
+          sectorId: args.sectorId,
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          missionId: typeof args.missionId === 'number' ? args.missionId : undefined,
+          type: typeof args.type === 'string' ? args.type : undefined,
+          manifest: typeof args.manifest === 'string' ? args.manifest : undefined,
+        })
+      }
+      case 'cargo.getUndelivered': {
+        if (typeof args !== 'string') throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().cargoService.getUndelivered(args)
+      }
 
       case 'retention.stats':
         return this.requireDeps().retentionService.getStats()
@@ -190,10 +369,18 @@ export class StarbaseRuntimeCore {
       case 'retention.vacuum':
         return this.requireDeps().retentionService.vacuum()
 
-      case 'shipsLog.query':
-        return this.requireDeps().shipsLog.query(args as Parameters<ShipsLog['query']>[0])
+      case 'shipsLog.query': {
+        if (args != null && !isRecord(args)) throw new CodedError('opts must be an object', 'BAD_REQUEST');
+        const opts = isRecord(args) ? {
+          crewId: typeof args.crewId === 'string' ? args.crewId : undefined,
+          eventType: typeof args.eventType === 'string' ? args.eventType : undefined,
+          since: typeof args.since === 'string' ? args.since : undefined,
+          limit: typeof args.limit === 'number' ? args.limit : undefined,
+        } : {};
+        return this.requireDeps().shipsLog.query(opts)
+      }
       case 'shipsLog.combined': {
-        const limit = (args as { limit?: number } | undefined)?.limit ?? 200
+        const limit = isRecord(args) && typeof args.limit === 'number' ? args.limit : 200
         return this.requireDeps().starbaseDb
           .getDb()
           .prepare(`
@@ -209,39 +396,69 @@ export class StarbaseRuntimeCore {
 
       case 'protocol.list':
         return this.requireDeps().protocolService.listProtocols()
-      case 'protocol.getBySlug':
-        return this.requireDeps().protocolService.getProtocolBySlug(args as string)
-      case 'protocol.listSteps':
-        return this.requireDeps().protocolService.listSteps(args as string)
+      case 'protocol.getBySlug': {
+        if (typeof args !== 'string') throw new CodedError('slug must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.getProtocolBySlug(args)
+      }
+      case 'protocol.listSteps': {
+        if (typeof args !== 'string') throw new CodedError('protocol ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.listSteps(args)
+      }
       case 'protocol.setEnabled': {
-        const { slug, enabled } = args as { slug: string; enabled: boolean }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const slug = args.slug;
+        const enabled = args.enabled;
+        if (typeof slug !== 'string') throw new CodedError('slug required', 'BAD_REQUEST');
+        if (typeof enabled !== 'boolean') throw new CodedError('enabled required', 'BAD_REQUEST');
         return this.requireDeps().protocolService.setProtocolEnabled(slug, enabled)
       }
-      case 'protocol.listExecutions':
-        return this.requireDeps().protocolService.listExecutions(args as string | undefined)
-      case 'protocol.getExecution':
-        return this.requireDeps().protocolService.getExecution(args as string)
+      case 'protocol.listExecutions': {
+        if (args != null && typeof args !== 'string') throw new CodedError('status filter must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.listExecutions(args ?? undefined)
+      }
+      case 'protocol.getExecution': {
+        if (typeof args !== 'string') throw new CodedError('execution ID must be a string', 'BAD_REQUEST');
+        return this.requireDeps().protocolService.getExecution(args)
+      }
       case 'protocol.advanceStep': {
-        const { id, step } = args as { id: string; step: number }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const step = args.step;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof step !== 'number') throw new CodedError('step required', 'BAD_REQUEST');
         return this.requireDeps().protocolService.advanceStep(id, step)
       }
       case 'protocol.updateExecutionStatus': {
-        const { id, status } = args as { id: string; status: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const status = args.status;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof status !== 'string') throw new CodedError('status required', 'BAD_REQUEST');
         return this.requireDeps().protocolService.updateExecutionStatus(id, status)
       }
       case 'protocol.updateExecutionContext': {
-        const { id, context } = args as { id: string; context: string }
+        if (!isRecord(args)) throw new CodedError('args must be an object', 'BAD_REQUEST');
+        const id = args.id;
+        const context = args.context;
+        if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
+        if (typeof context !== 'string') throw new CodedError('context required', 'BAD_REQUEST');
         return this.requireDeps().protocolService.updateExecutionContext(id, context)
       }
 
       case 'memo.list':
         return this.listMemos()
-      case 'memo.read':
-        return this.markMemoRead(args as number)
-      case 'memo.dismiss':
-        return this.dismissMemo(args as number)
-      case 'memo.content':
-        return this.getMemoContent(args as string)
+      case 'memo.read': {
+        if (typeof args !== 'number') throw new CodedError('memo ID must be a number', 'BAD_REQUEST');
+        return this.markMemoRead(args)
+      }
+      case 'memo.dismiss': {
+        if (typeof args !== 'number') throw new CodedError('memo ID must be a number', 'BAD_REQUEST');
+        return this.dismissMemo(args)
+      }
+      case 'memo.content': {
+        if (typeof args !== 'string') throw new CodedError('file path must be a string', 'BAD_REQUEST');
+        return this.getMemoContent(args)
+      }
 
       case 'starbase.snapshot':
         return this.buildSnapshot()
