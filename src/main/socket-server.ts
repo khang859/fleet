@@ -193,7 +193,7 @@ export class SocketServer extends EventEmitter {
 
       // ── Sectors ──────────────────────────────────────────────────────────────
       case 'sector.list':
-        return sectorService.listVisibleSectors();
+        return sectorService.listSectors();
 
       case 'sector.info': {
         const sectorId = (args.id ?? args.sectorId ?? args.name) as string | undefined;
