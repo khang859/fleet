@@ -20,6 +20,7 @@ import { RetentionService } from './starbase/retention-service'
 import { ProtocolService } from './starbase/protocol-service'
 import { ShipsLog } from './starbase/ships-log'
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
+import { CodedError, toError } from './errors'
 
 type RuntimeDeps = {
   starbaseDb: StarbaseDB
@@ -248,9 +249,7 @@ export class StarbaseRuntimeCore {
         return this.getRecentLogEntry()
 
       default: {
-        const error = new Error(`Unknown runtime method: ${method}`) as Error & { code?: string }
-        error.code = 'NOT_FOUND'
-        throw error
+        throw new CodedError(`Unknown runtime method: ${method}`, 'NOT_FOUND')
       }
     }
   }
@@ -398,7 +397,7 @@ export class StarbaseRuntimeCore {
       this.setStatus({ state: 'ready' })
       trace('bootstrap completed')
     } catch (error) {
-      const err = error as Error
+      const err = toError(error)
       trace('bootstrap failed', { message: err.message, stack: err.stack })
       try {
         localLockfile?.release()
@@ -511,17 +510,18 @@ export class StarbaseRuntimeCore {
         "SELECT id, from_crew as crew_id, mission_id, type as event_type, payload, read, created_at FROM comms WHERE type IN ('memo', 'hailing-memo') ORDER BY created_at DESC"
       )
       .all()
-      .map((row: any) => {
+      .map((row: unknown) => {
+        const r = row as { id: number; crew_id: string; mission_id: number | null; event_type: string; payload: string | null; read: number; created_at: string }
         try {
-          const payload = JSON.parse(row.payload ?? '{}') as { filePath?: string; summary?: string }
+          const payload = JSON.parse(r.payload ?? '{}') as { filePath?: string; summary?: string }
           return {
-            ...row,
+            ...r,
             file_path: payload.filePath ?? '',
-            status: row.read ? 'read' : 'unread',
+            status: r.read ? 'read' : 'unread',
             summary: payload.summary ?? '',
           }
         } catch {
-          return { ...row, file_path: '', status: row.read ? 'read' : 'unread', summary: '' }
+          return { ...r, file_path: '', status: r.read ? 'read' : 'unread', summary: '' }
         }
       })
   }

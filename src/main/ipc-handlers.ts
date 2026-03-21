@@ -25,6 +25,7 @@ import { NotificationDetector } from './notification-detector'
 import { NotificationStateManager } from './notification-state'
 import { SettingsStore } from './settings-store'
 import { CwdPoller } from './cwd-poller'
+import { toError } from './errors'
 import { GitService } from './git-service'
 import type { FleetSettings } from '../shared/types'
 import type { AdmiralProcess } from './starbase/admiral-process'
@@ -475,7 +476,7 @@ export function registerIpcHandlers(
       const content = await readFile(filePath, 'utf-8')
       return { success: true, data: { content, size: stats.size, modifiedAt: stats.mtimeMs } }
     } catch (err) {
-      return { success: false, error: (err as Error).message }
+      return { success: false, error: toError(err).message }
     }
   })
 
@@ -484,7 +485,7 @@ export function registerIpcHandlers(
       await writeFile(filePath, content, 'utf-8')
       return { success: true }
     } catch (err) {
-      return { success: false, error: (err as Error).message }
+      return { success: false, error: toError(err).message }
     }
   })
 
@@ -500,7 +501,7 @@ export function registerIpcHandlers(
       const mimeType = mimeTypes[ext] ?? 'application/octet-stream'
       return { success: true, data: { size: stats.size, modifiedAt: stats.mtimeMs, mimeType } }
     } catch (err) {
-      return { success: false, error: (err as Error).message }
+      return { success: false, error: toError(err).message }
     }
   })
 
@@ -517,7 +518,7 @@ export function registerIpcHandlers(
       const base64 = buffer.toString('base64')
       return { success: true, data: { base64, mimeType } }
     } catch (err) {
-      return { success: false, error: (err as Error).message }
+      return { success: false, error: toError(err).message }
     }
   })
 }

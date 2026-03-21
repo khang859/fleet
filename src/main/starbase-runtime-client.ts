@@ -10,10 +10,11 @@ import type {
   RuntimeResponse,
 } from '../shared/starbase-runtime'
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api'
+import { CodedError } from './errors'
 
 type PendingRequest = {
   resolve: (value: unknown) => void
-  reject: (error: Error & { code?: string }) => void
+  reject: (error: Error) => void
 }
 
 type RuntimeEventMap = {
@@ -25,6 +26,13 @@ type RuntimeEventMap = {
 
 type RuntimeEnvelope = RuntimeResponse | RuntimeEvent
 type RuntimeMessageLike = RuntimeEnvelope | { data?: RuntimeEnvelope } | undefined
+
+function isRuntimeEnvelope(value: unknown): value is RuntimeEnvelope {
+  if (!value || typeof value !== 'object') return false
+  return ('event' in value && typeof (value as RuntimeEvent).event === 'string') ||
+         ('id' in value && 'ok' in value)
+}
+
 const RUNTIME_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log'
 
 function trace(message: string, extra?: unknown): void {
@@ -160,7 +168,7 @@ export class StarbaseRuntimeClient {
           const pending = this.pending.get(id)
           if (pending) {
             this.pending.delete(id)
-            pending.reject(error as Error & { code?: string })
+            pending.reject(error)
           }
         }
       })
@@ -211,8 +219,7 @@ export class StarbaseRuntimeClient {
       return
     }
 
-    const error = new Error(message.error) as Error & { code?: string }
-    error.code = message.code
+    const error = new CodedError(message.error ?? 'Unknown error', message.code ?? 'UNKNOWN')
     console.error('[starbase-runtime] parent rejected request', {
       id: message.id,
       message: message.error,
@@ -244,10 +251,10 @@ export class StarbaseRuntimeClient {
 
     const keys = Object.keys(message)
     if (keys.length === 1 && keys[0] === 'data' && 'data' in message && message.data !== undefined) {
-      return message.data as RuntimeEnvelope
+      return isRuntimeEnvelope(message.data) ? message.data : undefined
     }
 
-    return message as RuntimeEnvelope
+    return isRuntimeEnvelope(message) ? message : undefined
   }
 
   private describeMessage(message: RuntimeMessageLike): Record<string, unknown> {

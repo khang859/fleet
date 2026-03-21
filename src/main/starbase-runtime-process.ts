@@ -1,6 +1,7 @@
 import { appendFileSync } from 'node:fs'
 import type { RuntimeEvent, RuntimeRequest, RuntimeResponse } from '../shared/starbase-runtime'
 import { StarbaseRuntimeCore } from './starbase-runtime-core'
+import { toCodedError } from './errors'
 
 const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log'
 
@@ -114,7 +115,7 @@ transport.onMessage((request) => {
       transport.postMessage({ id: request.id, ok: true, data } satisfies RuntimeResponse)
     })
     .catch((error: unknown) => {
-      const err = error as Error & { code?: string }
+      const err = toCodedError(error)
       trace('request failed', { id: request.id, method: request.method, message: err.message, code: err.code })
       transport.postMessage({
         id: request.id,
