@@ -49,7 +49,7 @@ export function usePaneNavigation() {
       if (matchesShortcut(e, sc('navigate-prev')) || matchesShortcut(e, sc('navigate-next'))) {
         e.preventDefault();
         const state = useWorkspaceStore.getState();
-        const activeTab = state.workspace.tabs.find(t => t.id === state.activeTabId);
+        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
         if (!activeTab) return;
         const tabPaneIds = collectPaneIds(activeTab.splitRoot);
         const currentIndex = activePaneId ? tabPaneIds.indexOf(activePaneId) : -1;
@@ -66,7 +66,7 @@ export function usePaneNavigation() {
       // Cycle tabs
       if (matchesShortcut(e, sc('cycle-tab-next')) || matchesShortcut(e, sc('cycle-tab-prev'))) {
         e.preventDefault();
-        const tabIndex = workspace.tabs.findIndex(t => t.id === activeTabId);
+        const tabIndex = workspace.tabs.findIndex((t) => t.id === activeTabId);
         const forward = matchesShortcut(e, sc('cycle-tab-next'));
         const nextIndex = forward
           ? (tabIndex + 1) % workspace.tabs.length
@@ -77,7 +77,9 @@ export function usePaneNavigation() {
 
       if (matchesShortcut(e, sc('search'))) {
         e.preventDefault();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } }));
+        document.dispatchEvent(
+          new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } })
+        );
         return;
       }
 

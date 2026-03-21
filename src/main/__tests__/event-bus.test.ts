@@ -11,7 +11,7 @@ describe('EventBus', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: Date.now(),
+      timestamp: Date.now()
     };
     bus.emit('notification', event);
 

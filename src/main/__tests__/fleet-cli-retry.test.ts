@@ -7,7 +7,10 @@ import { unlinkSync, existsSync } from 'fs';
 import { createServer } from 'net';
 
 function tmpSocket(): string {
-  return join(tmpdir(), `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
+  return join(
+    tmpdir(),
+    `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`
+  );
 }
 
 function makeMockServices() {
@@ -19,7 +22,7 @@ function makeMockServices() {
     cargoService: { listCargo: () => [] },
     supplyRouteService: { listRoutes: () => [] },
     configService: { get: () => 'val', set: () => {} },
-    shipsLog: { query: () => [] },
+    shipsLog: { query: () => [] }
   } as any;
 }
 
@@ -43,7 +46,11 @@ describe('FleetCLI.sendWithRetry', () => {
     const socketPath = tmpSocket();
     // No server running, socket file doesn't exist
     const cli = new FleetCLI(socketPath);
-    const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 });
+    const result = await cli.sendWithRetry(
+      'ping',
+      {},
+      { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 }
+    );
     expect(result.ok).toBe(false);
   });
 

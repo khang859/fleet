@@ -7,10 +7,16 @@ vi.mock('electron-store', () => {
     default: class MockStore {
       private data: Record<string, unknown> = {};
       constructor(_opts?: unknown) {}
-      get(key: string, defaultVal?: unknown) { return this.data[key] ?? defaultVal; }
-      set(key: string, value: unknown) { this.data[key] = value; }
-      delete(key: string) { delete this.data[key]; }
-    },
+      get(key: string, defaultVal?: unknown) {
+        return this.data[key] ?? defaultVal;
+      }
+      set(key: string, value: unknown) {
+        this.data[key] = value;
+      }
+      delete(key: string) {
+        delete this.data[key];
+      }
+    }
   };
 });
 
@@ -29,12 +35,14 @@ describe('LayoutStore', () => {
     const workspace = {
       id: 'ws-1',
       label: 'Test',
-      tabs: [{
-        id: 'tab-1',
-        label: 'Shell',
-        cwd: '/tmp',
-        splitRoot: { type: 'leaf' as const, id: 'pane-1', cwd: '/tmp' },
-      }],
+      tabs: [
+        {
+          id: 'tab-1',
+          label: 'Shell',
+          cwd: '/tmp',
+          splitRoot: { type: 'leaf' as const, id: 'pane-1', cwd: '/tmp' }
+        }
+      ]
     };
     store.save(workspace);
     expect(store.load('ws-1')).toEqual(workspace);

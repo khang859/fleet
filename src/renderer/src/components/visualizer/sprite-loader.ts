@@ -39,7 +39,7 @@ function getTintedFrame(
   region: SpriteRegion,
   frameIndex: number,
   tintColor: string,
-  cacheKey: string,
+  cacheKey: string
 ): CanvasImageSource | null {
   if (!spriteSheet) return null;
 
@@ -85,7 +85,7 @@ export function drawSprite(
   dy: number,
   dw: number,
   dh: number,
-  tintColor?: string,
+  tintColor?: string
 ): void {
   if (!spriteSheet) return;
 
@@ -113,7 +113,7 @@ export function drawSpriteFrame(
   dx: number,
   dy: number,
   dw: number,
-  dh: number,
+  dh: number
 ): void {
   if (!spriteSheet) return;
   const sx = region.x + frame * region.w;

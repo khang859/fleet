@@ -52,7 +52,7 @@ export class SpaceWeather {
       opacity: 0.3 + Math.random() * 0.1,
       size: 1 + Math.random() * 2,
       life,
-      maxLife: life,
+      maxLife: life
     });
   }
 

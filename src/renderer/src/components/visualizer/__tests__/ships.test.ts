@@ -9,7 +9,7 @@ function makeAgent(overrides: Partial<AgentVisualState> = {}): AgentVisualState 
     state: 'working',
     subAgents: [],
     uptime: 1000,
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -28,7 +28,7 @@ describe('ShipManager', () => {
     const agents = [
       makeAgent({ paneId: 'pane-1' }),
       makeAgent({ paneId: 'pane-2', label: 'Agent 2' }),
-      makeAgent({ paneId: 'pane-3', label: 'Agent 3' }),
+      makeAgent({ paneId: 'pane-3', label: 'Agent 3' })
     ];
     sm.update(agents, 16, 400, 200);
 
@@ -72,9 +72,7 @@ describe('ShipManager', () => {
   it('creates smaller trailing ships for subagents', () => {
     const sm = new ShipManager();
     const agent = makeAgent({
-      subAgents: [
-        makeAgent({ paneId: 'pane-1:sub:1', label: 'sub-agent', state: 'reading' }),
-      ],
+      subAgents: [makeAgent({ paneId: 'pane-1:sub:1', label: 'sub-agent', state: 'reading' })]
     });
     sm.update([agent], 16, 400, 200);
 
@@ -92,7 +90,7 @@ describe('ShipManager', () => {
   it('caps rendered subagents at 4 with overflow badge', () => {
     const sm = new ShipManager();
     const subs = Array.from({ length: 6 }, (_, i) =>
-      makeAgent({ paneId: `pane-1:sub:${i}`, label: `sub-${i}`, state: 'working' }),
+      makeAgent({ paneId: `pane-1:sub:${i}`, label: `sub-${i}`, state: 'working' })
     );
     const agent = makeAgent({ subAgents: subs });
     sm.update([agent], 16, 400, 200);

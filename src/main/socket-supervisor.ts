@@ -15,7 +15,7 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry | AsyncServiceRegistry,
+    private services: ServiceRegistry | AsyncServiceRegistry
   ) {
     super();
   }

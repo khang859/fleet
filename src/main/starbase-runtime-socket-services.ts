@@ -1,5 +1,5 @@
-import type { AsyncServiceRegistry } from './socket-server'
-import type { StarbaseRuntimeClient } from './starbase-runtime-client'
+import type { AsyncServiceRegistry } from './socket-server';
+import type { StarbaseRuntimeClient } from './starbase-runtime-client';
 
 export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): AsyncServiceRegistry {
   return {
@@ -10,7 +10,7 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
       getCrewStatus: (crewId: string) => runtime.invoke('crew.status', crewId),
       observeCrew: (crewId: string) => runtime.invoke('crew.observe', crewId),
       messageCrew: (crewId: string, message: string) =>
-        runtime.invoke('crew.message', { crewId, message }),
+        runtime.invoke('crew.message', { crewId, message })
     },
     missionService: {
       addMission: (opts: unknown) => runtime.invoke('mission.add', opts),
@@ -24,7 +24,7 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
       abortMission: (missionId: number) => runtime.invoke('mission.abort', missionId),
       setReviewVerdict: (missionId: number, verdict: string, notes: string) =>
         runtime.invoke('mission.setReviewVerdict', { missionId, verdict, notes }),
-      getDependencies: (missionId: number) => runtime.invoke('mission.getDependencies', missionId),
+      getDependencies: (missionId: number) => runtime.invoke('mission.getDependencies', missionId)
     },
     commsService: {
       getUnreadByExecution: (executionId: string) =>
@@ -37,31 +37,31 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
       markAllRead: (opts?: unknown) => runtime.invoke('comms.markAllRead', opts),
       getTransmission: (id: number) => runtime.invoke('comms.getTransmission', id),
       getUnread: (crewId: string) => runtime.invoke('comms.getUnread', crewId),
-      resolve: (id: number, response: string) => runtime.invoke('comms.resolve', { id, response }),
+      resolve: (id: number, response: string) => runtime.invoke('comms.resolve', { id, response })
     },
     sectorService: {
       listVisibleSectors: () => runtime.invoke('sector.listVisible'),
       getSector: (sectorId: string) => runtime.invoke('sector.get', sectorId),
       addSector: (opts: unknown) => runtime.invoke('sector.add', opts),
-      removeSector: (sectorId: string) => runtime.invoke('sector.remove', sectorId),
+      removeSector: (sectorId: string) => runtime.invoke('sector.remove', sectorId)
     },
     cargoService: {
       listCargo: (filter?: unknown) => runtime.invoke('cargo.list', filter),
       getCargo: (id: number) => runtime.invoke('cargo.get', id),
       produceCargo: (opts: unknown) => runtime.invoke('cargo.produce', opts),
-      getUndelivered: (sectorId: string) => runtime.invoke('cargo.getUndelivered', sectorId),
+      getUndelivered: (sectorId: string) => runtime.invoke('cargo.getUndelivered', sectorId)
     },
     supplyRouteService: {
       listRoutes: () => runtime.invoke('supplyRoute.list'),
       addRoute: (opts: unknown) => runtime.invoke('supplyRoute.add', opts),
-      removeRoute: (routeId: number) => runtime.invoke('supplyRoute.remove', routeId),
+      removeRoute: (routeId: number) => runtime.invoke('supplyRoute.remove', routeId)
     },
     configService: {
       get: (key: string) => runtime.invoke('config.get', key),
-      set: (key: string, value: unknown) => runtime.invoke('config.set', { key, value }),
+      set: (key: string, value: unknown) => runtime.invoke('config.set', { key, value })
     },
     shipsLog: {
-      query: (opts?: unknown) => runtime.invoke('shipsLog.query', opts),
+      query: (opts?: unknown) => runtime.invoke('shipsLog.query', opts)
     },
     protocolService: {
       listProtocols: () => runtime.invoke('protocol.list'),
@@ -71,11 +71,12 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
         runtime.invoke('protocol.setEnabled', { slug, enabled }),
       listExecutions: (status?: string) => runtime.invoke('protocol.listExecutions', status),
       getExecution: (id: string) => runtime.invoke('protocol.getExecution', id),
-      advanceStep: (id: string, step: number) => runtime.invoke('protocol.advanceStep', { id, step }),
+      advanceStep: (id: string, step: number) =>
+        runtime.invoke('protocol.advanceStep', { id, step }),
       updateExecutionStatus: (id: string, status: string) =>
         runtime.invoke('protocol.updateExecutionStatus', { id, status }),
       updateExecutionContext: (id: string, context: string) =>
-        runtime.invoke('protocol.updateExecutionContext', { id, context }),
-    },
-  }
+        runtime.invoke('protocol.updateExecutionContext', { id, context })
+    }
+  };
 }

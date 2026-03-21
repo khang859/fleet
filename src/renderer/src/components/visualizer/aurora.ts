@@ -1,8 +1,8 @@
 type AuroraBand = {
-  baseY: number;       // base vertical position (fraction of canvas height)
-  hue: number;         // current hue in degrees
-  phase: number;       // sine wave phase for vertical oscillation
-  alpha: number;       // base alpha (0.02-0.04)
+  baseY: number; // base vertical position (fraction of canvas height)
+  hue: number; // current hue in degrees
+  phase: number; // sine wave phase for vertical oscillation
+  alpha: number; // base alpha (0.02-0.04)
   heightFraction: number; // band height as fraction of canvas height
   cachedCanvas: OffscreenCanvas | null;
   lastRenderedHue: number;
@@ -24,7 +24,7 @@ export class AuroraBands {
         alpha: 0.02 + Math.random() * 0.02,
         heightFraction: 0.08 + Math.random() * 0.06,
         cachedCanvas: null,
-        lastRenderedHue: -999,
+        lastRenderedHue: -999
       });
     }
     this.initialized = true;
@@ -52,7 +52,7 @@ export class AuroraBands {
 
   private renderBandCache(band: AuroraBand, width: number, height: number): void {
     const bandHeight = Math.ceil(band.heightFraction * height);
-    if (!band.cachedCanvas || band.cachedCanvas.width !== width || band.cachedCanvas.height !== bandHeight) {
+    if (band.cachedCanvas?.width !== width || band.cachedCanvas.height !== bandHeight) {
       band.cachedCanvas = new OffscreenCanvas(width, bandHeight);
     }
     const offCtx = band.cachedCanvas.getContext('2d')!;

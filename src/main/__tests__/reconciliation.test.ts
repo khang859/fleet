@@ -16,7 +16,10 @@ function getDb() {
 
 /** Convert JS Date to SQLite datetime format */
 function sqliteDatetime(date: Date): string {
-  return date.toISOString().replace('T', ' ').replace(/\.\d{3}Z$/, '');
+  return date
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, '');
 }
 
 beforeEach(() => {
@@ -27,7 +30,9 @@ beforeEach(() => {
   mkdirSync(sectorDir, { recursive: true });
   writeFileSync(join(sectorDir, 'index.ts'), '');
   execSync('git init && git checkout -b main', { cwd: sectorDir });
-  execSync('git config user.email "test@test.com" && git config user.name "Test"', { cwd: sectorDir });
+  execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+    cwd: sectorDir
+  });
   execSync('git add -A && git commit -m "init"', { cwd: sectorDir });
 
   starbaseDb = new StarbaseDB(join(TEST_DIR, 'workspace'), join(TEST_DIR, 'starbases'));
@@ -57,7 +62,7 @@ function insertCrew(opts: {
   getDb()
     .prepare(
       `INSERT INTO crew (id, sector_id, status, pid, worktree_path, worktree_branch, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       opts.id,
@@ -66,18 +71,14 @@ function insertCrew(opts: {
       opts.pid ?? 99999999,
       opts.worktreePath ?? null,
       opts.worktreeBranch ?? null,
-      opts.createdAt ?? sqliteDatetime(new Date()),
+      opts.createdAt ?? sqliteDatetime(new Date())
     );
 }
 
-function insertMission(opts: {
-  sectorId: string;
-  status?: string;
-  crewId?: string;
-}): number {
+function insertMission(opts: { sectorId: string; status?: string; crewId?: string }): number {
   const result = getDb()
     .prepare(
-      `INSERT INTO missions (sector_id, summary, prompt, status, crew_id) VALUES (?, 'test', 'test prompt', ?, ?)`,
+      `INSERT INTO missions (sector_id, summary, prompt, status, crew_id) VALUES (?, 'test', 'test prompt', ?, ?)`
     )
     .run(opts.sectorId, opts.status ?? 'queued', opts.crewId ?? null);
   return result.lastInsertRowid as number;
@@ -93,11 +94,13 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.lostCrew).toContain('crew-dead');
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-dead') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-dead') as {
+      status: string;
+    };
     expect(crew.status).toBe('lost');
   });
 
@@ -106,12 +109,18 @@ describe('runReconciliation', () => {
     insertSector('api', sectorDir);
     // Use our own PID (alive) but created 25 hours ago
     const oldTime = sqliteDatetime(new Date(Date.now() - 25 * 60 * 60 * 1000));
-    insertCrew({ id: 'crew-stale', sectorId: 'api', status: 'active', pid: process.pid, createdAt: oldTime });
+    insertCrew({
+      id: 'crew-stale',
+      sectorId: 'api',
+      status: 'active',
+      pid: process.pid,
+      createdAt: oldTime
+    });
 
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.lostCrew).toContain('crew-stale');
@@ -129,7 +138,7 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.orphanedWorktrees).toContain(orphanDir);
@@ -144,11 +153,13 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.requeuedMissions).toContain(missionId);
-    const mission = getDb().prepare('SELECT status FROM missions WHERE id = ?').get(missionId) as { status: string };
+    const mission = getDb().prepare('SELECT status FROM missions WHERE id = ?').get(missionId) as {
+      status: string;
+    };
     expect(mission.status).toBe('queued');
   });
 
@@ -160,11 +171,13 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.lostCrew).not.toContain('crew-done');
-    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-done') as { status: string };
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-done') as {
+      status: string;
+    };
     expect(crew.status).toBe('complete');
   });
 
@@ -182,7 +195,7 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.cleanedErroredCrew).toContain('crew-errored');
@@ -193,17 +206,27 @@ describe('runReconciliation', () => {
     const sectorDir = join(TEST_DIR, 'workspace', 'api');
     insertSector('api', sectorDir);
 
-    const worktreeDir = join(TEST_DIR, 'worktrees', starbaseDb.getStarbaseId(), 'crew-push-pending');
+    const worktreeDir = join(
+      TEST_DIR,
+      'worktrees',
+      starbaseDb.getStarbaseId(),
+      'crew-push-pending'
+    );
     mkdirSync(worktreeDir, { recursive: true });
     writeFileSync(join(worktreeDir, 'leftover.ts'), '// needs push');
 
-    insertCrew({ id: 'crew-push-pending', sectorId: 'api', status: 'error', worktreePath: worktreeDir });
+    insertCrew({
+      id: 'crew-push-pending',
+      sectorId: 'api',
+      status: 'error',
+      worktreePath: worktreeDir
+    });
     insertMission({ sectorId: 'api', status: 'push-pending', crewId: 'crew-push-pending' });
 
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.cleanedErroredCrew).not.toContain('crew-push-pending');
@@ -214,7 +237,7 @@ describe('runReconciliation', () => {
     const summary = await runReconciliation({
       db: getDb(),
       starbaseId: starbaseDb.getStarbaseId(),
-      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
     });
 
     expect(summary.lostCrew).toEqual([]);

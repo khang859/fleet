@@ -4,13 +4,54 @@ import { join, resolve, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.bmp',
+  '.ico'
+]);
 
 const BINARY_BLOCKLIST = new Set([
-  '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dmg', '.pkg', '.deb', '.rpm',
-  '.iso', '.bin', '.dll', '.so', '.dylib', '.o', '.a', '.wasm', '.class', '.jar', '.war',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.mp3', '.mp4', '.mov', '.avi', '.mkv', '.flac', '.wav', '.aac',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.7z',
+  '.rar',
+  '.exe',
+  '.dmg',
+  '.pkg',
+  '.deb',
+  '.rpm',
+  '.iso',
+  '.bin',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.o',
+  '.a',
+  '.wasm',
+  '.class',
+  '.jar',
+  '.war',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.ppt',
+  '.pptx',
+  '.mp3',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mkv',
+  '.flac',
+  '.wav',
+  '.aac'
 ]);
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -40,7 +81,7 @@ export function stripAnsi(str: string): string {
 
 // ── Helper: format array of objects as aligned text table ────────────────────
 
-export function formatTable(rows: Record<string, unknown>[], columns?: string[]): string {
+export function formatTable(rows: Array<Record<string, unknown>>, columns?: string[]): string {
   if (!rows || rows.length === 0) return '';
 
   const cols = columns ?? Object.keys(rows[0]);
@@ -62,11 +103,13 @@ export function formatTable(rows: Record<string, unknown>[], columns?: string[])
   const header = cols.map((col, i) => pad(col, widths[i])).join('  ');
 
   const dataRows = rows.map((row) =>
-    cols.map((col, i) => {
-      const val = row[col];
-      const valStr = val == null ? '' : stripAnsi(String(val));
-      return pad(valStr, widths[i]);
-    }).join('  '),
+    cols
+      .map((col, i) => {
+        const val = row[col];
+        const valStr = val == null ? '' : stripAnsi(String(val));
+        return pad(valStr, widths[i]);
+      })
+      .join('  ')
   );
 
   return [header, separator, ...dataRows].join('\n');
@@ -88,16 +131,17 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
       if (next !== undefined && !next.startsWith('--')) {
         if (key === 'depends-on') {
           // Accumulate into array for repeated flags
-          const existing = result[key]
-          result[key] = existing === undefined
-            ? next
-            : Array.isArray(existing)
-              ? [...existing, next]
-              : [String(existing), next]
+          const existing = result[key];
+          result[key] =
+            existing === undefined
+              ? next
+              : Array.isArray(existing)
+                ? [...existing, next]
+                : [String(existing), next];
         } else {
-          result[key] = next
+          result[key] = next;
         }
-        i += 2
+        i += 2;
       } else {
         result[key] = true;
         i += 1;
@@ -117,7 +161,11 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
 export class FleetCLI {
   constructor(private sockPath: string) {}
 
-  async send(command: string, args: Record<string, unknown>, timeoutMs = 60_000): Promise<CLIResponse> {
+  async send(
+    command: string,
+    args: Record<string, unknown>,
+    timeoutMs = 60_000
+  ): Promise<CLIResponse> {
     return new Promise((resolve) => {
       const id = randomUUID();
       let settled = false;
@@ -135,7 +183,7 @@ export class FleetCLI {
           id,
           ok: false,
           error: `timeout after ${timeoutMs}ms`,
-          code: 'TIMEOUT',
+          code: 'TIMEOUT'
         });
         try {
           socket.destroy();
@@ -174,7 +222,7 @@ export class FleetCLI {
           id,
           ok: false,
           error: err.message,
-          code: err.code,
+          code: err.code
         });
       });
 
@@ -188,14 +236,14 @@ export class FleetCLI {
   async sendWithRetry(
     command: string,
     args: Record<string, unknown>,
-    opts: RetryOptions = {},
+    opts: RetryOptions = {}
   ): Promise<CLIResponse> {
     const {
       maxRetries = 4,
       initialBackoffMs = 200,
       backoffMultiplier = 2,
       waitForAppMs = 15_000,
-      pollIntervalMs = 500,
+      pollIntervalMs = 500
     } = opts;
 
     // Wait for socket file if it doesn't exist
@@ -212,7 +260,7 @@ export class FleetCLI {
             id: '',
             ok: false,
             error: `Fleet app not running (no socket at ${this.sockPath})`,
-            code: 'ENOENT',
+            code: 'ENOENT'
           };
         }
       }
@@ -237,7 +285,9 @@ export class FleetCLI {
       }
 
       // Transient error: retry with backoff
-      process.stderr.write(`Connection failed (${result.code}), retrying (${attempt + 1}/${maxRetries})...\n`);
+      process.stderr.write(
+        `Connection failed (${result.code}), retrying (${attempt + 1}/${maxRetries})...\n`
+      );
       await new Promise((r) => setTimeout(r, backoff));
       backoff = Math.min(backoff * backoffMultiplier, 10_000);
     }
@@ -316,12 +366,12 @@ const COMMAND_MAP: Record<string, string> = {
   'protocols.executions.update': 'execution.update',
   'protocol.executions.list': 'execution.list',
   'protocol.executions.show': 'execution.show',
-  'protocol.executions.update': 'execution.update',
-}
+  'protocol.executions.update': 'execution.update'
+};
 
 function mapCommand(group: string, action: string): string {
-  const cliKey = `${group}.${action}`
-  return COMMAND_MAP[cliKey] ?? cliKey
+  const cliKey = `${group}.${action}`;
+  return COMMAND_MAP[cliKey] ?? cliKey;
 }
 
 // ── Client-side validation ────────────────────────────────────────────────────
@@ -346,7 +396,8 @@ export function validateCommand(command: string, args: Record<string, unknown>):
 
     // ── Missions ──────────────────────────────────────────────────────────
     case 'mission.create': {
-      const usage = 'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"';
+      const usage =
+        'Usage: fleet missions add --sector <id> --type <code|research|review> --summary "short title" --prompt "detailed instructions"';
       if (!args.sector && !args.sectorId)
         return `Error: missions add requires --sector <id>.\n\n${usage}`;
       if (!args.type) {
@@ -369,18 +420,16 @@ export function validateCommand(command: string, args: Record<string, unknown>):
           usage
         );
       }
-      if (!args.prompt)
-        return `Error: missions add requires --prompt "...".\n\n${usage}`;
-      if (!args.summary)
-        return `Error: missions add requires --summary "...".\n\n${usage}`;
+      if (!args.prompt) return `Error: missions add requires --prompt "...".\n\n${usage}`;
+      if (!args.summary) return `Error: missions add requires --summary "...".\n\n${usage}`;
       if (args['depends-on'] !== undefined) {
         const depIds = Array.isArray(args['depends-on'])
           ? args['depends-on'].map(String)
-          : [String(args['depends-on'])]
+          : [String(args['depends-on'])];
         for (const depId of depIds) {
-          const n = Number(depId)
+          const n = Number(depId);
           if (isNaN(n) || n <= 0) {
-            return `Error: --depends-on must be a numeric mission ID, got: "${depId}".\n\nUsage: fleet missions add ... --depends-on <research-mission-id>`
+            return `Error: --depends-on must be a numeric mission ID, got: "${depId}".\n\nUsage: fleet missions add ... --depends-on <research-mission-id>`;
           }
         }
       }
@@ -971,7 +1020,7 @@ Use \`fleet config\` when you need to read or update Starbase-level settings.
 \`\`\`bash
 fleet config get worktree_budget_mb
 fleet config set worktree_budget_mb --value 5000
-\`\`\``,
+\`\`\``
 };
 
 export function getHelpText(argv: string[]): string | null {
@@ -979,7 +1028,7 @@ export function getHelpText(argv: string[]): string | null {
   if (!hasHelp) return null;
 
   // Collect positional tokens (non-flag entries)
-  const positionals = argv.filter(a => !a.startsWith('-'));
+  const positionals = argv.filter((a) => !a.startsWith('-'));
   const [group] = positionals;
 
   // No group → top-level help
@@ -996,7 +1045,11 @@ export function getHelpText(argv: string[]): string | null {
 
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
-export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: boolean }): Promise<string> {
+export async function runCLI(
+  argv: string[],
+  sockPath: string,
+  opts?: { retry?: boolean }
+): Promise<string> {
   // ── Help intercept (before any command routing) ───────────────────────────
   const helpOutput = getHelpText(argv);
   if (helpOutput !== null) return helpOutput;
@@ -1032,7 +1085,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
         continue;
       }
 
-      const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image' as const : 'file' as const;
+      const paneType = IMAGE_EXTENSIONS.has(ext) ? ('image' as const) : ('file' as const);
       files.push({ path: resolved, paneType });
     }
 
@@ -1046,9 +1099,10 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
       if (!response.ok) {
         return `Error: ${response.error ?? 'Unknown error'}`;
       }
-      const output = errors.length > 0
-        ? errors.join('\n') + '\n' + `Opened ${files.length} file(s) in Fleet`
-        : `Opened ${files.length} file(s) in Fleet`;
+      const output =
+        errors.length > 0
+          ? errors.join('\n') + '\n' + `Opened ${files.length} file(s) in Fleet`
+          : `Opened ${files.length} file(s) in Fleet`;
       return output;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1126,7 +1180,13 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── comms.check special formatting ───────────────────────────────────────
   if (command === 'comms.check') {
-    const unread = (data != null && typeof data === 'object' && 'unread' in data && typeof data.unread === 'number') ? data.unread : 0;
+    const unread =
+      data != null &&
+      typeof data === 'object' &&
+      'unread' in data &&
+      typeof data.unread === 'number'
+        ? data.unread
+        : 0;
     if (unread === 0) return '';
     return `${unread} unread transmission(s) — run: fleet comms list --unread`;
   }
@@ -1134,46 +1194,74 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
   // ── protocol.list formatting ──────────────────────────────────────────────
   if (command === 'protocol.list') {
     if (!Array.isArray(data) || data.length === 0) return 'No protocols registered.';
-    const protocols = data as { slug: string; name: string; enabled: number; built_in: number }[];
-    return protocols.map(p => {
-      const status = p.enabled ? '✓' : '✗';
-      const tag = p.built_in ? ' [built-in]' : '';
-      return `  ${status} ${p.slug.padEnd(30)} ${p.name}${tag}`;
-    }).join('\n');
+    const protocols = data as Array<{
+      slug: string;
+      name: string;
+      enabled: number;
+      built_in: number;
+    }>;
+    return protocols
+      .map((p) => {
+        const status = p.enabled ? '✓' : '✗';
+        const tag = p.built_in ? ' [built-in]' : '';
+        return `  ${status} ${p.slug.padEnd(30)} ${p.name}${tag}`;
+      })
+      .join('\n');
   }
 
   // ── protocol.show formatting ──────────────────────────────────────────────
   if (command === 'protocol.show') {
     if (!data || typeof data !== 'object') return 'Protocol not found.';
-    const inner = data as { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] };
+    const inner = data as {
+      name: string;
+      description?: string;
+      help_text?: string;
+      trigger_examples?: string;
+      steps: Array<{ step_order: number; type: string; description?: string }>;
+    };
     const lines: string[] = [`\n${inner.name}\n`];
     if (inner.description) lines.push(inner.description + '\n');
     if (inner.help_text) lines.push(inner.help_text + '\n');
     if (inner.trigger_examples) {
       try {
         const examples: string[] = JSON.parse(inner.trigger_examples);
-        if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
-      } catch { /* ignore malformed JSON */ }
+        if (examples.length) {
+          lines.push('Examples:');
+          examples.forEach((e) => lines.push(`  • "${e}"`));
+          lines.push('');
+        }
+      } catch {
+        /* ignore malformed JSON */
+      }
     }
     lines.push('Steps:');
-    for (const s of inner.steps) lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
+    for (const s of inner.steps)
+      lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
     return lines.join('\n');
   }
 
   // ── execution.list formatting ─────────────────────────────────────────────
   if (command === 'execution.list') {
     if (!Array.isArray(data) || data.length === 0) return 'No executions found.';
-    const execs = data as { id: string; status: string; current_step: number; feature_request: string }[];
-    return execs.map(e =>
-      `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
-    ).join('\n');
+    const execs = data as Array<{
+      id: string;
+      status: string;
+      current_step: number;
+      feature_request: string;
+    }>;
+    return execs
+      .map(
+        (e) =>
+          `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
+      )
+      .join('\n');
   }
 
   // ── Array → text table ────────────────────────────────────────────────────
   if (Array.isArray(data)) {
     if (data.length === 0) return `No ${group} found.`;
     if (typeof data[0] === 'object' && data[0] !== null) {
-      return formatTable(data as Record<string, unknown>[]);
+      return formatTable(data as Array<Record<string, unknown>>);
     }
     return data.join('\n');
   }
@@ -1185,7 +1273,7 @@ export async function runCLI(argv: string[], sockPath: string, opts?: { retry?: 
 
   // ── Object → key: value lines ─────────────────────────────────────────────
   if (data !== null && typeof data === 'object') {
-    return Object.entries(data as Record<string, unknown>)  // after typeof 'object' + non-null check
+    return Object.entries(data as Record<string, unknown>) // after typeof 'object' + non-null check
       .map(([k, v]) => {
         const valStr = typeof v === 'string' ? stripAnsi(v) : String(v ?? '');
         return `${k}: ${valStr}`;

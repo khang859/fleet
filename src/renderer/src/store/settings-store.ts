@@ -21,5 +21,5 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
     await window.fleet.settings.set(partial);
     const settings = await window.fleet.settings.get();
     set({ settings });
-  },
+  }
 }));

@@ -1,17 +1,17 @@
-import { join } from 'path'
-import { homedir } from 'os'
-import type { FleetSettings } from './types'
-export { IPC_CHANNELS } from './ipc-channels'
+import { join } from 'path';
+import { homedir } from 'os';
+import type { FleetSettings } from './types';
+export { IPC_CHANNELS } from './ipc-channels';
 
-export const DEFAULT_SCROLLBACK = 10_000
+export const DEFAULT_SCROLLBACK = 10_000;
 
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.
 
 export const SOCKET_PATH =
-  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock')
+  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock');
 
-export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects')
+export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
@@ -59,4 +59,4 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     },
     soundVolume: 0.3
   }
-}
+};

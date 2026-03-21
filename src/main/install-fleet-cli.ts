@@ -1,8 +1,8 @@
-import { mkdir, writeFile, chmod } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
-import { homedir } from 'node:os'
-import { fileURLToPath } from 'node:url'
-import { existsSync } from 'node:fs'
+import { mkdir, writeFile, chmod } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 
 // ── installFleetCLI ───────────────────────────────────────────────────────────
 //
@@ -14,22 +14,23 @@ import { existsSync } from 'node:fs'
 //   ~/.fleet/lib/fleet-cli.js   — JS entrypoint (or symlink to compiled output)
 
 export async function installFleetCLI(): Promise<string> {
-  const fleetHome = join(homedir(), '.fleet')
-  const binDir = join(fleetHome, 'bin')
-  const libDir = join(fleetHome, 'lib')
+  const fleetHome = join(homedir(), '.fleet');
+  const binDir = join(fleetHome, 'bin');
+  const libDir = join(fleetHome, 'lib');
 
   // 1. Create directories
-  await mkdir(binDir, { recursive: true })
-  await mkdir(libDir, { recursive: true })
+  await mkdir(binDir, { recursive: true });
+  await mkdir(libDir, { recursive: true });
 
   // 2. Determine the path to fleet-cli source/compiled output
   //    In dev mode: run fleet-cli.ts directly via tsx
   //    In packaged mode: the compiled .mjs lives next to index.mjs
-  const isPackaged = existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs'))
-    || existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js'))
+  const isPackaged =
+    existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs')) ||
+    existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js'));
 
-  let cliEntrypoint: string
-  let wrapperContent: string
+  let cliEntrypoint: string;
+  let wrapperContent: string;
 
   // Shell wrapper with node path detection for common version managers.
   // Non-interactive shells (e.g. Claude Code) don't source ~/.zshrc or nvm.sh,
@@ -76,37 +77,37 @@ if ! command -v node >/dev/null 2>&1; then
   echo "       then restart Fleet so it can pick up the new installation." >&2
   exit 1
 fi
-`
+`;
 
   if (isPackaged) {
     // Production: use the compiled output bundled alongside the app
     const compiledPath = existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs'))
       ? join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs')
-      : join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js')
+      : join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js');
 
     // Copy the compiled CLI to ~/.fleet/lib/fleet-cli.mjs
     // Must use .mjs extension so Node loads it as ESM (it contains import statements)
-    const { readFile } = await import('node:fs/promises')
-    const compiledSource = await readFile(compiledPath, 'utf8')
-    cliEntrypoint = join(libDir, 'fleet-cli.mjs')
-    await writeFile(cliEntrypoint, compiledSource, 'utf8')
+    const { readFile } = await import('node:fs/promises');
+    const compiledSource = await readFile(compiledPath, 'utf8');
+    cliEntrypoint = join(libDir, 'fleet-cli.mjs');
+    await writeFile(cliEntrypoint, compiledSource, 'utf8');
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
 exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
-`
+`;
   } else {
     // Dev mode: resolve the TypeScript source file
     // import.meta.url points to the compiled .mjs in out/main/
     // The TS source lives at src/main/fleet-cli.ts relative to project root
-    const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
-    const tsSource = join(projectRoot, 'src', 'main', 'fleet-cli.ts')
+    const projectRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+    const tsSource = join(projectRoot, 'src', 'main', 'fleet-cli.ts');
 
     // Write a thin JS entrypoint that delegates to the TS source via tsx
     // Must use .mjs extension so Node loads it as ESM (it contains import statements)
-    cliEntrypoint = join(libDir, 'fleet-cli.mjs')
+    cliEntrypoint = join(libDir, 'fleet-cli.mjs');
     const jsEntrypoint = `#!/usr/bin/env node
 // Fleet CLI entrypoint — dev mode, delegates to TypeScript source via tsx
 import { createRequire } from 'node:module';
@@ -125,25 +126,25 @@ const result = spawnSync(tsx, [tsSource, ...process.argv.slice(2)], {
 });
 
 process.exit(result.status ?? 1);
-`
-    await writeFile(cliEntrypoint, jsEntrypoint, 'utf8')
+`;
+    await writeFile(cliEntrypoint, jsEntrypoint, 'utf8');
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
 exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
-`
+`;
   }
 
   // 3. Write the shell wrapper
-  const wrapperPath = join(binDir, 'fleet')
-  await writeFile(wrapperPath, wrapperContent, 'utf8')
+  const wrapperPath = join(binDir, 'fleet');
+  await writeFile(wrapperPath, wrapperContent, 'utf8');
 
   // 4. Make the shell wrapper executable (chmod 755)
-  await chmod(wrapperPath, 0o755)
+  await chmod(wrapperPath, 0o755);
 
-  console.log(`[fleet-cli] Installed fleet CLI at ${wrapperPath}`)
+  console.log(`[fleet-cli] Installed fleet CLI at ${wrapperPath}`);
 
-  return binDir
+  return binDir;
 }

@@ -25,7 +25,16 @@ function generateId(): string {
   return crypto.randomUUID();
 }
 
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.bmp',
+  '.ico'
+]);
 
 function getFileExt(filePath: string): string {
   const idx = filePath.lastIndexOf('.');
@@ -82,7 +91,9 @@ type WorkspaceStore = {
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
-  openFileInTab: (files: Array<{ path: string; paneType: 'file' | 'image'; label: string }>) => void;
+  openFileInTab: (
+    files: Array<{ path: string; paneType: 'file' | 'image'; label: string }>
+  ) => void;
   addRecentFile: (filePath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
   setPaneDirty: (paneId: string, dirty: boolean) => void;
@@ -102,12 +113,16 @@ function updateRatioAtPath(node: PaneNode, path: number[], ratio: number): PaneN
     ...node,
     children: [
       head === 0 ? updateRatioAtPath(node.children[0], rest, ratio) : node.children[0],
-      head === 1 ? updateRatioAtPath(node.children[1], rest, ratio) : node.children[1],
-    ],
+      head === 1 ? updateRatioAtPath(node.children[1], rest, ratio) : node.children[1]
+    ]
   };
 }
 
-function updateLeafInTree(node: PaneNode, paneId: string, updater: (leaf: PaneLeaf) => PaneLeaf): PaneNode {
+function updateLeafInTree(
+  node: PaneNode,
+  paneId: string,
+  updater: (leaf: PaneLeaf) => PaneLeaf
+): PaneNode {
   if (node.type === 'leaf') {
     return node.id === paneId ? updater(node) : node;
   }
@@ -115,8 +130,8 @@ function updateLeafInTree(node: PaneNode, paneId: string, updater: (leaf: PaneLe
     ...node,
     children: [
       updateLeafInTree(node.children[0], paneId, updater),
-      updateLeafInTree(node.children[1], paneId, updater),
-    ],
+      updateLeafInTree(node.children[1], paneId, updater)
+    ]
   };
 }
 
@@ -159,28 +174,42 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   addTab: (label, cwd) => {
     const resolvedLabel = label || cwdBasename(cwd);
     const leaf = createLeaf(cwd);
-    const tab: Tab = { id: generateId(), label: resolvedLabel, labelIsCustom: !!label, cwd, splitRoot: leaf };
+    const tab: Tab = {
+      id: generateId(),
+      label: resolvedLabel,
+      labelIsCustom: !!label,
+      cwd,
+      splitRoot: leaf
+    };
     set((state) => ({
       workspace: {
         ...state.workspace,
-        tabs: [...state.workspace.tabs, tab],
+        tabs: [...state.workspace.tabs, tab]
       },
       activeTabId: tab.id,
       activePaneId: leaf.id,
-      isDirty: true,
+      isDirty: true
     }));
     return leaf.id;
   },
 
   addCrewTab: (paneId, label, cwd, avatarVariant) => {
     const leaf: PaneLeaf = { type: 'leaf', id: paneId, cwd };
-    const tab: Tab = { id: generateId(), label, labelIsCustom: true, cwd, type: 'crew', avatarVariant, splitRoot: leaf };
+    const tab: Tab = {
+      id: generateId(),
+      label,
+      labelIsCustom: true,
+      cwd,
+      type: 'crew',
+      avatarVariant,
+      splitRoot: leaf
+    };
     set((state) => ({
       workspace: {
         ...state.workspace,
-        tabs: [...state.workspace.tabs, tab],
+        tabs: [...state.workspace.tabs, tab]
       },
-      isDirty: true,
+      isDirty: true
     }));
   },
 
@@ -193,11 +222,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
-        activePaneId: nextTab ? collectPaneIds(nextTab.splitRoot)[0] ?? null : null,
+        activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
         lastClosedTab: closedTab
-          ? { tab: closedTab, index: tabIndex, closedAt: Date.now(), serializedPanes: serializedPanes ?? new Map() }
+          ? {
+              tab: closedTab,
+              index: tabIndex,
+              closedAt: Date.now(),
+              serializedPanes: serializedPanes ?? new Map()
+            }
           : null,
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -213,7 +247,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         activeTabId: tab.id,
         activePaneId: collectPaneIds(tab.splitRoot)[0] ?? null,
         lastClosedTab: null,
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -223,10 +257,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: {
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label, labelIsCustom: true } : t,
-        ),
+          t.id === tabId ? { ...t, label, labelIsCustom: true } : t
+        )
       },
-      isDirty: true,
+      isDirty: true
     }));
   },
 
@@ -235,10 +269,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: {
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd), labelIsCustom: false } : t,
-        ),
+          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd), labelIsCustom: false } : t
+        )
       },
-      isDirty: true,
+      isDirty: true
     }));
   },
 
@@ -260,15 +294,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       tabs.splice(toIndex, 0, moved);
       return {
         workspace: { ...state.workspace, tabs },
-        isDirty: true,
+        isDirty: true
       };
     });
   },
 
   splitPane: (paneId, direction) => {
-    const newLeaf = createLeaf(get().workspace.tabs.find((t) =>
-      collectPaneIds(t.splitRoot).includes(paneId)
-    )?.cwd ?? '/');
+    const newLeaf = createLeaf(
+      get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/'
+    );
 
     function splitNode(node: PaneNode): PaneNode {
       if (node.type === 'leaf' && node.id === paneId) {
@@ -276,13 +310,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           type: 'split',
           direction,
           ratio: 0.5,
-          children: [node, newLeaf],
+          children: [node, newLeaf]
         };
       }
       if (node.type === 'split') {
         return {
           ...node,
-          children: [splitNode(node.children[0]), splitNode(node.children[1])],
+          children: [splitNode(node.children[0]), splitNode(node.children[1])]
         };
       }
       return node;
@@ -293,11 +327,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: splitNode(tab.splitRoot),
-        })),
+          splitRoot: splitNode(tab.splitRoot)
+        }))
       },
       activePaneId: newLeaf.id,
-      isDirty: true,
+      isDirty: true
     }));
 
     return newLeaf.id;
@@ -314,15 +348,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .filter((t): t is Tab => t !== null);
 
       const currentTab = tabs.find((t) => t.id === state.activeTabId);
-      const nextPaneId = currentTab
-        ? collectPaneIds(currentTab.splitRoot)[0] ?? null
-        : null;
+      const nextPaneId = currentTab ? (collectPaneIds(currentTab.splitRoot)[0] ?? null) : null;
 
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: currentTab?.id ?? tabs[0]?.id ?? null,
         activePaneId: nextPaneId,
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -339,9 +371,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ...state.workspace,
           tabs: state.workspace.tabs.map((tab) => {
             if (tab.id !== activeTabId) return tab;
-            return { ...tab, splitRoot: updateRatioAtPath(tab.splitRoot, splitNodePath, clampedRatio) };
-          }),
-        },
+            return {
+              ...tab,
+              splitRoot: updateRatioAtPath(tab.splitRoot, splitNodePath, clampedRatio)
+            };
+          })
+        }
       };
     });
   },
@@ -350,7 +385,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     // Backward compat: old saved workspaces may lack labelIsCustom
     const migratedTabs = workspace.tabs.map((t) => ({
       ...t,
-      labelIsCustom: t.labelIsCustom ?? false,
+      labelIsCustom: t.labelIsCustom ?? false
     }));
     const migrated = { ...workspace, tabs: migratedTabs };
     const firstTab = migrated.tabs[0];
@@ -359,7 +394,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: migrated,
       activeTabId: firstTab?.id ?? null,
       activePaneId: firstPane ?? null,
-      isDirty: false,
+      isDirty: false
     });
   },
 
@@ -368,7 +403,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   renameWorkspace: (label) => {
     set((state) => ({
       workspace: { ...state.workspace, label },
-      isDirty: true,
+      isDirty: true
     }));
   },
 
@@ -380,9 +415,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, isDirty: dirty })),
-        })),
-      },
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
+            ...leaf,
+            isDirty: dirty
+          }))
+        }))
+      }
     }));
   },
 
@@ -398,13 +436,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       labelIsCustom: true,
       cwd: '/',
       type: tabType,
-      splitRoot: leaf,
+      splitRoot: leaf
     };
     set((state) => ({
       workspace: { ...state.workspace, tabs: [...state.workspace.tabs, tab] },
       activeTabId: tab.id,
       activePaneId: leaf.id,
-      isDirty: true,
+      isDirty: true
     }));
     get().addRecentFile(filePath);
     return leaf.id;
@@ -432,7 +470,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           id: generateId(),
           cwd: '/',
           paneType: file.paneType,
-          filePath: file.path,
+          filePath: file.path
         };
         const tab: Tab = {
           id: generateId(),
@@ -440,13 +478,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           labelIsCustom: true,
           cwd: '/',
           type: file.paneType === 'image' ? 'image' : 'file',
-          splitRoot: leaf,
+          splitRoot: leaf
         };
         set((s) => ({
           workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
           activeTabId: tab.id,
           activePaneId: leaf.id,
-          isDirty: true,
+          isDirty: true
         }));
       }
     }
@@ -467,9 +505,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, isDirty })),
-        })),
-      },
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({ ...leaf, isDirty }))
+        }))
+      }
     }));
   },
 
@@ -477,5 +515,5 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   getAllPaneIds: () => {
     return get().workspace.tabs.flatMap((tab) => collectPaneIds(tab.splitRoot));
-  },
+  }
 }));

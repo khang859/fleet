@@ -30,7 +30,7 @@ function HighlightedText({ text, query }: { text: string; query: string }) {
       chars.push(
         <span key={i} className="text-blue-400 font-semibold">
           {text[i]}
-        </span>,
+        </span>
       );
       qi++;
     } else {
@@ -78,14 +78,15 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
   }, [query]);
 
   const results: FileEntry[] = query
-    ? allFiles.filter((f) => fuzzyMatch(query, f.relativePath) || fuzzyMatch(query, f.name)).slice(0, 8)
-    : recentFiles
-        .slice(0, 10)
-        .map((p) => ({
-          path: p,
-          relativePath: rootDir && p.startsWith(rootDir) ? p.slice(rootDir.length).replace(/^\//, '') : p,
-          name: p.split('/').pop() ?? p,
-        }));
+    ? allFiles
+        .filter((f) => fuzzyMatch(query, f.relativePath) || fuzzyMatch(query, f.name))
+        .slice(0, 8)
+    : recentFiles.slice(0, 10).map((p) => ({
+        path: p,
+        relativePath:
+          rootDir && p.startsWith(rootDir) ? p.slice(rootDir.length).replace(/^\//, '') : p,
+        name: p.split('/').pop() ?? p
+      }));
 
   // Scroll selected item into view
   useEffect(() => {
@@ -98,7 +99,7 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
       onClose();
       openFile(file.path);
     },
-    [onClose, openFile],
+    [onClose, openFile]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -150,9 +151,7 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
             placeholder="Search files..."
             className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500"
           />
-          {isLoading && (
-            <span className="text-xs text-neutral-500">Loading...</span>
-          )}
+          {isLoading && <span className="text-xs text-neutral-500">Loading...</span>}
         </div>
 
         {/* Results */}
@@ -166,14 +165,14 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
               <button
                 key={file.path}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                  i === selectedIndex ? 'bg-neutral-700 text-white' : 'text-neutral-300 hover:bg-neutral-800'
+                  i === selectedIndex
+                    ? 'bg-neutral-700 text-white'
+                    : 'text-neutral-300 hover:bg-neutral-800'
                 }`}
                 onMouseEnter={() => setSelectedIndex(i)}
                 onClick={() => handleSelect(file)}
               >
-                <span className="text-neutral-500 shrink-0">
-                  {getFileIcon(file.name)}
-                </span>
+                <span className="text-neutral-500 shrink-0">{getFileIcon(file.name)}</span>
                 <div className="flex flex-col min-w-0">
                   <span className="truncate font-medium">
                     <HighlightedText text={file.name} query={query} />

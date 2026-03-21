@@ -1,17 +1,25 @@
-import sharp from 'sharp'
-import { access, writeFile, mkdir } from 'node:fs/promises'
-import { join, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import sharp from 'sharp';
+import { access, writeFile, mkdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-const SPRITES_RAW = join(__dirname, '..', 'sprites-raw', 'star-command')
-const OUTPUT_SHEET = join(__dirname, '..', 'src', 'renderer', 'src', 'assets', 'star-command-sprites.png')
+const SPRITES_RAW = join(__dirname, '..', 'sprites-raw', 'star-command');
+const OUTPUT_SHEET = join(
+  __dirname,
+  '..',
+  'src',
+  'renderer',
+  'src',
+  'assets',
+  'star-command-sprites.png'
+);
 const OUTPUT_ATLAS = join(
   __dirname,
   '..',
@@ -21,9 +29,9 @@ const OUTPUT_ATLAS = join(
   'components',
   'star-command',
   'sc-sprite-atlas.ts'
-)
+);
 
-const SHEET_SIZE = 576
+const SHEET_SIZE = 576;
 
 // ---------------------------------------------------------------------------
 // Sprite layout — pixel-level positions for every asset
@@ -41,8 +49,8 @@ const SHEET_SIZE = 576
 //   Row 6d: y=416 frames 24-31
 // ---------------------------------------------------------------------------
 
-const STATION_FRAMES = 32
-const STATION_FRAMES_PER_ROW = 8
+const STATION_FRAMES = 32;
+const STATION_FRAMES_PER_ROW = 8;
 
 // Frame durations in ms
 const FRAME_DURATIONS: Record<string, number> = {
@@ -53,33 +61,33 @@ const FRAME_DURATIONS: Record<string, number> = {
   'dock-sparkle': 150,
   'thruster-flame': 100,
   beacon: 500,
-  'station-hub': 625,
-}
+  'station-hub': 625
+};
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface SpriteEntry {
-  src?: string
-  buffer?: Buffer
-  w: number
-  h: number
-  x: number
-  y: number
-  atlasGroup: string
-  frameIndex: number
-  framesPerRow?: number
+  src?: string;
+  buffer?: Buffer;
+  w: number;
+  h: number;
+  x: number;
+  y: number;
+  atlasGroup: string;
+  frameIndex: number;
+  framesPerRow?: number;
 }
 
 interface AtlasEntry {
-  x: number
-  y: number
-  w: number
-  h: number
-  frames: number
-  frameDuration: number
-  framesPerRow?: number
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  frames: number;
+  frameDuration: number;
+  framesPerRow?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -88,45 +96,45 @@ interface AtlasEntry {
 
 async function generateStationFrames(sourcePath: string, count: number): Promise<Buffer[]> {
   // Rotate at source resolution for best quality, then downscale to 64x64
-  const source = await sharp(sourcePath).ensureAlpha().png().toBuffer()
-  const sourceMeta = await sharp(source).metadata()
-  const srcSize = sourceMeta.width! // assume square
-  const frames: Buffer[] = []
+  const source = await sharp(sourcePath).ensureAlpha().png().toBuffer();
+  const sourceMeta = await sharp(source).metadata();
+  const srcSize = sourceMeta.width!; // assume square
+  const frames: Buffer[] = [];
 
   for (let i = 0; i < count; i++) {
-    const angle = (360 / count) * i
+    const angle = (360 / count) * i;
 
     if (angle === 0) {
       const frame = await sharp(source)
         .resize(64, 64, { kernel: 'nearest', fit: 'fill' })
         .ensureAlpha()
         .png()
-        .toBuffer()
-      frames.push(frame)
-      continue
+        .toBuffer();
+      frames.push(frame);
+      continue;
     }
 
     // Rotate at full resolution (canvas expands to contain rotated image)
     const rotated = await sharp(source)
       .rotate(angle, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
-      .toBuffer()
+      .toBuffer();
 
     // Center-crop back to srcSize x srcSize, then resize to 64x64
-    const rotMeta = await sharp(rotated).metadata()
-    const left = Math.floor((rotMeta.width! - srcSize) / 2)
-    const top = Math.floor((rotMeta.height! - srcSize) / 2)
+    const rotMeta = await sharp(rotated).metadata();
+    const left = Math.floor((rotMeta.width! - srcSize) / 2);
+    const top = Math.floor((rotMeta.height! - srcSize) / 2);
 
     const frame = await sharp(rotated)
       .extract({ left, top, width: srcSize, height: srcSize })
       .resize(64, 64, { kernel: 'nearest', fit: 'fill' })
       .ensureAlpha()
       .png()
-      .toBuffer()
+      .toBuffer();
 
-    frames.push(frame)
+    frames.push(frame);
   }
 
-  return frames
+  return frames;
 }
 
 // ---------------------------------------------------------------------------
@@ -134,17 +142,17 @@ async function generateStationFrames(sourcePath: string, count: number): Promise
 // ---------------------------------------------------------------------------
 
 async function buildManifest(): Promise<SpriteEntry[]> {
-  const entries: SpriteEntry[] = []
+  const entries: SpriteEntry[] = [];
 
   // ---- Rows 6a-6d: Station hub rotation (y=224+, h=64) ----
   // 32 frames auto-generated from station-hub-1.png, 8 per row across 4 rows
   const stationFrameBuffers = await generateStationFrames(
     join(SPRITES_RAW, 'station', 'station-hub-1.png'),
-    STATION_FRAMES,
-  )
+    STATION_FRAMES
+  );
   for (let f = 0; f < STATION_FRAMES; f++) {
-    const row = Math.floor(f / STATION_FRAMES_PER_ROW)
-    const col = f % STATION_FRAMES_PER_ROW
+    const row = Math.floor(f / STATION_FRAMES_PER_ROW);
+    const col = f % STATION_FRAMES_PER_ROW;
     entries.push({
       buffer: stationFrameBuffers[f],
       w: 64,
@@ -153,12 +161,12 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       y: 224 + row * 64,
       atlasGroup: 'station-hub',
       frameIndex: f,
-      framesPerRow: f === 0 ? STATION_FRAMES_PER_ROW : undefined,
-    })
+      framesPerRow: f === 0 ? STATION_FRAMES_PER_ROW : undefined
+    });
   }
 
   // ---- Row 0: Admiral avatars (y=0, 64x64 each) ----
-  const admiralVariants = ['default', 'speaking', 'thinking', 'alert', 'standby']
+  const admiralVariants = ['default', 'speaking', 'thinking', 'alert', 'standby'];
   admiralVariants.forEach((variant, i) => {
     entries.push({
       src: join(SPRITES_RAW, 'avatars', `admiral-${variant}.png`),
@@ -167,12 +175,12 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: i * 64,
       y: 0,
       atlasGroup: `admiral-${variant}`,
-      frameIndex: 0,
-    })
-  })
+      frameIndex: 0
+    });
+  });
 
   // ---- Row 0 continued: First Officer avatars (y=0, 64x64, after admiral) ----
-  const firstOfficerVariants = ['default', 'working', 'escalation', 'idle']
+  const firstOfficerVariants = ['default', 'working', 'escalation', 'idle'];
   firstOfficerVariants.forEach((variant, i) => {
     entries.push({
       src: join(SPRITES_RAW, 'avatars', `first-officer-${variant}.png`),
@@ -181,12 +189,12 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: (admiralVariants.length + i) * 64,
       y: 0,
       atlasGroup: `first-officer-${variant}`,
-      frameIndex: 0,
-    })
-  })
+      frameIndex: 0
+    });
+  });
 
   // ---- Row 1: Crew avatars (y=64, 64x64 each) ----
-  const crewVariants = ['hoodie', 'headphones', 'robot', 'cap', 'glasses']
+  const crewVariants = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'];
   crewVariants.forEach((variant, i) => {
     entries.push({
       src: join(SPRITES_RAW, 'avatars', `crew-${variant}.png`),
@@ -195,15 +203,15 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: i * 64,
       y: 64,
       atlasGroup: `crew-${variant}`,
-      frameIndex: 0,
-    })
-  })
+      frameIndex: 0
+    });
+  });
 
   // ---- Row 2: CRT frame pieces (y=128, h=32) ----
-  let crtX = 0
+  let crtX = 0;
 
   // Corners: 32x32 each
-  const corners = ['crt-corner-tl', 'crt-corner-tr', 'crt-corner-bl', 'crt-corner-br']
+  const corners = ['crt-corner-tl', 'crt-corner-tr', 'crt-corner-bl', 'crt-corner-br'];
   for (const corner of corners) {
     entries.push({
       src: join(SPRITES_RAW, 'chrome', `${corner}.png`),
@@ -212,9 +220,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: crtX,
       y: 128,
       atlasGroup: corner,
-      frameIndex: 0,
-    })
-    crtX += 32
+      frameIndex: 0
+    });
+    crtX += 32;
   }
 
   // Horizontal edge tile: 32x8
@@ -225,9 +233,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: crtX,
     y: 128,
     atlasGroup: 'crt-edge-h',
-    frameIndex: 0,
-  })
-  crtX += 32
+    frameIndex: 0
+  });
+  crtX += 32;
 
   // Vertical edge tile: 8x32
   entries.push({
@@ -237,9 +245,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: crtX,
     y: 128,
     atlasGroup: 'crt-edge-v',
-    frameIndex: 0,
-  })
-  crtX += 8
+    frameIndex: 0
+  });
+  crtX += 8;
 
   // Scanline tile: 32x32
   entries.push({
@@ -249,11 +257,11 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: crtX,
     y: 128,
     atlasGroup: 'crt-scanline',
-    frameIndex: 0,
-  })
+    frameIndex: 0
+  });
 
   // ---- Row 3: Status bar + chips (y=160, h=24) ----
-  let row3X = 0
+  let row3X = 0;
 
   // Statusbar tile: 64x24
   entries.push({
@@ -263,9 +271,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row3X,
     y: 160,
     atlasGroup: 'statusbar-tile',
-    frameIndex: 0,
-  })
-  row3X += 64
+    frameIndex: 0
+  });
+  row3X += 64;
 
   // Statusbar rivet: 8x8
   entries.push({
@@ -275,9 +283,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row3X,
     y: 160,
     atlasGroup: 'statusbar-rivet',
-    frameIndex: 0,
-  })
-  row3X += 8
+    frameIndex: 0
+  });
+  row3X += 8;
 
   // Statusbar divider: 4x24
   entries.push({
@@ -287,9 +295,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row3X,
     y: 160,
     atlasGroup: 'statusbar-divider',
-    frameIndex: 0,
-  })
-  row3X += 4
+    frameIndex: 0
+  });
+  row3X += 4;
 
   // Chip frame: 48x20
   entries.push({
@@ -299,12 +307,12 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row3X,
     y: 160,
     atlasGroup: 'chip-frame',
-    frameIndex: 0,
-  })
-  row3X += 48
+    frameIndex: 0
+  });
+  row3X += 48;
 
   // Chip dots: 8x8 each
-  const chipDots = ['active', 'hailing', 'error', 'complete', 'idle', 'lost']
+  const chipDots = ['active', 'hailing', 'error', 'complete', 'idle', 'lost'];
   for (const dot of chipDots) {
     entries.push({
       src: join(SPRITES_RAW, 'chrome', `chip-dot-${dot}.png`),
@@ -313,13 +321,13 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row3X,
       y: 160,
       atlasGroup: `chip-dot-${dot}`,
-      frameIndex: 0,
-    })
-    row3X += 8
+      frameIndex: 0
+    });
+    row3X += 8;
   }
 
   // ---- Row 4: Shuttle + spark + gas-puff (y=184, h=24) ----
-  let row4X = 0
+  let row4X = 0;
 
   // Shuttle idle: 24x24
   entries.push({
@@ -329,9 +337,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row4X,
     y: 184,
     atlasGroup: 'shuttle-idle',
-    frameIndex: 0,
-  })
-  row4X += 24
+    frameIndex: 0
+  });
+  row4X += 24;
 
   // Shuttle thrust: 3 frames, 24x24 each
   for (let f = 0; f < 3; f++) {
@@ -342,9 +350,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row4X,
       y: 184,
       atlasGroup: 'shuttle-thrust',
-      frameIndex: f,
-    })
-    row4X += 24
+      frameIndex: f
+    });
+    row4X += 24;
   }
 
   // Spark: 2 frames, 8x8 each
@@ -356,9 +364,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row4X,
       y: 184,
       atlasGroup: 'spark',
-      frameIndex: f,
-    })
-    row4X += 8
+      frameIndex: f
+    });
+    row4X += 8;
   }
 
   // Gas-puff: 3 frames, 12x12 each
@@ -370,13 +378,13 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row4X,
       y: 184,
       atlasGroup: 'gas-puff',
-      frameIndex: f,
-    })
-    row4X += 12
+      frameIndex: f
+    });
+    row4X += 12;
   }
 
   // ---- Row 5: Explosion + dock-sparkle + thruster-flame + checkmark + orbs + beacon (y=208, h=16) ----
-  let row5X = 0
+  let row5X = 0;
 
   // Explosion: 4 frames, 16x16 each
   for (let f = 0; f < 4; f++) {
@@ -387,9 +395,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row5X,
       y: 208,
       atlasGroup: 'explosion',
-      frameIndex: f,
-    })
-    row5X += 16
+      frameIndex: f
+    });
+    row5X += 16;
   }
 
   // Dock-sparkle: 3 frames, 8x8 each
@@ -401,9 +409,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row5X,
       y: 208,
       atlasGroup: 'dock-sparkle',
-      frameIndex: f,
-    })
-    row5X += 8
+      frameIndex: f
+    });
+    row5X += 8;
   }
 
   // Thruster-flame: 3 frames, 8x12 each
@@ -415,9 +423,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: row5X,
       y: 208,
       atlasGroup: 'thruster-flame',
-      frameIndex: f,
-    })
-    row5X += 8
+      frameIndex: f
+    });
+    row5X += 8;
   }
 
   // Checkmark hologram: 16x16
@@ -428,9 +436,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'checkmark-holo',
-    frameIndex: 0,
-  })
-  row5X += 16
+    frameIndex: 0
+  });
+  row5X += 16;
 
   // Orbs: teal 12x12, amber 12x12, cargo 16x16
   entries.push({
@@ -440,9 +448,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'orb-teal',
-    frameIndex: 0,
-  })
-  row5X += 12
+    frameIndex: 0
+  });
+  row5X += 12;
 
   entries.push({
     src: join(SPRITES_RAW, 'orbs', 'orb-amber.png'),
@@ -451,9 +459,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'orb-amber',
-    frameIndex: 0,
-  })
-  row5X += 12
+    frameIndex: 0
+  });
+  row5X += 12;
 
   entries.push({
     src: join(SPRITES_RAW, 'orbs', 'orb-cargo.png'),
@@ -462,9 +470,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'orb-cargo',
-    frameIndex: 0,
-  })
-  row5X += 16
+    frameIndex: 0
+  });
+  row5X += 16;
 
   // Beacon: on 12x12, off 12x12
   entries.push({
@@ -474,9 +482,9 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'beacon',
-    frameIndex: 0,
-  })
-  row5X += 12
+    frameIndex: 0
+  });
+  row5X += 12;
 
   entries.push({
     src: join(SPRITES_RAW, 'beacon', 'beacon-off.png'),
@@ -485,10 +493,10 @@ async function buildManifest(): Promise<SpriteEntry[]> {
     x: row5X,
     y: 208,
     atlasGroup: 'beacon',
-    frameIndex: 1,
-  })
+    frameIndex: 1
+  });
 
-  return entries
+  return entries;
 }
 
 // ---------------------------------------------------------------------------
@@ -496,16 +504,16 @@ async function buildManifest(): Promise<SpriteEntry[]> {
 // ---------------------------------------------------------------------------
 
 async function validateFiles(entries: SpriteEntry[]): Promise<string[]> {
-  const missing: string[] = []
+  const missing: string[] = [];
   for (const entry of entries) {
-    if (!entry.src) continue
+    if (!entry.src) continue;
     try {
-      await access(entry.src)
+      await access(entry.src);
     } catch {
-      missing.push(entry.src.replace(SPRITES_RAW + '/', ''))
+      missing.push(entry.src.replace(SPRITES_RAW + '/', ''));
     }
   }
-  return missing
+  return missing;
 }
 
 // ---------------------------------------------------------------------------
@@ -514,10 +522,10 @@ async function validateFiles(entries: SpriteEntry[]): Promise<string[]> {
 
 async function checkTransparency(path: string): Promise<boolean> {
   try {
-    const meta = await sharp(path).metadata()
-    return meta.hasAlpha ?? false
+    const meta = await sharp(path).metadata();
+    return meta.hasAlpha ?? false;
   } catch {
-    return false
+    return false;
   }
 }
 
@@ -531,53 +539,55 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
       width: SHEET_SIZE,
       height: SHEET_SIZE,
       channels: 4,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
-  }).png()
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
+  }).png();
 
-  const composites: sharp.OverlayOptions[] = []
-  const warnings: string[] = []
+  const composites: sharp.OverlayOptions[] = [];
+  const warnings: string[] = [];
 
   for (const entry of entries) {
-    let inputBuffer: Buffer
+    let inputBuffer: Buffer;
 
     if (entry.buffer) {
-      inputBuffer = entry.buffer
+      inputBuffer = entry.buffer;
     } else {
-      const hasAlpha = await checkTransparency(entry.src!)
+      const hasAlpha = await checkTransparency(entry.src!);
       if (!hasAlpha) {
-        warnings.push(`  WARNING: ${entry.src!.replace(SPRITES_RAW + '/', '')} has no alpha channel`)
+        warnings.push(
+          `  WARNING: ${entry.src!.replace(SPRITES_RAW + '/', '')} has no alpha channel`
+        );
       }
-      inputBuffer = await sharp(entry.src!).ensureAlpha().png().toBuffer()
+      inputBuffer = await sharp(entry.src!).ensureAlpha().png().toBuffer();
     }
 
     const resized = await sharp(inputBuffer)
       .resize(entry.w, entry.h, {
         kernel: 'nearest',
-        fit: 'fill',
+        fit: 'fill'
       })
       .ensureAlpha()
-      .toBuffer()
+      .toBuffer();
 
     composites.push({
       input: resized,
       left: entry.x,
-      top: entry.y,
-    })
+      top: entry.y
+    });
   }
 
   if (warnings.length > 0) {
-    console.log('\nTransparency warnings:')
-    warnings.forEach((w) => console.log(w))
-    console.log('  These images may have solid backgrounds that need to be removed.\n')
+    console.log('\nTransparency warnings:');
+    warnings.forEach((w) => console.log(w));
+    console.log('  These images may have solid backgrounds that need to be removed.\n');
   }
 
-  const result = await base.composite(composites).toBuffer()
+  const result = await base.composite(composites).toBuffer();
 
-  await mkdir(join(OUTPUT_SHEET, '..'), { recursive: true })
-  await sharp(result).png().toFile(OUTPUT_SHEET)
+  await mkdir(join(OUTPUT_SHEET, '..'), { recursive: true });
+  await sharp(result).png().toFile(OUTPUT_SHEET);
 
-  console.log(`Sprite sheet written to: ${OUTPUT_SHEET}`)
+  console.log(`Sprite sheet written to: ${OUTPUT_SHEET}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -585,24 +595,24 @@ async function assembleSheet(entries: SpriteEntry[]): Promise<void> {
 // ---------------------------------------------------------------------------
 
 function buildAtlas(entries: SpriteEntry[]): Record<string, AtlasEntry> {
-  const atlas: Record<string, AtlasEntry> = {}
+  const atlas: Record<string, AtlasEntry> = {};
 
-  const groups = new Map<string, SpriteEntry[]>()
+  const groups = new Map<string, SpriteEntry[]>();
   for (const entry of entries) {
-    const group = groups.get(entry.atlasGroup) ?? []
-    group.push(entry)
-    groups.set(entry.atlasGroup, group)
+    const group = groups.get(entry.atlasGroup) ?? [];
+    group.push(entry);
+    groups.set(entry.atlasGroup, group);
   }
 
   for (const [key, groupEntries] of groups) {
-    groupEntries.sort((a, b) => a.frameIndex - b.frameIndex)
-    const first = groupEntries[0]
+    groupEntries.sort((a, b) => a.frameIndex - b.frameIndex);
+    const first = groupEntries[0];
 
-    let duration = 0
+    let duration = 0;
     for (const [pattern, dur] of Object.entries(FRAME_DURATIONS)) {
       if (key === pattern || key.startsWith(pattern)) {
-        duration = dur
-        break
+        duration = dur;
+        break;
       }
     }
 
@@ -613,11 +623,11 @@ function buildAtlas(entries: SpriteEntry[]): Record<string, AtlasEntry> {
       h: first.h,
       frames: groupEntries.length,
       frameDuration: duration,
-      framesPerRow: first.framesPerRow,
-    }
+      framesPerRow: first.framesPerRow
+    };
   }
 
-  return atlas
+  return atlas;
 }
 
 function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
@@ -641,46 +651,60 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
     '  framesPerRow?: number',
     '}',
     '',
-    'export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {',
-  ]
+    'export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {'
+  ];
 
   const sortedKeys = Object.keys(atlas).sort((a, b) => {
     const order = (k: string): number => {
-      if (k.startsWith('admiral-')) return 0
-      if (k.startsWith('first-officer-')) return 0.5
-      if (k.startsWith('crew-')) return 1
-      if (k.startsWith('crt-')) return 2
-      if (k.startsWith('statusbar-')) return 3
-      if (k.startsWith('chip-')) return 4
-      if (k.startsWith('shuttle-')) return 5
-      if (k.startsWith('spark') || k.startsWith('gas-') || k.startsWith('explosion') || k.startsWith('dock-') || k.startsWith('thruster-') || k.startsWith('checkmark')) return 6
-      if (k.startsWith('orb-')) return 7
-      if (k.startsWith('beacon')) return 8
-      if (k.startsWith('station-')) return 9
-      return 10
-    }
-    const diff = order(a) - order(b)
-    if (diff !== 0) return diff
-    return a.localeCompare(b)
-  })
+      if (k.startsWith('admiral-')) return 0;
+      if (k.startsWith('first-officer-')) return 0.5;
+      if (k.startsWith('crew-')) return 1;
+      if (k.startsWith('crt-')) return 2;
+      if (k.startsWith('statusbar-')) return 3;
+      if (k.startsWith('chip-')) return 4;
+      if (k.startsWith('shuttle-')) return 5;
+      if (
+        k.startsWith('spark') ||
+        k.startsWith('gas-') ||
+        k.startsWith('explosion') ||
+        k.startsWith('dock-') ||
+        k.startsWith('thruster-') ||
+        k.startsWith('checkmark')
+      )
+        return 6;
+      if (k.startsWith('orb-')) return 7;
+      if (k.startsWith('beacon')) return 8;
+      if (k.startsWith('station-')) return 9;
+      return 10;
+    };
+    const diff = order(a) - order(b);
+    if (diff !== 0) return diff;
+    return a.localeCompare(b);
+  });
 
   for (const key of sortedKeys) {
-    const e = atlas[key]
+    const e = atlas[key];
     lines.push(
       `  '${key}': { x: ${e.x}, y: ${e.y}, w: ${e.w}, h: ${e.h}, frames: ${e.frames}, frameDuration: ${e.frameDuration}${e.framesPerRow !== undefined ? `, framesPerRow: ${e.framesPerRow}` : ''} },`
-    )
+    );
   }
 
-  lines.push('}')
-  lines.push('')
+  lines.push('}');
+  lines.push('');
 
   // Helper constants
-  lines.push('export const ADMIRAL_VARIANTS = [\'default\', \'speaking\', \'thinking\', \'alert\', \'standby\'] as const')
-  lines.push('export const FIRST_OFFICER_VARIANTS = [\'default\', \'working\', \'escalation\', \'idle\'] as const')
-  lines.push('export const CREW_VARIANTS = [\'hoodie\', \'headphones\', \'robot\', \'cap\', \'glasses\'] as const')
-  lines.push('')
+  lines.push(
+    "export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const"
+  );
+  lines.push(
+    "export const FIRST_OFFICER_VARIANTS = ['default', 'working', 'escalation', 'idle'] as const"
+  );
+  lines.push(
+    "export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const"
+  );
+  lines.push('');
 
-  return lines.join('\n')
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -688,40 +712,40 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  console.log('Star Command Sprite Assembly')
-  console.log('============================\n')
+  console.log('Star Command Sprite Assembly');
+  console.log('============================\n');
 
-  console.log('Generating station rotation frames...')
-  const entries = await buildManifest()
-  console.log(`Expected sprites: ${entries.length}`)
+  console.log('Generating station rotation frames...');
+  const entries = await buildManifest();
+  console.log(`Expected sprites: ${entries.length}`);
 
-  console.log('Validating source files...')
-  const missing = await validateFiles(entries)
+  console.log('Validating source files...');
+  const missing = await validateFiles(entries);
 
   if (missing.length > 0) {
-    console.error(`\nMissing ${missing.length} sprite files:`)
-    missing.forEach((f) => console.error(`  - sprites-raw/star-command/${f}`))
-    console.error('\nPlease generate all sprites before running this script.')
-    console.error('See docs/star-command-visual-prompts.md for prompts.')
-    process.exit(1)
+    console.error(`\nMissing ${missing.length} sprite files:`);
+    missing.forEach((f) => console.error(`  - sprites-raw/star-command/${f}`));
+    console.error('\nPlease generate all sprites before running this script.');
+    console.error('See docs/star-command-visual-prompts.md for prompts.');
+    process.exit(1);
   }
 
-  console.log('All files found!\n')
+  console.log('All files found!\n');
 
-  console.log('Assembling sprite sheet...')
-  await assembleSheet(entries)
+  console.log('Assembling sprite sheet...');
+  await assembleSheet(entries);
 
-  console.log('Generating sprite atlas...')
-  const atlas = buildAtlas(entries)
-  const code = generateAtlasCode(atlas)
-  await mkdir(join(OUTPUT_ATLAS, '..'), { recursive: true })
-  await writeFile(OUTPUT_ATLAS, code, 'utf-8')
-  console.log(`Atlas written to: ${OUTPUT_ATLAS}`)
+  console.log('Generating sprite atlas...');
+  const atlas = buildAtlas(entries);
+  const code = generateAtlasCode(atlas);
+  await mkdir(join(OUTPUT_ATLAS, '..'), { recursive: true });
+  await writeFile(OUTPUT_ATLAS, code, 'utf-8');
+  console.log(`Atlas written to: ${OUTPUT_ATLAS}`);
 
-  console.log('\nDone! Star Command sprite sheet and atlas are ready.')
+  console.log('\nDone! Star Command sprite sheet and atlas are ready.');
 }
 
 main().catch((err) => {
-  console.error('Assembly failed:', err)
-  process.exit(1)
-})
+  console.error('Assembly failed:', err);
+  process.exit(1);
+});

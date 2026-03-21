@@ -45,7 +45,7 @@ export class ShootingStarSystem {
     const startY = Math.random() * height * 0.3;
 
     const speed = 300 + Math.random() * 200;
-    const angle = (Math.PI / 6) + Math.random() * (Math.PI / 6);
+    const angle = Math.PI / 6 + Math.random() * (Math.PI / 6);
     const direction = Math.random() > 0.5 ? 1 : -1;
 
     this.stars.push({
@@ -56,7 +56,7 @@ export class ShootingStarSystem {
       length: 20 + Math.random() * 30,
       brightness: 0.8 + Math.random() * 0.2,
       life: 0,
-      maxLife: 300 + Math.random() * 500,
+      maxLife: 300 + Math.random() * 500
     });
   }
 
@@ -81,9 +81,14 @@ export class ShootingStarSystem {
 
         ctx.drawImage(
           sheet,
-          streakRegion.x, streakRegion.y, streakRegion.w, streakRegion.h,
-          -STREAK_RENDER_W / 2, -STREAK_RENDER_H / 2,
-          STREAK_RENDER_W, STREAK_RENDER_H,
+          streakRegion.x,
+          streakRegion.y,
+          streakRegion.w,
+          streakRegion.h,
+          -STREAK_RENDER_W / 2,
+          -STREAK_RENDER_H / 2,
+          STREAK_RENDER_W,
+          STREAK_RENDER_H
         );
 
         ctx.restore();
@@ -100,11 +105,7 @@ export class ShootingStarSystem {
           const trailAlpha = alpha * (1 - i / (TRAIL_SEGMENTS + 1)) * 0.7;
           const segLen = (star.length / TRAIL_SEGMENTS) * i;
           ctx.fillStyle = `rgba(255, 255, 255, ${Math.max(0, Math.min(1, trailAlpha))})`;
-          ctx.fillRect(
-            Math.round(star.x + dx * segLen),
-            Math.round(star.y + dy * segLen),
-            1, 1,
-          );
+          ctx.fillRect(Math.round(star.x + dx * segLen), Math.round(star.y + dy * segLen), 1, 1);
         }
       }
     }

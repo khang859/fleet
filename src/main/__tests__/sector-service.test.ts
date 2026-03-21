@@ -49,7 +49,7 @@ describe('SectorService', () => {
     svc.addSector({ path: 'api' });
     const list = svc.listSectors();
     expect(list).toHaveLength(2);
-    const apiSector = list.find(s => s.id === 'api');
+    const apiSector = list.find((s) => s.id === 'api');
     expect(apiSector).toBeDefined();
     expect(apiSector!.id).toBe('api');
   });

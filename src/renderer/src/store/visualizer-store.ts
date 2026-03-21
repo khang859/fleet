@@ -18,5 +18,5 @@ export const useVisualizerStore = create<VisualizerStore>((set) => ({
 
   setAgents: (agents) => set({ agents }),
   toggleVisible: () => set((state) => ({ isVisible: !state.isVisible })),
-  setPanelMode: (mode) => set({ panelMode: mode }),
+  setPanelMode: (mode) => set({ panelMode: mode })
 }));

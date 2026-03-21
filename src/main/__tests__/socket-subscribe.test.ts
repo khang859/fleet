@@ -16,7 +16,7 @@ describe('SocketApi subscriptions', () => {
   beforeEach(async () => {
     socketPath = tmpSocket();
     const handler: SocketCommandHandler = {
-      handleCommand: vi.fn().mockResolvedValue({ ok: true }),
+      handleCommand: vi.fn().mockResolvedValue({ ok: true })
     };
     api = new SocketApi(socketPath, handler);
     await api.start();
@@ -24,7 +24,9 @@ describe('SocketApi subscriptions', () => {
 
   afterEach(async () => {
     await api.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('receives broadcast events after subscribing', async () => {
@@ -51,7 +53,10 @@ describe('SocketApi subscriptions', () => {
         }
       });
 
-      setTimeout(() => { client.end(); reject(new Error('timeout')); }, 3000);
+      setTimeout(() => {
+        client.end();
+        reject(new Error('timeout'));
+      }, 3000);
     });
 
     expect(messages).toHaveLength(2);
@@ -79,11 +84,17 @@ describe('SocketApi subscriptions', () => {
           // Broadcast a notification event (not subscribed)
           api.broadcastEvent('notification', { paneId: 'p1', level: 'info', timestamp: 1 });
           // Give time for potential delivery, then close
-          setTimeout(() => { client.end(); resolve(collected); }, 200);
+          setTimeout(() => {
+            client.end();
+            resolve(collected);
+          }, 200);
         }
       });
 
-      setTimeout(() => { client.end(); resolve(collected); }, 3000);
+      setTimeout(() => {
+        client.end();
+        resolve(collected);
+      }, 3000);
     });
 
     // Should only have the subscribe ack, not the notification

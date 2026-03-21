@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
-import { useStarCommandStore } from '../store/star-command-store'
+import { useState, useEffect, useCallback } from 'react';
+import { useStarCommandStore } from '../store/star-command-store';
 import type {
   StarbaseSectorRow,
   StarbaseSupplyRoute,
   StarbaseRetentionStats,
-  StarbaseCleanupResult,
-} from '../../../shared/ipc-api'
+  StarbaseCleanupResult
+} from '../../../shared/ipc-api';
 
 // ---- Agent Prompt Templates ----
 
@@ -24,9 +24,9 @@ Key commands:
 - \`fleet comms send --from $FLEET_CREW_ID --to admiral --message "..."\` — report status, ask questions, or flag blockers
 - \`fleet crew info $FLEET_CREW_ID\` — check your own status
 
-**Always check \`fleet comms inbox\` before starting work.** If you hit a blocker or discover something unexpected outside your mission scope, notify the Admiral via comms rather than handling it yourself.`
+**Always check \`fleet comms inbox\` before starting work.** If you hit a blocker or discover something unexpected outside your mission scope, notify the Admiral via comms rather than handling it yourself.`;
 
-const AGENT_TEMPLATES: { id: string; label: string; prompt: string }[] = [
+const AGENT_TEMPLATES: Array<{ id: string; label: string; prompt: string }> = [
   {
     id: 'crew-member',
     label: 'Crew Member',
@@ -125,14 +125,14 @@ End with a clear verdict: approve, request changes, or needs discussion.
 - Show the problematic code and explain why it's an issue, not just that it is one.
 ${FLEET_CONTEXT}`
   }
-]
+];
 
 // ---- Types (imported from shared/ipc-api) ----
 
-type SectorRow = StarbaseSectorRow
-type SupplyRoute = StarbaseSupplyRoute
-type RetentionStats = StarbaseRetentionStats
-type CleanupResult = StarbaseCleanupResult
+type SectorRow = StarbaseSectorRow;
+type SupplyRoute = StarbaseSupplyRoute;
+type RetentionStats = StarbaseRetentionStats;
+type CleanupResult = StarbaseCleanupResult;
 
 // ---- Sub-components ----
 
@@ -142,7 +142,7 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
       {title}
       {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  )
+  );
 }
 
 // ---- Sectors Section ----
@@ -152,11 +152,11 @@ function SectorCard({
   onRemove,
   onUpdate
 }: {
-  sector: SectorRow
-  onRemove: (id: string) => void
-  onUpdate: (id: string, fields: Record<string, unknown>) => void
+  sector: SectorRow;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, fields: Record<string, unknown>) => void;
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
@@ -275,8 +275,8 @@ function SectorCard({
               <select
                 value=""
                 onChange={(e) => {
-                  const tpl = AGENT_TEMPLATES.find((t) => t.id === e.target.value)
-                  if (tpl) onUpdate(sector.id, { system_prompt: tpl.prompt })
+                  const tpl = AGENT_TEMPLATES.find((t) => t.id === e.target.value);
+                  if (tpl) onUpdate(sector.id, { system_prompt: tpl.prompt });
                 }}
                 className="bg-neutral-900 text-neutral-400 text-xs rounded px-1.5 py-0.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
               >
@@ -330,56 +330,56 @@ function SectorCard({
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function SectorsSection() {
-  const { sectors, setSectors } = useStarCommandStore()
-  const [addPath, setAddPath] = useState('')
-  const [addName, setAddName] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const { sectors, setSectors } = useStarCommandStore();
+  const [addPath, setAddPath] = useState('');
+  const [addName, setAddName] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    window.fleet.starbase.listSectors().then((s) => setSectors(s))
-  }, [setSectors])
+    window.fleet.starbase.listSectors().then((s) => setSectors(s));
+  }, [setSectors]);
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    refresh();
+  }, [refresh]);
 
   const handleAdd = async () => {
-    if (!addPath.trim()) return
-    setError(null)
+    if (!addPath.trim()) return;
+    setError(null);
     try {
       await window.fleet.starbase.addSector({
         path: addPath.trim(),
         name: addName.trim() || undefined
-      })
-      setAddPath('')
-      setAddName('')
-      refresh()
+      });
+      setAddPath('');
+      setAddName('');
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add sector')
+      setError(err instanceof Error ? err.message : 'Failed to add sector');
     }
-  }
+  };
 
   const handleRemove = async (sectorId: string) => {
     try {
-      await window.fleet.starbase.removeSector(sectorId)
-      refresh()
+      await window.fleet.starbase.removeSector(sectorId);
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove sector')
+      setError(err instanceof Error ? err.message : 'Failed to remove sector');
     }
-  }
+  };
 
   const handleUpdate = async (sectorId: string, fields: Record<string, unknown>) => {
     try {
-      await window.fleet.starbase.updateSector(sectorId, fields)
-      refresh()
+      await window.fleet.starbase.updateSector(sectorId, fields);
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update sector')
+      setError(err instanceof Error ? err.message : 'Failed to update sector');
     }
-  }
+  };
 
   return (
     <section>
@@ -408,8 +408,8 @@ function SectorsSection() {
           />
           <button
             onClick={async () => {
-              const path = await window.fleet.showFolderPicker()
-              if (path) setAddPath(path)
+              const path = await window.fleet.showFolderPicker();
+              if (path) setAddPath(path);
             }}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs font-medium rounded transition-colors"
           >
@@ -432,68 +432,68 @@ function SectorsSection() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---- Supply Routes Section ----
 
 function SupplyRoutesSection() {
-  const { sectors } = useStarCommandStore()
-  const [routes, setRoutes] = useState<SupplyRoute[]>([])
-  const [graph, setGraph] = useState<Record<string, string[]>>({})
-  const [upstream, setUpstream] = useState('')
-  const [downstream, setDownstream] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const { sectors } = useStarCommandStore();
+  const [routes, setRoutes] = useState<SupplyRoute[]>([]);
+  const [graph, setGraph] = useState<Record<string, string[]>>({});
+  const [upstream, setUpstream] = useState('');
+  const [downstream, setDownstream] = useState('');
+  const [error, setError] = useState<string | null>(null);
 
-  const sectorList = sectors
+  const sectorList = sectors;
 
   const refresh = useCallback(async () => {
     try {
       const [r, g] = await Promise.all([
         window.fleet.starbase.listSupplyRoutes(),
         window.fleet.starbase.getSupplyRouteGraph()
-      ])
-      setRoutes(r)
-      setGraph(g)
+      ]);
+      setRoutes(r);
+      setGraph(g);
     } catch {
       // services may not be initialized
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    refresh();
+  }, [refresh]);
 
   const handleAdd = async () => {
-    if (!upstream || !downstream) return
-    setError(null)
+    if (!upstream || !downstream) return;
+    setError(null);
     try {
       await window.fleet.starbase.addSupplyRoute({
         upstreamSectorId: upstream,
         downstreamSectorId: downstream
-      })
-      setUpstream('')
-      setDownstream('')
-      refresh()
+      });
+      setUpstream('');
+      setDownstream('');
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add route')
+      setError(err instanceof Error ? err.message : 'Failed to add route');
     }
-  }
+  };
 
   const handleRemove = async (routeId: number) => {
     try {
-      await window.fleet.starbase.removeSupplyRoute(routeId)
-      refresh()
+      await window.fleet.starbase.removeSupplyRoute(routeId);
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to remove route')
+      setError(err instanceof Error ? err.message : 'Failed to remove route');
     }
-  }
+  };
 
   // Collect all sector IDs from graph for the visual
-  const allNodes = new Set<string>()
+  const allNodes = new Set<string>();
   for (const [from, tos] of Object.entries(graph)) {
-    allNodes.add(from)
-    for (const to of tos) allNodes.add(to)
+    allNodes.add(from);
+    for (const to of tos) allNodes.add(to);
   }
 
   return (
@@ -594,17 +594,17 @@ function SupplyRoutesSection() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---- Starbase Settings Section ----
 
-const CONFIG_FIELDS: {
-  key: string
-  label: string
-  type: 'number' | 'text' | 'password' | 'select'
-  options?: string[]
-}[] = [
+const CONFIG_FIELDS: Array<{
+  key: string;
+  label: string;
+  type: 'number' | 'text' | 'password' | 'select';
+  options?: string[];
+}> = [
   { key: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password' },
   { key: 'admiral_model', label: 'Admiral Model', type: 'text' },
   { key: 'max_concurrent_worktrees', label: 'Max Concurrent Worktrees', type: 'number' },
@@ -631,31 +631,31 @@ const CONFIG_FIELDS: {
   { key: 'comms_retention_days', label: 'Comms Retention (days)', type: 'number' },
   { key: 'cargo_retention_days', label: 'Cargo Retention (days)', type: 'number' },
   { key: 'ships_log_retention_days', label: 'Ships Log Retention (days)', type: 'number' }
-]
+];
 
 function StarbaseSettingsSection() {
-  const [config, setConfig] = useState<Record<string, unknown>>({})
-  const [saving, setSaving] = useState<string | null>(null)
+  const [config, setConfig] = useState<Record<string, unknown>>({});
+  const [saving, setSaving] = useState<string | null>(null);
 
   useEffect(() => {
     window.fleet.starbase
       .getConfig()
       .then(setConfig)
-      .catch(() => {})
-  }, [])
+      .catch(() => {});
+  }, []);
 
   const handleChange = async (key: string, value: unknown) => {
-    setConfig((prev) => ({ ...prev, [key]: value }))
-    setSaving(key)
+    setConfig((prev) => ({ ...prev, [key]: value }));
+    setSaving(key);
     try {
-      await window.fleet.starbase.setConfig(key, value)
+      await window.fleet.starbase.setConfig(key, value);
     } catch {
       // revert on error
-      const fresh = await window.fleet.starbase.getConfig()
-      setConfig(fresh)
+      const fresh = await window.fleet.starbase.getConfig();
+      setConfig(fresh);
     }
-    setSaving(null)
-  }
+    setSaving(null);
+  };
 
   return (
     <section>
@@ -685,8 +685,8 @@ function StarbaseSettingsSection() {
                   type="password"
                   defaultValue={String(config[field.key] ?? '')}
                   onBlur={(e) => {
-                    const v = e.target.value.trim()
-                    if (v && v !== config[field.key]) handleChange(field.key, v)
+                    const v = e.target.value.trim();
+                    if (v && v !== config[field.key]) handleChange(field.key, v);
                   }}
                   placeholder="Not set"
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
@@ -713,56 +713,56 @@ function StarbaseSettingsSection() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---- Database Section ----
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function DatabaseSection() {
-  const [stats, setStats] = useState<RetentionStats | null>(null)
-  const [cleaning, setCleaning] = useState(false)
-  const [vacuuming, setVacuuming] = useState(false)
-  const [lastCleanup, setLastCleanup] = useState<CleanupResult | null>(null)
+  const [stats, setStats] = useState<RetentionStats | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [vacuuming, setVacuuming] = useState(false);
+  const [lastCleanup, setLastCleanup] = useState<CleanupResult | null>(null);
 
   const refresh = useCallback(() => {
     window.fleet.starbase
       .getRetentionStats()
       .then((s) => setStats(s))
-      .catch(() => {})
-  }, [])
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
-    refresh()
-  }, [refresh])
+    refresh();
+  }, [refresh]);
 
   const handleCleanup = async () => {
-    setCleaning(true)
+    setCleaning(true);
     try {
-      const result = await window.fleet.starbase.retentionCleanup()
-      setLastCleanup(result)
-      refresh()
+      const result = await window.fleet.starbase.retentionCleanup();
+      setLastCleanup(result);
+      refresh();
     } catch {
       // ignore
     }
-    setCleaning(false)
-  }
+    setCleaning(false);
+  };
 
   const handleVacuum = async () => {
-    setVacuuming(true)
+    setVacuuming(true);
     try {
-      await window.fleet.starbase.retentionVacuum()
-      refresh()
+      await window.fleet.starbase.retentionVacuum();
+      refresh();
     } catch {
       // ignore
     }
-    setVacuuming(false)
-  }
+    setVacuuming(false);
+  };
 
   return (
     <section>
@@ -822,7 +822,7 @@ function DatabaseSection() {
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 // ---- Main Config Component ----
@@ -836,5 +836,5 @@ export function StarCommandConfig() {
       <StarbaseSettingsSection />
       <DatabaseSection />
     </div>
-  )
+  );
 }

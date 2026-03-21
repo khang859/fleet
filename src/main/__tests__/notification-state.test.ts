@@ -16,13 +16,13 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     expect(manager.getState('pane-1')).toEqual({
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 1000,
+      timestamp: 1000
     });
   });
 
@@ -31,7 +31,7 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     manager.clearPane('pane-1');
@@ -44,14 +44,14 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     eventBus.emit('notification', {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 2000,
+      timestamp: 2000
     });
 
     expect(manager.getState('pane-1')?.level).toBe('permission');
@@ -62,13 +62,13 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
     eventBus.emit('notification', {
       type: 'notification',
       paneId: 'pane-2',
       level: 'permission',
-      timestamp: 2000,
+      timestamp: 2000
     });
 
     const all = manager.getAllStates();
@@ -80,7 +80,7 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId: 'pane-1' });

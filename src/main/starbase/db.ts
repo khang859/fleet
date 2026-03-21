@@ -15,7 +15,7 @@ export class StarbaseDB {
 
   constructor(
     private workspacePath: string,
-    basePath?: string,
+    basePath?: string
   ) {
     this.basePath = basePath ?? join(process.env.HOME ?? '~', '.fleet', 'starbases');
     this.starbaseId = createHash('sha256').update(workspacePath).digest('hex').slice(0, 6);
@@ -31,7 +31,8 @@ export class StarbaseDB {
         const testDb = new Database(this.dbPath);
         const result: unknown = testDb.pragma('integrity_check');
         testDb.close();
-        const ok = Array.isArray(result) &&
+        const ok =
+          Array.isArray(result) &&
           result.length > 0 &&
           typeof result[0] === 'object' &&
           result[0] !== null &&
@@ -84,7 +85,9 @@ export class StarbaseDB {
 
     let currentVersion = 0;
     if (metaExists) {
-      const meta = db.prepare<[], { schema_version: number }>('SELECT schema_version FROM _meta').get();
+      const meta = db
+        .prepare<[], { schema_version: number }>('SELECT schema_version FROM _meta')
+        .get();
       currentVersion = meta?.schema_version ?? 0;
     }
 
@@ -98,11 +101,11 @@ export class StarbaseDB {
           // First migration — insert _meta row
           db.prepare('INSERT INTO _meta (schema_version, workspace_path) VALUES (?, ?)').run(
             migration.version,
-            this.workspacePath,
+            this.workspacePath
           );
           // Seed config defaults
           const insertConfig = db.prepare(
-            "INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)",
+            'INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)'
           );
           for (const [key, value] of Object.entries(CONFIG_DEFAULTS)) {
             insertConfig.run(key, JSON.stringify(value));
@@ -138,7 +141,7 @@ export class StarbaseDB {
       index.starbases.push({
         workspacePath: this.workspacePath,
         starbaseId: this.starbaseId,
-        dbPath: this.dbPath,
+        dbPath: this.dbPath
       });
     }
 

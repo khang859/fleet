@@ -10,7 +10,9 @@ import type { EventBus } from '../event-bus';
 
 export class InsufficientMemoryError extends Error {
   constructor(freeGb: number, requiredGb: number) {
-    super(`Insufficient memory to deploy crew: ${freeGb.toFixed(2)}GB free, ${requiredGb}GB required`);
+    super(
+      `Insufficient memory to deploy crew: ${freeGb.toFixed(2)}GB free, ${requiredGb}GB required`
+    );
     this.name = 'InsufficientMemoryError';
   }
 }
@@ -66,7 +68,7 @@ export class CrewService {
 
   constructor(private deps: CrewServiceDeps) {}
 
-  generateCrewId(sectorSlug: string, missionType: string = 'code'): string {
+  generateCrewId(sectorSlug: string, missionType = 'code'): string {
     const hex = randomBytes(2).toString('hex');
     return `${sectorSlug}-${missionType}-${hex}`;
   }
@@ -75,10 +77,15 @@ export class CrewService {
    * Deploy a Crewmate. Returns { crewId, missionId }.
    * Crews are headless (no terminal tab) — they use stream-json for communication.
    */
-  async deployCrew(
-    opts: { sectorId: string; prompt: string; missionId: number; type?: string; prBranch?: string },
-  ): Promise<DeployResult> {
-    const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
+  async deployCrew(opts: {
+    sectorId: string;
+    prompt: string;
+    missionId: number;
+    type?: string;
+    prBranch?: string;
+  }): Promise<DeployResult> {
+    const { db, starbaseId, sectorService, missionService, configService, worktreeManager } =
+      this.deps;
 
     // 1. Look up sector
     const sector = sectorService.getSector(opts.sectorId);
@@ -92,24 +99,38 @@ export class CrewService {
       throw new Error('deployCrew requires a missionId. Create a mission first.');
     }
     if (!opts.prompt || opts.prompt.trim().length === 0) {
-      throw new Error(`Mission ${missionId} has an empty prompt. Cannot deploy crew without instructions.`);
+      throw new Error(
+        `Mission ${missionId} has an empty prompt. Cannot deploy crew without instructions.`
+      );
     }
 
     // Read mission type for Hull
-    const missionRow = missionService.getMission(missionId)!
+    const missionRow = missionService.getMission(missionId)!;
     // opts.type (deployment role) takes precedence over missionRow.type (DB type).
     // This lets review crews run as 'review' even though the underlying mission is 'code'.
-    const missionType = opts.type ?? missionRow.type ?? 'code'
+    const missionType = opts.type ?? missionRow.type ?? 'code';
 
     // Guard: reject if the mission is already in a terminal status
-    const TERMINAL_MISSION_STATUSES = ['completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved']
+    const TERMINAL_MISSION_STATUSES = [
+      'completed',
+      'done',
+      'aborted',
+      'failed',
+      'failed-verification',
+      'escalated',
+      'approved'
+    ];
     if (TERMINAL_MISSION_STATUSES.includes(missionRow.status)) {
-      throw new Error(`Mission ${missionId} is already terminal (status: '${missionRow.status}'). Skipping deployment.`)
+      throw new Error(
+        `Mission ${missionId} is already terminal (status: '${missionRow.status}'). Skipping deployment.`
+      );
     }
 
     // Guard: reject if the mission already has an active crew assigned
     if (missionRow.crew_id !== null) {
-      throw new Error(`Mission ${missionId} already has crew ${missionRow.crew_id} assigned. Cannot deploy duplicate.`);
+      throw new Error(
+        `Mission ${missionId} already has crew ${missionRow.crew_id} assigned. Cannot deploy duplicate.`
+      );
     }
 
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
@@ -133,25 +154,28 @@ export class CrewService {
           crewId,
           sectorPath: sector.root_path,
           baseBranch,
-          existingBranch: opts.prBranch,
+          existingBranch: opts.prBranch
         });
       } else {
         worktreeResult = await worktreeManager.create({
           starbaseId,
           crewId,
           sectorPath: sector.root_path,
-          baseBranch,
+          baseBranch
         });
       }
     } catch (err) {
       if (err instanceof WorktreeLimitError) {
         db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
-        db.prepare(
-          "INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)",
-        ).run(JSON.stringify({ missionId, reason: 'worktree limit reached' }));
+        db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)").run(
+          JSON.stringify({ missionId, reason: 'worktree limit reached' })
+        );
         throw err;
       }
-      missionService.failMission(missionId, `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      missionService.failMission(
+        missionId,
+        `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`
+      );
       throw err;
     }
 
@@ -161,7 +185,10 @@ export class CrewService {
         await worktreeManager.installDependencies(worktreeResult.worktreePath);
       } catch (err) {
         worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
-        missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
+        missionService.failMission(
+          missionId,
+          `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`
+        );
         throw err;
       }
     }
@@ -192,17 +219,19 @@ export class CrewService {
       model: sector.model ?? undefined,
       systemPrompt: sector.system_prompt ?? undefined,
       // Research crews default to read-only tools unless sector explicitly overrides
-      allowedTools: sector.allowed_tools ?? (
-        missionType === 'research' ? 'Read,Glob,Grep,WebSearch,WebFetch' :
-        missionType === 'review'   ? 'Read,Glob,Grep,Bash,WebFetch' :
-        undefined
-      ),
+      allowedTools:
+        sector.allowed_tools ??
+        (missionType === 'research'
+          ? 'Read,Glob,Grep,WebSearch,WebFetch'
+          : missionType === 'review'
+            ? 'Read,Glob,Grep,Bash,WebFetch'
+            : undefined),
       mcpConfig: sector.mcp_config ?? undefined,
       onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,
       missionType,
       starbaseId,
-      prBranch: opts.prBranch,
+      prBranch: opts.prBranch
     });
 
     // Update crew record with avatar
@@ -214,8 +243,9 @@ export class CrewService {
     await hull.start();
 
     // Increment global mission deployment budget counter
-    db.prepare('UPDATE missions SET mission_deployment_count = mission_deployment_count + 1 WHERE id = ?')
-      .run(missionId);
+    db.prepare(
+      'UPDATE missions SET mission_deployment_count = mission_deployment_count + 1 WHERE id = ?'
+    ).run(missionId);
 
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     return { crewId, missionId };
@@ -232,7 +262,9 @@ export class CrewService {
 
     // Hull not in memory (post-restart recall): update DB record directly.
     const TERMINAL_STATUSES = ['error', 'complete', 'timeout', 'lost', 'aborted', 'dismissed'];
-    const row = this.deps.db.prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?').get(crewId);
+    const row = this.deps.db
+      .prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?')
+      .get(crewId);
     if (!row) return;
 
     if (TERMINAL_STATUSES.includes(row.status)) {
@@ -249,8 +281,8 @@ export class CrewService {
   }
 
   deleteCrew(crewId: string): void {
-    this.deps.db.prepare('UPDATE missions SET crew_id = NULL WHERE crew_id = ?').run(crewId)
-    this.deps.db.prepare('DELETE FROM crew WHERE id = ?').run(crewId)
+    this.deps.db.prepare('UPDATE missions SET crew_id = NULL WHERE crew_id = ?').run(crewId);
+    this.deps.db.prepare('DELETE FROM crew WHERE id = ?').run(crewId);
   }
 
   /**
@@ -259,7 +291,7 @@ export class CrewService {
    */
   messageCrew(crewId: string, message: string): boolean {
     const hull = this.hulls.get(crewId);
-    if (!hull || hull.getStatus() !== 'active') return false;
+    if (hull?.getStatus() !== 'active') return false;
     return hull.sendMessage(message);
   }
 
@@ -303,7 +335,7 @@ export class CrewService {
            )
          )
          ORDER BY priority ASC, created_at ASC
-         LIMIT 1`,
+         LIMIT 1`
       )
       .get();
   }
@@ -325,8 +357,9 @@ export class CrewService {
     const { db } = this.deps;
 
     // Atomically claim the next queued mission — prevents concurrent deployments from racing
-    const claim = db.prepare<[], QueuedMissionRow>(
-      `UPDATE missions SET status = 'deploying'
+    const claim = db
+      .prepare<[], QueuedMissionRow>(
+        `UPDATE missions SET status = 'deploying'
        WHERE id = (
          SELECT id FROM missions
          WHERE status = 'queued'
@@ -344,21 +377,24 @@ export class CrewService {
          ORDER BY priority ASC, created_at ASC
          LIMIT 1
        )
-       RETURNING id, sector_id, prompt, summary`,
-    ).get();
+       RETURNING id, sector_id, prompt, summary`
+      )
+      .get();
 
     if (!claim) return;
 
-    this.deployCrew(
-      { sectorId: claim.sector_id, prompt: claim.prompt, missionId: claim.id },
-    ).then((result) => {
-      // Notify Admiral of auto-deployment
-      db.prepare(
-        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_deployed', ?)",
-      ).run(result.crewId, JSON.stringify({ missionId: claim.id, sectorId: claim.sector_id }));
-    }).catch(() => {
-      // Auto-deploy failed — revert to queued so it can be retried next slot
-      db.prepare("UPDATE missions SET status = 'queued' WHERE id = ? AND status = 'deploying'").run(claim.id);
-    });
+    this.deployCrew({ sectorId: claim.sector_id, prompt: claim.prompt, missionId: claim.id })
+      .then((result) => {
+        // Notify Admiral of auto-deployment
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'auto_deployed', ?)"
+        ).run(result.crewId, JSON.stringify({ missionId: claim.id, sectorId: claim.sector_id }));
+      })
+      .catch(() => {
+        // Auto-deploy failed — revert to queued so it can be retried next slot
+        db.prepare(
+          "UPDATE missions SET status = 'queued' WHERE id = ? AND status = 'deploying'"
+        ).run(claim.id);
+      });
   }
 }

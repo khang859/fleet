@@ -14,7 +14,7 @@ function useShikiHighlighter() {
   useEffect(() => {
     if (!highlighterPromise) {
       highlighterPromise = import('@git-diff-view/shiki').then(async (mod) => {
-        return await mod.getDiffViewHighlighter();
+        return mod.getDiffViewHighlighter();
       });
     }
     highlighterPromise.then(setHighlighter);
@@ -54,14 +54,17 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
     setData(null);
     setFilterText('');
     setActiveFileIndex(0);
-    window.fleet.git.getStatus(cwd).then((result) => {
-      setData(result);
-      setLoading(false);
-    }).catch((err) => {
-      console.error('Failed to fetch git status:', err);
-      setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
-      setLoading(false);
-    });
+    window.fleet.git
+      .getStatus(cwd)
+      .then((result) => {
+        setData(result);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('Failed to fetch git status:', err);
+        setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
+        setLoading(false);
+      });
   }, [isOpen, cwd]);
 
   // Filter files
@@ -82,7 +85,9 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const target = e.target;
-      const isInputFocused = target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      const isInputFocused =
+        target instanceof HTMLElement &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
 
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -105,7 +110,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         return;
       }
 
-      if ((e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') && !isInputFocused) {
+      if (
+        (e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+        !isInputFocused
+      ) {
         e.preventDefault();
         e.stopPropagation();
         const down = e.key === 'j' || e.key === 'ArrowDown';
@@ -129,9 +137,8 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         e.preventDefault();
         e.stopPropagation();
         setActiveFileIndex((prev) => {
-          const next = e.key === 'n'
-            ? Math.min(prev + 1, filteredFiles.length - 1)
-            : Math.max(prev - 1, 0);
+          const next =
+            e.key === 'n' ? Math.min(prev + 1, filteredFiles.length - 1) : Math.max(prev - 1, 0);
           scrollToFile(filteredFiles[next]?.path);
           return next;
         });
@@ -144,7 +151,7 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         return;
       }
     },
-    [onClose, filteredFiles, activeFileIndex, scrollToFile],
+    [onClose, filteredFiles, activeFileIndex, scrollToFile]
   );
 
   if (!isOpen) return null;
@@ -152,7 +159,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (!cwd) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<AlertCircle size={32} />} message="Working directory not available" onClose={onClose} />
+        <StateMessage
+          icon={<AlertCircle size={32} />}
+          message="Working directory not available"
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
@@ -160,7 +171,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (loading) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<Loader2 size={32} className="animate-spin" />} message="Loading changes..." />
+        <StateMessage
+          icon={<Loader2 size={32} className="animate-spin" />}
+          message="Loading changes..."
+        />
       </ModalShell>
     );
   }
@@ -168,7 +182,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (data?.error) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<AlertCircle size={32} className="text-red-400" />} message={data.error} onClose={onClose} />
+        <StateMessage
+          icon={<AlertCircle size={32} className="text-red-400" />}
+          message={data.error}
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
@@ -176,12 +194,16 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (data && !data.isRepo) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<GitBranch size={32} />} message="Not a git repository" onClose={onClose} />
+        <StateMessage
+          icon={<GitBranch size={32} />}
+          message="Not a git repository"
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
 
-  if (data && data.files.length === 0) {
+  if (data?.files.length === 0) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage icon={<GitBranch size={32} />} message="No changes" onClose={onClose} />
@@ -198,16 +220,24 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
       <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
         <div className="flex items-center gap-3">
           <GitBranch size={16} className="text-neutral-400" />
-          <span className="text-sm font-medium text-white">{data?.branch || 'Working Changes'}</span>
+          <span className="text-sm font-medium text-white">
+            {data?.branch || 'Working Changes'}
+          </span>
           <span className="text-xs text-neutral-500">
             {data?.files.length} file{data?.files.length !== 1 ? 's' : ''} changed
             {totalInsertions > 0 && <span className="text-green-400 ml-2">+{totalInsertions}</span>}
-            {totalDeletions > 0 && <span className="text-red-400 ml-1">&minus;{totalDeletions}</span>}
+            {totalDeletions > 0 && (
+              <span className="text-red-400 ml-1">&minus;{totalDeletions}</span>
+            )}
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setDiffMode(diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified)}
+            onClick={() =>
+              setDiffMode(
+                diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified
+              )
+            }
             className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
           >
             {diffMode === DiffModeEnum.Unified ? 'Split' : 'Unified'}
@@ -228,7 +258,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
               type="text"
               placeholder="Filter files..."
               value={filterText}
-              onChange={(e) => { setFilterText(e.target.value); setActiveFileIndex(0); }}
+              onChange={(e) => {
+                setFilterText(e.target.value);
+                setActiveFileIndex(0);
+              }}
               className="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
             />
             {filterText && (
@@ -243,7 +276,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
                 key={file.path}
                 file={file}
                 active={i === activeFileIndex}
-                onClick={() => { setActiveFileIndex(i); scrollToFile(file.path); }}
+                onClick={() => {
+                  setActiveFileIndex(i);
+                  scrollToFile(file.path);
+                }}
               />
             ))}
           </div>
@@ -270,7 +306,7 @@ function ModalShell({
   children,
   onClose,
   onKeyDown,
-  modalRef,
+  modalRef
 }: {
   children: React.ReactNode;
   onClose: () => void;
@@ -282,7 +318,10 @@ function ModalShell({
   }, [modalRef]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         ref={modalRef}
         tabIndex={-1}
@@ -300,7 +339,7 @@ function ModalShell({
 function StateMessage({
   icon,
   message,
-  onClose,
+  onClose
 }: {
   icon: React.ReactNode;
   message: string;
@@ -324,7 +363,7 @@ const STATUS_COLORS: Record<GitFileStatus['status'], string> = {
   untracked: 'text-green-400',
   modified: 'text-yellow-400',
   deleted: 'text-red-400',
-  renamed: 'text-blue-400',
+  renamed: 'text-blue-400'
 };
 
 const STATUS_LABELS: Record<GitFileStatus['status'], string> = {
@@ -332,13 +371,13 @@ const STATUS_LABELS: Record<GitFileStatus['status'], string> = {
   untracked: 'U',
   modified: 'M',
   deleted: 'D',
-  renamed: 'R',
+  renamed: 'R'
 };
 
 function FileEntry({
   file,
   active,
-  onClick,
+  onClick
 }: {
   file: GitFileStatus;
   active: boolean;
@@ -392,7 +431,7 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
       // Save previous file
       if (currentFile) {
         // Only push if there is actual diff content (not binary files)
-        const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+        const hasDiffContent = currentLines.some((l) => l.startsWith('@@'));
         if (hasDiffContent) {
           currentFile.hunks.push(currentLines.join('\n'));
         }
@@ -416,7 +455,7 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
   // Save last file
   if (currentFile) {
     // Only push if there is actual diff content (not binary files)
-    const hasDiffContent = currentLines.some(l => l.startsWith('@@'));
+    const hasDiffContent = currentLines.some((l) => l.startsWith('@@'));
     if (hasDiffContent) {
       currentFile.hunks.push(currentLines.join('\n'));
     }
@@ -452,7 +491,7 @@ function getLanguageFromFilename(filename: string): string | undefined {
     toml: 'toml',
     xml: 'xml',
     vue: 'vue',
-    svelte: 'svelte',
+    svelte: 'svelte'
   };
   return ext ? langMap[ext] : undefined;
 }
@@ -469,14 +508,14 @@ function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance)
         newFile: {
           fileName: fileDiff.fileName,
           fileLang: lang ?? null,
-          content: null,
+          content: null
         },
         oldFile: {
           fileName: fileDiff.fileName,
           fileLang: lang ?? null,
-          content: null,
+          content: null
         },
-        hunks: fileDiff.hunks,
+        hunks: fileDiff.hunks
       });
       diffFile.initRaw();
       if (highlighter) {
@@ -496,7 +535,7 @@ function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance)
 function DiffContent({
   diffFiles,
   diffMode,
-  highlighter,
+  highlighter
 }: {
   diffFiles: DiffFile[];
   diffMode: DiffModeEnum;

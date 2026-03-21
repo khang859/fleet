@@ -4,11 +4,15 @@ import type { FleetSettings, FontSelection, VisualizerEffects } from '../../../s
 import type { UpdateStatus } from '../../../shared/types';
 import { resolveFontFamily } from '../../../shared/types';
 
-const BUNDLED_FONTS: { label: string; selection: FontSelection }[] = [
-  { label: 'JetBrains Mono Nerd', selection: { type: 'bundled', name: 'JetBrains Mono Nerd Font' } },
+const BUNDLED_FONTS: Array<{ label: string; selection: FontSelection }> = [
+  { label: 'JetBrains Mono Nerd', selection: { type: 'bundled', name: 'JetBrains Mono Nerd Font' } }
 ];
 
-function parseFontSelection(fontFamily: string): { mode: 'bundled' | 'custom'; bundledIndex: number; customValue: string } {
+function parseFontSelection(fontFamily: string): {
+  mode: 'bundled' | 'custom';
+  bundledIndex: number;
+  customValue: string;
+} {
   for (let i = 0; i < BUNDLED_FONTS.length; i++) {
     const resolved = resolveFontFamily(BUNDLED_FONTS[i].selection);
     if (fontFamily === resolved) {
@@ -27,7 +31,14 @@ type SettingsModalProps = {
 
 type NotificationKey = keyof FleetSettings['notifications'];
 
-const NOTIFICATION_KEYS = ['taskComplete', 'needsPermission', 'processExitError', 'processExitClean', 'comms', 'memos'] as const satisfies readonly NotificationKey[];
+const NOTIFICATION_KEYS = [
+  'taskComplete',
+  'needsPermission',
+  'processExitError',
+  'processExitClean',
+  'comms',
+  'memos'
+] as const satisfies readonly NotificationKey[];
 const NOTIFICATION_CHANNELS = ['badge', 'sound', 'os'] as const;
 
 const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
@@ -36,12 +47,14 @@ const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   processExitError: 'Process Exit (Error)',
   processExitClean: 'Process Exit (Clean)',
   comms: 'Comms',
-  memos: 'Memos',
+  memos: 'Memos'
 };
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettingsStore();
-  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'socket' | 'visualizer' | 'updates'>('general');
+  const [activeTab, setActiveTab] = useState<
+    'general' | 'notifications' | 'socket' | 'visualizer' | 'updates'
+  >('general');
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: 'idle' });
   const [appVersion, setAppVersion] = useState('');
 
@@ -56,7 +69,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setTimeout(() => setUpdateStatus({ state: 'idle' }), 3000);
       }
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, []);
 
   if (!isOpen || !settings) return null;
@@ -73,9 +88,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 ...settings!.visualizer,
                 effects: {
                   ...settings!.visualizer.effects,
-                  [key]: e.target.checked,
-                },
-              },
+                  [key]: e.target.checked
+                }
+              }
             });
           }}
           className="accent-blue-500"
@@ -87,7 +102,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const tabs = ['general', 'notifications', 'socket', 'visualizer', 'updates'] as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="bg-neutral-900 border border-neutral-700 rounded-lg w-[520px] max-h-[80vh] overflow-hidden shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -95,7 +113,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-white">Settings</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">&times;</button>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+            &times;
+          </button>
         </div>
 
         {/* Tab bar */}
@@ -104,7 +124,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <button
               key={tab}
               className={`px-4 py-2 text-xs capitalize ${
-                activeTab === tab ? 'text-white border-b-2 border-blue-500' : 'text-neutral-500 hover:text-neutral-300'
+                activeTab === tab
+                  ? 'text-white border-b-2 border-blue-500'
+                  : 'text-neutral-500 hover:text-neutral-300'
               }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -121,7 +143,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.general.defaultShell || '(auto-detect)'}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, defaultShell: e.target.value } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: { ...settings.general, defaultShell: e.target.value }
+                    })
+                  }
                   placeholder="(auto-detect)"
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-48 border border-neutral-700"
                 />
@@ -130,19 +156,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.fontSize}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-20 border border-neutral-700"
                 />
               </SettingRow>
               <FontFamilyPicker
                 fontFamily={settings.general.fontFamily}
-                onChange={(fontFamily) => updateSettings({ general: { ...settings.general, fontFamily } })}
+                onChange={(fontFamily) =>
+                  updateSettings({ general: { ...settings.general, fontFamily } })
+                }
               />
               <SettingRow label="Scrollback Lines">
                 <input
                   type="number"
                   value={settings.general.scrollbackSize}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, scrollbackSize: parseInt(e.target.value) || 10000 } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: {
+                        ...settings.general,
+                        scrollbackSize: parseInt(e.target.value) || 10000
+                      }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-24 border border-neutral-700"
                 />
               </SettingRow>
@@ -184,9 +223,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               ...settings.notifications,
                               [key]: {
                                 ...settings.notifications[key],
-                                [channel]: e.target.checked,
-                              },
-                            },
+                                [channel]: e.target.checked
+                              }
+                            }
                           });
                         }}
                         className="accent-blue-500"
@@ -204,7 +243,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="checkbox"
                   checked={settings.socketApi.enabled}
-                  onChange={(e) => updateSettings({ socketApi: { ...settings.socketApi, enabled: e.target.checked } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      socketApi: { ...settings.socketApi, enabled: e.target.checked }
+                    })
+                  }
                   className="accent-blue-500"
                 />
               </SettingRow>
@@ -212,7 +255,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.socketApi.socketPath || '~/.fleet/fleet.sock'}
-                  onChange={(e) => updateSettings({ socketApi: { ...settings.socketApi, socketPath: e.target.value } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      socketApi: { ...settings.socketApi, socketPath: e.target.value }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-64 border border-neutral-700"
                   disabled
                 />
@@ -237,7 +284,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </SettingRow>
 
               <div className="border-t border-neutral-800 pt-3 mt-3">
-                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Ambient</div>
+                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">
+                  Ambient
+                </div>
                 <div className="space-y-2">
                   {effectToggle('nebulaClouds', 'Nebula Clouds')}
                   {effectToggle('auroraBands', 'Aurora Bands')}
@@ -261,7 +310,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
 
               <div className="border-t border-neutral-800 pt-3 mt-3">
-                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Environment</div>
+                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">
+                  Environment
+                </div>
                 <div className="space-y-2">
                   {effectToggle('distantPlanets', 'Distant Planets')}
                   {effectToggle('spaceStation', 'Space Station')}
@@ -271,7 +322,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
 
               <div className="border-t border-neutral-800 pt-3 mt-3">
-                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Interactive</div>
+                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">
+                  Interactive
+                </div>
                 <div className="space-y-2">
                   {effectToggle('followCamera', 'Click-to-Follow Camera')}
                   {effectToggle('zoomEnabled', 'Scroll Zoom')}
@@ -279,10 +332,10 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               </div>
 
               <div className="border-t border-neutral-800 pt-3 mt-3">
-                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">Visual Quality</div>
-                <div className="space-y-2">
-                  {effectToggle('bloomGlow', 'Bloom Glow')}
+                <div className="text-xs text-neutral-500 uppercase tracking-wider mb-2">
+                  Visual Quality
                 </div>
+                <div className="space-y-2">{effectToggle('bloomGlow', 'Bloom Glow')}</div>
               </div>
 
               <div className="border-t border-neutral-800 pt-3 mt-3">
@@ -293,11 +346,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     <SettingRow label="Volume">
                       <input
                         type="range"
-                        min="0" max="1" step="0.05"
+                        min="0"
+                        max="1"
+                        step="0.05"
                         value={settings.visualizer.soundVolume}
-                        onChange={(e) => updateSettings({
-                          visualizer: { ...settings.visualizer, soundVolume: parseFloat(e.target.value) }
-                        })}
+                        onChange={(e) =>
+                          updateSettings({
+                            visualizer: {
+                              ...settings.visualizer,
+                              soundVolume: parseFloat(e.target.value)
+                            }
+                          })
+                        }
                         className="w-32"
                       />
                     </SettingRow>
@@ -309,9 +369,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           {activeTab === 'updates' && (
             <div className="space-y-4">
-              <div className="text-sm text-neutral-300">
-                Fleet v{appVersion}
-              </div>
+              <div className="text-sm text-neutral-300">Fleet v{appVersion}</div>
 
               {updateStatus.state === 'ready' ? (
                 <button
@@ -323,7 +381,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               ) : (
                 <button
                   onClick={() => window.fleet.updates.checkForUpdates()}
-                  disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
+                  disabled={
+                    updateStatus.state === 'checking' || updateStatus.state === 'downloading'
+                  }
                   className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {updateStatus.state === 'checking' ? 'Checking...' : 'Check for Updates'}
@@ -360,13 +420,15 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
               {(updateStatus.state === 'downloading' || updateStatus.state === 'ready') &&
                 updateStatus.releaseNotes && (
-                <div className="mt-2">
-                  <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">Release Notes</div>
-                  <div className="text-sm text-neutral-400 bg-neutral-800 rounded-md p-3 max-h-[150px] overflow-y-auto whitespace-pre-wrap border border-neutral-700">
-                    {updateStatus.releaseNotes}
+                  <div className="mt-2">
+                    <div className="text-xs text-neutral-500 uppercase tracking-wider mb-1">
+                      Release Notes
+                    </div>
+                    <div className="text-sm text-neutral-400 bg-neutral-800 rounded-md p-3 max-h-[150px] overflow-y-auto whitespace-pre-wrap border border-neutral-700">
+                      {updateStatus.releaseNotes}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           )}
         </div>
@@ -384,7 +446,13 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-function FontFamilyPicker({ fontFamily, onChange }: { fontFamily: string; onChange: (v: string) => void }) {
+function FontFamilyPicker({
+  fontFamily,
+  onChange
+}: {
+  fontFamily: string;
+  onChange: (v: string) => void;
+}) {
   const parsed = parseFontSelection(fontFamily);
   const [customValue, setCustomValue] = useState(parsed.customValue);
 

@@ -34,25 +34,62 @@ describe('Navigator', () => {
   it('deduplicates: returns false if execution already running', async () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
     // Manually inject a fake running entry
-    ;(nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
-    const result = await nav.dispatch({ executionId: 'exec-1', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null });
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-1',
+      startedAt: Date.now()
+    });
+    const result = await nav.dispatch({
+      executionId: 'exec-1',
+      protocolSlug: 'research-and-deploy',
+      featureRequest: 'build X',
+      currentStep: 1,
+      context: null
+    });
     expect(result).toBe(false);
   });
 
   it('respects max concurrent limit', async () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
     const running = (nav as unknown as { running: Map<string, unknown> }).running;
-    running.set('exec-A', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-A', startedAt: Date.now() });
-    running.set('exec-B', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-B', startedAt: Date.now() });
+    running.set('exec-A', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-A',
+      startedAt: Date.now()
+    });
+    running.set('exec-B', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-B',
+      startedAt: Date.now()
+    });
     // max is 2 by default config
-    const result = await nav.dispatch({ executionId: 'exec-C', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null });
+    const result = await nav.dispatch({
+      executionId: 'exec-C',
+      protocolSlug: 'research-and-deploy',
+      featureRequest: 'build X',
+      currentStep: 1,
+      context: null
+    });
     expect(result).toBe(false);
   });
 
   it('creates workspace directory on first dispatch attempt', async () => {
-    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123', fleetBinDir: '/usr/local/bin' });
+    const nav = new Navigator({
+      db: db.getDb(),
+      configService,
+      starbaseId: 'test-123',
+      fleetBinDir: '/usr/local/bin'
+    });
     // dispatch will fail (no claude binary in test) but workspace setup happens first
-    await nav.dispatch({ executionId: 'exec-new', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null }).catch(() => {});
+    await nav
+      .dispatch({
+        executionId: 'exec-new',
+        protocolSlug: 'research-and-deploy',
+        featureRequest: 'build X',
+        currentStep: 1,
+        context: null
+      })
+      .catch(() => {});
     // Shutdown any spawned process and verify no crash
     nav.shutdown();
     expect(nav.activeCount).toBe(0); // process failed or never started, cleaned up
@@ -60,7 +97,7 @@ describe('Navigator', () => {
 
   it('clears running map on reconcile', () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
-    ;(nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {});
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {});
     nav.reconcile();
     expect(nav.activeCount).toBe(0);
   });

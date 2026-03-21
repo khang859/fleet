@@ -21,8 +21,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'info',
-      }),
+        level: 'info'
+      })
     );
   });
 
@@ -36,8 +36,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'info',
-      }),
+        level: 'info'
+      })
     );
   });
 
@@ -51,8 +51,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'permission',
-      }),
+        level: 'permission'
+      })
     );
   });
 

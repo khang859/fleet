@@ -32,7 +32,13 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
 
 const AUTO_SAVE_DEBOUNCE_MS = 500;
 
-export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; onCollapse?: () => void }) {
+export function Sidebar({
+  updateReady,
+  onCollapse
+}: {
+  updateReady?: boolean;
+  onCollapse?: () => void;
+}) {
   const {
     workspace,
     activeTabId,
@@ -45,40 +51,49 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     reorderTab,
     renameWorkspace,
     isDirty,
-    markClean,
+    markClean
   } = useWorkspaceStore();
   const { getTabBadge } = useNotificationStore();
   const { cwds } = useCwdStore();
 
   // --- Drag-and-drop state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ index: number; position: 'above' | 'below' } | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    index: number;
+    position: 'above' | 'below';
+  } | null>(null);
 
   const handleDragStart = useCallback((index: number) => {
     setDragIndex(index);
   }, []);
 
-  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
-    if (dragIndex === null) return;
-    const target = e.currentTarget;
-    if (!(target instanceof HTMLElement)) return;
-    const rect = target.getBoundingClientRect();
-    const midY = rect.top + rect.height / 2;
-    const position = e.clientY < midY ? 'above' : 'below';
-    setDropTarget({ index, position });
-  }, [dragIndex]);
+  const handleDragOver = useCallback(
+    (e: React.DragEvent, index: number) => {
+      if (dragIndex === null) return;
+      const target = e.currentTarget;
+      if (!(target instanceof HTMLElement)) return;
+      const rect = target.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      const position = e.clientY < midY ? 'above' : 'below';
+      setDropTarget({ index, position });
+    },
+    [dragIndex]
+  );
 
-  const handleDrop = useCallback((_targetIndex: number) => {
-    if (dragIndex === null || !dropTarget) return;
-    const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
-    // Adjust toIndex if dragging from before the drop point
-    const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
-    if (dragIndex !== adjustedTo) {
-      reorderTab(dragIndex, adjustedTo);
-    }
-    setDragIndex(null);
-    setDropTarget(null);
-  }, [dragIndex, dropTarget, reorderTab]);
+  const handleDrop = useCallback(
+    (_targetIndex: number) => {
+      if (dragIndex === null || !dropTarget) return;
+      const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+      // Adjust toIndex if dragging from before the drop point
+      const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
+      if (dragIndex !== adjustedTo) {
+        reorderTab(dragIndex, adjustedTo);
+      }
+      setDragIndex(null);
+      setDropTarget(null);
+    },
+    [dragIndex, dropTarget, reorderTab]
+  );
 
   // Clear drag state on drag end (even if drop didn't fire)
   useEffect(() => {
@@ -94,7 +109,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
   const [switchConfirmId, setSwitchConfirmId] = useState<string | null>(null);
 
   // --- Saved workspaces ---
-  const [savedWorkspaces, setSavedWorkspaces] = useState<{ id: string; label: string }[]>([]);
+  const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
     window.fleet.layout.list().then((res) => {
@@ -102,14 +117,17 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     });
   }, []);
 
-  const handleSwitchWorkspace = useCallback((wsId: string) => {
-    // If there are running terminals, confirm first
-    if (workspace.tabs.length > 0) {
-      setSwitchConfirmId(wsId);
-      return;
-    }
-    doSwitchWorkspace(wsId);
-  }, [workspace.tabs.length]);
+  const handleSwitchWorkspace = useCallback(
+    (wsId: string) => {
+      // If there are running terminals, confirm first
+      if (workspace.tabs.length > 0) {
+        setSwitchConfirmId(wsId);
+        return;
+      }
+      doSwitchWorkspace(wsId);
+    },
+    [workspace.tabs.length]
+  );
 
   const doSwitchWorkspace = useCallback(async (wsId: string) => {
     setSwitchConfirmId(null);
@@ -129,18 +147,20 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot),
-        })),
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
       };
-      window.fleet.layout.save({
-        workspace: workspaceWithCwds,
-      }).then(() => {
-        markClean();
-        // Refresh saved workspaces list
-        window.fleet.layout.list().then((res) => {
-          setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
+      window.fleet.layout
+        .save({
+          workspace: workspaceWithCwds
+        })
+        .then(() => {
+          markClean();
+          // Refresh saved workspaces list
+          window.fleet.layout.list().then((res) => {
+            setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
+          });
         });
-      });
     }, AUTO_SAVE_DEBOUNCE_MS);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -179,7 +199,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
-      tabs: [],
+      tabs: []
     };
     state.loadWorkspace(newWs);
 
@@ -238,9 +258,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
       const full = await window.fleet.layout.load(id);
       if (!full) return;
       await window.fleet.layout.save({ workspace: { ...full, label: trimmed } });
-      setSavedWorkspaces((prev) =>
-        prev.map((w) => (w.id === id ? { ...w, label: trimmed } : w))
-      );
+      setSavedWorkspaces((prev) => prev.map((w) => (w.id === id ? { ...w, label: trimmed } : w)));
     } finally {
       savedWsRenamingRef.current = false;
     }
@@ -264,13 +282,18 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
     const el = tabListRef.current;
     if (!el) return;
     const check = () => {
-      setHasScrollOverflow(el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 8);
+      setHasScrollOverflow(
+        el.scrollHeight > el.clientHeight && el.scrollTop + el.clientHeight < el.scrollHeight - 8
+      );
     };
     check();
     el.addEventListener('scroll', check);
     const observer = new ResizeObserver(check);
     observer.observe(el);
-    return () => { el.removeEventListener('scroll', check); observer.disconnect(); };
+    return () => {
+      el.removeEventListener('scroll', check);
+      observer.disconnect();
+    };
   }, []);
 
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
@@ -287,39 +310,43 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
   } | null>(null);
   const [fileSaving, setFileSaving] = useState(false);
 
-  const doCloseTab = useCallback((tabId: string) => {
-    const tab = workspace.tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-    const serializedPanes = new Map<string, string>();
-    for (const paneId of collectPaneIds(tab.splitRoot)) {
-      const content = serializePane(paneId);
-      if (content) serializedPanes.set(paneId, content);
-    }
-    closeTab(tabId, serializedPanes);
-  }, [workspace.tabs, closeTab]);
-
-  const handleCloseTab = useCallback((tabId: string) => {
-    const tab = workspace.tabs.find((t) => t.id === tabId);
-    if (!tab) return;
-    // File tabs: check for dirty panes before closing
-    if (tab.type === 'file') {
-      const dirtyPaneId = getFirstDirtyPaneId(tab);
-      if (dirtyPaneId) {
-        const leaf = getFirstLeaf(tab);
-        const filename = leaf?.filePath?.split('/').pop() ?? tab.label;
-        setFileCloseConfirm({ tabId, label: filename, paneId: dirtyPaneId });
-        return;
+  const doCloseTab = useCallback(
+    (tabId: string) => {
+      const tab = workspace.tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      const serializedPanes = new Map<string, string>();
+      for (const paneId of collectPaneIds(tab.splitRoot)) {
+        const content = serializePane(paneId);
+        if (content) serializedPanes.set(paneId, content);
       }
-    }
-    doCloseTab(tabId);
-  }, [workspace.tabs, doCloseTab]);
+      closeTab(tabId, serializedPanes);
+    },
+    [workspace.tabs, closeTab]
+  );
+
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      const tab = workspace.tabs.find((t) => t.id === tabId);
+      if (!tab) return;
+      // File tabs: check for dirty panes before closing
+      if (tab.type === 'file') {
+        const dirtyPaneId = getFirstDirtyPaneId(tab);
+        if (dirtyPaneId) {
+          const leaf = getFirstLeaf(tab);
+          const filename = leaf?.filePath?.split('/').pop() ?? tab.label;
+          setFileCloseConfirm({ tabId, label: filename, paneId: dirtyPaneId });
+          return;
+        }
+      }
+      doCloseTab(tabId);
+    },
+    [workspace.tabs, doCloseTab]
+  );
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
       {/* Drag region + workspace label with add button */}
-      <div
-        className="px-3 pt-2 pb-3 flex items-center justify-between"
-      >
+      <div className="px-3 pt-2 pb-3 flex items-center justify-between">
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 min-w-0 mr-2">
           {isEditingWsLabel ? (
             <input
@@ -378,7 +405,15 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
               onClick={onCollapse}
               title="Collapse sidebar"
             >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
                 <rect x="1" y="2" width="14" height="12" rx="2" />
                 <line x1="5.5" y1="2" x2="5.5" y2="14" />
               </svg>
@@ -389,148 +424,154 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
 
       {/* Tab list */}
       <div className="flex-1 min-h-0 relative">
-      <div ref={tabListRef} className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2">
-        {/* Star Command tab (pinned, not closeable) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'star-command')
-          .map((tab) => (
-            <div
-              key={tab.id}
-              data-tab-id={tab.id}
-              className={`
-                flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
-                ${tab.id === activeTabId
-                  ? 'bg-neutral-700 text-white border-l-2 border-yellow-500'
-                  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
-              `}
-              onClick={() => {
-                setActiveTab(tab.id);
-              }}
-            >
-              <span className="text-yellow-400 flex-shrink-0">★</span>
-              <div className="flex-1 min-w-0">
-                <div className="truncate text-sm leading-tight font-semibold">Star Command</div>
-              </div>
-            </div>
-          ))}
-        {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
-          <div className="h-px bg-neutral-800 mx-1 my-1" />
-        )}
-        {/* Crew tabs (with sprite avatars) */}
-        {workspace.tabs
-          .filter((tab) => tab.type === 'crew')
-          .map((tab) => {
-            const paneIds = collectPaneIds(tab.splitRoot);
-            const badge = getTabBadge(paneIds);
-            return (
+        <div ref={tabListRef} className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2">
+          {/* Star Command tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'star-command')
+            .map((tab) => (
               <div
                 key={tab.id}
                 data-tab-id={tab.id}
                 className={`
-                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
-                  ${tab.id === activeTabId
-                    ? 'bg-neutral-700 text-white border-l-2 border-cyan-500'
-                    : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
-                `}
+                flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
+                ${
+                  tab.id === activeTabId
+                    ? 'bg-neutral-700 text-white border-l-2 border-yellow-500'
+                    : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+                }
+              `}
                 onClick={() => {
                   setActiveTab(tab.id);
-                  for (const paneId of paneIds) {
-                    useNotificationStore.getState().clearPane(paneId);
-                    window.fleet.notifications.paneFocused({ paneId });
-                  }
                 }}
               >
-                <Avatar type="crew" variant={tab.avatarVariant} size={24} />
+                <span className="text-yellow-400 flex-shrink-0">★</span>
                 <div className="flex-1 min-w-0">
-                  <div className="truncate text-sm leading-tight">{tab.label}</div>
+                  <div className="truncate text-sm leading-tight font-semibold">Star Command</div>
                 </div>
-                {badge && tab.id !== activeTabId && (
-                  <span className={`rounded-full flex-shrink-0 w-2 h-2 ${
-                    badge === 'error' ? 'bg-red-400' : badge === 'permission' ? 'bg-amber-400 animate-pulse' : 'bg-blue-400'
-                  }`} />
-                )}
               </div>
-            );
-          })}
-        {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
-          <div className="h-px bg-neutral-800 mx-1 my-1" />
-        )}
-        {workspace.tabs
-          .filter((t) => t.type !== 'star-command' && t.type !== 'crew')
-          .map((tab, index) => {
-            const paneIds = collectPaneIds(tab.splitRoot);
-            const isFile = tab.type === 'file' || tab.type === 'image';
-
-            // Derive CWD to display in TabItem
-            let displayCwd: string;
-            if (isFile) {
-              const leafs = collectPaneLeafs(tab.splitRoot);
-              const filePath = leafs[0]?.filePath ?? '';
-              displayCwd = filePath
-                ? filePath.split('/').slice(0, -1).join('/') || '/'
-                : '/';
-            } else {
-              const drivingPane =
-                tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
-                  ? activePaneId
-                  : paneIds[0];
-              displayCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
-            }
-
-            // Dirty label for file tabs
-            const isFileDirty = isFile && collectPaneLeafs(tab.splitRoot).some((l) => l.isDirty === true);
-            const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
-
-            // Icon — use filePath basename for file tabs (label may be renamed)
-            let icon: React.ReactNode;
-            if (isFile) {
-              const leafs2 = collectPaneLeafs(tab.splitRoot);
-              const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
-              icon = tab.type === 'image'
-                ? <ImageIcon size={14} />
-                : getFileIcon(fileBasename, 14);
-            } else {
-              icon = <Terminal size={14} />;
-            }
-
-            return (
-              <TabItem
-                key={tab.id}
-                id={tab.id}
-                label={displayLabel}
-                labelIsCustom={tab.labelIsCustom ?? false}
-                cwd={displayCwd}
-                isActive={tab.id === activeTabId}
-                badge={getTabBadge(paneIds)}
-                icon={icon}
-                disableReset={isFile}
-                index={index}
-                onDragStart={handleDragStart}
-                onDragOver={handleDragOver}
-                onDrop={handleDrop}
-                isDragOver={
-                  dropTarget?.index === index ? dropTarget.position : null
-                }
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  if (!isFile) {
+            ))}
+          {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
+            <div className="h-px bg-neutral-800 mx-1 my-1" />
+          )}
+          {/* Crew tabs (with sprite avatars) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'crew')
+            .map((tab) => {
+              const paneIds = collectPaneIds(tab.splitRoot);
+              const badge = getTabBadge(paneIds);
+              return (
+                <div
+                  key={tab.id}
+                  data-tab-id={tab.id}
+                  className={`
+                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
+                  ${
+                    tab.id === activeTabId
+                      ? 'bg-neutral-700 text-white border-l-2 border-cyan-500'
+                      : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+                  }
+                `}
+                  onClick={() => {
+                    setActiveTab(tab.id);
                     for (const paneId of paneIds) {
                       useNotificationStore.getState().clearPane(paneId);
                       window.fleet.notifications.paneFocused({ paneId });
                     }
-                  }
-                }}
-                onClose={() => handleCloseTab(tab.id)}
-                onRename={(newLabel) => renameTab(tab.id, newLabel)}
-                onResetLabel={() => resetTabLabel(tab.id, displayCwd)}
-              />
-            );
-          })}
-      </div>
-      {/* Scroll overflow shadow indicator */}
-      {hasScrollOverflow && (
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
-      )}
+                  }}
+                >
+                  <Avatar type="crew" variant={tab.avatarVariant} size={24} />
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate text-sm leading-tight">{tab.label}</div>
+                  </div>
+                  {badge && tab.id !== activeTabId && (
+                    <span
+                      className={`rounded-full flex-shrink-0 w-2 h-2 ${
+                        badge === 'error'
+                          ? 'bg-red-400'
+                          : badge === 'permission'
+                            ? 'bg-amber-400 animate-pulse'
+                            : 'bg-blue-400'
+                      }`}
+                    />
+                  )}
+                </div>
+              );
+            })}
+          {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
+            <div className="h-px bg-neutral-800 mx-1 my-1" />
+          )}
+          {workspace.tabs
+            .filter((t) => t.type !== 'star-command' && t.type !== 'crew')
+            .map((tab, index) => {
+              const paneIds = collectPaneIds(tab.splitRoot);
+              const isFile = tab.type === 'file' || tab.type === 'image';
+
+              // Derive CWD to display in TabItem
+              let displayCwd: string;
+              if (isFile) {
+                const leafs = collectPaneLeafs(tab.splitRoot);
+                const filePath = leafs[0]?.filePath ?? '';
+                displayCwd = filePath ? filePath.split('/').slice(0, -1).join('/') || '/' : '/';
+              } else {
+                const drivingPane =
+                  tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
+                    ? activePaneId
+                    : paneIds[0];
+                displayCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
+              }
+
+              // Dirty label for file tabs
+              const isFileDirty =
+                isFile && collectPaneLeafs(tab.splitRoot).some((l) => l.isDirty === true);
+              const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
+
+              // Icon — use filePath basename for file tabs (label may be renamed)
+              let icon: React.ReactNode;
+              if (isFile) {
+                const leafs2 = collectPaneLeafs(tab.splitRoot);
+                const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
+                icon =
+                  tab.type === 'image' ? <ImageIcon size={14} /> : getFileIcon(fileBasename, 14);
+              } else {
+                icon = <Terminal size={14} />;
+              }
+
+              return (
+                <TabItem
+                  key={tab.id}
+                  id={tab.id}
+                  label={displayLabel}
+                  labelIsCustom={tab.labelIsCustom ?? false}
+                  cwd={displayCwd}
+                  isActive={tab.id === activeTabId}
+                  badge={getTabBadge(paneIds)}
+                  icon={icon}
+                  disableReset={isFile}
+                  index={index}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  isDragOver={dropTarget?.index === index ? dropTarget.position : null}
+                  onClick={() => {
+                    setActiveTab(tab.id);
+                    if (!isFile) {
+                      for (const paneId of paneIds) {
+                        useNotificationStore.getState().clearPane(paneId);
+                        window.fleet.notifications.paneFocused({ paneId });
+                      }
+                    }
+                  }}
+                  onClose={() => handleCloseTab(tab.id)}
+                  onRename={(newLabel) => renameTab(tab.id, newLabel)}
+                  onResetLabel={() => resetTabLabel(tab.id, displayCwd)}
+                />
+              );
+            })}
+        </div>
+        {/* Scroll overflow shadow indicator */}
+        {hasScrollOverflow && (
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
+        )}
       </div>
 
       {/* Bottom section: workspaces */}
@@ -541,7 +582,10 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
           </span>
           <button
             className="text-neutral-500 hover:text-white text-sm leading-none px-1 rounded hover:bg-neutral-800 transition-colors"
-            onClick={() => { setShowNewWsInput(true); setNewWsName(''); }}
+            onClick={() => {
+              setShowNewWsInput(true);
+              setNewWsName('');
+            }}
             title="New Workspace"
           >
             +
@@ -558,7 +602,10 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
               onChange={(e) => setNewWsName(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') commitNewWorkspace();
-                if (e.key === 'Escape') { setShowNewWsInput(false); setNewWsName(''); }
+                if (e.key === 'Escape') {
+                  setShowNewWsInput(false);
+                  setNewWsName('');
+                }
               }}
               onBlur={() => commitNewWorkspace()}
               placeholder="Workspace name..."
@@ -574,9 +621,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
             <div key={ws.id} className="relative">
               {switchConfirmId === ws.id ? (
                 <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
-                  <span className="text-neutral-300">
-                    Switch? All terminals will close.
-                  </span>
+                  <span className="text-neutral-300">Switch? All terminals will close.</span>
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
@@ -594,9 +639,7 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
                 </div>
               ) : deleteConfirmId === ws.id ? (
                 <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
-                  <span className="text-red-400">
-                    Delete this workspace?
-                  </span>
+                  <span className="text-red-400">Delete this workspace?</span>
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
@@ -685,7 +728,9 @@ export function Sidebar({ updateReady, onCollapse }: { updateReady?: boolean; on
       {/* File close confirmation dialog */}
       <Dialog.Root
         open={!!fileCloseConfirm}
-        onOpenChange={(open) => { if (!open && !fileSaving) setFileCloseConfirm(null); }}
+        onOpenChange={(open) => {
+          if (!open && !fileSaving) setFileCloseConfirm(null);
+        }}
       >
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />

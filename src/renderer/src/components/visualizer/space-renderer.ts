@@ -26,7 +26,7 @@ const TRAIL_RATES: Record<string, { count: number; interval: number }> = {
   walking: { count: 0, interval: 0 },
   'needs-permission': { count: 1, interval: 200 },
   waiting: { count: 2, interval: 150 },
-  'not-agent': { count: 0, interval: 0 },
+  'not-agent': { count: 0, interval: 0 }
 };
 
 export class SpaceRenderer {
@@ -51,7 +51,7 @@ export class SpaceRenderer {
           ship.currentX - ship.width / 2 - 2,
           ship.currentY,
           ship.accentColor,
-          rate.count,
+          rate.count
         );
         this.trailTimers.set(ship.paneId, 0);
       } else {

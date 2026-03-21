@@ -35,7 +35,7 @@ export class ParticleSystem {
         color,
         life: maxLife,
         maxLife,
-        animElapsed: 0,
+        animElapsed: 0
       };
 
       if (this.particles.length >= MAX_PARTICLES) {
@@ -90,11 +90,14 @@ export class ParticleSystem {
         // Sprite-based puff: 4×4 sprite drawn at ~2× scale
         const renderSize = Math.round(p.size * 3);
         drawSprite(
-          ctx, puffRegion, p.animElapsed,
+          ctx,
+          puffRegion,
+          p.animElapsed,
           Math.round(p.x - renderSize / 2),
           Math.round(p.y - renderSize / 2),
-          renderSize, renderSize,
-          p.color,
+          renderSize,
+          renderSize,
+          p.color
         );
       } else {
         // Fallback: colored pixel
@@ -213,9 +216,14 @@ export class WarpEffect {
 
         ctx.globalAlpha = 0.9;
         drawSprite(
-          ctx, streakRegion, this.elapsed,
-          x, y, Math.round(stretchedWidth), Math.round(height),
-          color,
+          ctx,
+          streakRegion,
+          this.elapsed,
+          x,
+          y,
+          Math.round(stretchedWidth),
+          Math.round(height),
+          color
         );
 
         // Spawn burst at target position during warp-in
@@ -226,10 +234,13 @@ export class WarpEffect {
             ctx.globalAlpha = burstAlpha * 0.8;
             const burstSize = 24;
             drawSprite(
-              ctx, burstRegion, this.elapsed,
+              ctx,
+              burstRegion,
+              this.elapsed,
               Math.round(this.targetX - burstSize / 2),
               Math.round(this.targetY - burstSize / 2),
-              burstSize, burstSize,
+              burstSize,
+              burstSize
             );
           }
         }
@@ -257,7 +268,7 @@ export class WarpEffect {
         Math.round(this.targetX - burstSize / 2),
         Math.round(this.targetY - burstSize / 2),
         burstSize,
-        burstSize,
+        burstSize
       );
     }
 

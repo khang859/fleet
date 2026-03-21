@@ -43,10 +43,7 @@ function injectSerializedContent(node: PaneNode): PaneNode {
   }
   return {
     ...node,
-    children: [
-      injectSerializedContent(node.children[0]),
-      injectSerializedContent(node.children[1]),
-    ],
+    children: [injectSerializedContent(node.children[0]), injectSerializedContent(node.children[1])]
   };
 }
 
@@ -58,23 +55,31 @@ export function App() {
   const [showUndoToast, setShowUndoToast] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [sidebarManualOpen, setSidebarManualOpen] = useState(false)
+  const [sidebarManualOpen, setSidebarManualOpen] = useState(false);
 
-  const { workspace, activeTabId, activePaneId, setActiveTab, setActivePane, addTab, lastClosedTab, undoCloseTab } =
-    useWorkspaceStore();
+  const {
+    workspace,
+    activeTabId,
+    activePaneId,
+    setActiveTab,
+    setActivePane,
+    addTab,
+    lastClosedTab,
+    undoCloseTab
+  } = useWorkspaceStore();
   const settings = useSettingsStore((s) => s.settings);
-  const focusedPaneCwd = useCwdStore((s) => activePaneId ? s.cwds.get(activePaneId) : undefined);
+  const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
 
   const isStarCommand = useMemo(
     () => workspace.tabs.find((t) => t.id === activeTabId)?.type === 'star-command',
     [workspace.tabs, activeTabId]
-  )
-  const showSidebar = !isStarCommand || sidebarManualOpen
+  );
+  const showSidebar = !isStarCommand || sidebarManualOpen;
 
   // Reset manual override when leaving star-command
   useEffect(() => {
-    if (!isStarCommand) setSidebarManualOpen(false)
-  }, [isStarCommand])
+    if (!isStarCommand) setSidebarManualOpen(false);
+  }, [isStarCommand]);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -161,7 +166,9 @@ export function App() {
       markPtyCreated(tabId);
       useWorkspaceStore.getState().addCrewTab(tabId, label, cwd, avatarVariant);
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, []);
 
   // Open file in tab via IPC (fleet file:open-in-tab, with dedup)
@@ -169,7 +176,9 @@ export function App() {
     const cleanup = window.fleet.file.onOpenInTab((payload) => {
       useWorkspaceStore.getState().openFileInTab(payload.files);
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, []);
 
   // Auto-updater
@@ -177,7 +186,9 @@ export function App() {
     const cleanup = window.fleet.updates.onUpdateStatus((status) => {
       if (status.state === 'ready') setUpdateReady(true);
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, []);
 
   // Restore default workspace on startup, or create a fresh tab
@@ -202,8 +213,8 @@ export function App() {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot)),
-        })),
+          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+        }))
       };
       void window.fleet.layout.save({ workspace: workspaceWithContent });
     };
@@ -273,9 +284,7 @@ export function App() {
     const cleanup = window.fleet.pty.onExit(({ paneId }) => {
       clearCreatedPty(paneId);
       const state = useWorkspaceStore.getState();
-      const tab = state.workspace.tabs.find((t) =>
-        collectPaneIds(t.splitRoot).includes(paneId),
-      );
+      const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
       if (!tab) return;
 
       // Crew tabs: close silently (no undo toast — automated agent, PTY is dead)
@@ -297,7 +306,9 @@ export function App() {
         state.closePane(paneId);
       }
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, []);
 
   return (
@@ -308,148 +319,173 @@ export function App() {
         style={{ WebkitAppRegion: 'drag' }}
       />
       <div className="flex flex-1 min-h-0">
-      {showSidebar ? (
-        <Sidebar updateReady={updateReady} onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined} />
-      ) : (
-        <div
-          className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
-          style={{ WebkitAppRegion: 'no-drag' }}
-        >
-          {/* Expand sidebar button */}
-          <button
-            onClick={() => setSidebarManualOpen(true)}
-            className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-            title="Show sidebar"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-              <rect x="1" y="2" width="14" height="12" rx="2" />
-              <line x1="5.5" y1="2" x2="5.5" y2="14" />
-            </svg>
-          </button>
-          <div className="w-6 h-px bg-neutral-800 my-0.5" />
-          {/* Tab icons */}
-          {workspace.tabs.filter((t) => t.type !== 'star-command').map((tab) => {
-            const isActive = tab.id === activeTabId;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`p-1 rounded transition-colors ${
-                  isActive
-                    ? 'bg-neutral-700 ring-1 ring-neutral-600'
-                    : 'hover:bg-neutral-800'
-                }`}
-                title={tab.label}
-              >
-                {tab.type === 'crew' ? (
-                  <Avatar type="crew" variant={tab.avatarVariant} size={20} />
-                ) : tab.type === 'file' ? (
-                  <span className={isActive ? 'text-white' : 'text-neutral-500'}>{getFileIcon(collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ?? tab.label, 16)}</span>
-                ) : tab.type === 'image' ? (
-                  <ImageIcon size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
-                ) : (
-                  <Terminal size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-      <div className="flex-1 min-w-0 h-full flex flex-col">
-      <main className="flex-1 min-w-0 relative overflow-hidden">
-        {workspace.tabs.length > 0 ? (
-          workspace.tabs.map((tab) => {
-            const serializedPanes = restoredPanesRef.current.get(tab.id);
-            return (
-              <div
-                key={tab.id}
-                className="h-full w-full"
-                style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-              >
-                {tab.type === 'star-command' ? (
-                  <StarCommandTab />
-                ) : (
-                  <PaneGrid
-                    root={tab.splitRoot}
-                    activePaneId={tab.id === activeTabId ? activePaneId : null}
-                    onPaneFocus={(paneId) => {
-                      setActivePane(paneId);
-                      window.fleet.notifications.paneFocused({ paneId });
-                      useNotificationStore.getState().clearPane(paneId);
-                    }}
-                    serializedPanes={serializedPanes}
-                    fontFamily={settings?.general.fontFamily}
-                    fontSize={settings?.general.fontSize}
-                  />
-                )}
-              </div>
-            );
-          })
+        {showSidebar ? (
+          <Sidebar
+            updateReady={updateReady}
+            onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined}
+          />
         ) : (
-          <div className="flex items-center justify-center h-full text-neutral-600">
-            No tabs open. Press Cmd+T to create one.
+          <div
+            className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
+            style={{ WebkitAppRegion: 'no-drag' }}
+          >
+            {/* Expand sidebar button */}
+            <button
+              onClick={() => setSidebarManualOpen(true)}
+              className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+              title="Show sidebar"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 16 16"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <rect x="1" y="2" width="14" height="12" rx="2" />
+                <line x1="5.5" y1="2" x2="5.5" y2="14" />
+              </svg>
+            </button>
+            <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            {/* Tab icons */}
+            {workspace.tabs
+              .filter((t) => t.type !== 'star-command')
+              .map((tab) => {
+                const isActive = tab.id === activeTabId;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`p-1 rounded transition-colors ${
+                      isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
+                    }`}
+                    title={tab.label}
+                  >
+                    {tab.type === 'crew' ? (
+                      <Avatar type="crew" variant={tab.avatarVariant} size={20} />
+                    ) : tab.type === 'file' ? (
+                      <span className={isActive ? 'text-white' : 'text-neutral-500'}>
+                        {getFileIcon(
+                          collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??
+                            tab.label,
+                          16
+                        )}
+                      </span>
+                    ) : tab.type === 'image' ? (
+                      <ImageIcon
+                        size={16}
+                        className={isActive ? 'text-white' : 'text-neutral-500'}
+                      />
+                    ) : (
+                      <Terminal
+                        size={16}
+                        className={isActive ? 'text-white' : 'text-neutral-500'}
+                      />
+                    )}
+                  </button>
+                );
+              })}
           </div>
         )}
-        {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
-        {showUndoToast && lastClosedTab && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
-            <span className="text-neutral-300">
-              Closed "{lastClosedTab.tab.label}"
-            </span>
-            <button
-              className="text-blue-400 hover:text-blue-300 font-medium"
-              onClick={handleUndo}
-            >
-              Undo
-            </button>
-            <button
-              className="text-neutral-500 hover:text-neutral-300"
-              onClick={() => {
-                setShowUndoToast(false);
-                if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-                if (lastClosedTab) {
-                  killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
-                  pendingKillRef.current = [];
-                }
-              }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        <ShortcutsHint />
-      </main>
-      <VisualizerPanel
-        onShipClick={(id) => {
-          // id might be a tab ID (parent ship) or pane ID (child ship)
-          const tab = workspace.tabs.find((t) => t.id === id);
-          if (tab) {
-            // Clicked a tab ship — switch to that tab and focus its first pane
-            const { setActiveTab } = useWorkspaceStore.getState();
-            setActiveTab(tab.id);
-            const paneIds = collectPaneIds(tab.splitRoot);
-            if (paneIds[0]) setActivePane(paneIds[0]);
-          } else {
-            // Clicked a pane ship — focus that pane
-            setActivePane(id);
-            window.fleet.notifications.paneFocused({ paneId: id });
-          }
-        }}
-      />
-      </div>{/* end content column */}
-      </div>{/* end sidebar+content row */}
+        <div className="flex-1 min-w-0 h-full flex flex-col">
+          <main className="flex-1 min-w-0 relative overflow-hidden">
+            {workspace.tabs.length > 0 ? (
+              workspace.tabs.map((tab) => {
+                const serializedPanes = restoredPanesRef.current.get(tab.id);
+                return (
+                  <div
+                    key={tab.id}
+                    className="h-full w-full"
+                    style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+                  >
+                    {tab.type === 'star-command' ? (
+                      <StarCommandTab />
+                    ) : (
+                      <PaneGrid
+                        root={tab.splitRoot}
+                        activePaneId={tab.id === activeTabId ? activePaneId : null}
+                        onPaneFocus={(paneId) => {
+                          setActivePane(paneId);
+                          window.fleet.notifications.paneFocused({ paneId });
+                          useNotificationStore.getState().clearPane(paneId);
+                        }}
+                        serializedPanes={serializedPanes}
+                        fontFamily={settings?.general.fontFamily}
+                        fontSize={settings?.general.fontSize}
+                      />
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <div className="flex items-center justify-center h-full text-neutral-600">
+                No tabs open. Press Cmd+T to create one.
+              </div>
+            )}
+            {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
+            {showUndoToast && lastClosedTab && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
+                <span className="text-neutral-300">Closed "{lastClosedTab.tab.label}"</span>
+                <button
+                  className="text-blue-400 hover:text-blue-300 font-medium"
+                  onClick={handleUndo}
+                >
+                  Undo
+                </button>
+                <button
+                  className="text-neutral-500 hover:text-neutral-300"
+                  onClick={() => {
+                    setShowUndoToast(false);
+                    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+                    if (lastClosedTab) {
+                      killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
+                      pendingKillRef.current = [];
+                    }
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+            <ShortcutsHint />
+          </main>
+          <VisualizerPanel
+            onShipClick={(id) => {
+              // id might be a tab ID (parent ship) or pane ID (child ship)
+              const tab = workspace.tabs.find((t) => t.id === id);
+              if (tab) {
+                // Clicked a tab ship — switch to that tab and focus its first pane
+                const { setActiveTab } = useWorkspaceStore.getState();
+                setActiveTab(tab.id);
+                const paneIds = collectPaneIds(tab.splitRoot);
+                if (paneIds[0]) setActivePane(paneIds[0]);
+              } else {
+                // Clicked a pane ship — focus that pane
+                setActivePane(id);
+                window.fleet.notifications.paneFocused({ paneId: id });
+              }
+            }}
+          />
+        </div>
+        {/* end content column */}
+      </div>
+      {/* end sidebar+content row */}
       <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
-      <GitChangesModal isOpen={gitChangesOpen} onClose={() => setGitChangesOpen(false)} cwd={focusedPaneCwd} />
+      <GitChangesModal
+        isOpen={gitChangesOpen}
+        onClose={() => setGitChangesOpen(false)}
+        cwd={focusedPaneCwd}
+      />
       <QuickOpenOverlay
         isOpen={quickOpenOpen}
         onClose={() => setQuickOpenOpen(false)}
         rootDir={focusedPaneCwd}
       />
-      {showPreChecks && (
-        <AppPreChecks onDismiss={() => setShowPreChecks(false)} />
-      )}
+      {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>
   );
 }

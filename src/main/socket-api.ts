@@ -1,4 +1,4 @@
-import { createServer, Server, Socket } from 'net';
+import { createServer, type Server, type Socket } from 'net';
 import { mkdirSync } from 'fs';
 import { dirname } from 'path';
 
@@ -26,7 +26,7 @@ export class SocketApi {
 
   constructor(
     private socketPath: string,
-    private handler: SocketCommandHandler,
+    private handler: SocketCommandHandler
   ) {}
 
   async start(): Promise<void> {
@@ -115,7 +115,9 @@ export class SocketApi {
 
     // Handle subscribe specially — accumulates event types across calls
     if (cmd.type === 'subscribe') {
-      const events = Array.isArray(cmd.events) ? cmd.events.filter((e): e is string => typeof e === 'string') : [];
+      const events = Array.isArray(cmd.events)
+        ? cmd.events.filter((e): e is string => typeof e === 'string')
+        : [];
       const existing = this.subscriptions.get(socket) ?? new Set();
       for (const e of events) existing.add(e);
       this.subscriptions.set(socket, existing);
@@ -130,7 +132,7 @@ export class SocketApi {
       this.sendResponse(socket, {
         ok: false,
         id: cmd.id,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: err instanceof Error ? err.message : 'Unknown error'
       });
     }
   }

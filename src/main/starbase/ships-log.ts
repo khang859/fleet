@@ -61,7 +61,10 @@ export class ShipsLog {
 
   getRecent(limit: number): ShipsLogRow[] {
     return this.db
-      .prepare<[number], ShipsLogRow>('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
+      .prepare<
+        [number],
+        ShipsLogRow
+      >('SELECT * FROM ships_log ORDER BY created_at DESC, id DESC LIMIT ?')
       .all(limit);
   }
 }

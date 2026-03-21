@@ -4,7 +4,7 @@ import { AuroraBands } from '../aurora';
 function mockCtx(): CanvasRenderingContext2D {
   return {
     globalAlpha: 1,
-    drawImage: () => {},
+    drawImage: () => {}
   } as unknown as CanvasRenderingContext2D;
 }
 

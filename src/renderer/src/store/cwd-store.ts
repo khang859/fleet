@@ -19,7 +19,7 @@ export const useCwdStore = create<CwdStore>((set) => ({
       const next = new Map(state.cwds);
       next.delete(paneId);
       return { cwds: next };
-    }),
+    })
 }));
 
 export function initCwdListener(): () => void {

@@ -27,6 +27,12 @@ The full product spec lives in `docs/idea.md` — covers features, architecture,
 
 Past mistakes and fixes are documented in `docs/learnings/`. **After every mistake or unexpected bug, write down what happened and how it was fixed in a new or existing learnings file.** This prevents repeating the same mistakes. Always research (GitHub issues, Context7 docs) before attempting random fixes.
 
+## Verification Commands
+
+- **Type check:** `npm run typecheck` (runs both `typecheck:node` and `typecheck:web`)
+- **Lint:** `npm run lint`
+- **Build:** `npm run build` (runs typecheck first, then electron-vite build)
+
 ## Development Notes
 
 - **ESM output:** The main and preload processes output ESM (`.mjs`). Use `import.meta.url` instead of `__dirname`.

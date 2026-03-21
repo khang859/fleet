@@ -12,11 +12,11 @@ vi.mock('node-pty', () => ({
       onExit: vi.fn(),
       write: vi.fn(),
       resize: vi.fn(),
-      kill: vi.fn(),
+      kill: vi.fn()
     };
     mockInstances.push(instance);
     return instance;
-  }),
+  })
 }));
 
 describe('PtyManager — extended', () => {
@@ -84,7 +84,9 @@ describe('PtyManager — extended', () => {
     manager.onExit('p1', exitCb);
 
     // The mock's onExit was called with a wrapper; simulate the PTY exiting
-    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
+    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: {
+      exitCode: number;
+    }) => void;
     registeredHandler({ exitCode: 0 });
 
     expect(exitCb).toHaveBeenCalledWith(0);
@@ -96,7 +98,9 @@ describe('PtyManager — extended', () => {
     const exitCb = vi.fn();
     manager.onExit('p1', exitCb);
 
-    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
+    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: {
+      exitCode: number;
+    }) => void;
     registeredHandler({ exitCode: 137 });
 
     expect(exitCb).toHaveBeenCalledWith(137);
@@ -118,7 +122,7 @@ describe('PtyManager — extended', () => {
     expect(pty.spawn).toHaveBeenCalledWith(
       '/bin/bash',
       [],
-      expect.objectContaining({ cols: 200, rows: 50, cwd: '/home' }),
+      expect.objectContaining({ cols: 200, rows: 50, cwd: '/home' })
     );
   });
 
@@ -128,7 +132,7 @@ describe('PtyManager — extended', () => {
     expect(pty.spawn).toHaveBeenCalledWith(
       '/bin/zsh',
       ['-c', 'echo hello; exec /bin/zsh'],
-      expect.objectContaining({ cwd: '/tmp' }),
+      expect.objectContaining({ cwd: '/tmp' })
     );
   });
 });

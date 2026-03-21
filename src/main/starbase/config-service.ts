@@ -5,7 +5,9 @@ export class ConfigService {
   constructor(private db: Database.Database) {}
 
   get(key: string): unknown {
-    const row = this.db.prepare<[string], { value: string }>('SELECT value FROM starbase_config WHERE key = ?').get(key);
+    const row = this.db
+      .prepare<[string], { value: string }>('SELECT value FROM starbase_config WHERE key = ?')
+      .get(key);
     if (row) {
       return JSON.parse(row.value);
     }
@@ -43,13 +45,15 @@ export class ConfigService {
   set(key: string, value: unknown): void {
     this.db
       .prepare(
-        "INSERT OR REPLACE INTO starbase_config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+        "INSERT OR REPLACE INTO starbase_config (key, value, updated_at) VALUES (?, ?, datetime('now'))"
       )
       .run(key, JSON.stringify(value));
   }
 
   getAll(): Record<string, unknown> {
-    const rows = this.db.prepare<[], { key: string; value: string }>('SELECT key, value FROM starbase_config').all();
+    const rows = this.db
+      .prepare<[], { key: string; value: string }>('SELECT key, value FROM starbase_config')
+      .all();
 
     const result: Record<string, unknown> = { ...CONFIG_DEFAULTS };
     for (const row of rows) {

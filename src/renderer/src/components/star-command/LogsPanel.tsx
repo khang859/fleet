@@ -1,68 +1,80 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import type { StarbaseLogEntry } from '../../../../shared/ipc-api'
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { StarbaseLogEntry } from '../../../../shared/ipc-api';
 
-type LogEntry = StarbaseLogEntry
+type LogEntry = StarbaseLogEntry;
 
 type ShipsLogBridge = {
-  getShipsLog?: (opts?: { limit?: number }) => Promise<StarbaseLogEntry[]>
-  onLogEntry?: (cb: (entry: StarbaseLogEntry) => void) => (() => void) | undefined
-}
+  getShipsLog?: (opts?: { limit?: number }) => Promise<StarbaseLogEntry[]>;
+  onLogEntry?: (cb: (entry: StarbaseLogEntry) => void) => (() => void) | undefined;
+};
 
-export function hasShipsLogBridgeApi(starbase: ShipsLogBridge | null | undefined): starbase is Required<ShipsLogBridge> {
-  return typeof starbase?.getShipsLog === 'function' && typeof starbase?.onLogEntry === 'function'
+export function hasShipsLogBridgeApi(
+  starbase: ShipsLogBridge | null | undefined
+): starbase is Required<ShipsLogBridge> {
+  return typeof starbase?.getShipsLog === 'function' && typeof starbase?.onLogEntry === 'function';
 }
 
 function formatTime(timestamp: string): string {
   try {
-    const d = new Date(timestamp)
-    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    const d = new Date(timestamp);
+    return d.toLocaleTimeString('en-US', {
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
   } catch {
-    return timestamp.slice(11, 19) || timestamp
+    return timestamp.slice(11, 19) || timestamp;
   }
 }
 
 function eventColor(entry: LogEntry): string {
-  if (entry.source === 'comms') return 'text-yellow-400'
+  if (entry.source === 'comms') return 'text-yellow-400';
   switch (entry.eventType) {
-    case 'deployed': return 'text-teal-400'
-    case 'queued': return 'text-blue-400'
-    case 'safety_guard': return 'text-orange-400'
+    case 'deployed':
+      return 'text-teal-400';
+    case 'queued':
+      return 'text-blue-400';
+    case 'safety_guard':
+      return 'text-orange-400';
     case 'exited': {
-      const detail = typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail ?? '')
-      if (detail.includes('complete') || detail.includes('Complete')) return 'text-green-400'
-      if (detail.includes('abort') || detail.includes('Abort')) return 'text-neutral-500'
-      return 'text-red-400'
+      const detail =
+        typeof entry.detail === 'string' ? entry.detail : JSON.stringify(entry.detail ?? '');
+      if (detail.includes('complete') || detail.includes('Complete')) return 'text-green-400';
+      if (detail.includes('abort') || detail.includes('Abort')) return 'text-neutral-500';
+      return 'text-red-400';
     }
-    default: return 'text-neutral-400'
+    default:
+      return 'text-neutral-400';
   }
 }
 
 function summarize(detail: unknown): string {
-  if (!detail) return ''
+  if (!detail) return '';
   if (typeof detail === 'string') {
     try {
-      const parsed = JSON.parse(detail)
+      const parsed = JSON.parse(detail);
       if (typeof parsed === 'object' && parsed !== null) {
-        const keys = ['summary', 'message', 'reason', 'status', 'exitCode']
+        const keys = ['summary', 'message', 'reason', 'status', 'exitCode'];
         for (const k of keys) {
-          if (k in parsed && parsed[k] != null) return String(parsed[k]).slice(0, 80)
+          if (k in parsed && parsed[k] != null) return String(parsed[k]).slice(0, 80);
         }
-        return detail.slice(0, 80)
+        return detail.slice(0, 80);
       }
-      return String(parsed).slice(0, 80)
+      return String(parsed).slice(0, 80);
     } catch {
-      return detail.slice(0, 80)
+      return detail.slice(0, 80);
     }
   }
-  return JSON.stringify(detail).slice(0, 80)
+  return JSON.stringify(detail).slice(0, 80);
 }
 
 function LogRow({ entry }: { entry: LogEntry }) {
-  const color = eventColor(entry)
-  const time = formatTime(entry.timestamp)
-  const eventLabel = entry.eventType.toUpperCase().padEnd(16)
-  const actor = entry.actor ?? ''
-  const detail = summarize(entry.detail)
+  const color = eventColor(entry);
+  const time = formatTime(entry.timestamp);
+  const eventLabel = entry.eventType.toUpperCase().padEnd(16);
+  const actor = entry.actor ?? '';
+  const detail = summarize(entry.detail);
 
   return (
     <div className="flex gap-2 leading-relaxed">
@@ -71,59 +83,60 @@ function LogRow({ entry }: { entry: LogEntry }) {
       <span className="text-neutral-400 shrink-0 max-w-[120px] truncate">{actor}</span>
       <span className="text-neutral-500 truncate">{detail}</span>
     </div>
-  )
+  );
 }
 
 export function LogsPanel() {
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [bridgeUnavailable, setBridgeUnavailable] = useState(false)
-  const bottomRef = useRef<HTMLDivElement>(null)
-  const seenIds = useRef<Set<string>>(new Set())
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [bridgeUnavailable, setBridgeUnavailable] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const seenIds = useRef<Set<string>>(new Set());
 
   const loadAll = useCallback(() => {
-    const starbase = window.fleet?.starbase
+    const starbase = window.fleet?.starbase;
     if (!starbase?.getShipsLog || !starbase?.onLogEntry) {
-      setBridgeUnavailable(true)
-      return
+      setBridgeUnavailable(true);
+      return;
     }
 
-    setBridgeUnavailable(false)
-    starbase.getShipsLog({ limit: 200 })
+    setBridgeUnavailable(false);
+    starbase
+      .getShipsLog({ limit: 200 })
       .then((rows) => {
-        seenIds.current = new Set(rows.map(e => `${e.source}:${e.id}`))
-        setEntries(rows)
+        seenIds.current = new Set(rows.map((e) => `${e.source}:${e.id}`));
+        setEntries(rows);
       })
       .catch(() => {
-        setEntries([])
-      })
-  }, [])
+        setEntries([]);
+      });
+  }, []);
 
   useEffect(() => {
-    loadAll()
-  }, [loadAll])
+    loadAll();
+  }, [loadAll]);
 
   useEffect(() => {
-    const starbase = window.fleet?.starbase
+    const starbase = window.fleet?.starbase;
     if (!starbase?.getShipsLog || !starbase?.onLogEntry) {
-      setBridgeUnavailable(true)
-      return
+      setBridgeUnavailable(true);
+      return;
     }
 
     const unsub = starbase.onLogEntry((entry) => {
-      const key = `${entry.source}:${entry.id}`
-      if (seenIds.current.has(key)) return
-      seenIds.current.add(key)
-      setEntries(prev => {
-        const next = [...prev, entry]
-        return next.slice(-500)
-      })
-    })
-    return unsub
-  }, [])
+      const key = `${entry.source}:${entry.id}`;
+      if (seenIds.current.has(key)) return;
+      seenIds.current.add(key);
+      setEntries((prev) => {
+        const next = [...prev, entry];
+        return next.slice(-500);
+      });
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [entries])
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [entries]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto font-mono text-xs p-3 space-y-0.5">
@@ -132,11 +145,9 @@ export function LogsPanel() {
           {bridgeUnavailable ? 'Ships log unavailable in this app build.' : 'No log entries yet.'}
         </p>
       ) : (
-        entries.map(entry => (
-          <LogRow key={`${entry.source}:${entry.id}`} entry={entry} />
-        ))
+        entries.map((entry) => <LogRow key={`${entry.source}:${entry.id}`} entry={entry} />)
       )}
       <div ref={bottomRef} />
     </div>
-  )
+  );
 }

@@ -58,10 +58,7 @@ export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: Searc
       >
         <ChevronDown size={14} />
       </button>
-      <button
-        onClick={onClose}
-        className="text-neutral-500 hover:text-white text-sm ml-1"
-      >
+      <button onClick={onClose} className="text-neutral-500 hover:text-white text-sm ml-1">
         &times;
       </button>
     </div>

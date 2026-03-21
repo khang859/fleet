@@ -32,7 +32,10 @@ describe('Lockfile', () => {
   it('should detect active lock from live PID', () => {
     // Write a lock with our own PID (which is alive)
     const lockPath = join(TEST_DIR, 'starbase-test-123.lock');
-    writeFileSync(lockPath, JSON.stringify({ pid: process.pid, timestamp: new Date().toISOString() }));
+    writeFileSync(
+      lockPath,
+      JSON.stringify({ pid: process.pid, timestamp: new Date().toISOString() })
+    );
 
     const lockfile = new Lockfile(TEST_DIR, 'test-123');
     const result = lockfile.acquire();

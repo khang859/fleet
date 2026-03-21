@@ -1,10 +1,10 @@
-import { getScSpriteSheetUrl, getScTileUrl } from './sc-sprite-loader'
-import { SC_SPRITE_ATLAS } from './sc-sprite-atlas'
+import { getScSpriteSheetUrl, getScTileUrl } from './sc-sprite-loader';
+import { SC_SPRITE_ATLAS } from './sc-sprite-atlas';
 
 export function StatusBar() {
-  const url = getScSpriteSheetUrl()
-  const rivet = SC_SPRITE_ATLAS['statusbar-rivet']
-  const tileUrl = getScTileUrl('statusbar-tile')
+  const url = getScSpriteSheetUrl();
+  const rivet = SC_SPRITE_ATLAS['statusbar-rivet'];
+  const tileUrl = getScTileUrl('statusbar-tile');
 
   return (
     <div
@@ -14,7 +14,7 @@ export function StatusBar() {
         backgroundRepeat: 'repeat-x',
         backgroundSize: 'auto 100%',
         imageRendering: 'pixelated',
-        height: 32,
+        height: 32
       }}
     >
       {/* Rivets at far ends */}
@@ -30,7 +30,7 @@ export function StatusBar() {
               width: rivet.w,
               height: rivet.h,
               left: 8,
-              top: (32 - rivet.h) / 2,
+              top: (32 - rivet.h) / 2
             }}
           />
           <div
@@ -43,7 +43,7 @@ export function StatusBar() {
               width: rivet.w,
               height: rivet.h,
               right: 8,
-              top: (32 - rivet.h) / 2,
+              top: (32 - rivet.h) / 2
             }}
           />
         </>
@@ -53,5 +53,5 @@ export function StatusBar() {
         Starbase
       </span>
     </div>
-  )
+  );
 }

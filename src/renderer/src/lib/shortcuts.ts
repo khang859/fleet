@@ -1,7 +1,5 @@
 export const PLATFORM: 'mac' | 'other' =
-  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform)
-    ? 'mac'
-    : 'other';
+  typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other';
 
 export type KeyCombo = {
   key: string;
@@ -23,104 +21,104 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     id: 'new-tab',
     label: 'New tab',
     mac: { key: 't', meta: true },
-    other: { key: 't', ctrl: true },
+    other: { key: 't', ctrl: true }
   },
   {
     id: 'close-pane',
     label: 'Close pane',
     mac: { key: 'w', meta: true },
-    other: { key: 'W', ctrl: true, shift: true },
+    other: { key: 'W', ctrl: true, shift: true }
   },
   {
     id: 'split-right',
     label: 'Split right',
     mac: { key: 'd', meta: true },
-    other: { key: 'D', ctrl: true, shift: true },
+    other: { key: 'D', ctrl: true, shift: true }
   },
   {
     id: 'split-down',
     label: 'Split down',
     mac: { key: 'D', meta: true, shift: true },
-    other: { key: 'D', ctrl: true, shift: true, alt: true },
+    other: { key: 'D', ctrl: true, shift: true, alt: true }
   },
   {
     id: 'navigate-prev',
     label: 'Previous pane',
     mac: { key: '[', meta: true },
-    other: { key: '[', ctrl: true, shift: true },
+    other: { key: '[', ctrl: true, shift: true }
   },
   {
     id: 'navigate-next',
     label: 'Next pane',
     mac: { key: ']', meta: true },
-    other: { key: ']', ctrl: true, shift: true },
+    other: { key: ']', ctrl: true, shift: true }
   },
   {
     id: 'cycle-tab-next',
     label: 'Next tab',
     mac: { key: 'Tab', ctrl: true },
-    other: { key: 'Tab', ctrl: true },
+    other: { key: 'Tab', ctrl: true }
   },
   {
     id: 'cycle-tab-prev',
     label: 'Previous tab',
     mac: { key: 'Tab', ctrl: true, shift: true },
-    other: { key: 'Tab', ctrl: true, shift: true },
+    other: { key: 'Tab', ctrl: true, shift: true }
   },
   {
     id: 'search',
     label: 'Search in pane',
     mac: { key: 'f', meta: true },
-    other: { key: 'F', ctrl: true, shift: true },
+    other: { key: 'F', ctrl: true, shift: true }
   },
   {
     id: 'visualizer',
     label: 'Toggle visualizer',
     mac: { key: 'V', meta: true, shift: true },
-    other: { key: 'V', ctrl: true, shift: true },
+    other: { key: 'V', ctrl: true, shift: true }
   },
   {
     id: 'settings',
     label: 'Settings',
     mac: { key: ',', meta: true },
-    other: { key: ',', ctrl: true },
+    other: { key: ',', ctrl: true }
   },
   {
     id: 'shortcuts',
     label: 'Show shortcuts',
     mac: { key: '/', meta: true },
-    other: { key: '/', ctrl: true },
+    other: { key: '/', ctrl: true }
   },
   {
     id: 'rename-tab',
     label: 'Rename tab',
     mac: { key: 'F2' },
-    other: { key: 'F2' },
+    other: { key: 'F2' }
   },
   {
     id: 'command-palette',
     label: 'Command palette',
     mac: { key: 'P', meta: true, shift: true },
-    other: { key: 'P', ctrl: true, shift: true },
+    other: { key: 'P', ctrl: true, shift: true }
   },
   {
     id: 'git-changes',
     label: 'Git Changes',
     mac: { key: 'g', meta: true, shift: true },
-    other: { key: 'G', ctrl: true, shift: true },
+    other: { key: 'G', ctrl: true, shift: true }
   },
   {
     id: 'open-file',
     label: 'Open file dialog',
     mac: { key: 'o', meta: true },
-    other: { key: 'o', ctrl: true },
+    other: { key: 'o', ctrl: true }
   },
   {
     id: 'quick-open',
     label: 'Quick open',
     mac: { key: 'p', meta: true },
-    other: { key: 'p', ctrl: true },
-  },
+    other: { key: 'p', ctrl: true }
+  }
 ];
 
 export function matchesShortcut(e: KeyboardEvent, def: ShortcutDef): boolean {

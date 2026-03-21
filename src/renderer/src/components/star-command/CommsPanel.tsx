@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useStarCommandStore } from '../../store/star-command-store'
-import type { CommInfo } from '../../store/star-command-store'
+import { useState, useCallback, useEffect } from 'react';
+import { useStarCommandStore } from '../../store/star-command-store';
+import type { CommInfo } from '../../store/star-command-store';
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
   return (
@@ -8,63 +8,71 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
       {title}
       {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  )
+  );
 }
 
 function typeColor(type: string): string {
   switch (type) {
-    case 'awaiting_feedback': return 'text-yellow-400'
-    case 'hailing': return 'text-teal-400'
-    case 'status': return 'text-blue-400'
-    case 'blocker': return 'text-red-400'
-    case 'directive': return 'text-purple-400'
-    default: return 'text-neutral-400'
+    case 'awaiting_feedback':
+      return 'text-yellow-400';
+    case 'hailing':
+      return 'text-teal-400';
+    case 'status':
+      return 'text-blue-400';
+    case 'blocker':
+      return 'text-red-400';
+    case 'directive':
+      return 'text-purple-400';
+    default:
+      return 'text-neutral-400';
   }
 }
 
 function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const [resolveText, setResolveText] = useState('')
-  const [resolving, setResolving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false);
+  const [resolveText, setResolveText] = useState('');
+  const [resolving, setResolving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleMarkRead = async () => {
-    await window.fleet.starbase.markCommsRead(comm.id)
-    onRefresh()
-  }
+    await window.fleet.starbase.markCommsRead(comm.id);
+    onRefresh();
+  };
 
   const handleDelete = async () => {
-    await window.fleet.starbase.deleteComms(comm.id)
-    onRefresh()
-  }
+    await window.fleet.starbase.deleteComms(comm.id);
+    onRefresh();
+  };
 
   const handleResolve = async () => {
-    if (!resolveText.trim()) return
-    setResolving(true)
-    setError(null)
+    if (!resolveText.trim()) return;
+    setResolving(true);
+    setError(null);
     try {
-      await window.fleet.starbase.resolveComms(comm.id, resolveText.trim())
-      setResolveText('')
-      setExpanded(false)
-      onRefresh()
+      await window.fleet.starbase.resolveComms(comm.id, resolveText.trim());
+      setResolveText('');
+      setExpanded(false);
+      onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to resolve')
+      setError(err instanceof Error ? err.message : 'Failed to resolve');
     }
-    setResolving(false)
-  }
+    setResolving(false);
+  };
 
-  let payloadPreview = comm.payload
+  let payloadPreview = comm.payload;
   try {
-    const parsed = JSON.parse(comm.payload)
-    if (parsed.message) payloadPreview = parsed.message
-    else if (typeof parsed === 'string') payloadPreview = parsed
+    const parsed = JSON.parse(comm.payload);
+    if (parsed.message) payloadPreview = parsed.message;
+    else if (typeof parsed === 'string') payloadPreview = parsed;
   } catch {
     // raw string payload
   }
-  if (payloadPreview.length > 80) payloadPreview = payloadPreview.slice(0, 80) + '…'
+  if (payloadPreview.length > 80) payloadPreview = payloadPreview.slice(0, 80) + '…';
 
   return (
-    <div className={`bg-neutral-800 rounded-lg border overflow-hidden ${comm.read ? 'border-neutral-700' : 'border-teal-700'}`}>
+    <div
+      className={`bg-neutral-800 rounded-lg border overflow-hidden ${comm.read ? 'border-neutral-700' : 'border-teal-700'}`}
+    >
       <button
         className="w-full text-left px-3 py-2 flex items-start justify-between hover:bg-neutral-750 transition-colors gap-2"
         onClick={() => setExpanded(!expanded)}
@@ -86,7 +94,9 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
           </div>
           <p className="text-xs text-neutral-400 mt-0.5 truncate">{payloadPreview}</p>
         </div>
-        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">{expanded ? '▲' : '▼'}</span>
+        <span className="text-xs text-neutral-600 flex-shrink-0 mt-0.5">
+          {expanded ? '▲' : '▼'}
+        </span>
       </button>
 
       {expanded && (
@@ -104,7 +114,9 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
               onChange={(e) => setResolveText(e.target.value)}
               placeholder="Response message..."
               className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleResolve() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleResolve();
+              }}
             />
             <button
               onClick={handleResolve}
@@ -136,45 +148,47 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
         </div>
       )}
     </div>
-  )
+  );
 }
 
 export function CommsPanel() {
-  const { commsList, setCommsList, setUnreadCount } = useStarCommandStore()
-  const [clearConfirm, setClearConfirm] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { commsList, setCommsList, setUnreadCount } = useStarCommandStore();
+  const [clearConfirm, setClearConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const all = await window.fleet.starbase.listComms({ limit: 100 })
-      setCommsList(all)
-      const unread = await window.fleet.starbase.getUnreadComms()
-      setUnreadCount(unread.length)
+      const all = await window.fleet.starbase.listComms({ limit: 100 });
+      setCommsList(all);
+      const unread = await window.fleet.starbase.getUnreadComms();
+      setUnreadCount(unread.length);
     } catch {
       // ignore
     }
-  }, [setCommsList, setUnreadCount])
+  }, [setCommsList, setUnreadCount]);
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   const handleReadAll = async () => {
-    await window.fleet.starbase.markAllCommsRead()
-    refresh()
-  }
+    await window.fleet.starbase.markAllCommsRead();
+    refresh();
+  };
 
   const handleClearAll = async () => {
-    setError(null)
+    setError(null);
     try {
-      await window.fleet.starbase.clearComms()
-      setClearConfirm(false)
-      refresh()
+      await window.fleet.starbase.clearComms();
+      setClearConfirm(false);
+      refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to clear')
+      setError(err instanceof Error ? err.message : 'Failed to clear');
     }
-  }
+  };
 
-  const unread = commsList.filter((c) => !c.read)
-  const read = commsList.filter((c) => c.read)
+  const unread = commsList.filter((c) => !c.read);
+  const read = commsList.filter((c) => c.read);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
@@ -246,5 +260,5 @@ export function CommsPanel() {
         <p className="text-xs text-neutral-600 text-center py-8">No transmissions</p>
       )}
     </div>
-  )
+  );
 }

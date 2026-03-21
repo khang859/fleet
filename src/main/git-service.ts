@@ -29,19 +29,14 @@ export class GitService {
     }
 
     try {
-      const [branchInfo, statusResult] = await Promise.all([
-        git.branch(),
-        git.status(),
-      ]);
+      const [branchInfo, statusResult] = await Promise.all([git.branch(), git.status()]);
 
       const branch = branchInfo.current;
       const untrackedPaths = new Set(statusResult.not_added);
 
       // Get numstat for tracked file stats
       let numstatRaw = '';
-      const hasTrackedChanges = statusResult.files.some(
-        (f) => !untrackedPaths.has(f.path),
-      );
+      const hasTrackedChanges = statusResult.files.some((f) => !untrackedPaths.has(f.path));
       if (hasTrackedChanges) {
         numstatRaw = await git.raw(['diff', 'HEAD', '--numstat']);
       }
@@ -53,7 +48,7 @@ export class GitService {
         if (parts.length === 3) {
           numstatMap.set(parts[2], {
             insertions: parseInt(parts[0]) || 0,
-            deletions: parseInt(parts[1]) || 0,
+            deletions: parseInt(parts[1]) || 0
           });
         }
       }
@@ -66,7 +61,7 @@ export class GitService {
           path: f.path,
           status: resolveStatus(f, isUntracked),
           insertions: stats.insertions,
-          deletions: stats.deletions,
+          deletions: stats.deletions
         };
       });
 
@@ -79,12 +74,7 @@ export class GitService {
       // Append diffs for untracked files
       for (const path of untrackedPaths) {
         try {
-          const untrackedDiff = await git.raw([
-            'diff',
-            '--no-index',
-            '/dev/null',
-            path,
-          ]);
+          const untrackedDiff = await git.raw(['diff', '--no-index', '/dev/null', path]);
           diff += untrackedDiff;
         } catch (e: unknown) {
           // git diff --no-index exits with code 1 when files differ (which is always
@@ -109,10 +99,7 @@ export class GitService {
   }
 }
 
-function resolveStatus(
-  file: FileStatusResult,
-  isUntracked: boolean,
-): GitFileStatus['status'] {
+function resolveStatus(file: FileStatusResult, isUntracked: boolean): GitFileStatus['status'] {
   if (isUntracked) return 'untracked';
   // Check both index and working_dir status
   const combined = file.index + file.working_dir;

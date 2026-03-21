@@ -57,7 +57,7 @@ export class SectorService {
   constructor(
     private db: Database.Database,
     private workspaceRoot: string,
-    private eventBus?: EventBus,
+    private eventBus?: EventBus
   ) {}
 
   addSector(opts: AddSectorOpts): SectorRow {
@@ -77,9 +77,7 @@ export class SectorService {
       .prepare<[string], { id: string }>('SELECT id FROM sectors WHERE root_path = ?')
       .get(absolutePath);
     if (existing) {
-      throw new SectorValidationError(
-        `Path already registered as sector '${existing.id}'`,
-      );
+      throw new SectorValidationError(`Path already registered as sector '${existing.id}'`);
     }
 
     const id = this.generateSlugId(absolutePath);
@@ -89,7 +87,7 @@ export class SectorService {
     this.db
       .prepare(
         `INSERT INTO sectors (id, name, root_path, stack, description, base_branch, merge_strategy)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -98,7 +96,7 @@ export class SectorService {
         stack,
         opts.description ?? null,
         opts.baseBranch ?? 'main',
-        opts.mergeStrategy ?? 'pr',
+        opts.mergeStrategy ?? 'pr'
       );
 
     const sector = this.getSector(id)!;
@@ -130,9 +128,7 @@ export class SectorService {
     sets.push("updated_at = datetime('now')");
     values.push(sectorId);
 
-    this.db
-      .prepare(`UPDATE sectors SET ${sets.join(', ')} WHERE id = ?`)
-      .run(...values);
+    this.db.prepare(`UPDATE sectors SET ${sets.join(', ')} WHERE id = ?`).run(...values);
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
@@ -155,13 +151,17 @@ export class SectorService {
   }
 
   private generateSlugId(absolutePath: string): string {
-    const base = basename(absolutePath).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const base = basename(absolutePath)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-');
     // Check for collision
     const existing = this.db.prepare('SELECT id FROM sectors WHERE id = ?').get(base);
     if (!existing) return base;
 
     // Append parent directory name as prefix
-    const parent = basename(dirname(absolutePath)).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const parent = basename(dirname(absolutePath))
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-');
     const prefixed = `${parent}-${base}`;
     const existingPrefixed = this.db.prepare('SELECT id FROM sectors WHERE id = ?').get(prefixed);
     if (!existingPrefixed) return prefixed;

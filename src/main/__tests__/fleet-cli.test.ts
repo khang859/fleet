@@ -38,7 +38,7 @@ function makeServices(db: StarbaseDB, dbDir: string) {
     sectorService,
     missionService,
     configService,
-    worktreeManager,
+    worktreeManager
   });
   const supplyRouteService = new SupplyRouteService(rawDb);
   const cargoService = new CargoService(rawDb, supplyRouteService, configService);
@@ -50,7 +50,7 @@ function makeServices(db: StarbaseDB, dbDir: string) {
     killPty: () => {},
     resize: () => {},
     write: () => {},
-    listPtys: () => [],
+    listPtys: () => []
   } as any;
 
   const createTab = (_label: string, _cwd: string) => 'tab-1';
@@ -65,7 +65,7 @@ function makeServices(db: StarbaseDB, dbDir: string) {
     configService,
     ptyManager,
     createTab,
-    shipsLog,
+    shipsLog
   };
 }
 
@@ -103,14 +103,14 @@ describe('parseArgs', () => {
   });
 
   it('accumulates repeated --depends-on flags into an array', () => {
-    const result = parseArgs(['--depends-on', '12', '--depends-on', '15'])
-    expect(result['depends-on']).toEqual(['12', '15'])
-  })
+    const result = parseArgs(['--depends-on', '12', '--depends-on', '15']);
+    expect(result['depends-on']).toEqual(['12', '15']);
+  });
 
   it('keeps single --depends-on as a plain string (not array)', () => {
-    const result = parseArgs(['--depends-on', '12'])
-    expect(result['depends-on']).toBe('12')
-  })
+    const result = parseArgs(['--depends-on', '12']);
+    expect(result['depends-on']).toBe('12');
+  });
 });
 
 // ── validateCommand tests ─────────────────────────────────────────────────────
@@ -118,11 +118,14 @@ describe('parseArgs', () => {
 describe('validateCommand', () => {
   it('validateCommand errors on non-numeric --depends-on', () => {
     const error = validateCommand('mission.create', {
-      sector: 'api', type: 'code', summary: 'S', prompt: 'P',
+      sector: 'api',
+      type: 'code',
+      summary: 'S',
+      prompt: 'P',
       'depends-on': 'not-a-number'
-    })
-    expect(error).toContain('--depends-on')
-  })
+    });
+    expect(error).toContain('--depends-on');
+  });
 });
 
 // ── FleetCLI.send tests ───────────────────────────────────────────────────────
@@ -212,8 +215,18 @@ describe('runCLI', () => {
   });
 
   it('comms.check with N unread returns notification message', async () => {
-    services.commsService.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: 'hello' });
-    services.commsService.send({ from: 'crew-2', to: 'admiral', type: 'hailing', payload: 'world' });
+    services.commsService.send({
+      from: 'crew-1',
+      to: 'admiral',
+      type: 'hailing',
+      payload: 'hello'
+    });
+    services.commsService.send({
+      from: 'crew-2',
+      to: 'admiral',
+      type: 'hailing',
+      payload: 'world'
+    });
 
     const output = await runCLI(['comms', 'check'], socketPath);
     expect(output).toContain('2 unread transmission(s)');

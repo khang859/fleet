@@ -14,7 +14,7 @@ if (typeof OffscreenCanvas === 'undefined') {
         clearRect: () => {},
         fillRect: () => {},
         createLinearGradient: () => ({
-          addColorStop: () => {},
+          addColorStop: () => {}
         }),
         drawImage: () => {},
         beginPath: () => {},
@@ -25,7 +25,7 @@ if (typeof OffscreenCanvas === 'undefined') {
         set strokeStyle(_v: unknown) {},
         set lineWidth(_v: unknown) {},
         set filter(_v: unknown) {},
-        set globalAlpha(_v: unknown) {},
+        set globalAlpha(_v: unknown) {}
       };
     }
   }

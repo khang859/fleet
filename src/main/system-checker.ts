@@ -1,96 +1,96 @@
-import { existsSync } from 'fs'
-import { join } from 'path'
-import { homedir } from 'os'
-import { exec } from 'child_process'
-import { promisify } from 'util'
-import * as net from 'net'
-import type { SystemDepResult } from '../shared/ipc-api'
-import { SOCKET_PATH } from '../shared/constants'
+import { existsSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
+import { exec } from 'child_process';
+import { promisify } from 'util';
+import * as net from 'net';
+import type { SystemDepResult } from '../shared/ipc-api';
+import { SOCKET_PATH } from '../shared/constants';
 
-const execAsync = promisify(exec)
+const execAsync = promisify(exec);
 
-const FLEET_BIN = join(homedir(), '.fleet', 'bin', 'fleet')
+const FLEET_BIN = join(homedir(), '.fleet', 'bin', 'fleet');
 
 type CmdCheck = {
-  name: string
-  cmd: string
-  installHint: string
-  preCheck?: () => boolean
-  fn?: never
-}
+  name: string;
+  cmd: string;
+  installHint: string;
+  preCheck?: () => boolean;
+  fn?: never;
+};
 
 type FnCheck = {
-  name: string
-  fn: () => Promise<SystemDepResult>
-  cmd?: never
-  preCheck?: never
-  installHint?: never
-}
+  name: string;
+  fn: () => Promise<SystemDepResult>;
+  cmd?: never;
+  preCheck?: never;
+  installHint?: never;
+};
 
-type Check = CmdCheck | FnCheck
+type Check = CmdCheck | FnCheck;
 
 function attemptFleetSock(): Promise<SystemDepResult> {
   return new Promise((resolve) => {
-    const socket = net.createConnection(SOCKET_PATH)
-    let responded = false
+    const socket = net.createConnection(SOCKET_PATH);
+    let responded = false;
 
     const fail = () => {
-      if (responded) return
-      responded = true
-      socket.destroy()
+      if (responded) return;
+      responded = true;
+      socket.destroy();
       resolve({
         name: 'fleet.sock',
         found: false,
         installHint:
           'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.'
-      })
-    }
+      });
+    };
 
-    socket.setTimeout(3000)
-    socket.on('timeout', fail)
-    socket.on('error', fail)
+    socket.setTimeout(3000);
+    socket.on('timeout', fail);
+    socket.on('error', fail);
 
     socket.on('connect', () => {
-      socket.write(JSON.stringify({ command: 'ping' }) + '\n')
-    })
+      socket.write(JSON.stringify({ command: 'ping' }) + '\n');
+    });
 
-    let buf = ''
+    let buf = '';
     socket.on('data', (data) => {
-      if (responded) return
-      buf += data.toString()
-      const line = buf.split('\n')[0]
+      if (responded) return;
+      buf += data.toString();
+      const line = buf.split('\n')[0];
       try {
-        const msg = JSON.parse(line)
+        const msg = JSON.parse(line);
         if (msg.ok === true && msg.data?.pong === true) {
-          responded = true
-          socket.destroy()
-          const uptime = msg.data.uptime
-          const version = uptime !== undefined ? `uptime: ${Math.round(uptime)}s` : undefined
+          responded = true;
+          socket.destroy();
+          const uptime = msg.data.uptime;
+          const version = uptime !== undefined ? `uptime: ${Math.round(uptime)}s` : undefined;
           resolve({
             name: 'fleet.sock',
             found: true,
             version,
             installHint:
-              'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.',
-          })
+              'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.'
+          });
         }
       } catch {
         // keep buffering
       }
-    })
+    });
 
     socket.on('close', () => {
-      if (!responded) fail()
-    })
-  })
+      if (!responded) fail();
+    });
+  });
 }
 
 async function checkFleetSock(maxAttempts = 3, delayMs = 1500): Promise<SystemDepResult> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    const result = await attemptFleetSock()
-    if (result.found) return result
+    const result = await attemptFleetSock();
+    if (result.found) return result;
     if (attempt < maxAttempts) {
-      await new Promise((r) => setTimeout(r, delayMs))
+      await new Promise((r) => setTimeout(r, delayMs));
     }
   }
   return {
@@ -98,7 +98,7 @@ async function checkFleetSock(maxAttempts = 3, delayMs = 1500): Promise<SystemDe
     found: false,
     installHint:
       'Fleet socket is not running. The app may still be starting up — try clicking Retry in a moment.'
-  }
+  };
 }
 
 const CHECKS: Check[] = [
@@ -133,30 +133,30 @@ const CHECKS: Check[] = [
     name: 'fleet.sock',
     fn: checkFleetSock
   }
-]
+];
 
 export async function checkSystemDeps(): Promise<SystemDepResult[]> {
-  const results: SystemDepResult[] = []
+  const results: SystemDepResult[] = [];
 
   for (const check of CHECKS) {
     if (check.fn) {
-      results.push(await check.fn())
-      continue
+      results.push(await check.fn());
+      continue;
     }
 
     if (check.preCheck && !check.preCheck()) {
-      results.push({ name: check.name, found: false, installHint: check.installHint })
-      continue
+      results.push({ name: check.name, found: false, installHint: check.installHint });
+      continue;
     }
 
     try {
-      const { stdout } = await execAsync(check.cmd, { timeout: 5000 })
-      const version = stdout.trim().split('\n')[0]
-      results.push({ name: check.name, found: true, version, installHint: check.installHint })
+      const { stdout } = await execAsync(check.cmd, { timeout: 5000 });
+      const version = stdout.trim().split('\n')[0];
+      results.push({ name: check.name, found: true, version, installHint: check.installHint });
     } catch {
-      results.push({ name: check.name, found: false, installHint: check.installHint })
+      results.push({ name: check.name, found: false, installHint: check.installHint });
     }
   }
 
-  return results
+  return results;
 }

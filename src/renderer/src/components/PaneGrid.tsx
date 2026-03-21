@@ -19,7 +19,14 @@ type PaneGridProps = {
   fontSize?: number;
 };
 
-export function PaneGrid({ root, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize }: PaneGridProps) {
+export function PaneGrid({
+  root,
+  activePaneId,
+  onPaneFocus,
+  serializedPanes,
+  fontFamily,
+  fontSize
+}: PaneGridProps) {
   const { splitPane, closePane } = useWorkspaceStore();
 
   return (
@@ -49,20 +56,22 @@ type PaneNodeRendererProps = {
   actions: PaneActions;
 };
 
-function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPanes, fontFamily, fontSize, actions }: PaneNodeRendererProps) {
+function PaneNodeRenderer({
+  node,
+  path,
+  activePaneId,
+  onPaneFocus,
+  serializedPanes,
+  fontFamily,
+  fontSize,
+  actions
+}: PaneNodeRendererProps) {
   if (node.type === 'leaf') {
     if (node.paneType === 'file') {
-      return (
-        <FileEditorPane
-          paneId={node.id}
-          filePath={node.filePath ?? ''}
-        />
-      );
+      return <FileEditorPane paneId={node.id} filePath={node.filePath ?? ''} />;
     }
     if (node.paneType === 'image') {
-      return (
-        <ImageViewerPane filePath={node.filePath ?? ''} />
-      );
+      return <ImageViewerPane filePath={node.filePath ?? ''} />;
     }
     return (
       <TerminalPane
@@ -83,14 +92,11 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
   const isHorizontal = node.direction === 'horizontal';
 
   return (
-    <div
-      className="flex h-full w-full"
-      style={{ flexDirection: isHorizontal ? 'row' : 'column' }}
-    >
+    <div className="flex h-full w-full" style={{ flexDirection: isHorizontal ? 'row' : 'column' }}>
       <div
         style={{
           [isHorizontal ? 'width' : 'height']: `${node.ratio * 100}%`,
-          [isHorizontal ? 'height' : 'width']: '100%',
+          [isHorizontal ? 'height' : 'width']: '100%'
         }}
       >
         <PaneNodeRenderer
@@ -110,7 +116,7 @@ function PaneNodeRenderer({ node, path, activePaneId, onPaneFocus, serializedPan
       <div
         style={{
           [isHorizontal ? 'width' : 'height']: `${(1 - node.ratio) * 100}%`,
-          [isHorizontal ? 'height' : 'width']: '100%',
+          [isHorizontal ? 'height' : 'width']: '100%'
         }}
       >
         <PaneNodeRenderer
@@ -170,7 +176,7 @@ function ResizeHandle({ direction, path }: ResizeHandleProps) {
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [isHorizontal, path, resizeSplit],
+    [isHorizontal, path, resizeSplit]
   );
 
   return (

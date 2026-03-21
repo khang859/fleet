@@ -39,7 +39,7 @@ const makeEvent = (overrides: Partial<ActionableEvent> = {}): ActionableEvent =>
   verifyResult: null,
   reviewNotes: null,
   retryCount: 0,
-  ...overrides,
+  ...overrides
 });
 
 beforeEach(() => {
@@ -64,18 +64,16 @@ beforeEach(() => {
   const mission = missionService.addMission({
     sectorId: SECTOR_ID,
     summary: 'Add auth endpoint',
-    prompt: 'Create a /auth endpoint',
+    prompt: 'Create a /auth endpoint'
   });
   missionId = mission.id;
 
   cargoService = new CargoService(rawDb, new SupplyRouteService(rawDb), configService);
 
   // Insert crew row (minimal, no FK for crew table)
-  rawDb.prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)').run(
-    CREW_ID,
-    SECTOR_ID,
-    'active',
-  );
+  rawDb
+    .prepare('INSERT INTO crew (id, sector_id, status) VALUES (?, ?, ?)')
+    .run(CREW_ID, SECTOR_ID, 'active');
 
   firstOfficer = new FirstOfficer({
     db: rawDb,
@@ -84,9 +82,9 @@ beforeEach(() => {
     cargoService,
     crewService: {
       recallCrew: () => {},
-      deployCrew: async () => ({ crewId: 'replacement', missionId }),
+      deployCrew: async () => ({ crewId: 'replacement', missionId })
     } as any,
-    starbaseId: db.getStarbaseId(),
+    starbaseId: db.getStarbaseId()
   });
 });
 
@@ -115,9 +113,9 @@ describe('FirstOfficer', () => {
     const result = await firstOfficer.dispatch(event);
     expect(result).toBe(true);
 
-    const comms = rawDb.prepare(
-      "SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?"
-    ).all(missionId) as Array<{ id: number; payload: string; read: number }>
+    const comms = rawDb
+      .prepare("SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?")
+      .all(missionId) as Array<{ id: number; payload: string; read: number }>;
 
     expect(comms.length).toBeGreaterThanOrEqual(1);
     const payload = JSON.parse(comms[0].payload);
@@ -128,12 +126,14 @@ describe('FirstOfficer', () => {
 
   it('dispatch() returns false if already running for same crew+mission', async () => {
     // Manually inject a running entry to simulate an in-flight process
-    const runningMap: Map<string, unknown> = (firstOfficer as unknown as { running: Map<string, unknown> }).running;
+    const runningMap: Map<string, unknown> = (
+      firstOfficer as unknown as { running: Map<string, unknown> }
+    ).running;
     runningMap.set(`${CREW_ID}:${missionId}`, {
       proc: { killed: false, kill: () => {} },
       crewId: CREW_ID,
       missionId,
-      startedAt: Date.now(),
+      startedAt: Date.now()
     });
 
     const event = makeEvent();
@@ -143,7 +143,9 @@ describe('FirstOfficer', () => {
 
   it('dispatch() returns false if concurrency limit is reached', async () => {
     const maxConcurrent = configService.get('first_officer_max_concurrent') as number;
-    const runningMap: Map<string, unknown> = (firstOfficer as unknown as { running: Map<string, unknown> }).running;
+    const runningMap: Map<string, unknown> = (
+      firstOfficer as unknown as { running: Map<string, unknown> }
+    ).running;
 
     // Fill up running slots with dummy entries
     for (let i = 0; i < maxConcurrent; i++) {
@@ -151,7 +153,7 @@ describe('FirstOfficer', () => {
         proc: { killed: false, kill: () => {} },
         crewId: `other-crew-${i}`,
         missionId: i,
-        startedAt: Date.now(),
+        startedAt: Date.now()
       });
     }
 
@@ -166,12 +168,12 @@ describe('FirstOfficer', () => {
       missionId,
       sectorName: 'api',
       payload: JSON.stringify({ message: 'Should I use JWT or OAuth?' }),
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     });
 
-    const comms = rawDb.prepare(
-      "SELECT * FROM comms WHERE type = 'hailing-memo' AND mission_id = ?"
-    ).all(missionId) as Array<{ id: number; payload: string; read: number; from_crew: string }>
+    const comms = rawDb
+      .prepare("SELECT * FROM comms WHERE type = 'hailing-memo' AND mission_id = ?")
+      .all(missionId) as Array<{ id: number; payload: string; read: number; from_crew: string }>;
 
     expect(comms.length).toBe(1);
     expect(comms[0].read).toBe(0);
@@ -189,7 +191,7 @@ describe('FirstOfficer', () => {
       missionId,
       sectorName: 'api',
       payload: 'Help needed',
-      createdAt: new Date().toISOString(),
+      createdAt: new Date().toISOString()
     });
 
     expect(firstOfficer.getStatus()).toBe('memo');
@@ -206,12 +208,12 @@ describe('FirstOfficer', () => {
       classification: 'persistent',
       fingerprint: 'abc123def456',
       summary: 'Test failure',
-      errorText: 'Error: test failed',
+      errorText: 'Error: test failed'
     });
 
-    const comms = rawDb.prepare(
-      "SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?"
-    ).all(missionId) as Array<{ payload: string }>
+    const comms = rawDb
+      .prepare("SELECT * FROM comms WHERE type = 'memo' AND mission_id = ?")
+      .all(missionId) as Array<{ payload: string }>;
 
     expect(comms.length).toBe(1);
     const payload = JSON.parse(comms[0].payload);
@@ -235,10 +237,10 @@ describe('FirstOfficer', () => {
           title: 'Recovered notes',
           contentMarkdown: '# Notes',
           sourceKinds: ['crew-output'],
-          summary: 'Recovered summary',
-        },
+          summary: 'Recovered summary'
+        }
       }),
-      makeEvent(),
+      makeEvent()
     );
 
     expect(decision.decision).toBe('recover-and-dismiss');

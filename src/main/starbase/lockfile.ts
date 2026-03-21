@@ -53,7 +53,7 @@ export class Lockfile {
   private writeLock(): void {
     const data: LockData = {
       pid: process.pid,
-      timestamp: new Date().toISOString(),
+      timestamp: new Date().toISOString()
     };
     writeFileSync(this.lockPath, JSON.stringify(data));
   }

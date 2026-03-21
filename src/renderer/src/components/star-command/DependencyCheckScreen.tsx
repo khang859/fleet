@@ -1,8 +1,8 @@
-import type { DepCheckResult } from '../../store/star-command-store'
+import type { DepCheckResult } from '../../store/star-command-store';
 
 interface Props {
-  status: 'checking' | 'passed' | 'failed'
-  results: DepCheckResult[]
+  status: 'checking' | 'passed' | 'failed';
+  results: DepCheckResult[];
 }
 
 export function DependencyCheckScreen({ status, results }: Props) {
@@ -52,7 +52,7 @@ export function DependencyCheckScreen({ status, results }: Props) {
         )}
       </div>
     </div>
-  )
+  );
 }
 
 function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }) {
@@ -71,7 +71,7 @@ function DepRow({ dep }: { dep: DepCheckResult; checking?: boolean }) {
         {dep.found ? 'found' : 'missing'}
       </span>
     </div>
-  )
+  );
 }
 
 function PlaceholderRow({ name }: { name: string }) {
@@ -83,14 +83,14 @@ function PlaceholderRow({ name }: { name: string }) {
       </div>
       <span className="text-[11px] text-neutral-600">checking...</span>
     </div>
-  )
+  );
 }
 
 function StatusIcon({ found }: { found: boolean }) {
   if (found) {
-    return <span className="text-teal-400 text-sm leading-none">{'\u2713'}</span>
+    return <span className="text-teal-400 text-sm leading-none">{'\u2713'}</span>;
   }
-  return <span className="text-red-400 text-sm leading-none">{'\u2717'}</span>
+  return <span className="text-red-400 text-sm leading-none">{'\u2717'}</span>;
 }
 
 function Spinner() {
@@ -99,5 +99,5 @@ function Spinner() {
       className="inline-block w-3.5 h-3.5 border-2 border-neutral-600 border-t-neutral-300 rounded-full animate-spin"
       style={{ minWidth: '14px' }}
     />
-  )
+  );
 }

@@ -21,11 +21,18 @@ function sendPing(socketPath: string): Promise<Record<string, unknown>> {
       const lines = buffer.split('\n');
       if (lines.length > 1 && lines[0].trim()) {
         client.end();
-        try { resolve(JSON.parse(lines[0])); } catch (e) { reject(e); }
+        try {
+          resolve(JSON.parse(lines[0]));
+        } catch (e) {
+          reject(e);
+        }
       }
     });
     client.on('error', reject);
-    setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 3000);
+    setTimeout(() => {
+      client.destroy();
+      reject(new Error('timeout'));
+    }, 3000);
   });
 }
 
@@ -33,12 +40,16 @@ function makeMockServices() {
   return {
     crewService: { listCrew: vi.fn().mockReturnValue([]) },
     missionService: { listMissions: vi.fn().mockReturnValue([]) },
-    commsService: { getRecent: vi.fn().mockReturnValue([]), getUnread: vi.fn().mockReturnValue([]), send: vi.fn().mockReturnValue(1) },
+    commsService: {
+      getRecent: vi.fn().mockReturnValue([]),
+      getUnread: vi.fn().mockReturnValue([]),
+      send: vi.fn().mockReturnValue(1)
+    },
     sectorService: { listSectors: vi.fn().mockReturnValue([]) },
     cargoService: { listCargo: vi.fn().mockReturnValue([]) },
     supplyRouteService: { listRoutes: vi.fn().mockReturnValue([]) },
     configService: { get: vi.fn().mockReturnValue('val'), set: vi.fn() },
-    shipsLog: { query: vi.fn().mockReturnValue([]) },
+    shipsLog: { query: vi.fn().mockReturnValue([]) }
   } as any;
 }
 
@@ -55,7 +66,9 @@ describe('SocketSupervisor', () => {
 
   afterEach(async () => {
     await supervisor?.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('starts and accepts ping', async () => {
@@ -77,11 +90,20 @@ describe('SocketSupervisor', () => {
     });
 
     const client = createConnection(socketPath, () => {
-      client.write(JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) + '\n');
+      client.write(
+        JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) +
+          '\n'
+      );
     });
     await new Promise<void>((resolve) => {
-      client.on('data', () => { client.end(); resolve(); });
-      setTimeout(() => { client.destroy(); resolve(); }, 2000);
+      client.on('data', () => {
+        client.end();
+        resolve();
+      });
+      setTimeout(() => {
+        client.destroy();
+        resolve();
+      }, 2000);
     });
 
     expect(events).toContain('comms:changed');

@@ -1,30 +1,30 @@
-import { useStarCommandStore } from '../../store/star-command-store'
+import { useStarCommandStore } from '../../store/star-command-store';
 
-import admiralDefault from '../../assets/admiral-default.png'
-import admiralSpeaking from '../../assets/admiral-speaking.png'
-import admiralThinking from '../../assets/admiral-thinking.png'
-import admiralAlert from '../../assets/admiral-alert.png'
-import admiralStandby from '../../assets/admiral-standby.png'
+import admiralDefault from '../../assets/admiral-default.png';
+import admiralSpeaking from '../../assets/admiral-speaking.png';
+import admiralThinking from '../../assets/admiral-thinking.png';
+import admiralAlert from '../../assets/admiral-alert.png';
+import admiralStandby from '../../assets/admiral-standby.png';
 
-import foDefault from '../../assets/first-officer-default.png'
-import foWorking from '../../assets/first-officer-working.png'
-import foEscalation from '../../assets/first-officer-escalation.png'
-import foIdle from '../../assets/first-officer-idle.png'
+import foDefault from '../../assets/first-officer-default.png';
+import foWorking from '../../assets/first-officer-working.png';
+import foEscalation from '../../assets/first-officer-escalation.png';
+import foIdle from '../../assets/first-officer-idle.png';
 
 const FO_IMAGES: Record<string, string> = {
   idle: foIdle,
   working: foWorking,
   memo: foEscalation,
-  default: foDefault,
-}
+  default: foDefault
+};
 
 const ADMIRAL_IMAGES: Record<string, string> = {
   default: admiralDefault,
   speaking: admiralSpeaking,
   thinking: admiralThinking,
   alert: admiralAlert,
-  standby: admiralStandby,
-}
+  standby: admiralStandby
+};
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-400',
@@ -32,28 +32,29 @@ const STATUS_COLORS: Record<string, string> = {
   error: 'bg-red-500',
   complete: 'bg-blue-400',
   idle: 'bg-neutral-500',
-  lost: 'bg-red-500 animate-pulse',
-}
+  lost: 'bg-red-500 animate-pulse'
+};
 
 function StatusDot({ color }: { color: string }) {
-  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
 
 export function AdmiralSidebar({
   avatarVariant,
-  onMemoClick,
+  onMemoClick
 }: {
-  avatarVariant: string
-  onMemoClick?: () => void
+  avatarVariant: string;
+  onMemoClick?: () => void;
 }) {
-  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } = useStarCommandStore()
+  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } =
+    useStarCommandStore();
 
-  const activeCrew = crewList.filter((c) => c.status === 'active').length
-  const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length
-  const totalCrew = crewList.length
+  const activeCrew = crewList.filter((c) => c.status === 'active').length;
+  const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length;
+  const totalCrew = crewList.length;
 
-  const admiralSrc = ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default
-  const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default
+  const admiralSrc = ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default;
+  const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default;
 
   return (
     <div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc">
@@ -138,7 +139,9 @@ export function AdmiralSidebar({
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <span className="text-xs text-neutral-400">Active crew</span>
-              <span className="text-xs font-mono text-neutral-200">{activeCrew}/{totalCrew}</span>
+              <span className="text-xs font-mono text-neutral-200">
+                {activeCrew}/{totalCrew}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs text-neutral-400">Sectors</span>
@@ -199,7 +202,9 @@ export function AdmiralSidebar({
                 <div key={crew.id} className="flex items-center gap-2 py-0.5">
                   <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
                   <span className="text-xs text-neutral-300 truncate flex-1">{crew.id}</span>
-                  <span className="text-[10px] font-mono text-neutral-600 uppercase">{crew.status}</span>
+                  <span className="text-[10px] font-mono text-neutral-600 uppercase">
+                    {crew.status}
+                  </span>
                 </div>
               ))}
             </div>
@@ -207,5 +212,5 @@ export function AdmiralSidebar({
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react'
-import { useStarCommandStore } from '../../store/star-command-store'
-import type { CrewStatus } from '../../store/star-command-store'
+import { useState, useCallback, useEffect } from 'react';
+import { useStarCommandStore } from '../../store/star-command-store';
+import type { CrewStatus } from '../../store/star-command-store';
 
 const STATUS_COLORS: Record<string, string> = {
   active: 'bg-green-400',
@@ -8,11 +8,15 @@ const STATUS_COLORS: Record<string, string> = {
   error: 'bg-red-500',
   complete: 'bg-blue-400',
   idle: 'bg-neutral-500',
-  lost: 'bg-red-500 animate-pulse',
-}
+  lost: 'bg-red-500 animate-pulse'
+};
 
 function StatusDot({ status }: { status: string }) {
-  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[status] ?? 'bg-neutral-500'}`} />
+  return (
+    <span
+      className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_COLORS[status] ?? 'bg-neutral-500'}`}
+    />
+  );
 }
 
 function SectionHeader({ title, count }: { title: string; count?: number }) {
@@ -21,53 +25,53 @@ function SectionHeader({ title, count }: { title: string; count?: number }) {
       {title}
       {count !== undefined && <span className="ml-1 text-neutral-600">({count})</span>}
     </h3>
-  )
+  );
 }
 
 function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void }) {
-  const [expanded, setExpanded] = useState(false)
-  const [recallConfirm, setRecallConfirm] = useState(false)
-  const [output, setOutput] = useState<string | null>(null)
-  const [observing, setObserving] = useState(false)
-  const [messageText, setMessageText] = useState('')
-  const [sending, setSending] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState(false);
+  const [recallConfirm, setRecallConfirm] = useState(false);
+  const [output, setOutput] = useState<string | null>(null);
+  const [observing, setObserving] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleRecall = async () => {
-    setError(null)
+    setError(null);
     try {
-      await window.fleet.starbase.recallCrew(crew.id)
-      setRecallConfirm(false)
-      onRefresh()
+      await window.fleet.starbase.recallCrew(crew.id);
+      setRecallConfirm(false);
+      onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to recall')
+      setError(err instanceof Error ? err.message : 'Failed to recall');
     }
-  }
+  };
 
   const handleObserve = async () => {
-    setObserving(true)
-    setError(null)
+    setObserving(true);
+    setError(null);
     try {
-      const result = await window.fleet.starbase.observeCrew(crew.id)
-      setOutput(result)
+      const result = await window.fleet.starbase.observeCrew(crew.id);
+      setOutput(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to observe')
+      setError(err instanceof Error ? err.message : 'Failed to observe');
     }
-    setObserving(false)
-  }
+    setObserving(false);
+  };
 
   const handleMessage = async () => {
-    if (!messageText.trim()) return
-    setSending(true)
-    setError(null)
+    if (!messageText.trim()) return;
+    setSending(true);
+    setError(null);
     try {
-      await window.fleet.starbase.messageCrew(crew.id, messageText.trim())
-      setMessageText('')
+      await window.fleet.starbase.messageCrew(crew.id, messageText.trim());
+      setMessageText('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message')
+      setError(err instanceof Error ? err.message : 'Failed to send message');
     }
-    setSending(false)
-  }
+    setSending(false);
+  };
 
   return (
     <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
@@ -77,7 +81,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
       >
         <StatusDot status={crew.status} />
         <span className="text-sm text-neutral-200 font-mono flex-1 truncate">{crew.id}</span>
-        <span className="text-[10px] font-mono text-neutral-500 uppercase flex-shrink-0">{crew.status}</span>
+        <span className="text-[10px] font-mono text-neutral-500 uppercase flex-shrink-0">
+          {crew.status}
+        </span>
         <span className="text-xs text-neutral-600">{expanded ? '▲' : '▼'}</span>
       </button>
 
@@ -109,7 +115,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
           {crew.mission_summary && (
             <div className="text-xs">
               <label className="text-neutral-500 block mb-1">Mission</label>
-              <div className="text-neutral-300 bg-neutral-900 rounded px-2 py-1">{crew.mission_summary}</div>
+              <div className="text-neutral-300 bg-neutral-900 rounded px-2 py-1">
+                {crew.mission_summary}
+              </div>
             </div>
           )}
 
@@ -139,7 +147,9 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
               onChange={(e) => setMessageText(e.target.value)}
               placeholder="Send message to crew..."
               className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none"
-              onKeyDown={(e) => { if (e.key === 'Enter') handleMessage() }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleMessage();
+              }}
             />
             <button
               onClick={handleMessage}
@@ -189,38 +199,38 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function DeploySection({ onRefresh }: { onRefresh: () => void }) {
-  const { sectors } = useStarCommandStore()
-  const [sectorId, setSectorId] = useState('')
-  const [prompt, setPrompt] = useState('')
-  const [summary, setSummary] = useState('')
-  const [deploying, setDeploying] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
+  const { sectors } = useStarCommandStore();
+  const [sectorId, setSectorId] = useState('');
+  const [prompt, setPrompt] = useState('');
+  const [summary, setSummary] = useState('');
+  const [deploying, setDeploying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   const handleDeploy = async () => {
-    if (!sectorId || !prompt.trim()) return
-    setDeploying(true)
-    setError(null)
-    setSuccess(null)
+    if (!sectorId || !prompt.trim()) return;
+    setDeploying(true);
+    setError(null);
+    setSuccess(null);
     try {
       const result = await window.fleet.starbase.deployCrew({
         sectorId,
         prompt: prompt.trim(),
-        summary: summary.trim() || prompt.trim().slice(0, 80),
-      })
-      setSuccess(`Deployed ${result.crewId}`)
-      setPrompt('')
-      setSummary('')
-      onRefresh()
+        summary: summary.trim() || prompt.trim().slice(0, 80)
+      });
+      setSuccess(`Deployed ${result.crewId}`);
+      setPrompt('');
+      setSummary('');
+      onRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to deploy')
+      setError(err instanceof Error ? err.message : 'Failed to deploy');
     }
-    setDeploying(false)
-  }
+    setDeploying(false);
+  };
 
   return (
     <div className="bg-neutral-800/50 rounded-lg border border-neutral-700 border-dashed p-3 space-y-2">
@@ -233,7 +243,9 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
       >
         <option value="">Select sector...</option>
         {sectors.map((s) => (
-          <option key={s.id} value={s.id}>{s.id} — {s.name}</option>
+          <option key={s.id} value={s.id}>
+            {s.id} — {s.name}
+          </option>
         ))}
       </select>
 
@@ -264,11 +276,11 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
         {deploying ? 'Deploying...' : 'Deploy'}
       </button>
     </div>
-  )
+  );
 }
 
 function MissionQueueSection() {
-  const { missionQueue } = useStarCommandStore()
+  const { missionQueue } = useStarCommandStore();
 
   const statusColor: Record<string, string> = {
     queued: 'text-yellow-400',
@@ -280,18 +292,23 @@ function MissionQueueSection() {
     approved: 'text-green-400',
     'changes-requested': 'text-yellow-400',
     escalated: 'text-red-400',
-    'pending-review': 'text-blue-300',
-  }
+    'pending-review': 'text-blue-300'
+  };
 
   return (
     <section>
       <SectionHeader title="Mission Queue" count={missionQueue.length} />
       <div className="space-y-1.5">
         {missionQueue.map((m) => (
-          <div key={m.id} className="bg-neutral-800 rounded border border-neutral-700 px-3 py-2 text-xs">
+          <div
+            key={m.id}
+            className="bg-neutral-800 rounded border border-neutral-700 px-3 py-2 text-xs"
+          >
             <div className="flex items-center justify-between gap-2 mb-0.5">
               <span className="font-mono text-neutral-500">#{m.id}</span>
-              <span className={`font-mono uppercase text-[10px] ${statusColor[m.status] ?? 'text-neutral-400'}`}>
+              <span
+                className={`font-mono uppercase text-[10px] ${statusColor[m.status] ?? 'text-neutral-400'}`}
+              >
                 {m.status}
               </span>
             </div>
@@ -304,26 +321,28 @@ function MissionQueueSection() {
         )}
       </div>
     </section>
-  )
+  );
 }
 
 export function CrewPanel() {
-  const { crewList, setCrewList, setMissionQueue } = useStarCommandStore()
+  const { crewList, setCrewList, setMissionQueue } = useStarCommandStore();
 
   const refresh = useCallback(async () => {
     try {
       const [crew, missions] = await Promise.all([
         window.fleet.starbase.listCrew(),
-        window.fleet.starbase.listMissions(),
-      ])
-      setCrewList(crew)
-      setMissionQueue(missions)
+        window.fleet.starbase.listMissions()
+      ]);
+      setCrewList(crew);
+      setMissionQueue(missions);
     } catch {
       // ignore
     }
-  }, [setCrewList, setMissionQueue])
+  }, [setCrewList, setMissionQueue]);
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
@@ -336,9 +355,7 @@ export function CrewPanel() {
           {crewList.map((c) => (
             <CrewCard key={c.id} crew={c} onRefresh={refresh} />
           ))}
-          {crewList.length === 0 && (
-            <p className="text-xs text-neutral-600">No crew deployed</p>
-          )}
+          {crewList.length === 0 && <p className="text-xs text-neutral-600">No crew deployed</p>}
         </div>
       </section>
 
@@ -348,5 +365,5 @@ export function CrewPanel() {
       {/* Mission queue */}
       <MissionQueueSection />
     </div>
-  )
+  );
 }

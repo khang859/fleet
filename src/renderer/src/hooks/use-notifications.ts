@@ -44,7 +44,7 @@ export function useNotifications() {
       setNotification({
         paneId: payload.paneId,
         level: payload.level,
-        timestamp: payload.timestamp,
+        timestamp: payload.timestamp
       });
 
       // Play sound for permission notifications (default behavior)
@@ -54,6 +54,8 @@ export function useNotifications() {
         });
       }
     });
-    return () => { cleanup(); };
+    return () => {
+      cleanup();
+    };
   }, [setNotification]);
 }

@@ -13,7 +13,7 @@ function tmpSocket(): string {
 
 function sendCommand(
   socketPath: string,
-  cmd: Record<string, unknown>,
+  cmd: Record<string, unknown>
 ): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const client = createConnection(socketPath, () => {
@@ -46,22 +46,30 @@ function makeMockServices() {
     listVisibleSectors: vi.fn().mockReturnValue([{ id: 'alpha', name: 'Alpha' }]),
     getSector: vi.fn().mockReturnValue({ id: 'alpha', name: 'Alpha' }),
     addSector: vi.fn().mockReturnValue({ id: 'new-sector', name: 'New Sector' }),
-    removeSector: vi.fn(),
+    removeSector: vi.fn()
   };
 
   const missionService = {
     addMission: vi.fn().mockReturnValue({ id: 1, summary: 'test', status: 'queued' }),
     listMissions: vi.fn().mockReturnValue([]),
-    getMission: vi.fn().mockReturnValue({ id: 1, status: 'queued', prompt: 'Do the stuff', summary: 'test', sector_id: 'alpha' }),
+    getMission: vi
+      .fn()
+      .mockReturnValue({
+        id: 1,
+        status: 'queued',
+        prompt: 'Do the stuff',
+        summary: 'test',
+        sector_id: 'alpha'
+      }),
     abortMission: vi.fn(),
-    getDependencies: vi.fn().mockReturnValue([]),
+    getDependencies: vi.fn().mockReturnValue([])
   };
 
   const commsService = {
     getRecent: vi.fn().mockReturnValue([{ id: 1, type: 'directive', payload: 'hello' }]),
     getUnread: vi.fn().mockReturnValue([]),
     send: vi.fn().mockReturnValue(1),
-    markRead: vi.fn(),
+    markRead: vi.fn()
   };
 
   const crewService = {
@@ -70,29 +78,29 @@ function makeMockServices() {
     recallCrew: vi.fn(),
     observeCrew: vi.fn().mockReturnValue('some output'),
     messageCrew: vi.fn().mockReturnValue(false),
-    getCrewStatus: vi.fn().mockReturnValue(null),
+    getCrewStatus: vi.fn().mockReturnValue(null)
   };
 
   const cargoService = {
     listCargo: vi.fn().mockReturnValue([]),
-    getCargo: vi.fn().mockReturnValue(null),
+    getCargo: vi.fn().mockReturnValue(null)
   };
 
   const supplyRouteService = {
     listRoutes: vi.fn().mockReturnValue([]),
     addRoute: vi.fn().mockReturnValue({ id: 1 }),
-    removeRoute: vi.fn(),
+    removeRoute: vi.fn()
   };
 
   const configService = {
     get: vi.fn().mockReturnValue('some-value'),
-    set: vi.fn(),
+    set: vi.fn()
   };
 
   const shipsLog = {
     query: vi.fn().mockReturnValue([{ id: 1, event_type: 'deployed', created_at: '2026-01-01' }]),
     getRecent: vi.fn().mockReturnValue([]),
-    log: vi.fn().mockReturnValue(1),
+    log: vi.fn().mockReturnValue(1)
   };
 
   return {
@@ -103,7 +111,7 @@ function makeMockServices() {
     cargoService,
     supplyRouteService,
     configService,
-    shipsLog,
+    shipsLog
   };
 }
 
@@ -148,7 +156,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'req-1',
       command: 'sector.list',
-      args: {},
+      args: {}
     });
 
     expect(response.id).toBe('req-1');
@@ -163,7 +171,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'req-bad',
       command: 'unknown.command',
-      args: {},
+      args: {}
     });
 
     expect(response.id).toBe('req-bad');
@@ -189,7 +197,10 @@ describe('SocketServer', () => {
         }
       });
       client.on('error', reject);
-      setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 3000);
+      setTimeout(() => {
+        client.destroy();
+        reject(new Error('timeout'));
+      }, 3000);
     });
 
     expect(response.ok).toBe(false);
@@ -207,7 +218,7 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'req-comms',
       command: 'comms.send',
-      args: { to: 'crew-1', message: 'hello' },
+      args: { to: 'crew-1', message: 'hello' }
     });
 
     expect(events.length).toBeGreaterThan(0);
@@ -228,7 +239,7 @@ describe('SocketServer', () => {
     const [r1, r2, r3] = await Promise.all([
       sendCommand(socketPath, { id: 'r1', command: 'sector.list', args: {} }),
       sendCommand(socketPath, { id: 'r2', command: 'sector.list', args: {} }),
-      sendCommand(socketPath, { id: 'r3', command: 'crew.list', args: {} }),
+      sendCommand(socketPath, { id: 'r3', command: 'crew.list', args: {} })
     ]);
 
     expect(r1.id).toBe('r1');
@@ -250,7 +261,7 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'req-mission',
       command: 'mission.create',
-      args: { sector: 'alpha', summary: 'Do stuff', prompt: 'Do the stuff', type: 'code' },
+      args: { sector: 'alpha', summary: 'Do stuff', prompt: 'Do the stuff', type: 'code' }
     });
 
     expect(events.some((e) => e.event === 'mission:changed')).toBe(true);
@@ -267,7 +278,7 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'req-deploy',
       command: 'crew.deploy',
-      args: { sector: 'alpha', mission: 1 },
+      args: { sector: 'alpha', mission: 1 }
     });
 
     expect(events.some((e) => e.event === 'crew:changed')).toBe(true);
@@ -280,7 +291,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'req-observe',
       command: 'crew.observe',
-      args: { id: 'crew-1' },
+      args: { id: 'crew-1' }
     });
 
     expect(response.ok).toBe(true);
@@ -297,11 +308,11 @@ describe('SocketServer', () => {
 
     const resp = await sendCommand(sock, {
       command: 'mission.create',
-      args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' },
+      args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' }
     });
 
     expect(services.missionService.addMission).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'research' }),
+      expect.objectContaining({ type: 'research' })
     );
 
     await server.stop();
@@ -314,7 +325,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'req-check',
       command: 'comms.check',
-      args: {},
+      args: {}
     });
 
     expect(response.ok).toBe(true);
@@ -327,7 +338,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'req-ping',
       command: 'ping',
-      args: {},
+      args: {}
     });
 
     expect(response.id).toBe('req-ping');
@@ -345,7 +356,13 @@ describe('SocketServer', () => {
     await sendCommand(socketPath, {
       id: 'dep-1',
       command: 'mission.create',
-      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '5' },
+      args: {
+        sector: 'alpha',
+        type: 'code',
+        summary: 'Code',
+        prompt: 'Do stuff',
+        'depends-on': '5'
+      }
     });
 
     expect(services.missionService.addMission).toHaveBeenCalledWith(
@@ -360,7 +377,13 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'dep-2',
       command: 'mission.create',
-      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '5' },
+      args: {
+        sector: 'alpha',
+        type: 'code',
+        summary: 'Code',
+        prompt: 'Do stuff',
+        'depends-on': '5'
+      }
     });
 
     expect(response.ok).toBe(true);
@@ -373,7 +396,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'nudge-1',
       command: 'mission.create',
-      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff' },
+      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff' }
     });
 
     expect(response.ok).toBe(true);
@@ -387,7 +410,13 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'bad-dep',
       command: 'mission.create',
-      args: { sector: 'alpha', type: 'code', summary: 'Code', prompt: 'Do stuff', 'depends-on': '9999' },
+      args: {
+        sector: 'alpha',
+        type: 'code',
+        summary: 'Code',
+        prompt: 'Do stuff',
+        'depends-on': '9999'
+      }
     });
 
     expect(response.ok).toBe(false);
@@ -403,7 +432,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'deploy-blocked',
       command: 'crew.deploy',
-      args: { sector: 'alpha', mission: '1' },
+      args: { sector: 'alpha', mission: '1' }
     });
 
     expect(response.ok).toBe(false);
@@ -419,7 +448,7 @@ describe('SocketServer', () => {
     const response = await sendCommand(socketPath, {
       id: 'deploy-ok',
       command: 'crew.deploy',
-      args: { sector: 'alpha', mission: '1' },
+      args: { sector: 'alpha', mission: '1' }
     });
 
     // Should pass the dependency guard (may fail later for other reasons)

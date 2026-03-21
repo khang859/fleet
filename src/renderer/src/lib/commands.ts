@@ -21,7 +21,7 @@ export function createCommandRegistry(): Command[] {
       label: 'New Tab',
       shortcut: sc('new-tab'),
       category: 'Tabs',
-      execute: () => useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir),
+      execute: () => useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir)
     },
     {
       id: 'close-pane',
@@ -31,7 +31,7 @@ export function createCommandRegistry(): Command[] {
       execute: () => {
         const { activePaneId, closePane } = useWorkspaceStore.getState();
         if (activePaneId) closePane(activePaneId);
-      },
+      }
     },
     {
       id: 'split-right',
@@ -41,7 +41,7 @@ export function createCommandRegistry(): Command[] {
       execute: () => {
         const { activePaneId, splitPane } = useWorkspaceStore.getState();
         if (activePaneId) splitPane(activePaneId, 'horizontal');
-      },
+      }
     },
     {
       id: 'split-down',
@@ -51,7 +51,7 @@ export function createCommandRegistry(): Command[] {
       execute: () => {
         const { activePaneId, splitPane } = useWorkspaceStore.getState();
         if (activePaneId) splitPane(activePaneId, 'vertical');
-      },
+      }
     },
     {
       id: 'search',
@@ -60,58 +60,60 @@ export function createCommandRegistry(): Command[] {
       category: 'Panes',
       execute: () => {
         const { activePaneId } = useWorkspaceStore.getState();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } }));
-      },
+        document.dispatchEvent(
+          new CustomEvent('fleet:toggle-search', { detail: { paneId: activePaneId } })
+        );
+      }
     },
     {
       id: 'toggle-visualizer',
       label: 'Toggle Visualizer',
       shortcut: sc('visualizer'),
       category: 'View',
-      execute: () => useVisualizerStore.getState().toggleVisible(),
+      execute: () => useVisualizerStore.getState().toggleVisible()
     },
     {
       id: 'settings',
       label: 'Open Settings',
       shortcut: sc('settings'),
       category: 'App',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-settings')),
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))
     },
     {
       id: 'shortcuts',
       label: 'Show Shortcuts',
       shortcut: sc('shortcuts'),
       category: 'App',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts')),
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'))
     },
     {
       id: 'rename-tab',
       label: 'Rename Tab',
       shortcut: sc('rename-tab'),
       category: 'Tabs',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:rename-active-tab')),
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:rename-active-tab'))
     },
     {
       id: 'git-changes',
       label: 'Git Changes',
       shortcut: sc('git-changes'),
       category: 'View',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes')),
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))
     },
     {
       id: 'open-file',
       label: 'Open File...',
       shortcut: sc('open-file'),
       category: 'File',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:open-file-dialog')),
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:open-file-dialog'))
     },
     {
       id: 'quick-open',
       label: 'Quick Open',
       shortcut: sc('quick-open'),
       category: 'File',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-quick-open')),
-    },
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-quick-open'))
+    }
   ];
 }
 

@@ -17,14 +17,16 @@ describe('SocketApi', () => {
   beforeEach(() => {
     socketPath = tmpSocket();
     handler = {
-      handleCommand: vi.fn().mockResolvedValue({ ok: true, data: { message: 'hello' } }),
+      handleCommand: vi.fn().mockResolvedValue({ ok: true, data: { message: 'hello' } })
     };
     api = new SocketApi(socketPath, handler);
   });
 
   afterEach(async () => {
     await api.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('starts and accepts a connection', async () => {
@@ -40,7 +42,7 @@ describe('SocketApi', () => {
     await sendCommand(socketPath, { type: 'list-tabs', id: '2' });
 
     expect(handler.handleCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'list-tabs', id: '2' }),
+      expect.objectContaining({ type: 'list-tabs', id: '2' })
     );
   });
 
@@ -55,7 +57,7 @@ describe('SocketApi', () => {
   it('returns error response from handler', async () => {
     handler.handleCommand = vi.fn().mockResolvedValue({
       ok: false,
-      error: 'pane not found: abc',
+      error: 'pane not found: abc'
     });
     await api.start();
 
@@ -66,7 +68,10 @@ describe('SocketApi', () => {
 });
 
 // Helper: send a JSON command and read the response
-function sendCommand(socketPath: string, cmd: Record<string, unknown>): Promise<Record<string, unknown>> {
+function sendCommand(
+  socketPath: string,
+  cmd: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   return sendRaw(socketPath, JSON.stringify(cmd) + '\n');
 }
 
@@ -85,6 +90,9 @@ function sendRaw(socketPath: string, data: string): Promise<Record<string, unkno
       }
     });
     client.on('error', reject);
-    setTimeout(() => { client.end(); reject(new Error('timeout')); }, 3000);
+    setTimeout(() => {
+      client.end();
+      reject(new Error('timeout'));
+    }, 3000);
   });
 }

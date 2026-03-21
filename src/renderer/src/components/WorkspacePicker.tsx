@@ -51,8 +51,8 @@ export function WorkspacePicker() {
       ...state.workspace,
       tabs: state.workspace.tabs.map((tab) => ({
         ...tab,
-        splitRoot: injectLiveCwd(tab.splitRoot),
-      })),
+        splitRoot: injectLiveCwd(tab.splitRoot)
+      }))
     };
     await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
 
@@ -67,7 +67,7 @@ export function WorkspacePicker() {
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
-      tabs: [],
+      tabs: []
     };
     loadWorkspace(newWs);
 
@@ -82,8 +82,8 @@ export function WorkspacePicker() {
       ...workspace,
       tabs: workspace.tabs.map((tab) => ({
         ...tab,
-        splitRoot: injectLiveCwd(tab.splitRoot),
-      })),
+        splitRoot: injectLiveCwd(tab.splitRoot)
+      }))
     };
     await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
     setMenuOpen(false);
@@ -96,8 +96,8 @@ export function WorkspacePicker() {
       ...state.workspace,
       tabs: state.workspace.tabs.map((tab) => ({
         ...tab,
-        splitRoot: injectLiveCwd(tab.splitRoot),
-      })),
+        splitRoot: injectLiveCwd(tab.splitRoot)
+      }))
     };
     await window.fleet.layout.save({ workspace: workspaceWithLiveCwds });
 
@@ -186,7 +186,10 @@ export function WorkspacePicker() {
                   <div key={ws.id} className="flex items-center hover:bg-neutral-700">
                     <button
                       className="flex-1 px-3 py-1.5 text-sm text-neutral-300 hover:text-white text-left truncate"
-                      onClick={() => { handleSwitchWorkspace(ws); setMenuOpen(false); }}
+                      onClick={() => {
+                        handleSwitchWorkspace(ws);
+                        setMenuOpen(false);
+                      }}
                     >
                       {ws.label}
                       <span className="text-neutral-600 ml-1 text-xs">
@@ -217,7 +220,10 @@ export function WorkspacePicker() {
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') commitNewWorkspace();
-              if (e.key === 'Escape') { setShowNameInput(false); setNewName(''); }
+              if (e.key === 'Escape') {
+                setShowNameInput(false);
+                setNewName('');
+              }
             }}
             onBlur={() => commitNewWorkspace()}
             placeholder="Workspace name..."
@@ -267,13 +273,13 @@ export function WorkspacePicker() {
                   >
                     <ChevronIcon expanded={isExpanded} />
                     <span className="truncate font-medium">{ws.label}</span>
-                    <span className="text-neutral-700 ml-auto text-[10px]">
-                      {ws.tabs.length}
-                    </span>
+                    <span className="text-neutral-700 ml-auto text-[10px]">{ws.tabs.length}</span>
                   </button>
                   <button
                     className="px-1 text-neutral-700 hover:text-neutral-400 text-[10px]"
-                    onClick={() => { handleSwitchWorkspace(ws); }}
+                    onClick={() => {
+                      handleSwitchWorkspace(ws);
+                    }}
                     title="Switch to this workspace"
                   >
                     &#8594;
@@ -291,9 +297,7 @@ export function WorkspacePicker() {
                       </div>
                     ))}
                     {ws.tabs.length === 0 && (
-                      <div className="px-2 py-0.5 text-xs text-neutral-700 italic">
-                        (empty)
-                      </div>
+                      <div className="px-2 py-0.5 text-xs text-neutral-700 italic">(empty)</div>
                     )}
                   </div>
                 )}
@@ -322,19 +326,34 @@ export function WorkspacePicker() {
 function ChevronIcon({ expanded }: { expanded: boolean }) {
   return (
     <svg
-      width="12" height="12"
+      width="12"
+      height="12"
       viewBox="0 0 12 12"
       className={`flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
       fill="currentColor"
     >
-      <path d="M4.5 2L8.5 6L4.5 10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M4.5 2L8.5 6L4.5 10"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
 
 function FileIcon() {
   return (
-    <svg width="10" height="10" viewBox="0 0 10 10" className="flex-shrink-0 text-neutral-600" fill="none" stroke="currentColor">
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 10 10"
+      className="flex-shrink-0 text-neutral-600"
+      fill="none"
+      stroke="currentColor"
+    >
       <rect x="1" y="1" width="6" height="8" rx="0.5" strokeWidth="1" />
       <path d="M7 1L7 3.5H9.5" strokeWidth="1" />
     </svg>
@@ -347,7 +366,7 @@ const BADGE_COLORS: Record<BadgeLevel, string> = {
   permission: 'bg-amber-400',
   error: 'bg-red-400',
   info: 'bg-blue-400',
-  subtle: 'bg-neutral-500',
+  subtle: 'bg-neutral-500'
 };
 
 function TreeTab({
@@ -356,7 +375,7 @@ function TreeTab({
   badge,
   paneCount,
   onClick,
-  onClose,
+  onClose
 }: {
   label: string;
   isActive: boolean;
@@ -369,9 +388,11 @@ function TreeTab({
     <div
       className={`
         group flex items-center gap-1.5 px-2 py-1.5 cursor-pointer rounded-md text-sm
-        ${isActive
-          ? 'bg-neutral-700/60 text-white border-l-2 border-blue-500'
-          : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}
+        ${
+          isActive
+            ? 'bg-neutral-700/60 text-white border-l-2 border-blue-500'
+            : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+        }
       `}
       onClick={onClick}
       title={label}
@@ -383,12 +404,13 @@ function TreeTab({
       )}
       <FileIcon />
       <span className="flex-1 truncate">{label}</span>
-      {paneCount > 1 && (
-        <span className="text-[10px] text-neutral-600">{paneCount}</span>
-      )}
+      {paneCount > 1 && <span className="text-[10px] text-neutral-600">{paneCount}</span>}
       <button
         className="opacity-0 group-hover:opacity-100 px-0.5 text-neutral-500 hover:text-red-400 transition-opacity"
-        onClick={(e) => { e.stopPropagation(); onClose(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
       >
         &times;
       </button>
