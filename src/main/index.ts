@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron'
+import { appendFileSync, existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import { join, dirname } from 'path'
 import { homedir } from 'os'
@@ -21,6 +22,7 @@ import { AdmiralProcess } from './starbase/admiral-process'
 import { AdmiralStateDetector } from './starbase/admiral-state-detector'
 import { installFleetCLI } from './install-fleet-cli'
 import { enrichProcessEnv } from './shell-env'
+import { normalizeRuntimeEnv } from './runtime-env'
 import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api'
 import { StarbaseRuntimeClient } from './starbase-runtime-client'
 import { createSocketRuntimeServices } from './starbase-runtime-socket-services'
@@ -44,6 +46,27 @@ const agentTracker = new AgentStateTracker(eventBus)
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR)
 const admiralStateDetector = new AdmiralStateDetector(eventBus)
 const runtimeClient = new StarbaseRuntimeClient(new URL('./starbase-runtime-process.mjs', import.meta.url))
+const STARBASE_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log'
+
+console.log('[fleet-main] startup marker runtime=spawn-ipc preload=out/preload/index.js')
+
+function traceStarbase(message: string, extra?: unknown): void {
+  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`
+  try {
+    appendFileSync(
+      STARBASE_PARENT_TRACE_FILE,
+      `[${new Date().toISOString()} pid=${process.pid}] main ${message}${suffix}\n`,
+      'utf8'
+    )
+  } catch {
+    // Ignore trace write failures.
+  }
+}
+
+traceStarbase('startup marker', {
+  runtime: 'spawn-ipc',
+  preload: 'out/preload/index.js',
+})
 
 let runtimeStatus: StarbaseRuntimeStatus = { state: 'starting' }
 
@@ -54,6 +77,7 @@ ipcMain.handle(IPC_CHANNELS.APP_HOST_CONTEXT_GET, (): HostContextPayload => ({
 
 function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
   runtimeStatus = status
+  traceStarbase('runtime status updated', status)
   const windowRef = mainWindow
   if (windowRef && !windowRef.isDestroyed()) {
     windowRef.webContents.send(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, status)
@@ -113,15 +137,18 @@ async function handleStarbaseSnapshot(snapshot: any): Promise<void> {
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url))
   const iconPath = join(__dirname, '../../build/icon.png')
+  const preloadPathJs = fileURLToPath(new URL('../preload/index.js', import.meta.url))
+  const preloadPathMjs = fileURLToPath(new URL('../preload/index.mjs', import.meta.url))
+  const preloadPath = existsSync(preloadPathJs) ? preloadPathJs : preloadPathMjs
 
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     icon: nativeImage.createFromPath(iconPath),
     webPreferences: {
-      preload: fileURLToPath(new URL('../preload/index.mjs', import.meta.url)),
+      preload: preloadPath,
       contextIsolation: true,
-      sandbox: true,
+      sandbox: false,
       nodeIntegration: false
     },
     titleBarStyle: 'hidden',
@@ -132,8 +159,8 @@ function createWindow(): void {
   })
 
   // Log renderer console messages and errors to main process stdout
-  mainWindow.webContents.on('console-message', (_event, _level, message) => {
-    console.log(`[renderer] ${message}`)
+  mainWindow.webContents.on('console-message', (event) => {
+    console.log(`[renderer] ${event.message}`)
   })
 
   mainWindow.on('close', () => {
@@ -179,6 +206,12 @@ function createWindow(): void {
 
 app.setName('Fleet')
 
+app.on('child-process-gone', (_event, details) => {
+  if (details.type === 'Utility' || details.serviceName === 'Fleet Starbase Runtime') {
+    console.error('[child-process-gone]', details)
+  }
+})
+
 app.whenReady().then(async () => {
   createWindow()
 
@@ -215,21 +248,29 @@ app.whenReady().then(async () => {
     if (starbaseBootstrapInFlight) return starbaseBootstrapInFlight
 
     setRuntimeStatus({ state: 'starting' })
+    traceStarbase('bootstrap started')
     starbaseBootstrapInFlight = (async () => {
       try {
         await Promise.all([envReady, cliReady])
         const fleetBinPath = await cliReady
+        traceStarbase('bootstrap prerequisites ready', { fleetBinPath, workspacePath })
         await runtimeClient.start({
           workspacePath,
           fleetBinPath,
-          env: process.env as Record<string, string>,
+          env: normalizeRuntimeEnv(process.env),
         })
+        traceStarbase('runtime client started')
 
         const { starbaseId, starbaseName, sectors } = await runtimeClient.invoke<{
           starbaseId: string
           starbaseName: string
           sectors: Array<{ name: string; root_path: string; stack?: string; base_branch?: string }>
         }>('runtime.getAdmiralBootstrapData')
+        traceStarbase('got admiral bootstrap data', {
+          starbaseId,
+          starbaseName,
+          sectorCount: sectors.length,
+        })
         const admiralWorkspace = join(
           homedir(),
           '.fleet',
@@ -237,6 +278,11 @@ app.whenReady().then(async () => {
           `starbase-${starbaseId}`,
           'admiral'
         )
+        console.log('[starbase] bootstrap: got admiral bootstrap data', {
+          starbaseId,
+          sectorCount: sectors.length,
+          admiralWorkspace,
+        })
 
         admiralProcess = new AdmiralProcess({
           workspace: admiralWorkspace,
@@ -245,6 +291,8 @@ app.whenReady().then(async () => {
           ptyManager,
           fleetBinPath,
         })
+        console.log('[starbase] bootstrap: admiral process created')
+        traceStarbase('admiral process created')
 
         admiralProcess.setOnStatusChange((status, error, exitCode) => {
           if (status === 'stopped') {
@@ -262,6 +310,8 @@ app.whenReady().then(async () => {
         })
 
         socketSupervisor = new SocketSupervisor(SOCKET_PATH, createSocketRuntimeServices(runtimeClient))
+        console.log('[starbase] bootstrap: socket supervisor created', { socketPath: SOCKET_PATH })
+        traceStarbase('socket supervisor created', { socketPath: SOCKET_PATH })
         socketSupervisor.on('state-change', (event: string, data: unknown) => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
@@ -290,26 +340,48 @@ app.whenReady().then(async () => {
         })
         socketSupervisor.start().catch((err) => {
           console.error('[socket-supervisor] Failed to start:', err)
+          traceStarbase('socket supervisor start failed', {
+            message: err instanceof Error ? err.message : String(err),
+          })
         })
+        console.log('[starbase] bootstrap: socket supervisor start requested')
+        traceStarbase('socket supervisor start requested')
 
         commandHandler.setRuntimeClient(runtimeClient)
+        console.log('[starbase] bootstrap: runtime client bound to command handler')
+        traceStarbase('runtime client bound to command handler')
 
         lastUnreadCommsCount = (await runtimeClient.invoke<any[]>('comms.getUnread', 'admiral')).length
+        console.log('[starbase] bootstrap: unread comms fetched', { lastUnreadCommsCount })
+        traceStarbase('unread comms fetched', { lastUnreadCommsCount })
         lastUnreadMemosCount = Number(
           ((await runtimeClient.invoke<any>('starbase.snapshot')) as any)?.firstOfficer?.unreadMemos ?? 0
         )
+        console.log('[starbase] bootstrap: unread memos fetched', { lastUnreadMemosCount })
+        traceStarbase('unread memos fetched', { lastUnreadMemosCount })
         layoutStore.ensureStarCommandTab('default', workspacePath)
+        console.log('[starbase] bootstrap: ensured star command tab')
+        traceStarbase('ensured star command tab')
         await handleStarbaseSnapshot(await runtimeClient.invoke('starbase.snapshot'))
+        console.log('[starbase] bootstrap: initial snapshot handled')
+        traceStarbase('initial snapshot handled')
         setRuntimeStatus({ state: 'ready' })
+        console.log('[starbase] bootstrap: ready')
+        traceStarbase('bootstrap ready')
       } catch (err) {
         socketSupervisor?.stop().catch(() => {})
         admiralProcess?.stop().catch(() => {})
         const message = err instanceof Error ? err.message : String(err)
         console.error('[starbase] Failed to initialize Star Command database:', err)
+        traceStarbase('bootstrap failed', {
+          message,
+          stack: err instanceof Error ? err.stack : undefined,
+        })
         setRuntimeStatus({ state: 'error', error: message })
         throw err
       } finally {
         starbaseBootstrapInFlight = null
+        traceStarbase('bootstrap finished')
       }
     })()
 
@@ -401,7 +473,9 @@ app.whenReady().then(async () => {
     return startAdmiralAndWire()
   })
 
-  void bootstrapStarbase()
+  void bootstrapStarbase().catch(() => {
+    // Initial bootstrap failures are surfaced through runtime status for the renderer.
+  })
 
 
   // Wire JSONL watcher to agent state tracker

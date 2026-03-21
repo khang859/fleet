@@ -1,5 +1,5 @@
 import { dirname, join, basename, resolve } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { appendFileSync, mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { RuntimeBootstrapArgs, RuntimeEvent } from '../shared/starbase-runtime'
 import { EventBus } from './event-bus'
@@ -38,6 +38,21 @@ type RuntimeDeps = {
   lockfile: Lockfile | null
 }
 
+const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log'
+
+function trace(message: string, extra?: unknown): void {
+  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`
+  try {
+    appendFileSync(
+      RUNTIME_TRACE_FILE,
+      `[${new Date().toISOString()} pid=${process.pid}] core ${message}${suffix}\n`,
+      'utf8'
+    )
+  } catch {
+    // Ignore trace write failures.
+  }
+}
+
 export class StarbaseRuntimeCore {
   private deps: RuntimeDeps | null = null
   private eventBus = new EventBus()
@@ -55,6 +70,7 @@ export class StarbaseRuntimeCore {
   }
 
   async invoke(method: string, args?: unknown): Promise<unknown> {
+    trace('invoke', { method })
     switch (method) {
       case 'runtime.bootstrap':
         return this.bootstrap(args as RuntimeBootstrapArgs)
@@ -241,21 +257,34 @@ export class StarbaseRuntimeCore {
 
   private async bootstrap(args: RuntimeBootstrapArgs): Promise<void> {
     if (this.deps) {
+      trace('bootstrap skipped: already initialized')
       return
     }
 
     this.setStatus({ state: 'starting' })
     this.workspacePath = args.workspacePath
+    trace('bootstrap start', {
+      workspacePath: args.workspacePath,
+      fleetBinPath: args.fleetBinPath,
+      envKeys: Object.keys(args.env).length,
+    })
 
     let localStarbaseDb: StarbaseDB | null = null
     let localLockfile: Lockfile | null = null
 
     try {
+      trace('bootstrap creating db')
       localStarbaseDb = new StarbaseDB(args.workspacePath)
       localStarbaseDb.open()
+      trace('bootstrap db opened', {
+        dbPath: localStarbaseDb.getDbPath(),
+        starbaseId: localStarbaseDb.getStarbaseId(),
+      })
 
       const sectorService = new SectorService(localStarbaseDb.getDb(), args.workspacePath, this.eventBus)
+      trace('bootstrap sectorService ready')
       const configService = new ConfigService(localStarbaseDb.getDb())
+      trace('bootstrap configService ready')
       const supplyRouteService = new SupplyRouteService(localStarbaseDb.getDb())
       const cargoService = new CargoService(localStarbaseDb.getDb(), supplyRouteService, configService)
       const retentionService = new RetentionService(
@@ -264,11 +293,13 @@ export class StarbaseRuntimeCore {
         localStarbaseDb.getDbPath()
       )
       const missionService = new MissionService(localStarbaseDb.getDb(), this.eventBus)
+      trace('bootstrap mission/cargo/retention ready')
 
       const worktreeBasePath = join(dirname(localStarbaseDb.getDbPath()), 'worktrees')
       const worktreeManager = new WorktreeManager(worktreeBasePath)
       const maxConcurrent = configService.get('max_concurrent_worktrees') as number
       worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent)
+      trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent })
 
       const crewService = new CrewService({
         db: localStarbaseDb.getDb(),
@@ -280,9 +311,11 @@ export class StarbaseRuntimeCore {
         eventBus: this.eventBus,
         crewEnv: args.env,
       })
+      trace('bootstrap crewService ready')
 
       const commsService = new CommsService(localStarbaseDb.getDb(), this.eventBus)
       commsService.setRateLimit(configService.get('comms_rate_limit_per_min') as number)
+      trace('bootstrap commsService ready')
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb())
       const firstOfficer = new FirstOfficer({
@@ -296,6 +329,7 @@ export class StarbaseRuntimeCore {
         crewEnv: args.env,
         fleetBinDir: args.fleetBinPath,
       })
+      trace('bootstrap firstOfficer ready')
       const navigator = new Navigator({
         db: localStarbaseDb.getDb(),
         configService,
@@ -305,18 +339,24 @@ export class StarbaseRuntimeCore {
         fleetBinDir: args.fleetBinPath,
       })
       const shipsLog = new ShipsLog(localStarbaseDb.getDb())
+      trace('bootstrap navigator/shipsLog ready')
 
       const basePath = dirname(localStarbaseDb.getDbPath())
       localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId())
       const lockResult = localLockfile.acquire()
+      trace('bootstrap lock result', { lockResult, basePath })
       if (lockResult === 'acquired') {
+        trace('bootstrap reconciliation start')
         await runReconciliation({
           db: localStarbaseDb.getDb(),
           starbaseId: localStarbaseDb.getStarbaseId(),
           worktreeBasePath,
         })
+        trace('bootstrap reconciliation finished')
         firstOfficer.reconcile()
+        trace('bootstrap firstOfficer reconciled')
         navigator.reconcile()
+        trace('bootstrap navigator reconciled')
         mkdirSync(
           join(
             process.env.HOME ?? '~',
@@ -328,6 +368,7 @@ export class StarbaseRuntimeCore {
           ),
           { recursive: true }
         )
+        trace('bootstrap memos dir ensured')
       }
 
       this.deps = {
@@ -346,13 +387,19 @@ export class StarbaseRuntimeCore {
         navigator,
         lockfile: localLockfile,
       }
+      trace('bootstrap deps assigned')
 
       this.eventBus.on('starbase-changed', () => {
         this.scheduleSnapshot()
       })
+      trace('bootstrap eventBus subscribed')
       this.scheduleSnapshot()
+      trace('bootstrap initial snapshot scheduled')
       this.setStatus({ state: 'ready' })
+      trace('bootstrap completed')
     } catch (error) {
+      const err = error as Error
+      trace('bootstrap failed', { message: err.message, stack: err.stack })
       try {
         localLockfile?.release()
       } catch {

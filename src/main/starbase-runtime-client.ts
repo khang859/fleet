@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
+import { appendFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { utilityProcess } from 'electron'
-import type { MessageEvent, UtilityProcess } from 'electron'
 import type {
   RuntimeBootstrapArgs,
   RuntimeEvent,
@@ -23,8 +23,25 @@ type RuntimeEventMap = {
   'sentinel.socket-restart-requested': { reason: string }
 }
 
+type RuntimeEnvelope = RuntimeResponse | RuntimeEvent
+type RuntimeMessageLike = RuntimeEnvelope | { data?: RuntimeEnvelope } | undefined
+const RUNTIME_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log'
+
+function trace(message: string, extra?: unknown): void {
+  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`
+  try {
+    appendFileSync(
+      RUNTIME_PARENT_TRACE_FILE,
+      `[${new Date().toISOString()} pid=${process.pid}] runtime-client ${message}${suffix}\n`,
+      'utf8'
+    )
+  } catch {
+    // Ignore trace write failures.
+  }
+}
+
 export class StarbaseRuntimeClient {
-  private child: UtilityProcess | null = null
+  private child: ChildProcess | null = null
   private pending = new Map<string, PendingRequest>()
   private emitter = new EventEmitter()
   private bootstrapPromise: Promise<void> | null = null
@@ -37,20 +54,59 @@ export class StarbaseRuntimeClient {
 
     this.status = { state: 'starting' }
     this.bootstrapPromise = (async () => {
-      const child = utilityProcess.fork(fileURLToPath(this.scriptUrl))
+      const scriptPath = fileURLToPath(this.scriptUrl)
+      const child = spawn(process.execPath, [scriptPath], {
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      })
       this.child = child
+      trace('spawned child', { pid: child.pid, scriptPath })
 
-      child.on('message', (message: MessageEvent) => {
-        this.handleMessage(message.data as RuntimeResponse | RuntimeEvent)
+      child.on('spawn', () => {
+        console.log(`[starbase-runtime] spawned pid=${child.pid ?? 'unknown'}`)
+        trace('child spawn event', { pid: child.pid })
       })
 
-      child.on('exit', (_code) => {
-        const error = new Error('Starbase runtime exited')
+      child.stdout?.on('data', (chunk) => {
+        const text = chunk.toString().trim()
+        if (text) {
+          console.log(`[starbase-runtime:stdout] ${text}`)
+        }
+      })
+
+      child.stderr?.on('data', (chunk) => {
+        const text = chunk.toString().trim()
+        if (text) {
+          console.error(`[starbase-runtime:stderr] ${text}`)
+        }
+      })
+
+      child.on('error', (error) => {
+        console.error('[starbase-runtime] child process error:', error)
+        trace('child process error', { message: error.message, stack: error.stack })
+      })
+
+      child.on('message', (message: RuntimeMessageLike) => {
+        trace('parent received raw message', this.describeMessage(message))
+        console.log('[starbase-runtime] parent received message', {
+          rawType: typeof message,
+          hasData: Boolean(message && typeof message === 'object' && 'data' in message),
+        })
+        this.handleMessage(this.unwrapMessage(message))
+      })
+
+      child.on('exit', (code) => {
+        const error = new Error(`Starbase runtime exited with code ${code ?? 'null'}`)
         this.child = null
         this.bootstrapPromise = null
         if (this.status.state !== 'error') {
           this.setStatus({ state: 'error', error: error.message })
         }
+        console.error('[starbase-runtime] exited', { code })
+        trace('child exit', { code })
         for (const pending of this.pending.values()) {
           pending.reject(error)
         }
@@ -92,10 +148,22 @@ export class StarbaseRuntimeClient {
 
     const id = randomUUID()
     const request: RuntimeRequest = { id, method, args }
+    console.log('[starbase-runtime] parent sending request', { id, method })
+    trace('parent sending request', { id, method })
 
     return new Promise<T>((resolve, reject) => {
       this.pending.set(id, { resolve: resolve as (value: unknown) => void, reject })
-      child.postMessage(request)
+      child.send?.(request, (error) => {
+        if (error) {
+          console.error('[starbase-runtime] send failed', { id, method, error })
+          trace('send failed', { id, method, message: error.message, stack: error.stack })
+          const pending = this.pending.get(id)
+          if (pending) {
+            this.pending.delete(id)
+            pending.reject(error as Error & { code?: string })
+          }
+        }
+      })
     })
   }
 
@@ -111,8 +179,16 @@ export class StarbaseRuntimeClient {
     this.emitter.off(event, listener)
   }
 
-  private handleMessage(message: RuntimeResponse | RuntimeEvent): void {
+  private handleMessage(message: RuntimeEnvelope | undefined): void {
+    if (!message) {
+      console.warn('[starbase-runtime] parent received empty message')
+      trace('parent received empty message')
+      return
+    }
+
     if ('event' in message) {
+      console.log('[starbase-runtime] parent handling event', { event: message.event })
+      trace('parent handling event', { event: message.event })
       if (message.event === 'runtime.status') {
         this.setStatus(message.payload)
       }
@@ -121,21 +197,80 @@ export class StarbaseRuntimeClient {
     }
 
     const pending = this.pending.get(message.id)
-    if (!pending) return
+    if (!pending) {
+      console.warn('[starbase-runtime] parent received response with no pending request', { id: message.id })
+      trace('response with no pending request', { id: message.id })
+      return
+    }
     this.pending.delete(message.id)
 
     if (message.ok) {
+      console.log('[starbase-runtime] parent resolved request', { id: message.id })
+      trace('parent resolved request', { id: message.id })
       pending.resolve(message.data)
       return
     }
 
     const error = new Error(message.error) as Error & { code?: string }
     error.code = message.code
+    console.error('[starbase-runtime] parent rejected request', {
+      id: message.id,
+      message: message.error,
+      code: message.code,
+    })
+    trace('parent rejected request', {
+      id: message.id,
+      message: message.error,
+      code: message.code,
+    })
     pending.reject(error)
   }
 
   private setStatus(status: StarbaseRuntimeStatus): void {
     this.status = status
+    trace('status updated', status)
     this.emitter.emit('runtime.status', status)
+  }
+
+  private unwrapMessage(message: RuntimeMessageLike): RuntimeEnvelope | undefined {
+    if (!message) {
+      return undefined
+    }
+
+    if (typeof message !== 'object') {
+      trace('received non-object IPC payload', { valueType: typeof message })
+      return undefined
+    }
+
+    const keys = Object.keys(message)
+    if (keys.length === 1 && keys[0] === 'data' && 'data' in message && message.data !== undefined) {
+      return message.data as RuntimeEnvelope
+    }
+
+    return message as RuntimeEnvelope
+  }
+
+  private describeMessage(message: RuntimeMessageLike): Record<string, unknown> {
+    if (message === undefined) {
+      return { kind: 'undefined' }
+    }
+    if (message === null) {
+      return { kind: 'null' }
+    }
+    if (typeof message !== 'object') {
+      return { kind: typeof message, value: String(message) }
+    }
+
+    const keys = Object.keys(message)
+    const unwrapped =
+      'data' in message && message.data && typeof message.data === 'object'
+        ? Object.keys(message.data)
+        : null
+
+    return {
+      kind: Array.isArray(message) ? 'array' : 'object',
+      keys,
+      dataKeys: unwrapped,
+    }
   }
 }
