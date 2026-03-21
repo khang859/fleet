@@ -257,7 +257,7 @@ export const MIGRATIONS: Migration[] = [
       );
 
       INSERT OR IGNORE INTO sectors (id, name, root_path, stack)
-      VALUES ('global', 'Global', ':global:', 'none');
+      VALUES ('global', 'Global', '', 'none');
 
       INSERT OR IGNORE INTO protocols (id, slug, name, description, help_text, trigger_examples, built_in)
       VALUES (
@@ -295,6 +295,15 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE cargo ADD COLUMN protocol_execution_id TEXT REFERENCES protocol_executions(id);
       CREATE INDEX IF NOT EXISTS idx_comms_execution ON comms(execution_id, read);
       CREATE INDEX IF NOT EXISTS idx_missions_execution ON missions(protocol_execution_id);
+    `
+  },
+  {
+    version: 13,
+    name: '013-normalize-global-sector-path',
+    sql: `
+      UPDATE sectors
+      SET root_path = ''
+      WHERE id = 'global' AND root_path = ':global:';
     `
   }
 ]

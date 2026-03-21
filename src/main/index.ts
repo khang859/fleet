@@ -318,7 +318,7 @@ app.whenReady().then(async () => {
     admiralProcess = new AdmiralProcess({
       workspace: admiralWorkspace,
       starbaseName,
-      sectors: sectorService.listSectors().map((s) => ({
+      sectors: sectorService.listVisibleSectors().map((s) => ({
         name: s.name,
         root_path: s.root_path,
         stack: s.stack ?? undefined,
@@ -398,7 +398,7 @@ app.whenReady().then(async () => {
       w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
         crew: crewService!.listCrew(),
         missions: missionService!.listMissions(),
-        sectors: sectorService!.listSectors(),
+        sectors: sectorService!.listVisibleSectors(),
         unreadCount: unreadComms.length,
         firstOfficer: {
           status: firstOfficer.getStatus(),

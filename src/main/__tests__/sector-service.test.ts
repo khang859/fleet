@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
-import { SectorService } from '../starbase/sector-service';
+import { GLOBAL_SECTOR_ID, SectorService } from '../starbase/sector-service';
 import { rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -52,6 +52,20 @@ describe('SectorService', () => {
     const apiSector = list.find(s => s.id === 'api');
     expect(apiSector).toBeDefined();
     expect(apiSector!.id).toBe('api');
+  });
+
+  it('should hide logical sectors from visible sector lists', () => {
+    svc.addSector({ path: 'api' });
+
+    const list = svc.listVisibleSectors();
+
+    expect(list).toHaveLength(1);
+    expect(list[0]!.id).toBe('api');
+  });
+
+  it('should identify the global sentinel as a logical sector', () => {
+    expect(svc.isLogicalSector(GLOBAL_SECTOR_ID)).toBe(true);
+    expect(svc.isLogicalSector('api')).toBe(false);
   });
 
   it('should get a sector by id', () => {

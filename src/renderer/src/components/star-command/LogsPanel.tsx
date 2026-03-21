@@ -10,6 +10,15 @@ type LogEntry = {
   detail: unknown
 }
 
+type ShipsLogBridge = {
+  getShipsLog?: (opts?: { limit?: number }) => Promise<unknown[]>
+  onLogEntry?: (cb: (entry: unknown) => void) => (() => void) | undefined
+}
+
+export function hasShipsLogBridgeApi(starbase: ShipsLogBridge | null | undefined): starbase is Required<ShipsLogBridge> {
+  return typeof starbase?.getShipsLog === 'function' && typeof starbase?.onLogEntry === 'function'
+}
+
 function formatTime(timestamp: string): string {
   try {
     const d = new Date(timestamp)
@@ -74,15 +83,27 @@ function LogRow({ entry }: { entry: LogEntry }) {
 
 export function LogsPanel() {
   const [entries, setEntries] = useState<LogEntry[]>([])
+  const [bridgeUnavailable, setBridgeUnavailable] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const seenIds = useRef<Set<string>>(new Set())
 
   const loadAll = useCallback(() => {
-    window.fleet.starbase.getShipsLog({ limit: 200 }).then((rows) => {
-      const typed = rows as LogEntry[]
-      seenIds.current = new Set(typed.map(e => `${e.source}:${e.id}`))
-      setEntries(typed)
-    })
+    const starbase = window.fleet?.starbase as ShipsLogBridge | undefined
+    if (!hasShipsLogBridgeApi(starbase)) {
+      setBridgeUnavailable(true)
+      return
+    }
+
+    setBridgeUnavailable(false)
+    starbase.getShipsLog({ limit: 200 })
+      .then((rows) => {
+        const typed = rows as LogEntry[]
+        seenIds.current = new Set(typed.map(e => `${e.source}:${e.id}`))
+        setEntries(typed)
+      })
+      .catch(() => {
+        setEntries([])
+      })
   }, [])
 
   useEffect(() => {
@@ -90,7 +111,13 @@ export function LogsPanel() {
   }, [loadAll])
 
   useEffect(() => {
-    const unsub = window.fleet.starbase.onLogEntry((raw) => {
+    const starbase = window.fleet?.starbase as ShipsLogBridge | undefined
+    if (!hasShipsLogBridgeApi(starbase)) {
+      setBridgeUnavailable(true)
+      return
+    }
+
+    const unsub = starbase.onLogEntry((raw) => {
       const entry = raw as LogEntry
       const key = `${entry.source}:${entry.id}`
       if (seenIds.current.has(key)) return
@@ -110,7 +137,9 @@ export function LogsPanel() {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto font-mono text-xs p-3 space-y-0.5">
       {entries.length === 0 ? (
-        <p className="text-neutral-600 italic">No log entries yet.</p>
+        <p className="text-neutral-600 italic">
+          {bridgeUnavailable ? 'Ships log unavailable in this app build.' : 'No log entries yet.'}
+        </p>
       ) : (
         entries.map(entry => (
           <LogRow key={`${entry.source}:${entry.id}`} entry={entry} />

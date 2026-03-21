@@ -3,6 +3,7 @@ import { existsSync, readdirSync, rmSync } from 'fs';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
+import { GLOBAL_SECTOR_ID } from './sector-service';
 
 const execFileAsync = promisify(execFile);
 
@@ -68,7 +69,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as { id: string; root_path: string }[];
   await Promise.all(
     sectors
-      .filter((sector) => existsSync(sector.root_path))
+      .filter((sector) => sector.id !== GLOBAL_SECTOR_ID && existsSync(sector.root_path))
       .map((sector) =>
         execFileAsync('git', ['worktree', 'prune'], {
           cwd: sector.root_path,
@@ -114,7 +115,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
     if (!crew?.worktree_branch) continue;
 
     const sector = sectors.find((s) => s.id === crew.sector_id);
-    if (!sector || !existsSync(sector.root_path)) continue;
+    if (!sector || sector.id === GLOBAL_SECTOR_ID || !existsSync(sector.root_path)) continue;
 
     try {
       await execFileAsync('git', ['push', '-u', 'origin', crew.worktree_branch], {

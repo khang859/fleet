@@ -146,6 +146,16 @@ export class SectorService {
     return this.db.prepare('SELECT * FROM sectors ORDER BY name').all() as SectorRow[];
   }
 
+  listVisibleSectors(): SectorRow[] {
+    return this.db
+      .prepare('SELECT * FROM sectors WHERE id != ? ORDER BY name')
+      .all(GLOBAL_SECTOR_ID) as SectorRow[];
+  }
+
+  isLogicalSector(sectorId: string): boolean {
+    return sectorId === GLOBAL_SECTOR_ID;
+  }
+
   private generateSlugId(absolutePath: string): string {
     const base = basename(absolutePath).toLowerCase().replace(/[^a-z0-9]/g, '-');
     // Check for collision
@@ -176,3 +186,5 @@ export class SectorService {
     return null;
   }
 }
+
+export const GLOBAL_SECTOR_ID = 'global';

@@ -183,7 +183,7 @@ export function registerIpcHandlers(
 
   // Starbase handlers
   if (sectorService && configService) {
-    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, () => sectorService.listSectors())
+    ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, () => sectorService.listVisibleSectors())
     ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, (_e, req) => sectorService.addSector(req))
     ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, (_e, { sectorId }) =>
       sectorService.removeSector(sectorId)

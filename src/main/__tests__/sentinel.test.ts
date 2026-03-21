@@ -141,6 +141,21 @@ describe('Sentinel', () => {
     expect(logEntry).toBeDefined();
   });
 
+  it('should ignore the global sentinel during sector path validation', async () => {
+    insertCrew({ id: 'crew-1', sectorId: 'global' });
+
+    const sentinel = new Sentinel({ db: getDb(), configService });
+    await sentinel.runSweep();
+
+    const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as { status: string };
+    expect(crew.status).toBe('active');
+
+    const logEntry = getDb()
+      .prepare("SELECT * FROM ships_log WHERE event_type = 'sector_path_missing' AND detail LIKE '%\"sectorId\":\"global\"%'")
+      .get();
+    expect(logEntry).toBeUndefined();
+  });
+
   it('should reset comms_count_minute on every 6th sweep', async () => {
     const sectorDir = join(TEST_DIR, 'workspace', 'api');
     insertSector('api', sectorDir);

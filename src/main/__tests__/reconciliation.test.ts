@@ -209,4 +209,16 @@ describe('runReconciliation', () => {
     expect(summary.cleanedErroredCrew).not.toContain('crew-push-pending');
     expect(existsSync(worktreeDir)).toBe(true);
   });
+
+  it('should ignore the global sentinel for path-based sector operations', async () => {
+    const summary = await runReconciliation({
+      db: getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      worktreeBasePath: join(TEST_DIR, 'worktrees'),
+    });
+
+    expect(summary.lostCrew).toEqual([]);
+    expect(summary.orphanedWorktrees).toEqual([]);
+    expect(summary.retriedPushes).toEqual([]);
+  });
 });

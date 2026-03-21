@@ -14,6 +14,7 @@ import type { SettingsStore } from '../settings-store';
 import { computeFingerprint, classifyError } from './error-fingerprint';
 import type { Navigator } from './navigator';
 import { ProtocolService } from './protocol-service';
+import { GLOBAL_SECTOR_ID } from './sector-service';
 
 const execFileAsync = promisify(execFile);
 
@@ -149,6 +150,7 @@ export class Sentinel {
     // 3. Sector path validation
     const sectors = db.prepare('SELECT id, root_path FROM sectors').all() as SectorRow[];
     for (const sector of sectors) {
+      if (sector.id === GLOBAL_SECTOR_ID) continue;
       let pathExists = true;
       try {
         await access(sector.root_path);

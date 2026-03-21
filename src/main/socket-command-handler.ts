@@ -206,7 +206,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
       // Starbase commands
       case 'sectors':
         if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
-        return { ok: true, sectors: this.sectorService.listSectors() };
+        return { ok: true, sectors: this.sectorService.listVisibleSectors() };
 
       case 'add-sector':
         if (!this.sectorService) return { ok: false, error: 'Star Command not initialized' };
