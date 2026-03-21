@@ -48,7 +48,14 @@ async function removeBackground(imageUrl: string): Promise<string> {
     throw new Error(`API error ${response.status}: ${await response.text()}`);
   }
 
-  const result = await response.json() as { image: { url: string } };
+  const result: unknown = await response.json();
+  if (
+    typeof result !== "object" || result === null ||
+    !("image" in result) || typeof result.image !== "object" || result.image === null ||
+    !("url" in result.image) || typeof result.image.url !== "string"
+  ) {
+    throw new Error("Unexpected response format from background removal API");
+  }
   return result.image.url;
 }
 

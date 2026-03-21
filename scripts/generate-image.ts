@@ -48,6 +48,16 @@ interface GenerateResponse {
   description: string;
 }
 
+function isGenerateResponse(value: unknown): value is GenerateResponse {
+  if (typeof value !== "object" || value === null) return false;
+  if (!("images" in value) || !Array.isArray(value.images)) return false;
+  for (const img of value.images) {
+    if (typeof img !== "object" || img === null) return false;
+    if (!("url" in img) || typeof img.url !== "string") return false;
+  }
+  return true;
+}
+
 function toDataUri(filepath: string): string {
   const data = readFileSync(filepath);
   const ext = extname(filepath).slice(1).toLowerCase();
@@ -78,7 +88,11 @@ async function generateText2Image(options: ApiOptions): Promise<GenerateResponse
     throw new Error(`API error ${response.status}: ${await response.text()}`);
   }
 
-  return response.json() as Promise<GenerateResponse>;
+  const data: unknown = await response.json();
+  if (!isGenerateResponse(data)) {
+    throw new Error("Unexpected response format from text-to-image API");
+  }
+  return data;
 }
 
 async function generateEdit(imageUrl: string, options: ApiOptions): Promise<GenerateResponse> {
@@ -105,7 +119,11 @@ async function generateEdit(imageUrl: string, options: ApiOptions): Promise<Gene
     throw new Error(`API error ${response.status}: ${await response.text()}`);
   }
 
-  return response.json() as Promise<GenerateResponse>;
+  const data: unknown = await response.json();
+  if (!isGenerateResponse(data)) {
+    throw new Error("Unexpected response format from edit API");
+  }
+  return data;
 }
 
 async function downloadImage(url: string, filepath: string): Promise<void> {
