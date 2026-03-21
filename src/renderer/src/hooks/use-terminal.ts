@@ -168,7 +168,7 @@ function createTerminal(
 
   if (!options.attachOnly && !isPreCreated) {
     createdPtys.add(options.paneId);
-    window.fleet.pty.create({
+    void window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd
     });
@@ -178,7 +178,7 @@ function createTerminal(
   // and transition to live streaming. This closes the race where PTY data
   // arrives before the renderer mounts the terminal.
   if (isPreCreated && !options.attachOnly) {
-    window.fleet.pty.attach(options.paneId).then(({ data }) => {
+    void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return; // terminal disposed during round-trip
       if (data) writeToTerm(data);
       attachResolved = true;
@@ -430,7 +430,7 @@ export function useTerminal(
         document.fonts.load(`italic 16px "${primaryFamily}"`),
         document.fonts.load(`bold italic 16px "${primaryFamily}"`)
       ];
-      Promise.allSettled(fontLoads).then(() => {
+      void Promise.allSettled(fontLoads).then(() => {
         // Guard against terminal being disposed while fonts were loading
         if (!termRef.current) return;
         term.options.fontFamily = newFamily;

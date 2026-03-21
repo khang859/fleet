@@ -56,7 +56,7 @@ export function QuickOpenOverlay({ isOpen, onClose, rootDir }: QuickOpenOverlayP
     if (!isOpen || !rootDir) return;
     setIsLoading(true);
     setAllFiles([]);
-    window.fleet.file.list(rootDir).then((result) => {
+    void window.fleet.file.list(rootDir).then((result) => {
       if (result.success) {
         setAllFiles(result.files);
       }

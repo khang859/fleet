@@ -340,7 +340,7 @@ function SectorsSection() {
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    window.fleet.starbase.listSectors().then((s) => setSectors(s));
+    void window.fleet.starbase.listSectors().then((s) => setSectors(s));
   }, [setSectors]);
 
   useEffect(() => {
@@ -391,7 +391,7 @@ function SectorsSection() {
 
       <div className="space-y-2 mb-3">
         {sectors.map((s) => (
-          <SectorCard key={s.id} sector={s} onRemove={handleRemove} onUpdate={handleUpdate} />
+          <SectorCard key={s.id} sector={s} onRemove={(id) => { void handleRemove(id); }} onUpdate={(id, fields) => { void handleUpdate(id, fields); }} />
         ))}
         {sectors.length === 0 && <p className="text-xs text-neutral-600">No sectors registered</p>}
       </div>
@@ -407,9 +407,10 @@ function SectorsSection() {
             className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
           />
           <button
-            onClick={async () => {
-              const path = await window.fleet.showFolderPicker();
-              if (path) setAddPath(path);
+            onClick={() => {
+              void window.fleet.showFolderPicker().then((path) => {
+                if (path) setAddPath(path);
+              });
             }}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 text-xs font-medium rounded transition-colors"
           >
@@ -423,7 +424,7 @@ function SectorsSection() {
             className="w-32 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
           />
           <button
-            onClick={handleAdd}
+            onClick={() => { void handleAdd(); }}
             disabled={!addPath.trim()}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
           >
@@ -461,7 +462,7 @@ function SupplyRoutesSection() {
   }, []);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   const handleAdd = async () => {
@@ -474,7 +475,7 @@ function SupplyRoutesSection() {
       });
       setUpstream('');
       setDownstream('');
-      refresh();
+      void refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add route');
     }
@@ -483,7 +484,7 @@ function SupplyRoutesSection() {
   const handleRemove = async (routeId: number) => {
     try {
       await window.fleet.starbase.removeSupplyRoute(routeId);
-      refresh();
+      void refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to remove route');
     }
@@ -542,7 +543,7 @@ function SupplyRoutesSection() {
               )}
             </div>
             <button
-              onClick={async () => handleRemove(route.id)}
+              onClick={() => { void handleRemove(route.id); }}
               className="text-neutral-500 hover:text-red-400 transition-colors px-1"
               title="Remove route"
             >
@@ -585,7 +586,7 @@ function SupplyRoutesSection() {
             ))}
           </select>
           <button
-            onClick={handleAdd}
+            onClick={() => { void handleAdd(); }}
             disabled={!upstream || !downstream}
             className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
           >
@@ -671,7 +672,7 @@ function StarbaseSettingsSection() {
               {field.type === 'select' ? (
                 <select
                   value={String(config[field.key] ?? '')}
-                  onChange={async (e) => handleChange(field.key, e.target.value)}
+                  onChange={(e) => { void handleChange(field.key, e.target.value); }}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none"
                 >
                   {field.options?.map((opt) => (
@@ -686,7 +687,7 @@ function StarbaseSettingsSection() {
                   defaultValue={String(config[field.key] ?? '')}
                   onBlur={(e) => {
                     const v = e.target.value.trim();
-                    if (v && v !== config[field.key]) handleChange(field.key, v);
+                    if (v && v !== config[field.key]) void handleChange(field.key, v);
                   }}
                   placeholder="Not set"
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
@@ -695,16 +696,16 @@ function StarbaseSettingsSection() {
                 <input
                   type="number"
                   value={config[field.key] != null ? Number(config[field.key]) : ''}
-                  onChange={async (e) =>
-                    handleChange(field.key, e.target.value ? Number(e.target.value) : null)
-                  }
+                  onChange={(e) => {
+                    void handleChange(field.key, e.target.value ? Number(e.target.value) : null);
+                  }}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
               ) : (
                 <input
                   type="text"
                   value={String(config[field.key] ?? '')}
-                  onChange={async (e) => handleChange(field.key, e.target.value)}
+                  onChange={(e) => { void handleChange(field.key, e.target.value); }}
                   className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
                 />
               )}
@@ -806,14 +807,14 @@ function DatabaseSection() {
 
         <div className="flex gap-2">
           <button
-            onClick={handleCleanup}
+            onClick={() => { void handleCleanup(); }}
             disabled={cleaning}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-neutral-200 text-xs rounded transition-colors"
           >
             {cleaning ? 'Cleaning...' : 'Clean Now'}
           </button>
           <button
-            onClick={handleVacuum}
+            onClick={() => { void handleVacuum(); }}
             disabled={vacuuming}
             className="px-3 py-1.5 bg-neutral-700 hover:bg-neutral-600 disabled:opacity-50 text-neutral-200 text-xs rounded transition-colors"
           >

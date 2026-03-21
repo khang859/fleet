@@ -116,13 +116,13 @@ export function StarCommandTab() {
       if (runtimeLaunchRef.current) return;
       runtimeLaunchRef.current = true;
       setDepCheck('checking', []);
-      window.fleet.admiral.checkDependencies().then((results) => {
+      void window.fleet.admiral.checkDependencies().then((results) => {
         const allPassed = results.every((r) => r.found);
         setDepCheck(allPassed ? 'passed' : 'failed', results);
         if (!allPassed) return;
 
         setTimeout(() => {
-          window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
+          void window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
             if (paneId) {
               setAdmiralPty(paneId, 'running');
             }
@@ -131,7 +131,7 @@ export function StarCommandTab() {
       });
     };
 
-    window.fleet.starbase.getRuntimeStatus().then((status) => {
+    void window.fleet.starbase.getRuntimeStatus().then((status) => {
       applyRuntimeStatus(status);
       if (status.state === 'ready') {
         launchAdmiral();
@@ -181,10 +181,10 @@ export function StarCommandTab() {
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {
     if (runtimeStatus.state !== 'ready') return;
-    window.fleet.starbase.listCrew().then((crew) => setCrewList(crew));
-    window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions));
-    window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors));
-    window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount(msgs.length));
+    void window.fleet.starbase.listCrew().then((crew) => setCrewList(crew));
+    void window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions));
+    void window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors));
+    void window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount(msgs.length));
   }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount]);
 
   useEffect(() => {

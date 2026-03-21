@@ -148,11 +148,11 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
               placeholder="Send message to crew..."
               className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleMessage();
+                if (e.key === 'Enter') void handleMessage();
               }}
             />
             <button
-              onClick={handleMessage}
+              onClick={() => { void handleMessage(); }}
               disabled={!messageText.trim() || sending}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs rounded transition-colors"
             >
@@ -164,7 +164,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleObserve}
+              onClick={() => { void handleObserve(); }}
               disabled={observing}
               className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
             >
@@ -175,7 +175,7 @@ function CrewCard({ crew, onRefresh }: { crew: CrewStatus; onRefresh: () => void
               <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1 ml-auto">
                 <span className="text-[10px] text-red-300">Recall crew?</span>
                 <button
-                  onClick={handleRecall}
+                  onClick={() => { void handleRecall(); }}
                   className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
                 >
                   Confirm
@@ -269,7 +269,7 @@ function DeploySection({ onRefresh }: { onRefresh: () => void }) {
       {success && <p className="text-xs text-green-400">{success}</p>}
 
       <button
-        onClick={handleDeploy}
+        onClick={() => { void handleDeploy(); }}
         disabled={!sectorId || !prompt.trim() || deploying}
         className="w-full px-3 py-1.5 bg-teal-700 hover:bg-teal-600 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs font-medium rounded transition-colors"
       >
@@ -341,7 +341,7 @@ export function CrewPanel() {
   }, [setCrewList, setMissionQueue]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   return (
@@ -353,14 +353,14 @@ export function CrewPanel() {
         <SectionHeader title="Active Crew" count={crewList.length} />
         <div className="space-y-2 mb-3">
           {crewList.map((c) => (
-            <CrewCard key={c.id} crew={c} onRefresh={refresh} />
+            <CrewCard key={c.id} crew={c} onRefresh={() => { void refresh(); }} />
           ))}
           {crewList.length === 0 && <p className="text-xs text-neutral-600">No crew deployed</p>}
         </div>
       </section>
 
       {/* Deploy section */}
-      <DeploySection onRefresh={refresh} />
+      <DeploySection onRefresh={() => { void refresh(); }} />
 
       {/* Mission queue */}
       <MissionQueueSection />

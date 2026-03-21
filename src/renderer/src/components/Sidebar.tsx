@@ -112,7 +112,7 @@ export function Sidebar({
   const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);
 
   useEffect(() => {
-    window.fleet.layout.list().then((res) => {
+    void window.fleet.layout.list().then((res) => {
       setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
     });
   }, []);
@@ -124,7 +124,7 @@ export function Sidebar({
         setSwitchConfirmId(wsId);
         return;
       }
-      doSwitchWorkspace(wsId);
+      void doSwitchWorkspace(wsId);
     },
     [workspace.tabs.length]
   );
@@ -150,14 +150,14 @@ export function Sidebar({
           splitRoot: injectLiveCwd(tab.splitRoot)
         }))
       };
-      window.fleet.layout
+      void window.fleet.layout
         .save({
           workspace: workspaceWithCwds
         })
         .then(() => {
           markClean();
           // Refresh saved workspaces list
-          window.fleet.layout.list().then((res) => {
+          void window.fleet.layout.list().then((res) => {
             setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
           });
         });
@@ -601,13 +601,13 @@ export function Sidebar({
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') commitNewWorkspace();
+                if (e.key === 'Enter') void commitNewWorkspace();
                 if (e.key === 'Escape') {
                   setShowNewWsInput(false);
                   setNewWsName('');
                 }
               }}
-              onBlur={async () => commitNewWorkspace()}
+              onBlur={() => { void commitNewWorkspace(); }}
               placeholder="Workspace name..."
               className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
             />
@@ -625,7 +625,7 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                      onClick={async () => doSwitchWorkspace(ws.id)}
+                      onClick={() => { void doSwitchWorkspace(ws.id); }}
                     >
                       Yes
                     </button>
@@ -643,7 +643,7 @@ export function Sidebar({
                   <div className="flex gap-2">
                     <button
                       className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
-                      onClick={async () => handleDeleteWorkspace(ws.id)}
+                      onClick={() => { void handleDeleteWorkspace(ws.id); }}
                     >
                       Delete
                     </button>
@@ -663,10 +663,10 @@ export function Sidebar({
                     value={renamingWsValue}
                     onChange={(e) => setRenamingWsValue(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitSavedWsRename();
+                      if (e.key === 'Enter') void commitSavedWsRename();
                       if (e.key === 'Escape') setRenamingWsId(null);
                     }}
-                    onBlur={commitSavedWsRename}
+                    onBlur={() => { void commitSavedWsRename(); }}
                     className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
                   />
                 </div>
@@ -760,14 +760,21 @@ export function Sidebar({
               <button
                 disabled={fileSaving}
                 className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors font-medium"
-                onClick={async () => {
+                onClick={() => {
                   if (!fileCloseConfirm) return;
                   setFileSaving(true);
                   const saveFn = getFileSave(fileCloseConfirm.paneId);
-                  if (saveFn) await saveFn();
-                  setFileSaving(false);
-                  doCloseTab(fileCloseConfirm.tabId);
-                  setFileCloseConfirm(null);
+                  if (saveFn) {
+                    void saveFn().then(() => {
+                      setFileSaving(false);
+                      doCloseTab(fileCloseConfirm.tabId);
+                      setFileCloseConfirm(null);
+                    });
+                  } else {
+                    setFileSaving(false);
+                    doCloseTab(fileCloseConfirm.tabId);
+                    setFileCloseConfirm(null);
+                  }
                 }}
               >
                 {fileSaving ? 'Saving…' : 'Save'}

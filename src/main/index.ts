@@ -221,9 +221,9 @@ function createWindow(): void {
   }
 
   if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+    void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
-    mainWindow.loadFile(fileURLToPath(new URL('../renderer/index.html', import.meta.url)));
+    void mainWindow.loadFile(fileURLToPath(new URL('../renderer/index.html', import.meta.url)));
   }
 }
 
@@ -235,7 +235,7 @@ app.on('child-process-gone', (_event, details) => {
   }
 });
 
-app.whenReady().then(async () => {
+void app.whenReady().then(async () => {
   createWindow();
 
   // Set dock icon on macOS

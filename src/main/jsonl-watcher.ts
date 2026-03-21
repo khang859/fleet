@@ -80,7 +80,7 @@ export class JsonlWatcher {
   }
 
   stop(): void {
-    this.watcher?.close();
+    void this.watcher?.close();
     this.watcher = null;
     this.isReady = false;
     this.watchedFiles.clear();

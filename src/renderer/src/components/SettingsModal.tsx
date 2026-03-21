@@ -59,7 +59,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
-    window.fleet.updates.getVersion().then(setAppVersion);
+    void window.fleet.updates.getVersion().then(setAppVersion);
   }, []);
 
   useEffect(() => {
@@ -83,7 +83,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           type="checkbox"
           checked={settings!.visualizer.effects[key]}
           onChange={(e) => {
-            updateSettings({
+            void updateSettings({
               visualizer: {
                 ...settings!.visualizer,
                 effects: {
@@ -143,11 +143,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.general.defaultShell || '(auto-detect)'}
-                  onChange={async (e) =>
-                    updateSettings({
+                  onChange={(e) => {
+                    void updateSettings({
                       general: { ...settings.general, defaultShell: e.target.value }
-                    })
-                  }
+                    });
+                  }}
                   placeholder="(auto-detect)"
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-48 border border-neutral-700"
                 />
@@ -156,32 +156,32 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.fontSize}
-                  onChange={async (e) =>
-                    updateSettings({
+                  onChange={(e) => {
+                    void updateSettings({
                       general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 }
-                    })
-                  }
+                    });
+                  }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-20 border border-neutral-700"
                 />
               </SettingRow>
               <FontFamilyPicker
                 fontFamily={settings.general.fontFamily}
-                onChange={async (fontFamily) =>
-                  updateSettings({ general: { ...settings.general, fontFamily } })
-                }
+                onChange={(fontFamily) => {
+                  void updateSettings({ general: { ...settings.general, fontFamily } });
+                }}
               />
               <SettingRow label="Scrollback Lines">
                 <input
                   type="number"
                   value={settings.general.scrollbackSize}
-                  onChange={async (e) =>
-                    updateSettings({
+                  onChange={(e) => {
+                    void updateSettings({
                       general: {
                         ...settings.general,
                         scrollbackSize: parseInt(e.target.value) || 10000
                       }
-                    })
-                  }
+                    });
+                  }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-24 border border-neutral-700"
                 />
               </SettingRow>
@@ -190,7 +190,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   value={settings.general.theme}
                   onChange={(e) => {
                     const theme = e.target.value === 'light' ? 'light' : 'dark';
-                    updateSettings({ general: { ...settings.general, theme } });
+                    void updateSettings({ general: { ...settings.general, theme } });
                   }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
@@ -218,7 +218,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         type="checkbox"
                         checked={settings.notifications[key][channel]}
                         onChange={(e) => {
-                          updateSettings({
+                          void updateSettings({
                             notifications: {
                               ...settings.notifications,
                               [key]: {
@@ -243,11 +243,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="checkbox"
                   checked={settings.socketApi.enabled}
-                  onChange={async (e) =>
-                    updateSettings({
+                  onChange={(e) => {
+                    void updateSettings({
                       socketApi: { ...settings.socketApi, enabled: e.target.checked }
-                    })
-                  }
+                    });
+                  }}
                   className="accent-blue-500"
                 />
               </SettingRow>
@@ -255,11 +255,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.socketApi.socketPath || '~/.fleet/fleet.sock'}
-                  onChange={async (e) =>
-                    updateSettings({
+                  onChange={(e) => {
+                    void updateSettings({
                       socketApi: { ...settings.socketApi, socketPath: e.target.value }
-                    })
-                  }
+                    });
+                  }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-64 border border-neutral-700"
                   disabled
                 />
@@ -274,7 +274,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                   value={settings.visualizer.panelMode}
                   onChange={(e) => {
                     const panelMode = e.target.value === 'tab' ? 'tab' : 'drawer';
-                    updateSettings({ visualizer: { ...settings.visualizer, panelMode } });
+                    void updateSettings({ visualizer: { ...settings.visualizer, panelMode } });
                   }}
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
@@ -350,14 +350,14 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         max="1"
                         step="0.05"
                         value={settings.visualizer.soundVolume}
-                        onChange={async (e) =>
-                          updateSettings({
+                        onChange={(e) => {
+                          void updateSettings({
                             visualizer: {
                               ...settings.visualizer,
                               soundVolume: parseFloat(e.target.value)
                             }
-                          })
-                        }
+                          });
+                        }}
                         className="w-32"
                       />
                     </SettingRow>
@@ -380,7 +380,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </button>
               ) : (
                 <button
-                  onClick={async () => window.fleet.updates.checkForUpdates()}
+                  onClick={() => { void window.fleet.updates.checkForUpdates(); }}
                   disabled={
                     updateStatus.state === 'checking' || updateStatus.state === 'downloading'
                   }

@@ -18,7 +18,7 @@ export function WorkspacePicker() {
 
   // Load saved workspaces on mount and when menu opens
   useEffect(() => {
-    window.fleet.layout.list().then(({ workspaces }) => {
+    void window.fleet.layout.list().then(({ workspaces }) => {
       setSavedWorkspaces(workspaces.filter((w) => w.id !== workspace.id));
     });
   }, [menuOpen, workspace.id]);
@@ -173,7 +173,7 @@ export function WorkspacePicker() {
             </button>
             <button
               className="w-full px-3 py-1.5 text-sm text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={handleSaveCurrent}
+              onClick={() => { void handleSaveCurrent(); }}
             >
               Save Current
             </button>
@@ -187,7 +187,7 @@ export function WorkspacePicker() {
                     <button
                       className="flex-1 px-3 py-1.5 text-sm text-neutral-300 hover:text-white text-left truncate"
                       onClick={() => {
-                        handleSwitchWorkspace(ws);
+                        void handleSwitchWorkspace(ws);
                         setMenuOpen(false);
                       }}
                     >
@@ -198,7 +198,7 @@ export function WorkspacePicker() {
                     </button>
                     <button
                       className="px-2 text-neutral-600 hover:text-red-400 text-xs"
-                      onClick={async () => handleDeleteWorkspace(ws.id)}
+                      onClick={() => { void handleDeleteWorkspace(ws.id); }}
                     >
                       &times;
                     </button>
@@ -219,13 +219,13 @@ export function WorkspacePicker() {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commitNewWorkspace();
+              if (e.key === 'Enter') void commitNewWorkspace();
               if (e.key === 'Escape') {
                 setShowNameInput(false);
                 setNewName('');
               }
             }}
-            onBlur={async () => commitNewWorkspace()}
+            onBlur={() => { void commitNewWorkspace(); }}
             placeholder="Workspace name..."
             className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
           />
@@ -278,7 +278,7 @@ export function WorkspacePicker() {
                   <button
                     className="px-1 text-neutral-700 hover:text-neutral-400 text-[10px]"
                     onClick={() => {
-                      handleSwitchWorkspace(ws);
+                      void handleSwitchWorkspace(ws);
                     }}
                     title="Switch to this workspace"
                   >

@@ -41,7 +41,7 @@ const fontLoads = fontFamilies.flatMap((family) =>
 
 const fontTimeout = new Promise<void>((resolve) => setTimeout(resolve, 3000));
 
-Promise.race([Promise.allSettled(fontLoads), fontTimeout]).then(() => {
+void Promise.race([Promise.allSettled(fontLoads), fontTimeout]).then(() => {
   const root = document.getElementById('root');
   if (root) {
     createRoot(root).render(<App />);

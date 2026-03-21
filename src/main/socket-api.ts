@@ -51,7 +51,7 @@ export class SocketApi {
 
           for (const line of lines) {
             if (!line.trim()) continue;
-            this.handleLine(socket, line);
+            void this.handleLine(socket, line);
           }
         });
 

@@ -115,11 +115,11 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
               placeholder="Response message..."
               className="flex-1 bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none"
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleResolve();
+                if (e.key === 'Enter') void handleResolve();
               }}
             />
             <button
-              onClick={handleResolve}
+              onClick={() => { void handleResolve(); }}
               disabled={!resolveText.trim() || resolving}
               className="px-2 py-1 bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white text-xs rounded transition-colors"
             >
@@ -132,14 +132,14 @@ function CommCard({ comm, onRefresh }: { comm: CommInfo; onRefresh: () => void }
           <div className="flex items-center gap-2">
             {!comm.read && (
               <button
-                onClick={handleMarkRead}
+                onClick={() => { void handleMarkRead(); }}
                 className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
               >
                 Mark Read
               </button>
             )}
             <button
-              onClick={handleDelete}
+              onClick={() => { void handleDelete(); }}
               className="text-xs text-red-400 hover:text-red-300 transition-colors"
             >
               Delete
@@ -168,12 +168,12 @@ export function CommsPanel() {
   }, [setCommsList, setUnreadCount]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   const handleReadAll = async () => {
     await window.fleet.starbase.markAllCommsRead();
-    refresh();
+    void refresh();
   };
 
   const handleClearAll = async () => {
@@ -181,7 +181,7 @@ export function CommsPanel() {
     try {
       await window.fleet.starbase.clearComms();
       setClearConfirm(false);
-      refresh();
+      void refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to clear');
     }
@@ -197,7 +197,7 @@ export function CommsPanel() {
         <div className="flex items-center gap-2">
           {unread.length > 0 && (
             <button
-              onClick={handleReadAll}
+              onClick={() => { void handleReadAll(); }}
               className="text-xs text-neutral-400 hover:text-neutral-200 transition-colors"
             >
               Read All
@@ -207,7 +207,7 @@ export function CommsPanel() {
             <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
               <span className="text-[10px] text-red-300">Clear all?</span>
               <button
-                onClick={handleClearAll}
+                onClick={() => { void handleClearAll(); }}
                 className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
               >
                 Confirm
@@ -238,7 +238,7 @@ export function CommsPanel() {
           <SectionHeader title="Unread" count={unread.length} />
           <div className="space-y-2">
             {unread.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={refresh} />
+              <CommCard key={c.id} comm={c} onRefresh={() => { void refresh(); }} />
             ))}
           </div>
         </section>
@@ -250,7 +250,7 @@ export function CommsPanel() {
           <SectionHeader title="Read" count={read.length} />
           <div className="space-y-2">
             {read.map((c) => (
-              <CommCard key={c.id} comm={c} onRefresh={refresh} />
+              <CommCard key={c.id} comm={c} onRefresh={() => { void refresh(); }} />
             ))}
           </div>
         </section>

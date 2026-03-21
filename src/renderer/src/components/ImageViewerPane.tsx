@@ -59,7 +59,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
     setIsFit(true);
     setOffset({ x: 0, y: 0 });
 
-    window.fleet.file.readBinary(filePath).then((result) => {
+    void window.fleet.file.readBinary(filePath).then((result) => {
       if (!result.success || !result.data) {
         setError(result.error || 'Failed to load image');
         return;
@@ -75,7 +75,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps) {
       setImageSrc(blobUrl);
     });
 
-    window.fleet.file.stat(filePath).then((result) => {
+    void window.fleet.file.stat(filePath).then((result) => {
       if (result.success && result.data) setFileSize(result.data.size);
     });
 

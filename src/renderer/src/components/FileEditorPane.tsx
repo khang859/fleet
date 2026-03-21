@@ -141,7 +141,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
 
   // Load file on mount
   useEffect(() => {
-    window.fleet.file.read(filePath).then((result) => {
+    void window.fleet.file.read(filePath).then((result) => {
       if (result.success && result.data) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
@@ -182,7 +182,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
             {
               key: 'Mod-s',
               run: () => {
-                saveRef.current();
+                void saveRef.current();
                 return true;
               }
             },
@@ -201,7 +201,7 @@ export function FileEditorPane({ paneId, filePath }: Props) {
             if (dirty) {
               if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
               autoSaveTimerRef.current = setTimeout(() => {
-                saveRef.current();
+                void saveRef.current();
               }, AUTO_SAVE_DELAY);
             }
           }),

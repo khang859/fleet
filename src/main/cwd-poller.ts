@@ -17,18 +17,19 @@ export class CwdPoller {
   startPolling(paneId: string, pid: number): void {
     if (this.timers.has(paneId)) return;
 
-    const timer = setInterval(async () => {
+    const timer = setInterval(() => {
       if (this.osc7Seen.has(paneId)) {
         this.stopPolling(paneId);
         return;
       }
-      const cwd = await readProcCwd(pid);
-      if (cwd) {
-        const current = this.ptyManager.getCwd(paneId);
-        if (cwd !== current) {
-          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+      void readProcCwd(pid).then((cwd) => {
+        if (cwd) {
+          const current = this.ptyManager.getCwd(paneId);
+          if (cwd !== current) {
+            this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+          }
         }
-      }
+      });
     }, POLL_INTERVAL_MS);
 
     this.timers.set(paneId, timer);

@@ -158,7 +158,7 @@ export function MissionsPanel() {
   }, [setMissionQueue]);
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
   const missions = missionQueue;

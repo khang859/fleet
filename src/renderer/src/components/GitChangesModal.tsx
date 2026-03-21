@@ -17,7 +17,7 @@ function useShikiHighlighter() {
         return mod.getDiffViewHighlighter();
       });
     }
-    highlighterPromise.then(setHighlighter);
+    void highlighterPromise.then(setHighlighter);
   }, []);
   return highlighter;
 }

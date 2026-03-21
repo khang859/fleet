@@ -59,7 +59,7 @@ export function TerminalPane({
 
     if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     gitCheckTimerRef.current = setTimeout(() => {
-      window.fleet.git.isRepo(currentCwd).then((result) => {
+      void window.fleet.git.isRepo(currentCwd).then((result) => {
         setIsGitRepo(result.isRepo);
       });
     }, 500);

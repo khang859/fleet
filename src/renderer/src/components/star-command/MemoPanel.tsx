@@ -13,14 +13,14 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
   const [content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
-    loadMemos();
+    void loadMemos();
   }, []);
 
   async function loadMemos() {
     const list = await window.fleet.starbase.memoList();
     setMemos(list);
     if (list.length > 0 && !selectedId) {
-      selectMemo(list[0]);
+      void selectMemo(list[0]);
     }
   }
 
@@ -30,13 +30,13 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
     setContent(text);
     if (memo.status === 'unread') {
       await window.fleet.starbase.memoRead(memo.id);
-      loadMemos();
+      void loadMemos();
     }
   }
 
   async function dismissMemo(id: number) {
     await window.fleet.starbase.memoDismiss(id);
-    loadMemos();
+    void loadMemos();
     if (selectedId === id) {
       setSelectedId(null);
       setContent(null);
@@ -66,7 +66,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
             activeMemos.map((memo) => (
               <button
                 key={memo.id}
-                onClick={async () => selectMemo(memo)}
+                onClick={() => { void selectMemo(memo); }}
                 className={`w-full text-left px-3 py-2 border-b border-neutral-800 hover:bg-neutral-800 transition-colors ${
                   selectedId === memo.id ? 'bg-neutral-800' : ''
                 }`}
@@ -100,7 +100,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
           {selectedId && (
             <div className="mt-4 pt-4 border-t border-neutral-800">
               <button
-                onClick={async () => dismissMemo(selectedId)}
+                onClick={() => { void dismissMemo(selectedId); }}
                 className="text-xs text-neutral-500 hover:text-neutral-300 px-3 py-1 rounded border border-neutral-700 hover:border-neutral-600 transition-colors"
               >
                 Dismiss

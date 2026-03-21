@@ -175,7 +175,7 @@ export class SocketServer extends EventEmitter {
 
           for (const line of lines) {
             if (!line.trim()) continue;
-            this.handleLine(socket, line);
+            void this.handleLine(socket, line);
           }
         });
 
@@ -322,7 +322,7 @@ export class SocketServer extends EventEmitter {
             'BAD_REQUEST'
           );
         }
-        sectorService.removeSector(rawSectorId);
+        await sectorService.removeSector(rawSectorId);
         return null;
       }
 
@@ -629,7 +629,7 @@ export class SocketServer extends EventEmitter {
             'BAD_REQUEST'
           );
         }
-        crewService.recallCrew(rawCrewId);
+        await crewService.recallCrew(rawCrewId);
         this.emit('state-change', 'crew:changed', { crewId: rawCrewId, status: 'recalled' });
         return null;
       }
@@ -913,7 +913,7 @@ export class SocketServer extends EventEmitter {
             'BAD_REQUEST'
           );
         }
-        supplyRouteService.removeRoute(Number(rawId));
+        await supplyRouteService.removeRoute(Number(rawId));
         return null;
       }
 
@@ -943,7 +943,7 @@ export class SocketServer extends EventEmitter {
             'BAD_REQUEST'
           );
         }
-        configService.set(args.key, args.value);
+        await configService.set(args.key, args.value);
         return null;
       }
 
@@ -995,7 +995,7 @@ export class SocketServer extends EventEmitter {
         const rawSlug = args.id ?? args.slug;
         if (typeof rawSlug !== 'string')
           throw new CodedError('protocol.enable requires a slug', 'BAD_REQUEST');
-        protocolService.setProtocolEnabled(rawSlug, true);
+        await protocolService.setProtocolEnabled(rawSlug, true);
         return { slug: rawSlug, enabled: true };
       }
 
@@ -1003,7 +1003,7 @@ export class SocketServer extends EventEmitter {
         const rawSlug = args.id ?? args.slug;
         if (typeof rawSlug !== 'string')
           throw new CodedError('protocol.disable requires a slug', 'BAD_REQUEST');
-        protocolService.setProtocolEnabled(rawSlug, false);
+        await protocolService.setProtocolEnabled(rawSlug, false);
         return { slug: rawSlug, enabled: false };
       }
 

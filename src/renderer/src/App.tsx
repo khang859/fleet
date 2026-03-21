@@ -101,7 +101,7 @@ export function App() {
 
   // Load settings on startup
   useEffect(() => {
-    loadSettings();
+    void loadSettings();
   }, []);
 
   // Subscribe to live CWD updates from main process
@@ -148,7 +148,7 @@ export function App() {
   useEffect(() => {
     const handler = () => {
       const cwd = focusedPaneCwd ?? window.fleet.homeDir;
-      window.fleet.file.openDialog({ defaultPath: cwd }).then((filePaths) => {
+      void window.fleet.file.openDialog({ defaultPath: cwd }).then((filePaths) => {
         for (const filePath of filePaths) {
           useWorkspaceStore.getState().openFile(filePath);
         }
@@ -195,7 +195,7 @@ export function App() {
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
-    window.fleet.layout.list().then(({ workspaces }) => {
+    void window.fleet.layout.list().then(({ workspaces }) => {
       const defaultWs = workspaces.find((w) => w.id === 'default');
       if (defaultWs && defaultWs.tabs.length > 0) {
         useWorkspaceStore.getState().loadWorkspace(defaultWs);
