@@ -25,6 +25,7 @@ import { enrichProcessEnv } from './shell-env';
 import { normalizeRuntimeEnv } from './runtime-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api';
+import type { NotificationLevel, UpdateStatus } from '../shared/types';
 import { StarbaseRuntimeClient } from './starbase-runtime-client';
 import { createSocketRuntimeServices } from './starbase-runtime-socket-services';
 import pkg from 'electron-updater';
@@ -56,7 +57,12 @@ const runtimeClient = new StarbaseRuntimeClient(
 );
 const STARBASE_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log';
 
+// eslint-disable-next-line no-console
 console.log('[fleet-main] startup marker runtime=spawn-ipc preload=out/preload/index.js');
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
 
 function traceStarbase(message: string, extra?: unknown): void {
   const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`;
@@ -183,6 +189,7 @@ function createWindow(): void {
 
   // Log renderer console messages and errors to main process stdout
   mainWindow.webContents.on('console-message', (event) => {
+    // eslint-disable-next-line no-console
     console.log(`[renderer] ${event.message}`);
   });
 
@@ -200,7 +207,7 @@ function createWindow(): void {
     // Debug: log DOM state after page loads
     mainWindow.webContents.on('did-finish-load', () => {
       setTimeout(() => {
-        mainWindow!.webContents
+        mainWindow?.webContents
           .executeJavaScript(
             `
           const root = document.getElementById('root');
@@ -214,7 +221,9 @@ function createWindow(): void {
           })
         `
           )
+          // eslint-disable-next-line no-console
           .then((r) => console.log('[debug DOM]', r))
+          // eslint-disable-next-line no-console
           .catch((e) => console.log('[debug err]', e));
       }, 3000);
     });
@@ -235,7 +244,7 @@ app.on('child-process-gone', (_event, details) => {
   }
 });
 
-void app.whenReady().then(async () => {
+void app.whenReady().then(() => {
   createWindow();
 
   // Set dock icon on macOS
@@ -305,6 +314,7 @@ void app.whenReady().then(async () => {
           `starbase-${starbaseId}`,
           'admiral'
         );
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: got admiral bootstrap data', {
           starbaseId,
           sectorCount: sectors.length,
@@ -318,6 +328,7 @@ void app.whenReady().then(async () => {
           ptyManager,
           fleetBinPath
         });
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: admiral process created');
         traceStarbase('admiral process created');
 
@@ -329,7 +340,7 @@ void app.whenReady().then(async () => {
           if (mainWindow && !mainWindow.isDestroyed()) {
             mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
               status,
-              paneId: admiralProcess!.paneId,
+              paneId: admiralProcess?.paneId,
               error,
               exitCode
             });
@@ -340,6 +351,7 @@ void app.whenReady().then(async () => {
           SOCKET_PATH,
           createSocketRuntimeServices(runtimeClient)
         );
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: socket supervisor created', { socketPath: SOCKET_PATH });
         traceStarbase('socket supervisor created', { socketPath: SOCKET_PATH });
         socketSupervisor.on('state-change', (event: string, data: unknown) => {
@@ -374,21 +386,24 @@ void app.whenReady().then(async () => {
             message: err instanceof Error ? err.message : String(err)
           });
         });
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: socket supervisor start requested');
         traceStarbase('socket supervisor start requested');
 
         commandHandler.setRuntimeClient(runtimeClient);
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: runtime client bound to command handler');
         traceStarbase('runtime client bound to command handler');
 
         const initialUnread = await runtimeClient.invoke<unknown[]>('comms.getUnread', 'admiral');
         lastUnreadCommsCount = Array.isArray(initialUnread) ? initialUnread.length : 0;
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: unread comms fetched', { lastUnreadCommsCount });
         traceStarbase('unread comms fetched', { lastUnreadCommsCount });
         const initSnapshot =
           await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot');
         const initFo =
-          initSnapshot != null && typeof initSnapshot === 'object' && 'firstOfficer' in initSnapshot
+          typeof initSnapshot === 'object' && 'firstOfficer' in initSnapshot
             ? initSnapshot.firstOfficer
             : null;
         lastUnreadMemosCount = Number(
@@ -396,24 +411,26 @@ void app.whenReady().then(async () => {
             ? initFo.unreadMemos
             : 0) ?? 0
         );
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: unread memos fetched', { lastUnreadMemosCount });
         traceStarbase('unread memos fetched', { lastUnreadMemosCount });
         layoutStore.ensureStarCommandTab('default', workspacePath);
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: ensured star command tab');
         traceStarbase('ensured star command tab');
         const snapshotData =
           await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot');
-        if (snapshotData != null && typeof snapshotData === 'object') {
-          await handleStarbaseSnapshot(snapshotData);
-        }
+        await handleStarbaseSnapshot(snapshotData);
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: initial snapshot handled');
         traceStarbase('initial snapshot handled');
         setRuntimeStatus({ state: 'ready' });
+        // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: ready');
         traceStarbase('bootstrap ready');
       } catch (err) {
         socketSupervisor?.stop().catch(() => {});
-        admiralProcess?.stop().catch(() => {});
+        admiralProcess?.stop();
         const message = err instanceof Error ? err.message : String(err);
         console.error('[starbase] Failed to initialize Star Command database:', err);
         traceStarbase('bootstrap failed', {
@@ -466,8 +483,8 @@ void app.whenReady().then(async () => {
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);
   runtimeClient.on('starbase.snapshot', (snapshot) => {
-    if (snapshot != null && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
-      void handleStarbaseSnapshot(snapshot as Record<string, unknown>);
+    if (isRecord(snapshot)) {
+      void handleStarbaseSnapshot(snapshot);
     }
   });
   runtimeClient.on('starbase.log-entry', (entry) => {
@@ -575,7 +592,7 @@ void app.whenReady().then(async () => {
   });
 
   // Forward agent state changes to renderer
-  eventBus.on('agent-state-change', (_event) => {
+  eventBus.on('agent-state-change', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.AGENT_STATE, {
         states: agentTracker.getAllStates()
@@ -680,10 +697,7 @@ void app.whenReady().then(async () => {
   eventBus.on('notification', (event) => {
     const settings = settingsStore.get();
 
-    const notifKeyMap: Record<
-      import('../shared/types').NotificationLevel,
-      keyof typeof settings.notifications
-    > = {
+    const notifKeyMap: Record<NotificationLevel, keyof typeof settings.notifications> = {
       permission: 'needsPermission',
       error: 'processExitError',
       info: 'taskComplete',
@@ -695,9 +709,7 @@ void app.whenReady().then(async () => {
 
     if (config.os) {
       pendingOsNotifications.push({ paneId: event.paneId, level: event.level });
-      if (!osNotifTimer) {
-        osNotifTimer = setTimeout(flushOsNotifications, OS_NOTIF_BATCH_MS);
-      }
+      osNotifTimer ??= setTimeout(flushOsNotifications, OS_NOTIF_BATCH_MS);
     }
   });
 
@@ -718,7 +730,8 @@ void app.whenReady().then(async () => {
     return '';
   }
 
-  function sendUpdateStatus(status: import('../shared/types').UpdateStatus): void {
+  function sendUpdateStatus(status: UpdateStatus): void {
+    // eslint-disable-next-line no-console
     console.log('[auto-updater] status:', status.state);
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('fleet:update-status', status);
@@ -767,7 +780,7 @@ void app.whenReady().then(async () => {
 
   autoUpdater.on('error', (err) => {
     updateState = 'idle';
-    sendUpdateStatus({ state: 'error', message: err?.message ?? 'Unknown error' });
+    sendUpdateStatus({ state: 'error', message: err.message });
   });
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
@@ -806,17 +819,23 @@ function shutdownAll(): void {
   ptyManager.killAll();
   cwdPoller.stopAll();
   socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err));
-  admiralProcess?.stop().catch((err) => console.error('[admiral] stop error:', err));
+  admiralProcess?.stop();
   admiralStateDetector.dispose();
   jsonlWatcher.stop();
-  void runtimeClient.stop();
+  runtimeClient.stop();
 }
 
 app.on('window-all-closed', () => {
-  shutdownAll();
   if (process.platform !== 'darwin') {
+    shutdownAll();
     app.quit();
   }
+  // On macOS: app stays running in the dock — keep services alive so the
+  // fleet CLI and socket remain usable while the window is closed.
+});
+
+app.on('will-quit', () => {
+  shutdownAll();
 });
 
 // Ensure child processes are cleaned up on unexpected termination
