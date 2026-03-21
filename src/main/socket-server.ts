@@ -205,7 +205,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const sector = sectorService.getSector(sectorId);
+        const sector = await sectorService.getSector(sectorId);
         if (!sector) {
           const err = new Error(`Sector not found: ${sectorId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -305,7 +305,7 @@ export class SocketServer extends EventEmitter {
 
         // Validate each dependency ID exists
         for (const depId of dependsOnMissionIds) {
-          const dep = missionService.getMission(depId)
+          const dep = await missionService.getMission(depId)
           if (!dep) {
             const err = new Error(
               `Cannot link dependency: mission ${depId} does not exist.`
@@ -315,7 +315,7 @@ export class SocketServer extends EventEmitter {
           }
         }
 
-        const mission = missionService.addMission({
+        const mission = await missionService.addMission({
           sectorId,
           summary,
           prompt,
@@ -345,7 +345,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const mission = missionService.getMission(Number(rawId));
+        const mission = await missionService.getMission(Number(rawId));
         if (!mission) {
           const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -365,7 +365,7 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
         const id = Number(rawId);
-        const existing = missionService.getMission(id);
+        const existing = await missionService.getMission(id);
         if (!existing) {
           const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -377,15 +377,15 @@ export class SocketServer extends EventEmitter {
         if (args.prompt) fields.prompt = args.prompt as string;
         if (args.summary) fields.summary = args.summary as string;
         if (Object.keys(fields).length > 0) {
-          missionService.updateMission(id, fields);
+          await missionService.updateMission(id, fields);
         }
 
         if (args.status) {
           const newStatus = args.status as string;
-          missionService.setStatus(id, newStatus);
+          await missionService.setStatus(id, newStatus);
           // When re-queuing a mission, reset crew assignment so autoDeployNext() picks it up
           if (newStatus === 'queued') {
-            missionService.resetForRequeue(id);
+            await missionService.resetForRequeue(id);
           }
           this.emit('state-change', 'mission:changed', { id });
         }
@@ -403,13 +403,13 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
         const id = Number(rawId);
-        const existing = missionService.getMission(id);
+        const existing = await missionService.getMission(id);
         if (!existing) {
           const err = new Error(`Mission not found: ${rawId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
           throw err;
         }
-        missionService.abortMission(id);
+        await missionService.abortMission(id);
         this.emit('state-change', 'mission:changed', { id });
         return null;
       }
@@ -436,11 +436,11 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
 
-        missionService.setReviewVerdict(id, verdict, notes);
+        await missionService.setReviewVerdict(id, verdict, notes);
         if (verdict === 'approved') {
-          missionService.setStatus(id, 'completed');
-          const mission = missionService.getMission(id);
-          commsService.send({
+          await missionService.setStatus(id, 'completed');
+          const mission = await missionService.getMission(id);
+          await commsService.send({
             from: 'admiral',
             to: 'admiral',
             type: 'mission_approved',
@@ -451,7 +451,7 @@ export class SocketServer extends EventEmitter {
             }),
           });
         } else {
-          missionService.setStatus(id, verdict);
+          await missionService.setStatus(id, verdict);
         }
         this.emit('state-change', 'mission:changed', { id });
         return missionService.getMission(id);
@@ -484,7 +484,7 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
 
-        const mission = missionService.getMission(missionId);
+        const mission = await missionService.getMission(missionId);
         if (!mission) {
           const err = new Error(`Mission not found: ${missionId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -502,7 +502,8 @@ export class SocketServer extends EventEmitter {
         }
 
         // Check all dependencies via junction table
-        const blockedDeps = missionService.getDependencies(missionId).filter(
+        const allDeps = await missionService.getDependencies(missionId);
+        const blockedDeps = allDeps.filter(
           dep => !['completed', 'done', 'failed', 'aborted', 'failed-verification', 'escalated', 'approved'].includes(dep.status)
         )
         if (blockedDeps.length > 0) {
@@ -560,7 +561,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const info = crewService.getCrewStatus(crewId);
+        const info = await crewService.getCrewStatus(crewId);
         if (!info) {
           const err = new Error(`Crew not found: ${crewId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -580,7 +581,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const raw = crewService.observeCrew(crewId);
+        const raw = await crewService.observeCrew(crewId);
         return stripAnsi(raw);
       }
 
@@ -604,7 +605,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const sent = crewService.messageCrew(crewId, message);
+        const sent = await crewService.messageCrew(crewId, message);
         if (!sent) {
           const err = new Error(
             `Crew not active: ${crewId}. Only active crew can receive messages.\n` +
@@ -641,7 +642,7 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
         const transmissionId = Number(rawId);
-        const changed = commsService.markRead(transmissionId);
+        const changed = await commsService.markRead(transmissionId);
         if (changed) this.emit('state-change', 'comms:changed', { id: transmissionId });
         return null;
       }
@@ -665,7 +666,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const id = commsService.send({
+        const id = await commsService.send({
           from: (args.from ?? 'admiral') as string,
           to,
           type: (args.type ?? 'directive') as string,
@@ -676,7 +677,7 @@ export class SocketServer extends EventEmitter {
         // Auto-inject into active crew's Claude Code process if target is a live crew
         let injected = false;
         if (to !== 'admiral') {
-          injected = crewService.messageCrew(to, payload);
+          injected = await crewService.messageCrew(to, payload);
         }
 
         return { id, injected };
@@ -694,13 +695,13 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
         const transmissionId = Number(rawId);
-        const deleted = commsService.delete(transmissionId);
+        const deleted = await commsService.delete(transmissionId);
         if (deleted) this.emit('state-change', 'comms:changed', {});
         return { deleted };
       }
 
       case 'comms.clear': {
-        const count = commsService.clear(
+        const count = await commsService.clear(
           args.crew ? { crewId: args.crew as string } : undefined,
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
@@ -708,7 +709,7 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'comms.read-all': {
-        const count = commsService.markAllRead(
+        const count = await commsService.markAllRead(
           args.crew ? { crewId: args.crew as string } : undefined,
         );
         if (count > 0) this.emit('state-change', 'comms:changed', {});
@@ -727,7 +728,7 @@ export class SocketServer extends EventEmitter {
           throw err;
         }
         const transmissionId = Number(rawId);
-        const transmission = commsService.getTransmission(transmissionId);
+        const transmission = await commsService.getTransmission(transmissionId);
         if (!transmission) {
           const err = new Error(`Transmission not found: ${transmissionId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -736,8 +737,10 @@ export class SocketServer extends EventEmitter {
         return transmission;
       }
 
-      case 'comms.check':
-        return { unread: commsService.getUnread('admiral').length };
+      case 'comms.check': {
+        const unread = await commsService.getUnread('admiral');
+        return { unread: unread.length };
+      }
 
       // ── Cargo ─────────────────────────────────────────────────────────────────
       case 'cargo.list':
@@ -754,7 +757,7 @@ export class SocketServer extends EventEmitter {
           err.code = 'BAD_REQUEST';
           throw err;
         }
-        const cargo = cargoService.getCargo(Number(rawId));
+        const cargo = await cargoService.getCargo(Number(rawId));
         if (!cargo) {
           const err = new Error(`Cargo not found: ${rawId}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -894,13 +897,13 @@ export class SocketServer extends EventEmitter {
 
       case 'protocol.show': {
         const slug = (args.id ?? args.slug) as string;
-        const p = protocolService.getProtocolBySlug(slug);
+        const p = await protocolService.getProtocolBySlug(slug);
         if (!p) {
           const err = new Error(`Protocol not found: ${slug}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
           throw err;
         }
-        const steps = protocolService.listSteps(p.id);
+        const steps = await protocolService.listSteps(p.id);
         return { ...p, steps };
       }
 
@@ -921,7 +924,7 @@ export class SocketServer extends EventEmitter {
         return protocolService.listExecutions(args.status as string | undefined);
 
       case 'execution.show': {
-        const exec = protocolService.getExecution(args.id as string);
+        const exec = await protocolService.getExecution(args.id as string);
         if (!exec) {
           const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
@@ -931,20 +934,20 @@ export class SocketServer extends EventEmitter {
       }
 
       case 'execution.update': {
-        const exec = protocolService.getExecution(args.id as string);
+        const exec = await protocolService.getExecution(args.id as string);
         if (!exec) {
           const err = new Error(`Execution not found: ${args.id}`) as Error & { code: string };
           err.code = 'NOT_FOUND';
           throw err;
         }
         if (args.step !== undefined) {
-          protocolService.advanceStep(args.id as string, Number(args.step));
+          await protocolService.advanceStep(args.id as string, Number(args.step));
         }
         if (args.status !== undefined) {
-          protocolService.updateExecutionStatus(args.id as string, args.status as string);
+          await protocolService.updateExecutionStatus(args.id as string, args.status as string);
         }
         if (args.context !== undefined) {
-          protocolService.updateExecutionContext(args.id as string, args.context as string);
+          await protocolService.updateExecutionContext(args.id as string, args.context as string);
         }
         return protocolService.getExecution(args.id as string);
       }
