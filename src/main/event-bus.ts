@@ -13,7 +13,7 @@ export type FleetEvent =
       statusText: string;
     }
   | { type: 'workspace-loaded'; workspaceId: string }
-  | { type: 'cwd-changed'; paneId: string; cwd: string }
+  | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' }
   | { type: 'starbase-changed' };
 
 type EventMap = {

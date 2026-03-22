@@ -13,11 +13,17 @@ const PERMISSION_PATTERNS = [
 // eslint-disable-next-line no-control-regex
 const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
 
+const CARRY_BUFFER_SIZE = 200;
+
 export class NotificationDetector {
   private eventBus: EventBus;
+  private carryBuffers = new Map<string, string>();
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
+    eventBus.on('pane-closed', (event) => {
+      this.carryBuffers.delete(event.paneId);
+    });
   }
 
   scan(paneId: string, data: string): void {
@@ -28,17 +34,23 @@ export class NotificationDetector {
   }
 
   private checkOSC7(paneId: string, data: string): void {
-    for (const match of data.matchAll(OSC7_RE)) {
+    const carry = this.carryBuffers.get(paneId) ?? '';
+    const chunk = carry + data;
+    let lastMatchEnd = -1;
+    for (const match of chunk.matchAll(OSC7_RE)) {
+      lastMatchEnd = match.index + match[0].length;
       try {
         const url = new URL(match[1]);
         const cwd = decodeURIComponent(url.pathname);
         if (cwd) {
-          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd, source: 'osc7' });
         }
       } catch {
         // Malformed URL, skip
       }
     }
+    const tail = lastMatchEnd === -1 ? chunk : chunk.slice(lastMatchEnd);
+    this.carryBuffers.set(paneId, tail.slice(-CARRY_BUFFER_SIZE));
   }
 
   private emitNotification(paneId: string, level: NotificationLevel): void {
