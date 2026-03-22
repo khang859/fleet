@@ -144,6 +144,8 @@ export type HullOpts = {
   missionType?: string;
   /** PR branch name for review/fix crews working on an existing PR */
   prBranch?: string;
+  /** For repair missions: the original code mission whose PR this crew is fixing */
+  originalMissionId?: number;
   /** Starbase ID for cargo file storage paths */
   starbaseId?: string;
   onComplete?: () => void;
@@ -368,7 +370,32 @@ Deliver a decisive, complete architecture blueprint. Include:
 `
           : null;
 
-      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, this.opts.systemPrompt]
+      const repairPreamble =
+        this.opts.missionType === 'repair'
+          ? `# Repair Mission Instructions
+
+You are a repair crew deployed on a repair mission (FLEET_MISSION_TYPE=repair).
+You are working on an existing PR branch — do NOT create a new branch or new PR.
+
+## Your Objective
+Fix the issues described in this mission (CI failures and/or review comments).
+The PR already exists. Your commits will be pushed to the existing PR branch automatically.
+
+## Workflow
+- Read the CI failure output and/or review comments in your mission prompt
+- Use \`gh pr view --comments\` to see any additional reviewer feedback
+- Use \`gh pr checks\` to see the current CI status
+- Fix the identified issues
+- Commit your changes — they will be pushed on mission completion
+
+## Constraints
+- Do NOT run \`gh pr create\` — the PR already exists
+- Do NOT switch branches or create new branches
+- Do NOT merge or close the PR
+`
+          : null;
+
+      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, repairPreamble, this.opts.systemPrompt]
         .filter(Boolean)
         .join('\n\n');
 
