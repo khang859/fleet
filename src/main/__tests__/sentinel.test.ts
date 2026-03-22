@@ -281,3 +281,77 @@ describe('Navigator sweep', () => {
     expect(exec.status).toBe('gate-expired');
   });
 });
+
+describe('prMonitorSweep — escalation', () => {
+  it('should escalate mission when review_round >= MAX_REPAIR_ROUNDS', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+
+    // Insert an approved mission with pr_branch set and review_round = 2 (>= MAX_REPAIR_ROUNDS)
+    const missionId = (
+      getDb()
+        .prepare(
+          `INSERT INTO missions (sector_id, summary, prompt, status, type, pr_branch, review_round)
+           VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
+        )
+        .get('api', 'Test mission', 'Do some work', 'approved', 'code', 'feature/test-branch', 2) as {
+        id: number;
+      }
+    ).id;
+
+    const mockDeployCrew = vi.fn();
+    const mockAddMission = vi.fn();
+
+    const sentinel = new Sentinel({
+      db: getDb(),
+      configService,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      crewService: { deployCrew: mockDeployCrew } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      missionService: { addMission: mockAddMission } as any
+    });
+
+    await (sentinel as unknown as { prMonitorSweep: () => Promise<void> }).prMonitorSweep();
+
+    // Mission should be escalated
+    const mission = getDb()
+      .prepare('SELECT status FROM missions WHERE id = ?')
+      .get(missionId) as { status: string };
+    expect(mission.status).toBe('escalated');
+
+    // deployCrew should NOT have been called
+    expect(mockDeployCrew).not.toHaveBeenCalled();
+
+    // Should have a comms memo about the escalation
+    const memo = getDb()
+      .prepare(
+        `SELECT * FROM comms WHERE mission_id = ? AND type = 'memo' AND from_crew = 'first-officer' AND to_crew = 'admiral'`
+      )
+      .get(missionId);
+    expect(memo).toBeDefined();
+  });
+
+  it('should skip missions when crewService or missionService is not provided', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+
+    getDb()
+      .prepare(
+        `INSERT INTO missions (sector_id, summary, prompt, status, type, pr_branch, review_round)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run('api', 'Test mission', 'Do some work', 'approved', 'code', 'feature/test-branch', 0);
+
+    // No crewService or missionService
+    const sentinel = new Sentinel({ db: getDb(), configService });
+
+    // Should complete without error and not touch the mission
+    await (sentinel as unknown as { prMonitorSweep: () => Promise<void> }).prMonitorSweep();
+
+    const mission = getDb()
+      .prepare("SELECT status FROM missions WHERE status = 'approved'")
+      .get() as { status: string } | undefined;
+    // Mission should remain approved (untouched)
+    expect(mission?.status).toBe('approved');
+  });
+});

@@ -109,6 +109,18 @@ describe('MissionService', () => {
     });
     expect(m.type).toBe('code');
   });
+
+  it('should store original_mission_id when provided', () => {
+    const parent = missionSvc.addMission({ sectorId: 'api', summary: 'Original', prompt: 'P' });
+    const repair = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Fix CI',
+      prompt: 'Fix it',
+      originalMissionId: parent.id
+    });
+    const row = missionSvc.getMission(repair.id);
+    expect(row!.original_mission_id).toBe(parent.id);
+  });
 });
 
 describe('MissionService — dependencies', () => {

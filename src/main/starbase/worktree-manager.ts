@@ -162,6 +162,15 @@ export class WorktreeManager {
     mkdirSync(worktreeDir, { recursive: true });
     const worktreePath = join(worktreeDir, crewId);
 
+    // Prune stale worktree metadata before checkout.
+    // Prevents "fatal: already checked out at /old/path" when a previous
+    // crew's worktree removal failed silently and left a stale .git/worktrees/ entry.
+    try {
+      await execAsync('git worktree prune', execOpts);
+    } catch {
+      // non-fatal — proceed regardless
+    }
+
     // Create worktree from existing branch (no -b flag)
     await execAsync(`git worktree add "${worktreePath}" "${existingBranch}"`, execOpts);
 

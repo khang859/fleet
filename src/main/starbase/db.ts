@@ -103,7 +103,15 @@ export class StarbaseDB {
       if (migration.version <= currentVersion) continue;
 
       const runMigration = db.transaction(() => {
-        db.exec(migration.sql);
+        try {
+          db.exec(migration.sql);
+        } catch (err) {
+          // ALTER TABLE ... ADD COLUMN is not idempotent in SQLite (no IF NOT EXISTS).
+          // If the column already exists, the migration has already been applied — safe to ignore.
+          const isDuplicateColumn =
+            err instanceof Error && err.message.startsWith('duplicate column name');
+          if (!isDuplicateColumn) throw err;
+        }
 
         if (currentVersion === 0 && !metaExists) {
           // First migration — insert _meta row

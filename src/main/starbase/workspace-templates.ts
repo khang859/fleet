@@ -48,7 +48,7 @@ Never send a Crewmate an open-ended or vague prompt. Refine requests into precis
 
 \`\`\`bash
 # 1. Create the mission (note the returned mission ID)
-fleet missions add --sector <id> --type <code|research|review|architect> --summary "short title" --prompt "detailed instructions..."
+fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "short title" --prompt "detailed instructions..."
 
 # 2. Deploy crew to execute it
 fleet crew deploy --sector <id> --mission <mission-id>
@@ -59,6 +59,7 @@ fleet crew deploy --sector <id> --mission <mission-id>
 - \`research\` — produces documentation artifacts (investigation, analysis, no git changes expected)
 - \`review\` — performs PR code review, produces a VERDICT (approve/request-changes/escalate)
 - \`architect\` — analyzes the codebase and produces an implementation blueprint (no git changes)
+- \`repair\` — fixes CI failures or review comments on an existing PR branch; requires \`--pr-branch\`
 
 ### Research-First Workflow (recommended for non-trivial code missions)
 
@@ -216,13 +217,14 @@ fleet crew message <crew-id> --message "..."  # Send a follow-up message to an a
 fleet missions list                    # List all Missions
 fleet missions list --sector <id>      # Filter by Sector
 fleet missions list --status queued    # Filter by status
-fleet missions add --sector <id> --type <code|research|review|architect> --summary "..." --prompt "..."  # Create a Mission
+fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "..." --prompt "..."  # Create a Mission
+fleet missions add --sector <id> --type repair --pr-branch <branch> --summary "..." --prompt "..."  # Create a repair mission for an existing PR
 fleet missions add ... --depends-on <research-id>   # Link a research dependency (can repeat for multiple)
 fleet missions update <id> --status done    # Update Mission status
 fleet missions show <id>               # Show full Mission details
 \`\`\`
 
-**Required fields for \`missions add\`:** \`--type\` (code, research, or review), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, \`--type research\` for investigation/analysis that produces documentation artifacts, and \`--type review\` for PR code reviews that produce a VERDICT (approve/request-changes/escalate). Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
+**Required fields for \`missions add\`:** \`--type\` (code, research, review, architect, or repair), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, \`--type research\` for investigation/analysis that produces documentation artifacts, \`--type review\` for PR code reviews that produce a VERDICT (approve/request-changes/escalate), \`--type architect\` for implementation blueprints, and \`--type repair\` for fixing CI failures or review comments on an existing PR branch (requires \`--pr-branch\`). Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
 
 ### Comms
 
@@ -286,7 +288,7 @@ fleet protocols executions show <id>              # Show execution detail
 1. **Identify concerns** — Does the request touch multiple files, features, or Sectors?
 2. **Break into Missions** — Each Mission gets a precise prompt with acceptance criteria
 3. **Confirm with user** — Show the plan before deploying
-4. **Create Missions** — \`fleet missions add --sector <id> --type <code|research|review|architect> --summary "..." --prompt "..."\`
+4. **Create Missions** — \`fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "..." --prompt "..."\`
 5. **Deploy Crew** — \`fleet crew deploy --sector <id> --mission <mission-id>\`
 
 ### Example:
@@ -414,6 +416,28 @@ When a Crewmate signals their work is ready for review:
 4. If approved: \`fleet missions update <id> --status done\`
 5. If changes needed: send feedback via \`fleet comms send --to <crew-id> --message "..."\`
 
+## Repair Workflow
+
+When a PR has CI failures or human review comments that need addressing after the First Officer has approved it, dispatch a **repair crew**:
+
+\`\`\`bash
+# 1. Create a repair mission targeting the existing PR branch
+fleet missions add --sector <id> --type repair \\
+  --pr-branch <branch-name> \\
+  --summary "Fix CI failures on <feature>" \\
+  --prompt "CI is failing with the following output: <paste ci output>. Fix the issues and push to the existing PR branch."
+
+# 2. Deploy the repair crew
+fleet crew deploy --sector <id> --mission <repair-mission-id>
+\`\`\`
+
+**Key rules for repair missions:**
+- \`--pr-branch\` is required — specifies the existing PR branch to check out
+- The repair crew works on the existing branch and pushes directly to the open PR
+- Do NOT use \`--type code\` for this — that creates a new branch and new PR
+- After the repair crew completes, the First Officer automatically dispatches a fresh review crew
+- CI failures on approved missions are also detected and repaired automatically by the First Officer (no manual action needed in most cases)
+
 ## Recovery (Fresh Start)
 
 If you are starting a new conversation and don't know the current state:
@@ -456,7 +480,7 @@ When \`FLEET_MISSION_TYPE=research\`, your findings are captured as **cargo** fr
 
 **Checking your mission type:**
 \`\`\`bash
-echo $FLEET_MISSION_TYPE   # 'research', 'code', 'review', or 'architect'
+echo $FLEET_MISSION_TYPE   # 'research', 'code', 'review', 'architect', or 'repair'
 \`\`\`
 
 When a research mission completes, its summary cargo path is referenced in the initial message of any code missions that depend on it. The code crew can Read the file on demand if the task requires the findings.
@@ -468,7 +492,7 @@ When a Crewmate is deployed, the following environment variables are set in its 
 - \`FLEET_CREW_ID\` — the Crewmate's unique ID (e.g. \`my-sector-crew-a1b2\`)
 - \`FLEET_SECTOR_ID\` — the Sector it was deployed to
 - \`FLEET_MISSION_ID\` — the Mission ID it is working on
-- \`FLEET_MISSION_TYPE\` — the mission type (\`research\`, \`code\`, \`review\`, or \`architect\`)
+- \`FLEET_MISSION_TYPE\` — the mission type (\`research\`, \`code\`, \`review\`, \`architect\`, or \`repair\`)
 
 Crew can use these to identify themselves in comms:
 
