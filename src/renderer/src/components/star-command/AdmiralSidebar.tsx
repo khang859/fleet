@@ -1,6 +1,4 @@
 import { useState } from 'react';
-// @ts-ignore – used in Task 3 popover wiring
-import * as Popover from '@radix-ui/react-popover';
 import { useStarCommandStore } from '../../store/star-command-store';
 import type { CrewStatus, SectorInfo } from '../../store/star-command-store';
 
