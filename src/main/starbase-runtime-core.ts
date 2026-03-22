@@ -778,6 +778,10 @@ export class StarbaseRuntimeCore {
         status: deps.firstOfficer.getStatus(),
         statusText: deps.firstOfficer.getStatusText(),
         unreadMemos: this.getUnreadMemoCount()
+      },
+      navigator: {
+        status: deps.navigator.getStatus(),
+        statusText: deps.navigator.getStatusText()
       }
     };
   }
