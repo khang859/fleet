@@ -147,21 +147,21 @@ export class ProtocolService {
       .all();
   }
 
-  advanceStep(executionId: string, toStep: number): void {
-    const fromStep = toStep - 1;
+  advanceStep(executionId: string, toStep: number, fromStep?: number): void {
+    const expectedFrom = fromStep ?? toStep - 1;
     const result = this.db
       .prepare(
         `UPDATE protocol_executions
        SET current_step = ?, updated_at = datetime('now')
        WHERE id = ? AND current_step = ?`
       )
-      .run(toStep, executionId, fromStep);
+      .run(toStep, executionId, expectedFrom);
 
     if (result.changes === 0) {
       const exec = this.getExecution(executionId);
       if (!exec) throw new Error(`Execution not found: ${executionId}`);
       throw new Error(
-        `Cannot advance from step ${exec.current_step} to step ${toStep} — steps must be sequential`
+        `Cannot advance from step ${exec.current_step} to step ${toStep} — expected current step to be ${expectedFrom}`
       );
     }
   }

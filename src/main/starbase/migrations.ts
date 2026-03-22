@@ -305,6 +305,24 @@ export const MIGRATIONS: Migration[] = [
       SET root_path = ''
       WHERE id = 'global' AND root_path = ':global:';
     `
+  },
+  {
+    version: 14,
+    name: '014-research-and-deploy-architect-step',
+    sql: `
+      -- Shift existing steps 3-6 up to 6-9 to make room for decide + architect steps.
+      -- Update from highest to lowest to avoid UNIQUE(protocol_id, step_order) conflicts.
+      UPDATE protocol_steps SET step_order = 9 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 6;
+      UPDATE protocol_steps SET step_order = 8 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 5;
+      UPDATE protocol_steps SET step_order = 7 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 4;
+      UPDATE protocol_steps SET step_order = 6 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 3;
+
+      -- Insert new steps: decide (3), deploy architect (4), await architect cargo (5).
+      INSERT OR IGNORE INTO protocol_steps (protocol_id, step_order, type, config, description) VALUES
+        ('builtin-research-deploy', 3, 'decide', '{"question": "Does this feature request require an architect to design the implementation?", "ifYes": 4, "ifNo": 6}', 'Navigator decides if architect crew is needed'),
+        ('builtin-research-deploy', 4, 'deploy-crew', '{"role": "architect", "missionTemplate": "Design the implementation architecture for: {featureRequest}. Use the research cargo as context. Produce a concrete implementation blueprint with files to create/modify, component responsibilities, and implementation phases."}', 'Deploy architect crew (conditional)'),
+        ('builtin-research-deploy', 5, 'await-comms', '{"signalType": "cargo", "timeout": 3600}', 'Wait for architect blueprint cargo');
+    `
   }
 ];
 

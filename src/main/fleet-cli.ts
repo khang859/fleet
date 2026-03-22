@@ -960,8 +960,9 @@ executions track progress through those steps.
   fleet protocols executions list                    List all active/recent executions
   fleet protocols executions list --status <status>  Filter by status (running, completed, failed)
   fleet protocols executions show <id>               Show execution detail (current step, status)
-  fleet protocols executions update <id> --step <N>  Advance to step N (sequential guard enforced)
-  fleet protocols executions update <id> --status <s>  Update execution status
+  fleet protocols executions update <id> --step <N>           Advance to step N (sequential guard enforced)
+  fleet protocols executions update <id> --step <N> --from <M> Skip from step M to step N (for decide steps)
+  fleet protocols executions update <id> --status <s>          Update execution status
 
 ## Arguments
 
@@ -969,6 +970,7 @@ executions track progress through those steps.
   <id>                  Execution ID (shown in \`fleet protocols executions list\`)
   --status <status>     Filter or update status
   --step <N>            Step number to advance to
+  --from <M>            Current step number to skip from (use with --step on decide steps)
 
 ## Navigator Workflow
 

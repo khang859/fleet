@@ -1056,7 +1056,8 @@ export class SocketServer extends EventEmitter {
           throw new CodedError(`Execution not found: ${execId}`, 'NOT_FOUND');
         }
         if (args.step !== undefined) {
-          await protocolService.advanceStep(execId, Number(args.step));
+          const fromStep = args.from !== undefined ? Number(args.from) : undefined;
+          await protocolService.advanceStep(execId, Number(args.step), fromStep);
         }
         if (typeof args.status === 'string') {
           await protocolService.updateExecutionStatus(execId, args.status);

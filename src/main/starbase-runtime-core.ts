@@ -518,7 +518,8 @@ export class StarbaseRuntimeCore {
         const step = args.step;
         if (typeof id !== 'string') throw new CodedError('id required', 'BAD_REQUEST');
         if (typeof step !== 'number') throw new CodedError('step required', 'BAD_REQUEST');
-        this.requireDeps().protocolService.advanceStep(id, step);
+        const fromStep = typeof args.fromStep === 'number' ? args.fromStep : undefined;
+        this.requireDeps().protocolService.advanceStep(id, step, fromStep);
         return;
       }
       case 'protocol.updateExecutionStatus': {

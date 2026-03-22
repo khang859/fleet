@@ -542,6 +542,9 @@ ${fleetBin} comms read <id>
 # 5. Advance to next step (validates sequential guard)
 ${fleetBin} protocols executions update <execution-id> --step <N+1>
 
+# 5b. Skip optional steps — use --from when jumping from a decide step
+${fleetBin} protocols executions update <execution-id> --step <target> --from <current>
+
 # 6. Write gate-pending comm
 ${fleetBin} comms send --from navigator --to admiral --type gate-pending \\
   --execution <execution-id> --payload '{"step": N, "decision": "approve or reject", "brief": "..."}'
@@ -561,8 +564,9 @@ ${fleetBin} comms send --from navigator --to admiral --type protocol-failed \\
 # Protocols
 ${fleetBin} protocols show <slug>                           # Read protocol steps
 ${fleetBin} protocols executions show <id>                  # Check execution state
-${fleetBin} protocols executions update <id> --step <N>     # Advance step (sequential guard)
-${fleetBin} protocols executions update <id> --status <s>   # Update status
+${fleetBin} protocols executions update <id> --step <N>              # Advance step (sequential guard)
+${fleetBin} protocols executions update <id> --step <N> --from <M>   # Skip from step M to step N (for decide steps)
+${fleetBin} protocols executions update <id> --status <s>            # Update status
 
 # Crew
 ${fleetBin} crew list --execution <id>                      # List crew for this execution
@@ -591,13 +595,31 @@ ${fleetBin} sectors show <id>                               # Sector details
 
 ## Rules
 - Always tag crew deploys with \`--execution <execution-id>\`
-- Never skip protocol steps — advance sequentially
+- Never skip protocol steps — advance sequentially, unless executing a \`decide\` step (see below)
 - Max 3 review loop iterations before forcing a gate
 - At a gate: write gate-pending comm and exit — do not wait for response
 - On failure: recall active crew, write protocol-failed comm, exit
 - On clarification needed: write clarification-needed comm (same as gate), exit
 - Never create missions yourself — that is the Admiral's role after reviewing the Feature Brief
 - All comms to Admiral must include \`--execution <id>\` so they are scoped correctly
+
+## Decide Steps
+
+A \`decide\` step requires you to evaluate available cargo and make a judgment call. The step config includes:
+- \`question\`: what you must decide
+- \`ifYes\`: step number to advance to if the answer is yes
+- \`ifNo\`: step number to advance to if the answer is no
+
+**How to execute a decide step:**
+1. Read the available cargo: \`${fleetBin} cargo list --execution <id>\`
+2. Inspect the research output to understand the feature scope and complexity
+3. Answer the question in the step config using your judgment
+4. Advance to the appropriate step using \`--from\` to signal an explicit skip:
+   - If yes: \`${fleetBin} protocols executions update <id> --step <ifYes>\` (normal advance)
+   - If no (skipping optional steps): \`${fleetBin} protocols executions update <id> --step <ifNo> --from <decide-step>\`
+
+**When is an architect needed?**
+Deploy an architect crew when the feature request involves significant new design work — new abstractions, multiple interacting components, or non-obvious integration points. Skip the architect for small, well-scoped changes where the research output already makes the implementation path clear.
 `;
 }
 
