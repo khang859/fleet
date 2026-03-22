@@ -727,6 +727,20 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       return;
     }
 
+    // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
+    if (
+      this.opts.missionType === 'repair' &&
+      this.opts.originalMissionId != null &&
+      (status === 'timeout' || status === 'error')
+    ) {
+      db.prepare(
+        "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+      ).run(this.opts.originalMissionId);
+      db.prepare(
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
+      ).run(crewId, JSON.stringify({ missionId, originalMissionId: this.opts.originalMissionId, reason: status }));
+    }
+
     // Clean up temp files
     if (this.promptFile) {
       try {
@@ -796,6 +810,23 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       }
 
       if (!hasChanges) {
+        // Repair: no changes is a valid outcome (CI may have self-healed)
+        if (this.opts.missionType === 'repair') {
+          overrideStatus = 'complete';
+          db.prepare(
+            "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
+          ).run(missionId);
+          if (this.opts.originalMissionId != null) {
+            db.prepare(
+              "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+            ).run(this.opts.originalMissionId);
+          }
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+          ).run(crewId, JSON.stringify({ missionId, status: 'completed', reason: 'No changes needed' }));
+          return;
+        }
+
         // NEW: Review mission verdict handling
         if (this.opts.missionType === 'review') {
           overrideStatus = 'complete';
@@ -1470,10 +1501,22 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
           cwd: sectorPath,
           stdio: 'pipe'
         });
-        // PR exists — store pr_branch, clear crew_id, and set pending-review, skip creating a new PR
-        db.prepare(
-          "UPDATE missions SET pr_branch = ?, status = 'pending-review', crew_id = NULL WHERE id = ?"
-        ).run(worktreeBranch, missionId);
+        // PR exists — handle based on mission type
+        if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
+          // Repair crew: transition ORIGINAL mission to pending-review for fresh review
+          db.prepare(
+            "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(this.opts.originalMissionId);
+          // Mark repair mission itself as completed
+          db.prepare(
+            "UPDATE missions SET status = 'completed', result = 'Repair complete', completed_at = datetime('now') WHERE id = ?"
+          ).run(missionId);
+        } else {
+          // Existing behaviour: store pr_branch, clear crew_id, and set pending-review
+          db.prepare(
+            "UPDATE missions SET pr_branch = ?, status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(worktreeBranch, missionId);
+        }
         return;
       } catch {
         // No existing PR — continue to create one
