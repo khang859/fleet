@@ -1568,6 +1568,13 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         db.prepare(
           "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
         ).run(missionId);
+        // If this was a repair crew that fell through to creating a new PR
+        // (e.g., original PR was deleted), also transition the original mission.
+        if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
+          db.prepare(
+            "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(this.opts.originalMissionId);
+        }
       } catch {
         // PR view failed — skip review request, continue normally
       }
