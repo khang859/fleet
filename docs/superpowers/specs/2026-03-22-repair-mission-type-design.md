@@ -457,5 +457,5 @@ The Admiral must also manually set the original mission to `repairing` before de
 | `src/main/starbase/sentinel.ts` | Add `prMonitorSweep()` on 5-min timer; add `missionService` to `SentinelDeps` |
 | `src/main/starbase/mission-service.ts` | Add `originalMissionId` to `AddMissionOpts` and `INSERT` |
 | `src/main/starbase/migrations.ts` | Add `original_mission_id` column to `missions` table |
-| `src/main/starbase/workspace-templates.ts` | Add `repair` to Admiral CLAUDE.md mission type docs |
+| `src/main/starbase/workspace-templates.ts` | Add `repair` to mission type lists and env var docs in both `generateClaudeMd()` and `generateSkillMd()`; add repair workflow section |
 | `src/main/fleet-cli.ts` | Add `repair` to valid types in `mission.create` handler; add `--pr-branch` and `--original-mission-id` flags; update help text |
