@@ -295,4 +295,5 @@ export type StarbaseStatusUpdatePayload = {
   sectors?: StarbaseSectorRow[];
   unreadCount?: number;
   firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number };
+  navigator?: { status: 'standby' | 'working'; statusText: string };
 };
