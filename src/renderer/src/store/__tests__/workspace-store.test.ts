@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useWorkspaceStore } from '../workspace-store';
-import type { Workspace } from '../../../../../shared/types';
+import type { Workspace } from '../../../../shared/types';
 
 const WS_A: Workspace = {
   id: 'ws-a',
