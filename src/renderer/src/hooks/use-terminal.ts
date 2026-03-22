@@ -108,7 +108,7 @@ function createTerminal(
         void window.fleet.shell.openExternal(uri);
       }
     },
-    { urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/gi }
+    { urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/i }
   );
   term.loadAddon(webLinksAddon);
 
