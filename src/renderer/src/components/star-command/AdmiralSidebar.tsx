@@ -63,7 +63,8 @@ function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
 
-export function CrewPopover({
+// @ts-expect-error: component used in future updates
+function CrewPopover({
   crew,
   sector,
   onClose
@@ -89,8 +90,9 @@ export function CrewPopover({
       setOutput(result);
     } catch (err) {
       setObserveError(err instanceof Error ? err.message : 'Failed to observe');
+    } finally {
+      setObserving(false);
     }
-    setObserving(false);
   };
 
   const handleRecall = async (): Promise<void> => {
@@ -103,6 +105,7 @@ export function CrewPopover({
       onClose();
     } catch (err) {
       setRecallError(err instanceof Error ? err.message : 'Failed to recall');
+    } finally {
       setRecalling(false);
     }
   };
@@ -126,6 +129,7 @@ export function CrewPopover({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-neutral-600 hover:text-neutral-400 transition-colors leading-none"
           >
             ✕
