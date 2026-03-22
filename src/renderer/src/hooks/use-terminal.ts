@@ -55,7 +55,7 @@ function createTerminal(
   scrollCleanup: () => void;
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
-  cursorSuppressor: { dispose(): void } | null;
+  cursorSuppressor: { dispose(): void };
 } {
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
@@ -119,24 +119,58 @@ function createTerminal(
     term.write(options.serializedContent);
   }
 
-  // Hide xterm's hardware cursor for TUIs that draw their own (e.g. Claude Code).
-  // Claude Code (Ink/cli-cursor) renders its own cursor glyph and uses DECTCEM
-  // (\x1b[?25h / \x1b[?25l) to toggle the real cursor. This creates a duplicate:
-  // xterm's native cursor + the TUI-drawn cursor character. We suppress xterm's
-  // cursor entirely by hiding it at init and intercepting any DECSET 25 (show
-  // cursor) sequences from the PTY.
-  let cursorSuppressor: { dispose(): void } | null = null;
+  // Cursor suppression for TUI apps that render their own cursor glyphs.
+  // Two modes:
+  // - Static (cursorHidden: true): always hide xterm's cursor. Used for terminals
+  //   that always run a TUI (e.g. Star Command Admiral terminal).
+  // - Dynamic (default): auto-activate suppression when an app enters the alternate
+  //   screen (\x1b[?1049h) and deactivate on exit (\x1b[?1049l). Prevents double
+  //   cursors (xterm's native cursor + TUI-drawn cursor glyph) in regular panes
+  //   without breaking normal shell cursor behavior.
+  let tuiMode = false;
   if (options.cursorHidden) {
+    tuiMode = true;
     term.options.cursorBlink = false;
     term.options.cursorInactiveStyle = 'none';
     term.write('\x1b[?25l');
-    // Intercept CSI ? 25 h (DECSET 25 = show cursor) and suppress it
-    cursorSuppressor = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
-      // Only intercept DECTCEM (param 25); let other DECSET sequences through
-      if (params[0] === 25) return true; // swallow — keep cursor hidden
-      return false; // pass to default handler
-    });
   }
+
+  // DECSET handler (CSI ? ... h): detect alt-screen entry and suppress cursor show.
+  const decsetSuppressor = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+    if (params[0] === 1049 && !options.cursorHidden) {
+      tuiMode = true; // TUI entered alternate screen — activate cursor suppression
+    }
+    if (params[0] === 25 && tuiMode) {
+      return true; // suppress DECTCEM show-cursor while TUI is active
+    }
+    return false; // pass through to xterm's default handler
+  });
+
+  // DECRST handler (CSI ? ... l): deactivate suppression when TUI exits alt-screen.
+  // Not needed in static mode (cursorHidden) since suppression is permanent there.
+  const decrstSuppressor = options.cursorHidden
+    ? null
+    : term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
+        if (params[0] === 1049) {
+          tuiMode = false;
+          // Restore cursor visibility after TUI exits. Deferred to avoid re-entrant
+          // parsing; guard re-checks tuiMode in case a new TUI started immediately.
+          setTimeout(() => {
+            if (!tuiMode && term.element) {
+              term.write('\x1b[?25h');
+            }
+          }, 0);
+        }
+        return false; // always pass through to xterm's default handler
+      });
+
+  const cursorSuppressor: { dispose(): void } = {
+    dispose(): void {
+      tuiMode = false;
+      decsetSuppressor.dispose();
+      decrstSuppressor?.dispose();
+    }
+  };
 
   // Wire IPC data flow.
   // xterm.js auto-scrolls via its rendering pipeline (requestAnimationFrame),
@@ -427,7 +461,7 @@ export function useTerminal(
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
       cleanupResizeTimer();
-      cursorSuppressor?.dispose();
+      cursorSuppressor.dispose();
       ipcCleanup();
       scrollCleanup();
       resizeObserver.disconnect();
