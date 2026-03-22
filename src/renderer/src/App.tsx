@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { Terminal, ImageIcon } from 'lucide-react';
+import { Terminal, ImageIcon, Settings } from 'lucide-react';
 import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
 import { PaneGrid } from './components/PaneGrid';
@@ -387,6 +387,15 @@ export function App(): React.JSX.Element {
                   </button>
                 );
               })}
+            <div className="flex-1" />
+            {/* Settings button */}
+            <button
+              onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+              className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+              title="Settings"
+            >
+              <Settings size={16} />
+            </button>
           </div>
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
