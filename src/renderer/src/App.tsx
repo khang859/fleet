@@ -59,6 +59,7 @@ export function App(): React.JSX.Element {
 
   const {
     workspace,
+    backgroundWorkspaces,
     activeTabId,
     activePaneId,
     setActiveTab,
@@ -197,10 +198,17 @@ export function App(): React.JSX.Element {
     initRef.current = true;
     void window.fleet.layout.list().then(({ workspaces }) => {
       const defaultWs = workspaces.find((w) => w.id === 'default');
+      const others = workspaces.filter((w) => w.id !== 'default');
+
       if (defaultWs && defaultWs.tabs.length > 0) {
         useWorkspaceStore.getState().loadWorkspace(defaultWs);
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
+      }
+
+      // Load all other saved workspaces into background so their PTYs warm up
+      if (others.length > 0) {
+        useWorkspaceStore.getState().loadBackgroundWorkspaces(others);
       }
     });
   }, []);
@@ -209,14 +217,29 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const flushWorkspace = (): void => {
       const state = useWorkspaceStore.getState();
-      const workspaceWithContent = {
+
+      // Save active workspace with serialized terminal content
+      const activeWithContent = {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
           splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
         }))
       };
-      void window.fleet.layout.save({ workspace: workspaceWithContent });
+      void window.fleet.layout.save({ workspace: activeWithContent });
+
+      // Save background workspaces — xterm instances are still mounted (display:none)
+      // so serializePane works and captures their scrollback too
+      for (const bgWs of state.backgroundWorkspaces.values()) {
+        const bgWithContent = {
+          ...bgWs,
+          tabs: bgWs.tabs.map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+          }))
+        };
+        void window.fleet.layout.save({ workspace: bgWithContent });
+      }
     };
     const handlePageHide = (): void => {
       flushWorkspace();
@@ -284,11 +307,26 @@ export function App(): React.JSX.Element {
     const cleanup = window.fleet.pty.onExit(({ paneId }) => {
       clearCreatedPty(paneId);
       const state = useWorkspaceStore.getState();
-      const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+
+      // Search active workspace first, then background workspaces
+      let tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+      const isBackground = !tab;
+      if (!tab) {
+        for (const bgWs of state.backgroundWorkspaces.values()) {
+          tab = bgWs.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+          if (tab) break;
+        }
+      }
       if (!tab) return;
 
       // Crew tabs: close silently (no undo toast — automated agent, PTY is dead)
       if (tab.type === 'crew') {
+        state.closeTab(tab.id);
+        return;
+      }
+
+      // Background workspace tabs: close without undo toast (user isn't looking at them)
+      if (isBackground) {
         state.closeTab(tab.id);
         return;
       }
@@ -400,34 +438,52 @@ export function App(): React.JSX.Element {
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
           <main className="flex-1 min-w-0 relative overflow-hidden">
-            {workspace.tabs.length > 0 ? (
-              workspace.tabs.map((tab) => {
-                const serializedPanes = restoredPanesRef.current.get(tab.id);
-                return (
-                  <div
-                    key={tab.id}
-                    className="h-full w-full"
-                    style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-                  >
-                    {tab.type === 'star-command' ? (
-                      <StarCommandTab />
-                    ) : (
-                      <PaneGrid
-                        root={tab.splitRoot}
-                        activePaneId={tab.id === activeTabId ? activePaneId : null}
-                        onPaneFocus={(paneId) => {
-                          setActivePane(paneId);
-                          window.fleet.notifications.paneFocused({ paneId });
-                          useNotificationStore.getState().clearPane(paneId);
-                        }}
-                        serializedPanes={serializedPanes}
-                        fontFamily={settings?.general.fontFamily}
-                        fontSize={settings?.general.fontSize}
-                      />
-                    )}
-                  </div>
-                );
-              })
+            {workspace.tabs.length > 0 || backgroundWorkspaces.size > 0 ? (
+              <>
+                {workspace.tabs.map((tab) => {
+                  const serializedPanes = restoredPanesRef.current.get(tab.id);
+                  return (
+                    <div
+                      key={tab.id}
+                      className="h-full w-full"
+                      style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+                    >
+                      {tab.type === 'star-command' ? (
+                        <StarCommandTab />
+                      ) : (
+                        <PaneGrid
+                          root={tab.splitRoot}
+                          activePaneId={tab.id === activeTabId ? activePaneId : null}
+                          onPaneFocus={(paneId) => {
+                            setActivePane(paneId);
+                            window.fleet.notifications.paneFocused({ paneId });
+                            useNotificationStore.getState().clearPane(paneId);
+                          }}
+                          serializedPanes={serializedPanes}
+                          fontFamily={settings?.general.fontFamily}
+                          fontSize={settings?.general.fontSize}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+                {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
+                  bgWs.tabs.map((tab) => (
+                    <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
+                      {tab.type !== 'star-command' && (
+                        <PaneGrid
+                          root={tab.splitRoot}
+                          activePaneId={null}
+                          onPaneFocus={() => {}}
+                          serializedPanes={undefined}
+                          fontFamily={settings?.general.fontFamily}
+                          fontSize={settings?.general.fontSize}
+                        />
+                      )}
+                    </div>
+                  ))
+                )}
+              </>
             ) : (
               <div className="flex items-center justify-center h-full text-neutral-600">
                 No tabs open. Press Cmd+T to create one.

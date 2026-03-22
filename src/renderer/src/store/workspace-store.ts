@@ -63,6 +63,7 @@ type ClosedTabRecord = {
 
 type WorkspaceStore = {
   workspace: Workspace;
+  backgroundWorkspaces: Map<string, Workspace>;
   activeTabId: string | null;
   activePaneId: string | null;
   lastClosedTab: ClosedTabRecord | null;
@@ -88,6 +89,8 @@ type WorkspaceStore = {
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
+  switchWorkspace: (ws: Workspace) => void;
+  loadBackgroundWorkspaces: (workspaces: Workspace[]) => void;
   setWorkspace: (workspace: Workspace) => void;
   renameWorkspace: (label: string) => void;
   markClean: () => void;
@@ -168,6 +171,7 @@ export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
 
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   workspace: { id: 'default', label: 'Default', tabs: [] },
+  backgroundWorkspaces: new Map(),
   activeTabId: null,
   activePaneId: null,
   recentFiles: loadRecentFiles(),
@@ -401,6 +405,50 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
+  switchWorkspace: (ws) => {
+    set((state) => {
+      // Prefer in-memory version if we already have this workspace loaded
+      const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
+      const migratedTabs = target.tabs.map((t) => ({
+        ...t,
+        labelIsCustom: t.labelIsCustom ?? false
+      }));
+      const migrated = { ...target, tabs: migratedTabs };
+      const firstTab = migrated.tabs[0];
+      const firstPane = firstTab ? collectPaneIds(firstTab.splitRoot)[0] : null;
+
+      // Move current workspace to background; remove target from background
+      const newBackground = new Map(state.backgroundWorkspaces);
+      newBackground.set(state.workspace.id, state.workspace);
+      newBackground.delete(migrated.id);
+
+      return {
+        workspace: migrated,
+        backgroundWorkspaces: newBackground,
+        activeTabId: firstTab?.id ?? null,
+        activePaneId: firstPane ?? null,
+        isDirty: false
+      };
+    });
+  },
+
+  loadBackgroundWorkspaces: (workspaces) => {
+    set((state) => {
+      const newBackground = new Map(state.backgroundWorkspaces);
+      for (const ws of workspaces) {
+        // Don't overwrite already-loaded background workspaces or the active workspace
+        if (!newBackground.has(ws.id) && ws.id !== state.workspace.id) {
+          const migratedTabs = ws.tabs.map((t) => ({
+            ...t,
+            labelIsCustom: t.labelIsCustom ?? false
+          }));
+          newBackground.set(ws.id, { ...ws, tabs: migratedTabs });
+        }
+      }
+      return { backgroundWorkspaces: newBackground };
+    });
+  },
+
   setWorkspace: (workspace) => set({ workspace }),
 
   renameWorkspace: (label) => {
@@ -517,6 +565,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   findTab: (tabId) => get().workspace.tabs.find((t) => t.id === tabId),
 
   getAllPaneIds: () => {
-    return get().workspace.tabs.flatMap((tab) => collectPaneIds(tab.splitRoot));
+    const state = get();
+    const active = state.workspace.tabs.flatMap((tab) => collectPaneIds(tab.splitRoot));
+    const background = Array.from(state.backgroundWorkspaces.values()).flatMap((ws) =>
+      ws.tabs.flatMap((tab) => collectPaneIds(tab.splitRoot))
+    );
+    return [...active, ...background];
   }
 }));

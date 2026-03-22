@@ -13,7 +13,7 @@ import admiralSpeaking from '../assets/admiral-speaking.png';
 import admiralThinking from '../assets/admiral-thinking.png';
 import admiralAlert from '../assets/admiral-alert.png';
 import admiralStandby from '../assets/admiral-standby.png';
-import { clearCreatedPty, serializePane } from '../hooks/use-terminal';
+import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { Avatar } from './star-command/Avatar';
@@ -212,8 +212,6 @@ export function Sidebar({
     return () => window.removeEventListener('dragend', handleDragEnd);
   }, []);
 
-  // --- Workspace switch confirmation ---
-  const [switchConfirmId, setSwitchConfirmId] = useState<string | null>(null);
 
   // --- Saved workspaces ---
   const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);
@@ -224,55 +222,30 @@ export function Sidebar({
     });
   }, []);
 
-  const doSwitchWorkspace = useCallback(
-    async (wsId: string) => {
-      setSwitchConfirmId(null);
-
-      // Cancel any pending autosave and flush the current workspace now (Fix A + F)
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-      const state = useWorkspaceStore.getState();
-      const workspaceWithCwds = {
-        ...state.workspace,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
-      };
-      await window.fleet.layout.save({ workspace: workspaceWithCwds });
-      markClean();
-
-      // Kill current PTYs (Fix D)
-      const currentPaneIds = state.getAllPaneIds();
-      for (const paneId of currentPaneIds) {
-        window.fleet.pty.kill(paneId);
-        clearCreatedPty(paneId);
-      }
-
-      // Load target workspace, guard against missing entry (Fix E)
+  const doSwitchWorkspace = useCallback(async (wsId: string) => {
+    const state = useWorkspaceStore.getState();
+    // Use in-memory version if already loaded (preserves live state)
+    const inMemory = state.backgroundWorkspaces.get(wsId);
+    if (inMemory) {
+      state.switchWorkspace(inMemory);
+    } else {
       const loaded = await window.fleet.layout.load(wsId);
-      if (!loaded) return;
-      useWorkspaceStore.getState().loadWorkspace(loaded);
-
-      // Refresh sidebar workspace list (Fix C)
-      const res = await window.fleet.layout.list();
-      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
-    },
-    [markClean]
-  );
+      if (loaded) state.switchWorkspace(loaded);
+    }
+    // Add a default tab if workspace is empty
+    setTimeout(() => {
+      const s = useWorkspaceStore.getState();
+      if (s.workspace.tabs.length === 0) {
+        s.addTab(undefined, window.fleet.homeDir);
+      }
+    }, 0);
+  }, []);
 
   const handleSwitchWorkspace = useCallback(
     (wsId: string) => {
-      // If there are running terminals, confirm first
-      if (workspace.tabs.length > 0) {
-        setSwitchConfirmId(wsId);
-        return;
-      }
       void doSwitchWorkspace(wsId);
     },
-    [workspace.tabs.length, doSwitchWorkspace]
+    [doSwitchWorkspace]
   );
 
   // --- Auto-save with debounce ---
@@ -318,30 +291,19 @@ export function Sidebar({
     }
   }, [showNewWsInput]);
 
-  const commitNewWorkspace = useCallback(async () => {
+  const commitNewWorkspace = useCallback(() => {
     const name = newWsName.trim();
     setShowNewWsInput(false);
     setNewWsName('');
     if (!name) return;
 
-    // Save current workspace first
-    const state = useWorkspaceStore.getState();
-    await window.fleet.layout.save({ workspace: state.workspace });
-
-    // Kill current PTYs
-    const currentPaneIds = state.getAllPaneIds();
-    for (const paneId of currentPaneIds) {
-      window.fleet.pty.kill(paneId);
-      clearCreatedPty(paneId);
-    }
-
-    // Create fresh workspace
+    // Create fresh workspace and switch to it (old workspace moves to background)
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
       tabs: []
     };
-    state.loadWorkspace(newWs);
+    useWorkspaceStore.getState().switchWorkspace(newWs);
 
     // Refresh workspace list immediately (Fix 5 — don't wait for autosave)
     void window.fleet.layout.list().then((res) => {
@@ -731,14 +693,14 @@ export function Sidebar({
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') void commitNewWorkspace();
+                if (e.key === 'Enter') commitNewWorkspace();
                 if (e.key === 'Escape') {
                   setShowNewWsInput(false);
                   setNewWsName('');
                 }
               }}
               onBlur={() => {
-                void commitNewWorkspace();
+                commitNewWorkspace();
               }}
               placeholder="Workspace name..."
               className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
@@ -751,27 +713,7 @@ export function Sidebar({
           .filter((ws) => ws.id !== workspace.id)
           .map((ws) => (
             <div key={ws.id} className="relative">
-              {switchConfirmId === ws.id ? (
-                <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
-                  <span className="text-neutral-300">Switch? All terminals will close.</span>
-                  <div className="flex gap-2">
-                    <button
-                      className="px-2 py-0.5 bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
-                      onClick={() => {
-                        void doSwitchWorkspace(ws.id);
-                      }}
-                    >
-                      Yes
-                    </button>
-                    <button
-                      className="px-2 py-0.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 rounded transition-colors"
-                      onClick={() => setSwitchConfirmId(null)}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : deleteConfirmId === ws.id ? (
+              {deleteConfirmId === ws.id ? (
                 <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
                   <span className="text-red-400">Delete this workspace?</span>
                   <div className="flex gap-2">
