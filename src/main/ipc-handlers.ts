@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron';
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative } from 'path';
@@ -415,6 +415,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
     return getStarbaseServices().runtime.invoke('memo.content', filePath);
+  });
+
+  // Open URLs in the default browser
+  ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
+    await shell.openExternal(url);
   });
 
   // Folder picker

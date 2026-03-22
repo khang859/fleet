@@ -285,6 +285,10 @@ const fleetApi = {
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
     getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION)
+  },
+  shell: {
+    openExternal: async (url: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
   }
 };
 

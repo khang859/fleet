@@ -5,6 +5,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 
 export type UseTerminalOptions = {
@@ -98,6 +99,18 @@ function createTerminal(
   term.loadAddon(serializeAddon);
   term.loadAddon(unicodeAddon);
   term.unicode.activeVersion = '11';
+
+  // Shift+click to open http/https URLs in the default browser.
+  // The custom handler suppresses plain clicks so text selection still works normally.
+  const webLinksAddon = new WebLinksAddon(
+    (event, uri) => {
+      if (event.shiftKey) {
+        void window.fleet.shell.openExternal(uri);
+      }
+    },
+    { urlRegex: /https?:\/\/[^\s"'<>()[\]{}]+/gi }
+  );
+  term.loadAddon(webLinksAddon);
 
   term.open(container);
 
