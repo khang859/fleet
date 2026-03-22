@@ -309,8 +309,6 @@ This task replaces the existing flat crew list with the sector-grouped popover-e
 
 Inside the `AdmiralSidebar` function body, after the existing destructuring from `useStarCommandStore`, add:
 
-> Also add `onScroll={() => setOpenCrewId(null)}` to the outermost sidebar `div` (the one with `overflow-y-auto`). This closes any open popover when the user scrolls the sidebar, preventing the popover from floating away from its anchor row.
-
 ```ts
 const [openCrewId, setOpenCrewId] = useState<string | null>(null);
 
@@ -320,6 +318,19 @@ for (const crew of crewList) {
   list.push(crew);
   bySector.set(crew.sector_id, list);
 }
+```
+
+Also add `onScroll` to the outermost sidebar `<div>` (line 60, the one with `overflow-y-auto`) so scrolling closes any open popover:
+
+```tsx
+// Before:
+<div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc">
+
+// After:
+<div
+  className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc"
+  onScroll={() => setOpenCrewId(null)}
+>
 ```
 
 - [ ] **Step 2: Replace the existing Crew section**
