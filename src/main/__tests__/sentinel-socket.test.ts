@@ -65,6 +65,12 @@ describe('Sentinel socket health check', () => {
         if (key === 'lifesign_timeout_sec') return 30;
         if (key === 'worktree_disk_budget_gb') return 50;
         return null;
+      }),
+      getNumber: vi.fn((key: string) => {
+        if (key === 'lifesign_interval_sec') return 10;
+        if (key === 'lifesign_timeout_sec') return 30;
+        if (key === 'worktree_disk_budget_gb') return 50;
+        return 0;
       })
     };
     const sentinel = new Sentinel({
@@ -89,6 +95,12 @@ describe('Sentinel socket health check', () => {
         if (key === 'lifesign_timeout_sec') return 30;
         if (key === 'worktree_disk_budget_gb') return 50;
         return null;
+      }),
+      getNumber: vi.fn((key: string) => {
+        if (key === 'lifesign_interval_sec') return 10;
+        if (key === 'lifesign_timeout_sec') return 30;
+        if (key === 'worktree_disk_budget_gb') return 50;
+        return 0;
       })
     };
 
