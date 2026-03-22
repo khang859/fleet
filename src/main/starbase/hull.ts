@@ -1368,8 +1368,18 @@ Deliver a decisive, complete architecture blueprint. Include:
       this.opts;
     const mergeStrategy = this.opts.mergeStrategy ?? 'pr';
 
+    // Use the mission's summary field for the PR title — it's the explicit short description
+    // set when the mission was created, unlike the prompt which is long and may start with
+    // newlines or markdown that produces an empty deriveSummary result.
+    const missionRow = db
+      .prepare<[number], { summary: string; acceptance_criteria: string | null }>(
+        'SELECT summary, acceptance_criteria FROM missions WHERE id = ?'
+      )
+      .get(missionId);
     const prCommitType = inferCommitType(prompt);
-    const prSummary = deriveSummary(prompt);
+    const prSummary = missionRow?.summary
+      ? deriveSummary(missionRow.summary)
+      : deriveSummary(prompt);
     const prTitle = formatCommitSubject(prCommitType, sectorId, prSummary);
     const draftFlag = isDraft ? '--draft' : '';
 
@@ -1419,7 +1429,8 @@ Deliver a decisive, complete architecture blueprint. Include:
         ? `\n\n### Merge Conflicts\nRebase failed on: ${conflictFiles.join(', ')}`
         : '';
 
-    const body = `## Mission: ${prTitle}\n\n**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`;
+    const missionSummaryLine = missionRow?.summary ? `**Mission:** ${missionRow.summary}\n` : '';
+    const body = `## ${prTitle}\n\n${missionSummaryLine}**Sector:** ${sectorId}\n**Crewmate:** ${crewId}\n\n### Changes\n\`\`\`\n${diffStat}\n\`\`\`\n\n### Verification\n${verifySection}\n${lintSection}${conflictNote}\n\n---\nDeployed by Star Command`;
 
     // Write body to temp file to avoid shell injection from diff stat output
     const bodyFile = join(tmpdir(), `fleet-pr-body-${crewId}.md`);
@@ -1470,13 +1481,6 @@ Deliver a decisive, complete architecture blueprint. Include:
         const prData = { number: prNumber, url: prUrl };
 
         db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId);
-
-        const missionRow = db
-          .prepare<
-            [number],
-            { acceptance_criteria: string | null }
-          >('SELECT acceptance_criteria FROM missions WHERE id = ?')
-          .get(missionId);
 
         db.prepare(
           "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)"
