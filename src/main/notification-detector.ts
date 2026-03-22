@@ -13,8 +13,11 @@ const PERMISSION_PATTERNS = [
 // eslint-disable-next-line no-control-regex
 const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
 
+const CARRY_BUFFER_SIZE = 200;
+
 export class NotificationDetector {
   private eventBus: EventBus;
+  private carryBuffers = new Map<string, string>();
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
@@ -28,17 +31,20 @@ export class NotificationDetector {
   }
 
   private checkOSC7(paneId: string, data: string): void {
-    for (const match of data.matchAll(OSC7_RE)) {
+    const carry = this.carryBuffers.get(paneId) ?? '';
+    const chunk = carry + data;
+    for (const match of chunk.matchAll(OSC7_RE)) {
       try {
         const url = new URL(match[1]);
         const cwd = decodeURIComponent(url.pathname);
         if (cwd) {
-          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd, source: 'osc7' });
         }
       } catch {
         // Malformed URL, skip
       }
     }
+    this.carryBuffers.set(paneId, chunk.slice(-CARRY_BUFFER_SIZE));
   }
 
   private emitNotification(paneId: string, level: NotificationLevel): void {

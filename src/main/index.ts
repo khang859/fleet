@@ -614,7 +614,9 @@ void app.whenReady().then(() => {
   // Forward CWD changes to renderer and keep ptyManager in sync
   eventBus.on('cwd-changed', (event) => {
     ptyManager.updateCwd(event.paneId, event.cwd);
-    cwdPoller.markOsc7Seen(event.paneId);
+    if (event.source === 'osc7') {
+      cwdPoller.markOsc7Seen(event.paneId);
+    }
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.PTY_CWD, {
         paneId: event.paneId,

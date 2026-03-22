@@ -26,7 +26,7 @@ export class CwdPoller {
         if (cwd) {
           const current = this.ptyManager.getCwd(paneId);
           if (cwd !== current) {
-            this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
+            this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd, source: 'poll' });
           }
         }
       });
