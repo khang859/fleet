@@ -962,16 +962,20 @@ ${mission.review_notes ?? 'No specific notes provided'}
       return;
     }
 
-    let checks: Array<{ name: string; state: string; conclusion: string; required: boolean }>;
+    let ciParsed: unknown;
     try {
-      checks = JSON.parse(ciOutput);
+      ciParsed = JSON.parse(ciOutput);
     } catch {
       return;
     }
+    if (!Array.isArray(ciParsed)) return;
 
-    const hasFailure = checks.some(
-      (c) => c.required && c.conclusion === 'failure'
-    );
+    const hasFailure = ciParsed.some((c: unknown) => {
+      if (c === null || typeof c !== 'object') return false;
+      return 'required' in c && 'conclusion' in c &&
+        (c as { required: unknown }).required === true &&
+        (c as { conclusion: unknown }).conclusion === 'failure';
+    });
     if (!hasFailure) return;
 
     // Fetch CI failure log
@@ -983,13 +987,20 @@ ${mission.review_notes ?? 'No specific notes provided'}
         '--json', 'databaseId',
         '--limit', '1'
       ]);
-      const runs: Array<{ databaseId: number }> = JSON.parse(runList);
-      if (runs[0]) {
-        const { stdout: log } = await execFileAsync('gh', [
-          'run', 'view', String(runs[0].databaseId), '--log-failed'
-        ]);
-        failureLog = log.slice(0, 4000);
-      }
+      const rawRuns: unknown = JSON.parse(runList);
+      if (Array.isArray(rawRuns) && rawRuns.length > 0) {
+        const first: unknown = rawRuns[0];
+        const runId =
+          first !== null && typeof first === 'object' && 'databaseId' in first
+            ? first.databaseId
+            : undefined;
+          if (typeof runId === 'number') {
+            const { stdout: log } = await execFileAsync('gh', [
+              'run', 'view', String(runId), '--log-failed'
+            ]);
+            failureLog = log.slice(0, 4000);
+          }
+        }
     } catch {
       // Best-effort — proceed with placeholder log
     }
@@ -1022,7 +1033,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
     ].join('\n');
 
     // Create repair mission
-    let repairMission;
+    let repairMission: { id: number; prompt: string } | undefined;
     try {
       repairMission = missionService.addMission({
         sectorId: mission.sector_id,
