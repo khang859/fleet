@@ -419,16 +419,14 @@ export function AdmiralSidebar({
                       open={openCrewId === crew.id}
                       onOpenChange={(open) => setOpenCrewId(open ? crew.id : null)}
                     >
-                      <Popover.Trigger asChild>
-                        <div className="flex items-center gap-2 py-0.5 pl-2 rounded cursor-pointer hover:bg-neutral-800 transition-colors">
-                          <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
-                          <span className="text-xs text-neutral-300 truncate flex-1">
-                            {crew.mission_summary?.trim() || crew.id}
-                          </span>
-                          <span className="text-[10px] font-mono text-neutral-600 uppercase flex-shrink-0">
-                            {crew.status}
-                          </span>
-                        </div>
+                      <Popover.Trigger className="w-full flex items-center gap-2 py-0.5 pl-2 rounded text-left hover:bg-neutral-800 transition-colors">
+                        <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
+                        <span className="text-xs text-neutral-300 truncate flex-1">
+                          {crew.mission_summary?.trim() || crew.id}
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-600 uppercase flex-shrink-0">
+                          {crew.status}
+                        </span>
                       </Popover.Trigger>
                       <Popover.Portal>
                         <Popover.Content
