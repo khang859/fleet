@@ -32,6 +32,11 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'crew-headphones': { x: 64, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crew-hoodie': { x: 0, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crew-robot': { x: 128, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'navigator-alert': { x: 576, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'navigator-default': { x: 320, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'navigator-standby': { x: 448, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'navigator-thinking': { x: 512, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
+  'navigator-working': { x: 384, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
   'crt-corner-bl': { x: 64, y: 128, w: 32, h: 32, frames: 1, frameDuration: 0 },
   'crt-corner-br': { x: 96, y: 128, w: 32, h: 32, frames: 1, frameDuration: 0 },
   'crt-corner-tl': { x: 0, y: 128, w: 32, h: 32, frames: 1, frameDuration: 0 },
@@ -62,13 +67,9 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'orb-teal': { x: 128, y: 208, w: 12, h: 12, frames: 1, frameDuration: 0 },
   'beacon': { x: 168, y: 208, w: 12, h: 12, frames: 2, frameDuration: 500 },
   'station-hub': { x: 0, y: 224, w: 64, h: 64, frames: 32, frameDuration: 625, framesPerRow: 8 },
-  'navigator-alert': { x: 576, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
-  'navigator-default': { x: 320, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
-  'navigator-standby': { x: 448, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
-  'navigator-thinking': { x: 512, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
-  'navigator-working': { x: 384, y: 64, w: 64, h: 64, frames: 1, frameDuration: 0 },
 }
 
 export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const
 export const FIRST_OFFICER_VARIANTS = ['default', 'working', 'escalation', 'idle'] as const
 export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const
+export const NAVIGATOR_VARIANTS = ['default', 'working', 'standby', 'thinking', 'alert'] as const

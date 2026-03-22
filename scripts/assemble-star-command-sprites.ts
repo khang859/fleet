@@ -37,7 +37,7 @@ const SHEET_SIZE = 640;
 // Sprite layout — pixel-level positions for every asset
 //
 // Row 0: y=0,   h=64  | Admiral avatars (5x 64x64) + First Officer avatars (4x 64x64)
-// Row 1: y=64,  h=64  | Crew avatars (5x 64x64)
+// Row 1: y=64,  h=64  | Crew avatars (5x 64x64) + Navigator avatars (5x 64x64)
 // Row 2: y=128, h=32  | CRT frame pieces (mixed sizes)
 // Row 3: y=160, h=24  | Status bar + chip sprites
 // Row 4: y=184, h=24  | Shuttle + spark + gas-puff
@@ -676,6 +676,7 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
     const order = (k: string): number => {
       if (k.startsWith('admiral-')) return 0;
       if (k.startsWith('first-officer-')) return 0.5;
+      if (k.startsWith('navigator-')) return 1;
       if (k.startsWith('crew-')) return 1;
       if (k.startsWith('crt-')) return 2;
       if (k.startsWith('statusbar-')) return 3;
@@ -719,6 +720,9 @@ function generateAtlasCode(atlas: Record<string, AtlasEntry>): string {
   );
   lines.push(
     "export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const"
+  );
+  lines.push(
+    "export const NAVIGATOR_VARIANTS = ['default', 'working', 'standby', 'thinking', 'alert'] as const"
   );
   lines.push('');
 
