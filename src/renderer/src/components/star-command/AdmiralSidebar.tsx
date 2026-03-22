@@ -1,4 +1,8 @@
+import { useState } from 'react';
+// @ts-ignore – used in Task 3 popover wiring
+import * as Popover from '@radix-ui/react-popover';
 import { useStarCommandStore } from '../../store/star-command-store';
+import type { CrewStatus, SectorInfo } from '../../store/star-command-store';
 
 import admiralDefault from '../../assets/admiral-default.png';
 import admiralSpeaking from '../../assets/admiral-speaking.png';
@@ -35,8 +39,198 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-500 animate-pulse'
 };
 
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hr ago`;
+  return `${Math.floor(diffHr / 24)} days ago`;
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  active: 'Active',
+  hailing: 'Hailing',
+  error: 'Error',
+  complete: 'Complete',
+  idle: 'Idle',
+  lost: 'Lost'
+};
+
 function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
+}
+
+export function CrewPopover({
+  crew,
+  sector,
+  onClose
+}: {
+  crew: CrewStatus;
+  sector: SectorInfo | undefined;
+  onClose: () => void;
+}): React.JSX.Element {
+  const { setCrewList } = useStarCommandStore();
+  const [observing, setObserving] = useState(false);
+  const [output, setOutput] = useState<string | null>(null);
+  const [observeError, setObserveError] = useState<string | null>(null);
+  const [recallConfirm, setRecallConfirm] = useState(false);
+  const [recalling, setRecalling] = useState(false);
+  const [recallError, setRecallError] = useState<string | null>(null);
+
+  const handleObserve = async (): Promise<void> => {
+    setObserving(true);
+    setObserveError(null);
+    setOutput(null);
+    try {
+      const result = await window.fleet.starbase.observeCrew(crew.id);
+      setOutput(result);
+    } catch (err) {
+      setObserveError(err instanceof Error ? err.message : 'Failed to observe');
+    }
+    setObserving(false);
+  };
+
+  const handleRecall = async (): Promise<void> => {
+    setRecalling(true);
+    setRecallError(null);
+    try {
+      await window.fleet.starbase.recallCrew(crew.id);
+      const updated = await window.fleet.starbase.listCrew();
+      setCrewList(updated);
+      onClose();
+    } catch (err) {
+      setRecallError(err instanceof Error ? err.message : 'Failed to recall');
+      setRecalling(false);
+    }
+  };
+
+  const statusDotClass = STATUS_COLORS[crew.status] ?? 'bg-neutral-500';
+  const label = crew.mission_summary?.trim() || crew.id;
+  const deployedAt = new Date(crew.created_at).toLocaleString();
+  const lastSeen = crew.last_lifesign ? relativeTime(crew.last_lifesign) : null;
+  const sectorName = sector?.name ?? crew.sector_id;
+
+  return (
+    <div className="w-72 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl text-xs">
+      {/* Header */}
+      <div className="px-3 pt-3 pb-2 border-b border-neutral-800">
+        <div className="flex items-start justify-between gap-2 mb-1">
+          <div className="flex items-center gap-1.5">
+            <StatusDot color={statusDotClass} />
+            <span className="font-mono text-neutral-400 uppercase text-[10px]">
+              {STATUS_LABELS[crew.status] ?? crew.status}
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-neutral-600 hover:text-neutral-400 transition-colors leading-none"
+          >
+            ✕
+          </button>
+        </div>
+        <p className="text-neutral-200 text-sm leading-snug">{label}</p>
+        <p className="text-neutral-600 font-mono text-[10px] mt-0.5 truncate">{crew.id}</p>
+      </div>
+
+      {/* Metadata */}
+      <div className="px-3 py-2 space-y-1.5 border-b border-neutral-800">
+        <div className="flex justify-between gap-4">
+          <span className="text-neutral-500">Sector</span>
+          <span className="text-neutral-300 font-mono truncate">{sectorName}</span>
+        </div>
+        {crew.worktree_branch && (
+          <div className="flex justify-between gap-4">
+            <span className="text-neutral-500">Branch</span>
+            <span className="text-neutral-300 font-mono truncate">{crew.worktree_branch}</span>
+          </div>
+        )}
+        <div className="flex justify-between gap-4">
+          <span className="text-neutral-500">Deployed</span>
+          <span className="text-neutral-300">{deployedAt}</span>
+        </div>
+        {lastSeen && (
+          <div className="flex justify-between gap-4">
+            <span className="text-neutral-500">Last seen</span>
+            <span className="text-neutral-300">{lastSeen}</span>
+          </div>
+        )}
+        {crew.token_budget != null && (
+          <div>
+            <span className="text-neutral-500">Tokens</span>
+            <div
+              className="w-full bg-neutral-700 rounded-full h-1.5 mt-1"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuenow={crew.tokens_used ?? 0}
+              aria-valuemax={crew.token_budget}
+            >
+              <div
+                className="bg-teal-500 h-1.5 rounded-full"
+                style={{
+                  width: `${Math.min(100, ((crew.tokens_used ?? 0) / crew.token_budget) * 100)}%`
+                }}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-neutral-500">
+              {crew.tokens_used ?? 0} / {crew.token_budget}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className="px-3 py-2 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            onClick={() => { void handleObserve(); }}
+            disabled={observing}
+            className="text-neutral-400 hover:text-neutral-200 transition-colors disabled:opacity-50"
+          >
+            {observing ? 'Loading...' : 'Observe'}
+          </button>
+
+          {recallConfirm ? (
+            <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
+              <span className="text-[10px] text-red-300">Recall?</span>
+              <button
+                onClick={() => { void handleRecall(); }}
+                disabled={recalling}
+                className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
+              >
+                {recalling ? '...' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setRecallConfirm(false)}
+                className="text-[10px] text-neutral-400 hover:text-neutral-200 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setRecallConfirm(true)}
+              className="text-red-400 hover:text-red-300 transition-colors"
+            >
+              Recall ▸
+            </button>
+          )}
+        </div>
+
+        {output !== null && (
+          <pre className="bg-neutral-950 rounded p-2 font-mono text-neutral-300 text-[10px] whitespace-pre-wrap max-h-32 overflow-y-auto">
+            {output || '(no output)'}
+          </pre>
+        )}
+        {observeError && <p className="text-red-400">{observeError}</p>}
+        {recallError && <p className="text-red-400">{recallError}</p>}
+      </div>
+    </div>
+  );
 }
 
 export function AdmiralSidebar({
