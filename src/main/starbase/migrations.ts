@@ -324,7 +324,14 @@ export const MIGRATIONS: Migration[] = [
         ('builtin-research-deploy', 4, 'deploy-crew', '{"role": "architect", "missionTemplate": "Design the implementation architecture for: {featureRequest}. Use the research cargo as context. Produce a concrete implementation blueprint with files to create/modify, component responsibilities, and implementation phases."}', 'Deploy architect crew (conditional)'),
         ('builtin-research-deploy', 5, 'await-comms', '{"signalType": "cargo", "timeout": 3600}', 'Wait for architect blueprint cargo');
     `
-  }
+  },
+  {
+    version: 15,
+    name: '015-original-mission-id',
+    sql: `
+      ALTER TABLE missions ADD COLUMN original_mission_id INTEGER REFERENCES missions(id);
+    `
+  },
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
