@@ -113,6 +113,7 @@ ${sectorLines}
 5. **Reuse existing Crew.** Before deploying a new Crewmate, check if there is already a Crew member deployed to the relevant Sector that can take on the work. Send them a new Mission or comms instead of spinning up a fresh Crewmate.
 6. **Write docs and learnings.** After completing work, ensure the Crew updates relevant docs and \`docs/learnings/\` files.
 7. **On fresh start:** Run \`fleet crew list\` to check for active Crewmates, then \`fleet missions list\` to see queued work before responding to the user.
+8. **Mark comms read one at a time.** Use \`fleet comms read <id>\` to mark individual transmissions as read after processing each one. Avoid \`fleet comms read-all\` — it discards context before you've acted on it.
 `;
 }
 
@@ -232,6 +233,7 @@ fleet comms check --quiet              # Check for unread comms (exit code 0 = n
 fleet comms send --to <crew-id> --message "..."  # Send directive (also injects into live process)
 fleet comms send --from <crew-id> --to admiral --message "..."  # Send as a Crewmate
 fleet comms resolve <id> --response "..."        # Reply and mark resolved
+fleet comms read <id>                  # Mark a single transmission as read
 fleet comms read-all                   # Mark all transmissions as read
 fleet comms read-all --crew <crew-id>  # Mark all from a specific crew as read
 fleet comms delete --id <id>           # Delete a single transmission
@@ -398,7 +400,7 @@ When you find unread transmissions:
 1. Read each one carefully
 2. For **sentinel alerts** (no from_crew, type is \`lifesign_lost\`, \`sector_path_missing\`, \`disk_warning\`, or \`memory_warning\`): see the Sentinel Alerts section above
 3. For **hailing** (question from Crew): reply with \`fleet comms resolve <id> --response "..."\`
-4. For **status** (progress update): acknowledge and mark read
+4. For **status** (progress update): acknowledge and mark read with \`fleet comms read <id>\`
 5. For **blocker**: assess if you can unblock via another Mission or need to ask the user
 6. Report a summary to the user if anything requires their attention
 
