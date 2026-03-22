@@ -13,6 +13,7 @@ import type { CrewService } from './crew-service';
 import type { SettingsStore } from '../settings-store';
 import { computeFingerprint, classifyError } from './error-fingerprint';
 import type { Navigator } from './navigator';
+import type { MissionService } from './mission-service';
 import { ProtocolService } from './protocol-service';
 import { GLOBAL_SECTOR_ID } from './sector-service';
 
@@ -29,6 +30,7 @@ type SentinelDeps = {
   settingsStore?: SettingsStore;
   onNudgeClick?: () => void;
   navigator?: Navigator;
+  missionService?: MissionService;
 };
 
 type CrewRow = {
@@ -108,8 +110,20 @@ type NavigatorFanoutRow = {
   context: string | null;
 };
 
+type ApprovedMissionRow = {
+  id: number;
+  sector_id: string;
+  summary: string;
+  prompt: string;
+  pr_branch: string;
+  review_round: number;
+};
+
+const MAX_REPAIR_ROUNDS = 2;
+
 export class Sentinel {
   private interval: ReturnType<typeof setInterval> | null = null;
+  private prMonitorInterval: ReturnType<typeof setInterval> | null = null;
   private sweepCount = 0;
   private sweepInProgress = false;
   private consecutivePingFailures = 0;
@@ -139,12 +153,23 @@ export class Sentinel {
         console.error('[sentinel] Sweep failed:', err);
       });
     }, ms);
+
+    // PR monitor runs every 5 minutes — separate timer to avoid GitHub API rate limits
+    this.prMonitorInterval = setInterval(() => {
+      this.prMonitorSweep().catch((err) => {
+        console.error('[sentinel] prMonitorSweep failed:', err);
+      });
+    }, 5 * 60 * 1000);
   }
 
   stop(): void {
     if (this.interval) {
       clearInterval(this.interval);
       this.interval = null;
+    }
+    if (this.prMonitorInterval) {
+      clearInterval(this.prMonitorInterval);
+      this.prMonitorInterval = null;
     }
   }
 
@@ -873,5 +898,171 @@ ${mission.review_notes ?? 'No specific notes provided'}
         resolve(false);
       });
     });
+  }
+
+  private async prMonitorSweep(): Promise<void> {
+    const { db, crewService, missionService } = this.deps;
+    if (!crewService || !missionService) return;
+
+    // Guard: gh must be available — we rely on try/catch in checkAndRepairMission if not
+    const missions = db
+      .prepare<[], ApprovedMissionRow>(
+        `SELECT id, sector_id, summary, prompt, pr_branch, review_round
+         FROM missions
+         WHERE pr_branch IS NOT NULL
+           AND status IN ('approved', 'ci-failed')
+           AND type = 'code'`
+      )
+      .all();
+
+    for (const mission of missions) {
+      try {
+        await this.checkAndRepairMission(mission, crewService, missionService);
+      } catch (err) {
+        console.error(`[sentinel] prMonitorSweep error for mission ${mission.id}:`, err);
+        // Continue checking other missions
+      }
+    }
+  }
+
+  private async checkAndRepairMission(
+    mission: ApprovedMissionRow,
+    crewService: NonNullable<SentinelDeps['crewService']>,
+    missionService: NonNullable<SentinelDeps['missionService']>
+  ): Promise<void> {
+    const db = this.db;
+
+    // Escalate if max repair rounds exceeded
+    if (mission.review_round >= MAX_REPAIR_ROUNDS) {
+      db.prepare("UPDATE missions SET status = 'escalated' WHERE id = ?").run(mission.id);
+      db.prepare(
+        `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload)
+         VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+      ).run(
+        mission.id,
+        JSON.stringify({
+          missionId: mission.id,
+          eventType: 'repair-escalation',
+          summary: `Mission #${mission.id} has hit max repair rounds (${MAX_REPAIR_ROUNDS}) — manual intervention needed`
+        })
+      );
+      return;
+    }
+
+    // Check CI status via gh CLI
+    let ciOutput: string;
+    try {
+      const { stdout } = await execFileAsync('gh', [
+        'pr', 'checks', mission.pr_branch,
+        '--json', 'name,state,conclusion,required'
+      ]);
+      ciOutput = stdout;
+    } catch {
+      // PR may be closed, branch deleted, or gh not authenticated — skip silently
+      return;
+    }
+
+    let ciParsed: unknown;
+    try {
+      ciParsed = JSON.parse(ciOutput);
+    } catch {
+      return;
+    }
+    if (!Array.isArray(ciParsed)) return;
+
+    const hasFailure = ciParsed.some((c: unknown) => {
+      if (c === null || typeof c !== 'object') return false;
+      return 'required' in c && 'conclusion' in c &&
+        (c as { required: unknown }).required === true &&
+        (c as { conclusion: unknown }).conclusion === 'failure';
+    });
+    if (!hasFailure) return;
+
+    // Fetch CI failure log
+    let failureLog = '(could not fetch CI logs)';
+    try {
+      const { stdout: runList } = await execFileAsync('gh', [
+        'run', 'list',
+        '--branch', mission.pr_branch,
+        '--json', 'databaseId',
+        '--limit', '1'
+      ]);
+      const rawRuns: unknown = JSON.parse(runList);
+      if (Array.isArray(rawRuns) && rawRuns.length > 0) {
+        const first: unknown = rawRuns[0];
+        const runId =
+          first !== null && typeof first === 'object' && 'databaseId' in first
+            ? first.databaseId
+            : undefined;
+          if (typeof runId === 'number') {
+            const { stdout: log } = await execFileAsync('gh', [
+              'run', 'view', String(runId), '--log-failed'
+            ]);
+            failureLog = log.slice(0, 4000);
+          }
+        }
+    } catch {
+      // Best-effort — proceed with placeholder log
+    }
+
+    // Atomically claim the mission — prevents race with Admiral manual deploy
+    const claim = db
+      .prepare(
+        "UPDATE missions SET status = 'repairing', review_round = review_round + 1 WHERE id = ? AND status IN ('approved', 'ci-failed')"
+      )
+      .run(mission.id);
+    if (claim.changes === 0) return; // Another process claimed it
+
+    // Build repair prompt
+    const repairPrompt = [
+      mission.prompt,
+      '',
+      '---',
+      '',
+      '## Repair Context',
+      '',
+      `**Reason:** CI failure detected on PR branch \`${mission.pr_branch}\``,
+      `**Repair round:** ${mission.review_round + 1}`,
+      '',
+      '## CI Failure Output',
+      '',
+      failureLog,
+      '',
+      'Push your fixes to the current branch — the PR already exists and will be updated automatically.',
+      'Do NOT create a new PR.',
+    ].join('\n');
+
+    // Create repair mission
+    let repairMission: { id: number; prompt: string } | undefined;
+    try {
+      repairMission = missionService.addMission({
+        sectorId: mission.sector_id,
+        type: 'repair',
+        summary: `Fix CI failures: ${mission.summary}`,
+        prompt: repairPrompt,
+        prBranch: mission.pr_branch,
+        originalMissionId: mission.id
+      });
+    } catch (err) {
+      // Rollback
+      db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(mission.id);
+      throw err;
+    }
+
+    // Deploy repair crew
+    try {
+      await crewService.deployCrew({
+        sectorId: mission.sector_id,
+        missionId: repairMission.id,
+        prompt: repairMission.prompt,
+        prBranch: mission.pr_branch,
+        type: 'repair'
+      });
+    } catch (err) {
+      // Rollback original mission and remove orphaned repair mission
+      db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(mission.id);
+      db.prepare('DELETE FROM missions WHERE id = ?').run(repairMission.id);
+      throw err;
+    }
   }
 }

@@ -144,6 +144,8 @@ export type HullOpts = {
   missionType?: string;
   /** PR branch name for review/fix crews working on an existing PR */
   prBranch?: string;
+  /** For repair missions: the original code mission whose PR this crew is fixing */
+  originalMissionId?: number;
   /** Starbase ID for cargo file storage paths */
   starbaseId?: string;
   onComplete?: () => void;
@@ -368,7 +370,32 @@ Deliver a decisive, complete architecture blueprint. Include:
 `
           : null;
 
-      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, this.opts.systemPrompt]
+      const repairPreamble =
+        this.opts.missionType === 'repair'
+          ? `# Repair Mission Instructions
+
+You are a repair crew deployed on a repair mission (FLEET_MISSION_TYPE=repair).
+You are working on an existing PR branch — do NOT create a new branch or new PR.
+
+## Your Objective
+Fix the issues described in this mission (CI failures and/or review comments).
+The PR already exists. Your commits will be pushed to the existing PR branch automatically.
+
+## Workflow
+- Read the CI failure output and/or review comments in your mission prompt
+- Use \`gh pr view --comments\` to see any additional reviewer feedback
+- Use \`gh pr checks\` to see the current CI status
+- Fix the identified issues
+- Commit your changes — they will be pushed on mission completion
+
+## Constraints
+- Do NOT run \`gh pr create\` — the PR already exists
+- Do NOT switch branches or create new branches
+- Do NOT merge or close the PR
+`
+          : null;
+
+      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, repairPreamble, this.opts.systemPrompt]
         .filter(Boolean)
         .join('\n\n');
 
@@ -700,6 +727,20 @@ Deliver a decisive, complete architecture blueprint. Include:
       return;
     }
 
+    // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
+    if (
+      this.opts.missionType === 'repair' &&
+      this.opts.originalMissionId != null &&
+      (status === 'timeout' || status === 'error')
+    ) {
+      db.prepare(
+        "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+      ).run(this.opts.originalMissionId);
+      db.prepare(
+        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
+      ).run(crewId, JSON.stringify({ missionId, originalMissionId: this.opts.originalMissionId, reason: status }));
+    }
+
     // Clean up temp files
     if (this.promptFile) {
       try {
@@ -769,6 +810,23 @@ Deliver a decisive, complete architecture blueprint. Include:
       }
 
       if (!hasChanges) {
+        // Repair: no changes is a valid outcome (CI may have self-healed)
+        if (this.opts.missionType === 'repair') {
+          overrideStatus = 'complete';
+          db.prepare(
+            "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
+          ).run(missionId);
+          if (this.opts.originalMissionId != null) {
+            db.prepare(
+              "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+            ).run(this.opts.originalMissionId);
+          }
+          db.prepare(
+            "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
+          ).run(crewId, JSON.stringify({ missionId, status: 'completed', reason: 'No changes needed' }));
+          return;
+        }
+
         // NEW: Review mission verdict handling
         if (this.opts.missionType === 'review') {
           overrideStatus = 'complete';
@@ -1443,10 +1501,22 @@ Deliver a decisive, complete architecture blueprint. Include:
           cwd: sectorPath,
           stdio: 'pipe'
         });
-        // PR exists — store pr_branch, clear crew_id, and set pending-review, skip creating a new PR
-        db.prepare(
-          "UPDATE missions SET pr_branch = ?, status = 'pending-review', crew_id = NULL WHERE id = ?"
-        ).run(worktreeBranch, missionId);
+        // PR exists — handle based on mission type
+        if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
+          // Repair crew: transition ORIGINAL mission to pending-review for fresh review
+          db.prepare(
+            "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(this.opts.originalMissionId);
+          // Mark repair mission itself as completed
+          db.prepare(
+            "UPDATE missions SET status = 'completed', result = 'Repair complete', completed_at = datetime('now') WHERE id = ?"
+          ).run(missionId);
+        } else {
+          // Existing behaviour: store pr_branch, clear crew_id, and set pending-review
+          db.prepare(
+            "UPDATE missions SET pr_branch = ?, status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(worktreeBranch, missionId);
+        }
         return;
       } catch {
         // No existing PR — continue to create one
@@ -1498,6 +1568,13 @@ Deliver a decisive, complete architecture blueprint. Include:
         db.prepare(
           "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
         ).run(missionId);
+        // If this was a repair crew that fell through to creating a new PR
+        // (e.g., original PR was deleted), also transition the original mission.
+        if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
+          db.prepare(
+            "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
+          ).run(this.opts.originalMissionId);
+        }
       } catch {
         // PR view failed — skip review request, continue normally
       }

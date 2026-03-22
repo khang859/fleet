@@ -14,11 +14,25 @@ import foWorking from '../../assets/first-officer-working.png';
 import foEscalation from '../../assets/first-officer-escalation.png';
 import foIdle from '../../assets/first-officer-idle.png';
 
+import navigatorDefault from '../../assets/navigator-default.png';
+import navigatorWorking from '../../assets/navigator-working.png';
+import navigatorStandby from '../../assets/navigator-standby.png';
+import navigatorThinking from '../../assets/navigator-thinking.png';
+import navigatorAlert from '../../assets/navigator-alert.png';
+
 const FO_IMAGES: Record<string, string> = {
   idle: foIdle,
   working: foWorking,
   memo: foEscalation,
   default: foDefault
+};
+
+const NAVIGATOR_IMAGES: Record<string, string> = {
+  standby: navigatorStandby,
+  working: navigatorWorking,
+  thinking: navigatorThinking,
+  alert: navigatorAlert,
+  default: navigatorDefault
 };
 
 const ADMIRAL_IMAGES: Record<string, string> = {
@@ -242,7 +256,7 @@ export function AdmiralSidebar({
   avatarVariant: string;
   onMemoClick?: () => void;
 }): React.JSX.Element {
-  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } =
+  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus, navigatorStatus } =
     useStarCommandStore();
 
   const [openCrewId, setOpenCrewId] = useState<string | null>(null);
@@ -260,6 +274,7 @@ export function AdmiralSidebar({
 
   const admiralSrc = ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default;
   const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default;
+  const navSrc = NAVIGATOR_IMAGES[navigatorStatus.status] ?? NAVIGATOR_IMAGES.default;
 
   return (
     <div
@@ -335,6 +350,33 @@ export function AdmiralSidebar({
             </span>
           </button>
         )}
+      </div>
+
+      {/* Navigator */}
+      <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
+        <img
+          src={navSrc}
+          alt="Navigator"
+          width={128}
+          height={128}
+          className="rounded"
+          style={{ imageRendering: 'pixelated' as const }}
+        />
+        <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
+          Navigator
+        </span>
+        <div className="flex items-center gap-1.5 mt-1">
+          <span
+            className={`w-2 h-2 rounded-full ${
+              navigatorStatus.status === 'working'
+                ? 'bg-teal-400 animate-pulse'
+                : 'bg-green-400'
+            }`}
+          />
+          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
+            {navigatorStatus.statusText}
+          </span>
+        </div>
       </div>
 
       {/* Status sections */}

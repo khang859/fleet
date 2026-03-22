@@ -29,6 +29,11 @@ export type FirstOfficerStatus = {
   unreadMemos: number;
 };
 
+export type NavigatorStatus = {
+  status: 'standby' | 'working';
+  statusText: string;
+};
+
 type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert';
 
 export type DepCheckResult = {
@@ -64,6 +69,9 @@ type StarCommandStore = {
   // First Officer
   firstOfficerStatus: FirstOfficerStatus;
 
+  // Navigator
+  navigatorStatus: NavigatorStatus;
+
   // Actions
   setAdmiralPty: (
     paneId: string | null,
@@ -84,6 +92,7 @@ type StarCommandStore = {
   setAdmiralAvatarState: (state: AdmiralAvatarState) => void;
   setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
   setFirstOfficerStatus: (status: FirstOfficerStatus) => void;
+  setNavigatorStatus: (status: NavigatorStatus) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set) => ({
@@ -102,6 +111,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralAvatarState: 'standby',
   admiralStatusText: 'Standing by',
   firstOfficerStatus: { status: 'idle', statusText: 'Idle', unreadMemos: 0 },
+  navigatorStatus: { status: 'standby', statusText: 'Idle' },
 
   setAdmiralPty: (paneId, status, error = null, exitCode = null) =>
     set({
@@ -121,5 +131,6 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   setAdmiralAvatarState: (state) => set({ admiralAvatarState: state }),
   setAdmiralState: (state, statusText) =>
     set({ admiralAvatarState: state, admiralStatusText: statusText }),
-  setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status })
+  setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status }),
+  setNavigatorStatus: (status) => set({ navigatorStatus: status })
 }));
