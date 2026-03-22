@@ -214,7 +214,7 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps):
   const totalDeletions = data?.files.reduce((sum, f) => sum + f.deletions, 0) ?? 0;
 
   return (
-    <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+    <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef} showCloseButton={false}>
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
         <div className="flex items-center gap-3">
@@ -305,12 +305,14 @@ function ModalShell({
   children,
   onClose,
   onKeyDown,
-  modalRef
+  modalRef,
+  showCloseButton = true
 }: {
   children: React.ReactNode;
   onClose: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   modalRef: React.RefObject<HTMLDivElement | null>;
+  showCloseButton?: boolean;
 }): React.JSX.Element {
   useEffect(() => {
     modalRef.current?.focus();
@@ -326,9 +328,17 @@ function ModalShell({
         tabIndex={-1}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
-        className="bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col outline-none"
+        className="relative bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col outline-none"
         style={{ width: 'calc(100vw - 64px)', height: 'calc(100vh - 48px)' }}
       >
+        {showCloseButton && (
+          <button
+            onClick={onClose}
+            className="absolute top-3 right-3 z-10 p-1 text-neutral-500 hover:text-white"
+          >
+            <X size={16} />
+          </button>
+        )}
         {children}
       </div>
     </div>
