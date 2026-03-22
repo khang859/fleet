@@ -45,6 +45,16 @@ export class Navigator {
     return this.running.has(executionId);
   }
 
+  getStatus(): 'standby' | 'working' {
+    return this.running.size > 0 ? 'working' : 'standby';
+  }
+
+  getStatusText(): string {
+    const n = this.running.size;
+    if (n === 0) return 'Idle';
+    return n === 1 ? 'Running 1 execution' : `Running ${n} executions`;
+  }
+
   async dispatch(
     event: NavigatorEvent,
     callbacks?: { onExit?: (code: number | null) => void }

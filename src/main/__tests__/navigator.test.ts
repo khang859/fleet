@@ -101,4 +101,42 @@ describe('Navigator', () => {
     nav.reconcile();
     expect(nav.activeCount).toBe(0);
   });
+
+  it('getStatus returns standby when no processes running', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    expect(nav.getStatus()).toBe('standby');
+  });
+
+  it('getStatus returns working when processes are running', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-1',
+      startedAt: Date.now()
+    });
+    expect(nav.getStatus()).toBe('working');
+  });
+
+  it('getStatusText returns Idle when no processes running', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    expect(nav.getStatusText()).toBe('Idle');
+  });
+
+  it('getStatusText returns singular when one process running', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-1',
+      startedAt: Date.now()
+    });
+    expect(nav.getStatusText()).toBe('Running 1 execution');
+  });
+
+  it('getStatusText returns plural when multiple processes running', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    const running = (nav as unknown as { running: Map<string, unknown> }).running;
+    running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
+    running.set('exec-2', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-2', startedAt: Date.now() });
+    expect(nav.getStatusText()).toBe('Running 2 executions');
+  });
 });
