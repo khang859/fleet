@@ -359,6 +359,11 @@ export class CrewService {
   private autoDeployNext(): void {
     const { db } = this.deps;
 
+    // Notify UI that a crew completed — hull.ts writes directly to DB without going through the
+    // service layer, so it never emits starbase-changed. Without this, the UI snapshot stays stale
+    // when there is no next mission to deploy (deployCrew emits it when there is one).
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+
     // Atomically claim the next queued mission — prevents concurrent deployments from racing
     const claim = db
       .prepare<[], QueuedMissionRow>(
