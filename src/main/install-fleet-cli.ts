@@ -1,4 +1,4 @@
-import { mkdir, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, writeFile, chmod, readFile, appendFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -144,8 +144,56 @@ exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
   // 4. Make the shell wrapper executable (chmod 755)
   await chmod(wrapperPath, 0o755);
 
+  // 5. Add ~/.fleet/bin to user's shell profile (idempotent)
+  await addFleetBinToShellProfile().catch((err) => {
+    // eslint-disable-next-line no-console
+    console.warn('[fleet-cli] Could not update shell profile:', err);
+  });
+
   // eslint-disable-next-line no-console
   console.log(`[fleet-cli] Installed fleet CLI at ${wrapperPath}`);
 
   return binDir;
+}
+
+// ── addFleetBinToShellProfile ─────────────────────────────────────────────────
+//
+// Appends `export PATH="$HOME/.fleet/bin:$PATH"` to every common shell profile
+// that already exists on disk — similar to how nvm and Homebrew inject themselves.
+// Idempotent: skips any file that already mentions `.fleet/bin`.
+// No-op on Windows (PATH is managed differently there).
+
+async function addFleetBinToShellProfile(): Promise<void> {
+  if (process.platform === 'win32') return;
+
+  const home = homedir();
+
+  // Candidate profile files, grouped by syntax.
+  const posixProfiles = [
+    join(home, '.zshrc'),
+    join(home, '.zprofile'),
+    join(home, '.bash_profile'),
+    join(home, '.bashrc'),
+    join(home, '.profile'),
+  ];
+  const fishProfiles = [join(home, '.config', 'fish', 'config.fish')];
+
+  const posixExport = '\n# Fleet CLI\nexport PATH="$HOME/.fleet/bin:$PATH"\n';
+  const fishExport = '\n# Fleet CLI\nfish_add_path $HOME/.fleet/bin\n';
+
+  const profilesWithContent: Array<{ path: string; content: string }> = [
+    ...posixProfiles.map((p) => ({ path: p, content: posixExport })),
+    ...fishProfiles.map((p) => ({ path: p, content: fishExport })),
+  ];
+
+  for (const { path: profilePath, content } of profilesWithContent) {
+    if (!existsSync(profilePath)) continue;
+
+    const existing = await readFile(profilePath, 'utf8').catch(() => '');
+    if (existing.includes('.fleet/bin')) continue;
+
+    await appendFile(profilePath, content, 'utf8');
+    // eslint-disable-next-line no-console
+    console.log(`[fleet-cli] Added ~/.fleet/bin to ${profilePath}`);
+  }
 }
