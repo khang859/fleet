@@ -21,6 +21,9 @@ export class NotificationDetector {
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
+    eventBus.on('pane-closed', (event) => {
+      this.carryBuffers.delete(event.paneId);
+    });
   }
 
   scan(paneId: string, data: string): void {
@@ -33,7 +36,9 @@ export class NotificationDetector {
   private checkOSC7(paneId: string, data: string): void {
     const carry = this.carryBuffers.get(paneId) ?? '';
     const chunk = carry + data;
+    let lastMatchEnd = -1;
     for (const match of chunk.matchAll(OSC7_RE)) {
+      lastMatchEnd = match.index + match[0].length;
       try {
         const url = new URL(match[1]);
         const cwd = decodeURIComponent(url.pathname);
@@ -44,7 +49,8 @@ export class NotificationDetector {
         // Malformed URL, skip
       }
     }
-    this.carryBuffers.set(paneId, chunk.slice(-CARRY_BUFFER_SIZE));
+    const tail = lastMatchEnd === -1 ? chunk : chunk.slice(lastMatchEnd);
+    this.carryBuffers.set(paneId, tail.slice(-CARRY_BUFFER_SIZE));
   }
 
   private emitNotification(paneId: string, level: NotificationLevel): void {
