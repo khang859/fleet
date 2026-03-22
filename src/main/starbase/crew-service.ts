@@ -180,8 +180,8 @@ export class CrewService {
       throw err;
     }
 
-    // 6. Install dependencies (skip for review crews — they only read code)
-    if (missionType !== 'review') {
+    // 6. Install dependencies (skip for review/architect crews — they only read code)
+    if (missionType !== 'review' && missionType !== 'architect') {
       try {
         await worktreeManager.installDependencies(worktreeResult.worktreePath);
       } catch (err) {
@@ -226,7 +226,9 @@ export class CrewService {
           ? 'Read,Glob,Grep,WebSearch,WebFetch'
           : missionType === 'review'
             ? 'Read,Glob,Grep,Bash,WebFetch'
-            : undefined),
+            : missionType === 'architect'
+              ? 'Read,Glob,Grep,Bash,WebFetch'
+              : undefined),
       mcpConfig: sector.mcp_config ?? undefined,
       onComplete: () => this.autoDeployNext(),
       env: this.deps.crewEnv,

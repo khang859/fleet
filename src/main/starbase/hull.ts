@@ -270,7 +270,23 @@ export class Hull {
         this.opts.missionType === 'research'
           ? `# Research Mission Instructions
 
-You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=research).
+You are an expert code analyst deployed on a research mission (FLEET_MISSION_TYPE=research). Your mission is to provide a complete understanding of how a specific feature or system works by tracing its implementation from entry points to data storage, through all abstraction layers.
+
+## Analysis Approach
+- **Feature Discovery**: Find entry points (APIs, UI components, CLI commands), locate core implementation files, map feature boundaries and configuration.
+- **Code Flow Tracing**: Follow call chains from entry to output, trace data transformations at each step, identify all dependencies and integrations, document state changes and side effects.
+- **Architecture Analysis**: Map abstraction layers (presentation → business logic → data), identify design patterns and architectural decisions, document interfaces between components, note cross-cutting concerns.
+- **Implementation Details**: Key algorithms and data structures, error handling and edge cases, performance considerations, technical debt or improvement areas.
+
+## Output Format
+Provide a comprehensive analysis that helps developers understand the feature deeply enough to modify or extend it. Include:
+- Entry points with file:line references
+- Step-by-step execution flow with data transformations
+- Key components and their responsibilities
+- Architecture insights: patterns, layers, design decisions
+- Dependencies (external and internal)
+- Observations about strengths, issues, or opportunities
+- List of files that are absolutely essential to understand the topic
 
 ## Cargo Workflow
 - Output your findings as printed text in your responses — do NOT write findings to files in the worktree.
@@ -280,7 +296,6 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
 ## Constraints
 - Do NOT push code or create pull requests. This is a research mission, not a code mission.
 - Do NOT commit changes. Any git changes you make will be discarded at the end of the mission.
-- Focus on investigation, analysis, and producing written findings.
 
 ## Environment
 - FLEET_MISSION_TYPE=research (available in your environment)
@@ -291,7 +306,18 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
         this.opts.missionType === 'review'
           ? `# Review Mission Instructions
 
-You are a review crew deployed on a PR review mission (FLEET_MISSION_TYPE=review).
+You are an expert code reviewer deployed on a PR review mission (FLEET_MISSION_TYPE=review). Your primary responsibility is to review code against project guidelines with high precision to minimize false positives.
+
+## Review Scope
+Review the PR diff using: gh pr diff <branch>
+
+## Core Review Responsibilities
+- **Project Guidelines Compliance**: Verify adherence to explicit project rules (CLAUDE.md) including import patterns, framework conventions, naming conventions, error handling, testing practices.
+- **Bug Detection**: Identify actual bugs — logic errors, null/undefined handling, race conditions, memory leaks, security vulnerabilities, performance problems.
+- **Code Quality**: Evaluate significant issues like code duplication, missing critical error handling, and inadequate test coverage.
+
+## Confidence Scoring
+Rate each potential issue 0–100. Only report issues with confidence ≥ 80. Focus on issues that truly matter — quality over quantity.
 
 ## Output Format
 You MUST end your response with:
@@ -299,14 +325,50 @@ You MUST end your response with:
 VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
 NOTES: <specific file:line references for any issues found>
 
+For each high-confidence issue provide: description with confidence score, file path and line number, specific guideline reference or bug explanation, and a concrete fix suggestion.
+
 ## Constraints
 - Do NOT make code changes. This is a review mission.
 - Do NOT commit or push. Any changes will be discarded.
-- Use the gh CLI to read the PR diff: gh pr diff <branch>
 - Only report issues you are >=80% confident about.`
           : null;
 
-      const combinedSystemPrompt = [researchPreamble, reviewPreamble, this.opts.systemPrompt]
+      const architectPreamble =
+        this.opts.missionType === 'architect'
+          ? `# Architect Mission Instructions
+
+You are a senior software architect deployed on an architecture design mission (FLEET_MISSION_TYPE=architect).
+
+## Core Process
+- Analyze existing codebase patterns, conventions, and architectural decisions. Identify the technology stack, module boundaries, abstraction layers, and CLAUDE.md guidelines. Find similar features to understand established approaches.
+- Design the complete feature architecture based on patterns found. Make decisive choices — pick one approach and commit. Ensure seamless integration with existing code.
+- Produce a comprehensive implementation blueprint: every file to create or modify, component responsibilities, integration points, and data flow. Break implementation into clear phases with specific tasks.
+
+## Output Format
+Deliver a decisive, complete architecture blueprint. Include:
+- **Patterns & Conventions Found**: Existing patterns with file:line references, similar features, key abstractions
+- **Architecture Decision**: Your chosen approach with rationale and trade-offs
+- **Component Design**: Each component with file path, responsibilities, dependencies, and interfaces
+- **Implementation Map**: Specific files to create/modify with detailed change descriptions
+- **Data Flow**: Complete flow from entry points through transformations to outputs
+- **Build Sequence**: Phased implementation steps as a checklist
+
+## Cargo Workflow
+- Output your blueprint as printed text in your responses — do NOT write designs to files in the worktree.
+- The Fleet system captures your full output as cargo automatically.
+- Use Read, Glob, Grep, Bash, and WebFetch to explore the codebase before designing.
+
+## Constraints
+- Do NOT write code or create pull requests. This is a design mission, not a code mission.
+- Do NOT commit changes. Any git changes you make will be discarded at the end of the mission.
+- Focus on analyzing existing patterns, then producing an implementation blueprint.
+
+## Environment
+- FLEET_MISSION_TYPE=architect (available in your environment)
+`
+          : null;
+
+      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, this.opts.systemPrompt]
         .filter(Boolean)
         .join('\n\n');
 
@@ -349,6 +411,10 @@ NOTES: <specific file:line references for any issues found>
         this.opts.missionType === 'research'
           ? `RESEARCH MISSION GUIDANCE: Your research findings will be captured as cargo from your terminal output. Print your findings to stdout using console.log, echo, or similar output commands. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT create pull requests or commit changes. Your mission is to investigate and report findings through your terminal output only.\n\n`
           : '';
+      const architectGuidance =
+        this.opts.missionType === 'architect'
+          ? `ARCHITECT MISSION GUIDANCE: Your architecture blueprint will be captured as cargo from your terminal output. Print your design to stdout. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT write code or create pull requests. Your mission is to analyze the codebase and produce an implementation blueprint through your terminal output only.\n\n`
+          : '';
       const cargoHeader =
         this.opts.missionType === 'code' || this.opts.missionType == null
           ? buildCargoHeader(db, missionId)
@@ -358,7 +424,7 @@ NOTES: <specific file:line references for any issues found>
           type: 'user',
           message: {
             role: 'user',
-            content: `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`
+            content: `${cargoHeader}${worktreeWarning}${researchGuidance}${architectGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`
           },
           parent_tool_use_id: null,
           session_id: ''
@@ -504,7 +570,7 @@ NOTES: <specific file:line references for any issues found>
     const lines = data.split('\n');
     this.outputLines.push(...lines);
     const maxLines =
-      this.opts.missionType === 'research' || this.opts.missionType === 'review'
+      this.opts.missionType === 'research' || this.opts.missionType === 'review' || this.opts.missionType === 'architect'
         ? 2000
         : MAX_OUTPUT_LINES;
     if (this.outputLines.length > maxLines) {
@@ -773,8 +839,8 @@ NOTES: <specific file:line references for any issues found>
 
         // EXISTING code continues: if (status !== 'aborted') { ...
         if (status !== 'aborted') {
-          if (this.opts.missionType === 'research' && status !== 'error') {
-            // Research mission completed — produce cargo instead of failing
+          if ((this.opts.missionType === 'research' || this.opts.missionType === 'architect') && status !== 'error') {
+            // Research/architect mission completed — produce cargo instead of failing
             overrideStatus = 'complete';
 
             // Write cargo files to starbase directory
@@ -871,8 +937,8 @@ NOTES: <specific file:line references for any issues found>
         return;
       }
 
-      // Safety guard: research crews should never push code — discard changes and produce cargo
-      if (this.opts.missionType === 'research') {
+      // Safety guard: research/architect crews should never push code — discard changes and produce cargo
+      if (this.opts.missionType === 'research' || this.opts.missionType === 'architect') {
         // Capture what will be discarded before cleaning, for ships_log warning
         let discardedFiles: string[] = [];
         try {
@@ -908,11 +974,11 @@ NOTES: <specific file:line references for any issues found>
           ).run(
             crewId,
             JSON.stringify({
-              warning: 'Research safety guard discarded file changes',
+              warning: `${this.opts.missionType} safety guard discarded file changes`,
               filesDiscarded: discardedFiles.length,
               paths: discardedFiles.slice(0, 20),
               recommendation:
-                'Research crews should print findings to stdout — do not write files to disk. Cargo is captured from terminal output.'
+                'Research/architect crews should print findings to stdout — do not write files to disk. Cargo is captured from terminal output.'
             })
           );
         }
@@ -920,12 +986,12 @@ NOTES: <specific file:line references for any issues found>
         if (status === 'error') {
           db.prepare(
             "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
-          ).run('Research crew error', missionId);
+          ).run(`${this.opts.missionType} crew error`, missionId);
           db.prepare(
             "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
           ).run(
             crewId,
-            JSON.stringify({ missionId, status: 'failed', reason: 'Research crew error' })
+            JSON.stringify({ missionId, status: 'failed', reason: `${this.opts.missionType} crew error` })
           );
           db.prepare(
             "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)"
@@ -933,7 +999,7 @@ NOTES: <specific file:line references for any issues found>
             crewId,
             JSON.stringify({
               status: 'error',
-              reason: 'Research crew error (git changes discarded)'
+              reason: `${this.opts.missionType} crew error (git changes discarded)`
             })
           );
           overrideStatus = 'error';
@@ -954,9 +1020,10 @@ NOTES: <specific file:line references for any issues found>
         const fullOutput = this.outputLines.join('\n');
         const summary = this.resultText ?? this.outputLines.slice(-20).join('\n');
         const hasOutput = fullOutput.trim().length > 0;
+        const missionLabel = this.opts.missionType === 'architect' ? 'Architect' : 'Research';
         const resultMsg = hasOutput
-          ? 'Research completed'
-          : 'Research completed (no output captured)';
+          ? `${missionLabel} completed`
+          : `${missionLabel} completed (no output captured)`;
 
         let fullManifest: string;
         let summaryManifest: string;
