@@ -17,8 +17,6 @@ import foIdle from '../../assets/first-officer-idle.png';
 import navigatorDefault from '../../assets/navigator-default.png';
 import navigatorWorking from '../../assets/navigator-working.png';
 import navigatorStandby from '../../assets/navigator-standby.png';
-import navigatorThinking from '../../assets/navigator-thinking.png';
-import navigatorAlert from '../../assets/navigator-alert.png';
 
 const FO_IMAGES: Record<string, string> = {
   idle: foIdle,
@@ -30,8 +28,6 @@ const FO_IMAGES: Record<string, string> = {
 const NAVIGATOR_IMAGES: Record<string, string> = {
   standby: navigatorStandby,
   working: navigatorWorking,
-  thinking: navigatorThinking,
-  alert: navigatorAlert,
   default: navigatorDefault
 };
 
