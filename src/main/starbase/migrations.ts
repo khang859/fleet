@@ -312,10 +312,11 @@ export const MIGRATIONS: Migration[] = [
     sql: `
       -- Shift existing steps 3-6 up to 6-9 to make room for decide + architect steps.
       -- Update from highest to lowest to avoid UNIQUE(protocol_id, step_order) conflicts.
-      UPDATE protocol_steps SET step_order = 9 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 6;
-      UPDATE protocol_steps SET step_order = 8 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 5;
-      UPDATE protocol_steps SET step_order = 7 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 4;
-      UPDATE protocol_steps SET step_order = 6 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 3;
+      -- Guards prevent conflicts when migration re-runs on an already-migrated DB.
+      UPDATE protocol_steps SET step_order = 9 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 6 AND NOT EXISTS (SELECT 1 FROM protocol_steps WHERE protocol_id = 'builtin-research-deploy' AND step_order = 9);
+      UPDATE protocol_steps SET step_order = 8 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 5 AND NOT EXISTS (SELECT 1 FROM protocol_steps WHERE protocol_id = 'builtin-research-deploy' AND step_order = 8);
+      UPDATE protocol_steps SET step_order = 7 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 4 AND NOT EXISTS (SELECT 1 FROM protocol_steps WHERE protocol_id = 'builtin-research-deploy' AND step_order = 7);
+      UPDATE protocol_steps SET step_order = 6 WHERE protocol_id = 'builtin-research-deploy' AND step_order = 3 AND NOT EXISTS (SELECT 1 FROM protocol_steps WHERE protocol_id = 'builtin-research-deploy' AND step_order = 6);
 
       -- Insert new steps: decide (3), deploy architect (4), await architect cargo (5).
       INSERT OR IGNORE INTO protocol_steps (protocol_id, step_order, type, config, description) VALUES
