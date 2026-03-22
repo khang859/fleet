@@ -224,6 +224,45 @@ export function Sidebar({
     });
   }, []);
 
+  const doSwitchWorkspace = useCallback(
+    async (wsId: string) => {
+      setSwitchConfirmId(null);
+
+      // Cancel any pending autosave and flush the current workspace now (Fix A + F)
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      const state = useWorkspaceStore.getState();
+      const workspaceWithCwds = {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      };
+      await window.fleet.layout.save({ workspace: workspaceWithCwds });
+      markClean();
+
+      // Kill current PTYs (Fix D)
+      const currentPaneIds = state.getAllPaneIds();
+      for (const paneId of currentPaneIds) {
+        window.fleet.pty.kill(paneId);
+        clearCreatedPty(paneId);
+      }
+
+      // Load target workspace, guard against missing entry (Fix E)
+      const loaded = await window.fleet.layout.load(wsId);
+      if (!loaded) return;
+      useWorkspaceStore.getState().loadWorkspace(loaded);
+
+      // Refresh sidebar workspace list (Fix C)
+      const res = await window.fleet.layout.list();
+      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
+    },
+    [markClean]
+  );
+
   const handleSwitchWorkspace = useCallback(
     (wsId: string) => {
       // If there are running terminals, confirm first
@@ -233,14 +272,8 @@ export function Sidebar({
       }
       void doSwitchWorkspace(wsId);
     },
-    [workspace.tabs.length]
+    [workspace.tabs.length, doSwitchWorkspace]
   );
-
-  const doSwitchWorkspace = useCallback(async (wsId: string) => {
-    setSwitchConfirmId(null);
-    const loaded = await window.fleet.layout.load(wsId);
-    useWorkspaceStore.getState().loadWorkspace(loaded);
-  }, []);
 
   // --- Auto-save with debounce ---
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -309,6 +342,11 @@ export function Sidebar({
       tabs: []
     };
     state.loadWorkspace(newWs);
+
+    // Refresh workspace list immediately (Fix 5 — don't wait for autosave)
+    void window.fleet.layout.list().then((res) => {
+      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
+    });
 
     // Add a default tab
     setTimeout(() => {
