@@ -31,7 +31,7 @@ const OUTPUT_ATLAS = join(
   'sc-sprite-atlas.ts'
 );
 
-const SHEET_SIZE = 576;
+const SHEET_SIZE = 640;
 
 // ---------------------------------------------------------------------------
 // Sprite layout — pixel-level positions for every asset
@@ -203,6 +203,20 @@ async function buildManifest(): Promise<SpriteEntry[]> {
       x: i * 64,
       y: 64,
       atlasGroup: `crew-${variant}`,
+      frameIndex: 0
+    });
+  });
+
+  // ---- Row 1 continued: Navigator avatars (y=64, 64x64 each, after crew) ----
+  const navigatorVariants = ['default', 'working', 'standby', 'thinking', 'alert'];
+  navigatorVariants.forEach((variant, i) => {
+    entries.push({
+      src: join(SPRITES_RAW, 'avatars', `navigator-${variant}.png`),
+      w: 64,
+      h: 64,
+      x: (crewVariants.length + i) * 64,
+      y: 64,
+      atlasGroup: `navigator-${variant}`,
       frameIndex: 0
     });
   });
