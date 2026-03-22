@@ -353,47 +353,59 @@ export class SocketServer extends EventEmitter {
         const summary = typeof args.summary === 'string' ? args.summary : undefined;
         const prompt = typeof args.prompt === 'string' ? args.prompt : undefined;
         const type = typeof args.type === 'string' ? args.type : undefined;
-        const VALID_MISSION_TYPES = ['code', 'research', 'review', 'architect'];
+        const VALID_MISSION_TYPES = ['code', 'research', 'review', 'architect', 'repair'];
         const rawPrBranch = args['pr-branch'];
         const prBranch = typeof rawPrBranch === 'string' ? rawPrBranch : undefined;
+        const rawOriginalMissionId = args['original-mission-id'];
+        const originalMissionId =
+          rawOriginalMissionId != null ? Number(rawOriginalMissionId) : undefined;
 
         if (!sectorId) {
           throw new CodedError('mission.create requires --sector <id>', 'BAD_REQUEST');
         }
         if (!type) {
           throw new CodedError(
-            'mission.create requires --type <code|research|review|architect>.\n' +
+            'mission.create requires --type <code|research|review|architect|repair>.\n' +
               'Mission types:\n' +
               '  code      — produces git commits (code changes, bug fixes, features)\n' +
               '  research  — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
               '  review    — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n' +
               '  architect — analyzes the codebase and produces an implementation blueprint (no git changes)\n' +
-              'Usage: fleet missions add --sector <id> --type <code|research|review|architect> --summary "short title" --prompt "detailed instructions"',
+              '  repair    — fixes CI failures or review comments on an existing PR branch (requires --pr-branch)\n' +
+              'Usage: fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "short title" --prompt "detailed instructions"',
             'BAD_REQUEST'
           );
         }
         if (!VALID_MISSION_TYPES.includes(type)) {
           throw new CodedError(
-            `Invalid mission type "${type}". Must be "code", "research", "review", or "architect".\n` +
+            `Invalid mission type "${type}". Must be "code", "research", "review", "architect", or "repair".\n` +
               'Mission types:\n' +
               '  code      — produces git commits (code changes, bug fixes, features)\n' +
               '  research  — produces documentation artifacts (investigation, analysis, no git changes expected)\n' +
               '  review    — reviews a PR branch and produces a VERDICT (approved, changes-requested, escalated)\n' +
-              '  architect — analyzes the codebase and produces an implementation blueprint (no git changes)',
+              '  architect — analyzes the codebase and produces an implementation blueprint (no git changes)\n' +
+              '  repair    — fixes CI failures or review comments on an existing PR branch (requires --pr-branch)',
+            'BAD_REQUEST'
+          );
+        }
+        if (type === 'repair' && !prBranch) {
+          throw new CodedError(
+            'mission.create with type "repair" requires --pr-branch <branch-name>.\n' +
+              'Usage: fleet missions add --type repair --pr-branch <branch> --sector <id> --summary "..." --prompt "..."',
             'BAD_REQUEST'
           );
         }
         if (!prompt || prompt.trim().length === 0) {
           throw new CodedError(
             'mission.create requires a non-empty --prompt.\n' +
-              'Usage: fleet missions add --sector <id> --type <code|research|review|architect> --summary "short title" --prompt "detailed instructions"',
+              'Usage: fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "short title" --prompt "detailed instructions"',
             'BAD_REQUEST'
           );
         }
         if (!summary || summary.trim().length === 0) {
           throw new CodedError(
             'mission.create requires a non-empty --summary.\n' +
-              'Usage: fleet missions add --sector <id> --type <code|research|review|architect> --summary "short title" --prompt "detailed instructions"',
+              'Usage: fleet missions add --sector <id> --type <code|research|review|architect|repair> --summary "short title" --prompt "detailed instructions"',
             'BAD_REQUEST'
           );
         }
@@ -424,7 +436,8 @@ export class SocketServer extends EventEmitter {
           prompt,
           dependsOnMissionIds,
           type,
-          prBranch
+          prBranch,
+          originalMissionId
         });
 
         const nudge =
