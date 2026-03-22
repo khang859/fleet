@@ -141,4 +141,24 @@ describe('CrewService', () => {
       crewSvc.deployCrew({ sectorId: 'api', prompt: '', missionId: mission.id })
     ).rejects.toThrow('empty prompt');
   });
+
+  it('should throw when deploying repair mission without prBranch', async () => {
+    const missionSvc = crewSvc['deps'].missionService;
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Fix CI',
+      prompt: 'Fix it',
+      type: 'repair'
+    });
+
+    await expect(
+      crewSvc.deployCrew({
+        sectorId: 'api',
+        missionId: mission.id,
+        prompt: 'Fix it',
+        type: 'repair'
+        // intentionally no prBranch
+      })
+    ).rejects.toThrow('Repair mission');
+  });
 });

@@ -134,6 +134,13 @@ export class CrewService {
       );
     }
 
+    // Guard: repair missions require prBranch (they push to an existing PR)
+    if (missionType === 'repair' && !opts.prBranch) {
+      throw new Error(
+        `Repair mission ${missionId} requires a prBranch. Use --pr-branch when creating a repair mission.`
+      );
+    }
+
     // 3. Memory gate — queue the mission instead of deploying if free RAM is insufficient
     const minFreeGb = configService.getNumber('min_deploy_free_memory_gb');
     const availableGb = (await getAvailableMemoryBytes()) / (1024 * 1024 * 1024);
@@ -234,7 +241,8 @@ export class CrewService {
       env: this.deps.crewEnv,
       missionType,
       starbaseId,
-      prBranch: opts.prBranch
+      prBranch: opts.prBranch,
+      originalMissionId: missionRow.original_mission_id ?? undefined
     });
 
     // Update crew record with avatar
