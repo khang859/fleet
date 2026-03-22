@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import * as Popover from '@radix-ui/react-popover';
 import { useStarCommandStore } from '../../store/star-command-store';
 import type { CrewStatus, SectorInfo } from '../../store/star-command-store';
 
@@ -63,7 +64,6 @@ function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
 
-// @ts-expect-error: component used in future updates
 function CrewPopover({
   crew,
   sector,
@@ -245,6 +245,15 @@ export function AdmiralSidebar({
   const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus } =
     useStarCommandStore();
 
+  const [openCrewId, setOpenCrewId] = useState<string | null>(null);
+
+  const bySector = new Map<string, CrewStatus[]>();
+  for (const crew of crewList) {
+    const list = bySector.get(crew.sector_id) ?? [];
+    list.push(crew);
+    bySector.set(crew.sector_id, list);
+  }
+
   const activeCrew = crewList.filter((c) => c.status === 'active').length;
   const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length;
   const totalCrew = crewList.length;
@@ -253,7 +262,10 @@ export function AdmiralSidebar({
   const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default;
 
   return (
-    <div className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc">
+    <div
+      className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc"
+      onScroll={() => setOpenCrewId(null)}
+    >
       {/* Admiral avatar — full-res 512x512 source image */}
       <div className="flex flex-col items-center pt-6 pb-4 border-b border-neutral-800">
         <img
@@ -387,23 +399,53 @@ export function AdmiralSidebar({
           </div>
         </div>
 
-        {/* Crew list */}
+        {/* Crew list — sector-grouped with popover detail */}
         {crewList.length > 0 && (
           <div>
             <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
               Crew
             </h3>
-            <div className="space-y-1">
-              {crewList.map((crew) => (
-                <div key={crew.id} className="flex items-center gap-2 py-0.5">
-                  <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
-                  <span className="text-xs text-neutral-300 truncate flex-1">{crew.id}</span>
-                  <span className="text-[10px] font-mono text-neutral-600 uppercase">
-                    {crew.status}
-                  </span>
+            {Array.from(bySector.entries()).map(([sectorId, sectorCrew]) => {
+              const sector = sectors.find((s) => s.id === sectorId);
+              const sectorLabel = sector?.name ?? sectorId;
+              return (
+                <div key={sectorId} className="mb-2">
+                  <div className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest mb-1 pl-0.5">
+                    {sectorLabel}
+                  </div>
+                  {sectorCrew.map((crew) => (
+                    <Popover.Root
+                      key={crew.id}
+                      open={openCrewId === crew.id}
+                      onOpenChange={(open) => setOpenCrewId(open ? crew.id : null)}
+                    >
+                      <Popover.Trigger className="w-full flex items-center gap-2 py-0.5 pl-2 rounded text-left cursor-pointer hover:bg-neutral-800 transition-colors">
+                        <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
+                        <span className="text-xs text-neutral-300 truncate flex-1">
+                          {crew.mission_summary?.trim() || crew.id}
+                        </span>
+                        <span className="text-[10px] font-mono text-neutral-600 uppercase flex-shrink-0">
+                          {crew.status}
+                        </span>
+                      </Popover.Trigger>
+                      <Popover.Portal>
+                        <Popover.Content
+                          side="left"
+                          sideOffset={8}
+                          className="z-50"
+                        >
+                          <CrewPopover
+                            crew={crew}
+                            sector={sector}
+                            onClose={() => setOpenCrewId(null)}
+                          />
+                        </Popover.Content>
+                      </Popover.Portal>
+                    </Popover.Root>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })}
           </div>
         )}
       </div>

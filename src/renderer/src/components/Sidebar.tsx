@@ -305,6 +305,11 @@ export function Sidebar({
     };
     useWorkspaceStore.getState().switchWorkspace(newWs);
 
+    // Refresh workspace list immediately (Fix 5 — don't wait for autosave)
+    void window.fleet.layout.list().then((res) => {
+      setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
+    });
+
     // Add a default tab
     setTimeout(() => {
       useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir);
