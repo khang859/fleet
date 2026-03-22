@@ -11,6 +11,22 @@ const STATUS_COLORS: Record<string, string> = {
   lost: 'bg-red-500 animate-pulse'
 };
 
+const ACTIVE_STATUSES = new Set(['active', 'hailing', 'error', 'lost', 'idle']);
+const COMPLETED_STATUSES = new Set(['complete', 'timeout']);
+
+function relativeTime(iso: string): string {
+  const date = new Date(iso);
+  if (isNaN(date.getTime())) return '';
+  const diffMs = Date.now() - date.getTime();
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return 'just now';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} min ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr} hr ago`;
+  return `${Math.floor(diffHr / 24)} days ago`;
+}
+
 function StatusDot({ status }: { status: string }): React.JSX.Element {
   return (
     <span
@@ -214,6 +230,60 @@ function CrewCard({
   );
 }
 
+function CompletedCrewCard({ crew }: { crew: CrewStatus }): React.JSX.Element {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-neutral-800 rounded-lg border border-neutral-700 overflow-hidden">
+      <button
+        className="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-neutral-750 transition-colors"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <StatusDot status={crew.status} />
+        <span className="text-sm text-neutral-200 font-mono flex-1 truncate">{crew.id}</span>
+        <span className="text-[10px] font-mono text-neutral-500 uppercase flex-shrink-0">
+          {crew.status}
+        </span>
+        <span className="text-xs text-neutral-600">{expanded ? '▲' : '▼'}</span>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 border-t border-neutral-700 pt-2 space-y-3">
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div>
+              <label className="text-neutral-500">Sector</label>
+              <div className="text-neutral-300 font-mono">{crew.sector_id}</div>
+            </div>
+            <div>
+              <label className="text-neutral-500">Deployed</label>
+              <div className="text-neutral-300">{relativeTime(crew.created_at)}</div>
+            </div>
+            <div>
+              <label className="text-neutral-500">Completed</label>
+              <div className="text-neutral-300">{relativeTime(crew.updated_at)}</div>
+            </div>
+            {crew.worktree_branch && (
+              <div>
+                <label className="text-neutral-500">Branch</label>
+                <div className="text-neutral-300 font-mono truncate">{crew.worktree_branch}</div>
+              </div>
+            )}
+          </div>
+
+          {crew.mission_summary && (
+            <div className="text-xs">
+              <label className="text-neutral-500 block mb-1">Mission</label>
+              <div className="text-neutral-300 bg-neutral-900 rounded px-2 py-1">
+                {crew.mission_summary}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DeploySection({ onRefresh }: { onRefresh: () => void }): React.JSX.Element {
   const { sectors } = useStarCommandStore();
   const [sectorId, setSectorId] = useState('');
@@ -340,6 +410,7 @@ function MissionQueueSection(): React.JSX.Element {
 
 export function CrewPanel(): React.JSX.Element {
   const { crewList, setCrewList, setMissionQueue } = useStarCommandStore();
+  const [completedExpanded, setCompletedExpanded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -358,15 +429,21 @@ export function CrewPanel(): React.JSX.Element {
     void refresh();
   }, [refresh]);
 
+  const activeCrew = crewList.filter((c) => ACTIVE_STATUSES.has(c.status));
+  const completedCrew = crewList
+    .filter((c) => COMPLETED_STATUSES.has(c.status))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    .slice(0, 20);
+
   return (
     <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6">
       <div className="text-sm text-neutral-300 font-semibold">Crew &amp; Missions</div>
 
-      {/* Crew list */}
+      {/* Active crew */}
       <section>
-        <SectionHeader title="Active Crew" count={crewList.length} />
+        <SectionHeader title="Active" count={activeCrew.length} />
         <div className="space-y-2 mb-3">
-          {crewList.map((c) => (
+          {activeCrew.map((c) => (
             <CrewCard
               key={c.id}
               crew={c}
@@ -375,7 +452,7 @@ export function CrewPanel(): React.JSX.Element {
               }}
             />
           ))}
-          {crewList.length === 0 && <p className="text-xs text-neutral-600">No crew deployed</p>}
+          {activeCrew.length === 0 && <p className="text-xs text-neutral-600">No active crew</p>}
         </div>
       </section>
 
@@ -385,6 +462,29 @@ export function CrewPanel(): React.JSX.Element {
           void refresh();
         }}
       />
+
+      {/* Completed crew */}
+      {completedCrew.length > 0 && (
+        <section>
+          <button
+            className="w-full flex items-center justify-between mb-3"
+            onClick={() => setCompletedExpanded(!completedExpanded)}
+          >
+            <h3 className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+              Completed
+              <span className="ml-1 text-neutral-600">({completedCrew.length})</span>
+            </h3>
+            <span className="text-xs text-neutral-600">{completedExpanded ? '▲' : '▼'}</span>
+          </button>
+          {completedExpanded && (
+            <div className="space-y-2">
+              {completedCrew.map((c) => (
+                <CompletedCrewCard key={c.id} crew={c} />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Mission queue */}
       <MissionQueueSection />

@@ -60,6 +60,8 @@ const STATUS_LABELS: Record<string, string> = {
   lost: 'Lost'
 };
 
+const SIDEBAR_ACTIVE_STATUSES = new Set(['active', 'hailing', 'error', 'lost', 'idle']);
+
 function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
 }
@@ -247,8 +249,9 @@ export function AdmiralSidebar({
 
   const [openCrewId, setOpenCrewId] = useState<string | null>(null);
 
+  const activeSidebarCrew = crewList.filter((c) => SIDEBAR_ACTIVE_STATUSES.has(c.status));
   const bySector = new Map<string, CrewStatus[]>();
-  for (const crew of crewList) {
+  for (const crew of activeSidebarCrew) {
     const list = bySector.get(crew.sector_id) ?? [];
     list.push(crew);
     bySector.set(crew.sector_id, list);
@@ -400,7 +403,7 @@ export function AdmiralSidebar({
         </div>
 
         {/* Crew list — sector-grouped with popover detail */}
-        {crewList.length > 0 && (
+        {activeSidebarCrew.length > 0 && (
           <div>
             <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
               Crew
