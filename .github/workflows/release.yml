@@ -120,7 +120,7 @@ jobs:
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-vite build && npx electron-builder --linux --publish always --config /tmp/release-extra.json
+        run: npx electron-vite build && npx electron-builder --linux AppImage --publish always --config /tmp/release-extra.json
 
   publish-release:
     needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]
