@@ -15,6 +15,7 @@ import { computeFingerprint, classifyFromFingerprint } from './error-fingerprint
 import type { Navigator } from './navigator';
 import type { MissionService } from './mission-service';
 import { ProtocolService } from './protocol-service';
+import type { Analyst } from './analyst';
 import { GLOBAL_SECTOR_ID } from './sector-service';
 
 const execFileAsync = promisify(execFile);
@@ -31,6 +32,7 @@ type SentinelDeps = {
   onNudgeClick?: () => void;
   navigator?: Navigator;
   missionService?: MissionService;
+  analyst?: Analyst;
 };
 
 type CrewRow = {
@@ -436,11 +438,10 @@ export class Sentinel {
       const fingerprint = computeFingerprint(errorText);
 
       // Classify the error
-      const classification = classifyFromFingerprint(
-        errorText,
-        fingerprint,
-        row.last_error_fingerprint ?? undefined
-      );
+      const llmClassification = await this.deps.analyst?.classifyError(errorText) ?? null;
+      const classification =
+        llmClassification ??
+        classifyFromFingerprint(errorText, fingerprint, row.last_error_fingerprint ?? undefined);
 
       // Update fingerprint on the mission
       db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?').run(
@@ -1071,6 +1072,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
               'run', 'view', String(runId), '--log-failed'
             ]);
             failureLog = log.slice(0, 4000);
+            // Try to summarize CI logs with analyst; fall back to raw logs
+            if (this.deps.analyst) {
+              const summary = await this.deps.analyst.summarizeCILogs(failureLog);
+              if (summary) failureLog = summary;
+            }
           }
         }
     } catch {
