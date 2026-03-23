@@ -218,24 +218,23 @@ export function App(): React.JSX.Element {
     const flushWorkspace = (): void => {
       const state = useWorkspaceStore.getState();
 
-      // Save active workspace with serialized terminal content
+      // Save active workspace (without terminal scrollback — tabs restore with a clean terminal)
       const activeWithContent = {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+          splitRoot: injectLiveCwd(tab.splitRoot)
         }))
       };
       void window.fleet.layout.save({ workspace: activeWithContent });
 
-      // Save background workspaces — xterm instances are still mounted (display:none)
-      // so serializePane works and captures their scrollback too
+      // Save background workspaces
       for (const bgWs of state.backgroundWorkspaces.values()) {
         const bgWithContent = {
           ...bgWs,
           tabs: bgWs.tabs.map((tab) => ({
             ...tab,
-            splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+            splitRoot: injectLiveCwd(tab.splitRoot)
           }))
         };
         void window.fleet.layout.save({ workspace: bgWithContent });
