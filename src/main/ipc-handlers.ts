@@ -550,6 +550,31 @@ export function registerIpcHandlers(
     }
   });
 
+  // List immediate children of a directory (single level, no recursion)
+  ipcMain.handle(IPC_CHANNELS.FILE_READDIR, async (_event, { dirPath }: { dirPath: string }) => {
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      const sorted = entries
+        .filter((e) => e.isFile() || e.isDirectory())
+        .sort((a, b) => {
+          const aIsDir = a.isDirectory();
+          const bIsDir = b.isDirectory();
+          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      return {
+        success: true,
+        entries: sorted.map((e) => ({
+          name: e.name,
+          path: join(dirPath, e.name),
+          isDirectory: e.isDirectory()
+        }))
+      };
+    } catch (err) {
+      return { success: false, error: toError(err).message, entries: [] };
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.FILE_READ_BINARY, async (_event, filePath: string) => {
     try {
       const ext = extname(filePath).toLowerCase().slice(1);

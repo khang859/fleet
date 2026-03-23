@@ -61,6 +61,7 @@ export const IPC_CHANNELS = {
   PTY_DRAIN: 'fleet:pty-drain',
   PTY_ATTACH: 'pty:attach',
   SHOW_FOLDER_PICKER: 'show-folder-picker',
+  FILE_READDIR: 'file:readdir',
   FILE_READ: 'file:read',
   FILE_WRITE: 'file:write',
   FILE_STAT: 'file:stat',
