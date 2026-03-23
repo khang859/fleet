@@ -289,6 +289,20 @@ export type StarbaseLogEntry = {
   detail: unknown;
 };
 
+export type SentinelAlert = {
+  id: number;
+  type: string;
+  payload: string;
+  createdAt: string;
+  fromCrew: string | null;
+};
+
+export type SentinelStatusPayload = {
+  running: boolean;
+  lastSweepAt: string | null;
+  alerts: SentinelAlert[];
+};
+
 export type StarbaseStatusUpdatePayload = {
   crew?: StarbaseCrewRow[];
   missions?: StarbaseMissionRow[];
@@ -296,4 +310,5 @@ export type StarbaseStatusUpdatePayload = {
   unreadCount?: number;
   firstOfficer?: { status: 'idle' | 'working' | 'memo'; statusText: string; unreadMemos: number };
   navigator?: { status: 'standby' | 'working'; statusText: string };
+  sentinel?: SentinelStatusPayload;
 };

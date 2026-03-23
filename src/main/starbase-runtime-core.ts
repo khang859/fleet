@@ -784,6 +784,25 @@ export class StarbaseRuntimeCore {
   private buildSnapshot(): unknown {
     const deps = this.requireDeps();
     const unreadComms = deps.commsService.getUnread('admiral');
+
+    type AlertRow = { id: number; type: string; payload: string; created_at: string; from_crew: string | null };
+    const sentinelAlerts = deps.starbaseDb
+      .getDb()
+      .prepare<[], AlertRow>(
+        `SELECT id, type, payload, created_at, from_crew FROM comms
+         WHERE to_crew = 'admiral' AND read = 0
+           AND type IN ('lifesign_lost', 'mission_timeout')
+         ORDER BY created_at DESC`
+      )
+      .all()
+      .map((r) => ({
+        id: r.id,
+        type: r.type,
+        payload: r.payload,
+        createdAt: r.created_at,
+        fromCrew: r.from_crew
+      }));
+
     return {
       crew: deps.crewService.listCrew(),
       missions: deps.missionService.listMissions(),
@@ -797,7 +816,10 @@ export class StarbaseRuntimeCore {
       navigator: {
         status: deps.navigator.getStatus(),
         statusText: deps.navigator.getStatusText()
-      }
+      },
+      sentinel: deps.sentinel
+        ? { ...deps.sentinel.getStatus(), alerts: sentinelAlerts }
+        : null
     };
   }
 

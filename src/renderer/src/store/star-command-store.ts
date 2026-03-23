@@ -5,7 +5,8 @@ import type {
   StarbaseMissionRow,
   StarbaseSectorRow,
   StarbaseCommRow,
-  StarbaseMemoRow
+  StarbaseMemoRow,
+  SentinelStatusPayload
 } from '../../../shared/ipc-api';
 
 export type CrewStatus = StarbaseCrewRow & {
@@ -33,6 +34,8 @@ export type NavigatorStatus = {
   status: 'standby' | 'working';
   statusText: string;
 };
+
+export type SentinelStatus = SentinelStatusPayload;
 
 type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert';
 
@@ -72,6 +75,9 @@ type StarCommandStore = {
   // Navigator
   navigatorStatus: NavigatorStatus;
 
+  // Sentinel
+  sentinelStatus: SentinelStatus;
+
   // Actions
   setAdmiralPty: (
     paneId: string | null,
@@ -93,6 +99,7 @@ type StarCommandStore = {
   setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
   setFirstOfficerStatus: (status: FirstOfficerStatus) => void;
   setNavigatorStatus: (status: NavigatorStatus) => void;
+  setSentinelStatus: (status: SentinelStatus) => void;
 };
 
 export const useStarCommandStore = create<StarCommandStore>((set) => ({
@@ -112,6 +119,7 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   admiralStatusText: 'Standing by',
   firstOfficerStatus: { status: 'idle', statusText: 'Idle', unreadMemos: 0 },
   navigatorStatus: { status: 'standby', statusText: 'Idle' },
+  sentinelStatus: { running: false, lastSweepAt: null, alerts: [] },
 
   setAdmiralPty: (paneId, status, error = null, exitCode = null) =>
     set({
@@ -132,5 +140,6 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   setAdmiralState: (state, statusText) =>
     set({ admiralAvatarState: state, admiralStatusText: statusText }),
   setFirstOfficerStatus: (status) => set({ firstOfficerStatus: status }),
-  setNavigatorStatus: (status) => set({ navigatorStatus: status })
+  setNavigatorStatus: (status) => set({ navigatorStatus: status }),
+  setSentinelStatus: (status) => set({ sentinelStatus: status })
 }));

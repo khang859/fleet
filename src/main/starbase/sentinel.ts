@@ -132,6 +132,7 @@ export class Sentinel {
   /** Last sent alert level per type — only re-send when level changes or clears */
   private lastAlertLevel: Record<string, string | null> = {};
   private lastNudgeAt = 0;
+  private lastSweepAt: Date | null = null;
   private protocolService: ProtocolService;
   private navigator?: Navigator;
   private db: Database.Database;
@@ -208,6 +209,7 @@ export class Sentinel {
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'lifesign_lost', ?)"
       ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
     // 2. Mission deadline check
@@ -233,6 +235,10 @@ export class Sentinel {
       db.prepare(
         "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)"
       ).run(crew.id, JSON.stringify({ reason: 'deadline expired' }));
+      db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_timeout', ?)"
+      ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
     // 3. Sector path validation
@@ -919,6 +925,14 @@ ${mission.review_notes ?? 'No specific notes provided'}
       );
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
+    this.lastSweepAt = new Date();
+  }
+
+  getStatus(): { running: boolean; lastSweepAt: string | null } {
+    return {
+      running: this.interval !== null,
+      lastSweepAt: this.lastSweepAt?.toISOString() ?? null
+    };
   }
 
   private async pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {

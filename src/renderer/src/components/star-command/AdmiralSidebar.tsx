@@ -266,7 +266,7 @@ export function AdmiralSidebar({
   avatarVariant: string;
   onMemoClick?: () => void;
 }): React.JSX.Element {
-  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus, navigatorStatus } =
+  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus, navigatorStatus, sentinelStatus } =
     useStarCommandStore();
 
   const [openCrewId, setOpenCrewId] = useState<string | null>(null);
@@ -399,12 +399,48 @@ export function AdmiralSidebar({
           <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
             Sentinel
           </h3>
-          <div className="flex items-center gap-2">
-            <StatusDot color={errorCrew > 0 ? 'bg-red-500' : 'bg-green-400'} />
-            <span className="text-xs text-neutral-300">
-              {errorCrew > 0 ? `${errorCrew} alert${errorCrew > 1 ? 's' : ''}` : 'All clear'}
+          <div className="flex items-center gap-2 mb-2">
+            <StatusDot color={sentinelStatus.running ? 'bg-green-400' : 'bg-red-500'} />
+            <span className="text-xs text-neutral-400">
+              {sentinelStatus.running ? 'Running' : 'Stopped'}
             </span>
+            {sentinelStatus.lastSweepAt && (
+              <span className="text-[10px] font-mono text-neutral-600 ml-auto">
+                {relativeTime(sentinelStatus.lastSweepAt)}
+              </span>
+            )}
           </div>
+          {sentinelStatus.alerts.length === 0 ? (
+            <div className="flex items-center gap-2">
+              <StatusDot color="bg-neutral-600" />
+              <span className="text-xs text-neutral-500">All clear</span>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {sentinelStatus.alerts.map((alert) => (
+                <div key={alert.id} className="flex items-start gap-2 group">
+                  <StatusDot color="bg-red-500 mt-0.5" />
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs text-red-300 font-mono">
+                      {alert.type === 'lifesign_lost' ? 'Lifesign lost' : 'Mission timeout'}
+                    </span>
+                    {alert.fromCrew && (
+                      <span className="block text-[10px] text-neutral-600 truncate font-mono">
+                        {alert.fromCrew}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => { void window.fleet.starbase.markCommsRead(alert.id); }}
+                    aria-label="Dismiss alert"
+                    className="text-neutral-700 hover:text-neutral-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 text-xs leading-none"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Inbox */}

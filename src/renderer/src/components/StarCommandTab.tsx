@@ -59,7 +59,8 @@ export function StarCommandTab(): React.JSX.Element {
     depCheckResults,
     setDepCheck,
     setFirstOfficerStatus,
-    setNavigatorStatus
+    setNavigatorStatus,
+    setSentinelStatus
   } = useStarCommandStore();
 
   const { isDragOver: isTerminalDragOver, handlers: terminalDragHandlers } =
@@ -181,10 +182,11 @@ export function StarCommandTab(): React.JSX.Element {
       if (p.unreadCount !== undefined) setUnreadCount(p.unreadCount);
       if (p.firstOfficer !== undefined) setFirstOfficerStatus(p.firstOfficer);
       if (p.navigator !== undefined) setNavigatorStatus(p.navigator);
+      if (p.sentinel !== undefined) setSentinelStatus(p.sentinel);
     });
 
     return cleanup;
-  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus, setNavigatorStatus]);
+  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus, setNavigatorStatus, setSentinelStatus]);
 
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {
