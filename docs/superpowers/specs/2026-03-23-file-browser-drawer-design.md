@@ -1,7 +1,7 @@
 # File Browser Drawer — Design Spec
 
 **Date:** 2026-03-23
-**Status:** Approved
+**Status:** Approved (v2 — post-review fixes)
 
 ## Overview
 
@@ -27,11 +27,19 @@ Added to `ipc-handlers.ts`. Returns the immediate children of a directory — no
 // Request
 { dirPath: string }
 
-// Response
-{ entries: { name: string; path: string; isDirectory: boolean }[] }
+// Response — matches existing { success, error } convention
+{
+  success: boolean
+  error?: string        // present when success is false
+  entries: {
+    name: string
+    path: string        // absolute path
+    isDirectory: boolean
+  }[]
+}
 ```
 
-Entries are sorted: directories first, then files, both alphabetically. Permission errors return `{ entries: [] }` with an error flag.
+Entries are sorted: directories first, then files, both alphabetically. On permission error, return `{ success: false, error: 'Permission denied', entries: [] }`.
 
 ### New Component: `FileBrowserDrawer`
 
@@ -39,16 +47,24 @@ Entries are sorted: directories first, then files, both alphabetically. Permissi
 - Controlled by `fileBrowserOpen: boolean` state in `App.tsx`.
 - Opened/closed via `fleet:toggle-file-browser` custom DOM event (consistent with all other panels).
 
+### New Utility: `src/renderer/src/lib/shell-utils.ts`
+
+Extract `quotePathForShell` from `use-terminal-drop.ts` into a shared utility file and export it. Update `use-terminal-drop.ts` to import from there. `FileBrowserDrawer` imports from the same utility.
+
+```ts
+export function quotePathForShell(filePath: string, platform: string): string
+```
+
 ### State (owned by `FileBrowserDrawer`)
 
 | State | Type | Description |
 |---|---|---|
-| `rootDir` | `string` | Current root. Defaults to `window.fleet.homeDir`. Persisted to `localStorage` as `fleet:file-browser-root`. |
+| `rootDir` | `string` | Current root. Defaults to `window.fleet.homeDir` (with `''` guard — see Edge Cases). Persisted to `localStorage` as `fleet:file-browser-root`. On first load with no stored value, falls back to `window.fleet.homeDir`. |
 | `nodes` | `TreeNode[]` | Top-level tree nodes. Reset when root changes. |
 | `selectedPaths` | `Set<string>` | Absolute paths of selected files. |
 | `query` | `string` | Search input value. When non-empty, switches to flat fuzzy mode. |
-| `searchResults` | `FileEntry[]` | Results from `file.list(rootDir)` filtered by query. |
-| `isSearchLoading` | `boolean` | Loading indicator for search mode. |
+| `searchFiles` | `FileEntry[]` | Full flat file list loaded once on first keystroke (files only — no directories). Filtered client-side via `fuzzyMatch`. |
+| `isSearchLoading` | `boolean` | True while `file.list` is in-flight. |
 
 ### TreeNode Shape
 
@@ -76,7 +92,7 @@ FileBrowserDrawer
 │   └── Close button (×)
 ├── Search input
 │   ├── Empty → TreeView mode
-│   └── Non-empty → FlatList mode (fuzzy results)
+│   └── Non-empty → FlatList mode (fuzzy results, files only)
 ├── Content (scrollable)
 │   ├── TreeView (default)
 │   │   └── TreeNode (recursive, lazy children)
@@ -98,18 +114,17 @@ FileBrowserDrawer
 - Directories are not selectable.
 
 ### Search Mode
-- When the user types in the search input, the view switches to a flat fuzzy list.
-- Calls the existing `file.list(rootDir)` IPC (which uses `git ls-files` or recursive walk).
-- Results filtered with the existing `fuzzyMatch` utility from `lib/commands`.
-- Clearing the input returns to the tree (preserving expand state).
+- When the user types, the view switches to a flat fuzzy list showing **files only** (search uses `file.list` which returns files, not directories).
+- `file.list(rootDir)` is called **once** on the first non-empty keystroke and the result is cached in `searchFiles` for the lifetime of the drawer session. Subsequent keystrokes filter client-side via the existing `fuzzyMatch` utility from `lib/commands`.
+- Clearing the input returns to the tree (preserving expand state and `searchFiles` cache).
 
 ### Changing Root
 - Clicking the root dir label in the header opens the native folder picker via `window.fleet.showFolderPicker()`.
-- On selection: update `rootDir`, persist to `localStorage`, reset tree nodes and selection.
+- On selection: update `rootDir`, persist to `localStorage`, reset tree nodes, selection, and `searchFiles` cache.
 
 ### Pasting Paths ("Done")
 1. Collect all paths from `selectedPaths`.
-2. Apply `quotePathForShell(path, window.fleet.platform)` to each (reuse logic from `use-terminal-drop.ts`).
+2. Apply `quotePathForShell(path, window.fleet.platform)` to each (from `lib/shell-utils.ts`).
 3. Join with a single space, append a trailing space.
 4. Call `window.fleet.pty.input({ paneId: activePaneId, data })`.
 5. Close the drawer.
@@ -127,15 +142,33 @@ FileBrowserDrawer
 ## Triggers
 
 ### Keyboard Shortcut
-- `Cmd+Shift+F` (Mac) / `Ctrl+Shift+F` (Windows/Linux)
-- Registered in the existing keybindings/shortcuts system.
-- Dispatches `fleet:toggle-file-browser`.
+- **Mac:** `Cmd+Shift+E` — free in current `ALL_SHORTCUTS` list, consistent with VS Code Explorer convention
+- **Non-Mac:** `Ctrl+Shift+E` — free in current `ALL_SHORTCUTS` list
+
+Registered by adding an entry to `ALL_SHORTCUTS` in `src/renderer/src/lib/shortcuts.ts`:
+
+```ts
+{
+  id: 'file-browser',
+  label: 'Browse files',
+  mac: { key: 'E', meta: true, shift: true },
+  other: { key: 'E', ctrl: true, shift: true }
+}
+```
+
+Handled in `src/renderer/src/hooks/use-pane-navigation.ts` alongside all other shortcut handlers — dispatches `fleet:toggle-file-browser`.
+
+> **Linux note:** `Ctrl+Shift+E` is the fcitx/ibus IME toggle on some Linux setups and may be silently consumed by the OS before Electron sees it. Users affected can rebind via settings. If this proves widespread in practice, migrate the non-Mac binding to `Ctrl+Shift+B`.
 
 ### Toolbar Button
-- Added to `PaneToolbar` (right side, alongside existing split/close buttons).
-- Icon: folder-open or similar from Lucide.
-- Tooltip: "Browse files (⌘⇧F)".
-- Dispatches `fleet:toggle-file-browser`.
+- Added to `PaneToolbar` via a new **optional** callback prop: `onFileBrowser?: () => void`.
+- Threaded from `App.tsx` → `PaneGrid` → `TerminalPane` → `PaneToolbar`, same pattern as `onGitChanges`.
+- Icon: `FolderOpen` from Lucide.
+- Tooltip: `Browse files (⌘⇧E)` / `Browse files (Ctrl+Shift+E)`.
+- Calls `onFileBrowser()`, which in the parent dispatches `fleet:toggle-file-browser`.
+
+### Command Palette
+- Register in `src/renderer/src/lib/commands.ts` → `createCommandRegistry()` so the action appears when searching the palette.
 
 ---
 
@@ -144,11 +177,12 @@ FileBrowserDrawer
 | Scenario | Behavior |
 |---|---|
 | Empty directory | "This folder is empty" placeholder under the node |
-| `FILE_READDIR` fails (permission denied, deleted) | Inline error under the folder node: "Can't read folder" — rest of tree unaffected |
+| `FILE_READDIR` fails (`success: false`) | Inline error under the folder node: "Can't read folder" — rest of tree unaffected |
 | Search returns no results | "No matching files" message |
-| `file.list` fails/slow in search mode | Loading indicator while waiting; "Couldn't load file list" on failure |
+| `file.list` fails/slow in search mode | Loading indicator while in-flight; "Couldn't load file list" on failure |
 | Active pane is not a terminal (e.g. file tab) | "Done" disabled, note: "Focus a terminal to paste" |
-| Home dir doesn't exist | Fall back to active pane CWD, then `/` |
+| `window.fleet.homeDir` is `''` (HOME not set) | Fall back to active pane CWD, then `/`. Two-step lookup: `const paneId = useWorkspaceStore.getState().activePaneId; const cwd = useCwdStore.getState().cwds.get(paneId ?? '') ?? '/'` — synchronous, no IPC needed |
+| `localStorage` has no stored root on first launch | Use `window.fleet.homeDir` (with `''` guard above) |
 | Drawer open during terminal resize | No impact — drawer is `position: fixed` overlay, zero effect on PTY layout |
 
 ---
@@ -157,12 +191,18 @@ FileBrowserDrawer
 
 ### Create
 - `src/renderer/src/components/FileBrowserDrawer.tsx` — main drawer component
+- `src/renderer/src/lib/shell-utils.ts` — extract and export `quotePathForShell`
 
 ### Modify
 - `src/main/ipc-handlers.ts` — add `FILE_READDIR` handler
 - `src/shared/constants.ts` — add `FILE_READDIR` IPC channel constant
-- `src/shared/ipc-api.ts` — add `FileDirEntry` type and request/response types
-- `src/preload/index.ts` — expose `window.fleet.file.readdir(dirPath)`
+- `src/shared/ipc-api.ts` — add `DirEntry` type and `ReaddirResponse` type
+- `src/preload/index.ts` — expose `window.fleet.file.readdir(dirPath): Promise<ReaddirResponse>`
 - `src/renderer/src/App.tsx` — add `fileBrowserOpen` state, event listener, render `<FileBrowserDrawer>`
-- `src/renderer/src/components/PaneToolbar.tsx` — add folder-browse icon button
-- `src/renderer/src/components/ShortcutsHint.tsx` (or keybindings) — register `Cmd+Shift+F`
+- `src/renderer/src/components/PaneToolbar.tsx` — add `onFileBrowser?: () => void` prop + button
+- `src/renderer/src/components/PaneGrid.tsx` — thread `onFileBrowser` down to `TerminalPane`
+- `src/renderer/src/components/TerminalPane.tsx` — thread `onFileBrowser` down to `PaneToolbar`
+- `src/renderer/src/lib/shortcuts.ts` — add `file-browser` entry to `ALL_SHORTCUTS`
+- `src/renderer/src/hooks/use-pane-navigation.ts` — handle `file-browser` shortcut, dispatch event
+- `src/renderer/src/lib/commands.ts` — add `file-browser` command to palette registry
+- `src/renderer/src/hooks/use-terminal-drop.ts` — import `quotePathForShell` from `lib/shell-utils.ts`
