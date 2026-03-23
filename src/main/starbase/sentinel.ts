@@ -3,7 +3,7 @@ import { access } from 'fs/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
-import { Notification } from 'electron';
+import { createRequire } from 'node:module';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
 import type { SocketSupervisor } from '../socket-supervisor';
@@ -17,6 +17,22 @@ import type { MissionService } from './mission-service';
 import { ProtocolService } from './protocol-service';
 import type { Analyst } from './analyst';
 import { GLOBAL_SECTOR_ID } from './sector-service';
+
+// Lazily access Notification so this module can be imported in the starbase-runtime
+// child process (ELECTRON_RUN_AS_NODE=1) where Electron's renderer-only APIs are absent.
+let _NotificationClass: typeof import('electron').Notification | null | undefined;
+function getNotificationClass(): typeof import('electron').Notification | null {
+  if (_NotificationClass !== undefined) return _NotificationClass;
+  try {
+    const req = createRequire(import.meta.url);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const electron = req('electron') as typeof import('electron');
+    _NotificationClass = electron.Notification ?? null;
+  } catch {
+    _NotificationClass = null;
+  }
+  return _NotificationClass;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -575,7 +591,8 @@ export class Sentinel {
 
     // Nudge: summary notification for comms unread >5 minutes
     const { settingsStore } = this.deps;
-    if (settingsStore && Notification.isSupported()) {
+    const NotifClass = getNotificationClass();
+    if (settingsStore && NotifClass?.isSupported()) {
       const settings = settingsStore.get();
       if (settings.notifications.comms.os) {
         const NUDGE_INTERVAL_MS = 5 * 60 * 1000;
@@ -592,7 +609,7 @@ export class Sentinel {
           if (staleComms.length > 0) {
             const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
             const body = `${staleComms.length} unread transmission${staleComms.length > 1 ? 's' : ''} from ${uniqueCrews.size} crew${uniqueCrews.size > 1 ? 's' : ''}`;
-            const notif = new Notification({ title: 'Fleet', body });
+            const notif = new NotifClass!({ title: 'Fleet', body });
             if (this.deps.onNudgeClick) {
               notif.on('click', this.deps.onNudgeClick);
             }
