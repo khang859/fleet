@@ -4,7 +4,7 @@ import { spawn } from 'child_process';
 import { filterEnv as defaultFilterEnv } from '../env-utils';
 
 const DEFAULT_MODEL = 'claude-haiku-4-5-20251001';
-const TIMEOUT_MS = 5000;
+const TIMEOUT_MS = 30_000; // 30 seconds — allows for Claude CLI cold-start + network latency
 const DEGRADED_COOLDOWN_MS = 5 * 60 * 1000;
 
 export class AnalystError extends Error {
@@ -21,18 +21,21 @@ export interface AnalystDeps {
   db: Database.Database;
   filterEnv?: () => Record<string, string>;
   model?: string;
+  timeoutMs?: number;
 }
 
 export class Analyst {
   private readonly db: Database.Database;
   private readonly getEnv: () => Record<string, string>;
   private readonly model: string;
+  private readonly timeoutMs: number;
   private readonly lastDegradedAt = new Map<string, number>();
 
   constructor(deps: AnalystDeps) {
     this.db = deps.db;
     this.getEnv = deps.filterEnv ?? defaultFilterEnv;
     this.model = deps.model ?? DEFAULT_MODEL;
+    this.timeoutMs = deps.timeoutMs ?? TIMEOUT_MS;
   }
 
   /** Extract the first JSON object from free-form LLM text output. */
@@ -56,11 +59,11 @@ export class Analyst {
   }
 
   /**
-   * Spawn `claude --print --model <model>`, write prompt to stdin,
+   * Single attempt: spawn `claude --print --model <model>`, write prompt to stdin,
    * collect stdout, parse the first JSON object from the response.
-   * Kills the process after TIMEOUT_MS if it hasn't exited.
+   * Kills the process and rejects with 'Analyst subprocess timed out' after timeoutMs.
    */
-  private run(prompt: string): Promise<unknown> {
+  private runAttempt(prompt: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const proc = spawn('claude', ['--print', '--model', this.model], {
         env: this.getEnv(),
@@ -74,7 +77,7 @@ export class Analyst {
         timedOut = true;
         proc.kill('SIGKILL');
         reject(new Error('Analyst subprocess timed out'));
-      }, TIMEOUT_MS);
+      }, this.timeoutMs);
 
       proc.stdout.on('data', (chunk: Buffer) => {
         stdout += chunk.toString();
@@ -104,6 +107,19 @@ export class Analyst {
         clearTimeout(timer);
         reject(err);
       });
+    });
+  }
+
+  /**
+   * Run the analyst subprocess, retrying once on timeout to guard against
+   * transient cold-start spikes. A second timeout propagates to the caller.
+   */
+  private run(prompt: string): Promise<unknown> {
+    return this.runAttempt(prompt).catch((err: unknown) => {
+      if (err instanceof Error && err.message === 'Analyst subprocess timed out') {
+        return this.runAttempt(prompt);
+      }
+      throw err;
     });
   }
 
