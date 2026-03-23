@@ -11,7 +11,7 @@ import { getAvailableMemoryBytes } from './available-memory';
 import type { FirstOfficer } from './first-officer';
 import type { CrewService } from './crew-service';
 import type { SettingsStore } from '../settings-store';
-import { computeFingerprint, classifyError } from './error-fingerprint';
+import { computeFingerprint, classifyFromFingerprint } from './error-fingerprint';
 import type { Navigator } from './navigator';
 import type { MissionService } from './mission-service';
 import { ProtocolService } from './protocol-service';
@@ -436,7 +436,7 @@ export class Sentinel {
       const fingerprint = computeFingerprint(errorText);
 
       // Classify the error
-      const classification = classifyError(
+      const classification = classifyFromFingerprint(
         errorText,
         fingerprint,
         row.last_error_fingerprint ?? undefined
