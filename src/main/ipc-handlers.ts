@@ -16,7 +16,8 @@ import type {
   LayoutSaveRequest,
   LayoutListResponse,
   PaneFocusedPayload,
-  StarbaseRuntimeStatus
+  StarbaseRuntimeStatus,
+  DirEntry
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -554,22 +555,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.FILE_READDIR, async (_event, { dirPath }: { dirPath: string }) => {
     try {
       const entries = await readdir(dirPath, { withFileTypes: true });
-      const sorted = entries
-        .filter((e) => e.isFile() || e.isDirectory())
-        .sort((a, b) => {
-          const aIsDir = a.isDirectory();
-          const bIsDir = b.isDirectory();
-          if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-          return a.name.localeCompare(b.name);
-        });
-      return {
-        success: true,
-        entries: sorted.map((e) => ({
-          name: e.name,
-          path: join(dirPath, e.name),
-          isDirectory: e.isDirectory()
-        }))
-      };
+      return { success: true, entries: sortAndMapDirEntries(entries, dirPath) };
     } catch (err) {
       return { success: false, error: toError(err).message, entries: [] };
     }
@@ -596,4 +582,21 @@ export function registerIpcHandlers(
       return { success: false, error: toError(err).message };
     }
   });
+}
+
+// Exported for testing
+export function sortAndMapDirEntries(entries: Dirent[], dirPath: string): DirEntry[] {
+  return entries
+    .filter((e) => e.isFile() || e.isDirectory())
+    .sort((a, b) => {
+      const aIsDir = a.isDirectory();
+      const bIsDir = b.isDirectory();
+      if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    })
+    .map((e) => ({
+      name: e.name,
+      path: join(dirPath, e.name),
+      isDirectory: e.isDirectory()
+    }));
 }

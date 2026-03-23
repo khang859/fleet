@@ -1,39 +1,55 @@
 import { describe, it, expect } from 'vitest';
-import { join } from 'path';
+import type { Dirent } from 'fs';
+import { sortAndMapDirEntries } from '../ipc-handlers';
 
-describe('FILE_READDIR handler logic', () => {
-  it('sorts directories before files, then alphabetically', () => {
-    type Entry = { name: string; isFile: () => boolean; isDirectory: () => boolean };
-    const raw: Entry[] = [
-      { name: 'zoo.ts', isFile: () => true, isDirectory: () => false },
-      { name: 'alpha', isFile: () => false, isDirectory: () => true },
-      { name: 'beta.ts', isFile: () => true, isDirectory: () => false },
-      { name: 'mango', isFile: () => false, isDirectory: () => true }
+function makeDirent(name: string, isDir: boolean, isFile: boolean = !isDir): Dirent {
+  return {
+    name,
+    isDirectory: () => isDir,
+    isFile: () => isFile,
+    isSymbolicLink: () => false,
+    isBlockDevice: () => false,
+    isCharacterDevice: () => false,
+    isFIFO: () => false,
+    isSocket: () => false,
+    path: '',
+    parentPath: '',
+  } as Dirent;
+}
+
+describe('sortAndMapDirEntries', () => {
+  it('sorts directories before files, both groups alphabetical', () => {
+    const entries = [
+      makeDirent('zoo.ts', false),
+      makeDirent('alpha', true),
+      makeDirent('beta.ts', false),
+      makeDirent('mango', true),
     ];
-
-    const sorted = raw
-      .filter((e) => e.isFile() || e.isDirectory())
-      .sort((a, b) => {
-        const aIsDir = a.isDirectory();
-        const bIsDir = b.isDirectory();
-        if (aIsDir !== bIsDir) return aIsDir ? -1 : 1;
-        return a.name.localeCompare(b.name);
-      });
-
-    expect(sorted.map((e) => e.name)).toEqual(['alpha', 'mango', 'beta.ts', 'zoo.ts']);
+    const result = sortAndMapDirEntries(entries, '/root');
+    expect(result.map((e) => e.name)).toEqual(['alpha', 'mango', 'beta.ts', 'zoo.ts']);
   });
 
-  it('maps entries to the correct shape', () => {
-    type Entry = { name: string; isFile: () => boolean; isDirectory: () => boolean };
-    const entries: Entry[] = [
-      { name: 'src', isFile: () => false, isDirectory: () => true }
+  it('excludes symlinks (isFile and isDirectory both false)', () => {
+    const entries = [
+      makeDirent('link', false, false),
+      makeDirent('real.ts', false, true),
     ];
-    const dirPath = '/home/user/project';
-    const result = entries.map((e) => ({
-      name: e.name,
-      path: join(dirPath, e.name),
-      isDirectory: e.isDirectory()
-    }));
-    expect(result[0]).toEqual({ name: 'src', path: '/home/user/project/src', isDirectory: true });
+    const result = sortAndMapDirEntries(entries, '/root');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('real.ts');
+  });
+
+  it('maps entries to correct shape with absolute path', () => {
+    const entries = [makeDirent('src', true)];
+    const result = sortAndMapDirEntries(entries, '/home/user/project');
+    expect(result[0]).toEqual({
+      name: 'src',
+      path: '/home/user/project/src',
+      isDirectory: true,
+    });
+  });
+
+  it('returns empty array for empty input', () => {
+    expect(sortAndMapDirEntries([], '/any/path')).toEqual([]);
   });
 });
