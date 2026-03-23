@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.2
+- Fixed opening external links in system browser
+- Fixed missing --original-mission-id warning on repair missions
+- Fixed analyst timeout (increased to 30s, configurable, with retry)
+- Fixed Linux snap build failure by removing deb target
+
 ## v2.6.1
 - Added file browser drawer (Cmd+Shift+E)
 - Added Analyst service for LLM-powered error classification and PR verdict extraction
