@@ -22,7 +22,7 @@ jobs:
             exit 1
           fi
 
-  release-mac:
+  release-mac-arm64:
     needs: [verify-version]
     runs-on: macos-15
     timeout-minutes: 60
@@ -33,21 +33,51 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Rebuild native Electron deps
-        run: npx electron-builder install-app-deps
-      - name: Remove node-pty prebuilds for universal build
-        run: rm -rf node_modules/node-pty/prebuilds
+      - name: Rebuild native Electron deps (arm64)
+        run: npx electron-builder install-app-deps --arch arm64
       - name: Build app
         run: npx electron-vite build
       - name: Extract release notes config
         run: npx tsx scripts/extract-release-notes.ts /tmp/release-extra.json
-      - name: Package, sign, notarize and publish (universal)
+      - name: Package, sign, notarize and publish (arm64)
         uses: nick-fields/retry@v3
         with:
           max_attempts: 3
           timeout_minutes: 40
           retry_wait_seconds: 30
-          command: npx electron-builder --mac --universal --publish always --config /tmp/release-extra.json
+          command: npx electron-builder --mac --arm64 --publish always --config /tmp/release-extra.json
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+  release-mac-x64:
+    needs: [verify-version]
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Rebuild native Electron deps (x64)
+        run: npx electron-builder install-app-deps --arch x64
+      - name: Build app
+        run: npx electron-vite build
+      - name: Extract release notes config
+        run: npx tsx scripts/extract-release-notes.ts /tmp/release-extra.json
+      - name: Package, sign, notarize and publish (x64)
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: 3
+          timeout_minutes: 40
+          retry_wait_seconds: 30
+          command: npx electron-builder --mac --x64 --publish always --config /tmp/release-extra.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -93,7 +123,7 @@ jobs:
         run: npx electron-vite build && npx electron-builder --linux AppImage --publish always --config /tmp/release-extra.json
 
   publish-release:
-    needs: [release-mac, release-win, release-linux]
+    needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]
     runs-on: ubuntu-latest
     steps:
       - name: Publish draft release
