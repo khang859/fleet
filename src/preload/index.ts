@@ -32,7 +32,8 @@ import type {
   StarbaseCleanupResult,
   StarbaseLogEntry,
   StarbaseStatusUpdatePayload,
-  DeployResponse
+  DeployResponse,
+  ReaddirResponse
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings, UpdateStatus } from '../shared/types';
 
@@ -264,6 +265,8 @@ const fleetApi = {
       success: true;
       files: Array<{ path: string; relativePath: string; name: string }>;
     }> => typedInvoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
+    readdir: async (dirPath: string): Promise<ReaddirResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_READDIR, { dirPath }),
     onOpenInTab: (callback: (payload: FileOpenInTabPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.FILE_OPEN_IN_TAB, callback),
     readBinary: async (

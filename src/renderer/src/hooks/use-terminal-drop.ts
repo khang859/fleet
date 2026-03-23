@@ -1,12 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-
-function quotePathForShell(filePath: string, platform: string): string {
-  if (platform === 'win32') {
-    return '"' + filePath.replace(/"/g, '\\"') + '"';
-  }
-  // POSIX: single-quote, escape internal single quotes as '\''
-  return "'" + filePath.replace(/'/g, "'\\''") + "'";
-}
+import { quotePathForShell } from '../lib/shell-utils';
 
 function formatDroppedFiles(files: FileList, platform: string): string {
   const paths: string[] = [];

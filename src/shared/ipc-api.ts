@@ -312,3 +312,13 @@ export type StarbaseStatusUpdatePayload = {
   navigator?: { status: 'standby' | 'working'; statusText: string };
   sentinel?: SentinelStatusPayload;
 };
+
+export type DirEntry = {
+  name: string;
+  path: string;       // absolute path
+  isDirectory: boolean;
+};
+
+export type ReaddirResponse =
+  | { success: true; entries: DirEntry[] }
+  | { success: false; error: string; entries: [] };
