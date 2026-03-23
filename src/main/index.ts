@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, nativeImage, shell } from 'electron';
 import { appendFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
@@ -199,6 +199,20 @@ function createWindow(): void {
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     console.error(`[renderer] Failed to load: ${errorCode} ${errorDescription}`);
+  });
+
+  // Intercept navigation away from app (e.g. <a href> without target)
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!url.startsWith('http://localhost') && !url.startsWith('file://')) {
+      event.preventDefault();
+      void shell.openExternal(url);
+    }
+  });
+
+  // Intercept window.open / target="_blank" links
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url);
+    return { action: 'deny' };
   });
 
   if (!app.isPackaged) {
