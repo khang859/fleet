@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.6.4
+- Fixed double cursor appearing after switching macOS workspaces and returning to a TUI terminal (e.g. Claude Code)
+
 ## v2.6.3
 - Fixed CI by merging mac jobs into universal build
 - Fixed forceDevUpdateConfig guard in main process
