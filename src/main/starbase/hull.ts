@@ -11,6 +11,7 @@ import {
 } from './conventional-commits';
 import { generateSkillMd } from './workspace-templates';
 import { filterEnv } from '../env-utils';
+import type { Analyst } from './analyst';
 
 export function buildCargoHeader(db: Database.Database, missionId: number): string {
   const deps = db
@@ -151,6 +152,8 @@ export type HullOpts = {
   onComplete?: () => void;
   /** Environment variables for the subprocess (enriched PATH so `claude` is found). */
   env?: Record<string, string>;
+  /** Optional Analyst instance for LLM-based verdict extraction (falls back to regex). */
+  analyst?: Analyst;
 };
 
 type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
@@ -834,10 +837,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         if (this.opts.missionType === 'review') {
           overrideStatus = 'complete';
           const fullOutput = this.outputLines.join('\n');
-          const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
-          const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
-          const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
-          const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+          const llmVerdict = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+          let verdict: string;
+          let notes: string;
+          if (llmVerdict) {
+            verdict = llmVerdict.verdict.toLowerCase().replace(/_/g, '-');
+            notes = llmVerdict.notes;
+          } else {
+            const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
+            const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
+            verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
+            notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+          }
 
           const statusMap: Record<string, string> = {
             approve: 'approved',
@@ -1159,10 +1170,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         // Redirect to review verdict handling (same as the !hasChanges block above)
         overrideStatus = 'complete';
         const fullOutput = this.outputLines.join('\n');
-        const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
-        const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
-        const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
-        const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+        const llmVerdict2 = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+        let verdict: string;
+        let notes: string;
+        if (llmVerdict2) {
+          verdict = llmVerdict2.verdict.toLowerCase().replace(/_/g, '-');
+          notes = llmVerdict2.notes;
+        } else {
+          const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
+          const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
+          verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
+          notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+        }
 
         const statusMap: Record<string, string> = {
           approve: 'approved',

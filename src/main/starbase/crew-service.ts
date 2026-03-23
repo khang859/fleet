@@ -7,6 +7,7 @@ import type { ConfigService } from './config-service';
 import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
 import type { EventBus } from '../event-bus';
+import type { Analyst } from './analyst';
 
 export class InsufficientMemoryError extends Error {
   constructor(freeGb: number, requiredGb: number) {
@@ -47,6 +48,7 @@ type CrewServiceDeps = {
   eventBus?: EventBus;
   /** Enriched env for crew processes (PATH with claude binary). */
   crewEnv?: Record<string, string>;
+  analyst?: Analyst;
 };
 
 type DeployResult = {
@@ -242,7 +244,8 @@ export class CrewService {
       missionType,
       starbaseId,
       prBranch: opts.prBranch,
-      originalMissionId: missionRow.original_mission_id ?? undefined
+      originalMissionId: missionRow.original_mission_id ?? undefined,
+      analyst: this.deps.analyst
     });
 
     // Update crew record with avatar
