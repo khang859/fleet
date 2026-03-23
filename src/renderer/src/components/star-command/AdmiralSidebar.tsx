@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { useStarCommandStore } from '../../store/star-command-store';
-import type { CrewStatus, SectorInfo } from '../../store/star-command-store';
+import type { CrewStatus, SectorInfo, FirstOfficerStatus, NavigatorStatus } from '../../store/star-command-store';
 
 import admiralDefault from '../../assets/admiral-default.png';
 import admiralSpeaking from '../../assets/admiral-speaking.png';
@@ -75,6 +75,14 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const SIDEBAR_ACTIVE_STATUSES = new Set(['active', 'hailing', 'error', 'lost', 'idle']);
+
+type ActiveRole = 'admiral' | 'first-officer' | 'navigator';
+
+function resolveActiveRole(foStatus: FirstOfficerStatus, navStatus: NavigatorStatus): ActiveRole {
+  if (foStatus.status !== 'idle') return 'first-officer';
+  if (navStatus.status !== 'standby') return 'navigator';
+  return 'admiral';
+}
 
 function StatusDot({ color }: { color: string }): React.JSX.Element {
   return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />;
@@ -275,69 +283,73 @@ export function AdmiralSidebar({
   const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length;
   const totalCrew = crewList.length;
 
-  const admiralSrc = ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default;
-  const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default;
-  const navSrc = NAVIGATOR_IMAGES[navigatorStatus.status] ?? NAVIGATOR_IMAGES.default;
+  const activeRole = resolveActiveRole(firstOfficerStatus, navigatorStatus);
+
+  const commandSrc =
+    activeRole === 'first-officer'
+      ? (FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default)
+      : activeRole === 'navigator'
+        ? (NAVIGATOR_IMAGES[navigatorStatus.status] ?? NAVIGATOR_IMAGES.default)
+        : (ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default);
+
+  const commandLabel =
+    activeRole === 'first-officer' ? 'First Officer' : activeRole === 'navigator' ? 'Navigator' : 'Admiral';
+
+  const commandAlt =
+    activeRole === 'first-officer'
+      ? 'First Officer'
+      : activeRole === 'navigator'
+        ? 'Navigator'
+        : `Admiral — ${avatarVariant}`;
+
+  const commandStatusDot =
+    activeRole === 'first-officer'
+      ? firstOfficerStatus.status === 'working'
+        ? 'bg-teal-400 animate-pulse'
+        : firstOfficerStatus.status === 'memo'
+          ? 'bg-yellow-400'
+          : 'bg-green-400'
+      : activeRole === 'navigator'
+        ? navigatorStatus.status === 'working'
+          ? 'bg-teal-400 animate-pulse'
+          : 'bg-green-400'
+        : admiralStatus === 'running'
+          ? 'bg-green-400'
+          : admiralStatus === 'starting'
+            ? 'bg-yellow-400 animate-pulse'
+            : 'bg-red-500';
+
+  const commandStatusText =
+    activeRole === 'first-officer'
+      ? firstOfficerStatus.statusText
+      : activeRole === 'navigator'
+        ? navigatorStatus.statusText
+        : admiralStatus === 'running'
+          ? admiralStatusText
+          : admiralStatus;
 
   return (
     <div
       className="w-[260px] flex-shrink-0 bg-neutral-900 border-l border-neutral-800 flex flex-col overflow-y-auto scrollbar-sc"
       onScroll={() => setOpenCrewId(null)}
     >
-      {/* Admiral avatar — full-res 512x512 source image */}
+      {/* Unified command tile — shows Admiral, First Officer, or Navigator based on activity */}
       <div className="flex flex-col items-center pt-6 pb-4 border-b border-neutral-800">
         <img
-          src={admiralSrc}
-          alt={`Admiral — ${avatarVariant}`}
+          src={commandSrc}
+          alt={commandAlt}
           width={192}
           height={192}
           className="rounded"
           style={{ imageRendering: 'pixelated' }}
         />
         <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
-          Admiral
+          {commandLabel}
         </span>
         <div className="flex items-center gap-1.5 mt-1">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              admiralStatus === 'running'
-                ? 'bg-green-400'
-                : admiralStatus === 'starting'
-                  ? 'bg-yellow-400 animate-pulse'
-                  : 'bg-red-500'
-            }`}
-          />
+          <span className={`w-2 h-2 rounded-full ${commandStatusDot}`} />
           <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
-            {admiralStatus === 'running' ? admiralStatusText : admiralStatus}
-          </span>
-        </div>
-      </div>
-
-      {/* First Officer */}
-      <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
-        <img
-          src={foSrc}
-          alt="First Officer"
-          width={128}
-          height={128}
-          className="rounded"
-          style={{ imageRendering: 'pixelated' as const }}
-        />
-        <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
-          First Officer
-        </span>
-        <div className="flex items-center gap-1.5 mt-1">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              firstOfficerStatus.status === 'working'
-                ? 'bg-teal-400 animate-pulse'
-                : firstOfficerStatus.status === 'memo'
-                  ? 'bg-yellow-400'
-                  : 'bg-green-400'
-            }`}
-          />
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
-            {firstOfficerStatus.statusText}
+            {commandStatusText}
           </span>
         </div>
         {firstOfficerStatus.unreadMemos > 0 && (
@@ -353,33 +365,6 @@ export function AdmiralSidebar({
             </span>
           </button>
         )}
-      </div>
-
-      {/* Navigator */}
-      <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
-        <img
-          src={navSrc}
-          alt="Navigator"
-          width={128}
-          height={128}
-          className="rounded"
-          style={{ imageRendering: 'pixelated' as const }}
-        />
-        <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
-          Navigator
-        </span>
-        <div className="flex items-center gap-1.5 mt-1">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              navigatorStatus.status === 'working'
-                ? 'bg-teal-400 animate-pulse'
-                : 'bg-green-400'
-            }`}
-          />
-          <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
-            {navigatorStatus.statusText}
-          </span>
-        </div>
       </div>
 
       {/* Status sections */}
