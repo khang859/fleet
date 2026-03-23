@@ -12,7 +12,6 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!reference/**'
   - '!docs/**'
-  - '!**/node-pty/prebuilds/**'
 asarUnpack:
   - resources/**
 mac:

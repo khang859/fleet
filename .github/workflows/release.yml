@@ -35,6 +35,8 @@ jobs:
       - run: npm ci
       - name: Rebuild native Electron deps
         run: npx electron-builder install-app-deps
+      - name: Remove node-pty prebuilds for universal build
+        run: rm -rf node_modules/node-pty/prebuilds
       - name: Build app
         run: npx electron-vite build
       - name: Extract release notes config
