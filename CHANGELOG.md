@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.3
+- Fixed CI by merging mac jobs into universal build
+- Fixed forceDevUpdateConfig guard in main process
+
 ## v2.6.2
 - Fixed opening external links in system browser
 - Fixed missing --original-mission-id warning on repair missions
