@@ -40,8 +40,18 @@ export class Analyst {
     const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
     const candidate = fenced?.[1]?.trim() ?? text.trim();
     const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON object found in output');
+    if (start === -1) throw new Error('No JSON object found in output');
+    // Find matching closing brace
+    let depth = 0;
+    let end = -1;
+    for (let i = start; i < candidate.length; i++) {
+      if (candidate[i] === '{') depth++;
+      else if (candidate[i] === '}') {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
+    }
+    if (end === -1) throw new Error('No JSON object found in output');
     return JSON.parse(candidate.slice(start, end + 1));
   }
 
@@ -70,6 +80,8 @@ export class Analyst {
         stdout += chunk.toString();
       });
 
+      proc.stderr.on('data', () => { /* drain */ });
+
       proc.stdin.write(prompt);
       proc.stdin.end();
 
@@ -88,6 +100,7 @@ export class Analyst {
       });
 
       proc.on('error', (err) => {
+        if (timedOut) return;
         clearTimeout(timer);
         reject(err);
       });
