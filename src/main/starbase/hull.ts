@@ -781,6 +781,7 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
 
     try {
       // Auto-commit uncommitted files
+      let autoCommitFailed = false;
       try {
         execSync('git add -A', gitOpts);
         execSync('git diff --cached --quiet', gitOpts);
@@ -793,8 +794,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         writeFileSync(commitMsgFile, commitMsg, 'utf-8');
         try {
           execSync(`git commit -F "${commitMsgFile}"`, gitOpts);
-        } catch {
-          /* commit might fail if nothing to commit */
+        } catch (commitErr) {
+          // Commit failed (e.g. pre-commit hook rejected it) — flag for downstream handling
+          autoCommitFailed = true;
+          db.prepare(
+            "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'auto_commit_failed', ?)"
+          ).run(
+            crewId,
+            JSON.stringify({
+              missionId,
+              reason: commitErr instanceof Error ? commitErr.message : String(commitErr)
+            })
+          );
         } finally {
           try {
             unlinkSync(commitMsgFile);
@@ -804,10 +815,17 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         }
       }
 
-      // Check for empty diff
+      // Check for empty diff.
+      // For repair missions: compare against the remote branch tip to detect whether the
+      // repair crew added *new* commits. The base-branch diff would always be non-empty
+      // for an existing PR, causing a false "has changes" even when the auto-commit failed.
       let hasChanges = false;
       try {
-        const diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, gitOpts)
+        const diffBase =
+          this.opts.missionType === 'repair' && worktreeBranch
+            ? `origin/${worktreeBranch}`
+            : baseBranch;
+        const diffStat = execSync(`git diff --stat "${diffBase}"...HEAD`, gitOpts)
           .toString()
           .trim();
         hasChanges = diffStat.length > 0;
@@ -816,8 +834,33 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       }
 
       if (!hasChanges) {
-        // Repair: no changes is a valid outcome (CI may have self-healed)
+        // Repair: no changes is a valid outcome (CI may have self-healed).
+        // BUT if autoCommitFailed, the crew made edits that were never committed — treat as
+        // a failure so prMonitorSweep can retry (same as timeout/error path).
         if (this.opts.missionType === 'repair') {
+          if (autoCommitFailed) {
+            overrideStatus = 'error';
+            if (this.opts.originalMissionId != null) {
+              db.prepare(
+                "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+              ).run(this.opts.originalMissionId);
+            }
+            db.prepare(
+              "UPDATE missions SET status = 'failed', result = 'Auto-commit failed — changes were not committed', completed_at = datetime('now') WHERE id = ?"
+            ).run(missionId);
+            db.prepare(
+              "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
+            ).run(
+              crewId,
+              JSON.stringify({
+                missionId,
+                originalMissionId: this.opts.originalMissionId,
+                reason: 'auto_commit_failed'
+              })
+            );
+            return;
+          }
+
           overrideStatus = 'complete';
           db.prepare(
             "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
