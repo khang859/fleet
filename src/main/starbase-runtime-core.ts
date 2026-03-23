@@ -817,10 +817,9 @@ export class StarbaseRuntimeCore {
         status: deps.navigator.getStatus(),
         statusText: deps.navigator.getStatusText()
       },
-      sentinel: {
-        ...deps.sentinel.getStatus(),
-        alerts: sentinelAlerts
-      }
+      sentinel: deps.sentinel
+        ? { ...deps.sentinel.getStatus(), alerts: sentinelAlerts }
+        : null
     };
   }
 
