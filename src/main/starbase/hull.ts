@@ -1567,6 +1567,13 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
           stdio: 'pipe'
         });
         // PR exists — handle based on mission type
+        if (this.opts.missionType === 'repair' && this.opts.originalMissionId == null) {
+          console.error(
+            `[hull] Warning: repair mission ${missionId} has no originalMissionId — ` +
+            `falling into default pending-review branch. The original code mission will NOT be transitioned to pending-review ` +
+            `and automated review dispatch will not trigger. Use --original-mission-id when creating repair missions manually.`
+          );
+        }
         if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
           // Repair crew: transition ORIGINAL mission to pending-review for fresh review
           db.prepare(
