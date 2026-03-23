@@ -594,6 +594,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
     setSelectedPaths(new Set());
     setQuery('');
     setSearchFiles([]);
+    setSearchError(null);
     searchLoadedRef.current = false;
     setIsRootLoading(true);
     void window.fleet.file.readdir(rootDir).then((result) => {
