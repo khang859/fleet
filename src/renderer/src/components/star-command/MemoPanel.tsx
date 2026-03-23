@@ -93,7 +93,24 @@ export function MemoPanel({ onClose }: MemoPanelProps): React.JSX.Element {
         <div className="flex-1 overflow-y-auto p-6">
           {content ? (
             <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        if (href) void window.fleet.shell.openExternal(href);
+                      }}
+                    >
+                      {children}
+                    </a>
+                  )
+                }}
+              >
+                {content}
+              </ReactMarkdown>
             </div>
           ) : (
             <div className="text-xs text-neutral-500">Select a memo to read</div>
