@@ -873,3 +873,80 @@ describe('buildCargoHeader', () => {
     }
   });
 });
+
+describe('Hull activation ordering', () => {
+  function createMockProcess() {
+    const proc = new EventEmitter() as any;
+    proc.stdin = { write: vi.fn(), end: vi.fn(), writable: true };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    proc.killed = false;
+    proc.pid = 42000;
+    proc.kill = vi.fn();
+    return proc;
+  }
+
+  function makeMission() {
+    return missionSvc.addMission({ sectorId: 'api', summary: 'Test', prompt: 'do something' });
+  }
+
+  function makeHullOpts(missionId: number): HullOpts {
+    return {
+      crewId: `crew-act-${missionId}`,
+      sectorId: 'api',
+      missionId,
+      prompt: 'do something',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/test-activation',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999
+    };
+  }
+
+  it('should not insert a crew row when mission claim fails', () => {
+    const mission = makeMission();
+    // Pre-claim the mission so the activation UPDATE sees crew_id IS NOT NULL → 0 changes → throw
+    db.getDb()
+      .prepare("UPDATE missions SET crew_id = 'other-crew', status = 'active' WHERE id = ?")
+      .run(mission.id);
+
+    const hull = new Hull(makeHullOpts(mission.id));
+    expect(() => hull.start()).toThrow('already has an active crew');
+
+    const crewRow = db
+      .getDb()
+      .prepare<[number], { id: string }>('SELECT id FROM crew WHERE mission_id = ?')
+      .get(mission.id);
+    expect(crewRow).toBeUndefined();
+  });
+
+  it('should insert crew row only after mission is successfully claimed', () => {
+    mockProc = createMockProcess();
+    const mission = makeMission();
+    const opts = makeHullOpts(mission.id);
+    const hull = new Hull(opts);
+
+    hull.start();
+
+    const missionRow = db
+      .getDb()
+      .prepare<
+        [number],
+        { status: string; crew_id: string }
+      >('SELECT status, crew_id FROM missions WHERE id = ?')
+      .get(mission.id);
+    expect(missionRow?.status).toBe('active');
+    expect(missionRow?.crew_id).toBe(opts.crewId);
+
+    const crewRow = db
+      .getDb()
+      .prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?')
+      .get(opts.crewId);
+    expect(crewRow?.status).toBe('active');
+
+    hull.kill();
+  });
+});
