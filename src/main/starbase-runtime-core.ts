@@ -22,6 +22,8 @@ import { ShipsLog } from './starbase/ships-log';
 import { Sentinel } from './starbase/sentinel';
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
 import { CodedError, toError } from './errors';
+import { Analyst } from './starbase/analyst';
+import { Sentinel } from './starbase/sentinel';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -628,6 +630,12 @@ export class StarbaseRuntimeCore {
       worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent);
       trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent });
 
+      const analyst = new Analyst({
+        db: localStarbaseDb.getDb(),
+        model: configService.getOptionalString('analyst_model')
+      });
+      trace('bootstrap analyst ready');
+
       const crewService = new CrewService({
         db: localStarbaseDb.getDb(),
         starbaseId: localStarbaseDb.getStarbaseId(),
@@ -636,7 +644,8 @@ export class StarbaseRuntimeCore {
         configService,
         worktreeManager,
         eventBus: this.eventBus,
-        crewEnv: args.env
+        crewEnv: args.env,
+        analyst
       });
       trace('bootstrap crewService ready');
 
@@ -645,6 +654,7 @@ export class StarbaseRuntimeCore {
       trace('bootstrap commsService ready');
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb());
+
       const firstOfficer = new FirstOfficer({
         db: localStarbaseDb.getDb(),
         configService,
@@ -654,7 +664,8 @@ export class StarbaseRuntimeCore {
         eventBus: this.eventBus,
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
-        fleetBinDir: args.fleetBinPath
+        fleetBinDir: args.fleetBinPath,
+        analyst
       });
       trace('bootstrap firstOfficer ready');
       const navigator = new Navigator({
@@ -667,6 +678,19 @@ export class StarbaseRuntimeCore {
       });
       const shipsLog = new ShipsLog(localStarbaseDb.getDb());
       trace('bootstrap navigator/shipsLog ready');
+
+      const sentinel = new Sentinel({
+        db: localStarbaseDb.getDb(),
+        configService,
+        eventBus: this.eventBus,
+        firstOfficer,
+        navigator,
+        crewService,
+        missionService,
+        analyst
+      });
+      sentinel.start();
+      trace('bootstrap sentinel ready');
 
       const basePath = dirname(localStarbaseDb.getDbPath());
       localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId());
