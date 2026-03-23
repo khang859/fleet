@@ -70,6 +70,10 @@ type FileBrowserDrawerProps = {
 export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): React.JSX.Element | null {
   const [rootDir, setRootDir] = useState<string>(getInitialRoot);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
+  const nodesRef = useRef<TreeNode[]>([]);
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
   const [searchFiles, setSearchFiles] = useState<FlatFile[]>([]);
@@ -135,8 +139,8 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
       }
       return result;
     }
-    void updateNodes(nodes).then(setNodes);
-  }, [nodes]);
+    void updateNodes(nodesRef.current).then(setNodes);
+  }, []);
 
   const toggleSelected = useCallback((filePath: string) => {
     setSelectedPaths((prev) => {
@@ -152,16 +156,19 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
       setQuery(q);
       if (q && !searchLoadedRef.current) {
         setIsSearchLoading(true);
-        searchLoadedRef.current = true;
         try {
-          const result = await window.fleet.file.list(rootDir);
+          const capturedRoot = rootDir; // capture before await
+          const result = await window.fleet.file.list(capturedRoot);
+          if (rootDir !== capturedRoot) return; // rootDir changed during fetch, discard
           if (result.success) {
+            searchLoadedRef.current = true; // only mark loaded on success
             setSearchFiles(result.files);
           } else {
             setSearchError("Couldn't load file list");
           }
         } catch {
           setSearchError("Couldn't load file list");
+          // don't set ref to true — allow retry on next keystroke
         } finally {
           setIsSearchLoading(false);
         }
@@ -192,7 +199,12 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
   return (
     <div className="fixed inset-y-0 right-0 z-50 flex">
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/40" onClick={onClose} />
+      <div
+        className="fixed inset-0 bg-black/40"
+        onClick={onClose}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}
+        role="presentation"
+      />
       {/* Drawer */}
       <div className="relative z-10 w-80 h-full flex flex-col bg-neutral-900 border-l border-neutral-700 shadow-2xl">
         {/* Header */}
@@ -229,7 +241,6 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
         <div className="flex-1 overflow-y-auto py-0.5">
           {query ? (
             <SearchResults
-              query={query}
               results={filteredSearch}
               isLoading={isSearchLoading}
               error={searchError}
@@ -369,7 +380,6 @@ function TreeNodeRow({ node, selectedPaths, onToggle, onExpand, depth }: TreeNod
 }
 
 type SearchResultsProps = {
-  query: string;
   results: FlatFile[];
   isLoading: boolean;
   error: string | null;
