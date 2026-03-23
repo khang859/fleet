@@ -33,6 +33,15 @@ Past mistakes and fixes are documented in `docs/learnings/`. **After every mista
 - **Lint:** `npm run lint`
 - **Build:** `npm run build` (runs typecheck first, then electron-vite build)
 
+## Release Notes
+
+Before creating a release tag, always add a `## vX.Y.Z` entry to `CHANGELOG.md` and push it to main. The CI release workflow runs `scripts/extract-release-notes.ts` on checkout of the tag — if the changelog entry is missing the build fails. The tag must point to a commit that already includes the changelog entry; if the tag is created before the changelog commit, delete and re-create the tag at the correct commit:
+
+```bash
+git tag -d vX.Y.Z && git push origin :refs/tags/vX.Y.Z
+git tag vX.Y.Z && git push origin vX.Y.Z
+```
+
 ## Development Notes
 
 - **ESM output:** The main and preload processes output ESM (`.mjs`). Use `import.meta.url` instead of `__dirname`.

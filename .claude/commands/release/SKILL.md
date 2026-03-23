@@ -30,20 +30,31 @@ Update the `"version"` field in `package.json` to the new version. Do not modify
 npm install
 ```
 
-### Step 3: Commit the Version Bump
+### Step 3: Add a Changelog Entry
+
+**This step is required.** The CI release workflow runs `scripts/extract-release-notes.ts` which looks for a `## vX.Y.Z` heading in `CHANGELOG.md` matching the tag. If the entry is missing, all build jobs will fail.
+
+Add the entry at the top of `CHANGELOG.md`:
+
+```markdown
+## v<NEW_VERSION>
+- Summary of changes
+```
+
+### Step 4: Commit Version Bump and Changelog Together
 
 ```bash
-git add package.json package-lock.json
+git add package.json package-lock.json CHANGELOG.md
 git commit -m "chore: bump version to <NEW_VERSION>"
 ```
 
-### Step 4: Push to Main
+### Step 5: Push to Main
 
 ```bash
 git push origin main
 ```
 
-### Step 5: Create Draft Release and Push Tag
+### Step 6: Create Draft Release and Push Tag
 
 First, create the draft release on GitHub:
 
@@ -58,7 +69,14 @@ git tag v<NEW_VERSION>
 git push origin v<NEW_VERSION>
 ```
 
-### Step 6: Monitor CI
+**Important:** The tag must point to a commit that already includes the `CHANGELOG.md` entry. If you accidentally pushed the tag before the changelog commit, move the tag:
+
+```bash
+git tag -d v<NEW_VERSION> && git push origin :refs/tags/v<NEW_VERSION>
+git tag v<NEW_VERSION> && git push origin v<NEW_VERSION>
+```
+
+### Step 7: Monitor CI
 
 The tag push triggers the CI workflow. Monitor it:
 
@@ -92,6 +110,16 @@ Expected artifacts:
 The `latest-*.yml` files are auto-update manifests used by `electron-updater`.
 
 ## Troubleshooting
+
+### "No changelog entry found" error in CI
+The `extract-release-notes.ts` script requires a `## vX.Y.Z` heading in `CHANGELOG.md` matching the tag. Add the entry, commit it to main, then move the tag to that commit:
+
+```bash
+git tag -d v<NEW_VERSION> && git push origin :refs/tags/v<NEW_VERSION>
+git tag v<NEW_VERSION> && git push origin v<NEW_VERSION>
+```
+
+Do **not** use `gh run rerun` — the re-run checks out the tag commit, not main, so new commits won't be picked up unless the tag is moved first.
 
 ### CI build job failed — release stays in draft
 The `publish-release` job only runs when all four build jobs succeed. If any build fails, the release remains draft. Fix the issue and re-run the failed job:
