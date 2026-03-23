@@ -157,9 +157,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
       if (q && !searchLoadedRef.current) {
         setIsSearchLoading(true);
         try {
-          const capturedRoot = rootDir; // capture before await
-          const result = await window.fleet.file.list(capturedRoot);
-          if (rootDir !== capturedRoot) return; // rootDir changed during fetch, discard
+          const result = await window.fleet.file.list(rootDir);
           if (result.success) {
             searchLoadedRef.current = true; // only mark loaded on success
             setSearchFiles(result.files);
