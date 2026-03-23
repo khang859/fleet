@@ -23,7 +23,6 @@ import { Sentinel } from './starbase/sentinel';
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
 import { CodedError, toError } from './errors';
 import { Analyst } from './starbase/analyst';
-import { Sentinel } from './starbase/sentinel';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -722,17 +721,6 @@ export class StarbaseRuntimeCore {
         trace('bootstrap memos dir ensured');
       }
 
-      const sentinel = new Sentinel({
-        db: localStarbaseDb.getDb(),
-        configService,
-        eventBus: this.eventBus,
-        crewService,
-        firstOfficer,
-        navigator,
-        missionService
-      });
-      sentinel.start();
-      trace('bootstrap sentinel started');
 
       this.deps = {
         starbaseDb: localStarbaseDb,
