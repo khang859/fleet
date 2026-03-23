@@ -731,7 +731,9 @@ void app.whenReady().then(() => {
 
   // --- Auto-updater: unified status pipeline ---
   // Allow checking for updates in dev mode via dev-app-update.yml
-  autoUpdater.forceDevUpdateConfig = true;
+  if (!app.isPackaged) {
+    autoUpdater.forceDevUpdateConfig = true;
+  }
 
   let updateState: 'idle' | 'checking' | 'downloading' | 'ready' = 'idle';
   let pendingVersion = '';
