@@ -164,9 +164,21 @@ function createTerminal(
         return false; // always pass through to xterm's default handler
       });
 
+  // Re-suppress xterm's hardware cursor after window focus restore.
+  // When the Electron window regains focus (e.g. after switching macOS workspaces),
+  // xterm internally re-enables its hardware cursor — bypassing the CSI parser suppressor.
+  // Re-hiding it here ensures the TUI-drawn cursor glyph is the only cursor visible.
+  const onWindowFocus = (): void => {
+    if (tuiMode && term.element) {
+      term.write('\x1b[?25l');
+    }
+  };
+  window.addEventListener('focus', onWindowFocus);
+
   const cursorSuppressor: { dispose(): void } = {
     dispose(): void {
       tuiMode = false;
+      window.removeEventListener('focus', onWindowFocus);
       decsetSuppressor.dispose();
       decrstSuppressor?.dispose();
     }
