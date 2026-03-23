@@ -424,6 +424,7 @@ When a PR has CI failures or human review comments that need addressing after th
 # 1. Create a repair mission targeting the existing PR branch
 fleet missions add --sector <id> --type repair \\
   --pr-branch <branch-name> \\
+  --original-mission-id <original-code-mission-id> \\
   --summary "Fix CI failures on <feature>" \\
   --prompt "CI is failing with the following output: <paste ci output>. Fix the issues and push to the existing PR branch."
 

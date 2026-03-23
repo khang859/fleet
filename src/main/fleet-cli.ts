@@ -449,7 +449,13 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       }
       const prBranch = args['pr-branch'] ? toStr(args['pr-branch']) : undefined;
       if (toStr(args.type) === 'repair' && !prBranch) {
-        return `Error: --type repair requires --pr-branch <branch-name>.\n\nUsage: fleet missions add --type repair --pr-branch <branch> --sector <id> --summary "..." --prompt "..."`;
+        return `Error: --type repair requires --pr-branch <branch-name>.\n\nUsage: fleet missions add --type repair --pr-branch <branch> --original-mission-id <id> --sector <id> --summary "..." --prompt "..."`;
+      }
+      if (toStr(args.type) === 'repair' && !args['original-mission-id']) {
+        process.stderr.write(
+          'Warning: --type repair without --original-mission-id means the automated review dispatch will not trigger after repair completes.\n' +
+          'Provide --original-mission-id <code-mission-id> to link this repair to its original mission.\n'
+        );
       }
       if (!args.prompt) return `Error: missions add requires --prompt "...".\n\n${usage}`;
       if (!args.summary) return `Error: missions add requires --summary "...".\n\n${usage}`;
