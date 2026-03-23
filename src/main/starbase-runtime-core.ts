@@ -19,6 +19,7 @@ import { CargoService } from './starbase/cargo-service';
 import { RetentionService } from './starbase/retention-service';
 import { ProtocolService } from './starbase/protocol-service';
 import { ShipsLog } from './starbase/ships-log';
+import { Sentinel } from './starbase/sentinel';
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
 import { CodedError, toError } from './errors';
 
@@ -49,6 +50,7 @@ type RuntimeDeps = {
   firstOfficer: FirstOfficer;
   navigator: Navigator;
   lockfile: Lockfile | null;
+  sentinel?: Sentinel;
 };
 
 const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log';
@@ -696,6 +698,18 @@ export class StarbaseRuntimeCore {
         trace('bootstrap memos dir ensured');
       }
 
+      const sentinel = new Sentinel({
+        db: localStarbaseDb.getDb(),
+        configService,
+        eventBus: this.eventBus,
+        crewService,
+        firstOfficer,
+        navigator,
+        missionService
+      });
+      sentinel.start();
+      trace('bootstrap sentinel started');
+
       this.deps = {
         starbaseDb: localStarbaseDb,
         sectorService,
@@ -710,7 +724,8 @@ export class StarbaseRuntimeCore {
         shipsLog,
         firstOfficer,
         navigator,
-        lockfile: localLockfile
+        lockfile: localLockfile,
+        sentinel
       };
       trace('bootstrap deps assigned');
 

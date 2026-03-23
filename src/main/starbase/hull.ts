@@ -184,32 +184,35 @@ export class Hull {
     const lifesignSec = this.opts.lifesignIntervalSec ?? 10;
     const timeoutMin = this.opts.timeoutMin ?? 15;
 
-    // Insert crew record (tab_id is NULL — headless crew, no terminal tab)
-    db.prepare(
-      `INSERT INTO crew (id, tab_id, sector_id, mission_id, sector_path, worktree_path,
-        worktree_branch, status, mission_summary, pid, deadline, last_lifesign)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`
-    ).run(
-      crewId,
-      sectorId,
-      missionId,
-      this.opts.sectorPath,
-      worktreePath,
-      worktreeBranch,
-      prompt.slice(0, 100)
-    );
+    // Activate mission and insert crew atomically — if either step fails the other is rolled back
+    db.transaction(() => {
+      // Activate mission FIRST — abort before inserting crew if another crew already claimed it
+      const activateResult = db
+        .prepare(
+          "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ? AND crew_id IS NULL AND status NOT IN ('completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved')"
+        )
+        .run(crewId, missionId);
+      if (activateResult.changes === 0) {
+        throw new Error(
+          `Mission ${missionId} already has an active crew or is in a terminal state. Aborting duplicate deployment.`
+        );
+      }
 
-    // Activate mission atomically — abort if another crew already claimed it or mission is terminal
-    const activateResult = db
-      .prepare(
-        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ? AND crew_id IS NULL AND status NOT IN ('completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved')"
-      )
-      .run(crewId, missionId);
-    if (activateResult.changes === 0) {
-      throw new Error(
-        `Mission ${missionId} already has an active crew or is in a terminal state. Aborting duplicate deployment.`
+      // Insert crew record only after mission is claimed (tab_id is NULL — headless crew, no terminal tab)
+      db.prepare(
+        `INSERT INTO crew (id, tab_id, sector_id, mission_id, sector_path, worktree_path,
+          worktree_branch, status, mission_summary, pid, deadline, last_lifesign)
+         VALUES (?, NULL, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`
+      ).run(
+        crewId,
+        sectorId,
+        missionId,
+        this.opts.sectorPath,
+        worktreePath,
+        worktreeBranch,
+        prompt.slice(0, 100)
       );
-    }
+    })();
 
     // Log deployment
     db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deployed', ?)").run(
