@@ -1509,7 +1509,7 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
     // Get diff stat for PR body
     let diffStat = '';
     try {
-      diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, {
+      diffStat = execSync(`git diff --stat "${baseBranch}"..."${worktreeBranch}"`, {
         cwd: sectorPath,
         stdio: 'pipe'
       })
