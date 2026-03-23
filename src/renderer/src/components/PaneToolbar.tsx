@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FolderOpen } from 'lucide-react';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
 type PaneToolbarProps = {
@@ -9,6 +9,7 @@ type PaneToolbarProps = {
   onClose: () => void;
   onSearch: () => void;
   onGitChanges: () => void;
+  onFileBrowser?: () => void;
 };
 
 export function PaneToolbar({
@@ -18,7 +19,8 @@ export function PaneToolbar({
   onSplitVertical,
   onClose,
   onSearch,
-  onGitChanges
+  onGitChanges,
+  onFileBrowser
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <div
@@ -55,6 +57,18 @@ export function PaneToolbar({
           title={`Git Changes (${formatShortcut(getShortcut('git-changes')!)})`}
         >
           <GitBranch size={14} />
+        </button>
+      )}
+      {onFileBrowser && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFileBrowser();
+          }}
+          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          title={`Browse files (${formatShortcut(getShortcut('file-browser')!)})`}
+        >
+          <FolderOpen size={14} />
         </button>
       )}
       <button
