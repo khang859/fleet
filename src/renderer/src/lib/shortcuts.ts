@@ -118,6 +118,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     label: 'Quick open',
     mac: { key: 'p', meta: true },
     other: { key: 'p', ctrl: true }
+  },
+  {
+    id: 'file-browser',
+    label: 'Browse files',
+    mac: { key: 'E', meta: true, shift: true },
+    other: { key: 'E', ctrl: true, shift: true }
   }
 ];
 

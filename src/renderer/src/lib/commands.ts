@@ -113,6 +113,13 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('quick-open'),
       category: 'File',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-quick-open'))
+    },
+    {
+      id: 'file-browser',
+      label: 'Browse Files',
+      shortcut: sc('file-browser'),
+      category: 'File',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-file-browser'))
     }
   ];
 }
