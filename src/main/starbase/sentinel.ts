@@ -666,6 +666,64 @@ export class Sentinel {
         eventType: 'crew-failed'
       });
     }
+
+    // Crew-completed fan-out — detect successful protocol missions and nudge Navigator
+    const completedRows = this.db
+      .prepare<
+        [],
+        {
+          executionId: string;
+          protocol_id: string;
+          current_step: number;
+          feature_request: string;
+          context: string | null;
+          missionId: number;
+        }
+      >(
+        `SELECT m.protocol_execution_id as executionId, pe.protocol_id,
+                pe.current_step, pe.feature_request, pe.context, m.id as missionId
+         FROM missions m
+         JOIN protocol_executions pe ON m.protocol_execution_id = pe.id
+         WHERE m.status = 'done'
+           AND m.protocol_execution_id IS NOT NULL
+           AND pe.status = 'running'
+           AND NOT EXISTS (
+             SELECT 1 FROM comms
+             WHERE type = 'crew-completed'
+               AND execution_id = m.protocol_execution_id
+               AND mission_id = m.id
+           )`
+      )
+      .all();
+
+    for (const row of completedRows) {
+      const proto = this.db
+        .prepare<[string], { slug: string }>('SELECT slug FROM protocols WHERE id = ?')
+        .get(row.protocol_id);
+      if (!proto) continue;
+
+      // Write crew-completed signal tagged with execution_id so Navigator can poll it
+      this.db
+        .prepare(
+          `INSERT INTO comms (from_crew, to_crew, type, mission_id, execution_id, payload)
+           VALUES ('sentinel', 'navigator', 'crew-completed', ?, ?, ?)`
+        )
+        .run(row.missionId, row.executionId, JSON.stringify({ missionId: row.missionId }));
+
+      // Re-dispatch Navigator if not already running for this execution
+      if (!this.navigator.isRunning(row.executionId)) {
+        await this.navigator.dispatch({
+          executionId: row.executionId,
+          protocolSlug: proto.slug,
+          featureRequest: row.feature_request,
+          currentStep: row.current_step,
+          context: row.context,
+          eventType: 'crew-completed'
+        });
+      }
+
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    }
   }
 
   private async reviewSweep(): Promise<void> {
