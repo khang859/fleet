@@ -41,7 +41,7 @@ export function computeFingerprint(errorOutput: string): string {
  * - persistent: same fingerprint as last attempt (auto-escalate)
  * - transient: default (allow FO triage)
  */
-export function classifyError(
+export function classifyFromFingerprint(
   errorOutput: string,
   currentFingerprint?: string,
   lastFingerprint?: string

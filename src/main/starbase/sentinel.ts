@@ -11,10 +11,11 @@ import { getAvailableMemoryBytes } from './available-memory';
 import type { FirstOfficer } from './first-officer';
 import type { CrewService } from './crew-service';
 import type { SettingsStore } from '../settings-store';
-import { computeFingerprint, classifyError } from './error-fingerprint';
+import { computeFingerprint, classifyFromFingerprint } from './error-fingerprint';
 import type { Navigator } from './navigator';
 import type { MissionService } from './mission-service';
 import { ProtocolService } from './protocol-service';
+import type { Analyst } from './analyst';
 import { GLOBAL_SECTOR_ID } from './sector-service';
 
 const execFileAsync = promisify(execFile);
@@ -31,6 +32,7 @@ type SentinelDeps = {
   onNudgeClick?: () => void;
   navigator?: Navigator;
   missionService?: MissionService;
+  analyst?: Analyst;
 };
 
 type CrewRow = {
@@ -132,6 +134,7 @@ export class Sentinel {
   /** Last sent alert level per type — only re-send when level changes or clears */
   private lastAlertLevel: Record<string, string | null> = {};
   private lastNudgeAt = 0;
+  private lastSweepAt: Date | null = null;
   private protocolService: ProtocolService;
   private navigator?: Navigator;
   private db: Database.Database;
@@ -208,6 +211,7 @@ export class Sentinel {
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'lifesign_lost', ?)"
       ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
     // 2. Mission deadline check
@@ -233,6 +237,10 @@ export class Sentinel {
       db.prepare(
         "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)"
       ).run(crew.id, JSON.stringify({ reason: 'deadline expired' }));
+      db.prepare(
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_timeout', ?)"
+      ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
     // 3. Sector path validation
@@ -430,11 +438,10 @@ export class Sentinel {
       const fingerprint = computeFingerprint(errorText);
 
       // Classify the error
-      const classification = classifyError(
-        errorText,
-        fingerprint,
-        row.last_error_fingerprint ?? undefined
-      );
+      const llmClassification = await this.deps.analyst?.classifyError(errorText) ?? null;
+      const classification =
+        llmClassification ??
+        classifyFromFingerprint(errorText, fingerprint, row.last_error_fingerprint ?? undefined);
 
       // Update fingerprint on the mission
       db.prepare('UPDATE missions SET last_error_fingerprint = ? WHERE id = ?').run(
@@ -666,6 +673,64 @@ export class Sentinel {
         eventType: 'crew-failed'
       });
     }
+
+    // Crew-completed fan-out — detect successful protocol missions and nudge Navigator
+    const completedRows = this.db
+      .prepare<
+        [],
+        {
+          executionId: string;
+          protocol_id: string;
+          current_step: number;
+          feature_request: string;
+          context: string | null;
+          missionId: number;
+        }
+      >(
+        `SELECT m.protocol_execution_id as executionId, pe.protocol_id,
+                pe.current_step, pe.feature_request, pe.context, m.id as missionId
+         FROM missions m
+         JOIN protocol_executions pe ON m.protocol_execution_id = pe.id
+         WHERE m.status = 'done'
+           AND m.protocol_execution_id IS NOT NULL
+           AND pe.status = 'running'
+           AND NOT EXISTS (
+             SELECT 1 FROM comms
+             WHERE type = 'crew-completed'
+               AND execution_id = m.protocol_execution_id
+               AND mission_id = m.id
+           )`
+      )
+      .all();
+
+    for (const row of completedRows) {
+      const proto = this.db
+        .prepare<[string], { slug: string }>('SELECT slug FROM protocols WHERE id = ?')
+        .get(row.protocol_id);
+      if (!proto) continue;
+
+      // Write crew-completed signal tagged with execution_id so Navigator can poll it
+      this.db
+        .prepare(
+          `INSERT INTO comms (from_crew, to_crew, type, mission_id, execution_id, payload)
+           VALUES ('sentinel', 'navigator', 'crew-completed', ?, ?, ?)`
+        )
+        .run(row.missionId, row.executionId, JSON.stringify({ missionId: row.missionId }));
+
+      // Re-dispatch Navigator if not already running for this execution
+      if (!this.navigator.isRunning(row.executionId)) {
+        await this.navigator.dispatch({
+          executionId: row.executionId,
+          protocolSlug: proto.slug,
+          featureRequest: row.feature_request,
+          currentStep: row.current_step,
+          context: row.context,
+          eventType: 'crew-completed'
+        });
+      }
+
+      this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    }
   }
 
   private async reviewSweep(): Promise<void> {
@@ -861,6 +926,14 @@ ${mission.review_notes ?? 'No specific notes provided'}
       );
       this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
+    this.lastSweepAt = new Date();
+  }
+
+  getStatus(): { running: boolean; lastSweepAt: string | null } {
+    return {
+      running: this.interval !== null,
+      lastSweepAt: this.lastSweepAt?.toISOString() ?? null
+    };
   }
 
   private async pingSocket(socketPath: string, timeoutMs: number): Promise<boolean> {
@@ -999,6 +1072,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
               'run', 'view', String(runId), '--log-failed'
             ]);
             failureLog = log.slice(0, 4000);
+            // Try to summarize CI logs with analyst; fall back to raw logs
+            if (this.deps.analyst) {
+              const summary = await this.deps.analyst.summarizeCILogs(failureLog);
+              if (summary) failureLog = summary;
+            }
           }
         }
     } catch {

@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CrewService, InsufficientMemoryError } from '../starbase/crew-service';
+import { Hull } from '../starbase/hull';
 import { StarbaseDB } from '../starbase/db';
 import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
@@ -160,5 +161,77 @@ describe('CrewService', () => {
         // intentionally no prBranch
       })
     ).rejects.toThrow('Repair mission');
+  });
+});
+
+describe('CrewService hull.start() failure handling', () => {
+  let crewSvc2: CrewService;
+
+  beforeEach(() => {
+    const wsDir = join(TEST_DIR, 'workspace');
+    const db2 = db; // reuse the same DB from outer beforeEach
+
+    const sectorSvc = new SectorService(db2.getDb(), wsDir);
+    const missionSvc = new MissionService(db2.getDb());
+    const configSvc = new ConfigService(db2.getDb());
+    // Disable the memory gate so tests aren't blocked by available RAM
+    configSvc.set('min_deploy_free_memory_gb', 0);
+    const wtMgr = new WorktreeManager(join(TEST_DIR, 'worktrees'));
+
+    crewSvc2 = new CrewService({
+      db: db2.getDb(),
+      starbaseId: db2.getStarbaseId(),
+      sectorService: sectorSvc,
+      missionService: missionSvc,
+      configService: configSvc,
+      worktreeManager: wtMgr
+    });
+  });
+
+  it('should clean up hull from map when hull.start() throws', async () => {
+    const missionSvc = crewSvc2['deps'].missionService;
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'do something'
+    });
+
+    const startSpy = vi.spyOn(Hull.prototype, 'start').mockImplementationOnce(() => {
+      throw new Error('concurrent deploy — mission already claimed');
+    });
+
+    await expect(
+      crewSvc2.deployCrew({ sectorId: 'api', missionId: mission.id, prompt: 'do something' })
+    ).rejects.toThrow('concurrent deploy');
+
+    expect(crewSvc2['hulls'].size).toBe(0);
+    startSpy.mockRestore();
+  });
+
+  it('should write deploy_failed comms when hull.start() throws', async () => {
+    const missionSvc = crewSvc2['deps'].missionService;
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'do something'
+    });
+
+    const startSpy = vi.spyOn(Hull.prototype, 'start').mockImplementationOnce(() => {
+      throw new Error('concurrent deploy — mission already claimed');
+    });
+
+    await expect(
+      crewSvc2.deployCrew({ sectorId: 'api', missionId: mission.id, prompt: 'do something' })
+    ).rejects.toThrow('concurrent deploy');
+
+    const commsRow = db
+      .getDb()
+      .prepare<
+        [],
+        { type: string }
+      >('SELECT type FROM comms WHERE type = ? ORDER BY id DESC LIMIT 1')
+      .get('deploy_failed');
+    expect(commsRow?.type).toBe('deploy_failed');
+    startSpy.mockRestore();
   });
 });

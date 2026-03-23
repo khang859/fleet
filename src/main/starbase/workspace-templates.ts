@@ -627,8 +627,56 @@ ${fleetBin} sectors show <id>                               # Sector details
 - Never create missions yourself — that is the Admiral's role after reviewing the Feature Brief
 - All comms to Admiral must include \`--execution <id>\` so they are scoped correctly
 
-## Decide Steps
+## Step Type Reference
 
+Each step in a protocol has a \`type\` field. Here is how to handle each type:
+
+### \`deploy-crew\`
+Create a mission using the \`missionTemplate\` config (substituting \`{featureRequest}\` with the feature request), then deploy crew. After advancing the step, **exit cleanly** — the Sentinel re-dispatches you when crew finishes.
+\`\`\`bash
+${fleetBin} missions add --sector <sector-id> --type <role> --summary "..." --prompt "..."
+${fleetBin} crew deploy --sector <sector-id> --mission <mission-id> --execution <execution-id>
+${fleetBin} protocols executions update <execution-id> --step <N+1>
+# then exit
+\`\`\`
+
+### \`review\`
+Collect cargo produced so far, build the Feature Brief, then create and deploy a review mission. After advancing the step, **exit** — the Sentinel re-dispatches you when the review crew finishes.
+\`\`\`bash
+${fleetBin} cargo list --execution <execution-id>
+${fleetBin} cargo show <cargo-id>   # inspect manifest path, then read the file for content
+# substitute {brief} in the missionTemplate with the cargo content
+${fleetBin} missions add --sector <sector-id> --type review --summary "Review Feature Brief" --prompt "<filled template>"
+${fleetBin} crew deploy --sector <sector-id> --mission <mission-id> --execution <execution-id>
+${fleetBin} protocols executions update <execution-id> --step <N+1>
+# then exit
+\`\`\`
+On re-dispatch after a review crew completes, check the review mission result:
+\`\`\`bash
+${fleetBin} missions show <review-mission-id>
+\`\`\`
+- VERDICT: APPROVE → advance past the paired \`await-comms\` step
+- VERDICT: REQUEST_CHANGES → loop back (up to \`maxIterations\` in step config, then gate)
+- VERDICT: ESCALATE → write gate-pending comm and exit
+
+### \`await-comms\`
+Check whether the expected signal has arrived. The \`signalType\` config field tells you what to look for.
+
+**\`signalType: cargo\`** — check if cargo was produced for this execution:
+\`\`\`bash
+${fleetBin} cargo list --execution <execution-id>
+\`\`\`
+If cargo is present, advance to the next step. If not, exit — the Sentinel re-dispatches you when crew completes.
+
+**\`signalType: review-pass\`** — check the result of the review mission (from the paired \`review\` step). If the result contains \`VERDICT: APPROVE\`, advance. If changes were requested, loop back to the review step. If not yet done, exit.
+
+**\`signalType: crew-completed\`** — check unread comms for this execution:
+\`\`\`bash
+${fleetBin} comms inbox --execution <execution-id> --unread
+\`\`\`
+Look for a comm of type \`crew-completed\`. If found, mark it read and advance.
+
+### \`decide\`
 A \`decide\` step requires you to evaluate available cargo and make a judgment call. The step config includes:
 - \`question\`: what you must decide
 - \`ifYes\`: step number to advance to if the answer is yes
@@ -644,6 +692,28 @@ A \`decide\` step requires you to evaluate available cargo and make a judgment c
 
 **When is an architect needed?**
 Deploy an architect crew when the feature request involves significant new design work — new abstractions, multiple interacting components, or non-obvious integration points. Skip the architect for small, well-scoped changes where the research output already makes the implementation path clear.
+
+### \`gate\`
+Present the accumulated context to the Admiral and await their decision:
+\`\`\`bash
+${fleetBin} comms send --from navigator --to admiral --type gate-pending \\
+  --execution <execution-id> --payload '{"step": N, "decision": "...", "brief": "..."}'
+\`\`\`
+Then exit. The Admiral resumes the execution with a gate response.
+
+### \`complete\`
+The protocol is finished. Send the completion signal and exit:
+\`\`\`bash
+${fleetBin} comms send --from navigator --to admiral --type protocol-complete \\
+  --execution <execution-id> --payload '{"summary": "..."}'
+${fleetBin} protocols executions update <execution-id> --status complete
+\`\`\`
+
+## Exit After Each Deploy Step
+
+After deploying crew (deploy-crew or review steps), **always exit**. Do not poll and wait inline — the Sentinel re-dispatches you with event type \`crew-completed\` when crew finishes. Keep each Navigator invocation short and stateless.
+
+The only time you should check comms inline is on a \`crew-completed\` re-dispatch, when verifying whether an \`await-comms\` condition is already satisfied before advancing.
 `;
 }
 

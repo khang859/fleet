@@ -222,6 +222,81 @@ describe('FirstOfficer', () => {
     expect(payload.eventType).toBe('auto-escalation');
   });
 
+  it('writeHailingMemo() uses analyst context when analyst is provided and succeeds', async () => {
+    const mockAnalyst = {
+      writeHailingContext: async (_: string) => 'The crew is waiting for a decision on authentication strategy. Check if the question requires a policy decision. Respond via the Admiral interface.'
+    };
+
+    const foWithAnalyst = new FirstOfficer({
+      db: rawDb,
+      configService,
+      missionService,
+      cargoService,
+      crewService: {
+        recallCrew: () => {},
+        deployCrew: () => ({ crewId: 'replacement', missionId })
+      } as any,
+      analyst: mockAnalyst as any,
+      starbaseId: db.getStarbaseId()
+    });
+
+    await foWithAnalyst.writeHailingMemo({
+      crewId: CREW_ID,
+      missionId,
+      sectorName: 'api',
+      payload: JSON.stringify({ message: 'Should I use JWT or OAuth?' }),
+      createdAt: new Date().toISOString()
+    });
+
+    const comms = rawDb
+      .prepare("SELECT * FROM comms WHERE type = 'hailing-memo' AND mission_id = ?")
+      .all(missionId) as Array<{ payload: string }>;
+
+    expect(comms.length).toBe(1);
+    const { filePath } = JSON.parse(comms[0].payload) as { filePath: string };
+    const { readFileSync } = await import('fs');
+    const content = readFileSync(filePath, 'utf-8');
+    expect(content).toContain('The crew is waiting for a decision on authentication strategy');
+    expect(content).not.toContain('over 60 seconds');
+  });
+
+  it('writeHailingMemo() falls back to template when analyst returns null', async () => {
+    const mockAnalyst = {
+      writeHailingContext: async (_: string) => null
+    };
+
+    const foWithAnalyst = new FirstOfficer({
+      db: rawDb,
+      configService,
+      missionService,
+      cargoService,
+      crewService: {
+        recallCrew: () => {},
+        deployCrew: () => ({ crewId: 'replacement', missionId })
+      } as any,
+      analyst: mockAnalyst as any,
+      starbaseId: db.getStarbaseId()
+    });
+
+    await foWithAnalyst.writeHailingMemo({
+      crewId: CREW_ID,
+      missionId,
+      sectorName: 'api',
+      payload: JSON.stringify({ message: 'Should I use JWT or OAuth?' }),
+      createdAt: new Date().toISOString()
+    });
+
+    const comms = rawDb
+      .prepare("SELECT * FROM comms WHERE type = 'hailing-memo' AND mission_id = ?")
+      .all(missionId) as Array<{ payload: string }>;
+
+    expect(comms.length).toBe(1);
+    const { filePath } = JSON.parse(comms[0].payload) as { filePath: string };
+    const { readFileSync } = await import('fs');
+    const content = readFileSync(filePath, 'utf-8');
+    expect(content).toContain('over 60 seconds');
+  });
+
   it('falls back to escalate-and-dismiss when decision payload is invalid', () => {
     const decision = (firstOfficer as any).parseDecision('not-json', makeEvent());
     expect(decision.decision).toBe('escalate-and-dismiss');

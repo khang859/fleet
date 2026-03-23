@@ -37,13 +37,15 @@ jobs:
         run: npx electron-builder install-app-deps
       - name: Build app
         run: npx electron-vite build
+      - name: Extract release notes config
+        run: npx tsx scripts/extract-release-notes.ts /tmp/release-extra.json
       - name: Package, sign, notarize and publish
         uses: nick-fields/retry@v3
         with:
           max_attempts: 3
           timeout_minutes: 20
           retry_wait_seconds: 30
-          command: npx electron-builder --mac --arm64 --publish always
+          command: npx electron-builder --mac --arm64 --publish always --config /tmp/release-extra.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -67,13 +69,15 @@ jobs:
         run: npx electron-builder install-app-deps
       - name: Build app
         run: npx electron-vite build
+      - name: Extract release notes config
+        run: npx tsx scripts/extract-release-notes.ts /tmp/release-extra.json
       - name: Package, sign, notarize and publish
         uses: nick-fields/retry@v3
         with:
           max_attempts: 3
           timeout_minutes: 20
           retry_wait_seconds: 30
-          command: npx electron-builder --mac --x64 --publish always
+          command: npx electron-builder --mac --x64 --publish always --config /tmp/release-extra.json
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -92,10 +96,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Extract release notes config
+        run: npx tsx scripts/extract-release-notes.ts $env:TEMP\release-extra.json
+        shell: pwsh
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-vite build && npx electron-builder --win --publish always
+        run: npx electron-vite build && npx electron-builder --win --publish always --config $env:TEMP\release-extra.json
+        shell: pwsh
 
   release-linux:
     needs: [verify-version]
@@ -107,10 +115,12 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Extract release notes config
+        run: npx tsx scripts/extract-release-notes.ts /tmp/release-extra.json
       - name: Build and publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-vite build && npx electron-builder --linux --publish always
+        run: npx electron-vite build && npx electron-builder --linux --publish always --config /tmp/release-extra.json
 
   publish-release:
     needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]

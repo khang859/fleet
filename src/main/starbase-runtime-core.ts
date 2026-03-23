@@ -19,8 +19,10 @@ import { CargoService } from './starbase/cargo-service';
 import { RetentionService } from './starbase/retention-service';
 import { ProtocolService } from './starbase/protocol-service';
 import { ShipsLog } from './starbase/ships-log';
+import { Sentinel } from './starbase/sentinel';
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
 import { CodedError, toError } from './errors';
+import { Analyst } from './starbase/analyst';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -49,6 +51,7 @@ type RuntimeDeps = {
   firstOfficer: FirstOfficer;
   navigator: Navigator;
   lockfile: Lockfile | null;
+  sentinel?: Sentinel;
 };
 
 const RUNTIME_TRACE_FILE = '/tmp/fleet-starbase-runtime.log';
@@ -626,6 +629,12 @@ export class StarbaseRuntimeCore {
       worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent);
       trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent });
 
+      const analyst = new Analyst({
+        db: localStarbaseDb.getDb(),
+        model: configService.getOptionalString('analyst_model')
+      });
+      trace('bootstrap analyst ready');
+
       const crewService = new CrewService({
         db: localStarbaseDb.getDb(),
         starbaseId: localStarbaseDb.getStarbaseId(),
@@ -634,7 +643,8 @@ export class StarbaseRuntimeCore {
         configService,
         worktreeManager,
         eventBus: this.eventBus,
-        crewEnv: args.env
+        crewEnv: args.env,
+        analyst
       });
       trace('bootstrap crewService ready');
 
@@ -643,6 +653,7 @@ export class StarbaseRuntimeCore {
       trace('bootstrap commsService ready');
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb());
+
       const firstOfficer = new FirstOfficer({
         db: localStarbaseDb.getDb(),
         configService,
@@ -652,7 +663,8 @@ export class StarbaseRuntimeCore {
         eventBus: this.eventBus,
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
-        fleetBinDir: args.fleetBinPath
+        fleetBinDir: args.fleetBinPath,
+        analyst
       });
       trace('bootstrap firstOfficer ready');
       const navigator = new Navigator({
@@ -665,6 +677,19 @@ export class StarbaseRuntimeCore {
       });
       const shipsLog = new ShipsLog(localStarbaseDb.getDb());
       trace('bootstrap navigator/shipsLog ready');
+
+      const sentinel = new Sentinel({
+        db: localStarbaseDb.getDb(),
+        configService,
+        eventBus: this.eventBus,
+        firstOfficer,
+        navigator,
+        crewService,
+        missionService,
+        analyst
+      });
+      sentinel.start();
+      trace('bootstrap sentinel ready');
 
       const basePath = dirname(localStarbaseDb.getDbPath());
       localLockfile = new Lockfile(basePath, localStarbaseDb.getStarbaseId());
@@ -696,6 +721,7 @@ export class StarbaseRuntimeCore {
         trace('bootstrap memos dir ensured');
       }
 
+
       this.deps = {
         starbaseDb: localStarbaseDb,
         sectorService,
@@ -710,7 +736,8 @@ export class StarbaseRuntimeCore {
         shipsLog,
         firstOfficer,
         navigator,
-        lockfile: localLockfile
+        lockfile: localLockfile,
+        sentinel
       };
       trace('bootstrap deps assigned');
 
@@ -769,6 +796,25 @@ export class StarbaseRuntimeCore {
   private buildSnapshot(): unknown {
     const deps = this.requireDeps();
     const unreadComms = deps.commsService.getUnread('admiral');
+
+    type AlertRow = { id: number; type: string; payload: string; created_at: string; from_crew: string | null };
+    const sentinelAlerts = deps.starbaseDb
+      .getDb()
+      .prepare<[], AlertRow>(
+        `SELECT id, type, payload, created_at, from_crew FROM comms
+         WHERE to_crew = 'admiral' AND read = 0
+           AND type IN ('lifesign_lost', 'mission_timeout')
+         ORDER BY created_at DESC`
+      )
+      .all()
+      .map((r) => ({
+        id: r.id,
+        type: r.type,
+        payload: r.payload,
+        createdAt: r.created_at,
+        fromCrew: r.from_crew
+      }));
+
     return {
       crew: deps.crewService.listCrew(),
       missions: deps.missionService.listMissions(),
@@ -782,7 +828,10 @@ export class StarbaseRuntimeCore {
       navigator: {
         status: deps.navigator.getStatus(),
         statusText: deps.navigator.getStatusText()
-      }
+      },
+      sentinel: deps.sentinel
+        ? { ...deps.sentinel.getStatus(), alerts: sentinelAlerts }
+        : null
     };
   }
 

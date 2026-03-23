@@ -21,7 +21,6 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
-import type { PaneNode } from '../../shared/types';
 
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
@@ -33,19 +32,6 @@ function killClosedTabPtys(paneIds: string[]): void {
   }
 }
 
-const SERIALIZE_SCROLLBACK_CAP = 1000;
-
-function injectSerializedContent(node: PaneNode): PaneNode {
-  if (node.type === 'leaf') {
-    if (node.paneType === 'file' || node.paneType === 'image') return node;
-    const content = serializePane(node.id, SERIALIZE_SCROLLBACK_CAP);
-    return content ? { ...node, serializedContent: content } : node;
-  }
-  return {
-    ...node,
-    children: [injectSerializedContent(node.children[0]), injectSerializedContent(node.children[1])]
-  };
-}
 
 export function App(): React.JSX.Element {
   usePaneNavigation();
@@ -218,24 +204,23 @@ export function App(): React.JSX.Element {
     const flushWorkspace = (): void => {
       const state = useWorkspaceStore.getState();
 
-      // Save active workspace with serialized terminal content
+      // Save active workspace (without terminal scrollback — tabs restore with a clean terminal)
       const activeWithContent = {
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+          splitRoot: injectLiveCwd(tab.splitRoot)
         }))
       };
       void window.fleet.layout.save({ workspace: activeWithContent });
 
-      // Save background workspaces — xterm instances are still mounted (display:none)
-      // so serializePane works and captures their scrollback too
+      // Save background workspaces
       for (const bgWs of state.backgroundWorkspaces.values()) {
         const bgWithContent = {
           ...bgWs,
           tabs: bgWs.tabs.map((tab) => ({
             ...tab,
-            splitRoot: injectLiveCwd(injectSerializedContent(tab.splitRoot))
+            splitRoot: injectLiveCwd(tab.splitRoot)
           }))
         };
         void window.fleet.layout.save({ workspace: bgWithContent });
@@ -355,7 +340,9 @@ export function App(): React.JSX.Element {
       <div
         className="h-9 shrink-0 bg-neutral-950 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
-      />
+      >
+        <ShortcutsHint />
+      </div>
       <div className="flex flex-1 min-h-0">
         {showSidebar ? (
           <Sidebar
@@ -514,7 +501,6 @@ export function App(): React.JSX.Element {
                 </button>
               </div>
             )}
-            <ShortcutsHint />
           </main>
           <VisualizerPanel
             onShipClick={(id) => {

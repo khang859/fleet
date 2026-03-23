@@ -9,6 +9,7 @@ import type { ConfigService } from './config-service';
 import type { CrewService } from './crew-service';
 import type { MissionService } from './mission-service';
 import type { EventBus } from '../event-bus';
+import type { Analyst } from './analyst';
 import { filterEnv } from '../env-utils';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -22,6 +23,7 @@ type FirstOfficerDeps = {
   crewService: CrewService;
   cargoService: CargoService;
   eventBus?: EventBus;
+  analyst?: Analyst;
   starbaseId: string;
   crewEnv?: Record<string, string>;
   fleetBinDir?: string;
@@ -307,6 +309,15 @@ export class FirstOfficer {
       payloadText = opts.payload;
     }
 
+    let hailingContext: string | null = null;
+    if (this.deps.analyst) {
+      hailingContext = await this.deps.analyst.writeHailingContext(payloadText);
+    }
+
+    const actionRequired = hailingContext
+      ? hailingContext
+      : 'This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.';
+
     const filePath = await this.writeMemoFile(
       `${opts.crewId}-hailing`,
       `## Unanswered Hailing: ${opts.crewId}
@@ -317,7 +328,7 @@ export class FirstOfficer {
 ${payloadText}
 
 ### Action Required
-This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.
+${actionRequired}
 `
     );
 

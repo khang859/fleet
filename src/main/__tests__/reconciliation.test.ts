@@ -244,4 +244,53 @@ describe('runReconciliation', () => {
     expect(summary.orphanedWorktrees).toEqual([]);
     expect(summary.retriedPushes).toEqual([]);
   });
+
+  it('should mark null-PID active crew older than 60s as lost', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+    const oldDate = sqliteDatetime(new Date(Date.now() - 120_000)); // 2 minutes ago
+    getDb()
+      .prepare(
+        "INSERT INTO crew (id, sector_id, status, pid, created_at) VALUES (?, 'api', 'active', NULL, ?)"
+      )
+      .run('zombie-old', oldDate);
+
+    const summary = await runReconciliation({
+      db: getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
+    });
+
+    expect(summary.nullPidZombies).toContain('zombie-old');
+    expect(summary.lostCrew).toContain('zombie-old');
+
+    const row = getDb()
+      .prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?')
+      .get('zombie-old');
+    expect(row?.status).toBe('lost');
+  });
+
+  it('should not mark null-PID active crew younger than 60s as lost', async () => {
+    const sectorDir = join(TEST_DIR, 'workspace', 'api');
+    insertSector('api', sectorDir);
+    const recentDate = sqliteDatetime(new Date(Date.now() - 10_000)); // 10 seconds ago
+    getDb()
+      .prepare(
+        "INSERT INTO crew (id, sector_id, status, pid, created_at) VALUES (?, 'api', 'active', NULL, ?)"
+      )
+      .run('zombie-young', recentDate);
+
+    const summary = await runReconciliation({
+      db: getDb(),
+      starbaseId: starbaseDb.getStarbaseId(),
+      worktreeBasePath: join(TEST_DIR, 'worktrees')
+    });
+
+    expect(summary.nullPidZombies).not.toContain('zombie-young');
+
+    const row = getDb()
+      .prepare<[string], { status: string }>('SELECT status FROM crew WHERE id = ?')
+      .get('zombie-young');
+    expect(row?.status).toBe('active');
+  });
 });

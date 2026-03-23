@@ -15,6 +15,7 @@ type ReconciliationDeps = {
 
 type ReconciliationSummary = {
   lostCrew: string[];
+  nullPidZombies: string[];
   orphanedWorktrees: string[];
   retriedPushes: number[];
   requeuedMissions: number[];
@@ -36,18 +37,42 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
   const { db, starbaseId, worktreeBasePath } = deps;
   const summary: ReconciliationSummary = {
     lostCrew: [],
+    nullPidZombies: [],
     orphanedWorktrees: [],
     retriedPushes: [],
     requeuedMissions: [],
     cleanedErroredCrew: []
   };
 
-  // 1. Query all active crew
+  // 1a. Catch null-PID zombies older than 60 seconds — these are deploy failures
+  // that survived due to the hull.start() race condition (pre-Fix 3 legacy rows).
+  const nullPidZombies = db
+    .prepare<[], { id: string }>(
+      `SELECT id FROM crew WHERE status = 'active' AND pid IS NULL
+       AND created_at < datetime('now', '-60 seconds')`
+    )
+    .all();
+
+  for (const zombie of nullPidZombies) {
+    db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(
+      zombie.id
+    );
+    db.prepare(
+      "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'reconciliation', ?)"
+    ).run(
+      zombie.id,
+      JSON.stringify({ reason: 'null-PID zombie — deploy failed before process spawn' })
+    );
+    summary.nullPidZombies.push(zombie.id);
+    summary.lostCrew.push(zombie.id);
+  }
+
+  // 1b. Query active crew that have processes (null-PID zombies already handled above)
   const activeCrew = db
     .prepare<
       [],
       CrewRow
-    >("SELECT id, sector_id, pid, worktree_path, worktree_branch, created_at FROM crew WHERE status = 'active'")
+    >("SELECT id, sector_id, pid, worktree_path, worktree_branch, created_at FROM crew WHERE status = 'active' AND pid IS NOT NULL")
     .all();
 
   // 2-3. Check PIDs, mark dead ones as lost

@@ -11,6 +11,7 @@ import {
 } from './conventional-commits';
 import { generateSkillMd } from './workspace-templates';
 import { filterEnv } from '../env-utils';
+import type { Analyst } from './analyst';
 
 export function buildCargoHeader(db: Database.Database, missionId: number): string {
   const deps = db
@@ -151,6 +152,8 @@ export type HullOpts = {
   onComplete?: () => void;
   /** Environment variables for the subprocess (enriched PATH so `claude` is found). */
   env?: Record<string, string>;
+  /** Optional Analyst instance for LLM-based verdict extraction (falls back to regex). */
+  analyst?: Analyst;
 };
 
 type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
@@ -184,32 +187,35 @@ export class Hull {
     const lifesignSec = this.opts.lifesignIntervalSec ?? 10;
     const timeoutMin = this.opts.timeoutMin ?? 15;
 
-    // Insert crew record (tab_id is NULL — headless crew, no terminal tab)
-    db.prepare(
-      `INSERT INTO crew (id, tab_id, sector_id, mission_id, sector_path, worktree_path,
-        worktree_branch, status, mission_summary, pid, deadline, last_lifesign)
-       VALUES (?, NULL, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`
-    ).run(
-      crewId,
-      sectorId,
-      missionId,
-      this.opts.sectorPath,
-      worktreePath,
-      worktreeBranch,
-      prompt.slice(0, 100)
-    );
+    // Activate mission and insert crew atomically — if either step fails the other is rolled back
+    db.transaction(() => {
+      // Activate mission FIRST — abort before inserting crew if another crew already claimed it
+      const activateResult = db
+        .prepare(
+          "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ? AND crew_id IS NULL AND status NOT IN ('completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved')"
+        )
+        .run(crewId, missionId);
+      if (activateResult.changes === 0) {
+        throw new Error(
+          `Mission ${missionId} already has an active crew or is in a terminal state. Aborting duplicate deployment.`
+        );
+      }
 
-    // Activate mission atomically — abort if another crew already claimed it or mission is terminal
-    const activateResult = db
-      .prepare(
-        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ? AND crew_id IS NULL AND status NOT IN ('completed', 'done', 'aborted', 'failed', 'failed-verification', 'escalated', 'approved')"
-      )
-      .run(crewId, missionId);
-    if (activateResult.changes === 0) {
-      throw new Error(
-        `Mission ${missionId} already has an active crew or is in a terminal state. Aborting duplicate deployment.`
+      // Insert crew record only after mission is claimed (tab_id is NULL — headless crew, no terminal tab)
+      db.prepare(
+        `INSERT INTO crew (id, tab_id, sector_id, mission_id, sector_path, worktree_path,
+          worktree_branch, status, mission_summary, pid, deadline, last_lifesign)
+         VALUES (?, NULL, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`
+      ).run(
+        crewId,
+        sectorId,
+        missionId,
+        this.opts.sectorPath,
+        worktreePath,
+        worktreeBranch,
+        prompt.slice(0, 100)
       );
-    }
+    })();
 
     // Log deployment
     db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deployed', ?)").run(
@@ -775,6 +781,7 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
 
     try {
       // Auto-commit uncommitted files
+      let autoCommitFailed = false;
       try {
         execSync('git add -A', gitOpts);
         execSync('git diff --cached --quiet', gitOpts);
@@ -787,8 +794,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         writeFileSync(commitMsgFile, commitMsg, 'utf-8');
         try {
           execSync(`git commit -F "${commitMsgFile}"`, gitOpts);
-        } catch {
-          /* commit might fail if nothing to commit */
+        } catch (commitErr) {
+          // Commit failed (e.g. pre-commit hook rejected it) — flag for downstream handling
+          autoCommitFailed = true;
+          db.prepare(
+            "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'auto_commit_failed', ?)"
+          ).run(
+            crewId,
+            JSON.stringify({
+              missionId,
+              reason: commitErr instanceof Error ? commitErr.message : String(commitErr)
+            })
+          );
         } finally {
           try {
             unlinkSync(commitMsgFile);
@@ -798,10 +815,17 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         }
       }
 
-      // Check for empty diff
+      // Check for empty diff.
+      // For repair missions: compare against the remote branch tip to detect whether the
+      // repair crew added *new* commits. The base-branch diff would always be non-empty
+      // for an existing PR, causing a false "has changes" even when the auto-commit failed.
       let hasChanges = false;
       try {
-        const diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, gitOpts)
+        const diffBase =
+          this.opts.missionType === 'repair' && worktreeBranch
+            ? `origin/${worktreeBranch}`
+            : baseBranch;
+        const diffStat = execSync(`git diff --stat "${diffBase}"...HEAD`, gitOpts)
           .toString()
           .trim();
         hasChanges = diffStat.length > 0;
@@ -810,8 +834,33 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       }
 
       if (!hasChanges) {
-        // Repair: no changes is a valid outcome (CI may have self-healed)
+        // Repair: no changes is a valid outcome (CI may have self-healed).
+        // BUT if autoCommitFailed, the crew made edits that were never committed — treat as
+        // a failure so prMonitorSweep can retry (same as timeout/error path).
         if (this.opts.missionType === 'repair') {
+          if (autoCommitFailed) {
+            overrideStatus = 'error';
+            if (this.opts.originalMissionId != null) {
+              db.prepare(
+                "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+              ).run(this.opts.originalMissionId);
+            }
+            db.prepare(
+              "UPDATE missions SET status = 'failed', result = 'Auto-commit failed — changes were not committed', completed_at = datetime('now') WHERE id = ?"
+            ).run(missionId);
+            db.prepare(
+              "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
+            ).run(
+              crewId,
+              JSON.stringify({
+                missionId,
+                originalMissionId: this.opts.originalMissionId,
+                reason: 'auto_commit_failed'
+              })
+            );
+            return;
+          }
+
           overrideStatus = 'complete';
           db.prepare(
             "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
@@ -831,10 +880,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         if (this.opts.missionType === 'review') {
           overrideStatus = 'complete';
           const fullOutput = this.outputLines.join('\n');
-          const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
-          const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
-          const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
-          const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+          const llmVerdict = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+          let verdict: string;
+          let notes: string;
+          if (llmVerdict) {
+            verdict = llmVerdict.verdict.toLowerCase().replace(/_/g, '-');
+            notes = llmVerdict.notes;
+          } else {
+            const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
+            const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
+            verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
+            notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+          }
 
           const statusMap: Record<string, string> = {
             approve: 'approved',
@@ -1156,10 +1213,18 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         // Redirect to review verdict handling (same as the !hasChanges block above)
         overrideStatus = 'complete';
         const fullOutput = this.outputLines.join('\n');
-        const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
-        const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
-        const verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
-        const notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+        const llmVerdict2 = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+        let verdict: string;
+        let notes: string;
+        if (llmVerdict2) {
+          verdict = llmVerdict2.verdict.toLowerCase().replace(/_/g, '-');
+          notes = llmVerdict2.notes;
+        } else {
+          const verdictMatch = fullOutput.match(/VERDICT:\s*(APPROVE|REQUEST_CHANGES|ESCALATE)/i);
+          const notesMatch = fullOutput.match(/NOTES:\s*([\s\S]*?)(?:\n\n|$)/);
+          verdict = verdictMatch?.[1]?.toLowerCase().replace(/_/g, '-') ?? 'escalate';
+          notes = notesMatch?.[1]?.trim() ?? fullOutput.slice(-2000);
+        }
 
         const statusMap: Record<string, string> = {
           approve: 'approved',

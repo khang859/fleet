@@ -7,6 +7,7 @@ import type { ConfigService } from './config-service';
 import { WorktreeLimitError, type WorktreeManager } from './worktree-manager';
 import { Hull } from './hull';
 import type { EventBus } from '../event-bus';
+import type { Analyst } from './analyst';
 
 export class InsufficientMemoryError extends Error {
   constructor(freeGb: number, requiredGb: number) {
@@ -47,6 +48,7 @@ type CrewServiceDeps = {
   eventBus?: EventBus;
   /** Enriched env for crew processes (PATH with claude binary). */
   crewEnv?: Record<string, string>;
+  analyst?: Analyst;
 };
 
 type DeployResult = {
@@ -242,7 +244,8 @@ export class CrewService {
       missionType,
       starbaseId,
       prBranch: opts.prBranch,
-      originalMissionId: missionRow.original_mission_id ?? undefined
+      originalMissionId: missionRow.original_mission_id ?? undefined,
+      analyst: this.deps.analyst
     });
 
     // Update crew record with avatar
@@ -251,9 +254,36 @@ export class CrewService {
     this.hulls.set(crewId, hull);
 
     // 9. Start the Hull (headless — no paneId)
-    hull.start();
+    try {
+      hull.start();
+    } catch (err) {
+      // hull.start() throws if the mission was already claimed by a concurrent deploy.
+      // Clean up the in-memory hull reference so it doesn't linger as a zombie.
+      this.hulls.delete(crewId);
+      // Notify Admiral so the failure is visible
+      try {
+        db.prepare(
+          "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (NULL, 'admiral', 'deploy_failed', ?)"
+        ).run(
+          JSON.stringify({
+            missionId,
+            crewId,
+            reason: err instanceof Error ? err.message : String(err)
+          })
+        );
+        db.prepare(
+          "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deploy_failed', ?)"
+        ).run(
+          crewId,
+          JSON.stringify({ missionId, reason: err instanceof Error ? err.message : String(err) })
+        );
+      } catch {
+        // DB write failure in error path — non-fatal, already throwing
+      }
+      throw err;
+    }
 
-    // Increment global mission deployment budget counter
+    // Increment global mission deployment budget counter (only on successful start)
     db.prepare(
       'UPDATE missions SET mission_deployment_count = mission_deployment_count + 1 WHERE id = ?'
     ).run(missionId);
