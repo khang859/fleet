@@ -38,7 +38,7 @@ function makeDb() {
   return {
     prepare: vi.fn().mockReturnValue({ run: vi.fn((...args: unknown[]) => rows.push(args)) }),
     _rows: rows
-  } as unknown as ReturnType<import('better-sqlite3').Database['prepare']> & { _rows: unknown[] };
+  } as unknown as import('better-sqlite3').Database & { _rows: unknown[] };
 }
 
 describe('Analyst', () => {
@@ -46,6 +46,7 @@ describe('Analyst', () => {
 
   beforeEach(() => {
     db = makeDb();
+    mockProc = null;
   });
 
   describe('classifyError', () => {
