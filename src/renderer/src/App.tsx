@@ -354,7 +354,9 @@ export function App(): React.JSX.Element {
       <div
         className="h-9 shrink-0 bg-neutral-950 flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
-      />
+      >
+        <ShortcutsHint />
+      </div>
       <div className="flex flex-1 min-h-0">
         {showSidebar ? (
           <Sidebar
@@ -513,7 +515,6 @@ export function App(): React.JSX.Element {
                 </button>
               </div>
             )}
-            <ShortcutsHint />
           </main>
           <VisualizerPanel
             onShipClick={(id) => {
