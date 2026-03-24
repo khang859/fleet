@@ -112,6 +112,7 @@ export function WorkspacePicker(): React.JSX.Element {
 
   const handleDeleteWorkspace = async (wsId: string): Promise<void> => {
     await window.fleet.layout.delete(wsId);
+    useWorkspaceStore.getState().removeBackgroundWorkspace(wsId);
     setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
   };
 

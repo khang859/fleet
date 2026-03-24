@@ -429,7 +429,9 @@ void app.whenReady().then(() => {
         // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: unread memos fetched', { lastUnreadMemosCount });
         traceStarbase('unread memos fetched', { lastUnreadMemosCount });
-        layoutStore.ensureStarCommandTab('default', workspacePath);
+        for (const ws of layoutStore.list()) {
+          layoutStore.ensureStarCommandTab(ws.id, workspacePath);
+        }
         // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: ensured star command tab');
         traceStarbase('ensured star command tab');
@@ -492,7 +494,8 @@ void app.whenReady().then(() => {
       runtime: runtimeClient,
       admiralProcess,
       admiralStateDetector
-    })
+    }),
+    workspacePath
   );
 
   // Wire socket command handler to the window

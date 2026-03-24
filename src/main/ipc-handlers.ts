@@ -62,7 +62,8 @@ export function registerIpcHandlers(
   gitService: GitService,
   getWindow: () => BrowserWindow | null,
   getBootstrapState: () => BootstrapState,
-  getStarbaseServices: () => StarbaseServices
+  getStarbaseServices: () => StarbaseServices,
+  workspacePath: string
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
@@ -150,6 +151,7 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
     try {
       layoutStore.save(req.workspace);
+      layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
     } catch (err) {
       console.error('[layout-save] Failed to save workspace:', err);
     }

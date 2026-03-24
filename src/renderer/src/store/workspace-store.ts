@@ -93,6 +93,7 @@ type WorkspaceStore = {
   loadWorkspace: (workspace: Workspace) => void;
   switchWorkspace: (ws: Workspace) => void;
   loadBackgroundWorkspaces: (workspaces: Workspace[]) => void;
+  removeBackgroundWorkspace: (workspaceId: string) => void;
   setWorkspace: (workspace: Workspace) => void;
   renameWorkspace: (label: string) => void;
   markClean: () => void;
@@ -476,6 +477,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           newBackground.set(ws.id, { ...ws, tabs: migratedTabs });
         }
       }
+      return { backgroundWorkspaces: newBackground };
+    });
+  },
+
+  removeBackgroundWorkspace: (workspaceId) => {
+    set((state) => {
+      const newBackground = new Map(state.backgroundWorkspaces);
+      newBackground.delete(workspaceId);
       return { backgroundWorkspaces: newBackground };
     });
   },

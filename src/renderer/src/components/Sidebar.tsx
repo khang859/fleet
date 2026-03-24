@@ -448,6 +448,7 @@ export function Sidebar({
 
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
     await window.fleet.layout.delete(wsId);
+    useWorkspaceStore.getState().removeBackgroundWorkspace(wsId);
     setSavedWorkspaces((prev) => prev.filter((w) => w.id !== wsId));
     setDeleteConfirmId(null);
   }, []);
