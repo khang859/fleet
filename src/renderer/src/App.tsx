@@ -20,6 +20,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileBrowserDrawer } from './components/FileBrowserDrawer';
+import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
@@ -96,6 +97,7 @@ export function App(): React.JSX.Element {
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
+  const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [showPreChecks, setShowPreChecks] = useState(true);
 
@@ -149,6 +151,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setFileBrowserOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-file-browser', handler);
     return () => document.removeEventListener('fleet:toggle-file-browser', handler);
+  }, []);
+
+  // File search overlay toggle (Cmd+Shift+O or command palette)
+  useEffect(() => {
+    const handler = (): void => setFileSearchOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-file-search', handler);
+    return () => document.removeEventListener('fleet:toggle-file-search', handler);
   }, []);
 
   // Open file dialog (Cmd+O)
@@ -559,6 +568,7 @@ export function App(): React.JSX.Element {
         rootDir={focusedPaneCwd}
       />
       <FileBrowserDrawer isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
+      <FileSearchOverlay isOpen={fileSearchOpen} onClose={() => setFileSearchOpen(false)} />
       {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>
   );
