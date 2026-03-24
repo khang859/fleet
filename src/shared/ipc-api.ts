@@ -323,3 +323,22 @@ export type DirEntry = {
 export type ReaddirResponse =
   | { success: true; entries: DirEntry[] }
   | { success: false; error: string; entries: [] };
+
+export type FileSearchRequest = {
+  requestId: number;
+  query: string;
+  scope?: string;
+  limit?: number;
+};
+
+export type FileSearchResult = {
+  path: string;
+  name: string;
+  parentDir: string;
+  modifiedAt: number;
+  size: number;
+};
+
+export type FileSearchResponse =
+  | { success: true; requestId: number; results: FileSearchResult[] }
+  | { success: false; requestId: number; error: string };

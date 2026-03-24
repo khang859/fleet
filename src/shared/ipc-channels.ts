@@ -69,6 +69,7 @@ export const IPC_CHANNELS = {
   FILE_LIST: 'file:list',
   FILE_READ_BINARY: 'file:read-binary',
   FILE_OPEN_IN_TAB: 'file:open-in-tab',
+  FILE_SEARCH: 'file:search',
   SYSTEM_CHECK: 'system:check',
   MEMO_LIST: 'memo:list',
   MEMO_READ: 'memo:read',
