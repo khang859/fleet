@@ -67,7 +67,10 @@ type FileBrowserDrawerProps = {
 
 // --- Component ---
 
-export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): React.JSX.Element | null {
+export function FileBrowserDrawer({
+  isOpen,
+  onClose
+}: FileBrowserDrawerProps): React.JSX.Element | null {
   const [rootDir, setRootDir] = useState<string>(getInitialRoot);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const nodesRef = useRef<TreeNode[]>([]);
@@ -178,9 +181,10 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
   const handleDone = useCallback(() => {
     const activePaneId = useWorkspaceStore.getState().activePaneId;
     if (!activePaneId || selectedPaths.size === 0) return;
-    const quoted = Array.from(selectedPaths)
-      .map((p) => quotePathForShell(p, window.fleet.platform))
-      .join(' ') + ' ';
+    const quoted =
+      Array.from(selectedPaths)
+        .map((p) => quotePathForShell(p, window.fleet.platform))
+        .join(' ') + ' ';
     window.fleet.pty.input({ paneId: activePaneId, data: quoted });
     onClose();
   }, [selectedPaths, onClose]);
@@ -200,7 +204,9 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
       <div
         className="fixed inset-0 bg-black/40"
         onClick={onClose}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onClose(); }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') onClose();
+        }}
         role="presentation"
       />
       {/* Drawer */}
@@ -251,7 +257,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
               isLoading={isRootLoading}
               selectedPaths={selectedPaths}
               onToggle={toggleSelected}
-              onExpand={(path) => void handleExpandNode(path)}
+              onExpand={(path) => handleExpandNode(path)}
               depth={0}
             />
           )}
@@ -279,9 +285,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
           </button>
         </div>
         {!isTerminalActive && selectedPaths.size > 0 && (
-          <div className="px-3 pb-2 text-xs text-amber-500/80">
-            Focus a terminal to paste
-          </div>
+          <div className="px-3 pb-2 text-xs text-amber-500/80">Focus a terminal to paste</div>
         )}
       </div>
     </div>
@@ -299,7 +303,14 @@ type TreeViewProps = {
   depth: number;
 };
 
-function TreeView({ nodes, isLoading, selectedPaths, onToggle, onExpand, depth }: TreeViewProps): React.JSX.Element {
+function TreeView({
+  nodes,
+  isLoading,
+  selectedPaths,
+  onToggle,
+  onExpand,
+  depth
+}: TreeViewProps): React.JSX.Element {
   if (isLoading) {
     return <div className="px-3 py-2 text-xs text-neutral-500">Loading...</div>;
   }
@@ -330,7 +341,13 @@ type TreeNodeRowProps = {
   depth: number;
 };
 
-function TreeNodeRow({ node, selectedPaths, onToggle, onExpand, depth }: TreeNodeRowProps): React.JSX.Element {
+function TreeNodeRow({
+  node,
+  selectedPaths,
+  onToggle,
+  onExpand,
+  depth
+}: TreeNodeRowProps): React.JSX.Element {
   const isSelected = selectedPaths.has(node.path);
   const indent = depth * 12;
 
@@ -342,8 +359,16 @@ function TreeNodeRow({ node, selectedPaths, onToggle, onExpand, depth }: TreeNod
           className="w-full flex items-center gap-1 px-2 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 transition-colors text-left"
           style={{ paddingLeft: `${8 + indent}px` }}
         >
-          {node.isExpanded ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-          {node.isExpanded ? <FolderOpen size={13} className="shrink-0 text-yellow-500/80" /> : <FolderClosed size={13} className="shrink-0 text-yellow-500/80" />}
+          {node.isExpanded ? (
+            <ChevronDown size={12} className="shrink-0" />
+          ) : (
+            <ChevronRight size={12} className="shrink-0" />
+          )}
+          {node.isExpanded ? (
+            <FolderOpen size={13} className="shrink-0 text-yellow-500/80" />
+          ) : (
+            <FolderClosed size={13} className="shrink-0 text-yellow-500/80" />
+          )}
           <span className="truncate text-xs">{node.name}</span>
         </button>
         {node.isExpanded && node.children !== null && (
@@ -385,7 +410,13 @@ type SearchResultsProps = {
   onToggle: (path: string) => void;
 };
 
-function SearchResults({ results, isLoading, error, selectedPaths, onToggle }: SearchResultsProps): React.JSX.Element {
+function SearchResults({
+  results,
+  isLoading,
+  error,
+  selectedPaths,
+  onToggle
+}: SearchResultsProps): React.JSX.Element {
   if (isLoading) {
     return <div className="px-3 py-2 text-xs text-neutral-500">Loading...</div>;
   }

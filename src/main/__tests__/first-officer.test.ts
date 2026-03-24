@@ -224,7 +224,9 @@ describe('FirstOfficer', () => {
 
   it('writeHailingMemo() uses analyst context when analyst is provided and succeeds', async () => {
     const mockAnalyst = {
-      writeHailingContext: async (_: string) => 'The crew is waiting for a decision on authentication strategy. Check if the question requires a policy decision. Respond via the Admiral interface.'
+      // eslint-disable-next-line @typescript-eslint/require-await
+      writeHailingContext: async () =>
+        'The crew is waiting for a decision on authentication strategy. Check if the question requires a policy decision. Respond via the Admiral interface.'
     };
 
     const foWithAnalyst = new FirstOfficer({
@@ -262,7 +264,8 @@ describe('FirstOfficer', () => {
 
   it('writeHailingMemo() falls back to template when analyst returns null', async () => {
     const mockAnalyst = {
-      writeHailingContext: async (_: string) => null
+      // eslint-disable-next-line @typescript-eslint/require-await
+      writeHailingContext: async () => null
     };
 
     const foWithAnalyst = new FirstOfficer({

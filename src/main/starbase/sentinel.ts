@@ -20,13 +20,16 @@ import { GLOBAL_SECTOR_ID } from './sector-service';
 
 // Lazily access Notification so this module can be imported in the starbase-runtime
 // child process (ELECTRON_RUN_AS_NODE=1) where Electron's renderer-only APIs are absent.
-let _NotificationClass: typeof import('electron').Notification | null | undefined;
-function getNotificationClass(): typeof import('electron').Notification | null {
+import type Electron from 'electron';
+type NotificationConstructor = typeof Electron.Notification;
+let _NotificationClass: NotificationConstructor | null | undefined;
+function getNotificationClass(): NotificationConstructor | null {
   if (_NotificationClass !== undefined) return _NotificationClass;
   try {
     const req = createRequire(import.meta.url);
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const electron = req('electron') as typeof import('electron');
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- createRequire always returns any
+    const electron = req('electron') as typeof Electron;
     _NotificationClass = electron.Notification ?? null;
   } catch {
     _NotificationClass = null;
@@ -174,11 +177,14 @@ export class Sentinel {
     }, ms);
 
     // PR monitor runs every 5 minutes — separate timer to avoid GitHub API rate limits
-    this.prMonitorInterval = setInterval(() => {
-      this.prMonitorSweep().catch((err) => {
-        console.error('[sentinel] prMonitorSweep failed:', err);
-      });
-    }, 5 * 60 * 1000);
+    this.prMonitorInterval = setInterval(
+      () => {
+        this.prMonitorSweep().catch((err) => {
+          console.error('[sentinel] prMonitorSweep failed:', err);
+        });
+      },
+      5 * 60 * 1000
+    );
   }
 
   stop(): void {
@@ -454,7 +460,7 @@ export class Sentinel {
       const fingerprint = computeFingerprint(errorText);
 
       // Classify the error
-      const llmClassification = await this.deps.analyst?.classifyError(errorText) ?? null;
+      const llmClassification = (await this.deps.analyst?.classifyError(errorText)) ?? null;
       const classification =
         llmClassification ??
         classifyFromFingerprint(errorText, fingerprint, row.last_error_fingerprint ?? undefined);
@@ -609,7 +615,7 @@ export class Sentinel {
           if (staleComms.length > 0) {
             const uniqueCrews = new Set(staleComms.map((c) => c.from_crew).filter(Boolean));
             const body = `${staleComms.length} unread transmission${staleComms.length > 1 ? 's' : ''} from ${uniqueCrews.size} crew${uniqueCrews.size > 1 ? 's' : ''}`;
-            const notif = new NotifClass!({ title: 'Fleet', body });
+            const notif = new NotifClass({ title: 'Fleet', body });
             if (this.deps.onNudgeClick) {
               notif.on('click', this.deps.onNudgeClick);
             }
@@ -1043,8 +1049,11 @@ ${mission.review_notes ?? 'No specific notes provided'}
     let ciOutput: string;
     try {
       const { stdout } = await execFileAsync('gh', [
-        'pr', 'checks', mission.pr_branch,
-        '--json', 'name,state,conclusion,required'
+        'pr',
+        'checks',
+        mission.pr_branch,
+        '--json',
+        'name,state,conclusion,required'
       ]);
       ciOutput = stdout;
     } catch {
@@ -1062,9 +1071,12 @@ ${mission.review_notes ?? 'No specific notes provided'}
 
     const hasFailure = ciParsed.some((c: unknown) => {
       if (c === null || typeof c !== 'object') return false;
-      return 'required' in c && 'conclusion' in c &&
+      return (
+        'required' in c &&
+        'conclusion' in c &&
         (c as { required: unknown }).required === true &&
-        (c as { conclusion: unknown }).conclusion === 'failure';
+        (c as { conclusion: unknown }).conclusion === 'failure'
+      );
     });
     if (!hasFailure) return;
 
@@ -1072,10 +1084,14 @@ ${mission.review_notes ?? 'No specific notes provided'}
     let failureLog = '(could not fetch CI logs)';
     try {
       const { stdout: runList } = await execFileAsync('gh', [
-        'run', 'list',
-        '--branch', mission.pr_branch,
-        '--json', 'databaseId',
-        '--limit', '1'
+        'run',
+        'list',
+        '--branch',
+        mission.pr_branch,
+        '--json',
+        'databaseId',
+        '--limit',
+        '1'
       ]);
       const rawRuns: unknown = JSON.parse(runList);
       if (Array.isArray(rawRuns) && rawRuns.length > 0) {
@@ -1084,18 +1100,21 @@ ${mission.review_notes ?? 'No specific notes provided'}
           first !== null && typeof first === 'object' && 'databaseId' in first
             ? first.databaseId
             : undefined;
-          if (typeof runId === 'number') {
-            const { stdout: log } = await execFileAsync('gh', [
-              'run', 'view', String(runId), '--log-failed'
-            ]);
-            failureLog = log.slice(0, 4000);
-            // Try to summarize CI logs with analyst; fall back to raw logs
-            if (this.deps.analyst) {
-              const summary = await this.deps.analyst.summarizeCILogs(failureLog);
-              if (summary) failureLog = summary;
-            }
+        if (typeof runId === 'number') {
+          const { stdout: log } = await execFileAsync('gh', [
+            'run',
+            'view',
+            String(runId),
+            '--log-failed'
+          ]);
+          failureLog = log.slice(0, 4000);
+          // Try to summarize CI logs with analyst; fall back to raw logs
+          if (this.deps.analyst) {
+            const summary = await this.deps.analyst.summarizeCILogs(failureLog);
+            if (summary) failureLog = summary;
           }
         }
+      }
     } catch {
       // Best-effort — proceed with placeholder log
     }
@@ -1124,7 +1143,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
       failureLog,
       '',
       'Push your fixes to the current branch — the PR already exists and will be updated automatically.',
-      'Do NOT create a new PR.',
+      'Do NOT create a new PR.'
     ].join('\n');
 
     // Create repair mission
@@ -1140,7 +1159,9 @@ ${mission.review_notes ?? 'No specific notes provided'}
       });
     } catch (err) {
       // Rollback
-      db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(mission.id);
+      db.prepare(
+        "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+      ).run(mission.id);
       throw err;
     }
 
@@ -1155,7 +1176,9 @@ ${mission.review_notes ?? 'No specific notes provided'}
       });
     } catch (err) {
       // Rollback original mission and remove orphaned repair mission
-      db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(mission.id);
+      db.prepare(
+        "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
+      ).run(mission.id);
       db.prepare('DELETE FROM missions WHERE id = ?').run(repairMission.id);
       throw err;
     }

@@ -51,7 +51,10 @@ export class Analyst {
       if (candidate[i] === '{') depth++;
       else if (candidate[i] === '}') {
         depth--;
-        if (depth === 0) { end = i; break; }
+        if (depth === 0) {
+          end = i;
+          break;
+        }
       }
     }
     if (end === -1) throw new Error('No JSON object found in output');
@@ -63,7 +66,7 @@ export class Analyst {
    * collect stdout, parse the first JSON object from the response.
    * Kills the process and rejects with 'Analyst subprocess timed out' after timeoutMs.
    */
-  private runAttempt(prompt: string): Promise<unknown> {
+  private async runAttempt(prompt: string): Promise<unknown> {
     return new Promise((resolve, reject) => {
       const proc = spawn('claude', ['--print', '--model', this.model], {
         env: this.getEnv(),
@@ -83,7 +86,9 @@ export class Analyst {
         stdout += chunk.toString();
       });
 
-      proc.stderr.on('data', () => { /* drain */ });
+      proc.stderr.on('data', () => {
+        /* drain */
+      });
 
       proc.stdin.write(prompt);
       proc.stdin.end();
@@ -92,13 +97,13 @@ export class Analyst {
         clearTimeout(timer);
         if (timedOut) return;
         if (code !== 0) {
-          reject(new Error(`Analyst subprocess exited with code ${code}`));
+          reject(new Error(`Analyst subprocess exited with code ${String(code)}`));
           return;
         }
         try {
           resolve(this.extractJson(stdout));
         } catch (err) {
-          reject(err);
+          reject(err instanceof Error ? err : new Error(String(err)));
         }
       });
 
@@ -114,13 +119,15 @@ export class Analyst {
    * Run the analyst subprocess, retrying once on timeout to guard against
    * transient cold-start spikes. A second timeout propagates to the caller.
    */
-  private run(prompt: string): Promise<unknown> {
-    return this.runAttempt(prompt).catch((err: unknown) => {
+  private async run(prompt: string): Promise<unknown> {
+    try {
+      return await this.runAttempt(prompt);
+    } catch (err: unknown) {
       if (err instanceof Error && err.message === 'Analyst subprocess timed out') {
         return this.runAttempt(prompt);
       }
       throw err;
-    });
+    }
   }
 
   /** Write a rate-limited analyst_degraded comms to the Admiral. */
@@ -183,7 +190,8 @@ export class Analyst {
         'summary' in result &&
         typeof (result as Record<string, unknown>).summary === 'string'
       ) {
-        return (result as Record<string, string>).summary;
+        const { summary } = result as Record<string, unknown>;
+        return String(summary);
       }
       throw new Error('Invalid summary schema');
     } catch (err) {
@@ -213,7 +221,8 @@ export class Analyst {
         const r = result as Record<string, unknown>;
         const v = r.verdict;
         if (v === 'APPROVE' || v === 'REQUEST_CHANGES' || v === 'ESCALATE') {
-          return { verdict: v, notes: String(r.notes ?? '') };
+          const notes = r.notes;
+          return { verdict: v, notes: typeof notes === 'string' ? notes : '' };
         }
       }
       throw new Error('Invalid verdict schema');
@@ -238,7 +247,8 @@ export class Analyst {
         'context' in result &&
         typeof (result as Record<string, unknown>).context === 'string'
       ) {
-        return (result as Record<string, string>).context;
+        const { context } = result as Record<string, unknown>;
+        return String(context);
       }
       throw new Error('Invalid context schema');
     } catch (err) {

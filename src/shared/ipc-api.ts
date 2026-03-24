@@ -315,7 +315,7 @@ export type StarbaseStatusUpdatePayload = {
 
 export type DirEntry = {
   name: string;
-  path: string;       // absolute path
+  path: string; // absolute path
   isDirectory: boolean;
 };
 
