@@ -16,7 +16,7 @@ When `PTY_CREATE` is called for an already-existing pane (idempotent path for HM
 
 ---
 
-### 2. `onData` Callback Silently Replaced (Important)
+### 2. ~~`onData` Callback Silently Replaced (Important)~~ ✅ Fixed
 
 **Files:** `src/main/pty-manager.ts:189`
 

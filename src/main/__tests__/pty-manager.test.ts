@@ -124,6 +124,27 @@ describe('PtyManager batching and cleanup', () => {
     expect(mockPty.resume).toHaveBeenCalled();
   });
 
+  it('skips duplicate onData registration and keeps original callback', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
+
+    const firstCallback = vi.fn();
+    const secondCallback = vi.fn();
+
+    manager.onData('pane-1', firstCallback);
+    // Second registration should be silently rejected
+    manager.onData('pane-1', secondCallback);
+
+    // Simulate PTY data + flush
+    ptyDataCallback('hello');
+    vi.advanceTimersByTime(16);
+
+    // Only the first callback should receive data
+    expect(firstCallback).toHaveBeenCalledWith('hello');
+    expect(secondCallback).not.toHaveBeenCalled();
+  });
+
   it('disposes previous exitDisposable when onExit is called again', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;

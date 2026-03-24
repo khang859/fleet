@@ -186,6 +186,14 @@ export class PtyManager {
     const entry = this.ptys.get(paneId);
     if (!entry) return;
 
+    if (this.dataCallbacks.has(paneId)) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[pty] onData for ${paneId} already registered — skipping to prevent silent overwrite`
+      );
+      return;
+    }
+
     this.dataCallbacks.set(paneId, callback);
 
     // Start shared flush timer if not already running
