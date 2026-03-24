@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
+import { useCwdStore } from './cwd-store';
 
 const RECENT_FILES_KEY = 'fleet:recent-files';
 const MAX_RECENT_FILES = 20;
@@ -307,9 +308,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   splitPane: (paneId, direction) => {
-    const newLeaf = createLeaf(
-      get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/'
-    );
+    const liveCwd = useCwdStore.getState().cwds.get(paneId);
+    const tabCwd =
+      get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/';
+    const newLeaf = createLeaf(liveCwd ?? tabCwd);
 
     function splitNode(node: PaneNode): PaneNode {
       if (node.type === 'leaf' && node.id === paneId) {

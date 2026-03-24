@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useWorkspaceStore } from '../workspace-store';
+import { useWorkspaceStore, collectPaneLeafs } from '../workspace-store';
+import { useCwdStore } from '../cwd-store';
 import type { Workspace } from '../../../../shared/types';
 
 const WS_A: Workspace = {
@@ -254,5 +255,31 @@ describe('switchWorkspace — active tab/pane restoration', () => {
     useWorkspaceStore.getState().switchWorkspace(WS_B);
     const stashed = useWorkspaceStore.getState().backgroundWorkspaces.get('ws-a');
     expect(stashed?.activeTabId).toBe('tab-a1');
+  });
+});
+
+describe('splitPane — live CWD', () => {
+  it('uses the live CWD from cwd-store for the new pane', () => {
+    // Prime cwd-store with a different CWD than what's in the tab
+    useCwdStore.setState({ cwds: new Map([['pane-a1', '/live/path']]) });
+
+    const newPaneId = useWorkspaceStore.getState().splitPane('pane-a1', 'horizontal');
+
+    // Find the new leaf's CWD via collectPaneLeafs
+    const tab = useWorkspaceStore.getState().workspace.tabs[0];
+    const leaves = collectPaneLeafs(tab.splitRoot);
+    const newLeaf = leaves.find((l) => l.id === newPaneId);
+    expect(newLeaf?.cwd).toBe('/live/path');
+  });
+
+  it('falls back to tab.cwd when no live CWD in cwd-store', () => {
+    useCwdStore.setState({ cwds: new Map() });
+
+    const newPaneId = useWorkspaceStore.getState().splitPane('pane-a1', 'horizontal');
+
+    const tab = useWorkspaceStore.getState().workspace.tabs[0];
+    const leaves = collectPaneLeafs(tab.splitRoot);
+    const newLeaf = leaves.find((l) => l.id === newPaneId);
+    expect(newLeaf?.cwd).toBe('/tmp'); // WS_A's tab cwd
   });
 });
