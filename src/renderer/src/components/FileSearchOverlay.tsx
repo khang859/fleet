@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Search, X, ArrowDownAZ, Clock, HardDrive } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { quotePathForShell } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
@@ -139,6 +139,34 @@ function ScopePill({
   );
 }
 
+// --- Sort options ---
+
+type SortOption = 'date' | 'name' | 'size';
+
+const SORT_OPTIONS: Array<{ id: SortOption; label: string; icon: typeof Clock }> = [
+  { id: 'date', label: 'Date', icon: Clock },
+  { id: 'name', label: 'Name', icon: ArrowDownAZ },
+  { id: 'size', label: 'Size', icon: HardDrive }
+];
+
+function sortResults(results: FileSearchResult[], sort: SortOption): FileSearchResult[] {
+  const sorted = [...results];
+  switch (sort) {
+    case 'date':
+      return sorted.sort((a, b) => b.modifiedAt - a.modifiedAt);
+    case 'name':
+      return sorted.sort((a, b) => a.name.localeCompare(b.name));
+    case 'size':
+      return sorted.sort((a, b) => b.size - a.size);
+  }
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 // --- Props ---
 
 type FileSearchOverlayProps = {
@@ -158,6 +186,7 @@ export function FileSearchOverlay({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortOption>('date');
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
@@ -231,6 +260,8 @@ export function FileSearchOverlay({
     if (child instanceof HTMLElement) child.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
+  const sortedResults = useMemo(() => sortResults(results, sort), [results, sort]);
+
   const handleSelect = useCallback(
     (file: FileSearchResult) => {
       if (!activePaneId) return;
@@ -243,22 +274,22 @@ export function FileSearchOverlay({
   );
 
   const handleScopeToParent = useCallback(() => {
-    const file = results[selectedIndex];
+    const file = sortedResults[selectedIndex];
     if (file) {
       setScope(file.parentDir);
     }
-  }, [results, selectedIndex]);
+  }, [sortedResults, selectedIndex]);
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex((i) => Math.min(i + 1, results.length - 1));
+      setSelectedIndex((i) => Math.min(i + 1, sortedResults.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const file = results[selectedIndex];
+      const file = sortedResults[selectedIndex];
       if (file) handleSelect(file);
     } else if (e.key === 'Tab') {
       e.preventDefault();
@@ -298,6 +329,27 @@ export function FileSearchOverlay({
           {isLoading && <span className="text-xs text-neutral-500">Searching...</span>}
         </div>
 
+        {/* Sort bar */}
+        {results.length > 0 && (
+          <div className="px-3 py-1 border-b border-neutral-800 flex items-center gap-1">
+            <span className="text-[10px] text-neutral-600 mr-1">Sort:</span>
+            {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                onClick={() => setSort(id)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  sort === id
+                    ? 'bg-neutral-700 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                }`}
+              >
+                <Icon size={10} />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Results */}
         <div ref={listRef} className="overflow-y-auto py-1">
           {!query && results.length > 0 && (
@@ -307,12 +359,12 @@ export function FileSearchOverlay({
           )}
           {error ? (
             <div className="px-3 py-4 text-sm text-red-400/80 text-center">{error}</div>
-          ) : results.length === 0 && !isLoading ? (
+          ) : sortedResults.length === 0 && !isLoading ? (
             <div className="px-3 py-4 text-sm text-neutral-500 text-center">
               {query ? 'No files found' : 'No recent files'}
             </div>
           ) : (
-            results.slice(0, 10).map((file, i) => (
+            sortedResults.slice(0, 10).map((file, i) => (
               <button
                 key={file.path}
                 className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
@@ -333,7 +385,7 @@ export function FileSearchOverlay({
                   </span>
                 </div>
                 <span className="text-[10px] text-neutral-600 shrink-0">
-                  {relativeTime(file.modifiedAt)}
+                  {sort === 'size' ? formatSize(file.size) : relativeTime(file.modifiedAt)}
                 </span>
               </button>
             ))
