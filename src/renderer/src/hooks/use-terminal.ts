@@ -324,9 +324,27 @@ function createTerminal(
   };
   container.addEventListener('keydown', keyScrollHandler);
 
+  // Re-pin when the user scrolls the viewport back to the bottom.
+  // term.onScroll only fires on content-driven buffer scroll (new lines added),
+  // NOT on user viewport scroll. On macOS trackpad momentum scrolling, wheel events
+  // stop firing before the scroll actually settles — the wheelHandler's rAF may read
+  // a stale position slightly above baseY, leaving pinnedToBottom=false indefinitely.
+  // The DOM 'scroll' event on .xterm-viewport fires on every scrollTop change
+  // including the final resting position, giving reliable bottom detection.
+  const xtermViewport = container.querySelector('.xterm-viewport');
+  const viewportScrollHandler = (): void => {
+    if (container.offsetParent === null) return;
+    if (isAtBottom()) {
+      pinnedToBottom = true;
+      options.onScrollStateChange?.(false);
+    }
+  };
+  xtermViewport?.addEventListener('scroll', viewportScrollHandler, { passive: true });
+
   const scrollCleanup = (): void => {
     container.removeEventListener('wheel', wheelHandler);
     container.removeEventListener('keydown', keyScrollHandler);
+    xtermViewport?.removeEventListener('scroll', viewportScrollHandler);
   };
 
   // Debounced PTY resize — sends SIGWINCH once after resizing settles,
