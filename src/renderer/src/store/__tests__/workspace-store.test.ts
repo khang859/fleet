@@ -259,6 +259,19 @@ describe('switchWorkspace — active tab/pane restoration', () => {
   });
 });
 
+describe('switchWorkspace — stashes live CWDs', () => {
+  it('injects live CWDs into the old workspace before stashing', () => {
+    // Prime cwd-store with a live CWD for pane-a1
+    useCwdStore.setState({ cwds: new Map([['pane-a1', '/live/a1']]) });
+
+    useWorkspaceStore.getState().switchWorkspace(WS_B);
+
+    const stashed = useWorkspaceStore.getState().backgroundWorkspaces.get('ws-a');
+    const leaf = stashed?.tabs[0].splitRoot;
+    expect(leaf?.type === 'leaf' ? leaf.cwd : null).toBe('/live/a1');
+  });
+});
+
 describe('splitPane — live CWD', () => {
   it('uses the live CWD from cwd-store for the new pane', () => {
     // Prime cwd-store with a different CWD than what's in the tab

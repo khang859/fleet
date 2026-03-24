@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
 import { useCwdStore } from './cwd-store';
+import { injectLiveCwd } from '../lib/workspace-utils';
 
 const RECENT_FILES_KEY = 'fleet:recent-files';
 const MAX_RECENT_FILES = 20;
@@ -440,7 +441,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       newBackground.set(state.workspace.id, {
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
-        activePaneId: state.activePaneId ?? undefined
+        activePaneId: state.activePaneId ?? undefined,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
       });
       newBackground.delete(migrated.id);
 
