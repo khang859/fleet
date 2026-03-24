@@ -238,9 +238,10 @@ export function Sidebar({
     });
 
     // Resolve target (in-memory or disk) and switch
-    const inMemory = state.backgroundWorkspaces.get(wsId);
+    const freshState = useWorkspaceStore.getState();
+    const inMemory = freshState.backgroundWorkspaces.get(wsId);
     if (inMemory) {
-      state.switchWorkspace(inMemory);
+      freshState.switchWorkspace(inMemory);
     } else {
       const loaded = await window.fleet.layout.load(wsId);
       if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
