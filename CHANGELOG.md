@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.6.7
+- Fixed duplicate PTY onExit listener stacking on HMR reloads
+- Fixed silent onData callback overwrite on duplicate registration
+- Fixed URL scheme validation for shell.openExternal (security)
+- Fixed PTY data disposal on exit and flush timer cleanup
+- Replaced O(N) PTY data broadcast with O(1) Map-based routing (performance)
+- Replaced broad Zustand store subscriptions with granular selectors (performance)
+- Removed unnecessary fit() call on click and memoized workspaceToAgents (performance)
+
 ## v2.6.6
 - Fixed Apple Silicon users receiving the x64 build via auto-update (arm64 and x64 DMGs now published as separate files)
 - Fixed node/claude not found on startup check screen due to shell PATH not being enriched in time
