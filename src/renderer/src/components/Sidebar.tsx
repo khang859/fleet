@@ -258,6 +258,8 @@ export function Sidebar({
       const state = useWorkspaceStore.getState();
       const workspaceWithCwds = {
         ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
           splitRoot: injectLiveCwd(tab.splitRoot)

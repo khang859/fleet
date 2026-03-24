@@ -59,8 +59,11 @@ export function WorkspacePicker(): React.JSX.Element {
   };
 
   const handleSaveCurrent = async (): Promise<void> => {
+    const state = useWorkspaceStore.getState();
     const workspaceWithLiveCwds = {
       ...workspace,
+      activeTabId: state.activeTabId ?? undefined,
+      activePaneId: state.activePaneId ?? undefined,
       tabs: workspace.tabs.map((tab) => ({
         ...tab,
         splitRoot: injectLiveCwd(tab.splitRoot)
