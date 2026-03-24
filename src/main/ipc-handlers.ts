@@ -264,7 +264,11 @@ export function registerIpcHandlers(
   });
 
   // System-level dependency check (app-wide pre-checks screen)
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, async () => checkSystemDeps());
+  // Must await envReady so the shell PATH is enriched before checking for node/claude/etc.
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, async () => {
+    await getBootstrapState().envReady;
+    return checkSystemDeps();
+  });
 
   // Phase 3: Admiral + Comms handlers
   ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, async () => checkDependencies());
