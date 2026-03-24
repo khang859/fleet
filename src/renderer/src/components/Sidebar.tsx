@@ -223,15 +223,29 @@ export function Sidebar({
   }, []);
 
   const doSwitchWorkspace = useCallback(async (wsId: string) => {
+    // Flush current workspace with live CWDs BEFORE any async gap
     const state = useWorkspaceStore.getState();
-    // Use in-memory version if already loaded (preserves live state)
+    await window.fleet.layout.save({
+      workspace: {
+        ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      }
+    });
+
+    // Resolve target (in-memory or disk) and switch
     const inMemory = state.backgroundWorkspaces.get(wsId);
     if (inMemory) {
       state.switchWorkspace(inMemory);
     } else {
       const loaded = await window.fleet.layout.load(wsId);
-      if (loaded) state.switchWorkspace(loaded);
+      if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
     }
+
     // Add a default tab if workspace is empty
     setTimeout(() => {
       const s = useWorkspaceStore.getState();
@@ -293,13 +307,26 @@ export function Sidebar({
     }
   }, [showNewWsInput]);
 
-  const commitNewWorkspace = useCallback(() => {
+  const commitNewWorkspace = useCallback(async () => {
     const name = newWsName.trim();
     setShowNewWsInput(false);
     setNewWsName('');
     if (!name) return;
 
-    // Create fresh workspace and switch to it (old workspace moves to background)
+    // Flush current workspace to disk before switching away
+    const state = useWorkspaceStore.getState();
+    await window.fleet.layout.save({
+      workspace: {
+        ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      }
+    });
+
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
@@ -307,12 +334,11 @@ export function Sidebar({
     };
     useWorkspaceStore.getState().switchWorkspace(newWs);
 
-    // Refresh workspace list immediately (Fix 5 — don't wait for autosave)
+    // Refresh workspace list immediately (don't wait for autosave)
     void window.fleet.layout.list().then((res) => {
       setSavedWorkspaces(res.workspaces.map((w) => ({ id: w.id, label: w.label })));
     });
 
-    // Add a default tab
     setTimeout(() => {
       useWorkspaceStore.getState().addTab(undefined, window.fleet.homeDir);
     }, 0);
@@ -695,14 +721,14 @@ export function Sidebar({
               value={newWsName}
               onChange={(e) => setNewWsName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') commitNewWorkspace();
+                if (e.key === 'Enter') void commitNewWorkspace();
                 if (e.key === 'Escape') {
                   setShowNewWsInput(false);
                   setNewWsName('');
                 }
               }}
               onBlur={() => {
-                commitNewWorkspace();
+                void commitNewWorkspace();
               }}
               placeholder="Workspace name..."
               className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
