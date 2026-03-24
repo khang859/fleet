@@ -174,3 +174,85 @@ describe('getAllPaneIds', () => {
     expect(ids.has('pane-c1')).toBe(true);
   });
 });
+
+describe('loadWorkspace — active tab/pane restoration', () => {
+  it('restores the persisted activeTabId when it matches a real tab', () => {
+    const ws: Workspace = {
+      id: 'ws-x',
+      label: 'X',
+      activeTabId: 'tab-x2',
+      tabs: [
+        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        { id: 'tab-x2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x2', cwd: '/' } },
+      ]
+    };
+    useWorkspaceStore.getState().loadWorkspace(ws);
+    expect(useWorkspaceStore.getState().activeTabId).toBe('tab-x2');
+  });
+
+  it('falls back to tabs[0] when persisted activeTabId is not found', () => {
+    const ws: Workspace = {
+      id: 'ws-x',
+      label: 'X',
+      activeTabId: 'tab-gone',
+      tabs: [
+        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+      ]
+    };
+    useWorkspaceStore.getState().loadWorkspace(ws);
+    expect(useWorkspaceStore.getState().activeTabId).toBe('tab-x1');
+  });
+
+  it('restores the persisted activePaneId when it is in the active tab', () => {
+    const ws: Workspace = {
+      id: 'ws-x',
+      label: 'X',
+      activeTabId: 'tab-x1',
+      activePaneId: 'pane-x1',
+      tabs: [
+        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+      ]
+    };
+    useWorkspaceStore.getState().loadWorkspace(ws);
+    expect(useWorkspaceStore.getState().activePaneId).toBe('pane-x1');
+  });
+
+  it('falls back to first pane when persisted activePaneId is not in active tab', () => {
+    const ws: Workspace = {
+      id: 'ws-x',
+      label: 'X',
+      activePaneId: 'pane-gone',
+      tabs: [
+        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+      ]
+    };
+    useWorkspaceStore.getState().loadWorkspace(ws);
+    expect(useWorkspaceStore.getState().activePaneId).toBe('pane-x1');
+  });
+});
+
+describe('switchWorkspace — active tab/pane restoration', () => {
+  it('restores persisted activeTabId from in-memory background workspace (non-first tab)', () => {
+    // WS_B has only one tab, so tab-b1 would be tabs[0] regardless.
+    // Use a multi-tab variant with activeTabId pointing to the SECOND tab so
+    // the old code (always picks tabs[0]) will fail this test.
+    const wsBMulti: Workspace = {
+      id: 'ws-b',
+      label: 'Beta',
+      activeTabId: 'tab-b2',
+      tabs: [
+        { id: 'tab-b1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b1', cwd: '/' } },
+        { id: 'tab-b2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b2', cwd: '/' } },
+      ]
+    };
+    useWorkspaceStore.setState({ backgroundWorkspaces: new Map([['ws-b', wsBMulti]]) });
+    useWorkspaceStore.getState().switchWorkspace(WS_B);
+    expect(useWorkspaceStore.getState().activeTabId).toBe('tab-b2');
+  });
+
+  it('stashes old workspace with current activeTabId into backgroundWorkspaces', () => {
+    useWorkspaceStore.getState().switchWorkspace(WS_B);
+    const stashed = useWorkspaceStore.getState().backgroundWorkspaces.get('ws-a');
+    expect(stashed?.activeTabId).toBe('tab-a1');
+  });
+});

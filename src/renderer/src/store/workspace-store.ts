@@ -395,38 +395,58 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       labelIsCustom: t.labelIsCustom ?? false
     }));
     const migrated = { ...workspace, tabs: migratedTabs };
-    const firstTab = migrated.tabs[0];
-    const firstPane = firstTab ? collectPaneIds(firstTab.splitRoot)[0] : null;
+
+    const restoredTab = (migrated.activeTabId
+      ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
+      : undefined) ?? migrated.tabs[0];
+
+    const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
+    const restoredPane =
+      migrated.activePaneId && paneIds.includes(migrated.activePaneId)
+        ? migrated.activePaneId
+        : paneIds[0] ?? null;
+
     set({
       workspace: migrated,
-      activeTabId: firstTab?.id ?? null,
-      activePaneId: firstPane ?? null,
+      activeTabId: restoredTab?.id ?? null,
+      activePaneId: restoredPane,
       isDirty: false
     });
   },
 
   switchWorkspace: (ws) => {
     set((state) => {
-      // Prefer in-memory version if we already have this workspace loaded
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = target.tabs.map((t) => ({
         ...t,
         labelIsCustom: t.labelIsCustom ?? false
       }));
       const migrated = { ...target, tabs: migratedTabs };
-      const firstTab = migrated.tabs[0];
-      const firstPane = firstTab ? collectPaneIds(firstTab.splitRoot)[0] : null;
 
-      // Move current workspace to background; remove target from background
+      const restoredTab = (migrated.activeTabId
+        ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
+        : undefined) ?? migrated.tabs[0];
+
+      const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
+      const restoredPane =
+        migrated.activePaneId && paneIds.includes(migrated.activePaneId)
+          ? migrated.activePaneId
+          : paneIds[0] ?? null;
+
+      // Stash old workspace with current active tab/pane into background
       const newBackground = new Map(state.backgroundWorkspaces);
-      newBackground.set(state.workspace.id, state.workspace);
+      newBackground.set(state.workspace.id, {
+        ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined
+      });
       newBackground.delete(migrated.id);
 
       return {
         workspace: migrated,
         backgroundWorkspaces: newBackground,
-        activeTabId: firstTab?.id ?? null,
-        activePaneId: firstPane ?? null,
+        activeTabId: restoredTab?.id ?? null,
+        activePaneId: restoredPane,
         isDirty: false
       };
     });
