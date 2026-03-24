@@ -45,7 +45,9 @@ describe('computeFingerprint', () => {
 
 describe('classifyFromFingerprint', () => {
   it('returns non-retryable for ENOENT', () => {
-    expect(classifyFromFingerprint('Error: ENOENT: no such file or directory')).toBe('non-retryable');
+    expect(classifyFromFingerprint('Error: ENOENT: no such file or directory')).toBe(
+      'non-retryable'
+    );
   });
 
   it('returns non-retryable for EACCES', () => {
@@ -66,7 +68,9 @@ describe('classifyFromFingerprint', () => {
   });
 
   it('returns transient for generic errors', () => {
-    expect(classifyFromFingerprint('TypeError: Cannot read properties of undefined')).toBe('transient');
+    expect(classifyFromFingerprint('TypeError: Cannot read properties of undefined')).toBe(
+      'transient'
+    );
   });
 
   it('returns transient for empty output', () => {

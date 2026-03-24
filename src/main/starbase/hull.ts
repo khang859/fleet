@@ -401,7 +401,13 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
 `
           : null;
 
-      const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, repairPreamble, this.opts.systemPrompt]
+      const combinedSystemPrompt = [
+        researchPreamble,
+        reviewPreamble,
+        architectPreamble,
+        repairPreamble,
+        this.opts.systemPrompt
+      ]
         .filter(Boolean)
         .join('\n\n');
 
@@ -603,7 +609,9 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
     const lines = data.split('\n');
     this.outputLines.push(...lines);
     const maxLines =
-      this.opts.missionType === 'research' || this.opts.missionType === 'review' || this.opts.missionType === 'architect'
+      this.opts.missionType === 'research' ||
+      this.opts.missionType === 'review' ||
+      this.opts.missionType === 'architect'
         ? 2000
         : MAX_OUTPUT_LINES;
     if (this.outputLines.length > maxLines) {
@@ -744,7 +752,14 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       ).run(this.opts.originalMissionId);
       db.prepare(
         "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
-      ).run(crewId, JSON.stringify({ missionId, originalMissionId: this.opts.originalMissionId, reason: status }));
+      ).run(
+        crewId,
+        JSON.stringify({
+          missionId,
+          originalMissionId: this.opts.originalMissionId,
+          reason: status
+        })
+      );
     }
 
     // Clean up temp files
@@ -872,7 +887,10 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
           }
           db.prepare(
             "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
-          ).run(crewId, JSON.stringify({ missionId, status: 'completed', reason: 'No changes needed' }));
+          ).run(
+            crewId,
+            JSON.stringify({ missionId, status: 'completed', reason: 'No changes needed' })
+          );
           return;
         }
 
@@ -880,7 +898,8 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         if (this.opts.missionType === 'review') {
           overrideStatus = 'complete';
           const fullOutput = this.outputLines.join('\n');
-          const llmVerdict = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+          const llmVerdict =
+            (await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000))) ?? null;
           let verdict: string;
           let notes: string;
           if (llmVerdict) {
@@ -954,7 +973,10 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
 
         // EXISTING code continues: if (status !== 'aborted') { ...
         if (status !== 'aborted') {
-          if ((this.opts.missionType === 'research' || this.opts.missionType === 'architect') && status !== 'error') {
+          if (
+            (this.opts.missionType === 'research' || this.opts.missionType === 'architect') &&
+            status !== 'error'
+          ) {
             // Research/architect mission completed — produce cargo instead of failing
             overrideStatus = 'complete';
 
@@ -1106,7 +1128,11 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
             "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
           ).run(
             crewId,
-            JSON.stringify({ missionId, status: 'failed', reason: `${this.opts.missionType} crew error` })
+            JSON.stringify({
+              missionId,
+              status: 'failed',
+              reason: `${this.opts.missionType} crew error`
+            })
           );
           db.prepare(
             "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)"
@@ -1213,7 +1239,8 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         // Redirect to review verdict handling (same as the !hasChanges block above)
         overrideStatus = 'complete';
         const fullOutput = this.outputLines.join('\n');
-        const llmVerdict2 = await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000)) ?? null;
+        const llmVerdict2 =
+          (await this.opts.analyst?.extractPRVerdict(fullOutput.slice(-4000))) ?? null;
         let verdict: string;
         let notes: string;
         if (llmVerdict2) {
@@ -1495,9 +1522,10 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
     // set when the mission was created, unlike the prompt which is long and may start with
     // newlines or markdown that produces an empty deriveSummary result.
     const missionRow = db
-      .prepare<[number], { summary: string; acceptance_criteria: string | null }>(
-        'SELECT summary, acceptance_criteria FROM missions WHERE id = ?'
-      )
+      .prepare<
+        [number],
+        { summary: string; acceptance_criteria: string | null }
+      >('SELECT summary, acceptance_criteria FROM missions WHERE id = ?')
       .get(missionId);
     const prCommitType = inferCommitType(prompt);
     const prSummary = missionRow?.summary
@@ -1570,8 +1598,8 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         if (this.opts.missionType === 'repair' && this.opts.originalMissionId == null) {
           console.error(
             `[hull] Warning: repair mission ${missionId} has no originalMissionId — ` +
-            `falling into default pending-review branch. The original code mission will NOT be transitioned to pending-review ` +
-            `and automated review dispatch will not trigger. Use --original-mission-id when creating repair missions manually.`
+              `falling into default pending-review branch. The original code mission will NOT be transitioned to pending-review ` +
+              `and automated review dispatch will not trigger. Use --original-mission-id when creating repair missions manually.`
           );
         }
         if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {

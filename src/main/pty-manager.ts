@@ -24,6 +24,7 @@ type PtyEntry = {
   paneId: string;
   cwd: string;
   outputBuffer: string;
+  paused: boolean;
   dataDisposable: pty.IDisposable | null;
   exitDisposable: pty.IDisposable | null;
 };
@@ -35,7 +36,7 @@ export class PtyManager {
   private ptys = new Map<string, PtyEntry>();
   /** PTYs that must not be killed by the renderer-driven GC (e.g. Star Command crews). */
   private protectedPtys = new Set<string>();
-  private dataCallbacks = new Map<string, (data: string) => void>();
+  private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   create(opts: PtyCreateOptions): PtyCreateResult {
@@ -81,6 +82,7 @@ export class PtyManager {
       paneId: opts.paneId,
       cwd: opts.cwd,
       outputBuffer: '',
+      paused: false,
       dataDisposable: null,
       exitDisposable: null
     };
@@ -90,6 +92,7 @@ export class PtyManager {
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
+        entry.paused = true;
         this.flushPane(opts.paneId);
         proc.pause();
       }
@@ -127,6 +130,7 @@ export class PtyManager {
       entry.process.kill();
       this.ptys.delete(paneId);
       this.protectedPtys.delete(paneId);
+      this.clearFlushTimerIfEmpty();
     }
   }
 
@@ -182,9 +186,17 @@ export class PtyManager {
    * The internal process.onData listener is already registered at create() time;
    * this method wires up the flush callback and starts the shared flush timer.
    */
-  onData(paneId: string, callback: (data: string) => void): void {
+  onData(paneId: string, callback: (data: string, paused: boolean) => void): void {
     const entry = this.ptys.get(paneId);
     if (!entry) return;
+
+    if (this.dataCallbacks.has(paneId)) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[pty] onData for ${paneId} already registered — skipping to prevent silent overwrite`
+      );
+      return;
+    }
 
     this.dataCallbacks.set(paneId, callback);
 
@@ -195,18 +207,32 @@ export class PtyManager {
   /** Resume a paused PTY (called by renderer after consuming a batch). */
   resume(paneId: string): void {
     const entry = this.ptys.get(paneId);
-    if (entry) entry.process.resume();
+    if (entry) {
+      entry.paused = false;
+      entry.process.resume();
+    }
   }
 
   onExit(paneId: string, callback: (exitCode: number) => void): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      // Dispose previous exit listener to prevent stacking (e.g. on HMR re-register)
+      entry.exitDisposable?.dispose();
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
+        entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
         this.ptys.delete(paneId);
         this.protectedPtys.delete(paneId);
+        this.clearFlushTimerIfEmpty();
         callback(exitCode);
       });
+    }
+  }
+
+  private clearFlushTimerIfEmpty(): void {
+    if (this.ptys.size === 0 && this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
     }
   }
 
@@ -215,7 +241,7 @@ export class PtyManager {
     if (!entry?.outputBuffer) return;
     const callback = this.dataCallbacks.get(paneId);
     if (callback) {
-      callback(entry.outputBuffer);
+      callback(entry.outputBuffer, entry.paused);
       entry.outputBuffer = '';
     }
   }

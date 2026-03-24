@@ -211,14 +211,12 @@ function createTerminal(
     });
   };
 
-  const ipcCleanup = window.fleet.pty.onData(({ paneId, data }) => {
-    if (paneId === options.paneId) {
-      if (!attachResolved) {
-        pendingLiveData.push(data);
-        return;
-      }
-      writeToTerm(data);
+  const ipcCleanup = window.fleet.pty.registerPaneData(options.paneId, (data) => {
+    if (!attachResolved) {
+      pendingLiveData.push(data);
+      return;
     }
+    writeToTerm(data);
   });
 
   term.onData((data) => {

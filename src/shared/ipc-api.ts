@@ -22,6 +22,7 @@ export type PtyCreateResponse = {
 export type PtyDataPayload = {
   paneId: string;
   data: string;
+  paused: boolean;
 };
 
 export type PtyInputPayload = {
@@ -315,7 +316,7 @@ export type StarbaseStatusUpdatePayload = {
 
 export type DirEntry = {
   name: string;
-  path: string;       // absolute path
+  path: string; // absolute path
   isDirectory: boolean;
 };
 

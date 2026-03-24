@@ -1,4 +1,5 @@
-import { ipcMain, BrowserWindow, dialog, shell } from 'electron';
+import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { safeOpenExternal } from './safe-external';
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative } from 'path';
@@ -66,35 +67,41 @@ export function registerIpcHandlers(
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
     await getBootstrapState().envReady;
+    const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);
 
-    ptyManager.onData(req.paneId, (data) => {
-      notificationDetector.scan(req.paneId, data);
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, {
-          paneId: req.paneId,
-          data
-        } satisfies PtyDataPayload);
-      }
-    });
+    // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
+    // duplicate onExit/onData callbacks stacking up
+    if (!alreadyExisted) {
+      ptyManager.onData(req.paneId, (data, paused) => {
+        notificationDetector.scan(req.paneId, data);
+        const w = getWindow();
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_DATA, {
+            paneId: req.paneId,
+            data,
+            paused
+          } satisfies PtyDataPayload);
+        }
+      });
 
-    ptyManager.onExit(req.paneId, (exitCode) => {
-      cwdPoller.stopPolling(req.paneId);
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
-          paneId: req.paneId,
-          exitCode
-        } satisfies PtyExitPayload);
-      }
-      eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
-    });
+      ptyManager.onExit(req.paneId, (exitCode) => {
+        cwdPoller.stopPolling(req.paneId);
+        const w = getWindow();
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
+            paneId: req.paneId,
+            exitCode
+          } satisfies PtyExitPayload);
+        }
+        eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
+      });
 
-    // Start CWD polling fallback for shells that don't emit OSC 7
-    cwdPoller.startPolling(req.paneId, result.pid);
+      // Start CWD polling fallback for shells that don't emit OSC 7
+      cwdPoller.startPolling(req.paneId, result.pid);
 
-    eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
+      eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
+    }
     return result;
   });
 
@@ -280,12 +287,12 @@ export function registerIpcHandlers(
 
   // Wire PTY data forwarding for a newly started Admiral pane
   const wireAdmiralPty = (paneId: string): void => {
-    ptyManager.onData(paneId, (data) => {
+    ptyManager.onData(paneId, (data, paused) => {
       notificationDetector.scan(paneId, data);
       getStarbaseServices().admiralStateDetector?.scan(paneId, data);
       const w = getWindow();
       if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
+        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
       }
     });
     ptyManager.onExit(paneId, (exitCode) => {
@@ -422,9 +429,9 @@ export function registerIpcHandlers(
     return getStarbaseServices().runtime.invoke('memo.content', filePath);
   });
 
-  // Open URLs in the default browser
+  // Open URLs in the default browser (scheme-validated)
   ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
-    await shell.openExternal(url);
+    await safeOpenExternal(url);
   });
 
   // Folder picker

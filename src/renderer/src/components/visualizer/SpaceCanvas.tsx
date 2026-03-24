@@ -1,6 +1,6 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
-import { useWorkspaceStore, collectPaneIds } from '../../store/workspace-store';
+import { useWorkspaceStore } from '../../store/workspace-store';
 import { Starfield } from './starfield';
 import { ShipManager } from './ships';
 import { SpaceRenderer } from './space-renderer';
@@ -13,12 +13,12 @@ import { SpaceWeather } from './space-weather';
 import { AsteroidField } from './asteroids';
 import { loadSpriteSheet } from './sprite-loader';
 import { SectorOutpostRenderer, type SectorState } from './sector-outposts';
-import type { PaneNode } from '../../../../shared/types';
 import { ShuttleRenderer, type PodState } from './shuttles';
 import { SignalPulseRenderer } from './signal-pulses';
 import { computeSectorPositions, isValidPodStatus } from '../star-command/scene-utils';
 import { useStarCommandStore } from '../../store/star-command-store';
 import type { AgentVisualState } from '../../../../shared/types';
+import { workspaceToAgents } from './space-canvas-utils';
 
 type Tooltip = {
   x: number;
@@ -61,32 +61,6 @@ function getDayNightBackground(): string {
     23: '#0d0a1a'
   };
   return colors[hour] ?? '#0a0a1a';
-}
-
-/** Convert workspace tabs/panes into AgentVisualState[] for the ship manager.
- *  Each tab = parent ship. Each pane in the tab = trailing subagent ship. */
-function workspaceToAgents(
-  tabs: Array<{ id: string; label: string; splitRoot: PaneNode }>
-): AgentVisualState[] {
-  return tabs.map((tab) => {
-    const paneIds = collectPaneIds(tab.splitRoot);
-    return {
-      paneId: tab.id,
-      label: tab.label,
-      state: 'idle' as const,
-      subAgents:
-        paneIds.length > 1
-          ? paneIds.map((pid) => ({
-              paneId: pid,
-              label: pid.slice(0, 8),
-              state: 'idle' as const,
-              subAgents: [],
-              uptime: 0
-            }))
-          : [],
-      uptime: 0
-    };
-  });
 }
 
 function createThrottledLoop(
@@ -182,7 +156,8 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps): React.JSX.Elemen
 
   // Derive agents from workspace tabs/panes and keep in ref
   const agentsRef = useRef<AgentVisualState[]>([]);
-  agentsRef.current = workspaceToAgents(workspace.tabs);
+  const agents = useMemo(() => workspaceToAgents(workspace.tabs), [workspace.tabs]);
+  agentsRef.current = agents;
 
   // Derive station ring state from star-command store
   const sectorStatesRef = useRef<SectorState[]>([]);

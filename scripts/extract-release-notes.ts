@@ -12,8 +12,10 @@ if (!outputPath) {
   process.exit(1);
 }
 
-const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-const version = pkg.version as string;
+const pkgText = readFileSync(join(root, 'package.json'), 'utf8');
+// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- JSON.parse returns any
+const pkg = JSON.parse(pkgText) as { version: string };
+const version = pkg.version;
 
 const changelog = readFileSync(join(root, 'CHANGELOG.md'), 'utf8');
 const lines = changelog.split('\n');
@@ -35,8 +37,8 @@ const releaseNotes = notes.join('\n').trim();
 
 const config = {
   releaseInfo: {
-    releaseNotes,
-  },
+    releaseNotes
+  }
 };
 
 writeFileSync(outputPath, JSON.stringify(config, null, 2));

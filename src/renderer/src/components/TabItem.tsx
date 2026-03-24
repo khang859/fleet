@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import type { NotificationLevel } from '../../../shared/types';
 import { cwdBasename } from '../store/workspace-store';
+import { useCwdStore } from '../store/cwd-store';
 
 const HOME = window.fleet.homeDir;
 
@@ -19,13 +20,17 @@ type TabItemProps = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
+  /** Pane ID to subscribe to for live CWD updates. When provided, TabItem
+   *  subscribes to just this pane's CWD via a granular selector — only
+   *  re-rendering when THIS pane's CWD changes, not when any other pane's does. */
+  drivingPaneId?: string;
   isActive: boolean;
   badge: NotificationLevel | null;
   icon?: React.ReactNode;
   onClick: () => void;
   onClose: () => void;
   onRename: (newLabel: string) => void;
-  onResetLabel: () => void;
+  onResetLabel: (liveCwd: string) => void;
   disableReset?: boolean;
   // Drag-and-drop
   index: number;
@@ -51,7 +56,8 @@ export function TabItem({
   id,
   label,
   labelIsCustom,
-  cwd,
+  cwd: fallbackCwd,
+  drivingPaneId,
   isActive,
   badge,
   icon,
@@ -66,6 +72,9 @@ export function TabItem({
   onDrop,
   isDragOver
 }: TabItemProps): React.JSX.Element {
+  // Granular CWD subscription — only re-renders when THIS pane's CWD changes
+  const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
+  const cwd = liveCwd ?? fallbackCwd;
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -224,7 +233,7 @@ export function TabItem({
           {!disableReset && labelIsCustom && (
             <ContextMenu.Item
               className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
-              onSelect={onResetLabel}
+              onSelect={() => onResetLabel(cwd)}
             >
               Reset to directory name
             </ContextMenu.Item>

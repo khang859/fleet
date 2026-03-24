@@ -123,4 +123,151 @@ describe('PtyManager batching and cleanup', () => {
 
     expect(mockPty.resume).toHaveBeenCalled();
   });
+
+  it('skips duplicate onData registration and keeps original callback', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
+
+    const firstCallback = vi.fn();
+    const secondCallback = vi.fn();
+
+    manager.onData('pane-1', firstCallback);
+    // Second registration should be silently rejected
+    manager.onData('pane-1', secondCallback);
+
+    // Simulate PTY data + flush
+    ptyDataCallback('hello');
+    vi.advanceTimersByTime(16);
+
+    // Only the first callback should receive data
+    expect(firstCallback).toHaveBeenCalledWith('hello', false);
+    expect(secondCallback).not.toHaveBeenCalled();
+  });
+
+  it('disposes previous exitDisposable when onExit is called again', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    mockPty.onExit
+      .mockReturnValueOnce({ dispose: firstDispose })
+      .mockReturnValueOnce({ dispose: secondDispose });
+
+    manager.onExit('pane-1', vi.fn());
+    // Second registration should dispose the first listener
+    manager.onExit('pane-1', vi.fn());
+
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(secondDispose).not.toHaveBeenCalled();
+  });
+
+  it('does not fire duplicate exit callbacks when onExit is re-registered', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    // Track which callbacks get registered on the mock PTY
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    const firstCallback = vi.fn();
+    const secondCallback = vi.fn();
+
+    manager.onExit('pane-1', firstCallback);
+    manager.onExit('pane-1', secondCallback);
+
+    // Simulate PTY exit on the second (active) listener
+    registeredCallbacks[1]({ exitCode: 0 });
+
+    expect(secondCallback).toHaveBeenCalledWith(0);
+    // First callback should NOT have been called (its listener was disposed)
+    expect(firstCallback).not.toHaveBeenCalled();
+  });
+
+  it('disposes dataDisposable on natural PTY exit', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const dataDisposable = mockPty.onData.mock.results[0].value;
+
+    // Register an exit handler that captures the onExit callback
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    manager.onExit('pane-1', vi.fn());
+
+    // Simulate natural PTY exit
+    registeredCallbacks[0]({ exitCode: 0 });
+
+    expect(dataDisposable.dispose).toHaveBeenCalled();
+  });
+
+  it('clears flush timer when last PTY is killed individually', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    manager.create({ paneId: 'pane-2', cwd: '/tmp', shell: '/bin/zsh' });
+
+    manager.onData('pane-1', vi.fn());
+    manager.onData('pane-2', vi.fn());
+
+    // Flush timer should be running
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Kill first — timer should still run
+    manager.kill('pane-1');
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Kill last — timer should be cleared
+    manager.kill('pane-2');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('includes paused flag when buffer overflow triggers pause', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+
+    const received: Array<{ data: string; paused: boolean }> = [];
+    manager.onData('pane-1', (data, paused) => received.push({ data, paused }));
+
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
+
+    // Normal data — should flush with paused=false
+    ptyDataCallback('hello');
+    vi.advanceTimersByTime(16);
+    expect(received).toHaveLength(1);
+    expect(received[0].paused).toBe(false);
+
+    // Overflow data — should flush with paused=true
+    ptyDataCallback('x'.repeat(257 * 1024));
+    vi.advanceTimersByTime(16);
+    // The overflow flush happens inline in onData, check most recent
+    const pausedFlush = received.find((r) => r.paused);
+    expect(pausedFlush).toBeDefined();
+  });
+
+  it('clears flush timer on natural PTY exit when it is the last PTY', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    manager.onData('pane-1', vi.fn());
+    manager.onExit('pane-1', vi.fn());
+
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Simulate natural exit
+    registeredCallbacks[0]({ exitCode: 0 });
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

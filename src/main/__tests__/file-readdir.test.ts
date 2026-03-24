@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Dirent } from 'fs';
 import { sortAndMapDirEntries } from '../ipc-handlers';
 
-function makeDirent(name: string, isDir: boolean, isFile: boolean = !isDir): Dirent {
+function makeDirent(name: string, isDir: boolean, isFile = !isDir): Dirent {
   return {
     name,
     isDirectory: () => isDir,
@@ -13,7 +13,7 @@ function makeDirent(name: string, isDir: boolean, isFile: boolean = !isDir): Dir
     isFIFO: () => false,
     isSocket: () => false,
     path: '',
-    parentPath: '',
+    parentPath: ''
   } as Dirent;
 }
 
@@ -23,17 +23,14 @@ describe('sortAndMapDirEntries', () => {
       makeDirent('zoo.ts', false),
       makeDirent('alpha', true),
       makeDirent('beta.ts', false),
-      makeDirent('mango', true),
+      makeDirent('mango', true)
     ];
     const result = sortAndMapDirEntries(entries, '/root');
     expect(result.map((e) => e.name)).toEqual(['alpha', 'mango', 'beta.ts', 'zoo.ts']);
   });
 
   it('excludes symlinks (isFile and isDirectory both false)', () => {
-    const entries = [
-      makeDirent('link', false, false),
-      makeDirent('real.ts', false, true),
-    ];
+    const entries = [makeDirent('link', false, false), makeDirent('real.ts', false, true)];
     const result = sortAndMapDirEntries(entries, '/root');
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('real.ts');
@@ -45,7 +42,7 @@ describe('sortAndMapDirEntries', () => {
     expect(result[0]).toEqual({
       name: 'src',
       path: '/home/user/project/src',
-      isDirectory: true,
+      isDirectory: true
     });
   });
 

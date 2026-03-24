@@ -2,7 +2,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 import type * as ChildProcess from 'child_process';
-
 // Mock child_process.spawn before importing Analyst
 let mockProc: unknown = null;
 vi.mock('child_process', async (importOriginal) => {
@@ -54,7 +53,7 @@ function makeDb() {
   return {
     prepare: vi.fn().mockReturnValue({ run: vi.fn((...args: unknown[]) => rows.push(args)) }),
     _rows: rows
-  } as unknown as import('better-sqlite3').Database & { _rows: unknown[] };
+  } as unknown as { prepare: ReturnType<typeof vi.fn>; _rows: unknown[] };
 }
 
 describe('Analyst', () => {
@@ -82,7 +81,9 @@ describe('Analyst', () => {
     });
 
     it('parses JSON inside a code fence', async () => {
-      mockProc = makeMockProc('Sure!\n```json\n{"classification": "persistent", "reason": "same error"}\n```');
+      mockProc = makeMockProc(
+        'Sure!\n```json\n{"classification": "persistent", "reason": "same error"}\n```'
+      );
       const analyst = new Analyst({ db: db as any, timeoutMs: 100 });
       const result = await analyst.classifyError('the same error again');
       expect(result).toBe('persistent');
@@ -119,8 +120,8 @@ describe('Analyst', () => {
       mockProc = makeMockProc('', 1);
       await analyst.classifyError('err2');
 
-      const insertCalls = (db.prepare as ReturnType<typeof vi.fn>).mock.calls.filter(
-        (args: unknown[]) => String(args[0]).includes('analyst_degraded')
+      const insertCalls = db.prepare.mock.calls.filter((args: unknown[]) =>
+        String(args[0]).includes('analyst_degraded')
       );
       expect(insertCalls).toHaveLength(1);
     });

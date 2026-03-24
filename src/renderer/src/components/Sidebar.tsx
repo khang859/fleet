@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Settings, Terminal, ImageIcon } from 'lucide-react';
@@ -6,7 +7,8 @@ import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
-import { useCwdStore } from '../store/cwd-store';
+
+
 import { useStarCommandStore } from '../store/star-command-store';
 import admiralDefault from '../assets/admiral-default.png';
 import admiralSpeaking from '../assets/admiral-speaking.png';
@@ -162,9 +164,21 @@ export function Sidebar({
     renameWorkspace,
     isDirty,
     markClean
-  } = useWorkspaceStore();
+  } = useWorkspaceStore(useShallow((s) => ({
+    workspace: s.workspace,
+    activeTabId: s.activeTabId,
+    activePaneId: s.activePaneId,
+    setActiveTab: s.setActiveTab,
+    closeTab: s.closeTab,
+    renameTab: s.renameTab,
+    resetTabLabel: s.resetTabLabel,
+    addTab: s.addTab,
+    reorderTab: s.reorderTab,
+    renameWorkspace: s.renameWorkspace,
+    isDirty: s.isDirty,
+    markClean: s.markClean
+  })));
   const { getTabBadge } = useNotificationStore();
-  const { cwds } = useCwdStore();
 
   // --- Drag-and-drop state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -629,16 +643,17 @@ export function Sidebar({
 
               // Derive CWD to display in TabItem
               let displayCwd: string;
+              let drivingPaneId: string | undefined;
               if (isFile) {
                 const leafs = collectPaneLeafs(tab.splitRoot);
                 const filePath = leafs[0]?.filePath ?? '';
                 displayCwd = filePath ? filePath.split('/').slice(0, -1).join('/') || '/' : '/';
               } else {
-                const drivingPane =
+                drivingPaneId =
                   tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
                     ? activePaneId
                     : paneIds[0];
-                displayCwd = (drivingPane ? cwds.get(drivingPane) : undefined) ?? tab.cwd;
+                displayCwd = tab.cwd;
               }
 
               // Dirty label for file tabs
@@ -664,6 +679,7 @@ export function Sidebar({
                   label={displayLabel}
                   labelIsCustom={tab.labelIsCustom ?? false}
                   cwd={displayCwd}
+                  drivingPaneId={drivingPaneId}
                   isActive={tab.id === activeTabId}
                   badge={getTabBadge(paneIds)}
                   icon={icon}
@@ -684,7 +700,7 @@ export function Sidebar({
                   }}
                   onClose={() => handleCloseTab(tab.id)}
                   onRename={(newLabel) => renameTab(tab.id, newLabel)}
-                  onResetLabel={() => resetTabLabel(tab.id, displayCwd)}
+                  onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
                 />
               );
             })}
