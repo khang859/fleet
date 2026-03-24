@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch, FolderOpen } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FolderOpen, FileSearch } from 'lucide-react';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
 type PaneToolbarProps = {
@@ -82,7 +82,7 @@ export function PaneToolbar({
           className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
           title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
         >
-          <Search size={14} />
+          <FileSearch size={14} />
         </button>
       )}
       <button
