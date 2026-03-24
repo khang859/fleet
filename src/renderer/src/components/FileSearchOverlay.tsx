@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { FileSearchResult } from '../../../shared/ipc-api';
 
 const RECENT_STORAGE_KEY = 'fleet:file-search-recent';
+const LAST_SCOPE_KEY = 'fleet:file-search-scope';
 const MAX_RECENT = 20;
 
 const fileSearchResultSchema = z.array(
@@ -194,11 +195,11 @@ export function FileSearchOverlay({
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
 
-  // Reset state on open
+  // Reset state on open — restore last scope
   useEffect(() => {
     if (isOpen) {
       setQuery('');
-      setScope(undefined);
+      setScope(localStorage.getItem(LAST_SCOPE_KEY) ?? undefined);
       setResults(getRecentFiles());
       setSelectedIndex(0);
       setIsLoading(false);
@@ -206,6 +207,15 @@ export function FileSearchOverlay({
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
+
+  // Persist scope selection
+  useEffect(() => {
+    if (scope) {
+      localStorage.setItem(LAST_SCOPE_KEY, scope);
+    } else {
+      localStorage.removeItem(LAST_SCOPE_KEY);
+    }
+  }, [scope]);
 
   // Debounced search
   useEffect(() => {
