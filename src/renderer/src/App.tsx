@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { Terminal, ImageIcon, Settings } from 'lucide-react';
 import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
@@ -54,7 +55,17 @@ export function App(): React.JSX.Element {
     addTab,
     lastClosedTab,
     undoCloseTab
-  } = useWorkspaceStore();
+  } = useWorkspaceStore(useShallow((s) => ({
+    workspace: s.workspace,
+    backgroundWorkspaces: s.backgroundWorkspaces,
+    activeTabId: s.activeTabId,
+    activePaneId: s.activePaneId,
+    setActiveTab: s.setActiveTab,
+    setActivePane: s.setActivePane,
+    addTab: s.addTab,
+    lastClosedTab: s.lastClosedTab,
+    undoCloseTab: s.undoCloseTab
+  })));
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
 

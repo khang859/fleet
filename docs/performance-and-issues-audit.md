@@ -86,7 +86,7 @@ ipcRenderer.on(IPC_CHANNELS.PTY_DATA, (_event, payload: PtyDataPayload) => {
 
 ---
 
-### 2. Broad Zustand Subscriptions in App and Sidebar (High Impact)
+### 2. ~~Broad Zustand Subscriptions in App and Sidebar (High Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/App.tsx:47-57`, `src/renderer/src/components/Sidebar.tsx:152-165`
 
@@ -102,7 +102,7 @@ const setActiveTab = useWorkspaceStore(s => s.setActiveTab);
 
 ---
 
-### 3. CWD Store Broad Subscription (High Impact)
+### 3. ~~CWD Store Broad Subscription (High Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/store/cwd-store.ts:11-16`, `src/renderer/src/components/Sidebar.tsx:167`
 
