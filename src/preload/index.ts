@@ -72,6 +72,16 @@ function getHomeDir(): string {
   return process.env.HOME ?? '';
 }
 
+// Single IPC listener that routes PTY data to per-pane callbacks via Map lookup (O(1))
+// instead of broadcasting to all N terminal listeners (O(N)).
+const ptyDataListeners = new Map<string, (data: string) => void>();
+ipcRenderer.on(
+  IPC_CHANNELS.PTY_DATA,
+  (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) => {
+    ptyDataListeners.get(payload.paneId)?.(payload.data);
+  }
+);
+
 const fleetApi = {
   pty: {
     create: async (req: PtyCreateRequest): Promise<PtyCreateResponse> =>
@@ -82,8 +92,14 @@ const fleetApi = {
     gc: (activePaneIds: string[]): void => ipcRenderer.send(IPC_CHANNELS.PTY_GC, activePaneIds),
     attach: async (paneId: string): Promise<{ data: string }> =>
       typedInvoke(IPC_CHANNELS.PTY_ATTACH, { paneId }),
-    onData: (callback: (payload: PtyDataPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.PTY_DATA, callback),
+    registerPaneData: (paneId: string, callback: (data: string) => void): Unsubscribe => {
+      ptyDataListeners.set(paneId, callback);
+      return () => {
+        if (ptyDataListeners.get(paneId) === callback) {
+          ptyDataListeners.delete(paneId);
+        }
+      };
+    },
     onExit: (callback: (payload: PtyExitPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.PTY_EXIT, callback),
     onCwd: (callback: (payload: PtyCwdPayload) => void): Unsubscribe =>

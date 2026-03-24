@@ -65,7 +65,7 @@ The `kill()` method does not check if `ptys.size === 0` after deletion to clear 
 
 ## Confirmed Performance Issues
 
-### 1. PTY Data O(N) Broadcast (High Impact)
+### 1. ~~PTY Data O(N) Broadcast (High Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/hooks/use-terminal.ts:214`, `src/preload/index.ts:50-54`
 
