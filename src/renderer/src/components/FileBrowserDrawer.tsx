@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, FolderOpen, FolderClosed, ChevronRight, ChevronDown } from 'lucide-react';
-import { quotePathForShell } from '../lib/shell-utils';
+import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { fuzzyMatch } from '../lib/commands';
@@ -185,7 +185,7 @@ export function FileBrowserDrawer({
       Array.from(selectedPaths)
         .map((p) => quotePathForShell(p, window.fleet.platform))
         .join(' ') + ' ';
-    window.fleet.pty.input({ paneId: activePaneId, data: quoted });
+    window.fleet.pty.input({ paneId: activePaneId, data: bracketedPaste(quoted) });
     onClose();
   }, [selectedPaths, onClose]);
 

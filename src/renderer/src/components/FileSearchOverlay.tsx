@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, X, ArrowDownAZ, Clock, HardDrive } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
-import { quotePathForShell } from '../lib/shell-utils';
+import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
 import { z } from 'zod';
 import type { FileSearchResult } from '../../../shared/ipc-api';
@@ -266,7 +266,7 @@ export function FileSearchOverlay({
     (file: FileSearchResult) => {
       if (!activePaneId) return;
       const quoted = quotePathForShell(file.path, window.fleet.platform) + ' ';
-      window.fleet.pty.input({ paneId: activePaneId, data: quoted });
+      window.fleet.pty.input({ paneId: activePaneId, data: bracketedPaste(quoted) });
       addRecentFile(file);
       onClose();
     },
