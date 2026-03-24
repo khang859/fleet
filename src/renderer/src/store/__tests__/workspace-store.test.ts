@@ -55,6 +55,7 @@ beforeEach(() => {
     lastClosedTab: null,
     recentFiles: []
   });
+  useCwdStore.setState({ cwds: new Map() });
 });
 
 describe('switchWorkspace', () => {
