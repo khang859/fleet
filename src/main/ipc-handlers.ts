@@ -18,7 +18,8 @@ import type {
   LayoutListResponse,
   PaneFocusedPayload,
   StarbaseRuntimeStatus,
-  DirEntry
+  DirEntry,
+  FileSearchRequest
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -34,6 +35,7 @@ import type { FleetSettings } from '../shared/types';
 import type { AdmiralProcess } from './starbase/admiral-process';
 import { checkDependencies } from './starbase/admiral-process';
 import { checkSystemDeps } from './system-checker';
+import { searchFiles } from './file-search';
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import type { StarbaseRuntimeClient } from './starbase-runtime-client';
 
@@ -595,6 +597,11 @@ export function registerIpcHandlers(
       return { success: false, error: toError(err).message };
     }
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_SEARCH,
+    async (_event, req: FileSearchRequest) => searchFiles(req)
+  );
 }
 
 // Exported for testing
