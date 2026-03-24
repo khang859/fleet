@@ -272,6 +272,29 @@ describe('switchWorkspace — stashes live CWDs', () => {
   });
 });
 
+describe('closeTab — live CWD for undo', () => {
+  it('injects live CWD into lastClosedTab so undo restores at the correct directory', () => {
+    // Prime live CWD for pane-a1 (different from the stored /tmp)
+    useCwdStore.setState({ cwds: new Map([['pane-a1', '/live/undo-path']]) });
+
+    useWorkspaceStore.getState().closeTab('tab-a1');
+
+    const { lastClosedTab } = useWorkspaceStore.getState();
+    const leaf = lastClosedTab?.tab.splitRoot;
+    expect(leaf?.type === 'leaf' ? leaf.cwd : null).toBe('/live/undo-path');
+  });
+
+  it('keeps original CWD when no live CWD is in cwd-store', () => {
+    useCwdStore.setState({ cwds: new Map() });
+
+    useWorkspaceStore.getState().closeTab('tab-a1');
+
+    const { lastClosedTab } = useWorkspaceStore.getState();
+    const leaf = lastClosedTab?.tab.splitRoot;
+    expect(leaf?.type === 'leaf' ? leaf.cwd : null).toBe('/tmp'); // WS_A tab's original CWD
+  });
+});
+
 describe('splitPane — live CWD', () => {
   it('uses the live CWD from cwd-store for the new pane', () => {
     // Prime cwd-store with a different CWD than what's in the tab

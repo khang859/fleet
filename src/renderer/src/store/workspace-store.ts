@@ -225,7 +225,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeTab: (tabId, serializedPanes) => {
     set((state) => {
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
-      const closedTab = state.workspace.tabs[tabIndex];
+      const rawTab = state.workspace.tabs[tabIndex];
+      // Inject live CWDs so undo-close restores the PTY at the correct directory
+      const closedTab = rawTab
+        ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) }
+        : rawTab;
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
       const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
       return {
