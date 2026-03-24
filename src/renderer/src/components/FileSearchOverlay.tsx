@@ -3,17 +3,30 @@ import { Search, X } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { quotePathForShell } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
+import { z } from 'zod';
 import type { FileSearchResult } from '../../../shared/ipc-api';
 
 const RECENT_STORAGE_KEY = 'fleet:file-search-recent';
 const MAX_RECENT = 20;
+
+const fileSearchResultSchema = z.array(
+  z.object({
+    path: z.string(),
+    name: z.string(),
+    parentDir: z.string(),
+    modifiedAt: z.number(),
+    size: z.number()
+  })
+);
 
 // --- Recent files LRU ---
 
 function getRecentFiles(): FileSearchResult[] {
   try {
     const raw = localStorage.getItem(RECENT_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as FileSearchResult[]) : [];
+    if (!raw) return [];
+    const parsed = fileSearchResultSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : [];
   } catch {
     return [];
   }

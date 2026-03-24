@@ -94,12 +94,18 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
       clearTimeout(timer);
       activeProcess = null;
 
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT' && (cmd === 'locate' || cmd === 'es.exe')) {
+      const errCode = (err as NodeJS.ErrnoException).code;
+      const canFallback = cmd === 'locate' || cmd === 'es.exe';
+      if (errCode === 'ENOENT' && canFallback) {
         const fallbackScope = scope ?? homedir();
         const isWin = process.platform === 'win32';
         const fallbackCmd = isWin ? 'powershell' : 'find';
         const fallbackArgs = isWin
-          ? ['-NoProfile', '-Command', `Get-ChildItem -Path '${fallbackScope}' -Recurse -Filter '*${query}*' -File -ErrorAction SilentlyContinue | Select-Object -First ${limit} -ExpandProperty FullName`]
+          ? [
+              '-NoProfile',
+              '-Command',
+              `Get-ChildItem -Path '${fallbackScope}' -Recurse -Filter '*${query}*' -File -ErrorAction SilentlyContinue | Select-Object -First ${limit} -ExpandProperty FullName`
+            ]
           : [fallbackScope, '-maxdepth', '5', '-iname', `*${query}*`, '-type', 'f'];
         const findProc = spawn(fallbackCmd, fallbackArgs, {
           stdio: ['ignore', 'pipe', 'pipe']
