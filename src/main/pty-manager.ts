@@ -127,6 +127,7 @@ export class PtyManager {
       entry.process.kill();
       this.ptys.delete(paneId);
       this.protectedPtys.delete(paneId);
+      this.clearFlushTimerIfEmpty();
     }
   }
 
@@ -212,11 +213,20 @@ export class PtyManager {
       // Dispose previous exit listener to prevent stacking (e.g. on HMR re-register)
       entry.exitDisposable?.dispose();
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
+        entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
         this.ptys.delete(paneId);
         this.protectedPtys.delete(paneId);
+        this.clearFlushTimerIfEmpty();
         callback(exitCode);
       });
+    }
+  }
+
+  private clearFlushTimerIfEmpty(): void {
+    if (this.ptys.size === 0 && this.flushTimer) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
     }
   }
 

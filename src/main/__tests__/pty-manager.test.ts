@@ -187,4 +187,64 @@ describe('PtyManager batching and cleanup', () => {
     // First callback should NOT have been called (its listener was disposed)
     expect(firstCallback).not.toHaveBeenCalled();
   });
+
+  it('disposes dataDisposable on natural PTY exit', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const dataDisposable = mockPty.onData.mock.results[0].value;
+
+    // Register an exit handler that captures the onExit callback
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    manager.onExit('pane-1', vi.fn());
+
+    // Simulate natural PTY exit
+    registeredCallbacks[0]({ exitCode: 0 });
+
+    expect(dataDisposable.dispose).toHaveBeenCalled();
+  });
+
+  it('clears flush timer when last PTY is killed individually', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    manager.create({ paneId: 'pane-2', cwd: '/tmp', shell: '/bin/zsh' });
+
+    manager.onData('pane-1', vi.fn());
+    manager.onData('pane-2', vi.fn());
+
+    // Flush timer should be running
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Kill first — timer should still run
+    manager.kill('pane-1');
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Kill last — timer should be cleared
+    manager.kill('pane-2');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('clears flush timer on natural PTY exit when it is the last PTY', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    manager.onData('pane-1', vi.fn());
+    manager.onExit('pane-1', vi.fn());
+
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    // Simulate natural exit
+    registeredCallbacks[0]({ exitCode: 0 });
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

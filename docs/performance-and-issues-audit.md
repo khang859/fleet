@@ -43,7 +43,7 @@ await shell.openExternal(url);
 
 ---
 
-### 4. `dataDisposable` Not Disposed on Natural PTY Exit (Minor)
+### 4. ~~`dataDisposable` Not Disposed on Natural PTY Exit (Minor)~~ ✅ Fixed
 
 **Files:** `src/main/pty-manager.ts:204-210`
 
@@ -53,7 +53,7 @@ The `onExit` handler removes the entry from `this.ptys` but does not call `entry
 
 ---
 
-### 5. Flush Timer Never Stops After Last PTY Killed (Minor)
+### 5. ~~Flush Timer Never Stops After Last PTY Killed (Minor)~~ ✅ Fixed
 
 **Files:** `src/main/pty-manager.ts:121-131`
 
