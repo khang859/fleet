@@ -201,6 +201,8 @@ export class PtyManager {
   onExit(paneId: string, callback: (exitCode: number) => void): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      // Dispose previous exit listener to prevent stacking (e.g. on HMR re-register)
+      entry.exitDisposable?.dispose();
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
         this.dataCallbacks.delete(paneId);
         this.ptys.delete(paneId);

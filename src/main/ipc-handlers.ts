@@ -66,35 +66,40 @@ export function registerIpcHandlers(
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
     await getBootstrapState().envReady;
+    const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);
 
-    ptyManager.onData(req.paneId, (data) => {
-      notificationDetector.scan(req.paneId, data);
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, {
-          paneId: req.paneId,
-          data
-        } satisfies PtyDataPayload);
-      }
-    });
+    // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
+    // duplicate onExit/onData callbacks stacking up
+    if (!alreadyExisted) {
+      ptyManager.onData(req.paneId, (data) => {
+        notificationDetector.scan(req.paneId, data);
+        const w = getWindow();
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_DATA, {
+            paneId: req.paneId,
+            data
+          } satisfies PtyDataPayload);
+        }
+      });
 
-    ptyManager.onExit(req.paneId, (exitCode) => {
-      cwdPoller.stopPolling(req.paneId);
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
-          paneId: req.paneId,
-          exitCode
-        } satisfies PtyExitPayload);
-      }
-      eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
-    });
+      ptyManager.onExit(req.paneId, (exitCode) => {
+        cwdPoller.stopPolling(req.paneId);
+        const w = getWindow();
+        if (w && !w.isDestroyed()) {
+          w.webContents.send(IPC_CHANNELS.PTY_EXIT, {
+            paneId: req.paneId,
+            exitCode
+          } satisfies PtyExitPayload);
+        }
+        eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
+      });
 
-    // Start CWD polling fallback for shells that don't emit OSC 7
-    cwdPoller.startPolling(req.paneId, result.pid);
+      // Start CWD polling fallback for shells that don't emit OSC 7
+      cwdPoller.startPolling(req.paneId, result.pid);
 
-    eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
+      eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
+    }
     return result;
   });
 

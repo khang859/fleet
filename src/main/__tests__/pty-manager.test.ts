@@ -123,4 +123,47 @@ describe('PtyManager batching and cleanup', () => {
 
     expect(mockPty.resume).toHaveBeenCalled();
   });
+
+  it('disposes previous exitDisposable when onExit is called again', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    const firstDispose = vi.fn();
+    const secondDispose = vi.fn();
+    mockPty.onExit
+      .mockReturnValueOnce({ dispose: firstDispose })
+      .mockReturnValueOnce({ dispose: secondDispose });
+
+    manager.onExit('pane-1', vi.fn());
+    // Second registration should dispose the first listener
+    manager.onExit('pane-1', vi.fn());
+
+    expect(firstDispose).toHaveBeenCalledTimes(1);
+    expect(secondDispose).not.toHaveBeenCalled();
+  });
+
+  it('does not fire duplicate exit callbacks when onExit is re-registered', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+
+    // Track which callbacks get registered on the mock PTY
+    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
+    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
+      registeredCallbacks.push(cb);
+      return { dispose: vi.fn() };
+    });
+
+    const firstCallback = vi.fn();
+    const secondCallback = vi.fn();
+
+    manager.onExit('pane-1', firstCallback);
+    manager.onExit('pane-1', secondCallback);
+
+    // Simulate PTY exit on the second (active) listener
+    registeredCallbacks[1]({ exitCode: 0 });
+
+    expect(secondCallback).toHaveBeenCalledWith(0);
+    // First callback should NOT have been called (its listener was disposed)
+    expect(firstCallback).not.toHaveBeenCalled();
+  });
 });
