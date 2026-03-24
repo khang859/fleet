@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.6.6
+- Fixed Apple Silicon users receiving the x64 build via auto-update (arm64 and x64 DMGs now published as separate files)
+- Fixed node/claude not found on startup check screen due to shell PATH not being enriched in time
+
 ## v2.6.5
 - Fixed active tab and pane not being restored after app restart
 - Fixed split pane inheriting tab's original CWD instead of live CWD
