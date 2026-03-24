@@ -38,29 +38,43 @@ export function WorkspacePicker(): React.JSX.Element {
     setTimeout(() => nameInputRef.current?.focus(), 0);
   };
 
-  const commitNewWorkspace = (): void => {
+  const commitNewWorkspace = async (): Promise<void> => {
     const name = newName.trim();
     setShowNameInput(false);
     setNewName('');
     if (!name) return;
 
-    // Create fresh workspace and switch to it (old workspace moves to background)
+    // Flush current workspace to disk before switching away
+    const storeState = useWorkspaceStore.getState();
+    await window.fleet.layout.save({
+      workspace: {
+        ...storeState.workspace,
+        activeTabId: storeState.activeTabId ?? undefined,
+        activePaneId: storeState.activePaneId ?? undefined,
+        tabs: storeState.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      }
+    });
+
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
       tabs: []
     };
     useWorkspaceStore.getState().switchWorkspace(newWs);
-
-    // Add a default tab
     setTimeout(() => {
       useWorkspaceStore.getState().addTab('Shell', window.fleet.homeDir);
     }, 0);
   };
 
   const handleSaveCurrent = async (): Promise<void> => {
+    const state = useWorkspaceStore.getState();
     const workspaceWithLiveCwds = {
       ...workspace,
+      activeTabId: state.activeTabId ?? undefined,
+      activePaneId: state.activePaneId ?? undefined,
       tabs: workspace.tabs.map((tab) => ({
         ...tab,
         splitRoot: injectLiveCwd(tab.splitRoot)
@@ -70,7 +84,21 @@ export function WorkspacePicker(): React.JSX.Element {
     setMenuOpen(false);
   };
 
-  const handleSwitchWorkspace = (ws: Workspace): void => {
+  const handleSwitchWorkspace = async (ws: Workspace): Promise<void> => {
+    // Flush current workspace to disk before switching away
+    const storeState = useWorkspaceStore.getState();
+    await window.fleet.layout.save({
+      workspace: {
+        ...storeState.workspace,
+        activeTabId: storeState.activeTabId ?? undefined,
+        activePaneId: storeState.activePaneId ?? undefined,
+        tabs: storeState.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      }
+    });
+
     useWorkspaceStore.getState().switchWorkspace(ws);
     setMenuOpen(false);
     // Add a default tab if the workspace is empty
@@ -152,7 +180,7 @@ export function WorkspacePicker(): React.JSX.Element {
                   <div key={ws.id} className="flex items-center hover:bg-neutral-700">
                     <button
                       className="flex-1 px-3 py-1.5 text-sm text-neutral-300 hover:text-white text-left truncate"
-                      onClick={() => handleSwitchWorkspace(ws)}
+                      onClick={() => void handleSwitchWorkspace(ws)}
                     >
                       {ws.label}
                       <span className="text-neutral-600 ml-1 text-xs">
@@ -184,14 +212,14 @@ export function WorkspacePicker(): React.JSX.Element {
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') commitNewWorkspace();
+              if (e.key === 'Enter') void commitNewWorkspace();
               if (e.key === 'Escape') {
                 setShowNameInput(false);
                 setNewName('');
               }
             }}
             onBlur={() => {
-              commitNewWorkspace();
+              void commitNewWorkspace();
             }}
             placeholder="Workspace name..."
             className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
@@ -244,7 +272,7 @@ export function WorkspacePicker(): React.JSX.Element {
                   </button>
                   <button
                     className="px-1 text-neutral-700 hover:text-neutral-400 text-[10px]"
-                    onClick={() => handleSwitchWorkspace(ws)}
+                    onClick={() => void handleSwitchWorkspace(ws)}
                     title="Switch to this workspace"
                   >
                     &#8594;

@@ -2,6 +2,8 @@ export type Workspace = {
   id: string;
   label: string;
   tabs: Tab[];
+  activeTabId?: string;
+  activePaneId?: string;
 };
 
 export type Tab = {
