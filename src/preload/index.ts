@@ -33,7 +33,9 @@ import type {
   StarbaseLogEntry,
   StarbaseStatusUpdatePayload,
   DeployResponse,
-  ReaddirResponse
+  ReaddirResponse,
+  FileSearchRequest,
+  FileSearchResponse
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings, UpdateStatus } from '../shared/types';
 
@@ -304,7 +306,9 @@ const fleetApi = {
       success: boolean;
       data?: { size: number; modifiedAt: number; mimeType: string };
       error?: string;
-    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath)
+    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath),
+    search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_SEARCH, req)
   },
   updates: {
     checkForUpdates: async (): Promise<void> => typedInvoke(IPC_CHANNELS.UPDATE_CHECK),
