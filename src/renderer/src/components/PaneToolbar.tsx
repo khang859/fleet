@@ -10,6 +10,7 @@ type PaneToolbarProps = {
   onSearch: () => void;
   onGitChanges: () => void;
   onFileBrowser?: () => void;
+  onFileSearch?: () => void;
 };
 
 export function PaneToolbar({
@@ -20,7 +21,8 @@ export function PaneToolbar({
   onClose,
   onSearch,
   onGitChanges,
-  onFileBrowser
+  onFileBrowser,
+  onFileSearch
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <div
@@ -69,6 +71,18 @@ export function PaneToolbar({
           title={`Browse files (${formatShortcut(getShortcut('file-browser')!)})`}
         >
           <FolderOpen size={14} />
+        </button>
+      )}
+      {onFileSearch && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onFileSearch();
+          }}
+          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
+        >
+          <Search size={14} />
         </button>
       )}
       <button
