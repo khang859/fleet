@@ -22,6 +22,7 @@ export type PtyCreateResponse = {
 export type PtyDataPayload = {
   paneId: string;
   data: string;
+  paused: boolean;
 };
 
 export type PtyInputPayload = {

@@ -141,7 +141,7 @@ describe('PtyManager batching and cleanup', () => {
     vi.advanceTimersByTime(16);
 
     // Only the first callback should receive data
-    expect(firstCallback).toHaveBeenCalledWith('hello');
+    expect(firstCallback).toHaveBeenCalledWith('hello', false);
     expect(secondCallback).not.toHaveBeenCalled();
   });
 
@@ -225,6 +225,29 @@ describe('PtyManager batching and cleanup', () => {
     // Kill last — timer should be cleared
     manager.kill('pane-2');
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('includes paused flag when buffer overflow triggers pause', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+
+    const received: Array<{ data: string; paused: boolean }> = [];
+    manager.onData('pane-1', (data, paused) => received.push({ data, paused }));
+
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
+
+    // Normal data — should flush with paused=false
+    ptyDataCallback('hello');
+    vi.advanceTimersByTime(16);
+    expect(received).toHaveLength(1);
+    expect(received[0].paused).toBe(false);
+
+    // Overflow data — should flush with paused=true
+    ptyDataCallback('x'.repeat(257 * 1024));
+    vi.advanceTimersByTime(16);
+    // The overflow flush happens inline in onData, check most recent
+    const pausedFlush = received.find((r) => r.paused);
+    expect(pausedFlush).toBeDefined();
   });
 
   it('clears flush timer on natural PTY exit when it is the last PTY', () => {

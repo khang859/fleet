@@ -73,13 +73,14 @@ export function registerIpcHandlers(
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
     // duplicate onExit/onData callbacks stacking up
     if (!alreadyExisted) {
-      ptyManager.onData(req.paneId, (data) => {
+      ptyManager.onData(req.paneId, (data, paused) => {
         notificationDetector.scan(req.paneId, data);
         const w = getWindow();
         if (w && !w.isDestroyed()) {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, {
             paneId: req.paneId,
-            data
+            data,
+            paused
           } satisfies PtyDataPayload);
         }
       });
@@ -286,12 +287,12 @@ export function registerIpcHandlers(
 
   // Wire PTY data forwarding for a newly started Admiral pane
   const wireAdmiralPty = (paneId: string): void => {
-    ptyManager.onData(paneId, (data) => {
+    ptyManager.onData(paneId, (data, paused) => {
       notificationDetector.scan(paneId, data);
       getStarbaseServices().admiralStateDetector?.scan(paneId, data);
       const w = getWindow();
       if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
+        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
       }
     });
     ptyManager.onExit(paneId, (exitCode) => {

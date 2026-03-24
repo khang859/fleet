@@ -112,7 +112,7 @@ const setActiveTab = useWorkspaceStore(s => s.setActiveTab);
 
 ---
 
-### 4. `fit()` Called on Every Terminal Click (Medium Impact)
+### 4. ~~`fit()` Called on Every Terminal Click (Medium Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/components/TerminalPane.tsx:91-95`
 
@@ -122,7 +122,7 @@ The `onClick` handler calls `fit()` which triggers `getBoundingClientRect`, `fit
 
 ---
 
-### 5. `workspaceToAgents` Not Memoized (Medium Impact)
+### 5. ~~`workspaceToAgents` Not Memoized (Medium Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/components/visualizer/SpaceCanvas.tsx:185`
 
@@ -137,7 +137,7 @@ agentsRef.current = agents;
 
 ---
 
-### 6. `ptyDrain` IPC on Every Write (Low Impact)
+### 6. ~~`ptyDrain` IPC on Every Write (Low Impact)~~ ✅ Fixed
 
 **Files:** `src/renderer/src/hooks/use-terminal.ts:205-212`
 

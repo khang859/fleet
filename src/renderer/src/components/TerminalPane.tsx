@@ -32,7 +32,7 @@ export function TerminalPane({
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
-  const { fit, focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(
+  const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(
     containerRef,
     {
       paneId,
@@ -91,7 +91,6 @@ export function TerminalPane({
       onClick={() => {
         onFocus();
         focus();
-        fit();
       }}
       {...dragHandlers}
     >

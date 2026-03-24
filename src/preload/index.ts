@@ -75,9 +75,13 @@ function getHomeDir(): string {
 // Single IPC listener that routes PTY data to per-pane callbacks via Map lookup (O(1))
 // instead of broadcasting to all N terminal listeners (O(N)).
 const ptyDataListeners = new Map<string, (data: string) => void>();
+// Track which panes have been paused by the main process so the renderer
+// only sends ptyDrain IPC when actually needed (avoids no-op resume() calls).
+const pausedPanes = new Set<string>();
 ipcRenderer.on(
   IPC_CHANNELS.PTY_DATA,
   (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) => {
+    if (payload.paused) pausedPanes.add(payload.paneId);
     ptyDataListeners.get(payload.paneId)?.(payload.data);
   }
 );
@@ -252,7 +256,12 @@ const fleetApi = {
   },
   showFolderPicker: async (): Promise<string | null> =>
     typedInvoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
-  ptyDrain: (paneId: string) => ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId }),
+  ptyDrain: (paneId: string) => {
+    if (pausedPanes.has(paneId)) {
+      pausedPanes.delete(paneId);
+      ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId });
+    }
+  },
   // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
   // This bridge remains for backwards compatibility but will not fire for new deployments.
   onCreateTab: (callback: (payload: CreateTabPayload) => void): Unsubscribe => {
