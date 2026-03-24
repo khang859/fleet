@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.6.5
+- Fixed active tab and pane not being restored after app restart
+- Fixed split pane inheriting tab's original CWD instead of live CWD
+- Fixed workspace switch losing live CWDs
+- Fixed undo-close restoring terminal at stale working directory
+
 ## v2.6.4
 - Fixed double cursor appearing after switching macOS workspaces and returning to a TUI terminal (e.g. Claude Code)
 
