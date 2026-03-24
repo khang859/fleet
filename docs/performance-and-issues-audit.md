@@ -26,7 +26,7 @@ When `PTY_CREATE` is called for an already-existing pane (idempotent path for HM
 
 ---
 
-### 3. `shell.openExternal` Accepts Unvalidated URLs (Important)
+### 3. ~~`shell.openExternal` Accepts Unvalidated URLs (Important)~~ ✅ Fixed
 
 **Files:** `src/main/ipc-handlers.ts:426-428`, `src/main/index.ts:205-215`
 
