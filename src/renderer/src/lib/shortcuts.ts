@@ -120,12 +120,6 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     other: { key: 'p', ctrl: true }
   },
   {
-    id: 'file-browser',
-    label: 'Browse files',
-    mac: { key: 'E', meta: true, shift: true },
-    other: { key: 'E', ctrl: true, shift: true }
-  },
-  {
     id: 'file-search',
     label: 'Search files on disk',
     mac: { key: 'O', meta: true, shift: true },

@@ -19,7 +19,6 @@ import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
-import { FileBrowserDrawer } from './components/FileBrowserDrawer';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
@@ -96,7 +95,6 @@ export function App(): React.JSX.Element {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
-  const [fileBrowserOpen, setFileBrowserOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [showPreChecks, setShowPreChecks] = useState(true);
@@ -144,13 +142,6 @@ export function App(): React.JSX.Element {
     const handler = (): void => setQuickOpenOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-quick-open', handler);
     return () => document.removeEventListener('fleet:toggle-quick-open', handler);
-  }, []);
-
-  // File browser drawer toggle (Cmd+Shift+E or toolbar button)
-  useEffect(() => {
-    const handler = (): void => setFileBrowserOpen((prev) => !prev);
-    document.addEventListener('fleet:toggle-file-browser', handler);
-    return () => document.removeEventListener('fleet:toggle-file-browser', handler);
   }, []);
 
   // File search overlay toggle (Cmd+Shift+O or command palette)
@@ -567,7 +558,6 @@ export function App(): React.JSX.Element {
         onClose={() => setQuickOpenOpen(false)}
         rootDir={focusedPaneCwd}
       />
-      <FileBrowserDrawer isOpen={fileBrowserOpen} onClose={() => setFileBrowserOpen(false)} />
       <FileSearchOverlay isOpen={fileSearchOpen} onClose={() => setFileSearchOpen(false)} />
       {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>

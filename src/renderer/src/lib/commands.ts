@@ -115,13 +115,6 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-quick-open'))
     },
     {
-      id: 'file-browser',
-      label: 'Browse Files',
-      shortcut: sc('file-browser'),
-      category: 'File',
-      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-file-browser'))
-    },
-    {
       id: 'file-search',
       label: 'Search Files on Disk',
       shortcut: sc('file-search'),
