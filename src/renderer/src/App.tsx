@@ -216,6 +216,8 @@ export function App(): React.JSX.Element {
       // Save active workspace (without terminal scrollback — tabs restore with a clean terminal)
       const activeWithContent = {
         ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
           splitRoot: injectLiveCwd(tab.splitRoot)
