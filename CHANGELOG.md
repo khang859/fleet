@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.7.0
+- Added File Search Overlay for fast file discovery with recent images, sort options (date, name, size), and persistent folder selection
+- Added role activity logging through ShipsLog class for improved observability and debugging
+- Added keyboard shortcut and command palette entry for file search
+- Fixed bracketed paste mode for file path insertion into terminals
+
 ## v2.6.7
 - Fixed duplicate PTY onExit listener stacking on HMR reloads
 - Fixed silent onData callback overwrite on duplicate registration
