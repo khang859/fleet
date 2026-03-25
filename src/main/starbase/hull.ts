@@ -745,31 +745,28 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
     // Repair crew SIGTERM: check if commits were made before deciding if it's an error
     let sigTermStatus: 'complete' | 'error' | null = null;
     if (this.opts.missionType === 'repair' && status === 'sigterm') {
+      const sigTermGitOpts = { cwd: worktreePath, stdio: 'pipe' as const };
+      let hasNewCommits = false;
       try {
-        const gitOpts = { cwd: worktreePath, stdio: 'pipe' as const };
         // Check if there are new commits on this branch compared to the base
         const commitCount = execSync(
           `git rev-list "${baseBranch}..HEAD" --count`,
-          gitOpts
+          sigTermGitOpts
         ).toString().trim();
-        const hasNewCommits = parseInt(commitCount, 10) > 0;
-
-        if (hasNewCommits) {
-          // Crew was terminated after committing work — treat as complete so pending-review flow proceeds
-          sigTermStatus = 'complete';
-        } else {
-          // No commits — convert SIGTERM to error for normal error handling
-          sigTermStatus = 'error';
-        }
+        hasNewCommits = parseInt(commitCount, 10) > 0;
       } catch {
-        // If we can't check git status, treat SIGTERM as error
-        sigTermStatus = 'error';
+        // baseBranch may not exist locally; fall back to checking if HEAD has any commits
+        try {
+          const commitCount = execSync('git rev-list HEAD --count', sigTermGitOpts)
+            .toString()
+            .trim();
+          hasNewCommits = parseInt(commitCount, 10) > 0;
+        } catch {
+          hasNewCommits = false;
+        }
       }
-
-      // Update status based on SIGTERM analysis
-      if (sigTermStatus) {
-        status = sigTermStatus as HullStatus;
-      }
+      sigTermStatus = hasNewCommits ? 'complete' : 'error';
+      status = sigTermStatus as HullStatus;
     }
 
     // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
@@ -791,6 +788,7 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
           reason: status
         })
       );
+      return;
     }
 
     // Clean up temp files
