@@ -1132,3 +1132,137 @@ describe('Hull — Review mission with Analyst', () => {
     }
   );
 });
+
+describe('Hull — Repair mission SIGTERM handling', () => {
+  it('SIGTERM (143) with new commits — transition original to pending-review', { timeout: 60_000 }, async () => {
+    // Create a "worktree" with git history
+    mkdirSync(WORKTREE_DIR, { recursive: true });
+    execSync('git init', { cwd: WORKTREE_DIR });
+    execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+      cwd: WORKTREE_DIR
+    });
+    execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
+    writeFileSync(join(WORKTREE_DIR, 'fix.ts'), 'export const fix = () => {};');
+    execSync('git add -A && git commit -m "repair fix"', { cwd: WORKTREE_DIR });
+
+    // Create missions
+    const originalMission = missionSvc.createMission({
+      sectorId: 'api',
+      crewId: 'repair-test',
+      prompt: 'Fix the bug',
+      type: 'code'
+    });
+
+    const repairMission = missionSvc.createMission({
+      sectorId: 'api',
+      crewId: 'repair-crew',
+      prompt: 'Repair the code',
+      type: 'repair',
+      originalMissionId: originalMission.id
+    });
+
+    const opts: HullOpts = {
+      crewId: 'repair-crew',
+      sectorId: 'api',
+      missionId: repairMission.id,
+      prompt: 'Repair the code',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'repair-branch',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999,
+      missionType: 'repair',
+      originalMissionId: originalMission.id,
+      starbaseId: 'test01'
+    };
+
+    const hull = new Hull(opts);
+    hull.start();
+
+    // Simulate SIGTERM after commits were made
+    mockProc.emit('exit', 143);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Check that original mission was transitioned to pending-review
+    const originalRow = db
+      .getDb()
+      .prepare('SELECT status FROM missions WHERE id = ?')
+      .get(originalMission.id) as any;
+    expect(originalRow.status).toBe('pending-review');
+
+    // Check that repair mission was completed
+    const repairRow = db
+      .getDb()
+      .prepare('SELECT status FROM missions WHERE id = ?')
+      .get(repairMission.id) as any;
+    expect(repairRow.status).toBe('completed');
+  });
+
+  it('SIGTERM (143) without commits — mark original as ci-failed', { timeout: 60_000 }, async () => {
+    // Create a worktree without commits
+    mkdirSync(WORKTREE_DIR, { recursive: true });
+    execSync('git init', { cwd: WORKTREE_DIR });
+    execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+      cwd: WORKTREE_DIR
+    });
+    execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
+    // NO commits made
+
+    // Create missions
+    const originalMission = missionSvc.createMission({
+      sectorId: 'api',
+      crewId: 'repair-test-2',
+      prompt: 'Fix the bug',
+      type: 'code'
+    });
+
+    // Mark as repairing
+    db.getDb()
+      .prepare("UPDATE missions SET status = 'repairing' WHERE id = ?")
+      .run(originalMission.id);
+
+    const repairMission = missionSvc.createMission({
+      sectorId: 'api',
+      crewId: 'repair-crew-2',
+      prompt: 'Repair the code',
+      type: 'repair',
+      originalMissionId: originalMission.id
+    });
+
+    const opts: HullOpts = {
+      crewId: 'repair-crew-2',
+      sectorId: 'api',
+      missionId: repairMission.id,
+      prompt: 'Repair the code',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'repair-branch',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999,
+      missionType: 'repair',
+      originalMissionId: originalMission.id,
+      starbaseId: 'test01'
+    };
+
+    const hull = new Hull(opts);
+    hull.start();
+
+    // Simulate SIGTERM without any commits
+    mockProc.emit('exit', 143);
+
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Check that original mission was marked as ci-failed
+    const originalRow = db
+      .getDb()
+      .prepare('SELECT status FROM missions WHERE id = ?')
+      .get(originalMission.id) as any;
+    expect(originalRow.status).toBe('ci-failed');
+  });
+});
+});

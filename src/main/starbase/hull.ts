@@ -156,7 +156,7 @@ export type HullOpts = {
   analyst?: Analyst;
 };
 
-type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
+type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted' | 'sigterm';
 
 const MAX_OUTPUT_LINES = 200;
 
@@ -497,7 +497,8 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       // Handle process exit → trigger cleanup
       proc.on('exit', (code) => {
         this.process = null;
-        const status = code === 0 ? 'complete' : 'error';
+        // For SIGTERM (143), we'll check for commits in cleanup() to decide if it's truly an error
+        const status = code === 0 ? 'complete' : code === 143 ? 'sigterm' : 'error';
         this.cleanup(status, code === 0 ? 'Completed successfully' : `Exit code: ${code}`).catch(
           (cleanupErr) => {
             console.error('[hull] cleanup error:', cleanupErr);
@@ -739,6 +740,36 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
         JSON.stringify({ missionId, verdict: 'escalated', notes: 'Review crew timed out' })
       );
       return;
+    }
+
+    // Repair crew SIGTERM: check if commits were made before deciding if it's an error
+    let sigTermStatus: 'complete' | 'error' | null = null;
+    if (this.opts.missionType === 'repair' && status === 'sigterm') {
+      try {
+        const gitOpts = { cwd: worktreePath, stdio: 'pipe' as const };
+        // Check if there are new commits on this branch compared to the base
+        const commitCount = execSync(
+          `git rev-list "${baseBranch}..HEAD" --count`,
+          gitOpts
+        ).toString().trim();
+        const hasNewCommits = parseInt(commitCount, 10) > 0;
+
+        if (hasNewCommits) {
+          // Crew was terminated after committing work — treat as complete so pending-review flow proceeds
+          sigTermStatus = 'complete';
+        } else {
+          // No commits — convert SIGTERM to error for normal error handling
+          sigTermStatus = 'error';
+        }
+      } catch {
+        // If we can't check git status, treat SIGTERM as error
+        sigTermStatus = 'error';
+      }
+
+      // Update status based on SIGTERM analysis
+      if (sigTermStatus) {
+        status = sigTermStatus as HullStatus;
+      }
     }
 
     // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
