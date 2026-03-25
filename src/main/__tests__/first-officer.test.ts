@@ -6,6 +6,7 @@ import { SectorService } from '../starbase/sector-service';
 import { MissionService } from '../starbase/mission-service';
 import { SupplyRouteService } from '../starbase/supply-route-service';
 import { CargoService } from '../starbase/cargo-service';
+import { ShipsLog } from '../starbase/ships-log';
 import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -82,8 +83,11 @@ beforeEach(() => {
     cargoService,
     crewService: {
       recallCrew: () => {},
-      deployCrew: () => ({ crewId: 'replacement', missionId })
+      deployCrew: () => ({ crewId: 'replacement', missionId }),
+      deleteCrew: () => {},
+      observeCrew: () => null
     } as any,
+    shipsLog: new ShipsLog(rawDb),
     starbaseId: db.getStarbaseId()
   });
 });
@@ -236,9 +240,12 @@ describe('FirstOfficer', () => {
       cargoService,
       crewService: {
         recallCrew: () => {},
-        deployCrew: () => ({ crewId: 'replacement', missionId })
+        deployCrew: () => ({ crewId: 'replacement', missionId }),
+        deleteCrew: () => {},
+        observeCrew: () => null
       } as any,
       analyst: mockAnalyst as any,
+      shipsLog: new ShipsLog(rawDb),
       starbaseId: db.getStarbaseId()
     });
 
@@ -275,9 +282,12 @@ describe('FirstOfficer', () => {
       cargoService,
       crewService: {
         recallCrew: () => {},
-        deployCrew: () => ({ crewId: 'replacement', missionId })
+        deployCrew: () => ({ crewId: 'replacement', missionId }),
+        deleteCrew: () => {},
+        observeCrew: () => null
       } as any,
       analyst: mockAnalyst as any,
+      shipsLog: new ShipsLog(rawDb),
       starbaseId: db.getStarbaseId()
     });
 
@@ -298,6 +308,35 @@ describe('FirstOfficer', () => {
     const { readFileSync } = await import('fs');
     const content = readFileSync(filePath, 'utf-8');
     expect(content).toContain('over 60 seconds');
+  });
+
+  it('logs first_officer_dismissed to ships_log on escalation', async () => {
+    const shipsLog = new ShipsLog(rawDb);
+    const fo = new FirstOfficer({
+      db: rawDb,
+      configService,
+      missionService,
+      cargoService,
+      crewService: {
+        recallCrew: () => {},
+        deployCrew: () => ({ crewId: 'replacement', missionId }),
+        deleteCrew: () => {},
+        observeCrew: () => null
+      } as any,
+      starbaseId: db.getStarbaseId(),
+      shipsLog
+    });
+
+    // Trigger max-retries escalation path (no claude spawn needed)
+    const maxRetries = configService.get('first_officer_max_retries') as number;
+    const event = makeEvent({ retryCount: maxRetries });
+    await fo.dispatch(event);
+
+    const entries = shipsLog.query({ eventType: 'first_officer_dismissed' });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].crew_id).toBe(CREW_ID);
+    const detail = JSON.parse(entries[0].detail!);
+    expect(detail.missionId).toBe(missionId);
   });
 
   it('falls back to escalate-and-dismiss when decision payload is invalid', () => {

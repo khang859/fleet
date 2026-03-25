@@ -10,6 +10,7 @@ import type { CrewService } from './crew-service';
 import type { MissionService } from './mission-service';
 import type { EventBus } from '../event-bus';
 import type { Analyst } from './analyst';
+import type { ShipsLog } from './ships-log';
 import { filterEnv } from '../env-utils';
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -24,6 +25,7 @@ type FirstOfficerDeps = {
   cargoService: CargoService;
   eventBus?: EventBus;
   analyst?: Analyst;
+  shipsLog: ShipsLog;
   starbaseId: string;
   crewEnv?: Record<string, string>;
   fleetBinDir?: string;
@@ -346,6 +348,15 @@ ${actionRequired}
           filePath
         })
       );
+    try {
+      this.deps.shipsLog.log({
+        crewId: opts.crewId,
+        eventType: 'hailing_memo_written',
+        detail: { missionId: opts.missionId, sectorName: opts.sectorName }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
@@ -392,6 +403,19 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
           classification: opts.classification
         })
       );
+    try {
+      this.deps.shipsLog.log({
+        crewId: opts.crewId,
+        eventType: 'auto_escalation',
+        detail: {
+          missionId: opts.missionId,
+          classification: opts.classification,
+          fingerprint: opts.fingerprint
+        }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
@@ -608,19 +632,15 @@ ${revisedPrompt}
       deployResult = `Redeploy attempt failed: ${err instanceof Error ? err.message : 'unknown error'}. Mission remains queued or escalated by caller state.`;
     }
 
-    this.deps.db
-      .prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_retried', ?)"
-      )
-      .run(
-        event.crewId,
-        JSON.stringify({
-          missionId: event.missionId,
-          reason: decision.reason,
-          revisedPrompt,
-          deployResult
-        })
-      );
+    try {
+      this.deps.shipsLog.log({
+        crewId: event.crewId,
+        eventType: 'first_officer_retried',
+        detail: { missionId: event.missionId, reason: decision.reason, revisedPrompt, deployResult }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async resolveRecovery(
@@ -675,20 +695,21 @@ ${decision.salvage?.summary ?? 'Partial mission output was preserved for later o
 
     await this.writeDecisionMemo(event, summary, memo, 'recover-and-dismiss');
 
-    this.deps.db
-      .prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_recovered', ?)"
-      )
-      .run(
-        event.crewId,
-        JSON.stringify({
+    try {
+      this.deps.shipsLog.log({
+        crewId: event.crewId,
+        eventType: 'first_officer_recovered',
+        detail: {
           missionId: event.missionId,
           reason: decision.reason,
           cargoCreated,
           fingerprint: event.fingerprint ?? null,
           classification: event.classification ?? null
-        })
-      );
+        }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async resolveEscalation(
@@ -753,20 +774,21 @@ ${event.crewOutput.split('\n').slice(-30).join('\n')}
       event.classification ?? 'escalation'
     );
 
-    this.deps.db
-      .prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dismissed', ?)"
-      )
-      .run(
-        event.crewId,
-        JSON.stringify({
+    try {
+      this.deps.shipsLog.log({
+        crewId: event.crewId,
+        eventType: 'first_officer_dismissed',
+        detail: {
           missionId: event.missionId,
           reason: summaryReason,
           cargoCreated,
           fingerprint: event.fingerprint ?? null,
           classification: event.classification ?? null
-        })
-      );
+        }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async writeDecisionMemo(

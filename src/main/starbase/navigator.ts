@@ -5,12 +5,14 @@ import { tmpdir } from 'os';
 import type Database from 'better-sqlite3';
 import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
+import type { ShipsLog } from './ships-log';
 import { filterEnv } from '../env-utils';
 
 type NavigatorDeps = {
   db: Database.Database;
   configService: ConfigService;
   eventBus?: EventBus;
+  shipsLog?: ShipsLog;
   starbaseId: string;
   crewEnv?: Record<string, string>;
   fleetBinDir?: string;
@@ -34,6 +36,7 @@ type RunningProcess = {
 
 export class Navigator {
   private running = new Map<string, RunningProcess>();
+  private timedOut = new Set<string>();
 
   constructor(private deps: NavigatorDeps) {}
 
@@ -122,6 +125,19 @@ export class Navigator {
         startedAt: Date.now()
       });
 
+      try {
+        this.deps.shipsLog?.log({
+          eventType: 'navigator_dispatched',
+          detail: {
+            executionId: event.executionId,
+            protocolSlug: event.protocolSlug,
+            step: event.currentStep
+          }
+        });
+      } catch {
+        /* fire-and-forget */
+      }
+
       const initMsg =
         JSON.stringify({
           type: 'user',
@@ -165,6 +181,7 @@ export class Navigator {
       const timer = setTimeout(() => {
         if (!proc.killed) {
           console.warn(`[navigator] Timeout for ${event.executionId}, killing`);
+          this.timedOut.add(event.executionId);
           try {
             proc.kill('SIGTERM');
           } catch {
@@ -195,8 +212,40 @@ export class Navigator {
           /* ignore */
         }
 
-        if (code !== 0) {
+        const wasTimeout = this.timedOut.delete(event.executionId);
+        if (wasTimeout) {
+          this.writeFailedComm(event, `Navigator process timed out`);
+          try {
+            this.deps.shipsLog?.log({
+              eventType: 'navigator_timeout',
+              detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
+            });
+          } catch {
+            /* fire-and-forget */
+          }
+        } else if (code !== 0) {
           this.writeFailedComm(event, `Navigator process crashed (exit code: ${code})`);
+          try {
+            this.deps.shipsLog?.log({
+              eventType: 'navigator_failed',
+              detail: {
+                executionId: event.executionId,
+                protocolSlug: event.protocolSlug,
+                reason: `exit code ${code}`
+              }
+            });
+          } catch {
+            /* fire-and-forget */
+          }
+        } else {
+          try {
+            this.deps.shipsLog?.log({
+              eventType: 'navigator_completed',
+              detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
+            });
+          } catch {
+            /* fire-and-forget */
+          }
         }
 
         callbacks?.onExit?.(code);
@@ -207,6 +256,18 @@ export class Navigator {
         clearTimeout(timer);
         this.running.delete(event.executionId);
         this.writeFailedComm(event, `Navigator spawn failed: ${err.message}`);
+        try {
+          this.deps.shipsLog?.log({
+            eventType: 'navigator_failed',
+            detail: {
+              executionId: event.executionId,
+              protocolSlug: event.protocolSlug,
+              reason: err.message
+            }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
         this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
       });
 
@@ -217,6 +278,18 @@ export class Navigator {
         event,
         `Navigator spawn failed: ${err instanceof Error ? err.message : 'unknown'}`
       );
+      try {
+        this.deps.shipsLog?.log({
+          eventType: 'navigator_failed',
+          detail: {
+            executionId: event.executionId,
+            protocolSlug: event.protocolSlug,
+            reason: err instanceof Error ? err.message : 'unknown'
+          }
+        });
+      } catch {
+        /* fire-and-forget */
+      }
       return false;
     }
   }
@@ -291,6 +364,7 @@ Read the protocol steps, check the execution state, and proceed from step ${even
 
   reconcile(): void {
     this.running.clear();
+    this.timedOut.clear();
   }
 
   shutdown(): void {
@@ -302,5 +376,6 @@ Read the protocol steps, check the execution state, and proceed from step ${even
       }
       this.running.delete(k);
     }
+    this.timedOut.clear();
   }
 }

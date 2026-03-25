@@ -77,7 +77,8 @@ describe('Sentinel socket health check', () => {
       db: makeMockDb(),
       configService: configService as any,
       supervisor,
-      socketPath
+      socketPath,
+      shipsLog: { log: vi.fn() } as any
     });
 
     await sentinel.runSweep();
@@ -111,7 +112,8 @@ describe('Sentinel socket health check', () => {
       db: makeMockDb(),
       configService: configService as any,
       supervisor: stoppedSupervisor,
-      socketPath
+      socketPath,
+      shipsLog: { log: vi.fn() } as any
     });
 
     await sentinel.runSweep();
