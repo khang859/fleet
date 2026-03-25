@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.7.2
+- Fixed CI release pipeline merging arm64 entry into latest-mac.yml before publishing
+
 ## v2.7.1
 - Fixed navigator stdio streams not destroyed in error handler, preventing CI hangs
 - Fixed repair missions not included in review and fix crew dispatch
