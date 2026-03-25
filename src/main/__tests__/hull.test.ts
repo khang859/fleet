@@ -1265,4 +1265,3 @@ describe('Hull — Repair mission SIGTERM handling', () => {
     expect(originalRow.status).toBe('ci-failed');
   });
 });
-});
