@@ -629,9 +629,13 @@ export class StarbaseRuntimeCore {
       worktreeManager.configure(localStarbaseDb.getDb(), maxConcurrent);
       trace('bootstrap worktreeManager ready', { worktreeBasePath, maxConcurrent });
 
+      const shipsLog = new ShipsLog(localStarbaseDb.getDb());
+      trace('bootstrap shipsLog ready');
+
       const analyst = new Analyst({
         db: localStarbaseDb.getDb(),
-        model: configService.getOptionalString('analyst_model')
+        model: configService.getOptionalString('analyst_model'),
+        shipsLog
       });
       trace('bootstrap analyst ready');
 
@@ -653,7 +657,6 @@ export class StarbaseRuntimeCore {
       trace('bootstrap commsService ready');
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb());
-      const shipsLog = new ShipsLog(localStarbaseDb.getDb());
 
       const firstOfficer = new FirstOfficer({
         db: localStarbaseDb.getDb(),
@@ -675,9 +678,10 @@ export class StarbaseRuntimeCore {
         eventBus: this.eventBus,
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
-        fleetBinDir: args.fleetBinPath
+        fleetBinDir: args.fleetBinPath,
+        shipsLog
       });
-      trace('bootstrap navigator/shipsLog ready');
+      trace('bootstrap navigator ready');
 
       const sentinel = new Sentinel({
         db: localStarbaseDb.getDb(),
