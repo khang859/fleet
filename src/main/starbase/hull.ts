@@ -156,7 +156,7 @@ export type HullOpts = {
   analyst?: Analyst;
 };
 
-type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted';
+type HullStatus = 'pending' | 'active' | 'complete' | 'error' | 'timeout' | 'aborted' | 'sigterm';
 
 const MAX_OUTPUT_LINES = 200;
 
@@ -497,7 +497,8 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       // Handle process exit → trigger cleanup
       proc.on('exit', (code) => {
         this.process = null;
-        const status = code === 0 ? 'complete' : 'error';
+        // For SIGTERM (143), we'll check for commits in cleanup() to decide if it's truly an error
+        const status = code === 0 ? 'complete' : code === 143 ? 'sigterm' : 'error';
         this.cleanup(status, code === 0 ? 'Completed successfully' : `Exit code: ${code}`).catch(
           (cleanupErr) => {
             console.error('[hull] cleanup error:', cleanupErr);
@@ -741,6 +742,33 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       return;
     }
 
+    // Repair crew SIGTERM: check if commits were made before deciding if it's an error
+    let sigTermStatus: 'complete' | 'error' | null = null;
+    if (this.opts.missionType === 'repair' && status === 'sigterm') {
+      const sigTermGitOpts = { cwd: worktreePath, stdio: 'pipe' as const };
+      let hasNewCommits = false;
+      try {
+        // Check if there are new commits on this branch compared to the base
+        const commitCount = execSync(
+          `git rev-list "${baseBranch}..HEAD" --count`,
+          sigTermGitOpts
+        ).toString().trim();
+        hasNewCommits = parseInt(commitCount, 10) > 0;
+      } catch {
+        // baseBranch may not exist locally; fall back to checking if HEAD has any commits
+        try {
+          const commitCount = execSync('git rev-list HEAD --count', sigTermGitOpts)
+            .toString()
+            .trim();
+          hasNewCommits = parseInt(commitCount, 10) > 0;
+        } catch {
+          hasNewCommits = false;
+        }
+      }
+      sigTermStatus = hasNewCommits ? 'complete' : 'error';
+      status = sigTermStatus as HullStatus;
+    }
+
     // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
     if (
       this.opts.missionType === 'repair' &&
@@ -760,6 +788,7 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
           reason: status
         })
       );
+      return;
     }
 
     // Clean up temp files
