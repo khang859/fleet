@@ -11,6 +11,7 @@ vi.mock('child_process', async (importOriginal) => {
 
 import { spawn } from 'child_process';
 import { Analyst } from '../starbase/analyst';
+import type { ShipsLog } from '../starbase/ships-log';
 
 /** Build a fake process that never closes (used to trigger timeout). */
 function makeMockProcThatNeverCloses() {
@@ -54,6 +55,11 @@ function makeDb() {
     prepare: vi.fn().mockReturnValue({ run: vi.fn((...args: unknown[]) => rows.push(args)) }),
     _rows: rows
   } as unknown as { prepare: ReturnType<typeof vi.fn>; _rows: unknown[] };
+}
+
+function makeShipsLog() {
+  const logSpy = vi.fn().mockReturnValue(1);
+  return { log: logSpy } as unknown as ShipsLog & { log: ReturnType<typeof vi.fn> };
 }
 
 describe('Analyst', () => {
@@ -111,6 +117,28 @@ describe('Analyst', () => {
       expect(result).toBeNull();
     });
 
+    it('logs analyst_classified to ships log on success', async () => {
+      mockProc = makeMockProc('{"classification": "transient", "reason": "blip"}');
+      const shipsLog = makeShipsLog();
+      const analyst = new Analyst({ db: db as any, timeoutMs: 100, shipsLog });
+      await analyst.classifyError('Error: connection reset');
+      expect(shipsLog.log).toHaveBeenCalledWith({
+        eventType: 'analyst_classified',
+        detail: { classification: 'transient', method: 'classifyError' }
+      });
+    });
+
+    it('logs analyst_degraded to ships log on failure', async () => {
+      mockProc = makeMockProc('', 1);
+      const shipsLog = makeShipsLog();
+      const analyst = new Analyst({ db: db as any, timeoutMs: 100, shipsLog });
+      await analyst.classifyError('some error');
+      expect(shipsLog.log).toHaveBeenCalledWith({
+        eventType: 'analyst_degraded',
+        detail: expect.objectContaining({ method: 'classifyError' })
+      });
+    });
+
     it('rate-limits analyst_degraded comms to once per 5 minutes per method', async () => {
       mockProc = makeMockProc('', 1);
       const analyst = new Analyst({ db: db as any, timeoutMs: 100 });
@@ -133,6 +161,17 @@ describe('Analyst', () => {
       const analyst = new Analyst({ db: db as any, timeoutMs: 100 });
       const result = await analyst.summarizeCILogs('...raw CI logs...');
       expect(result).toBe('Build failed: missing dependency foo');
+    });
+
+    it('logs analyst_summarized to ships log on success', async () => {
+      mockProc = makeMockProc('{"summary": "Build failed"}');
+      const shipsLog = makeShipsLog();
+      const analyst = new Analyst({ db: db as any, timeoutMs: 100, shipsLog });
+      await analyst.summarizeCILogs('raw logs');
+      expect(shipsLog.log).toHaveBeenCalledWith({
+        eventType: 'analyst_summarized',
+        detail: { method: 'summarizeCILogs' }
+      });
     });
 
     it('returns null on missing summary field', async () => {
@@ -158,6 +197,17 @@ describe('Analyst', () => {
       expect(result).toEqual({ verdict: 'REQUEST_CHANGES', notes: 'Missing tests' });
     });
 
+    it('logs analyst_verdict_extracted to ships log on success', async () => {
+      mockProc = makeMockProc('{"verdict": "APPROVE", "notes": "LGTM"}');
+      const shipsLog = makeShipsLog();
+      const analyst = new Analyst({ db: db as any, timeoutMs: 100, shipsLog });
+      await analyst.extractPRVerdict('output');
+      expect(shipsLog.log).toHaveBeenCalledWith({
+        eventType: 'analyst_verdict_extracted',
+        detail: { verdict: 'APPROVE', method: 'extractPRVerdict' }
+      });
+    });
+
     it('returns null for invalid verdict value', async () => {
       mockProc = makeMockProc('{"verdict": "MAYBE", "notes": "not sure"}');
       const analyst = new Analyst({ db: db as any, timeoutMs: 100 });
@@ -172,6 +222,17 @@ describe('Analyst', () => {
       const analyst = new Analyst({ db: db as any, timeoutMs: 100 });
       const result = await analyst.writeHailingContext('Should I push to main?');
       expect(result).toBe('The crew appears stuck waiting for user input.');
+    });
+
+    it('logs analyst_hailing_context to ships log on success', async () => {
+      mockProc = makeMockProc('{"context": "The crew is stuck."}');
+      const shipsLog = makeShipsLog();
+      const analyst = new Analyst({ db: db as any, timeoutMs: 100, shipsLog });
+      await analyst.writeHailingContext('question');
+      expect(shipsLog.log).toHaveBeenCalledWith({
+        eventType: 'analyst_hailing_context',
+        detail: { method: 'writeHailingContext' }
+      });
     });
 
     it('returns null on invalid schema', async () => {
