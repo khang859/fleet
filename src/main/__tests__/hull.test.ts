@@ -1146,16 +1146,16 @@ describe('Hull — Repair mission SIGTERM handling', () => {
     execSync('git add -A && git commit -m "repair fix"', { cwd: WORKTREE_DIR });
 
     // Create missions
-    const originalMission = missionSvc.createMission({
+    const originalMission = missionSvc.addMission({
       sectorId: 'api',
-      crewId: 'repair-test',
+      summary: 'Fix the bug',
       prompt: 'Fix the bug',
       type: 'code'
     });
 
-    const repairMission = missionSvc.createMission({
+    const repairMission = missionSvc.addMission({
       sectorId: 'api',
-      crewId: 'repair-crew',
+      summary: 'Repair the code',
       prompt: 'Repair the code',
       type: 'repair',
       originalMissionId: originalMission.id
@@ -1212,9 +1212,9 @@ describe('Hull — Repair mission SIGTERM handling', () => {
     // NO commits made
 
     // Create missions
-    const originalMission = missionSvc.createMission({
+    const originalMission = missionSvc.addMission({
       sectorId: 'api',
-      crewId: 'repair-test-2',
+      summary: 'Fix the bug',
       prompt: 'Fix the bug',
       type: 'code'
     });
@@ -1224,9 +1224,9 @@ describe('Hull — Repair mission SIGTERM handling', () => {
       .prepare("UPDATE missions SET status = 'repairing' WHERE id = ?")
       .run(originalMission.id);
 
-    const repairMission = missionSvc.createMission({
+    const repairMission = missionSvc.addMission({
       sectorId: 'api',
-      crewId: 'repair-crew-2',
+      summary: 'Repair the code',
       prompt: 'Repair the code',
       type: 'repair',
       originalMissionId: originalMission.id
