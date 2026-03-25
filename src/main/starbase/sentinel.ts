@@ -853,7 +853,7 @@ export class Sentinel {
        JOIN sectors s ON s.id = m.sector_id
        WHERE m.status = 'pending-review'
          AND m.pr_branch IS NOT NULL
-         AND m.type = 'code'
+         AND m.type IN ('code', 'repair')
        ORDER BY m.priority ASC, m.completed_at ASC
        LIMIT ?`
       )
@@ -919,7 +919,7 @@ NOTES: <your review notes — specific file:line references for issues>`;
        JOIN sectors s ON s.id = m.sector_id
        WHERE m.status = 'changes-requested'
          AND m.pr_branch IS NOT NULL
-         AND m.type = 'code'
+         AND m.type IN ('code', 'repair')
        ORDER BY m.priority ASC
        LIMIT 5`
       )
