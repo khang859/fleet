@@ -35,7 +35,8 @@ import type {
   DeployResponse,
   ReaddirResponse,
   FileSearchRequest,
-  FileSearchResponse
+  FileSearchResponse,
+  RecentImagesResponse
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings, UpdateStatus } from '../shared/types';
 
@@ -308,7 +309,9 @@ const fleetApi = {
       error?: string;
     }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath),
     search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
-      typedInvoke(IPC_CHANNELS.FILE_SEARCH, req)
+      typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
+    searchRecentImages: async (): Promise<RecentImagesResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES)
   },
   updates: {
     checkForUpdates: async (): Promise<void> => typedInvoke(IPC_CHANNELS.UPDATE_CHECK),

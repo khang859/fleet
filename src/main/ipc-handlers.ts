@@ -36,6 +36,7 @@ import type { AdmiralProcess } from './starbase/admiral-process';
 import { checkDependencies } from './starbase/admiral-process';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
+import { searchRecentImages } from './recent-images';
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import type { StarbaseRuntimeClient } from './starbase-runtime-client';
 
@@ -602,6 +603,8 @@ export function registerIpcHandlers(
     IPC_CHANNELS.FILE_SEARCH,
     async (_event, req: FileSearchRequest) => searchFiles(req)
   );
+
+  ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());
 }
 
 // Exported for testing

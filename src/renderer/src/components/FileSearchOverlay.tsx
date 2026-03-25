@@ -4,7 +4,7 @@ import { useWorkspaceStore } from '../store/workspace-store';
 import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
 import { z } from 'zod';
-import type { FileSearchResult } from '../../../shared/ipc-api';
+import type { FileSearchResult, RecentImageResult } from '../../../shared/ipc-api';
 
 const RECENT_STORAGE_KEY = 'fleet:file-search-recent';
 const LAST_SCOPE_KEY = 'fleet:file-search-scope';
@@ -188,6 +188,7 @@ export function FileSearchOverlay({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<SortOption>('date');
+  const [recentImages, setRecentImages] = useState<RecentImageResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
@@ -204,6 +205,9 @@ export function FileSearchOverlay({
       setSelectedIndex(0);
       setIsLoading(false);
       setError(null);
+      void window.fleet.file.searchRecentImages().then((res) => {
+        if (res.success) setRecentImages(res.results);
+      });
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
@@ -362,6 +366,43 @@ export function FileSearchOverlay({
 
         {/* Results */}
         <div ref={listRef} className="overflow-y-auto py-1">
+          {/* Recent Images thumbnail strip */}
+          {!query && recentImages.length > 0 && (
+            <>
+              <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+                Recent Images
+              </div>
+              <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800">
+                {recentImages.map((img) => (
+                  <button
+                    key={img.path}
+                    onClick={() => handleSelect(img)}
+
+                    className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
+                    title={img.path}
+                  >
+                    {img.thumbnailDataUrl ? (
+                      <img
+                        src={img.thumbnailDataUrl}
+                        alt={img.name}
+                        className="h-[80px] w-[88px] object-cover rounded border border-neutral-700"
+                      />
+                    ) : (
+                      <div className="h-[80px] w-[88px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700">
+                        {getFileIcon(img.name, 24)}
+                      </div>
+                    )}
+                    <span className="text-[10px] text-neutral-400 truncate w-[88px] text-center">
+                      {img.name}
+                    </span>
+                    <span className="text-[9px] text-neutral-600">
+                      {relativeTime(img.modifiedAt)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
           {!query && results.length > 0 && (
             <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
               Recent

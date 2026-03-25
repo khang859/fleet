@@ -342,3 +342,16 @@ export type FileSearchResult = {
 export type FileSearchResponse =
   | { success: true; requestId: number; results: FileSearchResult[] }
   | { success: false; requestId: number; error: string };
+
+export type RecentImageResult = {
+  path: string;
+  name: string;
+  parentDir: string;
+  modifiedAt: number;
+  size: number;
+  thumbnailDataUrl: string;
+};
+
+export type RecentImagesResponse =
+  | { success: true; results: RecentImageResult[] }
+  | { success: false; error: string };
