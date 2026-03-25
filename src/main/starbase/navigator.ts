@@ -255,6 +255,13 @@ export class Navigator {
       proc.on('error', (err) => {
         clearTimeout(timer);
         this.running.delete(event.executionId);
+        try {
+          proc.stdout?.destroy();
+          proc.stderr?.destroy();
+          proc.stdin?.destroy();
+        } catch {
+          /* ignore */
+        }
         this.writeFailedComm(event, `Navigator spawn failed: ${err.message}`);
         try {
           this.deps.shipsLog?.log({
@@ -369,6 +376,13 @@ Read the protocol steps, check the execution state, and proceed from step ${even
 
   shutdown(): void {
     for (const [k, entry] of this.running) {
+      try {
+        entry.proc.stdout?.destroy();
+        entry.proc.stderr?.destroy();
+        entry.proc.stdin?.destroy();
+      } catch {
+        /* ignore */
+      }
       try {
         entry.proc.kill('SIGKILL');
       } catch {
