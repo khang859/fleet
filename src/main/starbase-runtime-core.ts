@@ -653,6 +653,7 @@ export class StarbaseRuntimeCore {
       trace('bootstrap commsService ready');
 
       const protocolService = new ProtocolService(localStarbaseDb.getDb());
+      const shipsLog = new ShipsLog(localStarbaseDb.getDb());
 
       const firstOfficer = new FirstOfficer({
         db: localStarbaseDb.getDb(),
@@ -664,7 +665,8 @@ export class StarbaseRuntimeCore {
         starbaseId: localStarbaseDb.getStarbaseId(),
         crewEnv: args.env,
         fleetBinDir: args.fleetBinPath,
-        analyst
+        analyst,
+        shipsLog
       });
       trace('bootstrap firstOfficer ready');
       const navigator = new Navigator({
@@ -675,7 +677,6 @@ export class StarbaseRuntimeCore {
         crewEnv: args.env,
         fleetBinDir: args.fleetBinPath
       });
-      const shipsLog = new ShipsLog(localStarbaseDb.getDb());
       trace('bootstrap navigator/shipsLog ready');
 
       const sentinel = new Sentinel({
@@ -686,7 +687,8 @@ export class StarbaseRuntimeCore {
         navigator,
         crewService,
         missionService,
-        analyst
+        analyst,
+        shipsLog
       });
       sentinel.start();
       trace('bootstrap sentinel ready');

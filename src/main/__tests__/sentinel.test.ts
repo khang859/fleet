@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { Sentinel } from '../starbase/sentinel';
 import { ConfigService } from '../starbase/config-service';
+import { ShipsLog } from '../starbase/ships-log';
 import { rmSync, mkdirSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
@@ -89,7 +90,7 @@ describe('Sentinel', () => {
     const staleTime = sqliteDatetime(new Date(Date.now() - 60_000));
     insertCrew({ id: 'crew-1', sectorId: 'api', lastLifesign: staleTime });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await sentinel.runSweep();
 
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
@@ -102,6 +103,10 @@ describe('Sentinel', () => {
       .prepare("SELECT * FROM ships_log WHERE crew_id = 'crew-1' AND event_type = 'lifesign_lost'")
       .get();
     expect(logEntry).toBeDefined();
+
+    // Verify via ShipsLog class
+    const logEntries = new ShipsLog(getDb()).query({ eventType: 'lifesign_lost' });
+    expect(logEntries.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should not mark crew with fresh lifesign as lost', async () => {
@@ -110,7 +115,7 @@ describe('Sentinel', () => {
 
     insertCrew({ id: 'crew-1', sectorId: 'api', lastLifesign: sqliteDatetime(new Date()) });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await sentinel.runSweep();
 
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
@@ -127,20 +132,24 @@ describe('Sentinel', () => {
     const pastDeadline = sqliteDatetime(new Date(Date.now() - 60_000));
     insertCrew({ id: 'crew-1', sectorId: 'api', deadline: pastDeadline, pid: 99999999 });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await sentinel.runSweep();
 
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
       status: string;
     };
     expect(crew.status).toBe('timeout');
+
+    // Verify timeout ships log entry via ShipsLog class
+    const logEntries = new ShipsLog(getDb()).query({ eventType: 'timeout' });
+    expect(logEntries.length).toBeGreaterThanOrEqual(1);
   });
 
   it('should disable sector with missing root path', async () => {
     insertSector('missing-sector', '/nonexistent/path/that/does/not/exist');
     insertCrew({ id: 'crew-1', sectorId: 'missing-sector' });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await sentinel.runSweep();
 
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
@@ -157,7 +166,7 @@ describe('Sentinel', () => {
   it('should ignore the global sentinel during sector path validation', async () => {
     insertCrew({ id: 'crew-1', sectorId: 'global' });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await sentinel.runSweep();
 
     const crew = getDb().prepare('SELECT status FROM crew WHERE id = ?').get('crew-1') as {
@@ -178,7 +187,7 @@ describe('Sentinel', () => {
     insertSector('api', sectorDir);
     insertCrew({ id: 'crew-1', sectorId: 'api', commsCountMinute: 15 });
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
 
     // Run 5 sweeps — should NOT reset
     for (let i = 0; i < 5; i++) {
@@ -198,7 +207,7 @@ describe('Sentinel', () => {
   });
 
   it('should start and stop the sweep interval', async () => {
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     sentinel.start(100); // 100ms interval for testing
     // Let it run a couple sweeps
     await new Promise((r) => setTimeout(r, 250));
@@ -250,6 +259,7 @@ describe('Navigator sweep', () => {
     const sentinel = new Sentinel({
       db: getDb(),
       configService,
+      shipsLog: new ShipsLog(getDb()),
       navigator: nav as unknown as Navigator
     });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
@@ -272,7 +282,7 @@ describe('Navigator sweep', () => {
       )
       .run();
 
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
 
     const exec = getDb()
@@ -305,6 +315,7 @@ describe('prMonitorSweep — escalation', () => {
     const sentinel = new Sentinel({
       db: getDb(),
       configService,
+      shipsLog: new ShipsLog(getDb()),
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       crewService: { deployCrew: mockDeployCrew } as any,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -343,7 +354,7 @@ describe('prMonitorSweep — escalation', () => {
       .run('api', 'Test mission', 'Do some work', 'approved', 'code', 'feature/test-branch', 0);
 
     // No crewService or missionService
-    const sentinel = new Sentinel({ db: getDb(), configService });
+    const sentinel = new Sentinel({ db: getDb(), configService, shipsLog: new ShipsLog(getDb()) });
 
     // Should complete without error and not touch the mission
     await (sentinel as unknown as { prMonitorSweep: () => Promise<void> }).prMonitorSweep();
