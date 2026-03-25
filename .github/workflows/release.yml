@@ -126,6 +126,48 @@ jobs:
     needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]
     runs-on: ubuntu-latest
     steps:
+      - name: Merge arm64 into latest-mac.yml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+          VERSION="${TAG#v}"
+          ARM64_ZIP="Fleet-${VERSION}-arm64-mac.zip"
+
+          # Download arm64 zip to compute checksum and size
+          gh release download "$TAG" --repo "$REPO" --pattern "$ARM64_ZIP" -D /tmp/
+          ARM64_SHA512=$(openssl dgst -sha512 -binary "/tmp/${ARM64_ZIP}" | base64 -w 0)
+          ARM64_SIZE=$(wc -c < "/tmp/${ARM64_ZIP}" | tr -d ' ')
+
+          # Download the latest-mac.yml published by whichever arch job finished last
+          gh release download "$TAG" --repo "$REPO" --pattern "latest-mac.yml" -D /tmp/ --clobber
+
+          # Insert arm64 entry into the files list so MacUpdater can filter by arch
+          python3 - <<PYEOF
+import yaml
+
+with open('/tmp/latest-mac.yml') as f:
+    data = yaml.safe_load(f)
+
+arm64_entry = {
+    'url': '${ARM64_ZIP}',
+    'sha512': '${ARM64_SHA512}',
+    'size': int('${ARM64_SIZE}')
+}
+
+urls = [entry.get('url', '') for entry in data.get('files', [])]
+if '${ARM64_ZIP}' not in urls:
+    data['files'].insert(0, arm64_entry)
+
+with open('/tmp/latest-mac.yml', 'w') as f:
+    yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+print('Merged arm64 entry into latest-mac.yml')
+PYEOF
+
+          gh release upload "$TAG" --repo "$REPO" /tmp/latest-mac.yml --clobber
+
       - name: Publish draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
