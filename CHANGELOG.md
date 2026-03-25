@@ -3,6 +3,7 @@
 ## v2.7.1
 - Fixed navigator stdio streams not destroyed in error handler, preventing CI hangs
 - Fixed repair missions not included in review and fix crew dispatch
+- Fixed repair crew SIGTERM incorrectly treated as error despite committed work
 
 ## v2.7.0
 - Added File Search Overlay for fast file discovery with recent images, sort options (date, name, size), and persistent folder selection
