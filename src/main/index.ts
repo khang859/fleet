@@ -528,13 +528,6 @@ void app.whenReady().then(() => {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
         }
       });
-      ptyManager.onExit(paneId, (exitCode) => {
-        const w = mainWindow;
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode });
-        }
-        eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode });
-      });
       cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
       return paneId;
     } catch (err) {
