@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.7.3
+- Fixed Admiral terminal falling back to bare shell when Claude CLI exits; now shows Station Dormant overlay
+
 ## v2.7.2
 - Fixed CI release pipeline merging arm64 entry into latest-mac.yml before publishing
 
