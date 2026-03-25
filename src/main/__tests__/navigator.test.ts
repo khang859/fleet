@@ -2,9 +2,15 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { Navigator } from '../starbase/navigator';
 import { ConfigService } from '../starbase/config-service';
+import { ShipsLog } from '../starbase/ships-log';
 import { rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+
+function makeShipsLog() {
+  const logSpy = vi.fn().mockReturnValue(1);
+  return { log: logSpy } as unknown as ShipsLog & { log: ReturnType<typeof vi.fn> };
+}
 
 const TEST_DIR = join(tmpdir(), 'fleet-test-navigator');
 
@@ -138,5 +144,27 @@ describe('Navigator', () => {
     running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
     running.set('exec-2', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-2', startedAt: Date.now() });
     expect(nav.getStatusText()).toBe('Running 2 executions');
+  });
+
+  it('accepts shipsLog in deps without error', () => {
+    const shipsLog = makeShipsLog();
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123', shipsLog });
+    expect(nav.activeCount).toBe(0);
+  });
+
+  it('clears timedOut set on reconcile', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    const timedOut = (nav as unknown as { timedOut: Set<string> }).timedOut;
+    timedOut.add('exec-1');
+    nav.reconcile();
+    expect(timedOut.size).toBe(0);
+  });
+
+  it('clears timedOut set on shutdown', () => {
+    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
+    const timedOut = (nav as unknown as { timedOut: Set<string> }).timedOut;
+    timedOut.add('exec-1');
+    nav.shutdown();
+    expect(timedOut.size).toBe(0);
   });
 });
