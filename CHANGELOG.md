@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.7.4
+- Fixed Station Dormant overlay not appearing after exiting Claude CLI (duplicate ptyManager.onExit call overwrote the admiral exit handler)
+
 ## v2.7.3
 - Fixed Admiral terminal falling back to bare shell when Claude CLI exits; now shows Station Dormant overlay
 
