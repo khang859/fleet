@@ -128,9 +128,15 @@ export class Navigator {
       try {
         this.deps.shipsLog?.log({
           eventType: 'navigator_dispatched',
-          detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, step: event.currentStep }
+          detail: {
+            executionId: event.executionId,
+            protocolSlug: event.protocolSlug,
+            step: event.currentStep
+          }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
 
       const initMsg =
         JSON.stringify({
@@ -214,22 +220,32 @@ export class Navigator {
               eventType: 'navigator_timeout',
               detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
             });
-          } catch { /* fire-and-forget */ }
+          } catch {
+            /* fire-and-forget */
+          }
         } else if (code !== 0) {
           this.writeFailedComm(event, `Navigator process crashed (exit code: ${code})`);
           try {
             this.deps.shipsLog?.log({
               eventType: 'navigator_failed',
-              detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, reason: `exit code ${code}` }
+              detail: {
+                executionId: event.executionId,
+                protocolSlug: event.protocolSlug,
+                reason: `exit code ${code}`
+              }
             });
-          } catch { /* fire-and-forget */ }
+          } catch {
+            /* fire-and-forget */
+          }
         } else {
           try {
             this.deps.shipsLog?.log({
               eventType: 'navigator_completed',
               detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
             });
-          } catch { /* fire-and-forget */ }
+          } catch {
+            /* fire-and-forget */
+          }
         }
 
         callbacks?.onExit?.(code);
@@ -243,9 +259,15 @@ export class Navigator {
         try {
           this.deps.shipsLog?.log({
             eventType: 'navigator_failed',
-            detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, reason: err.message }
+            detail: {
+              executionId: event.executionId,
+              protocolSlug: event.protocolSlug,
+              reason: err.message
+            }
           });
-        } catch { /* fire-and-forget */ }
+        } catch {
+          /* fire-and-forget */
+        }
         this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
       });
 
@@ -259,9 +281,15 @@ export class Navigator {
       try {
         this.deps.shipsLog?.log({
           eventType: 'navigator_failed',
-          detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, reason: err instanceof Error ? err.message : 'unknown' }
+          detail: {
+            executionId: event.executionId,
+            protocolSlug: event.protocolSlug,
+            reason: err instanceof Error ? err.message : 'unknown'
+          }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
       return false;
     }
   }

@@ -150,7 +150,14 @@ export class Analyst {
     } catch {
       // Best-effort — don't throw if DB write fails
     }
-    try { this.shipsLog?.log({ eventType: 'analyst_degraded', detail: { method, reason: reason.slice(0, 500) } }); } catch { /* fire-and-forget */ }
+    try {
+      this.shipsLog?.log({
+        eventType: 'analyst_degraded',
+        detail: { method, reason: reason.slice(0, 500) }
+      });
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   /**
@@ -172,7 +179,14 @@ export class Analyst {
       ) {
         const c = (result as Record<string, unknown>).classification;
         if (c === 'transient' || c === 'persistent' || c === 'non-retryable') {
-          try { this.shipsLog?.log({ eventType: 'analyst_classified', detail: { classification: c, method: 'classifyError' } }); } catch { /* fire-and-forget */ }
+          try {
+            this.shipsLog?.log({
+              eventType: 'analyst_classified',
+              detail: { classification: c, method: 'classifyError' }
+            });
+          } catch {
+            /* fire-and-forget */
+          }
           return c;
         }
       }
@@ -199,7 +213,14 @@ export class Analyst {
         typeof (result as Record<string, unknown>).summary === 'string'
       ) {
         const { summary } = result as Record<string, unknown>;
-        try { this.shipsLog?.log({ eventType: 'analyst_summarized', detail: { method: 'summarizeCILogs' } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog?.log({
+            eventType: 'analyst_summarized',
+            detail: { method: 'summarizeCILogs' }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
         return String(summary);
       }
       throw new Error('Invalid summary schema');
@@ -231,7 +252,14 @@ export class Analyst {
         const v = r.verdict;
         if (v === 'APPROVE' || v === 'REQUEST_CHANGES' || v === 'ESCALATE') {
           const notes = r.notes;
-          try { this.shipsLog?.log({ eventType: 'analyst_verdict_extracted', detail: { verdict: v, method: 'extractPRVerdict' } }); } catch { /* fire-and-forget */ }
+          try {
+            this.shipsLog?.log({
+              eventType: 'analyst_verdict_extracted',
+              detail: { verdict: v, method: 'extractPRVerdict' }
+            });
+          } catch {
+            /* fire-and-forget */
+          }
           return { verdict: v, notes: typeof notes === 'string' ? notes : '' };
         }
       }
@@ -258,7 +286,14 @@ export class Analyst {
         typeof (result as Record<string, unknown>).context === 'string'
       ) {
         const { context } = result as Record<string, unknown>;
-        try { this.shipsLog?.log({ eventType: 'analyst_hailing_context', detail: { method: 'writeHailingContext' } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog?.log({
+            eventType: 'analyst_hailing_context',
+            detail: { method: 'writeHailingContext' }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
         return String(context);
       }
       throw new Error('Invalid context schema');

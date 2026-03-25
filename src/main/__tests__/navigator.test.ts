@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { StarbaseDB } from '../starbase/db';
 import { Navigator } from '../starbase/navigator';
 import { ConfigService } from '../starbase/config-service';
-import { ShipsLog } from '../starbase/ships-log';
+import type { ShipsLog } from '../starbase/ships-log';
 import { rmSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -141,8 +141,16 @@ describe('Navigator', () => {
   it('getStatusText returns plural when multiple processes running', () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
     const running = (nav as unknown as { running: Map<string, unknown> }).running;
-    running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
-    running.set('exec-2', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-2', startedAt: Date.now() });
+    running.set('exec-1', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-1',
+      startedAt: Date.now()
+    });
+    running.set('exec-2', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-2',
+      startedAt: Date.now()
+    });
     expect(nav.getStatusText()).toBe('Running 2 executions');
   });
 

@@ -304,7 +304,15 @@ describe('prMonitorSweep — escalation', () => {
           `INSERT INTO missions (sector_id, summary, prompt, status, type, pr_branch, review_round)
            VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`
         )
-        .get('api', 'Test mission', 'Do some work', 'approved', 'code', 'feature/test-branch', 2) as {
+        .get(
+          'api',
+          'Test mission',
+          'Do some work',
+          'approved',
+          'code',
+          'feature/test-branch',
+          2
+        ) as {
         id: number;
       }
     ).id;
@@ -316,18 +324,18 @@ describe('prMonitorSweep — escalation', () => {
       db: getDb(),
       configService,
       shipsLog: new ShipsLog(getDb()),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       crewService: { deployCrew: mockDeployCrew } as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       missionService: { addMission: mockAddMission } as any
     });
 
     await (sentinel as unknown as { prMonitorSweep: () => Promise<void> }).prMonitorSweep();
 
     // Mission should be escalated
-    const mission = getDb()
-      .prepare('SELECT status FROM missions WHERE id = ?')
-      .get(missionId) as { status: string };
+    const mission = getDb().prepare('SELECT status FROM missions WHERE id = ?').get(missionId) as {
+      status: string;
+    };
     expect(mission.status).toBe('escalated');
 
     // deployCrew should NOT have been called

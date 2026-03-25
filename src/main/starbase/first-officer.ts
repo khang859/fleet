@@ -354,7 +354,9 @@ ${actionRequired}
         eventType: 'hailing_memo_written',
         detail: { missionId: opts.missionId, sectorName: opts.sectorName }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
@@ -405,9 +407,15 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
       this.deps.shipsLog.log({
         crewId: opts.crewId,
         eventType: 'auto_escalation',
-        detail: { missionId: opts.missionId, classification: opts.classification, fingerprint: opts.fingerprint }
+        detail: {
+          missionId: opts.missionId,
+          classification: opts.classification,
+          fingerprint: opts.fingerprint
+        }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
     this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
@@ -630,7 +638,9 @@ ${revisedPrompt}
         eventType: 'first_officer_retried',
         detail: { missionId: event.missionId, reason: decision.reason, revisedPrompt, deployResult }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async resolveRecovery(
@@ -697,7 +707,9 @@ ${decision.salvage?.summary ?? 'Partial mission output was preserved for later o
           classification: event.classification ?? null
         }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async resolveEscalation(
@@ -774,7 +786,9 @@ ${event.crewOutput.split('\n').slice(-30).join('\n')}
           classification: event.classification ?? null
         }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   private async writeDecisionMemo(

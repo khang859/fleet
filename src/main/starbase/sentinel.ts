@@ -230,7 +230,15 @@ export class Sentinel {
       db.prepare("UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE id = ?").run(
         crew.id
       );
-      try { this.shipsLog.log({ crewId: crew.id, eventType: 'lifesign_lost', detail: { sectorId: crew.sector_id } }); } catch { /* fire-and-forget */ }
+      try {
+        this.shipsLog.log({
+          crewId: crew.id,
+          eventType: 'lifesign_lost',
+          detail: { sectorId: crew.sector_id }
+        });
+      } catch {
+        /* fire-and-forget */
+      }
       // Send transmission to Admiral
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'lifesign_lost', ?)"
@@ -258,7 +266,15 @@ export class Sentinel {
       db.prepare(
         "UPDATE crew SET status = 'timeout', updated_at = datetime('now') WHERE id = ?"
       ).run(crew.id);
-      try { this.shipsLog.log({ crewId: crew.id, eventType: 'timeout', detail: { reason: 'deadline expired' } }); } catch { /* fire-and-forget */ }
+      try {
+        this.shipsLog.log({
+          crewId: crew.id,
+          eventType: 'timeout',
+          detail: { reason: 'deadline expired' }
+        });
+      } catch {
+        /* fire-and-forget */
+      }
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_timeout', ?)"
       ).run(crew.id, JSON.stringify({ crewId: crew.id, sectorId: crew.sector_id }));
@@ -280,7 +296,14 @@ export class Sentinel {
         db.prepare(
           "UPDATE crew SET status = 'lost', updated_at = datetime('now') WHERE sector_id = ? AND status = 'active'"
         ).run(sector.id);
-        try { this.shipsLog.log({ eventType: 'sector_path_missing', detail: { sectorId: sector.id, path: sector.root_path } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog.log({
+            eventType: 'sector_path_missing',
+            detail: { sectorId: sector.id, path: sector.root_path }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
         db.prepare(
           "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'sector_path_missing', ?)"
         ).run(JSON.stringify({ sectorId: sector.id, path: sector.root_path }));
@@ -312,7 +335,9 @@ export class Sentinel {
             eventType: 'disk_warning',
             detail: { usedGb: usedGb.toFixed(2), budgetGb: diskBudgetGb, percent: pct.toFixed(0) }
           });
-        } catch { /* fire-and-forget */ }
+        } catch {
+          /* fire-and-forget */
+        }
       } else if (!diskLevel) {
         this.lastAlertLevel['disk_warning'] = null;
       }
@@ -332,7 +357,9 @@ export class Sentinel {
           eventType: 'memory_warning',
           detail: { freeMemoryGb: availableGb.toFixed(2), level: memLevel }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
     } else if (!memLevel) {
       this.lastAlertLevel['memory_warning'] = null;
     }
@@ -417,7 +444,14 @@ export class Sentinel {
             "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'socket_restart', ?)"
           )
           .run(JSON.stringify({ reason: '3 consecutive ping failures' }));
-        try { this.shipsLog.log({ eventType: 'socket_restart', detail: { reason: '3 consecutive ping failures' } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog.log({
+            eventType: 'socket_restart',
+            detail: { reason: '3 consecutive ping failures' }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
       }
 
       supervisor.restart().catch((err) => {
@@ -557,9 +591,15 @@ export class Sentinel {
                 this.shipsLog.log({
                   crewId: row.crew_id,
                   eventType: 'first_officer_dispatched',
-                  detail: { missionId: row.mid, retryCount: row.first_officer_retry_count + 1, exitCode: code }
+                  detail: {
+                    missionId: row.mid,
+                    retryCount: row.first_officer_retry_count + 1,
+                    exitCode: code
+                  }
                 });
-              } catch { /* fire-and-forget */ }
+              } catch {
+                /* fire-and-forget */
+              }
               this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
             }
           }
@@ -657,7 +697,9 @@ export class Sentinel {
           eventType: 'gate_expired',
           detail: { executionId: exec.id, protocolId: exec.protocol_id }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
       this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
 
@@ -711,7 +753,9 @@ export class Sentinel {
           eventType: 'navigator_fan_out_failed',
           detail: { executionId: row.executionId, protocolSlug: proto.slug, step: row.current_step }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
     }
 
     // Crew-completed fan-out — detect successful protocol missions and nudge Navigator
@@ -774,7 +818,9 @@ export class Sentinel {
           eventType: 'navigator_fan_out_completed',
           detail: { executionId: row.executionId, missionId: row.missionId }
         });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        /* fire-and-forget */
+      }
 
       this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
@@ -848,7 +894,14 @@ NOTES: <your review notes — specific file:line references for issues>`;
           prBranch: mission.pr_branch
         });
 
-        try { this.shipsLog.log({ eventType: 'review_crew_dispatched', detail: { missionId: mission.id, prBranch: mission.pr_branch } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog.log({
+            eventType: 'review_crew_dispatched',
+            detail: { missionId: mission.id, prBranch: mission.pr_branch }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
       } catch (err) {
         // Deployment failed — revert to pending-review so next sweep retries
         db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id);
@@ -889,7 +942,14 @@ NOTES: <your review notes — specific file:line references for issues>`;
           })
         );
 
-        try { this.shipsLog.log({ eventType: 'review_escalated', detail: { missionId: mission.id, reviewRound: mission.review_round } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog.log({
+            eventType: 'review_escalated',
+            detail: { missionId: mission.id, reviewRound: mission.review_round }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
         continue;
       }
 
@@ -928,7 +988,18 @@ ${mission.review_notes ?? 'No specific notes provided'}
           prBranch: mission.pr_branch
         });
 
-        try { this.shipsLog.log({ eventType: 'fix_crew_dispatched', detail: { missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round } }); } catch { /* fire-and-forget */ }
+        try {
+          this.shipsLog.log({
+            eventType: 'fix_crew_dispatched',
+            detail: {
+              missionId: mission.id,
+              prBranch: mission.pr_branch,
+              round: mission.review_round
+            }
+          });
+        } catch {
+          /* fire-and-forget */
+        }
       } catch (err) {
         // Deploy failed — revert to changes-requested for next sweep
         db.prepare(
