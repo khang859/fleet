@@ -180,7 +180,8 @@ export class AdmiralProcess {
           paneId,
           cwd: this.workspace,
           cmd: 'claude --dangerously-skip-permissions',
-          env
+          env,
+          exitOnComplete: true
         });
       } catch (err) {
         const isEnoent =
