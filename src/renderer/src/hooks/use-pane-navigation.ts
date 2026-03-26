@@ -125,6 +125,12 @@ export function usePaneNavigation(): void {
         return;
       }
 
+      if (matchesShortcut(e, sc('file-search'))) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'));
+        return;
+      }
+
       // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other)
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
       const modHeld = isMac ? e.metaKey : e.ctrlKey;
