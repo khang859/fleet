@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.8.0
+- Added per-mission-type model configuration (crew_model_* config keys via migration 016)
+- Added model config fields to Starbase Settings UI with select dropdowns
+- Added analyst_model to CONFIG_DEFAULTS
+- Removed stale admiral_model and anthropic_api_key config fields from UI
+- Fixed terminal unmount on pane split/close and hidden resize bug
+
 ## v2.7.7
 - Removed unused elapsed variable from active visualizer loop
 - Removed star command crews and sector rendering from fleet visualizer
