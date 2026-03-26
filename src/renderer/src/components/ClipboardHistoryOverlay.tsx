@@ -92,8 +92,9 @@ export function ClipboardHistoryOverlay({
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      const entry = filtered[selectedIndex];
-      if (entry) handlePaste(entry);
+      if (selectedIndex < filtered.length) {
+        handlePaste(filtered[selectedIndex]);
+      }
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
