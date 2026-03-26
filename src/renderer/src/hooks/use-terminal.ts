@@ -47,7 +47,7 @@ function createTerminal(
 ): {
   term: Terminal;
   fitAddon: FitAddon;
-  fitPreservingScroll: () => void;
+  fitPreservingScroll: () => boolean;
   scrollToBottom: () => void;
   searchAddon: SearchAddon;
   serializeAddon: SerializeAddon;
@@ -266,9 +266,9 @@ function createTerminal(
   // Helper: fit the terminal while preserving viewport scroll position.
   // Without this, fitAddon.fit() can reset the viewport to the top when
   // the container is resized (e.g. adding splits, switching tabs).
-  const fitPreservingScroll = (): void => {
+  const fitPreservingScroll = (): boolean => {
     // Skip while hidden — viewportY is stale and fit() can't measure correctly
-    if (container.offsetParent === null) return;
+    if (container.offsetParent === null) return false;
 
     // Reconcile: if flag says unpinned but viewport is actually at bottom,
     // correct it before acting. Catches any edge case that falsely unpinned.
@@ -289,6 +289,7 @@ function createTerminal(
     } else {
       term.scrollToBottom();
     }
+    return true;
   };
 
   // Re-pin when content scrolls us to bottom (e.g. new output while following).
@@ -369,8 +370,9 @@ function createTerminal(
   const resizeObserver = new ResizeObserver(() => {
     if (term.element) {
       try {
-        fitPreservingScroll();
-        debouncedPtyResize();
+        if (fitPreservingScroll()) {
+          debouncedPtyResize();
+        }
       } catch {
         // Terminal may be initializing or disposed; ignore
       }
@@ -395,8 +397,9 @@ function createTerminal(
     }
 
     try {
-      fitPreservingScroll();
-      debouncedPtyResize();
+      if (fitPreservingScroll()) {
+        debouncedPtyResize();
+      }
     } catch {
       if (attempt < 10) {
         requestAnimationFrame(() => startTerminalWhenReady(attempt + 1));
@@ -453,7 +456,7 @@ export function useTerminal(
 ): UseTerminalReturn {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
-  const fitPreservingScrollRef = useRef<(() => void) | null>(null);
+  const fitPreservingScrollRef = useRef<(() => boolean) | null>(null);
   const scrollToBottomRef = useRef<(() => void) | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const serializeAddonRef = useRef<SerializeAddon | null>(null);
@@ -538,7 +541,7 @@ export function useTerminal(
 
   return {
     focus: () => termRef.current?.focus(),
-    fit: () => fitPreservingScrollRef.current?.(),
+    fit: () => void fitPreservingScrollRef.current?.(),
     scrollToBottom: () => scrollToBottomRef.current?.(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
     searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
