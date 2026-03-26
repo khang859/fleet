@@ -82,6 +82,20 @@ export function TerminalPane({
     return () => document.removeEventListener('fleet:toggle-search', handler);
   }, [paneId]);
 
+  // Listen for refocus events (e.g. after overlay paste)
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      if (!(e instanceof CustomEvent)) return;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      const detail = e.detail as { paneId?: string } | undefined;
+      if (detail?.paneId === paneId) {
+        focus();
+      }
+    };
+    document.addEventListener('fleet:refocus-pane', handler);
+    return () => document.removeEventListener('fleet:refocus-pane', handler);
+  }, [paneId, focus]);
+
   return (
     <div
       className={`relative h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0 ${isActive ? 'ring-2 ring-blue-500/70 bg-[#151515]' : 'ring-1 ring-neutral-800/50 bg-[#131313]'}`}

@@ -82,12 +82,14 @@ export function ClipboardHistoryOverlay({
       if (!targetPaneId) return;
       window.fleet.pty.input({ paneId: targetPaneId, data: bracketedPaste(entry.text) });
       onClose();
-      // Re-focus the target pane after overlay closes
-      if (activePaneId) {
-        useWorkspaceStore.getState().setActivePane(activePaneId);
-      }
+      // Re-focus the target pane after overlay DOM unmounts
+      requestAnimationFrame(() => {
+        document.dispatchEvent(
+          new CustomEvent('fleet:refocus-pane', { detail: { paneId: targetPaneId } })
+        );
+      });
     },
-    [targetPaneId, activePaneId, onClose]
+    [targetPaneId, onClose]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {

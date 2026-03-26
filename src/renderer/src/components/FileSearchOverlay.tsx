@@ -286,12 +286,14 @@ export function FileSearchOverlay({
       window.fleet.pty.input({ paneId: targetPaneId, data: bracketedPaste(quoted) });
       addRecentFile(file);
       onClose();
-      // Re-focus the target pane after overlay closes
-      if (activePaneId) {
-        useWorkspaceStore.getState().setActivePane(activePaneId);
-      }
+      // Re-focus the target pane after overlay DOM unmounts
+      requestAnimationFrame(() => {
+        document.dispatchEvent(
+          new CustomEvent('fleet:refocus-pane', { detail: { paneId: targetPaneId } })
+        );
+      });
     },
-    [targetPaneId, activePaneId, onClose]
+    [targetPaneId, onClose]
   );
 
   const handleScopeToParent = useCallback(() => {
