@@ -226,7 +226,7 @@ export class CrewService {
       verifyCommand: sector.verify_command ?? undefined,
       lintCommand: sector.lint_command ?? undefined,
       reviewMode: sector.review_mode,
-      model: sector.model ?? undefined,
+      model: configService.getString(`crew_model_${missionType}`),
       systemPrompt: sector.system_prompt ?? undefined,
       // Research crews default to read-only tools unless sector explicitly overrides
       allowedTools:

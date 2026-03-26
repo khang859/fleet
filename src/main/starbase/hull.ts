@@ -133,8 +133,8 @@ export type HullOpts = {
   verifyCommand?: string;
   lintCommand?: string;
   reviewMode?: string;
-  /** Claude model override (default: claude-sonnet-4-6) */
-  model?: string;
+  /** Claude model for the agent session */
+  model: string;
   /** Custom system prompt for the agent session */
   systemPrompt?: string;
   /** Comma-separated allowed tools (e.g. "Read,Edit,Bash") */
@@ -261,7 +261,7 @@ export class Hull {
       writeFileSync(promptFile, prompt, 'utf-8');
       this.promptFile = promptFile;
 
-      const model = this.opts.model || 'claude-sonnet-4-6';
+      const model = this.opts.model;
       const cmdArgs = [
         '--output-format',
         'stream-json',
