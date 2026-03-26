@@ -1,4 +1,4 @@
-import { clipboard, BrowserWindow } from 'electron';
+import { clipboard, BrowserWindow, app } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type { ClipboardEntry } from '../shared/ipc-api';
 
@@ -24,7 +24,7 @@ function makeEntry(text: string): ClipboardEntry {
 }
 
 function poll(): void {
-  const text = clipboard.readText().trim();
+  const text = clipboard.readText();
   if (!text || text === lastText) return;
 
   lastText = text;
@@ -45,12 +45,27 @@ function poll(): void {
 export function startClipboardMonitor(): void {
   if (pollTimer) return;
   // Seed with current clipboard content
-  const initial = clipboard.readText().trim();
+  const initial = clipboard.readText();
   if (initial) {
     lastText = initial;
     history.unshift(makeEntry(initial));
   }
   pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+
+  // Pause polling when all windows are hidden, resume when visible
+  app.on('browser-window-blur', () => {
+    const anyVisible = BrowserWindow.getAllWindows().some((w) => w.isVisible() && w.isFocused());
+    if (!anyVisible && pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  });
+
+  app.on('browser-window-focus', () => {
+    if (!pollTimer) {
+      pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+    }
+  });
 }
 
 export function stopClipboardMonitor(): void {
