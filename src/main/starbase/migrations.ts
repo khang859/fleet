@@ -379,5 +379,6 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   crew_model_research: 'claude-haiku-4-5',
   crew_model_review: 'claude-haiku-4-5',
   crew_model_architect: 'claude-haiku-4-5',
-  crew_model_repair: 'claude-haiku-4-5'
+  crew_model_repair: 'claude-haiku-4-5',
+  analyst_model: 'claude-haiku-4-5'
 };
