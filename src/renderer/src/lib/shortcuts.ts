@@ -124,6 +124,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     label: 'Search files on disk',
     mac: { key: 'O', meta: true, shift: true },
     other: { key: 'O', ctrl: true, shift: true }
+  },
+  {
+    id: 'clipboard-history',
+    label: 'Clipboard history',
+    mac: { key: 'H', meta: true, shift: true },
+    other: { key: 'H', ctrl: true, shift: true }
   }
 ];
 

@@ -120,6 +120,13 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('file-search'),
       category: 'File',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))
+    },
+    {
+      id: 'clipboard-history',
+      label: 'Clipboard History',
+      shortcut: sc('clipboard-history'),
+      category: 'Edit',
+      execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
     }
   ];
 }
