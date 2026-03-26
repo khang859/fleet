@@ -1,6 +1,16 @@
 import type { SectorInfo, CrewStatus } from '../../store/star-command-store';
-import type { SectorState } from '../visualizer/sector-outposts';
-import type { PodState } from '../visualizer/shuttles';
+
+export type SectorState = {
+  id: string;
+  name: string;
+  active: boolean;
+};
+
+export type PodState = {
+  crewId: string;
+  sectorId: string;
+  status: 'active' | 'hailing' | 'error' | 'complete' | 'lost' | 'idle';
+};
 
 const VALID_POD_STATUSES = new Set<string>([
   'active',
