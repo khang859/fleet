@@ -37,6 +37,7 @@ import { checkDependencies } from './starbase/admiral-process';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
 import { searchRecentImages } from './recent-images';
+import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import type { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import type { StarbaseRuntimeClient } from './starbase-runtime-client';
 
@@ -605,6 +606,13 @@ export function registerIpcHandlers(
   );
 
   ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());
+
+  // Clipboard history
+  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_HISTORY, () => ({
+    entries: getClipboardHistory()
+  }));
+
+  startClipboardMonitor();
 }
 
 // Exported for testing
