@@ -162,7 +162,6 @@ Crewmates inherit their agent configuration from the Sector they are deployed to
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| \`model\` | \`claude-sonnet-4-6\` | Claude model for the agent session |
 | \`system_prompt\` | _(none)_ | Additional context appended to every agent session |
 | \`allowed_tools\` | _(all tools)_ | Comma-separated tools the agent may use (e.g. \`Read,Edit,Bash\`) |
 | \`mcp_config\` | _(none)_ | Path to an MCP config JSON file for additional tool providers |
@@ -170,14 +169,13 @@ Crewmates inherit their agent configuration from the Sector they are deployed to
 **Viewing Sector agent configuration:**
 
 \`\`\`
-fleet sectors show <id>    # Show full Sector details including model and agent config
+fleet sectors show <id>    # Show full Sector details and agent config
 fleet sectors list          # List all Sectors with basic info
 \`\`\`
 
 **Model selection guidance:**
 
 - \`claude-haiku-4-5\` — Fast and low-cost; best for simple, well-scoped tasks (docs, formatting, minor fixes)
-- \`claude-sonnet-4-6\` — Default; suitable for most development Missions
 - \`claude-opus-4-6\` — Most capable; use for complex investigations, large refactors, or architecture decisions
 
 **When to set \`system_prompt\` on a Sector:**

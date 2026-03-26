@@ -709,7 +709,7 @@ agent configuration (model, system prompt, allowed tools).
   fleet sectors list                     List all registered Sectors
   fleet sectors add --path <path>        Register a new Sector (path must be a git repo)
   fleet sectors remove <id>              Unregister a Sector
-  fleet sectors show <id>                Show full Sector details (model, config, base branch)
+  fleet sectors show <id>                Show full Sector details (config, base branch)
 
 ## Arguments
 
