@@ -355,3 +355,16 @@ export type RecentImageResult = {
 export type RecentImagesResponse =
   | { success: true; results: RecentImageResult[] }
   | { success: false; error: string };
+
+export type ClipboardEntry = {
+  id: number;
+  text: string;
+  timestamp: number;
+  charCount: number;
+  lineCount: number;
+  preview: string; // first 200 chars, truncated
+};
+
+export type ClipboardHistoryResponse = {
+  entries: ClipboardEntry[];
+};
