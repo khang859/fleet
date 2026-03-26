@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.7.7
+- Removed unused elapsed variable from active visualizer loop
+- Removed star command crews and sector rendering from fleet visualizer
+
 ## v2.7.6
 - Added Clipboard History Overlay (Cmd+Shift+H) for quick access to recent clipboard items
 - Added toolbar icon for clipboard history (when relevant)
