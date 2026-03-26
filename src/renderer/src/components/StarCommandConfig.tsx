@@ -249,16 +249,6 @@ function SectorCard({
           <div className="text-xs text-neutral-500 font-semibold mt-2 mb-1">Agent Config</div>
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div>
-              <label className="text-neutral-500 block mb-1">Model</label>
-              <input
-                type="text"
-                value={sector.model ?? ''}
-                placeholder="claude-sonnet-4-6"
-                onChange={(e) => onUpdate(sector.id, { model: e.target.value || null })}
-                className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
-              />
-            </div>
-            <div>
               <label className="text-neutral-500 block mb-1">Allowed Tools</label>
               <input
                 type="text"
@@ -623,6 +613,14 @@ const CONFIG_FIELDS: Array<{
 }> = [
   { key: 'anthropic_api_key', label: 'Anthropic API Key', type: 'password' },
   { key: 'admiral_model', label: 'Admiral Model', type: 'text' },
+  { key: 'crew_model_code', label: 'Crew Model (Code)', type: 'text' },
+  { key: 'crew_model_research', label: 'Crew Model (Research)', type: 'text' },
+  { key: 'crew_model_review', label: 'Crew Model (Review)', type: 'text' },
+  { key: 'crew_model_architect', label: 'Crew Model (Architect)', type: 'text' },
+  { key: 'crew_model_repair', label: 'Crew Model (Repair)', type: 'text' },
+  { key: 'first_officer_model', label: 'First Officer Model', type: 'text' },
+  { key: 'navigator_model', label: 'Navigator Model', type: 'text' },
+  { key: 'analyst_model', label: 'Analyst Model', type: 'text' },
   { key: 'max_concurrent_worktrees', label: 'Max Concurrent Worktrees', type: 'number' },
   { key: 'worktree_pool_size', label: 'Worktree Pool Size', type: 'number' },
   { key: 'disk_budget_mb', label: 'Disk Budget (MB)', type: 'number' },
