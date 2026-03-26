@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.7.5
+- Fixed missing Cmd+Shift+O keyboard handler for file search overlay
+
 ## v2.7.4
 - Fixed Station Dormant overlay not appearing after exiting Claude CLI (duplicate ptyManager.onExit call overwrote the admiral exit handler)
 
