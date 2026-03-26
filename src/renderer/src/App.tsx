@@ -20,6 +20,7 @@ import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
+import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
@@ -96,6 +97,7 @@ export function App(): React.JSX.Element {
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
+  const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
   const [showPreChecks, setShowPreChecks] = useState(true);
 
@@ -149,6 +151,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setFileSearchOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-file-search', handler);
     return () => document.removeEventListener('fleet:toggle-file-search', handler);
+  }, []);
+
+  // Clipboard history overlay toggle (Cmd+Shift+H)
+  useEffect(() => {
+    const handler = (): void => setClipboardHistoryOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-clipboard-history', handler);
+    return () => document.removeEventListener('fleet:toggle-clipboard-history', handler);
   }, []);
 
   // Open file dialog (Cmd+O)
@@ -559,6 +568,10 @@ export function App(): React.JSX.Element {
         rootDir={focusedPaneCwd}
       />
       <FileSearchOverlay isOpen={fileSearchOpen} onClose={() => setFileSearchOpen(false)} />
+      <ClipboardHistoryOverlay
+        isOpen={clipboardHistoryOpen}
+        onClose={() => setClipboardHistoryOpen(false)}
+      />
       {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>
   );
