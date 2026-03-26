@@ -36,7 +36,8 @@ import type {
   ReaddirResponse,
   FileSearchRequest,
   FileSearchResponse,
-  RecentImagesResponse
+  RecentImagesResponse,
+  ClipboardHistoryResponse
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings, UpdateStatus } from '../shared/types';
 
@@ -312,6 +313,12 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
     searchRecentImages: async (): Promise<RecentImagesResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES)
+  },
+  clipboard: {
+    getHistory: async (): Promise<ClipboardHistoryResponse> =>
+      typedInvoke(IPC_CHANNELS.CLIPBOARD_HISTORY),
+    onChanged: (callback: (payload: ClipboardHistoryResponse) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.CLIPBOARD_CHANGED, callback)
   },
   updates: {
     checkForUpdates: async (): Promise<void> => typedInvoke(IPC_CHANNELS.UPDATE_CHECK),
