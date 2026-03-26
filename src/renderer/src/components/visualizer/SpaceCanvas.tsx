@@ -247,9 +247,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps): React.JSX.Elemen
     bloomRef.current ??= new BloomPass();
     const bloom = bloomRef.current;
 
-    let elapsed = 0;
     const loop = createThrottledLoop(30, (deltaMs) => {
-      elapsed += deltaMs;
       const { w, h } = sizeCanvas(canvas);
       const zoom = zoomRef.current;
       const vw = w / zoom;
