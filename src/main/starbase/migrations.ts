@@ -332,6 +332,17 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE missions ADD COLUMN original_mission_id INTEGER REFERENCES missions(id);
     `
   },
+  {
+    version: 16,
+    name: '016-crew-model-config',
+    sql: `
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_code', '"claude-haiku-4-5"');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_research', '"claude-haiku-4-5"');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_review', '"claude-haiku-4-5"');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_architect', '"claude-haiku-4-5"');
+      INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_repair', '"claude-haiku-4-5"');
+    `
+  },
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
@@ -363,5 +374,10 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   navigator_timeout: 180,
   navigator_max_review_iterations: 3,
   navigator_gate_expiry: 86400,
-  protocol_executions_retention_days: 30
+  protocol_executions_retention_days: 30,
+  crew_model_code: 'claude-haiku-4-5',
+  crew_model_research: 'claude-haiku-4-5',
+  crew_model_review: 'claude-haiku-4-5',
+  crew_model_architect: 'claude-haiku-4-5',
+  crew_model_repair: 'claude-haiku-4-5'
 };
