@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, X, ArrowDownAZ, Clock, HardDrive } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useStarCommandStore } from '../store/star-command-store';
 import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
 import { z } from 'zod';
@@ -195,6 +196,8 @@ export function FileSearchOverlay({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
+  const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
+  const targetPaneId = activePaneId ?? admiralPaneId;
 
   // Reset state on open — restore last scope
   useEffect(() => {
@@ -278,13 +281,17 @@ export function FileSearchOverlay({
 
   const handleSelect = useCallback(
     (file: FileSearchResult) => {
-      if (!activePaneId) return;
+      if (!targetPaneId) return;
       const quoted = quotePathForShell(file.path, window.fleet.platform) + ' ';
-      window.fleet.pty.input({ paneId: activePaneId, data: bracketedPaste(quoted) });
+      window.fleet.pty.input({ paneId: targetPaneId, data: bracketedPaste(quoted) });
       addRecentFile(file);
       onClose();
+      // Re-focus the target pane after overlay closes
+      if (activePaneId) {
+        useWorkspaceStore.getState().setActivePane(activePaneId);
+      }
     },
-    [activePaneId, onClose]
+    [targetPaneId, activePaneId, onClose]
   );
 
   const handleScopeToParent = useCallback(() => {
@@ -445,7 +452,7 @@ export function FileSearchOverlay({
 
         {/* Footer */}
         <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
-          {!activePaneId ? (
+          {!targetPaneId ? (
             <span className="text-amber-500/80">No active terminal</span>
           ) : (
             <>

@@ -103,6 +103,7 @@ export function TerminalPane({
         onSearch={() => setSearchOpen(true)}
         onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
         onFileSearch={() => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))}
+        onClipboardHistory={() => document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))}
       />
       <SearchBar
         isOpen={searchOpen}

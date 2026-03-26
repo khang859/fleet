@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard } from 'lucide-react';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
 type PaneToolbarProps = {
@@ -10,6 +10,7 @@ type PaneToolbarProps = {
   onSearch: () => void;
   onGitChanges: () => void;
   onFileSearch?: () => void;
+  onClipboardHistory?: () => void;
 };
 
 export function PaneToolbar({
@@ -20,7 +21,8 @@ export function PaneToolbar({
   onClose,
   onSearch,
   onGitChanges,
-  onFileSearch
+  onFileSearch,
+  onClipboardHistory
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <div
@@ -69,6 +71,18 @@ export function PaneToolbar({
           title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
         >
           <FileSearch size={14} />
+        </button>
+      )}
+      {onClipboardHistory && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onClipboardHistory();
+          }}
+          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          title={`Clipboard history (${formatShortcut(getShortcut('clipboard-history')!)})`}
+        >
+          <Clipboard size={14} />
         </button>
       )}
       <button
