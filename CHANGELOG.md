@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.7.6
+- Added Clipboard History Overlay (Cmd+Shift+H) for quick access to recent clipboard items
+- Added toolbar icon for clipboard history (when relevant)
+- Fixed terminal focus restoration after pasting from clipboard overlay
+- Fixed clipboard polling pause when unfocused for improved battery performance
+
 ## v2.7.5
 - Fixed missing Cmd+Shift+O keyboard handler for file search overlay
 
