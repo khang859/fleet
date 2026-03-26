@@ -613,7 +613,6 @@ const CONFIG_FIELDS: Array<{
   type: 'number' | 'text' | 'password' | 'select';
   options?: string[];
 }> = [
-{ key: 'admiral_model', label: 'Admiral Model', type: 'select', options: MODEL_OPTIONS },
   { key: 'crew_model_code', label: 'Crew Model (Code)', type: 'select', options: MODEL_OPTIONS },
   { key: 'crew_model_research', label: 'Crew Model (Research)', type: 'select', options: MODEL_OPTIONS },
   { key: 'crew_model_review', label: 'Crew Model (Review)', type: 'select', options: MODEL_OPTIONS },
