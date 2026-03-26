@@ -220,6 +220,8 @@ fleet missions add --sector <id> --type repair --pr-branch <branch> --summary ".
 fleet missions add ... --depends-on <research-id>   # Link a research dependency (can repeat for multiple)
 fleet missions update <id> --status done    # Update Mission status
 fleet missions show <id>               # Show full Mission details
+fleet missions cancel <id>             # Cancel a queued Mission
+fleet missions verdict <id> --verdict <approved|changes-requested|escalated> --notes "..."  # Set review verdict
 \`\`\`
 
 **Required fields for \`missions add\`:** \`--type\` (code, research, review, architect, or repair), \`--summary\` (short title), and \`--prompt\` (detailed instructions) are all required. Use \`--type code\` for work that produces git commits, \`--type research\` for investigation/analysis that produces documentation artifacts, \`--type review\` for PR code reviews that produce a VERDICT (approve/request-changes/escalate), \`--type architect\` for implementation blueprints, and \`--type repair\` for fixing CI failures or review comments on an existing PR branch (requires \`--pr-branch\`). Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).
