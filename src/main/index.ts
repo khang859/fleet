@@ -261,6 +261,20 @@ function createWindow(): void {
 
 app.setName('Fleet');
 
+// Single instance lock — prevent multiple Fleet instances from fighting over fleet.sock
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
+
 app.on('child-process-gone', (_event, details) => {
   if (details.type === 'Utility' || details.serviceName === 'Fleet Starbase Runtime') {
     console.error('[child-process-gone]', details);
