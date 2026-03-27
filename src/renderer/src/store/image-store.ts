@@ -7,6 +7,7 @@ type ImageActionInfo = {
   provider: string;
   name: string;
   description: string;
+  model: string;
 };
 
 type ImageStore = {

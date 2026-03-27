@@ -375,6 +375,7 @@ const fleetApi = {
       provider: string;
       name: string;
       description: string;
+      model: string;
     }>> => typedInvoke(IPC_CHANNELS.IMAGES_LIST_ACTIONS, provider)
   },
   shell: {

@@ -19,7 +19,10 @@ export type ImageActionInfo = {
   provider: string;
   name: string;
   description: string;
+  model: string;
 };
+
+const FAL_RUN_PREFIX = 'https://fal.run/';
 
 export function toActionInfo(config: ImageActionConfig): ImageActionInfo {
   return {
@@ -27,6 +30,9 @@ export function toActionInfo(config: ImageActionConfig): ImageActionInfo {
     actionType: config.actionType,
     provider: config.provider,
     name: config.name,
-    description: config.description
+    description: config.description,
+    model: config.endpoint.startsWith(FAL_RUN_PREFIX)
+      ? config.endpoint.slice(FAL_RUN_PREFIX.length)
+      : config.endpoint
   };
 }

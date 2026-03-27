@@ -145,7 +145,7 @@ export function ImageSettings(): React.JSX.Element {
                       <input
                         type="text"
                         className="flex-1 bg-neutral-800 text-neutral-200 rounded px-3 py-1.5 text-sm border border-neutral-700 focus:border-cyan-500 outline-none"
-                        placeholder={currentModel ?? 'Default'}
+                        placeholder={currentModel ?? action.model}
                         value={actionModelInputs[action.actionType] ?? ''}
                         onChange={(e) =>
                           setActionModelInputs((prev) => ({
