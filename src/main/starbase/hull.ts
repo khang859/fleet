@@ -12,7 +12,10 @@ import {
 } from './conventional-commits';
 import { generateSkillMd } from './workspace-templates';
 import { filterEnv } from '../env-utils';
+import { createLogger } from '../logger';
 import type { Analyst } from './analyst';
+
+const log = createLogger('hull');
 
 const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
 
@@ -390,7 +393,7 @@ export class Hull {
 
       // Log stderr for diagnostics
       proc.stderr.on('data', (chunk: Buffer) => {
-        console.error(`[hull:${crewId}] stderr:`, chunk.toString().trim());
+        log.error(`stderr: ${chunk.toString().trim()}`, { crewId });
       });
 
       // Handle process exit → trigger cleanup
@@ -400,7 +403,9 @@ export class Hull {
         const status = code === 0 ? 'complete' : code === 143 ? 'sigterm' : 'error';
         this.cleanup(status, code === 0 ? 'Completed successfully' : `Exit code: ${code}`).catch(
           (cleanupErr) => {
-            console.error('[hull] cleanup error:', cleanupErr);
+            log.error(
+              `cleanup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`
+            );
           }
         );
       });
@@ -408,7 +413,9 @@ export class Hull {
       proc.on('error', (err) => {
         this.process = null;
         this.cleanup('error', `Spawn failed: ${err.message}`).catch((cleanupErr) => {
-          console.error('[hull] cleanup error:', cleanupErr);
+          log.error(
+            `cleanup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`
+          );
         });
       });
     } catch (err) {
@@ -416,7 +423,9 @@ export class Hull {
         'error',
         `Spawn failed: ${err instanceof Error ? err.message : 'unknown'}`
       ).catch((cleanupErr) => {
-        console.error('[hull] cleanup error:', cleanupErr);
+        log.error(
+          `cleanup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`
+        );
       });
       return;
     }
@@ -488,7 +497,7 @@ export class Hull {
       });
     }
     this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
-      console.error('[hull] cleanup error:', err);
+      log.error(`cleanup error: ${err instanceof Error ? err.message : String(err)}`);
     });
   }
 
@@ -624,7 +633,7 @@ export class Hull {
     setTimeout(() => {
       if (this.status === 'active') {
         this.cleanup('timeout', 'Mission deadline exceeded').catch((err) => {
-          console.error('[hull] cleanup error:', err);
+          log.error(`cleanup error: ${err instanceof Error ? err.message : String(err)}`);
         });
       }
     }, 10000);
@@ -947,7 +956,10 @@ export class Hull {
               fullManifest = JSON.stringify({ path: fullOutputPath });
               summaryManifest = JSON.stringify({ path: summaryPath });
             } catch (fileErr) {
-              console.error(`[hull:${crewId}] cargo file write failed:`, fileErr);
+              log.error(
+                `cargo file write failed: ${fileErr instanceof Error ? fileErr.message : String(fileErr)}`,
+                { crewId }
+              );
               // Fallback: store content directly in manifest
               fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
               summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
@@ -1115,7 +1127,10 @@ export class Hull {
           fullManifest = JSON.stringify({ path: fullOutputPath });
           summaryManifest = JSON.stringify({ path: summaryPath });
         } catch (fileErr) {
-          console.error(`[hull:${crewId}] cargo file write failed:`, fileErr);
+          log.error(
+            `cargo file write failed: ${fileErr instanceof Error ? fileErr.message : String(fileErr)}`,
+            { crewId }
+          );
           fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
           summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
         }
@@ -1427,7 +1442,7 @@ export class Hull {
               stdio: 'pipe'
             });
           } catch {
-            console.error(`[hull] Failed to remove worktree: ${worktreePath}`);
+            log.error(`Failed to remove worktree: ${worktreePath}`);
           }
         }
       }
@@ -1533,8 +1548,8 @@ export class Hull {
         });
         // PR exists — handle based on mission type
         if (this.opts.missionType === 'repair' && this.opts.originalMissionId == null) {
-          console.error(
-            `[hull] Warning: repair mission ${missionId} has no originalMissionId — ` +
+          log.warn(
+            `Warning: repair mission ${missionId} has no originalMissionId — ` +
               `falling into default pending-review branch. The original code mission will NOT be transitioned to pending-review ` +
               `and automated review dispatch will not trigger. Use --original-mission-id when creating repair missions manually.`
           );

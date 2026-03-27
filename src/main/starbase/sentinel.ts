@@ -18,6 +18,9 @@ import { ProtocolService } from './protocol-service';
 import type { Analyst } from './analyst';
 import type { ShipsLog } from './ships-log';
 import { GLOBAL_SECTOR_ID } from './sector-service';
+import { createLogger } from '../logger';
+
+const log = createLogger('sentinel');
 
 // Lazily access Notification so this module can be imported in the starbase-runtime
 // child process (ELECTRON_RUN_AS_NODE=1) where Electron's renderer-only APIs are absent.
@@ -176,7 +179,7 @@ export class Sentinel {
     const ms = intervalMs ?? this.deps.configService.getNumber('lifesign_interval_sec') * 1000;
     this.interval = setInterval(() => {
       this.runSweep().catch((err) => {
-        console.error('[sentinel] Sweep failed:', err);
+        log.error(`Sweep failed: ${err instanceof Error ? err.message : String(err)}`);
       });
     }, ms);
 
@@ -184,7 +187,7 @@ export class Sentinel {
     this.prMonitorInterval = setInterval(
       () => {
         this.prMonitorSweep().catch((err) => {
-          console.error('[sentinel] prMonitorSweep failed:', err);
+          log.error(`prMonitorSweep failed: ${err instanceof Error ? err.message : String(err)}`);
         });
       },
       5 * 60 * 1000
@@ -436,10 +439,10 @@ export class Sentinel {
     }
 
     this.consecutivePingFailures++;
-    console.warn(`[sentinel] Socket ping failed (${this.consecutivePingFailures}/3)`);
+    log.warn(`Socket ping failed (${this.consecutivePingFailures}/3)`);
 
     if (this.consecutivePingFailures >= 3) {
-      console.error('[sentinel] Socket unresponsive, triggering restart');
+      log.error('Socket unresponsive, triggering restart');
       this.consecutivePingFailures = 0;
 
       const alertLevel = 'warning';
@@ -461,7 +464,7 @@ export class Sentinel {
       }
 
       supervisor.restart().catch((err) => {
-        console.error('[sentinel] Supervisor restart failed:', err);
+        log.error(`Supervisor restart failed: ${err instanceof Error ? err.message : String(err)}`);
       });
     }
   }
@@ -540,7 +543,9 @@ export class Sentinel {
           }
         )
         .catch((err) => {
-          console.error(`[sentinel] Guidance dispatch error for crew ${row.crew_id}:`, err);
+          log.error(
+            `Guidance dispatch error for crew ${row.crew_id}: ${err instanceof Error ? err.message : String(err)}`
+          );
         });
     }
   }
@@ -690,7 +695,9 @@ export class Sentinel {
           }
         )
         .catch((err) => {
-          console.error(`[sentinel] FO dispatch error for mission ${row.mid}:`, err);
+          log.error(
+            `FO dispatch error for mission ${row.mid}: ${err instanceof Error ? err.message : String(err)}`
+          );
         });
     }
 
@@ -990,7 +997,9 @@ NOTES: <your review notes — specific file:line references for issues>`;
       } catch (err) {
         // Deployment failed — revert to pending-review so next sweep retries
         db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id);
-        console.error(`[sentinel] Review crew deploy failed for mission ${mission.id}:`, err);
+        log.error(
+          `Review crew deploy failed for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
 
@@ -1090,7 +1099,9 @@ ${mission.review_notes ?? 'No specific notes provided'}
         db.prepare(
           "UPDATE missions SET status = 'changes-requested' WHERE id = ? AND status = 'deploying'"
         ).run(mission.id);
-        console.error(`[sentinel] Fix crew deploy failed for mission ${mission.id}:`, err);
+        log.error(
+          `Fix crew deploy failed for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     }
 
@@ -1183,7 +1194,9 @@ ${mission.review_notes ?? 'No specific notes provided'}
       try {
         await this.checkAndRepairMission(mission, crewService, missionService);
       } catch (err) {
-        console.error(`[sentinel] prMonitorSweep error for mission ${mission.id}:`, err);
+        log.error(
+          `prMonitorSweep error for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
+        );
         // Continue checking other missions
       }
     }

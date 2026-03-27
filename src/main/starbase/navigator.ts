@@ -7,6 +7,9 @@ import type { ConfigService } from './config-service';
 import type { EventBus } from '../event-bus';
 import type { ShipsLog } from './ships-log';
 import { filterEnv } from '../env-utils';
+import { createLogger } from '../logger';
+
+const log = createLogger('navigator');
 
 type NavigatorDeps = {
   db: Database.Database;
@@ -175,12 +178,12 @@ export class Navigator {
       });
 
       proc.stderr.on('data', (chunk: Buffer) => {
-        console.error(`[navigator:${event.executionId}] stderr:`, chunk.toString().trim());
+        log.error(`stderr: ${chunk.toString().trim()}`, { executionId: event.executionId });
       });
 
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          console.warn(`[navigator] Timeout for ${event.executionId}, killing`);
+          log.warn(`Timeout for ${event.executionId}, killing`);
           this.timedOut.add(event.executionId);
           try {
             proc.kill('SIGTERM');

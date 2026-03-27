@@ -11,6 +11,9 @@ import type { EventBus } from '../event-bus';
 import type { Analyst } from './analyst';
 import type { ShipsLog } from './ships-log';
 import { filterEnv } from '../env-utils';
+import { createLogger } from '../logger';
+
+const log = createLogger('first-officer');
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return v != null && typeof v === 'object' && !Array.isArray(v);
@@ -162,9 +165,7 @@ export class FirstOfficer {
     );
     await writeFile(
       msgFile,
-      isConsultant
-        ? this.buildConsultantInitialMessage(event)
-        : this.buildInitialMessage(event),
+      isConsultant ? this.buildConsultantInitialMessage(event) : this.buildInitialMessage(event),
       'utf-8'
     );
 
@@ -260,12 +261,12 @@ export class FirstOfficer {
       });
 
       proc.stderr.on('data', (chunk: Buffer) => {
-        console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim());
+        log.error(`stderr: ${chunk.toString().trim()}`, { crewId: event.crewId });
       });
 
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          console.warn(`[first-officer] Timeout for ${k}, killing`);
+          log.warn(`Timeout for ${k}, killing`);
           try {
             proc.kill('SIGTERM');
           } catch {
@@ -492,7 +493,9 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
             crewId: opts.event.crewId,
             missionId: opts.event.missionId,
             sectorName: opts.event.sectorName,
-            payload: opts.event.guidanceMessage ?? 'Crew requested guidance but First Officer consultant failed.',
+            payload:
+              opts.event.guidanceMessage ??
+              'Crew requested guidance but First Officer consultant failed.',
             createdAt: new Date().toISOString()
           });
         } else {
@@ -517,7 +520,9 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
             crewId: opts.event.crewId,
             missionId: opts.event.missionId,
             sectorName: opts.event.sectorName,
-            payload: opts.event.guidanceMessage ?? 'Crew requested guidance but consultant provided no response.',
+            payload:
+              opts.event.guidanceMessage ??
+              'Crew requested guidance but consultant provided no response.',
             createdAt: new Date().toISOString()
           });
         }
