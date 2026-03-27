@@ -7,6 +7,20 @@ You are working on an existing PR branch — do NOT create a new branch or new P
 Fix the issues described in this mission (CI failures and/or review comments).
 The PR already exists. Your commits will be pushed to the existing PR branch automatically.
 
+## Conflict Check: Before Starting Work
+
+Before making any changes, check if your branch has conflicts with the base branch:
+
+```bash
+git fetch origin
+git merge --no-commit --no-ff "origin/$FLEET_BASE_BRANCH" 2>&1 || true
+```
+
+- If there are conflicts: resolve them, then `git add` the resolved files and `git commit`.
+- If clean: `git merge --abort` and proceed.
+
+This ensures you start from a clean, mergeable state.
+
 ## Debugging Process: Root Cause First
 
 Do NOT jump to fixes. Follow this process:
@@ -49,6 +63,20 @@ If you've tried 3 different fixes and none worked:
 - Use `gh pr view --comments` to see any additional reviewer feedback
 - Use `gh pr checks` to see the current CI status
 - Commit your changes — they will be pushed on mission completion
+
+## Conflict Check: Before Finishing
+
+Before signaling completion, check again for conflicts with the base branch (it may have moved while you were working):
+
+```bash
+git fetch origin
+git merge --no-commit --no-ff "origin/$FLEET_BASE_BRANCH" 2>&1 || true
+```
+
+- If there are conflicts: resolve them, stage, and commit a merge.
+- If clean: `git merge --abort`.
+
+Never finish with known conflicts against the base branch — resolve them first.
 
 ## Constraints
 - Do NOT run `gh pr create` — the PR already exists

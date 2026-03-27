@@ -356,7 +356,8 @@ export class Hull {
         FLEET_CREW_ID: crewId,
         FLEET_SECTOR_ID: this.opts.sectorId,
         FLEET_MISSION_ID: String(this.opts.missionId),
-        FLEET_MISSION_TYPE: this.opts.missionType ?? 'code'
+        FLEET_MISSION_TYPE: this.opts.missionType ?? 'code',
+        FLEET_BASE_BRANCH: this.opts.baseBranch
       };
 
       const proc = spawn('claude', cmdArgs, {
