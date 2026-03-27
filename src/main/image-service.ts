@@ -369,10 +369,11 @@ export class ImageService extends EventEmitter {
     };
     this.writeMeta(id, meta);
 
+    const imageUrls = opts.images.map((image) => this.resolveSourceImage(image));
     const editOpts: EditOpts = {
       model,
       prompt: opts.prompt,
-      imageUrls: opts.images,
+      imageUrls,
       resolution,
       aspectRatio,
       outputFormat,
