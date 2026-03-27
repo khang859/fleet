@@ -28,7 +28,7 @@ export function SearchBar({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute top-0 right-0 z-10 m-2 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-md px-2 py-1 shadow-lg">
+    <div className="absolute top-10 right-0 z-30 m-2 flex items-center gap-1 bg-neutral-800 border border-neutral-700 rounded-md px-2 py-1 shadow-lg">
       <input
         ref={inputRef}
         type="text"
