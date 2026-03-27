@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.9.0
+
+- Added fal.ai image generation integration via `fleet images` CLI commands (generate, edit, status, list, retry, config)
+- Added pinned Images tab with thumbnail grid gallery, detail view with full metadata, and per-provider settings
+- Added styled ImagesTabCard in sidebar with last-generated thumbnail and in-progress badge
+- Added Images icon to collapsed sidebar strip
+- Added provider abstraction (ImageProvider interface) for future extensibility beyond fal.ai
+- Added prompt engineering guide to Fleet CLI skill template
+- Changed Admiral reset to regenerate config files (CLAUDE.md, SKILL.md, settings) instead of deleting entire workspace
+- Non-blocking image generation: CLI returns immediately, background polling handles download
+
 ## v2.8.0
 
 - Added per-mission-type model configuration (crew*model*\* config keys via migration 016)
