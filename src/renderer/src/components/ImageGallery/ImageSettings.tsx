@@ -6,13 +6,15 @@ const FORMATS = ['png', 'jpeg', 'webp'];
 const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3', '21:9'];
 
 export function ImageSettings(): React.JSX.Element {
-  const { config, loadConfig, updateConfig } = useImageStore();
+  const { config, loadConfig, updateConfig, actions, loadActions } = useImageStore();
   const [apiKeyVisible, setApiKeyVisible] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [actionModelInputs, setActionModelInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     void loadConfig();
-  }, [loadConfig]);
+    void loadActions();
+  }, [loadConfig, loadActions]);
 
   if (!config) return <div className="p-4 text-neutral-400">Loading settings...</div>;
   const provider = config.providers[config.defaultProvider];
@@ -28,6 +30,21 @@ export function ImageSettings(): React.JSX.Element {
 
   const handleUpdate = (field: string, value: string): void => {
     void updateConfig({ providers: { [config.defaultProvider]: { ...provider, [field]: value } } });
+  };
+
+  const handleActionModelSave = (actionType: string): void => {
+    const model = actionModelInputs[actionType];
+    if (!model) return;
+    const existingActions = provider.actions ?? {};
+    void updateConfig({
+      providers: {
+        [config.defaultProvider]: {
+          ...provider,
+          actions: { ...existingActions, [actionType]: { model } }
+        }
+      }
+    });
+    setActionModelInputs((prev) => ({ ...prev, [actionType]: '' }));
   };
 
   return (
@@ -115,6 +132,47 @@ export function ImageSettings(): React.JSX.Element {
             ))}
           </select>
         </div>
+        {actions.length > 0 && (
+          <div className="pt-2 border-t border-neutral-700">
+            <label className="block text-xs text-neutral-400 mb-2">Action Models</label>
+            <div className="space-y-2">
+              {actions.map((action) => {
+                const currentModel = provider.actions?.[action.actionType]?.model;
+                return (
+                  <div key={action.id}>
+                    <label className="block text-xs text-neutral-500 mb-1">{action.name}</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        className="flex-1 bg-neutral-800 text-neutral-200 rounded px-3 py-1.5 text-sm border border-neutral-700 focus:border-cyan-500 outline-none"
+                        placeholder={currentModel ?? 'Default'}
+                        value={actionModelInputs[action.actionType] ?? ''}
+                        onChange={(e) =>
+                          setActionModelInputs((prev) => ({
+                            ...prev,
+                            [action.actionType]: e.target.value
+                          }))
+                        }
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleActionModelSave(action.actionType);
+                        }}
+                      />
+                      <button
+                        className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5"
+                        onClick={() => handleActionModelSave(action.actionType)}
+                      >
+                        Save
+                      </button>
+                    </div>
+                    {currentModel && (
+                      <div className="text-xs text-neutral-500 mt-0.5">{currentModel}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
