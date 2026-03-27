@@ -381,7 +381,12 @@ export class Sentinel {
       await this.reviewSweep();
     }
 
-    // 10. First Officer triage — detect actionable failures and dispatch
+    // 10a. Guidance sweep — dispatch FirstOfficer consultant for stuck crews
+    if (this.deps.firstOfficer) {
+      await this.guidanceSweep();
+    }
+
+    // 10b. First Officer triage — detect actionable failures and dispatch
     if (this.deps.firstOfficer) {
       await this.firstOfficerSweep();
     }
@@ -458,6 +463,85 @@ export class Sentinel {
       supervisor.restart().catch((err) => {
         console.error('[sentinel] Supervisor restart failed:', err);
       });
+    }
+  }
+
+  private async guidanceSweep(): Promise<void> {
+    const { db, firstOfficer } = this.deps;
+    if (!firstOfficer) return;
+
+    type GuidanceRow = {
+      comm_id: number;
+      crew_id: string;
+      sector_id: string;
+      sector_name: string;
+      mission_id: number;
+      mission_summary: string;
+      mission_prompt: string;
+      guidance_message: string;
+    };
+
+    const pendingGuidance = db
+      .prepare<[], GuidanceRow>(
+        `SELECT c.id as comm_id, cr.id as crew_id, cr.sector_id,
+                s.name as sector_name,
+                m.id as mission_id, m.summary as mission_summary,
+                m.prompt as mission_prompt, c.payload as guidance_message
+         FROM comms c
+         JOIN crew cr ON cr.id = c.from_crew
+         JOIN sectors s ON s.id = cr.sector_id
+         JOIN missions m ON m.id = cr.mission_id
+         WHERE c.type = 'needs-guidance'
+           AND c.read = 0
+           AND cr.status = 'awaiting-guidance'
+           AND NOT EXISTS (
+             SELECT 1 FROM comms
+             WHERE type = 'guidance-response'
+             AND to_crew = cr.id AND read = 0
+           )
+         LIMIT 3`
+      )
+      .all();
+
+    for (const row of pendingGuidance) {
+      if (firstOfficer.isRunning(row.crew_id, row.mission_id)) continue;
+
+      // Get recent crew output for context
+      let crewOutput = '';
+      if (this.deps.crewService) {
+        crewOutput = this.deps.crewService.observeCrew(row.crew_id);
+      }
+
+      // Mark the needs-guidance comm as read so we don't re-dispatch
+      db.prepare('UPDATE comms SET read = 1 WHERE id = ?').run(row.comm_id);
+
+      firstOfficer
+        .dispatch(
+          {
+            crewId: row.crew_id,
+            missionId: row.mission_id,
+            sectorId: row.sector_id,
+            sectorName: row.sector_name,
+            eventType: 'needs-guidance',
+            missionSummary: row.mission_summary,
+            missionPrompt: row.mission_prompt,
+            acceptanceCriteria: null,
+            verifyCommand: null,
+            crewOutput,
+            verifyResult: null,
+            reviewNotes: null,
+            retryCount: 0,
+            guidanceMessage: row.guidance_message
+          },
+          {
+            onExit: () => {
+              this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+            }
+          }
+        )
+        .catch((err) => {
+          console.error(`[sentinel] Guidance dispatch error for crew ${row.crew_id}:`, err);
+        });
     }
   }
 

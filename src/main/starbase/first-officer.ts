@@ -49,6 +49,7 @@ export type ActionableEvent = {
   fingerprint?: string | null;
   classification?: string | null;
   deploymentBudgetExhausted?: boolean;
+  guidanceMessage?: string;
 };
 
 export type FirstOfficerDecision = {
