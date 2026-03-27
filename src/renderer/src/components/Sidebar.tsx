@@ -10,6 +10,7 @@ import { useNotificationStore } from '../store/notification-store';
 
 
 import { useStarCommandStore } from '../store/star-command-store';
+import { useImageStore } from '../store/image-store';
 import admiralDefault from '../assets/admiral-default.png';
 import admiralSpeaking from '../assets/admiral-speaking.png';
 import admiralThinking from '../assets/admiral-thinking.png';
@@ -135,6 +136,141 @@ function StarCommandTabCard({
                 }}
               >
                 {unreadCount}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImagesTabCard({
+  isActive,
+  onClick
+}: {
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  const { generations, isLoaded, loadGenerations } = useImageStore();
+  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isLoaded) void loadGenerations();
+  }, [isLoaded, loadGenerations]);
+
+  // Subscribe to live updates
+  useEffect(() => {
+    const cleanup = window.fleet.images.onChanged(() => {
+      void loadGenerations();
+    });
+    return cleanup;
+  }, [loadGenerations]);
+
+  // Load thumbnail of most recent completed image
+  const lastCompleted = generations.find(
+    (g) => g.status === 'completed' && g.images.some((img) => img.filename)
+  );
+  const thumbFile = lastCompleted?.images.find((img) => img.filename);
+
+  useEffect(() => {
+    if (!lastCompleted || !thumbFile?.filename) {
+      setThumbSrc(null);
+      return;
+    }
+    const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${lastCompleted.id}/${thumbFile.filename}`;
+    void window.fleet.file.readBinary(filePath).then((result) => {
+      if (result.success && result.data) {
+        setThumbSrc(`data:${result.data.mimeType};base64,${result.data.base64}`);
+      }
+    });
+  }, [lastCompleted?.id, thumbFile?.filename]);
+
+  const inProgress = generations.filter(
+    (g) => g.status === 'queued' || g.status === 'processing'
+  ).length;
+  const totalImages = generations.length;
+
+  return (
+    <div
+      onClick={onClick}
+      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
+      style={{
+        background: isActive ? '#0d0a1a' : 'rgba(13,10,26,0.4)',
+        border: isActive
+          ? '1px solid rgba(168,85,247,0.35)'
+          : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: isActive
+          ? '0 0 10px rgba(168,85,247,0.15), inset 0 0 20px rgba(168,85,247,0.03)'
+          : 'none'
+      }}
+    >
+      {/* Subtle noise overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
+          backgroundSize: '100% 2px'
+        }}
+      />
+
+      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
+        {/* Thumbnail or icon */}
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center">
+          {thumbSrc ? (
+            <img src={thumbSrc} alt="" className="w-full h-full object-cover" />
+          ) : (
+            <svg
+              className="w-4 h-4"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={isActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
+              strokeWidth="1.5"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <circle cx="8.5" cy="8.5" r="1.5" />
+              <path d="M21 15l-5-5L5 21" />
+            </svg>
+          )}
+          {inProgress > 0 && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500/30 overflow-hidden">
+              <div
+                className="h-full bg-purple-400 animate-pulse"
+                style={{ width: '60%' }}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Text content */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-mono uppercase tracking-widest leading-none mb-1"
+            style={{
+              fontSize: '9px',
+              color: isActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.5)'
+            }}
+          >
+            Images
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-mono text-neutral-500">
+              {totalImages > 0 ? (
+                <span className="text-purple-300/70">{totalImages} generated</span>
+              ) : (
+                <span>none yet</span>
+              )}
+            </span>
+            {inProgress > 0 && (
+              <span
+                className="text-[9px] font-mono font-semibold px-1 rounded-sm animate-pulse"
+                style={{
+                  background: 'rgba(168,85,247,0.2)',
+                  color: 'rgb(192,132,252)'
+                }}
+              >
+                {inProgress}
               </span>
             )}
           </div>
@@ -593,18 +729,11 @@ export function Sidebar({
           {workspace.tabs
             .filter((tab) => tab.type === 'images')
             .map((tab) => (
-              <div
+              <ImagesTabCard
                 key={tab.id}
-                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[36px] transition-colors ${tab.id === activeTabId ? 'bg-neutral-700 text-white border-l-2 border-cyan-500' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}`}
+                isActive={tab.id === activeTabId}
                 onClick={() => setActiveTab(tab.id)}
-              >
-                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <circle cx="8.5" cy="8.5" r="1.5" />
-                  <path d="M21 15l-5-5L5 21" />
-                </svg>
-                <span className="truncate">Images</span>
-              </div>
+              />
             ))}
           {workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
             <div className="h-px bg-neutral-800 mx-1 my-1" />
