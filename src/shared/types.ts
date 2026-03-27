@@ -175,10 +175,15 @@ export type ImageSettings = {
   providers: Record<string, ImageProviderSettings>;
 };
 
+export type ImageActionSettings = {
+  model?: string;
+};
+
 export type ImageProviderSettings = {
   apiKey: string;
   defaultModel: string;
   defaultResolution: string;
   defaultOutputFormat: string;
   defaultAspectRatio: string;
+  actions?: Record<string, ImageActionSettings>;
 };
