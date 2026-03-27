@@ -43,7 +43,14 @@ export type AsyncServiceRegistry = {
   crewService: Promisified<
     Pick<
       ServiceRegistry['crewService'],
-      'listCrew' | 'deployCrew' | 'recallCrew' | 'getCrewStatus' | 'observeCrew' | 'messageCrew'
+      | 'listCrew'
+      | 'deployCrew'
+      | 'recallCrew'
+      | 'getCrewStatus'
+      | 'observeCrew'
+      | 'messageCrew'
+      | 'setCrewStatus'
+      | 'resetCrewTimeout'
     >
   >;
   missionService: Promisified<
@@ -796,6 +803,23 @@ export class SocketServer extends EventEmitter {
           payload
         });
         this.emit('state-change', 'comms:changed', { id });
+
+        // Guidance protection: transition crew status on guidance comms
+        if (msgType === 'needs-guidance' && from !== 'admiral') {
+          const crewStatus = await crewService.getCrewStatus(from);
+          if (crewStatus && crewStatus.status === 'active') {
+            await crewService.setCrewStatus(from, 'awaiting-guidance');
+            await crewService.resetCrewTimeout(from);
+          }
+        }
+
+        if (msgType === 'guidance-response' && to !== 'admiral') {
+          const crewStatus = await crewService.getCrewStatus(to);
+          if (crewStatus && crewStatus.status === 'awaiting-guidance') {
+            await crewService.setCrewStatus(to, 'active');
+            // resetCrewTimeout happens via hull.sendMessage below (auto-inject)
+          }
+        }
 
         // Auto-inject into active crew's Claude Code process if target is a live crew
         let injected = false;

@@ -10,7 +10,10 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
       getCrewStatus: async (crewId: string) => runtime.invoke('crew.status', crewId),
       observeCrew: async (crewId: string) => runtime.invoke('crew.observe', crewId),
       messageCrew: async (crewId: string, message: string) =>
-        runtime.invoke('crew.message', { crewId, message })
+        runtime.invoke('crew.message', { crewId, message }),
+      setCrewStatus: async (crewId: string, status: string) =>
+        runtime.invoke('crew.setStatus', { crewId, status }),
+      resetCrewTimeout: async (crewId: string) => runtime.invoke('crew.resetTimeout', crewId)
     },
     missionService: {
       addMission: async (opts: unknown) => runtime.invoke('mission.add', opts),
