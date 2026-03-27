@@ -341,6 +341,108 @@ describe('CargoService', () => {
     });
   });
 
+  describe('sendCargo', () => {
+    it('creates cargo record with explicit sourceType', async () => {
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'test mission',
+        prompt: 'do something'
+      });
+
+      const cargo = await cargoSvc.sendCargo({
+        crewId: 'api-crew-1234',
+        missionId: mission.id,
+        sectorId: 'api',
+        type: 'report',
+        content: '# Report\nSome content here.',
+        starbaseId: 'test-starbase'
+      });
+
+      expect(cargo.id).toBeDefined();
+      expect(cargo.crew_id).toBe('api-crew-1234');
+      expect(cargo.mission_id).toBe(mission.id);
+      expect(cargo.sector_id).toBe('api');
+      expect(cargo.type).toBe('report');
+      expect(cargo.verified).toBe(1);
+
+      const manifest = JSON.parse(cargo.manifest!);
+      expect(manifest.sourceType).toBe('explicit');
+      expect(manifest.title).toBe('report');
+      expect(manifest.size).toBeGreaterThan(0);
+    });
+
+    it('transitions mission from awaiting-cargo-check to completed', async () => {
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'awaiting cargo',
+        prompt: 'deliver cargo'
+      });
+      missionSvc.setStatus(mission.id, 'awaiting-cargo-check');
+
+      await cargoSvc.sendCargo({
+        crewId: 'api-crew-1234',
+        missionId: mission.id,
+        sectorId: 'api',
+        type: 'report',
+        content: 'Final report.',
+        starbaseId: 'test-starbase'
+      });
+
+      const rawDb = db.getDb();
+      const updated = rawDb
+        .prepare<[number], { status: string; cargo_checked: number }>(
+          'SELECT status, cargo_checked FROM missions WHERE id = ?'
+        )
+        .get(mission.id);
+
+      expect(updated?.status).toBe('completed');
+      expect(updated?.cargo_checked).toBe(1);
+    });
+
+    it('does NOT transition mission if status is active', async () => {
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'active mission',
+        prompt: 'still running'
+      });
+      missionSvc.setStatus(mission.id, 'active');
+
+      await cargoSvc.sendCargo({
+        crewId: 'api-crew-1234',
+        missionId: mission.id,
+        sectorId: 'api',
+        type: 'partial',
+        content: 'Partial output.',
+        starbaseId: 'test-starbase'
+      });
+
+      const rawDb = db.getDb();
+      const updated = rawDb
+        .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+        .get(mission.id);
+
+      expect(updated?.status).toBe('active');
+    });
+
+    it('throws if neither content nor filePath provided', async () => {
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'test',
+        prompt: 'x'
+      });
+
+      await expect(
+        cargoSvc.sendCargo({
+          crewId: 'api-crew-1234',
+          missionId: mission.id,
+          sectorId: 'api',
+          type: 'report',
+          starbaseId: 'test-starbase'
+        })
+      ).rejects.toThrow('sendCargo requires either content or filePath');
+    });
+  });
+
   describe('cleanup', () => {
     it('should delete cargo older than specified days', () => {
       const rawDb = db.getDb();
