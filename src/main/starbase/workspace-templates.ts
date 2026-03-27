@@ -285,6 +285,26 @@ fleet images config --default-resolution <0.5K|1K|2K|4K>  # Set default resoluti
 
 **Non-blocking:** Commands return immediately with a generation ID. Images are downloaded in the background. Use \`fleet images status <id>\` to check progress.
 
+**Writing effective prompts:**
+
+Nano Banana 2 uses multimodal reasoning — write conversational, descriptive prompts rather than keyword-stuffed ones. Structure your prompt with these elements:
+
+1. **Subject** — Be specific: age, clothing, expression, pose. Not "a hacker" but "24-year-old woman in matte-black techwear jacket, intense focused expression"
+2. **Environment** — Setting and context: "rain-soaked Tokyo alleyway at 2 AM, puddles reflecting neon signs"
+3. **Composition** — Camera framing: "extreme close-up", "Dutch angle", "rule of thirds", "bird's-eye perspective"
+4. **Lighting** — The biggest quality lever: "cinematic rim lighting", "golden hour backlighting", "volumetric god rays", "chiaroscuro shadows"
+5. **Style** — Artistic medium: "1980s dark fantasy oil painting", "Studio Ghibli cel-shaded anime", "Unreal Engine 5 render"
+6. **Camera specs** (for photorealism) — "85mm lens, f/1.8 aperture, shallow depth of field, bokeh background"
+
+**Common mistakes to avoid:**
+- Generic quality tags like "masterpiece, highly detailed, 8k" are junk tokens — describe actual details instead
+- Place the primary subject in the first 10-15 words (early tokens carry more weight)
+- Iterate in small moves: change one thing per round (color, camera distance, pose, background)
+
+**Example — weak vs strong:**
+- Weak: \`"A cat in space, highly detailed, 8k"\`
+- Strong: \`"Orange tabby cat floating in zero gravity inside the ISS cupola module, Earth visible through the window behind, soft diffused natural light from the window, wide-angle 14mm lens, NASA documentary photography style"\`
+
 ### Log Groups
 
 \`\`\`
