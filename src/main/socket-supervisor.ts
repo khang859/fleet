@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { SocketServer, type ServiceRegistry, type AsyncServiceRegistry } from './socket-server';
+import type { ImageService } from './image-service';
 
 const MAX_RESTARTS = 5;
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -15,7 +16,8 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry | AsyncServiceRegistry
+    private services: ServiceRegistry | AsyncServiceRegistry,
+    private imageService?: ImageService
   ) {
     super();
   }
@@ -78,7 +80,7 @@ export class SocketSupervisor extends EventEmitter {
   }
 
   private createServer(): SocketServer {
-    const server = new SocketServer(this.socketPath, this.services);
+    const server = new SocketServer(this.socketPath, this.services, this.imageService);
 
     server.on('state-change', (...args: unknown[]) => {
       this.emit('state-change', ...args);
