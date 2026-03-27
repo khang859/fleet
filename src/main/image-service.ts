@@ -162,7 +162,8 @@ export class ImageService extends EventEmitter {
       },
       referenceImages: [],
       images: [],
-      providerRequestId: null
+      providerRequestId: null,
+      sourceImage: null
     };
     this.writeMeta(id, meta);
 
@@ -219,7 +220,8 @@ export class ImageService extends EventEmitter {
       },
       referenceImages: opts.images,
       images: [],
-      providerRequestId: null
+      providerRequestId: null,
+      sourceImage: null
     };
     this.writeMeta(id, meta);
 
