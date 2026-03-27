@@ -101,7 +101,7 @@ export function MemoPanel({ onClose }: MemoPanelProps): React.JSX.Element {
                       href={href}
                       onClick={(e) => {
                         e.preventDefault();
-                        if (href) void window.fleet.shell.openExternal(href);
+                        if (e.shiftKey && href) void window.fleet.shell.openExternal(href);
                       }}
                     >
                       {children}
