@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.12.0
+
+- Added Winston logger system with structured logging, IPC bridge, and daily log rotation
+- Added First Officer consultant mode for mid-flight crew guidance
+- Added Sentinel guidance sweep to dispatch consultant for stuck crews
+- Added file-based prompt composition with mission-type templates and shared modules
+- Fixed overlay paste by blurring xterm before focusing overlay input
+- Fixed overlay admiral PTY paneId when on Star Command tab
+- Fixed sidebar drag-and-drop using wrong indices and double-firing
+
 ## v2.11.0
 
 - Converted settings modal to full tab page (#160)
