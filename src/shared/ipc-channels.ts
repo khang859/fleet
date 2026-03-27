@@ -33,6 +33,7 @@ export const IPC_CHANNELS = {
   STARBASE_OBSERVE: 'starbase:observe',
   STARBASE_MESSAGE_CREW: 'starbase:message-crew',
   STARBASE_STATUS_UPDATE: 'starbase:status-update',
+  STARBASE_SNAPSHOT_REQUEST: 'starbase:snapshot-request',
   STARBASE_RUNTIME_STATUS_GET: 'starbase:runtime-status:get',
   STARBASE_RUNTIME_STATUS_CHANGED: 'starbase:runtime-status:changed',
   STARBASE_RUNTIME_STATUS_RETRY: 'starbase:runtime-status:retry',

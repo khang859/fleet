@@ -255,7 +255,7 @@ export class Sentinel {
     const expiredCrew = db
       .prepare<[], CrewRow>(
         `SELECT id, sector_id, pid FROM crew
-         WHERE status = 'active' AND status != 'awaiting-guidance'
+         WHERE status = 'active'
            AND deadline IS NOT NULL AND deadline < datetime('now')`
       )
       .all();

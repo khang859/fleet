@@ -203,7 +203,25 @@ export function StarCommandTab(): React.JSX.Element {
     void window.fleet.starbase.listMissions().then((missions) => setMissionQueue(missions));
     void window.fleet.starbase.listSectors().then((sectors) => setSectors(sectors));
     void window.fleet.starbase.getUnreadComms().then((msgs) => setUnreadCount(msgs.length));
-  }, [runtimeStatus.state, setCrewList, setMissionQueue, setSectors, setUnreadCount]);
+    // Fetch a fresh snapshot to restore sentinel/navigator/FO status.
+    // The did-finish-load push often arrives before listeners mount, so this
+    // explicit request ensures status is always up-to-date after hard refresh.
+    void window.fleet.starbase.requestSnapshot().then((snapshot) => {
+      if (!snapshot) return;
+      if (snapshot.firstOfficer !== undefined) setFirstOfficerStatus(snapshot.firstOfficer);
+      if (snapshot.navigator !== undefined) setNavigatorStatus(snapshot.navigator);
+      if (snapshot.sentinel !== undefined) setSentinelStatus(snapshot.sentinel);
+    });
+  }, [
+    runtimeStatus.state,
+    setCrewList,
+    setMissionQueue,
+    setSectors,
+    setUnreadCount,
+    setFirstOfficerStatus,
+    setNavigatorStatus,
+    setSentinelStatus
+  ]);
 
   useEffect(() => {
     refreshStatus();

@@ -357,7 +357,8 @@ export class CrewService {
   }
 
   listCrew(filter?: { sectorId?: string }): CrewRow[] {
-    let sql = "SELECT * FROM crew WHERE status IN ('active', 'complete', 'error', 'timeout')";
+    let sql =
+      "SELECT * FROM crew WHERE status IN ('active', 'awaiting-guidance', 'complete', 'error', 'timeout')";
     const params: unknown[] = [];
 
     if (filter?.sectorId) {

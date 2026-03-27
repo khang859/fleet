@@ -261,6 +261,15 @@ function createWindow(): void {
   // instead of waiting for the next periodic snapshot event.
   mainWindow.webContents.on('did-finish-load', () => {
     if (runtimeStatus.state === 'ready') {
+      // Push admiral status to renderer immediately so it doesn't flash "stopped"
+      if (admiralProcess?.paneId && admiralProcess.status === 'running') {
+        mainWindow?.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
+          status: 'running',
+          paneId: admiralProcess.paneId,
+          error: undefined,
+          exitCode: undefined
+        });
+      }
       runtimeClient
         .invoke<Record<string, unknown>>('starbase.snapshot')
         .then((snapshot) => {
@@ -537,6 +546,13 @@ void app.whenReady().then(() => {
     }),
     workspacePath
   );
+
+  // Allow the renderer to explicitly request a fresh snapshot (e.g. after hard
+  // refresh when the initial did-finish-load push arrives before listeners mount).
+  ipcMain.handle(IPC_CHANNELS.STARBASE_SNAPSHOT_REQUEST, async () => {
+    if (runtimeStatus.state !== 'ready') return null;
+    return runtimeClient.invoke('starbase.snapshot');
+  });
 
   // Wire socket command handler to the window
   commandHandler.setWindowGetter(() => mainWindow);

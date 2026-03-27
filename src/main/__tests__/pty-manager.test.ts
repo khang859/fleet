@@ -1,6 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PtyManager } from '../pty-manager';
 
+// Mock logger to avoid Winston timers interfering with vi.useFakeTimers()
+vi.mock('../logger', () => ({
+  createLogger: () => ({
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  })
+}));
+
 // Mock node-pty since we can't spawn real PTYs in unit tests
 vi.mock('node-pty', () => ({
   spawn: vi.fn(() => ({
