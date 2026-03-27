@@ -90,7 +90,7 @@ export class StarbaseRuntimeClient {
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) {
-          log.error('stderr', { output: text });
+          log.warn('stderr', { output: text });
         }
       });
 

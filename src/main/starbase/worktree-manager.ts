@@ -195,7 +195,7 @@ export class WorktreeManager {
           execSync(`rm -rf "${worktreePath}"`, { stdio: 'pipe' });
           execSync('git worktree prune', execOpts);
         } catch {
-          log.error(`Failed to remove worktree: ${worktreePath}`);
+          log.error('failed to remove worktree', { worktreePath });
         }
       }
     }
@@ -237,7 +237,7 @@ export class WorktreeManager {
     try {
       execSync('git worktree prune', { cwd: sectorPath, stdio: 'pipe' });
     } catch {
-      log.error(`Failed to prune worktrees for: ${sectorPath}`);
+      log.error('failed to prune worktrees', { sectorPath });
     }
   }
 

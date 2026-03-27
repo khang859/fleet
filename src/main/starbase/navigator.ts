@@ -178,12 +178,12 @@ export class Navigator {
       });
 
       proc.stderr.on('data', (chunk: Buffer) => {
-        log.error(`stderr: ${chunk.toString().trim()}`, { executionId: event.executionId });
+        log.warn('stderr', { output: chunk.toString().trim(), executionId: event.executionId });
       });
 
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          log.warn(`Timeout for ${event.executionId}, killing`);
+          log.warn('timeout, killing', { executionId: event.executionId });
           this.timedOut.add(event.executionId);
           try {
             proc.kill('SIGTERM');

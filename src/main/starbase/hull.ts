@@ -393,7 +393,7 @@ export class Hull {
 
       // Log stderr for diagnostics
       proc.stderr.on('data', (chunk: Buffer) => {
-        log.error(`stderr: ${chunk.toString().trim()}`, { crewId });
+        log.warn('stderr', { output: chunk.toString().trim(), crewId });
       });
 
       // Handle process exit → trigger cleanup
@@ -403,9 +403,9 @@ export class Hull {
         const status = code === 0 ? 'complete' : code === 143 ? 'sigterm' : 'error';
         this.cleanup(status, code === 0 ? 'Completed successfully' : `Exit code: ${code}`).catch(
           (cleanupErr) => {
-            log.error(
-              `cleanup error: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`
-            );
+            log.error('cleanup error', {
+              error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)
+            });
           }
         );
       });
@@ -497,7 +497,7 @@ export class Hull {
       });
     }
     this.cleanup('aborted', 'Recalled by Star Command').catch((err) => {
-      log.error(`cleanup error: ${err instanceof Error ? err.message : String(err)}`);
+      log.error('cleanup error', { error: err instanceof Error ? err.message : String(err) });
     });
   }
 
@@ -633,7 +633,7 @@ export class Hull {
     setTimeout(() => {
       if (this.status === 'active') {
         this.cleanup('timeout', 'Mission deadline exceeded').catch((err) => {
-          log.error(`cleanup error: ${err instanceof Error ? err.message : String(err)}`);
+          log.error('cleanup error', { error: err instanceof Error ? err.message : String(err) });
         });
       }
     }, 10000);
@@ -956,10 +956,10 @@ export class Hull {
               fullManifest = JSON.stringify({ path: fullOutputPath });
               summaryManifest = JSON.stringify({ path: summaryPath });
             } catch (fileErr) {
-              log.error(
-                `cargo file write failed: ${fileErr instanceof Error ? fileErr.message : String(fileErr)}`,
-                { crewId }
-              );
+              log.error('cargo file write failed', {
+                error: fileErr instanceof Error ? fileErr.message : String(fileErr),
+                crewId
+              });
               // Fallback: store content directly in manifest
               fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
               summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
@@ -1442,7 +1442,7 @@ export class Hull {
               stdio: 'pipe'
             });
           } catch {
-            log.error(`Failed to remove worktree: ${worktreePath}`);
+            log.error('failed to remove worktree', { worktreePath });
           }
         }
       }

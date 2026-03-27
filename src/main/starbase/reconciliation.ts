@@ -138,7 +138,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
           rmSync(fullPath, { recursive: true, force: true });
           summary.orphanedWorktrees.push(fullPath);
         } catch {
-          log.error(`Failed to remove orphaned worktree: ${fullPath}`);
+          log.error('failed to remove orphaned worktree', { path: fullPath });
         }
       }
     }
@@ -225,7 +225,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
       rmSync(crew.worktree_path, { recursive: true, force: true });
       summary.cleanedErroredCrew.push(crew.id);
     } catch {
-      log.error(`Failed to remove errored crew worktree: ${crew.worktree_path}`);
+      log.error('failed to remove errored crew worktree', { path: crew.worktree_path });
     }
   }
 

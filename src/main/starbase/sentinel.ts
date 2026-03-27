@@ -179,7 +179,7 @@ export class Sentinel {
     const ms = intervalMs ?? this.deps.configService.getNumber('lifesign_interval_sec') * 1000;
     this.interval = setInterval(() => {
       this.runSweep().catch((err) => {
-        log.error(`Sweep failed: ${err instanceof Error ? err.message : String(err)}`);
+        log.error('sweep failed', { error: err instanceof Error ? err.message : String(err) });
       });
     }, ms);
 
@@ -187,7 +187,9 @@ export class Sentinel {
     this.prMonitorInterval = setInterval(
       () => {
         this.prMonitorSweep().catch((err) => {
-          log.error(`prMonitorSweep failed: ${err instanceof Error ? err.message : String(err)}`);
+          log.error('prMonitorSweep failed', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         });
       },
       5 * 60 * 1000
@@ -439,7 +441,7 @@ export class Sentinel {
     }
 
     this.consecutivePingFailures++;
-    log.warn(`Socket ping failed (${this.consecutivePingFailures}/3)`);
+    log.warn('socket ping failed', { failures: `${this.consecutivePingFailures}/3` });
 
     if (this.consecutivePingFailures >= 3) {
       log.error('Socket unresponsive, triggering restart');
@@ -464,7 +466,9 @@ export class Sentinel {
       }
 
       supervisor.restart().catch((err) => {
-        log.error(`Supervisor restart failed: ${err instanceof Error ? err.message : String(err)}`);
+        log.error('supervisor restart failed', {
+          error: err instanceof Error ? err.message : String(err)
+        });
       });
     }
   }
@@ -543,9 +547,10 @@ export class Sentinel {
           }
         )
         .catch((err) => {
-          log.error(
-            `Guidance dispatch error for crew ${row.crew_id}: ${err instanceof Error ? err.message : String(err)}`
-          );
+          log.error('guidance dispatch error', {
+            crewId: row.crew_id,
+            error: err instanceof Error ? err.message : String(err)
+          });
         });
     }
   }
@@ -695,9 +700,10 @@ export class Sentinel {
           }
         )
         .catch((err) => {
-          log.error(
-            `FO dispatch error for mission ${row.mid}: ${err instanceof Error ? err.message : String(err)}`
-          );
+          log.error('FO dispatch error', {
+            missionId: row.mid,
+            error: err instanceof Error ? err.message : String(err)
+          });
         });
     }
 
@@ -997,9 +1003,10 @@ NOTES: <your review notes — specific file:line references for issues>`;
       } catch (err) {
         // Deployment failed — revert to pending-review so next sweep retries
         db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(mission.id);
-        log.error(
-          `Review crew deploy failed for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        log.error('review crew deploy failed', {
+          missionId: mission.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
       }
     }
 
@@ -1099,9 +1106,10 @@ ${mission.review_notes ?? 'No specific notes provided'}
         db.prepare(
           "UPDATE missions SET status = 'changes-requested' WHERE id = ? AND status = 'deploying'"
         ).run(mission.id);
-        log.error(
-          `Fix crew deploy failed for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        log.error('fix crew deploy failed', {
+          missionId: mission.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
       }
     }
 
@@ -1194,9 +1202,10 @@ ${mission.review_notes ?? 'No specific notes provided'}
       try {
         await this.checkAndRepairMission(mission, crewService, missionService);
       } catch (err) {
-        log.error(
-          `prMonitorSweep error for mission ${mission.id}: ${err instanceof Error ? err.message : String(err)}`
-        );
+        log.error('prMonitorSweep error', {
+          missionId: mission.id,
+          error: err instanceof Error ? err.message : String(err)
+        });
         // Continue checking other missions
       }
     }

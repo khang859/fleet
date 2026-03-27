@@ -261,12 +261,12 @@ export class FirstOfficer {
       });
 
       proc.stderr.on('data', (chunk: Buffer) => {
-        log.error(`stderr: ${chunk.toString().trim()}`, { crewId: event.crewId });
+        log.warn('stderr', { output: chunk.toString().trim(), crewId: event.crewId });
       });
 
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          log.warn(`Timeout for ${k}, killing`);
+          log.warn('timeout, killing', { executionId: k });
           try {
             proc.kill('SIGTERM');
           } catch {
