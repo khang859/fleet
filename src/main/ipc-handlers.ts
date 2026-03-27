@@ -172,7 +172,10 @@ export function registerIpcHandlers(
 
   // Layout handlers
   ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
-    log.debug('ipc:layout:save', { workspaceId: req.workspace.id, tabCount: req.workspace.tabs.length });
+    log.debug('ipc:layout:save', {
+      workspaceId: req.workspace.id,
+      tabCount: req.workspace.tabs.length
+    });
     try {
       layoutStore.save(req.workspace);
       layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);

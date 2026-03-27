@@ -22,7 +22,11 @@ export class LayoutStore {
   }
 
   save(workspace: Workspace): void {
-    log.debug('save', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
+    log.debug('save', {
+      id: workspace.id,
+      label: workspace.label,
+      tabCount: workspace.tabs.length
+    });
     const workspaces = this.store.get('workspaces', {});
     workspaces[workspace.id] = workspace;
     this.store.set('workspaces', workspaces);

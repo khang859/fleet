@@ -96,7 +96,10 @@ export class PtyManager {
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
-        log.debug('backpressure pause', { paneId: opts.paneId, bufferBytes: entry.outputBuffer.length });
+        log.debug('backpressure pause', {
+          paneId: opts.paneId,
+          bufferBytes: entry.outputBuffer.length
+        });
         entry.paused = true;
         this.flushPane(opts.paneId);
         proc.pause();
