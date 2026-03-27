@@ -699,7 +699,7 @@ export function App(): React.JSX.Element {
           </div>
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
-          <main className="flex-1 min-w-0 relative overflow-hidden">
+          <main className="flex-1 min-w-0 relative overflow-hidden pt-12">
             {workspace.tabs.length > 0 || backgroundWorkspaces.size > 0 ? (
               <>
                 {workspace.tabs.map((tab) => {
