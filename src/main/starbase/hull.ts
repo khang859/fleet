@@ -210,8 +210,6 @@ export class Hull {
   private rawOutputStream: WriteStream | null = null;
   private sessionId: string | null = null;
 
-  private resultText: string | null = null;
-
   private static ghAvailable: boolean | null = null;
 
   constructor(private opts: HullOpts) {}
@@ -377,11 +375,11 @@ export class Hull {
       const worktreeWarning = `IMPORTANT: You are in a git worktree. Your current directory is already the correct working directory for this mission (branch: ${worktreeBranch}). Do NOT cd to any other path. All file edits and git operations must happen in the current directory.\n\n`;
       const researchGuidance =
         this.opts.missionType === 'research'
-          ? `RESEARCH MISSION GUIDANCE: Your research findings will be captured as cargo from your terminal output. Print your findings to stdout using console.log, echo, or similar output commands. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT create pull requests or commit changes. Your mission is to investigate and report findings through your terminal output only.\n\n`
+          ? `RESEARCH MISSION GUIDANCE: When your research is complete, save your findings to a file and send them as cargo:\n  fleet cargo send --type findings --file findings.md\nYou may also print findings to stdout as a backup — raw output is captured to disk. Do NOT create pull requests or commit changes.\n\n`
           : '';
       const architectGuidance =
         this.opts.missionType === 'architect'
-          ? `ARCHITECT MISSION GUIDANCE: Your architecture blueprint will be captured as cargo from your terminal output. Print your design to stdout. Do NOT write files to disk — any files you create or modify will be discarded by the git safety guard. Do NOT write code or create pull requests. Your mission is to analyze the codebase and produce an implementation blueprint through your terminal output only.\n\n`
+          ? `ARCHITECT MISSION GUIDANCE: When your design is complete, save your blueprint to a file and send it as cargo:\n  fleet cargo send --type blueprint --file blueprint.md\nYou may also print your design to stdout as a backup — raw output is captured to disk. Do NOT write code or create pull requests.\n\n`
           : '';
       const cargoHeader =
         this.opts.missionType === 'code' || this.opts.missionType == null
@@ -590,11 +588,6 @@ export class Hull {
         this.appendOutput(textParts.join('\n'));
       }
     } else if (isClaudeResultMessage(msg)) {
-      // Capture result text for research mission cargo
-      const rm = msg;
-      if (rm.result) {
-        this.resultText = rm.result;
-      }
       // Close stdin so the process exits naturally — this triggers the exit handler and cleanup.
       // With --input-format stream-json, Claude waits for more stdin input after a result message.
       // Closing stdin sends EOF, causing Claude to exit and triggering proc.on('exit') → cleanup().
@@ -865,7 +858,7 @@ export class Hull {
 
           overrideStatus = 'complete';
           db.prepare(
-            "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
+            "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
           ).run(missionId);
           if (this.opts.originalMissionId != null) {
             db.prepare(
@@ -876,7 +869,7 @@ export class Hull {
             "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
           ).run(
             crewId,
-            JSON.stringify({ missionId, status: 'completed', reason: 'No changes needed' })
+            JSON.stringify({ missionId, status: 'awaiting-cargo-check', reason: 'No changes needed' })
           );
           return;
         }
@@ -964,78 +957,29 @@ export class Hull {
             (this.opts.missionType === 'research' || this.opts.missionType === 'architect') &&
             status !== 'error'
           ) {
-            // Research/architect mission completed — produce cargo instead of failing
+            // Research/architect mission completed — set awaiting-cargo-check for explicit cargo send
             overrideStatus = 'complete';
-
-            // Write cargo files to starbase directory
-            const cargoDir = join(
-              process.env.HOME ?? '~',
-              '.fleet',
-              'starbases',
-              `starbase-${this.opts.starbaseId}`,
-              'cargo',
-              this.opts.sectorId,
-              String(missionId)
-            );
-            const fullOutput = this.outputLines.join('\n');
-            const summary = this.resultText ?? this.outputLines.slice(-20).join('\n');
-            const hasOutput = fullOutput.trim().length > 0;
+            const missionLabel = this.opts.missionType === 'architect' ? 'Architect' : 'Research';
+            const hasOutput = this.outputLines.join('\n').trim().length > 0;
             const resultMsg = hasOutput
-              ? 'Research completed'
-              : 'Research completed (no output captured)';
-
-            // Attempt to write cargo files
-            let fullManifest: string;
-            let summaryManifest: string;
-
-            try {
-              mkdirSync(cargoDir, { recursive: true });
-              const fullOutputPath = join(cargoDir, 'full-output.md');
-              const summaryPath = join(cargoDir, 'summary.md');
-              writeFileSync(fullOutputPath, fullOutput, 'utf-8');
-              writeFileSync(summaryPath, summary, 'utf-8');
-              fullManifest = JSON.stringify({ path: fullOutputPath });
-              summaryManifest = JSON.stringify({ path: summaryPath });
-            } catch (fileErr) {
-              log.error('cargo file write failed', {
-                error: fileErr instanceof Error ? fileErr.message : String(fileErr),
-                crewId
-              });
-              // Fallback: store content directly in manifest
-              fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
-              summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
-            }
-
-            // Insert cargo records
-            db.prepare(
-              `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
-               VALUES (?, ?, ?, 'documentation_full', ?, 1)`
-            ).run(crewId, missionId, this.opts.sectorId, fullManifest);
+              ? `${missionLabel} completed`
+              : `${missionLabel} completed (no output captured)`;
 
             db.prepare(
-              `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
-               VALUES (?, ?, ?, 'documentation_summary', ?, 1)`
-            ).run(crewId, missionId, this.opts.sectorId, summaryManifest);
-
-            // Update mission
-            db.prepare(
-              "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
+              "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, result = ?, completed_at = datetime('now') WHERE id = ?"
             ).run(resultMsg, missionId);
 
-            // Send comms
             db.prepare(
               "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
             ).run(
               crewId,
               JSON.stringify({
                 missionId,
-                status: 'completed',
-                reason: resultMsg,
-                cargoProduced: true
+                status: 'awaiting-cargo-check',
+                reason: resultMsg
               })
             );
 
-            // Log exit
             db.prepare(
               "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)"
             ).run(crewId, JSON.stringify({ status: 'complete', reason: resultMsg }));
@@ -1105,7 +1049,7 @@ export class Hull {
               filesDiscarded: discardedFiles.length,
               paths: discardedFiles.slice(0, 20),
               recommendation:
-                'Research/architect crews should print findings to stdout — do not write files to disk. Cargo is captured from terminal output.'
+                'Research/architect crews should use fleet cargo send to persist findings. Raw output is captured as a fallback.'
             })
           );
         }
@@ -1138,56 +1082,14 @@ export class Hull {
         }
 
         overrideStatus = 'complete';
-
-        const cargoDir = join(
-          process.env.HOME ?? '~',
-          '.fleet',
-          'starbases',
-          `starbase-${this.opts.starbaseId}`,
-          'cargo',
-          this.opts.sectorId,
-          String(missionId)
-        );
-        const fullOutput = this.outputLines.join('\n');
-        const summary = this.resultText ?? this.outputLines.slice(-20).join('\n');
-        const hasOutput = fullOutput.trim().length > 0;
         const missionLabel = this.opts.missionType === 'architect' ? 'Architect' : 'Research';
+        const hasOutput = this.outputLines.join('\n').trim().length > 0;
         const resultMsg = hasOutput
           ? `${missionLabel} completed`
           : `${missionLabel} completed (no output captured)`;
 
-        let fullManifest: string;
-        let summaryManifest: string;
-
-        try {
-          mkdirSync(cargoDir, { recursive: true });
-          const fullOutputPath = join(cargoDir, 'full-output.md');
-          const summaryPath = join(cargoDir, 'summary.md');
-          writeFileSync(fullOutputPath, fullOutput, 'utf-8');
-          writeFileSync(summaryPath, summary, 'utf-8');
-          fullManifest = JSON.stringify({ path: fullOutputPath });
-          summaryManifest = JSON.stringify({ path: summaryPath });
-        } catch (fileErr) {
-          log.error(
-            `cargo file write failed: ${fileErr instanceof Error ? fileErr.message : String(fileErr)}`,
-            { crewId }
-          );
-          fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
-          summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
-        }
-
         db.prepare(
-          `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
-           VALUES (?, ?, ?, 'documentation_full', ?, 1)`
-        ).run(crewId, missionId, this.opts.sectorId, fullManifest);
-
-        db.prepare(
-          `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
-           VALUES (?, ?, ?, 'documentation_summary', ?, 1)`
-        ).run(crewId, missionId, this.opts.sectorId, summaryManifest);
-
-        db.prepare(
-          "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
+          "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, result = ?, completed_at = datetime('now') WHERE id = ?"
         ).run(resultMsg, missionId);
 
         db.prepare(
@@ -1196,18 +1098,14 @@ export class Hull {
           crewId,
           JSON.stringify({
             missionId,
-            status: 'completed',
-            reason: resultMsg,
-            cargoProduced: true
+            status: 'awaiting-cargo-check',
+            reason: resultMsg
           })
         );
 
         db.prepare(
           "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)"
-        ).run(
-          crewId,
-          JSON.stringify({ status: 'complete', reason: resultMsg + ' (git changes discarded)' })
-        );
+        ).run(crewId, JSON.stringify({ status: 'complete', reason: resultMsg }));
         return;
       }
 
@@ -1602,7 +1500,7 @@ export class Hull {
           ).run(this.opts.originalMissionId);
           // Mark repair mission itself as completed
           db.prepare(
-            "UPDATE missions SET status = 'completed', result = 'Repair complete', completed_at = datetime('now') WHERE id = ?"
+            "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, result = 'Repair complete', completed_at = datetime('now') WHERE id = ?"
           ).run(missionId);
         } else {
           // Existing behaviour: store pr_branch, clear crew_id, and set pending-review
