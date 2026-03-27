@@ -289,9 +289,9 @@ export function StarCommandTab(): React.JSX.Element {
               <div className="flex items-center gap-3">
                 {/* Two-step reset confirmation (NNG: explicit destructive action confirmation) */}
                 {resetConfirm ? (
-                  <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded-md px-2 py-1">
-                    <span className="text-[10px] text-red-300 mr-1">
-                      Delete workspace &amp; restart?
+                  <div className="flex items-center gap-1.5 bg-amber-950/60 border border-amber-800/50 rounded-md px-2 py-1">
+                    <span className="text-[10px] text-amber-300 mr-1">
+                      Refresh config &amp; restart?
                     </span>
                     <button
                       className="text-[10px] px-2 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors font-medium"

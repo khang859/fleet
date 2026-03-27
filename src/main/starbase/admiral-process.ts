@@ -232,12 +232,27 @@ export class AdmiralProcess {
   }
 
   /**
-   * Stop the Admiral, delete the entire workspace, and restart fresh.
-   * This regenerates CLAUDE.md, skills, settings, and re-inits git.
+   * Stop the Admiral, regenerate CLAUDE.md, skills, and settings from
+   * the latest templates, then restart. Preserves the workspace directory,
+   * git history, docs, and learnings.
    */
   async reset(): Promise<string> {
     this.stop();
-    await fsp.rm(this.workspace, { recursive: true, force: true });
+
+    // Regenerate CLAUDE.md fully (not just the sectors auto-section)
+    const claudeMdPath = path.join(this.workspace, 'CLAUDE.md');
+    const content = generateClaudeMd({ starbaseName: this.starbaseName, sectors: this.sectors });
+    await fsp.writeFile(claudeMdPath, content, 'utf-8');
+
+    // Regenerate skill file
+    const skillDir = path.join(this.workspace, '.claude', 'skills', 'fleet');
+    await fsp.mkdir(skillDir, { recursive: true });
+    await fsp.writeFile(path.join(skillDir, 'SKILL.md'), generateSkillMd(), 'utf-8');
+
+    // Regenerate settings
+    const settingsPath = path.join(this.workspace, '.claude', 'settings.json');
+    await fsp.writeFile(settingsPath, generateSettings(this.fleetBinPath), 'utf-8');
+
     return this.start();
   }
 }
