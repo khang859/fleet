@@ -252,6 +252,24 @@ function createWindow(): void {
     });
   }
 
+  // After any page load (including hard refresh), push a fresh starbase snapshot
+  // so the renderer immediately restores sentinel/navigator/first-officer status
+  // instead of waiting for the next periodic snapshot event.
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (runtimeStatus.state === 'ready') {
+      runtimeClient
+        .invoke<Record<string, unknown>>('starbase.snapshot')
+        .then((snapshot) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, snapshot);
+          }
+        })
+        .catch(() => {
+          // Snapshot fetch may fail if runtime is shutting down; ignore.
+        });
+    }
+  });
+
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -544,12 +562,12 @@ void app.whenReady().then(() => {
     try {
       const paneId = await admiralProcessRef.start();
       admiralStateDetector.setAdmiralPaneId(paneId);
-      ptyManager.onData(paneId, (data) => {
+      ptyManager.onData(paneId, (data, paused) => {
         notificationDetector.scan(paneId, data);
         admiralStateDetector.scan(paneId, data);
         const w = mainWindow;
         if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
+          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
         }
       });
       cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
