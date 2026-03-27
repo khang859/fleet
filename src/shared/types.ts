@@ -11,7 +11,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images';
+  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images' | 'settings';
   avatarVariant?: string;
   splitRoot: PaneNode;
 };
