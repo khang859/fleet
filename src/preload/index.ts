@@ -384,10 +384,7 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
   },
   log: {
-    // Stub — full implementation wired in Task 3 (preload IPC bridge)
-    batch: (_entries: LogEntry[]): void => {
-      void _entries;
-    }
+    batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
   }
 };
 

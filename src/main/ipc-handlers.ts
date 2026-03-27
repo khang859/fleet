@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { createLogger } from './logger';
+import { createLogger, logger } from './logger';
 
 const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
@@ -22,7 +22,8 @@ import type {
   PaneFocusedPayload,
   StarbaseRuntimeStatus,
   DirEntry,
-  FileSearchRequest
+  FileSearchRequest,
+  LogEntry
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -72,6 +73,15 @@ export function registerIpcHandlers(
   getStarbaseServices: () => StarbaseServices,
   workspacePath: string
 ): void {
+  // Renderer log bridge — receives batched log entries from renderer and writes to Winston
+  ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
+    for (const entry of entries) {
+      const childLog = logger.child({ tag: entry.tag });
+      const meta = entry.meta ?? {};
+      childLog[entry.level](entry.message, meta);
+    }
+  });
+
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
     await getBootstrapState().envReady;
