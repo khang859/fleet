@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Terminal, ImageIcon, Settings } from 'lucide-react';
 import { getFileIcon } from './lib/file-icons';
@@ -44,7 +44,7 @@ export function App(): React.JSX.Element {
   const [showUndoToast, setShowUndoToast] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const [sidebarManualOpen, setSidebarManualOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const {
     workspace,
@@ -71,17 +71,6 @@ export function App(): React.JSX.Element {
   );
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
-
-  const isFullScreenTab = useMemo(() => {
-    const tab = workspace.tabs.find((t) => t.id === activeTabId);
-    return tab?.type === 'star-command' || tab?.type === 'images';
-  }, [workspace.tabs, activeTabId]);
-  const showSidebar = !isFullScreenTab || sidebarManualOpen;
-
-  // Reset manual override when leaving full-screen tab
-  useEffect(() => {
-    if (!isFullScreenTab) setSidebarManualOpen(false);
-  }, [isFullScreenTab]);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -377,10 +366,10 @@ export function App(): React.JSX.Element {
         <ShortcutsHint />
       </div>
       <div className="flex flex-1 min-h-0">
-        {showSidebar ? (
+        {!sidebarCollapsed ? (
           <Sidebar
             updateReady={updateReady}
-            onCollapse={isFullScreenTab ? () => setSidebarManualOpen(false) : undefined}
+            onCollapse={() => setSidebarCollapsed(true)}
           />
         ) : (
           <div
@@ -389,7 +378,7 @@ export function App(): React.JSX.Element {
           >
             {/* Expand sidebar button */}
             <button
-              onClick={() => setSidebarManualOpen(true)}
+              onClick={() => setSidebarCollapsed(false)}
               className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
               title="Show sidebar"
             >
