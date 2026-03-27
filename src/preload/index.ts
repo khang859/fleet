@@ -39,7 +39,7 @@ import type {
   RecentImagesResponse,
   ClipboardHistoryResponse
 } from '../shared/ipc-api';
-import type { Workspace, FleetSettings, UpdateStatus } from '../shared/types';
+import type { Workspace, FleetSettings, UpdateStatus, ImageGenerationMeta, ImageSettings } from '../shared/types';
 
 type Unsubscribe = () => void;
 
@@ -327,6 +327,38 @@ const fleetApi = {
     },
     installUpdate: (): void => ipcRenderer.send(IPC_CHANNELS.UPDATE_INSTALL),
     getVersion: async (): Promise<string> => typedInvoke(IPC_CHANNELS.GET_VERSION)
+  },
+  images: {
+    generate: async (opts: {
+      prompt: string;
+      provider?: string;
+      model?: string;
+      resolution?: string;
+      aspectRatio?: string;
+      outputFormat?: string;
+      numImages?: number;
+    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_GENERATE, opts),
+    edit: async (opts: {
+      prompt: string;
+      images: string[];
+      provider?: string;
+      model?: string;
+      resolution?: string;
+      aspectRatio?: string;
+      outputFormat?: string;
+      numImages?: number;
+    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_EDIT, opts),
+    getStatus: async (id: string): Promise<ImageGenerationMeta | null> =>
+      typedInvoke(IPC_CHANNELS.IMAGES_STATUS, id),
+    list: async (): Promise<ImageGenerationMeta[]> => typedInvoke(IPC_CHANNELS.IMAGES_LIST),
+    retry: async (id: string): Promise<{ id: string }> =>
+      typedInvoke(IPC_CHANNELS.IMAGES_RETRY, id),
+    delete: async (id: string): Promise<void> => typedInvoke(IPC_CHANNELS.IMAGES_DELETE, id),
+    getConfig: async (): Promise<ImageSettings> => typedInvoke(IPC_CHANNELS.IMAGES_CONFIG_GET),
+    setConfig: async (partial: Partial<ImageSettings>): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.IMAGES_CONFIG_SET, partial),
+    onChanged: (callback: (payload: { id: string }) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.IMAGES_CHANGED, callback)
   },
   shell: {
     openExternal: async (url: string): Promise<void> =>
