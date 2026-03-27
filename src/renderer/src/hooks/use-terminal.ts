@@ -2,6 +2,9 @@ import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 
 import { FitAddon } from '@xterm/addon-fit';
+import { createLogger } from '../logger';
+
+const log = createLogger('terminal:lifecycle');
 import { SearchAddon } from '@xterm/addon-search';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -57,6 +60,8 @@ function createTerminal(
   cleanupResizeTimer: () => void;
   cursorSuppressor: { dispose(): void };
 } {
+  log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
+
   const term = new Terminal({
     fontSize: options.fontSize ?? 14,
     fontFamily: options.fontFamily ?? 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
@@ -113,6 +118,7 @@ function createTerminal(
   term.loadAddon(webLinksAddon);
 
   term.open(container);
+  log.debug('xterm mounted', { paneId: options.paneId });
 
   // Restore serialized content after open (before canvas addon — content is buffer-level)
   if (options.serializedContent) {
@@ -211,6 +217,7 @@ function createTerminal(
     });
   };
 
+  log.debug('registerPaneData', { paneId: options.paneId });
   const ipcCleanup = window.fleet.pty.registerPaneData(options.paneId, (data) => {
     if (!attachResolved) {
       pendingLiveData.push(data);
@@ -230,10 +237,12 @@ function createTerminal(
     // output (and been paused due to buffer overflow) while the renderer was reloading.
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return;
+      log.debug('pty.attach', { paneId: options.paneId, bufferedBytes: data.length });
       if (data) writeToTerm(data);
     });
   } else if (!isPreCreated) {
     createdPtys.add(options.paneId);
+    log.debug('pty.create', { paneId: options.paneId, cwd: options.cwd });
     void window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd
@@ -244,6 +253,7 @@ function createTerminal(
     // arrives before the renderer mounts the terminal.
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return; // terminal disposed during round-trip
+      log.debug('pty.attach', { paneId: options.paneId, bufferedBytes: data.length });
       if (data) writeToTerm(data);
       attachResolved = true;
       for (const chunk of pendingLiveData) writeToTerm(chunk);
@@ -361,6 +371,7 @@ function createTerminal(
     if (resizeTimer !== null) clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
       resizeTimer = null;
+      log.debug('pty.resize', { paneId: options.paneId, cols: term.cols, rows: term.rows });
       window.fleet.pty.resize({
         paneId: options.paneId,
         cols: term.cols,
@@ -495,6 +506,7 @@ export function useTerminal(
     serializeRegistry.set(options.paneId, serializeAddon);
 
     return () => {
+      log.debug('terminal dispose', { paneId: options.paneId });
       termRef.current = null;
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);

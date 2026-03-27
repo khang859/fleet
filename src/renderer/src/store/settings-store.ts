@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import type { FleetSettings } from '../../../shared/types';
+import { createLogger } from '../logger';
+
+const log = createLogger('store:settings');
 
 type SettingsStoreState = {
   settings: FleetSettings | null;
@@ -13,11 +16,14 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
   isLoaded: false,
 
   loadSettings: async () => {
+    log.debug('loadSettings');
     const settings = await window.fleet.settings.get();
+    log.debug('loadSettings complete', { fontFamily: settings.general.fontFamily, fontSize: settings.general.fontSize });
     set({ settings, isLoaded: true });
   },
 
   updateSettings: async (partial) => {
+    log.debug('updateSettings', { keys: Object.keys(partial) });
     await window.fleet.settings.set(partial);
     const settings = await window.fleet.settings.get();
     set({ settings });

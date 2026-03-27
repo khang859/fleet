@@ -84,6 +84,7 @@ export function registerIpcHandlers(
 
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+    log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
     await getBootstrapState().envReady;
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);
@@ -132,6 +133,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_KILL, (_event, paneId: string) => {
+    log.debug('ipc:pty:kill', { paneId });
     ptyManager.kill(paneId);
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
   });
@@ -170,6 +172,7 @@ export function registerIpcHandlers(
 
   // Layout handlers
   ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
+    log.debug('ipc:layout:save', { workspaceId: req.workspace.id, tabCount: req.workspace.tabs.length });
     try {
       layoutStore.save(req.workspace);
       layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
@@ -182,14 +185,17 @@ export function registerIpcHandlers(
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LOAD, (_event, workspaceId: string): Workspace | undefined => {
+    log.debug('ipc:layout:load', { workspaceId });
     return layoutStore.load(workspaceId);
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LIST, (): LayoutListResponse => {
+    log.debug('ipc:layout:list');
     return { workspaces: layoutStore.list() };
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_DELETE, (_event, workspaceId: string) => {
+    log.debug('ipc:layout:delete', { workspaceId });
     layoutStore.delete(workspaceId);
   });
 

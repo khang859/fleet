@@ -5,6 +5,9 @@ import * as Dialog from '@radix-ui/react-dialog';
 import { Settings, Terminal, ImageIcon } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
+import { createLogger } from '../logger';
+
+const logDnd = createLogger('sidebar:dnd');
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 
@@ -323,8 +326,9 @@ export function Sidebar({
   } | null>(null);
 
   const handleDragStart = useCallback((index: number) => {
+    logDnd.debug('dragStart', { index, tabId: workspace.tabs[index]?.id });
     setDragIndex(index);
-  }, []);
+  }, [workspace.tabs]);
 
   const handleDragOver = useCallback(
     (e: React.DragEvent, index: number) => {
@@ -334,16 +338,21 @@ export function Sidebar({
       const rect = target.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const position = e.clientY < midY ? 'above' : 'below';
+      logDnd.debug('dragOver', { dragIndex, targetIndex: index, position, clientY: e.clientY, midY: Math.round(midY) });
       setDropTarget({ index, position });
     },
     [dragIndex]
   );
 
   const handleDrop = useCallback(() => {
-    if (dragIndex === null || !dropTarget) return;
+    if (dragIndex === null || !dropTarget) {
+      logDnd.debug('drop cancelled', { dragIndex, dropTarget });
+      return;
+    }
     const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
     // Adjust toIndex if dragging from before the drop point
     const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
+    logDnd.debug('drop', { dragIndex, dropTarget, rawToIndex: toIndex, adjustedTo, willReorder: dragIndex !== adjustedTo });
     if (dragIndex !== adjustedTo) {
       reorderTab(dragIndex, adjustedTo);
     }
@@ -354,12 +363,13 @@ export function Sidebar({
   // Clear drag state on drag end (even if drop didn't fire)
   useEffect(() => {
     const handleDragEnd = (): void => {
+      logDnd.debug('dragEnd', { hadDragIndex: dragIndex !== null });
       setDragIndex(null);
       setDropTarget(null);
     };
     window.addEventListener('dragend', handleDragEnd);
     return () => window.removeEventListener('dragend', handleDragEnd);
-  }, []);
+  }, [dragIndex]);
 
   // --- Saved workspaces ---
   const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);

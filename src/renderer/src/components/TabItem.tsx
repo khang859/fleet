@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
+import { createLogger } from '../logger';
+
+const logDnd = createLogger('sidebar:dnd');
 import type { NotificationLevel } from '../../../shared/types';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
@@ -148,6 +151,7 @@ export function TabItem({
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', String(index));
+            logDnd.debug('tabItem dragStart', { tabId: id, index, label });
             onDragStart(index);
           }}
           onDragOver={(e) => {
@@ -157,6 +161,7 @@ export function TabItem({
           }}
           onDrop={(e) => {
             e.preventDefault();
+            logDnd.debug('tabItem drop', { tabId: id, index, label });
             onDrop(index);
           }}
         >

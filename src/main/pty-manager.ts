@@ -96,6 +96,7 @@ export class PtyManager {
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
+        log.debug('backpressure pause', { paneId: opts.paneId, bufferBytes: entry.outputBuffer.length });
         entry.paused = true;
         this.flushPane(opts.paneId);
         proc.pause();
@@ -117,6 +118,7 @@ export class PtyManager {
   resize(paneId: string, cols: number, rows: number): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('resize', { paneId, cols, rows });
       entry.process.resize(cols, rows);
     }
   }
@@ -128,6 +130,7 @@ export class PtyManager {
   kill(paneId: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('kill', { paneId, pid: entry.process.pid });
       entry.dataDisposable?.dispose();
       entry.exitDisposable?.dispose();
       this.dataCallbacks.delete(paneId);
@@ -211,6 +214,7 @@ export class PtyManager {
   resume(paneId: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('resume', { paneId });
       entry.paused = false;
       entry.process.resume();
     }
@@ -222,6 +226,7 @@ export class PtyManager {
       // Dispose previous exit listener to prevent stacking (e.g. on HMR re-register)
       entry.exitDisposable?.dispose();
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
+        log.debug('exit', { paneId, exitCode });
         entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
         this.ptys.delete(paneId);

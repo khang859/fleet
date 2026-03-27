@@ -1,6 +1,9 @@
 import Store from 'electron-store';
 import { randomUUID } from 'crypto';
 import type { Workspace, Tab } from '../shared/types';
+import { createLogger } from './logger';
+
+const log = createLogger('layout:persistence');
 
 type StoreSchema = {
   workspaces: Record<string, Workspace>;
@@ -19,6 +22,7 @@ export class LayoutStore {
   }
 
   save(workspace: Workspace): void {
+    log.debug('save', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
     const workspaces = this.store.get('workspaces', {});
     workspaces[workspace.id] = workspace;
     this.store.set('workspaces', workspaces);
@@ -26,7 +30,9 @@ export class LayoutStore {
 
   load(workspaceId: string): Workspace | undefined {
     const workspaces = this.store.get('workspaces', {});
-    return workspaces[workspaceId];
+    const ws = workspaces[workspaceId];
+    log.debug('load', { workspaceId, found: !!ws, tabCount: ws?.tabs.length });
+    return ws;
   }
 
   list(): Workspace[] {
@@ -35,6 +41,7 @@ export class LayoutStore {
   }
 
   delete(workspaceId: string): void {
+    log.debug('delete', { workspaceId });
     const workspaces = this.store.get('workspaces', {});
     delete workspaces[workspaceId];
     this.store.set('workspaces', workspaces);
