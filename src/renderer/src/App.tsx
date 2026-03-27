@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Terminal, ImageIcon, Settings } from 'lucide-react';
+import * as Tooltip from '@radix-ui/react-tooltip';
+import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
+import admiralDefault from './assets/admiral-default.png';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
@@ -26,6 +29,32 @@ import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
 
+function MiniSidebarTooltip({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Tooltip.Provider delayDuration={200}>
+      <Tooltip.Root>
+        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content
+            side="right"
+            sideOffset={8}
+            className="px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50"
+          >
+            {label}
+            <Tooltip.Arrow className="fill-neutral-800" />
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  );
+}
+
 const UNDO_TOAST_DURATION = 5000;
 const PTY_GC_INTERVAL = 30_000; // 30 seconds
 
@@ -45,6 +74,8 @@ export function App(): React.JSX.Element {
   const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [miniWsOpen, setMiniWsOpen] = useState(false);
+  const [miniWsList, setMiniWsList] = useState<Array<{ id: string; label: string; tabCount: number }>>([]);
 
   const {
     workspace,
@@ -297,6 +328,48 @@ export function App(): React.JSX.Element {
     pendingKillRef.current = [];
   }, [undoCloseTab]);
 
+  // Load workspace list when mini sidebar workspace popover opens
+  useEffect(() => {
+    if (!miniWsOpen) return;
+    void window.fleet.layout.list().then(({ workspaces }) => {
+      setMiniWsList(
+        workspaces
+          .filter((w) => w.id !== workspace.id)
+          .map((w) => ({ id: w.id, label: w.label, tabCount: w.tabs.length }))
+      );
+    });
+  }, [miniWsOpen, workspace.id]);
+
+  const handleMiniWsSwitch = useCallback(async (wsId: string) => {
+    setMiniWsOpen(false);
+    const state = useWorkspaceStore.getState();
+    await window.fleet.layout.save({
+      workspace: {
+        ...state.workspace,
+        activeTabId: state.activeTabId ?? undefined,
+        activePaneId: state.activePaneId ?? undefined,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: injectLiveCwd(tab.splitRoot)
+        }))
+      }
+    });
+    const freshState = useWorkspaceStore.getState();
+    const inMemory = freshState.backgroundWorkspaces.get(wsId);
+    if (inMemory) {
+      freshState.switchWorkspace(inMemory);
+    } else {
+      const loaded = await window.fleet.layout.load(wsId);
+      if (loaded) useWorkspaceStore.getState().switchWorkspace(loaded);
+    }
+    setTimeout(() => {
+      const s = useWorkspaceStore.getState();
+      if (s.workspace.tabs.length === 0) {
+        s.addTab(undefined, window.fleet.homeDir);
+      }
+    }, 0);
+  }, []);
+
   // Periodic GC: kill orphaned PTYs that have no corresponding pane in the workspace
   useEffect(() => {
     const interval = setInterval(() => {
@@ -377,106 +450,208 @@ export function App(): React.JSX.Element {
             style={{ WebkitAppRegion: 'no-drag' }}
           >
             {/* Expand sidebar button */}
-            <button
-              onClick={() => setSidebarCollapsed(false)}
-              className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-              title="Show sidebar"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
+            <MiniSidebarTooltip label="Show sidebar">
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
               >
-                <rect x="1" y="2" width="14" height="12" rx="2" />
-                <line x1="5.5" y1="2" x2="5.5" y2="14" />
-              </svg>
-            </button>
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <rect x="1" y="2" width="14" height="12" rx="2" />
+                  <line x1="5.5" y1="2" x2="5.5" y2="14" />
+                </svg>
+              </button>
+            </MiniSidebarTooltip>
             <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            {/* Star Command icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'star-command')
+              .map((tab) => {
+                const isScActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Star Command" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isScActive
+                          ? 'bg-teal-900/40 ring-1 ring-teal-500/30'
+                          : 'hover:bg-neutral-800'
+                      }`}
+                    >
+                      <img
+                        src={admiralDefault}
+                        alt="Star Command"
+                        width={16}
+                        height={16}
+                        style={{ imageRendering: 'pixelated' }}
+                        className="rounded-sm"
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
             {/* Images pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'images')
               .map((tab) => {
                 const isImagesActive = tab.id === activeTabId;
                 return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`p-1.5 rounded transition-colors ${
-                      isImagesActive
-                        ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
-                        : 'hover:bg-neutral-800'
-                    }`}
-                    title="Images"
-                  >
-                    <svg
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={isImagesActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
-                      strokeWidth="1.5"
+                  <MiniSidebarTooltip label="Images" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isImagesActive
+                          ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
+                          : 'hover:bg-neutral-800'
+                      }`}
                     >
-                      <rect x="3" y="3" width="18" height="18" rx="2" />
-                      <circle cx="8.5" cy="8.5" r="1.5" />
-                      <path d="M21 15l-5-5L5 21" />
-                    </svg>
-                  </button>
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={isImagesActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
+                        strokeWidth="1.5"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </button>
+                  </MiniSidebarTooltip>
                 );
               })}
             {workspace.tabs.some((t) => t.type === 'images') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* Tab icons */}
+            {/* Crew tab icons */}
             {workspace.tabs
-              .filter((t) => t.type !== 'star-command' && t.type !== 'images')
+              .filter((t) => t.type === 'crew')
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`p-1 rounded transition-colors ${
-                      isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
-                    }`}
-                    title={tab.label}
-                  >
-                    {tab.type === 'crew' ? (
+                  <MiniSidebarTooltip label={tab.label} key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1 rounded transition-colors ${
+                        isActive ? 'bg-neutral-700 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800'
+                      }`}
+                    >
                       <Avatar type="crew" variant={tab.avatarVariant} size={20} />
-                    ) : tab.type === 'file' ? (
-                      <span className={isActive ? 'text-white' : 'text-neutral-500'}>
-                        {getFileIcon(
-                          collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??
-                            tab.label,
-                          16
-                        )}
-                      </span>
-                    ) : tab.type === 'image' ? (
-                      <ImageIcon
-                        size={16}
-                        className={isActive ? 'text-white' : 'text-neutral-500'}
-                      />
-                    ) : (
-                      <Terminal
-                        size={16}
-                        className={isActive ? 'text-white' : 'text-neutral-500'}
-                      />
-                    )}
-                  </button>
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {workspace.tabs.some((t) => t.type === 'crew') && (
+              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            )}
+            {/* File/terminal/image tab icons (excluding star-command, images, crew) */}
+            {workspace.tabs
+              .filter((t) => t.type !== 'star-command' && t.type !== 'images' && t.type !== 'crew')
+              .map((tab) => {
+                const isActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label={tab.label} key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1 rounded transition-colors ${
+                        isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
+                      }`}
+                    >
+                      {tab.type === 'file' ? (
+                        <span className={isActive ? 'text-white' : 'text-neutral-500'}>
+                          {getFileIcon(
+                            collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??
+                              tab.label,
+                            16
+                          )}
+                        </span>
+                      ) : tab.type === 'image' ? (
+                        <ImageIcon
+                          size={16}
+                          className={isActive ? 'text-white' : 'text-neutral-500'}
+                        />
+                      ) : (
+                        <Terminal
+                          size={16}
+                          className={isActive ? 'text-white' : 'text-neutral-500'}
+                        />
+                      )}
+                    </button>
+                  </MiniSidebarTooltip>
                 );
               })}
             <div className="flex-1" />
+            {/* Workspace switcher popover */}
+            <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
+              <MiniSidebarTooltip label={workspace.label}>
+                <Popover.Trigger asChild>
+                  <button className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors">
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    >
+                      <rect x="2" y="3" width="12" height="10" rx="1.5" />
+                      <path d="M2 6h12" />
+                      <path d="M5 3V1.5" />
+                      <path d="M11 3V1.5" />
+                    </svg>
+                  </button>
+                </Popover.Trigger>
+              </MiniSidebarTooltip>
+              <Popover.Portal>
+                <Popover.Content
+                  side="right"
+                  sideOffset={8}
+                  className="min-w-[180px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg py-1 z-50"
+                >
+                  <div className="px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider">
+                    Current: {workspace.label}
+                  </div>
+                  <div className="h-px bg-neutral-700 my-1" />
+                  {miniWsList.length > 0 ? (
+                    miniWsList.map((ws) => (
+                      <button
+                        key={ws.id}
+                        className="w-full px-3 py-1.5 text-sm text-neutral-300 hover:text-white hover:bg-neutral-700 text-left flex items-center justify-between"
+                        onClick={() => void handleMiniWsSwitch(ws.id)}
+                      >
+                        <span className="truncate">{ws.label}</span>
+                        <span className="text-[10px] text-neutral-600 ml-2">
+                          {ws.tabCount} tab{ws.tabCount !== 1 ? 's' : ''}
+                        </span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-1.5 text-xs text-neutral-600 italic">
+                      No other workspaces
+                    </div>
+                  )}
+                  <Popover.Arrow className="fill-neutral-800" />
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
             {/* Settings button */}
-            <button
-              onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
-              className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-              title="Settings"
-            >
-              <Settings size={16} />
-            </button>
+            <MiniSidebarTooltip label="Settings">
+              <button
+                onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+                className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+              >
+                <Settings size={16} />
+              </button>
+            </MiniSidebarTooltip>
           </div>
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
