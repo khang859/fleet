@@ -43,6 +43,16 @@ type ListCargoFilter = {
   verified?: boolean;
 };
 
+type SendCargoOpts = {
+  crewId: string;
+  missionId: number;
+  sectorId: string;
+  type: string;
+  content?: string;
+  filePath?: string;
+  starbaseId: string;
+};
+
 const FAILED_STATUSES = ['error', 'lost', 'timeout', 'failed', 'failed-verification', 'escalated'];
 
 export class CargoService {
@@ -136,6 +146,69 @@ export class CargoService {
       type: 'recovered_cargo',
       manifest
     });
+  }
+
+  async sendCargo(opts: SendCargoOpts): Promise<CargoRow> {
+    if (!opts.content && !opts.filePath) {
+      throw new Error('sendCargo requires either content or filePath');
+    }
+
+    const cargoDir = join(
+      process.env.HOME ?? '~',
+      '.fleet',
+      'starbases',
+      `starbase-${opts.starbaseId}`,
+      'cargo',
+      opts.sectorId,
+      String(opts.missionId)
+    );
+
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const ext = opts.filePath ? (opts.filePath.split('.').pop() ?? 'md') : 'md';
+    const fileName = `${ts}-${opts.type}.${ext}`;
+    const destPath = join(cargoDir, fileName);
+
+    let content: string;
+    if (opts.filePath) {
+      const { readFile } = await import('fs/promises');
+      content = await readFile(opts.filePath, 'utf-8');
+    } else {
+      content = opts.content!;
+    }
+
+    await mkdir(cargoDir, { recursive: true });
+    await writeFile(destPath, content, 'utf-8');
+
+    const manifest = JSON.stringify({
+      title: opts.type,
+      path: destPath,
+      size: Buffer.byteLength(content, 'utf-8'),
+      originalName: opts.filePath ? opts.filePath.split('/').pop() : null,
+      sourceType: 'explicit'
+    });
+
+    const cargo = this.produceCargo({
+      crewId: opts.crewId,
+      missionId: opts.missionId,
+      sectorId: opts.sectorId,
+      type: opts.type,
+      manifest
+    });
+
+    // If mission is awaiting-cargo-check, transition to completed atomically
+    const mission = this.db
+      .prepare<[number], { status: string }>('SELECT status FROM missions WHERE id = ?')
+      .get(opts.missionId);
+
+    if (mission?.status === 'awaiting-cargo-check') {
+      this.db
+        .prepare(
+          "UPDATE missions SET status = 'completed', cargo_checked = 1, completed_at = datetime('now') WHERE id = ?"
+        )
+        .run(opts.missionId);
+    }
+
+    return cargo;
   }
 
   getCargo(id: number): CargoRow | undefined {
