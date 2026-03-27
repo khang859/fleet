@@ -1,5 +1,6 @@
 import { fal } from '@fal-ai/client';
 import type { ImageProvider, GenerateOpts, EditOpts, PollResult, GenerationResult } from './types';
+import type { ImageActionConfig } from './action-types';
 
 function isEditOpts(opts: GenerateOpts | EditOpts): opts is EditOpts {
   return 'imageUrls' in opts && Array.isArray(opts.imageUrls);
@@ -79,5 +80,24 @@ export class FalAiProvider implements ImageProvider {
 
   async cancel(requestId: string): Promise<void> {
     await fal.queue.cancel(this.currentModel, { requestId });
+  }
+
+  getActions(): ImageActionConfig[] {
+    return [
+      {
+        id: 'fal-ai:remove-background',
+        actionType: 'remove-background',
+        provider: 'fal-ai',
+        name: 'Remove Background',
+        description: 'Remove the background from an image (BRIA RMBG 2.0)',
+        endpoint: 'https://fal.run/fal-ai/bria/background/remove',
+        inputMapping: (url: string) => ({ image_url: url, sync_mode: true }),
+        outputMapping: (response: unknown) => {
+          const res = response as { image: { url: string; width: number; height: number } };
+          return { url: res.image.url, width: res.image.width, height: res.image.height };
+        },
+        outputFormat: 'png'
+      }
+    ];
   }
 }
