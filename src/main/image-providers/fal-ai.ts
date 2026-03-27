@@ -10,8 +10,10 @@ export class FalAiProvider implements ImageProvider {
   id = 'fal-ai';
   name = 'fal.ai';
   private currentModel = 'fal-ai/nano-banana-2';
+  private storedSettings: Record<string, unknown> = {};
 
   configure(settings: Record<string, unknown>): void {
+    this.storedSettings = settings;
     const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey : '';
     if (apiKey) {
       fal.config({ credentials: apiKey });
@@ -83,14 +85,28 @@ export class FalAiProvider implements ImageProvider {
   }
 
   getActions(): ImageActionConfig[] {
+    const actionSettings =
+      this.storedSettings.actions != null && typeof this.storedSettings.actions === 'object'
+        ? (this.storedSettings.actions as Record<string, Record<string, unknown>>)
+        : {};
+    const rbModel =
+      typeof actionSettings['remove-background']?.model === 'string'
+        ? actionSettings['remove-background'].model
+        : null;
+    const rbEndpoint = rbModel
+      ? `https://fal.run/${rbModel}`
+      : 'https://fal.run/fal-ai/bria/background/remove';
+
     return [
       {
         id: 'fal-ai:remove-background',
         actionType: 'remove-background',
         provider: 'fal-ai',
         name: 'Remove Background',
-        description: 'Remove the background from an image (BRIA RMBG 2.0)',
-        endpoint: 'https://fal.run/fal-ai/bria/background/remove',
+        description: rbModel
+          ? `Remove the background from an image (${rbModel})`
+          : 'Remove the background from an image (BRIA RMBG 2.0)',
+        endpoint: rbEndpoint,
         inputMapping: (url: string) => ({ image_url: url, sync_mode: true }),
         outputMapping: (response: unknown) => {
           const data = response != null && typeof response === 'object' ? response : {};
