@@ -11,6 +11,9 @@ import type {
 } from '../shared/starbase-runtime';
 import type { StarbaseRuntimeStatus } from '../shared/ipc-api';
 import { CodedError } from './errors';
+import { createLogger } from './logger';
+
+const log = createLogger('starbase-runtime');
 
 type PendingRequest = {
   resolve: (value: unknown) => void;
@@ -73,35 +76,35 @@ export class StarbaseRuntimeClient {
       trace('spawned child', { pid: child.pid, scriptPath });
 
       child.on('spawn', () => {
-        // eslint-disable-next-line no-console
-        console.log(`[starbase-runtime] spawned pid=${child.pid ?? 'unknown'}`);
+        log.info('spawned', { pid: child.pid ?? 'unknown' });
         trace('child spawn event', { pid: child.pid });
       });
 
       child.stdout?.on('data', (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) {
-          // eslint-disable-next-line no-console
-          console.log(`[starbase-runtime:stdout] ${text}`);
+          log.debug('stdout', { output: text });
         }
       });
 
       child.stderr?.on('data', (chunk: Buffer) => {
         const text = chunk.toString().trim();
         if (text) {
-          console.error(`[starbase-runtime:stderr] ${text}`);
+          log.warn('stderr', { output: text });
         }
       });
 
       child.on('error', (error) => {
-        console.error('[starbase-runtime] child process error:', error);
+        log.error('child process error', {
+          message: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined
+        });
         trace('child process error', { message: error.message, stack: error.stack });
       });
 
       child.on('message', (message: RuntimeMessageLike) => {
         trace('parent received raw message', this.describeMessage(message));
-        // eslint-disable-next-line no-console
-        console.log('[starbase-runtime] parent received message', {
+        log.debug('parent received message', {
           rawType: typeof message,
           hasData: Boolean(message && typeof message === 'object' && 'data' in message)
         });
@@ -115,7 +118,7 @@ export class StarbaseRuntimeClient {
         if (this.status.state !== 'error') {
           this.setStatus({ state: 'error', error: error.message });
         }
-        console.error('[starbase-runtime] exited', { code });
+        log.error('exited', { code });
         trace('child exit', { code });
         for (const pending of this.pending.values()) {
           pending.reject(error);
@@ -158,8 +161,7 @@ export class StarbaseRuntimeClient {
 
     const id = randomUUID();
     const request: RuntimeRequest = { id, method, args };
-    // eslint-disable-next-line no-console
-    console.log('[starbase-runtime] parent sending request', { id, method });
+    log.debug('parent sending request', { id, method });
     trace('parent sending request', { id, method });
 
     return new Promise<T>((resolve, reject) => {
@@ -168,9 +170,13 @@ export class StarbaseRuntimeClient {
         resolve(value as T);
       };
       this.pending.set(id, { resolve: resolveFn, reject });
-      child.send?.(request, (error) => {
+      child.send(request, (error) => {
         if (error) {
-          console.error('[starbase-runtime] send failed', { id, method, error });
+          log.error('send failed', {
+            id,
+            method,
+            error: error instanceof Error ? error.message : String(error)
+          });
           trace('send failed', { id, method, message: error.message, stack: error.stack });
           const pending = this.pending.get(id);
           if (pending) {
@@ -202,14 +208,13 @@ export class StarbaseRuntimeClient {
 
   private handleMessage(message: RuntimeEnvelope | undefined): void {
     if (!message) {
-      console.warn('[starbase-runtime] parent received empty message');
+      log.warn('parent received empty message');
       trace('parent received empty message');
       return;
     }
 
     if ('event' in message) {
-      // eslint-disable-next-line no-console
-      console.log('[starbase-runtime] parent handling event', { event: message.event });
+      log.debug('parent handling event', { event: message.event });
       trace('parent handling event', { event: message.event });
       if (message.event === 'runtime.status') {
         this.setStatus(message.payload);
@@ -220,24 +225,21 @@ export class StarbaseRuntimeClient {
 
     const pending = this.pending.get(message.id);
     if (!pending) {
-      console.warn('[starbase-runtime] parent received response with no pending request', {
-        id: message.id
-      });
+      log.warn('parent received response with no pending request', { id: message.id });
       trace('response with no pending request', { id: message.id });
       return;
     }
     this.pending.delete(message.id);
 
     if (message.ok) {
-      // eslint-disable-next-line no-console
-      console.log('[starbase-runtime] parent resolved request', { id: message.id });
+      log.debug('parent resolved request', { id: message.id });
       trace('parent resolved request', { id: message.id });
       pending.resolve(message.data);
       return;
     }
 
     const error = new CodedError(message.error, message.code ?? 'UNKNOWN');
-    console.error('[starbase-runtime] parent rejected request', {
+    log.error('parent rejected request', {
       id: message.id,
       message: message.error,
       code: message.code

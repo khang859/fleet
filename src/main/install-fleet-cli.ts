@@ -4,6 +4,9 @@ import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
+import { createLogger } from './logger';
+const log = createLogger('fleet-cli');
+
 // ── installFleetCLI ───────────────────────────────────────────────────────────
 //
 // Ensures the `fleet` CLI binary is available at ~/.fleet/bin/fleet.
@@ -146,12 +149,12 @@ exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
 
   // 5. Add ~/.fleet/bin to user's shell profile (idempotent)
   await addFleetBinToShellProfile().catch((err) => {
-    // eslint-disable-next-line no-console
-    console.warn('[fleet-cli] Could not update shell profile:', err);
+    log.warn('could not update shell profile', {
+      error: err instanceof Error ? err.message : String(err)
+    });
   });
 
-  // eslint-disable-next-line no-console
-  console.log(`[fleet-cli] Installed fleet CLI at ${wrapperPath}`);
+  log.info('installed fleet CLI', { path: wrapperPath });
 
   return binDir;
 }
@@ -193,7 +196,6 @@ async function addFleetBinToShellProfile(): Promise<void> {
     if (existing.includes('.fleet/bin')) continue;
 
     await appendFile(profilePath, content, 'utf8');
-    // eslint-disable-next-line no-console
-    console.log(`[fleet-cli] Added ~/.fleet/bin to ${profilePath}`);
+    log.info('added ~/.fleet/bin to shell profile', { profilePath });
   }
 }

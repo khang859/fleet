@@ -1,5 +1,8 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { safeOpenExternal } from './safe-external';
+import { createLogger } from './logger';
+
+const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative } from 'path';
@@ -148,8 +151,7 @@ export function registerIpcHandlers(
   ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
     const killed = ptyManager.gc(new Set(activePaneIds));
     if (killed.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log(`[pty-gc] killed ${killed.length} orphaned PTY(s):`, killed);
+      log.info('killed orphaned PTYs', { count: killed.length, paneIds: killed });
       for (const paneId of killed) {
         eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
       }
@@ -163,7 +165,9 @@ export function registerIpcHandlers(
       layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
       layoutStore.ensureImagesTab(req.workspace.id, workspacePath);
     } catch (err) {
-      console.error('[layout-save] Failed to save workspace:', err);
+      log.error('failed to save workspace', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   });
 

@@ -2,6 +2,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
+import { createLogger } from './logger';
+const log = createLogger('shell-env');
+
 // ── Shell environment resolution ────────────────────────────────────────────
 //
 // Packaged Electron apps on macOS/Linux inherit a minimal PATH from launchd
@@ -30,10 +33,11 @@ export async function enrichProcessEnv(): Promise<void> {
     for (const [key, value] of Object.entries(env)) {
       process.env[key] = value;
     }
-    // eslint-disable-next-line no-console
-    console.log(`[shell-env] Resolved PATH (${process.env.PATH?.substring(0, 120)}…)`);
+    log.debug('resolved PATH', { path: process.env.PATH?.substring(0, 120) });
   } catch (err) {
-    console.warn('[shell-env] Failed to resolve shell env, falling back to path probing:', err);
+    log.warn('failed to resolve shell env, falling back to path probing', {
+      error: err instanceof Error ? err.message : String(err)
+    });
     applyFallbackPaths();
   }
 }
@@ -98,8 +102,7 @@ function applyFallbackPaths(): void {
   const existing = candidates.filter((p) => existsSync(p));
   if (existing.length > 0) {
     process.env.PATH = existing.join(':') + ':' + (process.env.PATH ?? '');
-    // eslint-disable-next-line no-console
-    console.log(`[shell-env] Fallback PATH: ${process.env.PATH.substring(0, 120)}…`);
+    log.debug('fallback PATH', { path: process.env.PATH.substring(0, 120) });
   }
 }
 

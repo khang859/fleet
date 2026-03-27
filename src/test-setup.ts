@@ -1,3 +1,24 @@
+import { vi } from 'vitest';
+
+// Mock Electron app for logger module (and any other module that imports electron)
+vi.mock('electron', () => ({
+  app: {
+    isPackaged: false,
+    getPath: (name: string) => {
+      if (name === 'home') return '/tmp/fleet-test';
+      return '/tmp';
+    }
+  }
+}));
+
+// Mock winston-daily-rotate-file to avoid real file I/O in tests
+vi.mock('winston-daily-rotate-file', () => {
+  const Transport = vi.fn();
+  Transport.prototype.on = vi.fn();
+  Transport.prototype.log = vi.fn();
+  return { default: Transport };
+});
+
 // Polyfill OffscreenCanvas for Node.js test environment
 if (typeof OffscreenCanvas === 'undefined') {
   class FakeOffscreenCanvas {
