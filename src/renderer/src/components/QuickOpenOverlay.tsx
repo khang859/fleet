@@ -68,15 +68,11 @@ export function QuickOpenOverlay({
     });
   }, [isOpen, rootDir]);
 
-  // Focus input on open — blur active element first to release xterm's
-  // hidden textarea which otherwise captures keyboard events (including paste)
+  // Focus input on open
   useEffect(() => {
     if (isOpen) {
       setQuery('');
       setSelectedIndex(0);
-      if (document.activeElement instanceof HTMLElement) {
-        document.activeElement.blur();
-      }
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);

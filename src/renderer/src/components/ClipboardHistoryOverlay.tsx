@@ -37,8 +37,13 @@ export function ClipboardHistoryOverlay({
   const listRef = useRef<HTMLDivElement>(null);
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
+  const activeTab = useWorkspaceStore((s) => {
+    const tabId = s.activeTabId;
+    return tabId ? s.workspace.tabs.find((t) => t.id === tabId) : undefined;
+  });
   const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
-  const targetPaneId = activePaneId ?? admiralPaneId;
+  const targetPaneId =
+    activeTab?.type === 'star-command' ? (admiralPaneId ?? activePaneId) : (activePaneId ?? admiralPaneId);
 
   // Load history and subscribe to changes
   useEffect(() => {
