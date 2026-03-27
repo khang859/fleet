@@ -164,7 +164,7 @@ export class MissionService {
              SELECT 1 FROM mission_dependencies md
              JOIN missions dep ON dep.id = md.depends_on_mission_id
              WHERE md.mission_id = missions.id
-               AND dep.status NOT IN ('completed', 'failed', 'aborted')
+               AND dep.status NOT IN ('completed', 'awaiting-cargo-check', 'failed', 'aborted')
            )
          )
          ORDER BY priority ASC, created_at ASC

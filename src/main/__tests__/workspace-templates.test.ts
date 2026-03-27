@@ -185,7 +185,7 @@ describe('generateSkillMd', () => {
     const md = generateSkillMd();
     expect(md).toContain('--depends-on');
     expect(md).toContain('Research-First Workflow');
-    expect(md).toContain('summary cargo path is referenced');
+    expect(md).toContain('cargo is available to dependent code missions via the cargo header');
   });
 });
 

@@ -552,7 +552,7 @@ describe('Hull — Research mission cleanup', () => {
   }
 
   it(
-    'research mission with no changes — marks completed, produces cargo',
+    'research mission with no changes — marks awaiting-cargo-check',
     { timeout: 60_000 },
     async () => {
       setupWorktreeNoChanges();
@@ -597,7 +597,7 @@ describe('Hull — Research mission cleanup', () => {
         .getDb()
         .prepare('SELECT status, result FROM missions WHERE id = ?')
         .get(mission.id) as any;
-      expect(row.status).toBe('completed');
+      expect(row.status).toBe('awaiting-cargo-check');
       expect(row.result).toContain('Research completed');
 
       const crew = db
@@ -606,25 +606,13 @@ describe('Hull — Research mission cleanup', () => {
         .get(opts.crewId) as any;
       expect(crew.status).toBe('complete');
 
-      const cargo = db
-        .getDb()
-        .prepare('SELECT * FROM cargo WHERE mission_id = ?')
-        .all(mission.id) as any[];
-      expect(cargo.length).toBe(2);
-      expect(cargo.map((c: { type: string; verified: number }) => c.type).sort()).toEqual([
-        'documentation_full',
-        'documentation_summary'
-      ]);
-      expect(cargo.every((c: { type: string; verified: number }) => c.verified === 1)).toBe(true);
-
       const comms = db
         .getDb()
         .prepare("SELECT payload FROM comms WHERE from_crew = ? AND type = 'mission_complete'")
         .get(opts.crewId) as any;
       expect(comms).toBeTruthy();
       const payload = JSON.parse(comms.payload);
-      expect(payload.status).toBe('completed');
-      expect(payload.cargoProduced).toBe(true);
+      expect(payload.status).toBe('awaiting-cargo-check');
     }
   );
 
@@ -1191,7 +1179,7 @@ describe('Hull — Repair mission SIGTERM handling', () => {
         .getDb()
         .prepare('SELECT status FROM missions WHERE id = ?')
         .get(repairMission.id) as any;
-      expect(repairRow.status).toBe('completed');
+      expect(repairRow.status).toBe('awaiting-cargo-check');
     }
   );
 

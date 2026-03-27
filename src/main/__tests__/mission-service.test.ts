@@ -53,7 +53,7 @@ describe('MissionService', () => {
     const m = missionSvc.addMission({ sectorId: 'api', summary: 'M1', prompt: 'P1' });
     missionSvc.completeMission(m.id, 'Endpoint created');
     const updated = missionSvc.getMission(m.id);
-    expect(updated!.status).toBe('completed');
+    expect(updated!.status).toBe('awaiting-cargo-check');
     expect(updated!.result).toBe('Endpoint created');
     expect(updated!.completed_at).toBeDefined();
   });
