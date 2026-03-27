@@ -383,7 +383,7 @@ export class Sentinel {
 
     // 10a. Guidance sweep — dispatch FirstOfficer consultant for stuck crews
     if (this.deps.firstOfficer) {
-      await this.guidanceSweep();
+      this.guidanceSweep();
     }
 
     // 10b. First Officer triage — detect actionable failures and dispatch
@@ -466,7 +466,7 @@ export class Sentinel {
     }
   }
 
-  private async guidanceSweep(): Promise<void> {
+  private guidanceSweep(): void {
     const { db, firstOfficer } = this.deps;
     if (!firstOfficer) return;
 

@@ -807,7 +807,7 @@ export class SocketServer extends EventEmitter {
         // Guidance protection: transition crew status on guidance comms
         if (msgType === 'needs-guidance' && from !== 'admiral') {
           const crewStatus = await crewService.getCrewStatus(from);
-          if (crewStatus && crewStatus.status === 'active') {
+          if (crewStatus?.status === 'active') {
             await crewService.setCrewStatus(from, 'awaiting-guidance');
             await crewService.resetCrewTimeout(from);
           }
@@ -815,7 +815,7 @@ export class SocketServer extends EventEmitter {
 
         if (msgType === 'guidance-response' && to !== 'admiral') {
           const crewStatus = await crewService.getCrewStatus(to);
-          if (crewStatus && crewStatus.status === 'awaiting-guidance') {
+          if (crewStatus?.status === 'awaiting-guidance') {
             await crewService.setCrewStatus(to, 'active');
             // resetCrewTimeout happens via hull.sendMessage below (auto-inject)
           }
