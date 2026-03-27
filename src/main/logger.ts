@@ -9,10 +9,14 @@ const level = process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info');
 const consoleFormat = winston.format.combine(
   winston.format.errors({ stack: true }),
   winston.format.timestamp({ format: 'HH:mm:ss.SSS' }),
-  winston.format.printf(({ timestamp, level: lvl, message, tag, ...meta }) => {
+  winston.format.printf((info) => {
+    const rawTag = info.tag;
+    const tag = typeof rawTag === 'string' ? rawTag : '';
     const prefix = tag ? `[${tag}]` : '';
+    const { timestamp, level: lvl, message, tag: _unusedTag, ...meta } = info;
+    void _unusedTag;
     const metaStr = Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : '';
-    return `${timestamp} ${prefix} ${lvl}: ${message}${metaStr}`;
+    return `${String(timestamp)} ${prefix} ${String(lvl)}: ${String(message)}${metaStr}`;
   })
 );
 
