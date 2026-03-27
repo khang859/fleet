@@ -1,7 +1,8 @@
 import type Database from 'better-sqlite3';
 import { spawn, type ChildProcess, execSync, type ExecSyncOptions } from 'child_process';
-import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
-import { join } from 'path';
+import { writeFileSync, unlinkSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 import {
   inferCommitType,
@@ -12,6 +13,38 @@ import {
 import { generateSkillMd } from './workspace-templates';
 import { filterEnv } from '../env-utils';
 import type { Analyst } from './analyst';
+
+const PROMPTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'prompts');
+
+function buildCrewSystemPrompt(missionType: string, sectorSystemPrompt?: string): string {
+  let preamble = '';
+  try {
+    preamble = readFileSync(join(PROMPTS_DIR, `${missionType}-crew.md`), 'utf-8');
+  } catch {
+    // No preamble file for this mission type
+  }
+
+  const sharedModules = ['status-reporting'];
+  if (missionType === 'code' || missionType === 'repair') {
+    sharedModules.push('verification-gate', 'self-review', 'escalation');
+  }
+  if (missionType === 'code' || missionType === 'architect') {
+    sharedModules.push('yagni');
+  }
+
+  const shared = sharedModules
+    .map((m) => {
+      try {
+        return readFileSync(join(PROMPTS_DIR, 'shared', `${m}.md`), 'utf-8');
+      } catch {
+        return '';
+      }
+    })
+    .filter(Boolean)
+    .join('\n\n');
+
+  return [preamble, shared, sectorSystemPrompt].filter(Boolean).join('\n\n');
+}
 
 export function buildCargoHeader(db: Database.Database, missionId: number): string {
   const deps = db
@@ -273,143 +306,9 @@ export class Hull {
         model
       ];
 
-      // Build system prompt: research preamble (if applicable) + sector system_prompt
-      const researchPreamble =
-        this.opts.missionType === 'research'
-          ? `# Research Mission Instructions
-
-You are an expert code analyst deployed on a research mission (FLEET_MISSION_TYPE=research). Your mission is to provide a complete understanding of how a specific feature or system works by tracing its implementation from entry points to data storage, through all abstraction layers.
-
-## Analysis Approach
-- **Feature Discovery**: Find entry points (APIs, UI components, CLI commands), locate core implementation files, map feature boundaries and configuration.
-- **Code Flow Tracing**: Follow call chains from entry to output, trace data transformations at each step, identify all dependencies and integrations, document state changes and side effects.
-- **Architecture Analysis**: Map abstraction layers (presentation → business logic → data), identify design patterns and architectural decisions, document interfaces between components, note cross-cutting concerns.
-- **Implementation Details**: Key algorithms and data structures, error handling and edge cases, performance considerations, technical debt or improvement areas.
-
-## Output Format
-Provide a comprehensive analysis that helps developers understand the feature deeply enough to modify or extend it. Include:
-- Entry points with file:line references
-- Step-by-step execution flow with data transformations
-- Key components and their responsibilities
-- Architecture insights: patterns, layers, design decisions
-- Dependencies (external and internal)
-- Observations about strengths, issues, or opportunities
-- List of files that are absolutely essential to understand the topic
-
-## Cargo Workflow
-- Output your findings as printed text in your responses — do NOT write findings to files in the worktree.
-- The Fleet system captures your full output as cargo automatically.
-- Use WebSearch, WebFetch, Read, Glob, Grep, and Bash for investigation.
-
-## Constraints
-- Do NOT push code or create pull requests. This is a research mission, not a code mission.
-- Do NOT commit changes. Any git changes you make will be discarded at the end of the mission.
-
-## Environment
-- FLEET_MISSION_TYPE=research (available in your environment)
-`
-          : null;
-
-      const reviewPreamble =
-        this.opts.missionType === 'review'
-          ? `# Review Mission Instructions
-
-You are an expert code reviewer deployed on a PR review mission (FLEET_MISSION_TYPE=review). Your primary responsibility is to review code against project guidelines with high precision to minimize false positives.
-
-## Review Scope
-Review the PR diff using: gh pr diff <branch>
-
-## Core Review Responsibilities
-- **Project Guidelines Compliance**: Verify adherence to explicit project rules (CLAUDE.md) including import patterns, framework conventions, naming conventions, error handling, testing practices.
-- **Bug Detection**: Identify actual bugs — logic errors, null/undefined handling, race conditions, memory leaks, security vulnerabilities, performance problems.
-- **Code Quality**: Evaluate significant issues like code duplication, missing critical error handling, and inadequate test coverage.
-
-## Confidence Scoring
-Rate each potential issue 0–100. Only report issues with confidence ≥ 80. Focus on issues that truly matter — quality over quantity.
-
-## Output Format
-You MUST end your response with:
-
-VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
-NOTES: <specific file:line references for any issues found>
-
-For each high-confidence issue provide: description with confidence score, file path and line number, specific guideline reference or bug explanation, and a concrete fix suggestion.
-
-## Constraints
-- Do NOT make code changes. This is a review mission.
-- Do NOT commit or push. Any changes will be discarded.
-- Only report issues you are >=80% confident about.`
-          : null;
-
-      const architectPreamble =
-        this.opts.missionType === 'architect'
-          ? `# Architect Mission Instructions
-
-You are a senior software architect deployed on an architecture design mission (FLEET_MISSION_TYPE=architect).
-
-## Core Process
-- Analyze existing codebase patterns, conventions, and architectural decisions. Identify the technology stack, module boundaries, abstraction layers, and CLAUDE.md guidelines. Find similar features to understand established approaches.
-- Design the complete feature architecture based on patterns found. Make decisive choices — pick one approach and commit. Ensure seamless integration with existing code.
-- Produce a comprehensive implementation blueprint: every file to create or modify, component responsibilities, integration points, and data flow. Break implementation into clear phases with specific tasks.
-
-## Output Format
-Deliver a decisive, complete architecture blueprint. Include:
-- **Patterns & Conventions Found**: Existing patterns with file:line references, similar features, key abstractions
-- **Architecture Decision**: Your chosen approach with rationale and trade-offs
-- **Component Design**: Each component with file path, responsibilities, dependencies, and interfaces
-- **Implementation Map**: Specific files to create/modify with detailed change descriptions
-- **Data Flow**: Complete flow from entry points through transformations to outputs
-- **Build Sequence**: Phased implementation steps as a checklist
-
-## Cargo Workflow
-- Output your blueprint as printed text in your responses — do NOT write designs to files in the worktree.
-- The Fleet system captures your full output as cargo automatically.
-- Use Read, Glob, Grep, Bash, and WebFetch to explore the codebase before designing.
-
-## Constraints
-- Do NOT write code or create pull requests. This is a design mission, not a code mission.
-- Do NOT commit changes. Any git changes you make will be discarded at the end of the mission.
-- Focus on analyzing existing patterns, then producing an implementation blueprint.
-
-## Environment
-- FLEET_MISSION_TYPE=architect (available in your environment)
-`
-          : null;
-
-      const repairPreamble =
-        this.opts.missionType === 'repair'
-          ? `# Repair Mission Instructions
-
-You are a repair crew deployed on a repair mission (FLEET_MISSION_TYPE=repair).
-You are working on an existing PR branch — do NOT create a new branch or new PR.
-
-## Your Objective
-Fix the issues described in this mission (CI failures and/or review comments).
-The PR already exists. Your commits will be pushed to the existing PR branch automatically.
-
-## Workflow
-- Read the CI failure output and/or review comments in your mission prompt
-- Use \`gh pr view --comments\` to see any additional reviewer feedback
-- Use \`gh pr checks\` to see the current CI status
-- Fix the identified issues
-- Commit your changes — they will be pushed on mission completion
-
-## Constraints
-- Do NOT run \`gh pr create\` — the PR already exists
-- Do NOT switch branches or create new branches
-- Do NOT merge or close the PR
-`
-          : null;
-
-      const combinedSystemPrompt = [
-        researchPreamble,
-        reviewPreamble,
-        architectPreamble,
-        repairPreamble,
-        this.opts.systemPrompt
-      ]
-        .filter(Boolean)
-        .join('\n\n');
+      // Build system prompt from modular prompt files + sector system_prompt
+      const missionType = this.opts.missionType ?? 'code';
+      const combinedSystemPrompt = buildCrewSystemPrompt(missionType, this.opts.systemPrompt);
 
       if (combinedSystemPrompt) {
         const spFile = join(promptDir, `${crewId}-system-prompt.md`);
