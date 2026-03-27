@@ -1123,7 +1123,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
 
     for (const mission of autoApproved) {
       db.prepare(
-        "UPDATE missions SET status = 'completed', completed_at = datetime('now') WHERE id = ?"
+        "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, completed_at = datetime('now') WHERE id = ?"
       ).run(mission.id);
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES ('admiral', 'admiral', 'mission_approved', ?)"

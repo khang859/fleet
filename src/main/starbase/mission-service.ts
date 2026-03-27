@@ -83,7 +83,7 @@ export class MissionService {
   completeMission(missionId: number, result: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
+        "UPDATE missions SET status = 'awaiting-cargo-check', cargo_checked = 0, result = ?, completed_at = datetime('now') WHERE id = ?"
       )
       .run(result, missionId);
     this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });

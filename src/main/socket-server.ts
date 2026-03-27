@@ -557,7 +557,7 @@ export class SocketServer extends EventEmitter {
 
         await missionService.setReviewVerdict(id, verdict, notes);
         if (verdict === 'approved') {
-          await missionService.setStatus(id, 'completed');
+          await missionService.setStatus(id, 'awaiting-cargo-check');
           const mission = await missionService.getMission(id);
           await commsService.send({
             from: 'admiral',
