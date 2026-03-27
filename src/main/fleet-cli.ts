@@ -1252,7 +1252,9 @@ export async function runCLI(
         'default-resolution',
         'default-output-format',
         'default-aspect-ratio',
-        'provider'
+        'provider',
+        'action',
+        'model'
       ].includes(k)
     );
     const configCommand = hasSetFlags ? 'image.config.set' : 'image.config.get';
