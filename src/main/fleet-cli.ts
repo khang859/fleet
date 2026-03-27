@@ -370,6 +370,7 @@ const COMMAND_MAP: Record<string, string> = {
   'cargo.inspect': 'cargo.inspect',
   'cargo.pending': 'cargo.pending',
   'cargo.produce': 'cargo.produce',
+  'cargo.send': 'cargo.send',
 
   // Log groups (CLI "log groups list" → "log.show")
   'log.groups': 'log.show',
@@ -599,6 +600,16 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return 'Error: cargo produce requires --path <path>.\n\nUsage: fleet cargo produce --sector <sector-id> --type <type> --path <path>';
       return null;
 
+    case 'cargo.send':
+      if (!args.type)
+        return 'Error: cargo send requires --type <type>.\n\nUsage: fleet cargo send --type <type> --file <path>';
+      if (!args.file && !args.content)
+        return 'Error: cargo send requires --file <path> or --content "<string>".\n\nUsage: fleet cargo send --type <type> --file <path>';
+      if (!args.crewId && process.env.FLEET_CREW_ID) args.crewId = process.env.FLEET_CREW_ID;
+      if (!args.missionId && process.env.FLEET_MISSION_ID) args.missionId = process.env.FLEET_MISSION_ID;
+      if (!args.sectorId && process.env.FLEET_SECTOR_ID) args.sectorId = process.env.FLEET_SECTOR_ID;
+      return null;
+
     // ── Protocols ──────────────────────────────────────────────────────────
     case 'protocol.show':
       if (!args.id && !args.slug)
@@ -706,7 +717,7 @@ Crew to execute them, monitor progress via Comms, and manage Sectors (repos).
 | missions | Create and track agent Missions. Use when you want to define work for a Crew to execute — always create a Mission before deploying Crew. |
 | crew | Deploy, observe, and recall Crewmates. Use when you want to start an agent, check its progress, send it a follow-up message, or shut it down. |
 | comms | Read and send transmissions. Use when you need to check for messages from Crew, send directives, or manage your inbox. |
-| cargo | Inspect and produce Cargo artifacts. Use when you need to view outputs produced by research Missions or record new artifacts. |
+| cargo | Inspect, send, and produce Cargo artifacts. Use when you need to view outputs, send explicit cargo from a mission, or record new artifacts. |
 | log | View Ship's Log entries. Use when you want to see grouped log entries for debugging or auditing. |
 | protocols | Manage and execute multi-step Protocols. Use when you want to list available protocols, view their steps, enable/disable them, or check execution status. |
 | images | Generate, edit, and transform AI images. Use when you want to create images from text prompts, edit existing images, run actions like background removal, or check generation status. |
@@ -950,26 +961,31 @@ fleet comms clear --crew my-app-crew-a1b2
 
   cargo: `# fleet cargo
 
-Inspect and produce Cargo artifacts — outputs from Missions (research findings, files, etc).
+Inspect, produce, and send Cargo artifacts — outputs from Missions (research findings, files, etc).
 
 ## When to use
 
 Use \`fleet cargo\` when you need to view what artifacts a Mission produced, check
-for undelivered cargo, or record a new artifact.
+for undelivered cargo, send explicit cargo, or record a new artifact.
 
 ## Commands
 
   fleet cargo list                                   List all Cargo items
   fleet cargo show <id>                              Inspect a specific Cargo item
   fleet cargo pending --sector <id>                  Show undelivered Cargo for a Sector
+  fleet cargo send --type <type> --file <path>       Send explicit Cargo from a file
+  fleet cargo send --type <type> --content "<str>"   Send explicit Cargo inline
   fleet cargo produce --sector <id> --type <type> --path <path>
                                                      Record a produced Cargo artifact
 
-## Arguments for \`cargo produce\`
+## Arguments for \`cargo send\`
 
-  --sector <id>         Required. Sector that produced the cargo.
-  --type <type>         Required. Cargo type identifier.
-  --path <path>         Required. Path to the artifact file.
+  --type <type>         Required. Cargo type identifier (e.g. findings, blueprint, review-report).
+  --file <path>         Path to the artifact file (relative to working directory or absolute).
+  --content "<string>"  Inline content string. Use --file for large content.
+
+Note: --file and --content are mutually exclusive. Provide exactly one.
+Crew context (crew ID, mission ID, sector ID) is auto-detected from environment variables.
 
 ## Examples
 
@@ -977,6 +993,9 @@ for undelivered cargo, or record a new artifact.
 fleet cargo list
 fleet cargo show 3
 fleet cargo pending --sector my-app
+fleet cargo send --type findings --file research-findings.md
+fleet cargo send --type blueprint --file architecture.md
+fleet cargo send --type review-report --content "APPROVE: All checks pass"
 fleet cargo produce --sector my-app --type research-findings --path ./findings.md
 \`\`\``,
 
