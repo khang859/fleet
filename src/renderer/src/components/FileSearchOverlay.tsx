@@ -323,6 +323,11 @@ export function FileSearchOverlay({
         if (res.success) setRecentImages(res.results);
       });
       void loadGenerations();
+      // Blur active element first to release xterm's hidden textarea
+      // which otherwise captures keyboard events (including paste)
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
