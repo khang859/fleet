@@ -1129,6 +1129,7 @@ Manage AI image generation.
   fleet images retry <id>                      Retry a failed generation
   fleet images config                          Show current configuration
   fleet images config --api-key <key>          Set fal.ai API key
+  fleet images config --action <type> --model <id>  Set model for an action
   fleet images action <type> <source>          Run an action on an image (e.g. remove-background)
   fleet images actions                         List available actions
 
@@ -1146,6 +1147,7 @@ Manage AI image generation.
   fleet images generate --prompt "A cat in space" --resolution 2K
   fleet images edit --prompt "Add a hat" --images ./cat.png
   fleet images config --api-key sk-xxx
+  fleet images config --action remove-background --model fal-ai/birefnet/v2
   fleet images action remove-background ./photo.png
   fleet images action remove-background ./photo.png --provider fal-ai
   fleet images actions
@@ -1275,7 +1277,19 @@ export async function runCLI(
             lines.push(`${name}:`);
             if (isRecord(val)) {
               for (const [k, v] of Object.entries(val)) {
-                lines.push(`  ${k}: ${toStr(v)}`);
+                if (k === 'actions' && isRecord(v)) {
+                  lines.push(`  actions:`);
+                  for (const [actionName, actionVal] of Object.entries(v)) {
+                    lines.push(`    ${actionName}:`);
+                    if (isRecord(actionVal)) {
+                      for (const [ak, av] of Object.entries(actionVal)) {
+                        lines.push(`      ${ak}: ${toStr(av)}`);
+                      }
+                    }
+                  }
+                } else {
+                  lines.push(`  ${k}: ${toStr(v)}`);
+                }
               }
             }
           }
