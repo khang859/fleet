@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { useImageStore } from '../store/image-store';
 
 function getBasename(filePath: string): string {
   return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -193,6 +194,21 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
     return () => window.removeEventListener('keydown', onKey);
   }, [applyFit, adjustZoom]);
 
+  const { actions, loadActions, runAction } = useImageStore();
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadActions();
+  }, [loadActions]);
+
+  const handleAction = useCallback(
+    (actionType: string) => {
+      setRunningAction(actionType);
+      void runAction({ actionType, source: filePath }).finally(() => setRunningAction(null));
+    },
+    [filePath, runAction]
+  );
+
   const zoomPercent = Math.round(zoom * 100);
   const cursor = isFit ? 'default' : isDragging ? 'grabbing' : 'grab';
 
@@ -283,6 +299,21 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
             </ToolbarButton>
           </div>
         )}
+        {imageSrc && actions.length > 0 && (
+          <div className="flex items-center gap-0.5 ml-2">
+            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
+            {actions.map((action) => (
+              <ToolbarButton
+                key={action.id}
+                onClick={() => handleAction(action.actionType)}
+                title={action.description}
+                disabled={runningAction !== null}
+              >
+                {runningAction === action.actionType ? '...' : action.name}
+              </ToolbarButton>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -291,17 +322,20 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
 function ToolbarButton({
   children,
   onClick,
-  title
+  title,
+  disabled
 }: {
   children: React.ReactNode;
   onClick: () => void;
   title?: string;
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
-      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors"
+      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
       onClick={onClick}
       title={title}
+      disabled={disabled}
     >
       {children}
     </button>

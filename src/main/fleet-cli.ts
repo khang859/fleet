@@ -397,7 +397,9 @@ const COMMAND_MAP: Record<string, string> = {
   'images.status': 'image.status',
   'images.list': 'image.list',
   'images.retry': 'image.retry',
-  'images.config': 'image.config.get'
+  'images.config': 'image.config.get',
+  'images.action': 'image.action',
+  'images.actions': 'image.actions.list'
 };
 
 function mapCommand(group: string, action: string): string {
@@ -666,6 +668,14 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return `Error: images ${command === 'image.status' ? 'status' : 'retry'} requires an ID.\n\nUsage: fleet images ${command === 'image.status' ? 'status' : 'retry'} <generation-id>`;
       return null;
 
+    case 'image.action': {
+      if (!args.action)
+        return 'Error: images action requires an action type.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
+      if (!args.source)
+        return 'Error: images action requires a source image.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
+      return null;
+    }
+
     default:
       return null;
   }
@@ -699,7 +709,7 @@ Crew to execute them, monitor progress via Comms, and manage Sectors (repos).
 | cargo | Inspect and produce Cargo artifacts. Use when you need to view outputs produced by research Missions or record new artifacts. |
 | log | View Ship's Log entries. Use when you want to see grouped log entries for debugging or auditing. |
 | protocols | Manage and execute multi-step Protocols. Use when you want to list available protocols, view their steps, enable/disable them, or check execution status. |
-| images | Generate and manage AI images. Use when you want to create images from text prompts, edit existing images, or check generation status. |
+| images | Generate, edit, and transform AI images. Use when you want to create images from text prompts, edit existing images, run actions like background removal, or check generation status. |
 | open | Open files or images in Fleet tabs. Use when you want to display a file in the Fleet UI. |
 
 ## Core Workflow
@@ -1119,6 +1129,8 @@ Manage AI image generation.
   fleet images retry <id>                      Retry a failed generation
   fleet images config                          Show current configuration
   fleet images config --api-key <key>          Set fal.ai API key
+  fleet images action <type> <source>          Run an action on an image (e.g. remove-background)
+  fleet images actions                         List available actions
 
 ## Options (generate/edit)
 
@@ -1134,6 +1146,9 @@ Manage AI image generation.
   fleet images generate --prompt "A cat in space" --resolution 2K
   fleet images edit --prompt "Add a hat" --images ./cat.png
   fleet images config --api-key sk-xxx
+  fleet images action remove-background ./photo.png
+  fleet images action remove-background ./photo.png --provider fal-ai
+  fleet images actions
 `
 };
 
@@ -1309,6 +1324,29 @@ export async function runCLI(
   }
   const args = parseArgs(cleanRest);
 
+  // ── image.action: remap positionals to named args ───────────────────────
+  if (command === 'image.action') {
+    // cleanRest was ['remove-background', './photo.png', ...flags]
+    // parseArgs mapped all positionals to 'id' (last wins), so we re-parse:
+    const positionals = cleanRest.filter((t) => !t.startsWith('--'));
+    if (positionals.length >= 1 && !args.action) args.action = positionals[0];
+    if (positionals.length >= 2 && !args.source) {
+      const src = positionals[1];
+      // Resolve relative file paths to absolute
+      if (typeof src === 'string' && !src.startsWith('http') && !src.startsWith('data:')) {
+        const resolved = resolve(src);
+        if (existsSync(resolved)) {
+          args.source = resolved;
+        } else {
+          // Could be a generation ref like <genId>/image-001.png
+          args.source = src;
+        }
+      } else {
+        args.source = src;
+      }
+    }
+  }
+
   // ── Client-side validation ──────────────────────────────────────────────
   const validationError = validateCommand(command, args);
   if (validationError) return validationError;
@@ -1352,7 +1390,7 @@ export async function runCLI(
 
   // ── image.generate / image.edit formatting ──────────────────────────────
   if (
-    (command === 'image.generate' || command === 'image.edit') &&
+    (command === 'image.generate' || command === 'image.edit' || command === 'image.action') &&
     isRecord(data) &&
     typeof data.id === 'string'
   ) {

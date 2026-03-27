@@ -363,7 +363,19 @@ const fleetApi = {
     setConfig: async (partial: Partial<ImageSettings>): Promise<void> =>
       typedInvoke(IPC_CHANNELS.IMAGES_CONFIG_SET, partial),
     onChanged: (callback: (payload: { id: string }) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.IMAGES_CHANGED, callback)
+      onChannel(IPC_CHANNELS.IMAGES_CHANGED, callback),
+    runAction: async (opts: {
+      actionType: string;
+      source: string;
+      provider?: string;
+    }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_RUN_ACTION, opts),
+    listActions: async (provider?: string): Promise<Array<{
+      id: string;
+      actionType: string;
+      provider: string;
+      name: string;
+      description: string;
+    }>> => typedInvoke(IPC_CHANNELS.IMAGES_LIST_ACTIONS, provider)
   },
   shell: {
     openExternal: async (url: string): Promise<void> =>

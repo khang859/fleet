@@ -11,6 +11,11 @@ import type {
   ImageFileEntry
 } from '../shared/types';
 import type { ImageProvider, GenerateOpts, EditOpts } from './image-providers/types';
+import {
+  toActionInfo,
+  type ImageActionConfig,
+  type ImageActionInfo
+} from './image-providers/action-types';
 import { FalAiProvider } from './image-providers/fal-ai';
 
 const IMAGES_DIR = join(homedir(), '.fleet', 'images');
@@ -121,6 +126,145 @@ export class ImageService extends EventEmitter {
     return settings.providers[id] ?? DEFAULT_SETTINGS.providers['fal-ai'];
   }
 
+  // ── Actions ─────────────────────────────────────────────────────────────
+
+  listActions(providerId?: string): ImageActionInfo[] {
+    if (providerId) {
+      const provider = this.providers.get(providerId);
+      if (!provider) return [];
+      return provider.getActions().map(toActionInfo);
+    }
+    const actions: ImageActionInfo[] = [];
+    for (const provider of this.providers.values()) {
+      actions.push(...provider.getActions().map(toActionInfo));
+    }
+    return actions;
+  }
+
+  private findAction(
+    actionType: string,
+    providerId?: string
+  ): { config: ImageActionConfig; apiKey: string } {
+    const settings = this.getSettings();
+    const id = providerId ?? settings.defaultProvider;
+    const provider = this.providers.get(id);
+    if (!provider) throw new Error(`Unknown provider: ${id}`);
+    const config = provider.getActions().find((a) => a.actionType === actionType);
+    if (!config) throw new Error(`Action "${actionType}" not available for provider "${id}"`);
+    const apiKey = settings.providers[id]?.apiKey ?? '';
+    if (!apiKey)
+      throw new Error(
+        `No API key configured for provider "${id}". Run: fleet images config --api-key <key>`
+      );
+    return { config, apiKey };
+  }
+
+  private resolveSourceImage(source: string): string {
+    // URL — pass through
+    if (
+      source.startsWith('http://') ||
+      source.startsWith('https://') ||
+      source.startsWith('data:')
+    ) {
+      return source;
+    }
+
+    // Generation reference: <generationId>/<filename>
+    const genMatch = source.match(/^([^/]+)\/(image-.+)$/);
+    if (genMatch) {
+      const filePath = join(GENERATIONS_DIR, genMatch[1], genMatch[2]);
+      return this.fileToDataUri(filePath);
+    }
+
+    // Local file path
+    return this.fileToDataUri(source);
+  }
+
+  private fileToDataUri(filePath: string): string {
+    const data = readFileSync(filePath);
+    const ext = filePath.split('.').pop()?.toLowerCase() ?? 'png';
+    const mimeType = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+    return `data:${mimeType};base64,${data.toString('base64')}`;
+  }
+
+  runAction(opts: { actionType: string; source: string; provider?: string }): { id: string } {
+    const { config, apiKey } = this.findAction(opts.actionType, opts.provider);
+    const id = generateId();
+    mkdirSync(join(GENERATIONS_DIR, id), { recursive: true });
+
+    const meta: ImageGenerationMeta = {
+      id,
+      status: 'processing',
+      createdAt: new Date().toISOString(),
+      completedAt: null,
+      failedAt: null,
+      error: null,
+      provider: config.provider,
+      model: config.endpoint,
+      mode: `action:${config.actionType}`,
+      prompt: config.name,
+      params: { output_format: config.outputFormat },
+      referenceImages: [],
+      images: [],
+      providerRequestId: null,
+      sourceImage: opts.source
+    };
+    this.writeMeta(id, meta);
+    this.emit('changed', id);
+
+    void this.executeAction(id, config, apiKey, opts.source);
+    return { id };
+  }
+
+  private async executeAction(
+    id: string,
+    config: ImageActionConfig,
+    apiKey: string,
+    source: string
+  ): Promise<void> {
+    try {
+      const imageUrl = this.resolveSourceImage(source);
+      const input = config.inputMapping(imageUrl);
+
+      const response = await fetch(config.endpoint, {
+        method: 'POST',
+        headers: {
+          Authorization: `Key ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(input)
+      });
+
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`API error ${response.status}: ${body}`);
+      }
+
+      const result: unknown = await response.json();
+      const image = config.outputMapping(result);
+
+      // Download the result image
+      const dir = join(GENERATIONS_DIR, id);
+      const filename = `image-001.${config.outputFormat}`;
+      const filePath = join(dir, filename);
+
+      const imageResponse = await fetch(image.url);
+      if (!imageResponse.ok) throw new Error(`Download failed: ${imageResponse.status}`);
+      const buffer = Buffer.from(await imageResponse.arrayBuffer());
+      writeFileSync(filePath, buffer);
+
+      const meta = this.readMeta(id);
+      if (!meta) return;
+      meta.status = 'completed';
+      meta.completedAt = new Date().toISOString();
+      meta.images = [{ filename, width: image.width, height: image.height }];
+      this.writeMeta(id, meta);
+      this.emit('changed', id);
+    } catch (err) {
+      this.markFailed(id, err instanceof Error ? err.message : String(err));
+    }
+  }
+
   // ── Generate ────────────────────────────────────────────────────────────
 
   generate(opts: {
@@ -162,7 +306,8 @@ export class ImageService extends EventEmitter {
       },
       referenceImages: [],
       images: [],
-      providerRequestId: null
+      providerRequestId: null,
+      sourceImage: null
     };
     this.writeMeta(id, meta);
 
@@ -219,7 +364,8 @@ export class ImageService extends EventEmitter {
       },
       referenceImages: opts.images,
       images: [],
-      providerRequestId: null
+      providerRequestId: null,
+      sourceImage: null
     };
     this.writeMeta(id, meta);
 
@@ -281,6 +427,17 @@ export class ImageService extends EventEmitter {
     meta.images = [];
     meta.providerRequestId = null;
     this.writeMeta(id, meta);
+
+    // Action-mode retries re-run through runAction
+    if (meta.mode.startsWith('action:') && meta.sourceImage) {
+      const actionType = meta.mode.slice('action:'.length);
+      meta.status = 'processing';
+      this.writeMeta(id, meta);
+      this.emit('changed', id);
+      const { config, apiKey } = this.findAction(actionType, meta.provider);
+      void this.executeAction(id, config, apiKey, meta.sourceImage);
+      return { id };
+    }
 
     const isEdit = meta.mode === 'edit';
     const opts = isEdit

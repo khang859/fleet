@@ -1,3 +1,5 @@
+import type { ImageActionConfig } from './action-types';
+
 export type GenerateOpts = {
   model: string;
   prompt: string;
@@ -36,4 +38,5 @@ export interface ImageProvider {
   poll(requestId: string): Promise<PollResult>;
   getResult(requestId: string): Promise<GenerationResult>;
   cancel(requestId: string): Promise<void>;
+  getActions(): ImageActionConfig[];
 }

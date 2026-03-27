@@ -137,7 +137,7 @@ export type ImageGenerationStatus =
   | 'failed'
   | 'timeout';
 
-export type ImageGenerationMode = 'generate' | 'edit';
+export type ImageGenerationMode = 'generate' | 'edit' | `action:${string}`;
 
 export type ImageFileEntry = {
   filename: string | null;
@@ -167,6 +167,7 @@ export type ImageGenerationMeta = {
   referenceImages: string[];
   images: ImageFileEntry[];
   providerRequestId: string | null;
+  sourceImage: string | null;
 };
 
 export type ImageSettings = {

@@ -1204,6 +1204,28 @@ export class SocketServer extends EventEmitter {
         return { updated: true };
       }
 
+      case 'image.action': {
+        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
+        const actionType = typeof args.action === 'string' ? args.action : typeof args.id === 'string' ? args.id : undefined;
+        if (!actionType) throw new CodedError('image.action requires an action type', 'BAD_REQUEST');
+        const source = typeof args.source === 'string' ? args.source : undefined;
+        if (!source) throw new CodedError('image.action requires a source image', 'BAD_REQUEST');
+        const actionResult = this.imageService.runAction({
+          actionType,
+          source,
+          provider: typeof args.provider === 'string' ? args.provider : undefined
+        });
+        this.emit('state-change', 'image:changed', { id: actionResult.id });
+        return actionResult;
+      }
+
+      case 'image.actions.list': {
+        if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
+        return this.imageService.listActions(
+          typeof args.provider === 'string' ? args.provider : undefined
+        );
+      }
+
       default: {
         throw new CodedError(`Unknown command: ${command}`, 'NOT_FOUND');
       }
