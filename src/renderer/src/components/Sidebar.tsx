@@ -589,6 +589,26 @@ export function Sidebar({
           {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
             <div className="h-px bg-neutral-800 mx-1 my-1" />
           )}
+          {/* Images tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'images')
+            .map((tab) => (
+              <div
+                key={tab.id}
+                className={`flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[36px] transition-colors ${tab.id === activeTabId ? 'bg-neutral-700 text-white border-l-2 border-cyan-500' : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+                <span className="truncate">Images</span>
+              </div>
+            ))}
+          {workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
+            <div className="h-px bg-neutral-800 mx-1 my-1" />
+          )}
           {/* Crew tabs (with sprite avatars) */}
           {workspace.tabs
             .filter((tab) => tab.type === 'crew')
@@ -637,7 +657,7 @@ export function Sidebar({
             <div className="h-px bg-neutral-800 mx-1 my-1" />
           )}
           {workspace.tabs
-            .filter((t) => t.type !== 'star-command' && t.type !== 'crew')
+            .filter((t) => t.type !== 'star-command' && t.type !== 'crew' && t.type !== 'images')
             .map((tab, index) => {
               const paneIds = collectPaneIds(tab.splitRoot);
               const isFile = tab.type === 'file' || tab.type === 'image';

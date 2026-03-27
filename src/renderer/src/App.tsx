@@ -22,6 +22,7 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { StarCommandTab } from './components/StarCommandTab';
+import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { Avatar } from './components/star-command/Avatar';
 import { AppPreChecks } from './components/AppPreChecks';
 
@@ -70,16 +71,19 @@ export function App(): React.JSX.Element {
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
 
-  const isStarCommand = useMemo(
-    () => workspace.tabs.find((t) => t.id === activeTabId)?.type === 'star-command',
+  const isFullScreenTab = useMemo(
+    () => {
+      const tab = workspace.tabs.find((t) => t.id === activeTabId);
+      return tab?.type === 'star-command' || tab?.type === 'images';
+    },
     [workspace.tabs, activeTabId]
   );
-  const showSidebar = !isStarCommand || sidebarManualOpen;
+  const showSidebar = !isFullScreenTab || sidebarManualOpen;
 
-  // Reset manual override when leaving star-command
+  // Reset manual override when leaving full-screen tab
   useEffect(() => {
-    if (!isStarCommand) setSidebarManualOpen(false);
-  }, [isStarCommand]);
+    if (!isFullScreenTab) setSidebarManualOpen(false);
+  }, [isFullScreenTab]);
 
   // Track serialized pane content for restored tabs (consumed once on mount)
   const restoredPanesRef = useRef<Map<string, Map<string, string>>>(new Map());
@@ -378,7 +382,7 @@ export function App(): React.JSX.Element {
         {showSidebar ? (
           <Sidebar
             updateReady={updateReady}
-            onCollapse={isStarCommand ? () => setSidebarManualOpen(false) : undefined}
+            onCollapse={isFullScreenTab ? () => setSidebarManualOpen(false) : undefined}
           />
         ) : (
           <div
@@ -407,7 +411,7 @@ export function App(): React.JSX.Element {
             <div className="w-6 h-px bg-neutral-800 my-0.5" />
             {/* Tab icons */}
             {workspace.tabs
-              .filter((t) => t.type !== 'star-command')
+              .filter((t) => t.type !== 'star-command' && t.type !== 'images')
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
@@ -468,6 +472,8 @@ export function App(): React.JSX.Element {
                     >
                       {tab.type === 'star-command' ? (
                         <StarCommandTab />
+                      ) : tab.type === 'images' ? (
+                        <ImageGallery />
                       ) : (
                         <PaneGrid
                           root={tab.splitRoot}
