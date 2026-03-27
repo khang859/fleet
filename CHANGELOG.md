@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.12.1
+
+- Fixed TUI redraw after hard refresh via SIGWINCH resize trick
+- Fixed lint errors and included awaiting-guidance status in listCrew
+- Fixed logger mock in pty-manager tests to resolve fake timer conflicts
+
 ## v2.12.0
 
 - Added Winston logger system with structured logging, IPC bridge, and daily log rotation
