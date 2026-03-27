@@ -19,6 +19,15 @@ vi.mock('winston-daily-rotate-file', () => {
   return { default: Transport };
 });
 
+// Polyfill window for Node.js test environment (renderer tests need window.fleet)
+if (typeof window === 'undefined') {
+  Object.assign(globalThis, {
+    window: {
+      fleet: {} as Record<string, unknown>
+    }
+  });
+}
+
 // Polyfill OffscreenCanvas for Node.js test environment
 if (typeof OffscreenCanvas === 'undefined') {
   class FakeOffscreenCanvas {
