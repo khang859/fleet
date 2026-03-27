@@ -1,5 +1,7 @@
 import type Database from 'better-sqlite3';
 import { access } from 'fs/promises';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { createConnection } from 'node:net';
@@ -57,6 +59,7 @@ type SentinelDeps = {
   missionService?: MissionService;
   analyst?: Analyst;
   shipsLog: ShipsLog;
+  starbaseId?: string;
 };
 
 type CrewRow = {
@@ -398,6 +401,9 @@ export class Sentinel {
 
     // 11. Navigator sweep — crew-failed fan-out for protocol missions + gate expiry
     await this.navigatorSweep();
+
+    // 12. Cargo evaluation sweep — check missions awaiting cargo
+    await this.cargoEvaluationSweep();
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -1371,6 +1377,129 @@ ${mission.review_notes ?? 'No specific notes provided'}
       ).run(mission.id);
       db.prepare('DELETE FROM missions WHERE id = ?').run(repairMission.id);
       throw err;
+    }
+  }
+
+  private async cargoEvaluationSweep(): Promise<void> {
+    const { db } = this.deps;
+
+    // Find missions in awaiting-cargo-check that haven't been evaluated
+    const awaiting = db
+      .prepare<
+        [],
+        {
+          id: number;
+          sector_id: string;
+          type: string | null;
+          crew_id: string | null;
+          completed_at: string | null;
+        }
+      >(
+        `SELECT id, sector_id, type, crew_id, completed_at FROM missions
+         WHERE status = 'awaiting-cargo-check' AND cargo_checked = 0`
+      )
+      .all();
+
+    for (const mission of awaiting) {
+      // Check if explicit cargo already exists
+      const existingCargo = db
+        .prepare<[number], { id: number }>(
+          'SELECT id FROM cargo WHERE mission_id = ? LIMIT 1'
+        )
+        .get(mission.id);
+
+      if (existingCargo) {
+        // Crew sent cargo explicitly — transition to completed
+        db.prepare(
+          "UPDATE missions SET status = 'completed', cargo_checked = 1 WHERE id = ?"
+        ).run(mission.id);
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+        continue;
+      }
+
+      // No explicit cargo — check mission type
+      const missionType = mission.type ?? 'code';
+      const needsCargo = ['research', 'architect', 'repair', 'review'].includes(missionType);
+
+      if (!needsCargo) {
+        // Code missions don't require cargo
+        db.prepare(
+          "UPDATE missions SET status = 'completed', cargo_checked = 1 WHERE id = ?"
+        ).run(mission.id);
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+        continue;
+      }
+
+      // Needs cargo but none sent — recover from raw output
+      const starbaseId = this.deps.starbaseId ?? 'unknown';
+
+      const rawOutputPath = join(
+        process.env.HOME ?? '~',
+        '.fleet',
+        'starbases',
+        `starbase-${starbaseId}`,
+        'cargo',
+        mission.sector_id,
+        String(mission.id),
+        'raw-output.md'
+      );
+
+      let rawContent = '';
+      try {
+        rawContent = readFileSync(rawOutputPath, 'utf-8');
+      } catch {
+        // No raw output file
+      }
+
+      if (rawContent.trim().length > 0) {
+        const manifest = JSON.stringify({
+          title: `${missionType}-output`,
+          path: rawOutputPath,
+          size: Buffer.byteLength(rawContent, 'utf-8'),
+          sourceType: 'recovered-from-raw-output'
+        });
+
+        db.prepare(
+          `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
+           VALUES (?, ?, ?, ?, ?, 1)`
+        ).run(
+          mission.crew_id,
+          mission.id,
+          mission.sector_id,
+          `${missionType}_output`,
+          manifest
+        );
+      }
+
+      db.prepare(
+        "UPDATE missions SET status = 'completed', cargo_checked = 1 WHERE id = ?"
+      ).run(mission.id);
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    }
+
+    // Safety net: escalate missions stuck in awaiting-cargo-check for > 5 minutes
+    const stuck = db
+      .prepare<[], { id: number; summary: string }>(
+        `SELECT id, summary FROM missions
+         WHERE status = 'awaiting-cargo-check'
+           AND completed_at < datetime('now', '-5 minutes')`
+      )
+      .all();
+
+    for (const mission of stuck) {
+      db.prepare(
+        "UPDATE missions SET status = 'escalated', cargo_checked = 1 WHERE id = ?"
+      ).run(mission.id);
+      db.prepare(
+        "INSERT INTO comms (to_crew, type, payload) VALUES ('admiral', 'cargo_stuck', ?)"
+      ).run(
+        JSON.stringify({
+          missionId: mission.id,
+          summary: mission.summary,
+          reason: 'Mission stuck in awaiting-cargo-check for > 5 minutes'
+        })
+      );
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
     }
   }
 }

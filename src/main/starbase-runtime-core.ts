@@ -692,7 +692,8 @@ export class StarbaseRuntimeCore {
         crewService,
         missionService,
         analyst,
-        shipsLog
+        shipsLog,
+        starbaseId: localStarbaseDb.getStarbaseId()
       });
       sentinel.start();
       trace('bootstrap sentinel ready');
