@@ -38,6 +38,8 @@ type TabItemProps = {
   onDragOver: (e: React.DragEvent, index: number) => void;
   onDrop: (index: number) => void;
   isDragOver: 'above' | 'below' | null;
+  /** Tailwind border color class for active state. Defaults to 'border-blue-500'. */
+  activeBorderColor?: string;
 };
 
 // Multi-signal badge config: color + size + shape + animation per severity level
@@ -70,7 +72,8 @@ export function TabItem({
   onDragStart,
   onDragOver,
   onDrop,
-  isDragOver
+  isDragOver,
+  activeBorderColor = 'border-blue-500'
 }: TabItemProps): React.JSX.Element {
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
   const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
@@ -135,7 +138,7 @@ export function TabItem({
             group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
             ${
               isActive
-                ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
+                ? `bg-neutral-700 text-white border-l-2 ${activeBorderColor}`
                 : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
             }
           `}

@@ -282,7 +282,7 @@ export function Sidebar({
   onCollapse
 }: {
   updateReady?: boolean;
-  onCollapse?: () => void;
+  onCollapse: () => void;
 }): React.JSX.Element {
   const {
     workspace,
@@ -684,8 +684,7 @@ export function Sidebar({
           >
             +
           </button>
-          {onCollapse && (
-            <button
+          <button
               className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
               onClick={onCollapse}
               title="Collapse sidebar"
@@ -703,7 +702,6 @@ export function Sidebar({
                 <line x1="5.5" y1="2" x2="5.5" y2="14" />
               </svg>
             </button>
-          )}
         </div>
       </div>
 
@@ -739,21 +737,25 @@ export function Sidebar({
           {/* Crew tabs (with sprite avatars) */}
           {workspace.tabs
             .filter((tab) => tab.type === 'crew')
-            .map((tab) => {
+            .map((tab, index) => {
               const paneIds = collectPaneIds(tab.splitRoot);
-              const badge = getTabBadge(paneIds);
               return (
-                <div
+                <TabItem
                   key={tab.id}
-                  data-tab-id={tab.id}
-                  className={`
-                  group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
-                  ${
-                    tab.id === activeTabId
-                      ? 'bg-neutral-700 text-white border-l-2 border-cyan-500'
-                      : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
-                  }
-                `}
+                  id={tab.id}
+                  label={tab.label}
+                  labelIsCustom={tab.labelIsCustom ?? false}
+                  cwd={tab.cwd}
+                  isActive={tab.id === activeTabId}
+                  badge={getTabBadge(paneIds)}
+                  icon={<Avatar type="crew" variant={tab.avatarVariant} size={24} />}
+                  activeBorderColor="border-cyan-500"
+                  disableReset
+                  index={index}
+                  onDragStart={handleDragStart}
+                  onDragOver={handleDragOver}
+                  onDrop={handleDrop}
+                  isDragOver={dropTarget?.index === index ? dropTarget.position : null}
                   onClick={() => {
                     setActiveTab(tab.id);
                     for (const paneId of paneIds) {
@@ -761,23 +763,10 @@ export function Sidebar({
                       window.fleet.notifications.paneFocused({ paneId });
                     }
                   }}
-                >
-                  <Avatar type="crew" variant={tab.avatarVariant} size={24} />
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate text-sm leading-tight">{tab.label}</div>
-                  </div>
-                  {badge && tab.id !== activeTabId && (
-                    <span
-                      className={`rounded-full flex-shrink-0 w-2 h-2 ${
-                        badge === 'error'
-                          ? 'bg-red-400'
-                          : badge === 'permission'
-                            ? 'bg-amber-400 animate-pulse'
-                            : 'bg-blue-400'
-                      }`}
-                    />
-                  )}
-                </div>
+                  onClose={() => handleCloseTab(tab.id)}
+                  onRename={(newLabel) => renameTab(tab.id, newLabel)}
+                  onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
+                />
               );
             })}
           {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
