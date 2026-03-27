@@ -1,5 +1,4 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { access } from 'fs/promises';
 import { mkdir, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -71,6 +70,7 @@ type RunningProcess = {
   crewId: string;
   missionId: number;
   startedAt: number;
+  mode?: 'triage' | 'consult';
 };
 
 type DispatchCallbacks = {
@@ -97,8 +97,13 @@ export class FirstOfficer {
   getStatusText(): string {
     if (this.running.size === 0) return 'Idle';
     const entries = [...this.running.values()];
-    if (entries.length === 1) return `Triaging ${entries[0].crewId}`;
-    return `Triaging ${entries.length} issues`;
+    if (entries.length === 1) {
+      const mode = entries[0].mode ?? 'triage';
+      return mode === 'consult'
+        ? `Consulting for ${entries[0].crewId}`
+        : `Triaging ${entries[0].crewId}`;
+    }
+    return `Working on ${entries.length} issues`;
   }
 
   getStatus(): 'idle' | 'working' | 'memo' {
@@ -118,12 +123,13 @@ export class FirstOfficer {
     const maxRetries = configService.getNumber('first_officer_max_retries');
     const timeout = configService.getNumber('first_officer_timeout');
     const model = configService.getString('first_officer_model');
+    const isConsultant = event.eventType === 'needs-guidance';
 
     const k = this.key(event.crewId, event.missionId);
     if (this.running.has(k)) return false;
     if (this.running.size >= maxConcurrent) return false;
 
-    if (event.retryCount >= maxRetries) {
+    if (!isConsultant && event.retryCount >= maxRetries) {
       await this.resolveEscalation(
         event,
         'Maximum retries exhausted',
@@ -138,18 +144,29 @@ export class FirstOfficer {
     await mkdir(memosDir, { recursive: true });
 
     const claudeMdPath = join(workspace, 'CLAUDE.md');
-    try {
-      await access(claudeMdPath);
-    } catch {
-      await writeFile(claudeMdPath, this.generateClaudeMd(), 'utf-8');
-    }
+    const claudeMdContent = isConsultant
+      ? this.generateConsultantClaudeMd()
+      : this.generateClaudeMd();
+    await writeFile(claudeMdPath, claudeMdContent, 'utf-8');
 
     const promptDir = join(tmpdir(), 'fleet-first-officer');
     await mkdir(promptDir, { recursive: true });
     const spFile = join(promptDir, `${event.crewId}-sp.md`);
     const msgFile = join(promptDir, `${event.crewId}-msg.md`);
-    await writeFile(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8');
-    await writeFile(msgFile, this.buildInitialMessage(event), 'utf-8');
+    await writeFile(
+      spFile,
+      isConsultant
+        ? this.buildConsultantSystemPrompt(event)
+        : this.buildSystemPrompt(event, maxRetries),
+      'utf-8'
+    );
+    await writeFile(
+      msgFile,
+      isConsultant
+        ? this.buildConsultantInitialMessage(event)
+        : this.buildInitialMessage(event),
+      'utf-8'
+    );
 
     const cmdArgs = [
       '--output-format',
@@ -183,20 +200,22 @@ export class FirstOfficer {
         proc,
         crewId: event.crewId,
         missionId: event.missionId,
-        startedAt: Date.now()
+        startedAt: Date.now(),
+        mode: isConsultant ? 'consult' : 'triage'
       });
 
       let stdoutBuffer = '';
       let assistantOutput = '';
       let resultText = '';
 
+      const initContent = isConsultant
+        ? `Read and execute the consultation instructions in ${msgFile}. Delete the file when done.`
+        : `Read and execute the triage instructions in ${msgFile}. Delete the file when done.`;
+
       const initMsg =
         JSON.stringify({
           type: 'user',
-          message: {
-            role: 'user',
-            content: `Read and execute the triage instructions in ${msgFile}. Delete the file when done.`
-          },
+          message: { role: 'user', content: initContent },
           parent_tool_use_id: null,
           session_id: ''
         }) + '\n';
@@ -467,11 +486,41 @@ ${opts.classification === 'persistent' ? 'Same error fingerprint as previous att
 
     try {
       if (opts.code !== 0) {
-        await this.resolveEscalation(
-          opts.event,
-          `First Officer process crashed (exit code: ${opts.code})`,
-          'First Officer failed during triage, so the mission was escalated automatically.'
-        );
+        if (opts.event.eventType === 'needs-guidance') {
+          // Consultant crashed — fall back to hailing-memo
+          await this.writeHailingMemo({
+            crewId: opts.event.crewId,
+            missionId: opts.event.missionId,
+            sectorName: opts.event.sectorName,
+            payload: opts.event.guidanceMessage ?? 'Crew requested guidance but First Officer consultant failed.',
+            createdAt: new Date().toISOString()
+          });
+        } else {
+          await this.resolveEscalation(
+            opts.event,
+            `First Officer process crashed (exit code: ${opts.code})`,
+            'First Officer failed during triage, so the mission was escalated automatically.'
+          );
+        }
+      } else if (opts.event.eventType === 'needs-guidance') {
+        // Consultant exited cleanly — check if guidance was actually sent
+        const guidanceSent = this.deps.db
+          .prepare<[string], { cnt: number }>(
+            `SELECT COUNT(*) as cnt FROM comms
+             WHERE type = 'guidance-response' AND to_crew = ? AND read = 0`
+          )
+          .get(opts.event.crewId);
+
+        if (!guidanceSent || guidanceSent.cnt === 0) {
+          // Consultant didn't send guidance — fall back to hailing-memo
+          await this.writeHailingMemo({
+            crewId: opts.event.crewId,
+            missionId: opts.event.missionId,
+            sectorName: opts.event.sectorName,
+            payload: opts.event.guidanceMessage ?? 'Crew requested guidance but consultant provided no response.',
+            createdAt: new Date().toISOString()
+          });
+        }
       } else {
         const decision = this.parseDecision(opts.decisionText, opts.event);
         await this.applyDecision(opts.event, decision);
@@ -975,6 +1024,72 @@ ${event.crewOutput}
     }
 
     msg += '\nReturn only the JSON decision object.\n';
+    return msg;
+  }
+
+  private generateConsultantClaudeMd(): string {
+    return `# First Officer — Consultant Mode
+
+You are the First Officer aboard Star Command, consulting for a running crew.
+Your job is to analyze their situation and send actionable guidance via fleet comms.
+
+Do not modify code, deploy crews, recall crews, or write files yourself.
+Use \`fleet comms send\` to deliver your guidance to the crew.
+`;
+  }
+
+  private buildConsultantSystemPrompt(event: ActionableEvent): string {
+    return `You are the First Officer aboard Star Command, acting as a consultant.
+
+A crew member is stuck and requesting guidance. They are STILL RUNNING —
+your response will be delivered directly into their active session.
+
+Analyze their situation and respond using:
+
+\`\`\`bash
+fleet comms send \\
+  --from first-officer \\
+  --to ${event.crewId} \\
+  --type guidance-response \\
+  --message "your guidance here"
+\`\`\`
+
+Your guidance should include:
+- Analysis of what they tried and why it failed
+- A specific recommended next approach
+- Key files or patterns to look at
+- Any architectural context they may be missing
+
+You may send multiple messages if needed (e.g., initial analysis, then follow-up details).
+
+Context:
+- Crew ID: ${event.crewId}
+- Mission ID: ${event.missionId}
+- Sector: ${event.sectorName} (${event.sectorId})
+`;
+  }
+
+  private buildConsultantInitialMessage(event: ActionableEvent): string {
+    let msg = `# Consultation Request
+
+## Crew Requesting Guidance
+**Crew:** ${event.crewId}
+**Sector:** ${event.sectorName} (${event.sectorId})
+**Mission:** ${event.missionSummary}
+
+## Their Question
+${event.guidanceMessage ?? 'No specific question provided.'}
+
+## Original Mission Prompt
+${event.missionPrompt}
+
+## Recent Crew Output
+\`\`\`
+${event.crewOutput || 'No output captured.'}
+\`\`\`
+`;
+
+    msg += `\nAnalyze the situation and send your guidance using \`fleet comms send --from first-officer --to ${event.crewId} --type guidance-response --message "..."\`.\n`;
     return msg;
   }
 }
