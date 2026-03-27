@@ -94,6 +94,8 @@ Quick reference:
 - \`fleet missions list\` — view queued and active Missions
 - \`fleet comms inbox --unread\` — check unread transmissions
 - \`fleet sectors list\` — list registered Sectors
+- \`fleet images generate --prompt "..."\` — generate images via AI
+- \`fleet images list\` — list generated images
 
 ## Sectors
 
@@ -259,6 +261,29 @@ fleet cargo list                       # List all Cargo items
 fleet cargo produce --sector <id> --type <type> --path <path>  # Record produced Cargo
 fleet cargo pending --sector <id>      # Show undelivered Cargo for a Sector
 \`\`\`
+
+### Images
+
+\`\`\`
+fleet images generate --prompt "..."                    # Generate image(s) from a text prompt
+fleet images edit --prompt "..." --images <file1> [file2 ...]  # Edit images with a prompt + reference images
+fleet images status <id>                                # Check generation status
+fleet images list                                       # List all generations
+fleet images retry <id>                                 # Retry a failed generation
+fleet images config                                     # Show current image generation configuration
+fleet images config --api-key <key>                     # Set fal.ai API key
+fleet images config --default-resolution <0.5K|1K|2K|4K>  # Set default resolution
+\`\`\`
+
+**Options for generate/edit:**
+- \`--provider <id>\` — Image provider (default: fal-ai)
+- \`--model <model>\` — Model to use (default: fal-ai/nano-banana-2)
+- \`--resolution <res>\` — 0.5K, 1K, 2K, or 4K (default: 1K)
+- \`--aspect-ratio <ratio>\` — e.g. 1:1, 16:9, 9:16 (default: 1:1)
+- \`--format <fmt>\` — png, jpeg, or webp (default: png)
+- \`--num-images <n>\` — 1-4 (default: 1)
+
+**Non-blocking:** Commands return immediately with a generation ID. Images are downloaded in the background. Use \`fleet images status <id>\` to check progress.
 
 ### Log Groups
 
