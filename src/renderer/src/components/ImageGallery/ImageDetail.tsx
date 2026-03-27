@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ImageGenerationMeta } from '../../../../shared/types';
 import { useImageStore } from '../../store/image-store';
 
@@ -30,10 +30,15 @@ function DetailImage({
 }
 
 export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX.Element {
-  const { retry, deleteGeneration } = useImageStore();
+  const { retry, deleteGeneration, runAction, actions, loadActions } = useImageStore();
+  const [runningAction, setRunningAction] = useState<string | null>(null);
   const gen = generation;
   const images = gen.images.filter((img) => img.filename);
   const failedImages = gen.images.filter((img) => !img.filename);
+
+  useEffect(() => {
+    void loadActions();
+  }, [loadActions]);
 
   const handleRetry = (): void => {
     void retry(gen.id);
@@ -45,6 +50,15 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
   const handleCopyPath = (): void => {
     void navigator.clipboard.writeText(`~/.fleet/images/generations/${gen.id}`);
   };
+
+  const handleAction = useCallback(
+    (actionType: string, filename: string) => {
+      setRunningAction(actionType);
+      const source = `${gen.id}/${filename}`;
+      void runAction({ actionType, source }).finally(() => setRunningAction(null));
+    },
+    [gen.id, runAction]
+  );
 
   return (
     <div className="flex flex-col h-full">
@@ -160,6 +174,21 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
             <div>
               <span className="text-xs text-neutral-500">Request ID</span>
               <p className="text-xs text-neutral-400 font-mono">{gen.providerRequestId}</p>
+            </div>
+          )}
+          {gen.status === 'completed' && images.length > 0 && actions.length > 0 && (
+            <div className="pb-3 border-b border-neutral-800 space-y-2">
+              <span className="text-xs text-neutral-500">Actions</span>
+              {actions.map((action) => (
+                <button
+                  key={action.id}
+                  className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 disabled:opacity-50"
+                  disabled={runningAction !== null}
+                  onClick={() => handleAction(action.actionType, images[0].filename!)}
+                >
+                  {runningAction === action.actionType ? 'Processing...' : action.name}
+                </button>
+              ))}
             </div>
           )}
           <div className="pt-3 border-t border-neutral-800 space-y-2">
