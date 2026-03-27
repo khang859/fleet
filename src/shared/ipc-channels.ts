@@ -86,5 +86,14 @@ export const IPC_CHANNELS = {
   UPDATE_STATUS: 'fleet:update-status',
   UPDATE_INSTALL: 'fleet:install-update',
   GET_VERSION: 'fleet:get-version',
-  SHELL_OPEN_EXTERNAL: 'shell:open-external'
+  SHELL_OPEN_EXTERNAL: 'shell:open-external',
+  IMAGES_GENERATE: 'images:generate',
+  IMAGES_EDIT: 'images:edit',
+  IMAGES_STATUS: 'images:status',
+  IMAGES_LIST: 'images:list',
+  IMAGES_RETRY: 'images:retry',
+  IMAGES_DELETE: 'images:delete',
+  IMAGES_CONFIG_GET: 'images:config:get',
+  IMAGES_CONFIG_SET: 'images:config:set',
+  IMAGES_CHANGED: 'images:changed'
 } as const;

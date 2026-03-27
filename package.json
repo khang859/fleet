@@ -42,6 +42,7 @@
     "@codemirror/view": "^6.40.0",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@fal-ai/client": "^1.9.5",
     "@git-diff-view/react": "^0.1.2",
     "@git-diff-view/shiki": "^0.1.2",
     "@imgly/background-removal-node": "^1.4.5",

@@ -126,3 +126,52 @@ export type UpdateStatus =
   | { state: 'ready'; version: string; releaseNotes: string }
   | { state: 'not-available' }
   | { state: 'error'; message: string };
+
+// ── Image Generation ────────────────────────────────────────────────────────
+
+export type ImageGenerationStatus = 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'timeout';
+
+export type ImageGenerationMode = 'generate' | 'edit';
+
+export type ImageFileEntry = {
+  filename: string | null;
+  width: number | null;
+  height: number | null;
+  error?: string;
+  providerUrl?: string;
+};
+
+export type ImageGenerationMeta = {
+  id: string;
+  status: ImageGenerationStatus;
+  createdAt: string;
+  completedAt: string | null;
+  failedAt: string | null;
+  error: string | null;
+  provider: string;
+  model: string;
+  mode: ImageGenerationMode;
+  prompt: string;
+  params: {
+    resolution?: string;
+    aspect_ratio?: string;
+    output_format?: string;
+    num_images?: number;
+  };
+  referenceImages: string[];
+  images: ImageFileEntry[];
+  providerRequestId: string | null;
+};
+
+export type ImageSettings = {
+  defaultProvider: string;
+  providers: Record<string, ImageProviderSettings>;
+};
+
+export type ImageProviderSettings = {
+  apiKey: string;
+  defaultModel: string;
+  defaultResolution: string;
+  defaultOutputFormat: string;
+  defaultAspectRatio: string;
+};
