@@ -231,12 +231,40 @@ function createTerminal(
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return;
       if (data) writeToTerm(data);
+
+      // Force TUI redraw via the "resize trick" (same technique tmux/dtach use).
+      // The kernel suppresses SIGWINCH when ioctl(TIOCSWINSZ) is called with
+      // dimensions identical to the PTY's current size. After a hard refresh the
+      // xterm instance is new but the PTY retains its old size, so a same-size
+      // resize is silently ignored. Momentarily shrinking by one column guarantees
+      // two real SIGWINCH signals reach the child process, forcing Ink (Claude
+      // Code's TUI framework) to query the new dimensions and fully redraw.
+      const cols = term.cols;
+      const rows = term.rows;
+      window.fleet.pty.resize({ paneId: options.paneId, cols: Math.max(1, cols - 1), rows });
+      setTimeout(() => {
+        window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
+      }, 50);
     });
   } else if (!isPreCreated) {
     createdPtys.add(options.paneId);
     void window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd
+    }).then(() => {
+      // After hard refresh, createdPtys is reset so we hit this path even
+      // though the PTY already exists in main (idempotent create). Apply the
+      // resize trick to force any running TUI to redraw, same as attachOnly.
+      // Harmless on genuinely new PTYs since the shell hasn't drawn yet.
+      if (!term.element) return;
+      const cols = term.cols;
+      const rows = term.rows;
+      if (cols > 1) {
+        window.fleet.pty.resize({ paneId: options.paneId, cols: cols - 1, rows });
+        setTimeout(() => {
+          window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
+        }, 50);
+      }
     });
   } else {
     // For pre-created PTYs (crew deployments), attach to get buffered output
@@ -248,6 +276,17 @@ function createTerminal(
       attachResolved = true;
       for (const chunk of pendingLiveData) writeToTerm(chunk);
       pendingLiveData.length = 0;
+
+      // Resize trick for pre-created PTYs (crew deployments) that may
+      // have been running a TUI before the renderer remounted.
+      const cols = term.cols;
+      const rows = term.rows;
+      if (cols > 1) {
+        window.fleet.pty.resize({ paneId: options.paneId, cols: cols - 1, rows });
+        setTimeout(() => {
+          window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
+        }, 50);
+      }
     });
   }
 

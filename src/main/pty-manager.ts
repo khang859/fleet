@@ -45,10 +45,6 @@ export class PtyManager {
       // renderer-side createdPtys Set is reset but the main process map persists)
       const existing = this.ptys.get(opts.paneId);
       if (!existing) return { paneId: opts.paneId, pid: 0 };
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pty] ${opts.paneId} already exists, returning existing pid ${existing.process.pid}`
-      );
       return { paneId: opts.paneId, pid: existing.process.pid };
     }
 

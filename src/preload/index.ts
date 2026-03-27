@@ -220,6 +220,8 @@ const fleetApi = {
     }): Promise<{ missionId: number }> => typedInvoke(IPC_CHANNELS.STARBASE_ADD_MISSION, req),
     onStatusUpdate: (callback: (payload: StarbaseStatusUpdatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.STARBASE_STATUS_UPDATE, callback),
+    requestSnapshot: async (): Promise<StarbaseStatusUpdatePayload | null> =>
+      typedInvoke(IPC_CHANNELS.STARBASE_SNAPSHOT_REQUEST),
     listSupplyRoutes: async (opts?: { sectorId?: string }): Promise<StarbaseSupplyRoute[]> =>
       typedInvoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
     addSupplyRoute: async (opts: {

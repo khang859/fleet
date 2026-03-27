@@ -121,13 +121,14 @@ export const useStarCommandStore = create<StarCommandStore>((set) => ({
   navigatorStatus: { status: 'standby', statusText: 'Idle' },
   sentinelStatus: { running: false, lastSweepAt: null, alerts: [] },
 
-  setAdmiralPty: (paneId, status, error = null, exitCode = null) =>
+  setAdmiralPty: (paneId, status, error = null, exitCode = null) => {
     set({
       admiralPaneId: paneId,
       admiralStatus: status,
       admiralError: error,
       admiralExitCode: exitCode
-    }),
+    });
+  },
   setRuntimeStatus: (runtimeStatus) => set({ runtimeStatus }),
   setDepCheck: (status, results) =>
     set((s) => ({ depCheckStatus: status, depCheckResults: results ?? s.depCheckResults })),
