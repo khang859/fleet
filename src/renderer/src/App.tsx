@@ -17,7 +17,7 @@ import { useSettingsStore } from './store/settings-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsTab } from './components/settings/SettingsTab';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
@@ -115,7 +115,6 @@ export function App(): React.JSX.Element {
     }
   });
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
@@ -135,9 +134,31 @@ export function App(): React.JSX.Element {
     return initCwdListener();
   }, []);
 
-  // Settings modal toggle
+  // Settings tab toggle — create singleton or focus existing
   useEffect(() => {
-    const handler = (): void => setSettingsOpen((prev) => !prev);
+    const handler = (): void => {
+      const state = useWorkspaceStore.getState();
+      const existing = state.workspace.tabs.find((t) => t.type === 'settings');
+      if (existing) {
+        state.setActiveTab(existing.id);
+      } else {
+        const leaf = { type: 'leaf' as const, id: crypto.randomUUID(), cwd: '/' };
+        const tab = {
+          id: crypto.randomUUID(),
+          label: 'Settings',
+          labelIsCustom: true,
+          cwd: '/',
+          type: 'settings' as const,
+          splitRoot: leaf
+        };
+        useWorkspaceStore.setState((s) => ({
+          workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+          activeTabId: tab.id,
+          activePaneId: leaf.id,
+          isDirty: true
+        }));
+      }
+    };
     document.addEventListener('fleet:toggle-settings', handler);
     return () => document.removeEventListener('fleet:toggle-settings', handler);
   }, []);
@@ -672,6 +693,8 @@ export function App(): React.JSX.Element {
                         <StarCommandTab />
                       ) : tab.type === 'images' ? (
                         <ImageGallery />
+                      ) : tab.type === 'settings' ? (
+                        <SettingsTab />
                       ) : (
                         <PaneGrid
                           root={tab.splitRoot}
@@ -762,7 +785,6 @@ export function App(): React.JSX.Element {
         {/* end content column */}
       </div>
       {/* end sidebar+content row */}
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <GitChangesModal
