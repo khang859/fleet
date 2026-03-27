@@ -79,7 +79,7 @@ fleet crew deploy --sector <id> --mission <research-mission-id>
 fleet crew deploy --sector <id> --mission <code-mission-id>
 \`\`\`
 
-When the code crew starts, it receives a header listing the research cargo file paths and can use the Read tool to load findings if the task requires them.
+When the code crew starts, it receives a header listing the research cargo file paths (sent via \`fleet cargo send\` or recovered from raw output) and can use the Read tool to load findings if the task requires them.
 
 This ensures mission prompts are persisted in the database and never lost.
 
@@ -258,6 +258,8 @@ fleet sectors show <id>                # Show Sector details
 
 \`\`\`
 fleet cargo list                       # List all Cargo items
+fleet cargo send --type <type> --file <path>       # Send explicit Cargo from a file
+fleet cargo send --type <type> --content "<str>"   # Send explicit Cargo inline
 fleet cargo produce --sector <id> --type <type> --path <path>  # Record produced Cargo
 fleet cargo pending --sector <id>      # Show undelivered Cargo for a Sector
 \`\`\`
@@ -497,39 +499,45 @@ Then summarize the state for the user before asking what to do next.
 
 ## Research Mission Output Format
 
-When \`FLEET_MISSION_TYPE=research\`, your findings are captured as **cargo** from your terminal output. Follow these rules:
+When \`FLEET_MISSION_TYPE=research\` or \`FLEET_MISSION_TYPE=architect\`, use \`fleet cargo send\` to explicitly persist your findings.
 
-**What gets captured:** All text you print to stdout — your analysis, findings, summaries, and conclusions.
+**Preferred method — explicit cargo send:**
 
-**What does NOT get captured:** Files written to disk. The git safety guard will discard any files you create or modify. Do not write files as your primary output method.
-
-**How to structure your research output:**
-
-1. Print findings directly to your terminal output using \`echo\`, \`console.log\`, or by writing text in your assistant responses
-2. Structure output clearly with headers, sections, and conclusions
-3. End your session with a clear summary of findings
-4. Do NOT create pull requests or commits — git changes are discarded automatically
-
-**Example output structure:**
+\`\`\`bash
+# Save your findings to a file, then send as cargo
+fleet cargo send --type findings --file findings.md
+fleet cargo send --type blueprint --file blueprint.md
 \`\`\`
+
+**Fallback:** Your raw terminal output is also streamed to disk automatically. If you do not send explicit cargo, the First Officer will recover cargo from this raw output after your mission completes.
+
+**How to structure your output (for either method):**
+
+1. Write findings to a markdown file with clear headers, sections, and conclusions
+2. Send the file as cargo using \`fleet cargo send\`
+3. Do NOT create pull requests or commits — git changes are discarded automatically for research/architect missions
+
+**Example:**
+\`\`\`bash
+# Write findings to file
+cat > findings.md << 'EOF'
 ## Research Findings: [Topic]
 
 ### Summary
 [Brief summary of key findings]
 
 ### Details
-[Detailed investigation results]
+[Detailed investigation results with file:line references]
 
 ### Conclusions
 [Actionable conclusions and recommendations]
+EOF
+
+# Send as cargo
+fleet cargo send --type findings --file findings.md
 \`\`\`
 
-**Checking your mission type:**
-\`\`\`bash
-echo $FLEET_MISSION_TYPE   # 'research', 'code', 'review', 'architect', or 'repair'
-\`\`\`
-
-When a research mission completes, its summary cargo path is referenced in the initial message of any code missions that depend on it. The code crew can Read the file on demand if the task requires the findings.
+When a research mission completes, its cargo is available to dependent code missions via the cargo header in their initial message.
 
 ## Crew Identity
 
