@@ -75,7 +75,9 @@ export function App(): React.JSX.Element {
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [miniWsOpen, setMiniWsOpen] = useState(false);
-  const [miniWsList, setMiniWsList] = useState<Array<{ id: string; label: string; tabCount: number }>>([]);
+  const [miniWsList, setMiniWsList] = useState<
+    Array<{ id: string; label: string; tabCount: number }>
+  >([]);
 
   const {
     workspace,
