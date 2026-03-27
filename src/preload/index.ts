@@ -37,7 +37,8 @@ import type {
   FileSearchRequest,
   FileSearchResponse,
   RecentImagesResponse,
-  ClipboardHistoryResponse
+  ClipboardHistoryResponse,
+  LogEntry
 } from '../shared/ipc-api';
 import type {
   Workspace,
@@ -383,6 +384,9 @@ const fleetApi = {
   shell: {
     openExternal: async (url: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
+  },
+  log: {
+    batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
   }
 };
 

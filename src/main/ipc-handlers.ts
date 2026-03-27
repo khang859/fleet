@@ -1,5 +1,8 @@
 import { ipcMain, BrowserWindow, dialog } from 'electron';
 import { safeOpenExternal } from './safe-external';
+import { createLogger, logger } from './logger';
+
+const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
 import { extname, join, relative } from 'path';
@@ -19,7 +22,8 @@ import type {
   PaneFocusedPayload,
   StarbaseRuntimeStatus,
   DirEntry,
-  FileSearchRequest
+  FileSearchRequest,
+  LogEntry
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -69,8 +73,18 @@ export function registerIpcHandlers(
   getStarbaseServices: () => StarbaseServices,
   workspacePath: string
 ): void {
+  // Renderer log bridge — receives batched log entries from renderer and writes to Winston
+  ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
+    for (const entry of entries) {
+      const childLog = logger.child({ tag: entry.tag });
+      const meta = entry.meta ?? {};
+      childLog[entry.level](entry.message, meta);
+    }
+  });
+
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+    log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
     await getBootstrapState().envReady;
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);
@@ -119,6 +133,7 @@ export function registerIpcHandlers(
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_KILL, (_event, paneId: string) => {
+    log.debug('ipc:pty:kill', { paneId });
     ptyManager.kill(paneId);
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
   });
@@ -148,8 +163,7 @@ export function registerIpcHandlers(
   ipcMain.on(IPC_CHANNELS.PTY_GC, (_event, activePaneIds: string[]) => {
     const killed = ptyManager.gc(new Set(activePaneIds));
     if (killed.length > 0) {
-      // eslint-disable-next-line no-console
-      console.log(`[pty-gc] killed ${killed.length} orphaned PTY(s):`, killed);
+      log.info('killed orphaned PTYs', { count: killed.length, paneIds: killed });
       for (const paneId of killed) {
         eventBus.emit('pane-closed', { type: 'pane-closed', paneId });
       }
@@ -158,24 +172,33 @@ export function registerIpcHandlers(
 
   // Layout handlers
   ipcMain.handle(IPC_CHANNELS.LAYOUT_SAVE, (_event, req: LayoutSaveRequest) => {
+    log.debug('ipc:layout:save', {
+      workspaceId: req.workspace.id,
+      tabCount: req.workspace.tabs.length
+    });
     try {
       layoutStore.save(req.workspace);
       layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
       layoutStore.ensureImagesTab(req.workspace.id, workspacePath);
     } catch (err) {
-      console.error('[layout-save] Failed to save workspace:', err);
+      log.error('failed to save workspace', {
+        error: err instanceof Error ? err.message : String(err)
+      });
     }
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LOAD, (_event, workspaceId: string): Workspace | undefined => {
+    log.debug('ipc:layout:load', { workspaceId });
     return layoutStore.load(workspaceId);
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_LIST, (): LayoutListResponse => {
+    log.debug('ipc:layout:list');
     return { workspaces: layoutStore.list() };
   });
 
   ipcMain.handle(IPC_CHANNELS.LAYOUT_DELETE, (_event, workspaceId: string) => {
+    log.debug('ipc:layout:delete', { workspaceId });
     layoutStore.delete(workspaceId);
   });
 

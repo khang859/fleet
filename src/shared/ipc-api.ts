@@ -368,3 +368,11 @@ export type ClipboardEntry = {
 export type ClipboardHistoryResponse = {
   entries: ClipboardEntry[];
 };
+
+export interface LogEntry {
+  tag: string;
+  level: 'debug' | 'info' | 'warn' | 'error';
+  message: string;
+  meta?: Record<string, unknown>;
+  timestamp: string;
+}

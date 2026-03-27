@@ -4,6 +4,9 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { join } from 'path';
 import { GLOBAL_SECTOR_ID } from './sector-service';
+import { createLogger } from '../logger';
+
+const log = createLogger('reconciliation');
 
 const execFileAsync = promisify(execFile);
 
@@ -135,7 +138,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
           rmSync(fullPath, { recursive: true, force: true });
           summary.orphanedWorktrees.push(fullPath);
         } catch {
-          console.error(`[reconciliation] Failed to remove orphaned worktree: ${fullPath}`);
+          log.error('failed to remove orphaned worktree', { path: fullPath });
         }
       }
     }
@@ -222,9 +225,7 @@ export async function runReconciliation(deps: ReconciliationDeps): Promise<Recon
       rmSync(crew.worktree_path, { recursive: true, force: true });
       summary.cleanedErroredCrew.push(crew.id);
     } catch {
-      console.error(
-        `[reconciliation] Failed to remove errored crew worktree: ${crew.worktree_path}`
-      );
+      log.error('failed to remove errored crew worktree', { path: crew.worktree_path });
     }
   }
 

@@ -1,5 +1,8 @@
 import * as pty from 'node-pty';
 import { getDefaultShell } from './shell-detection';
+import { createLogger } from './logger';
+
+const log = createLogger('pty');
 
 export type PtyCreateOptions = {
   paneId: string;
@@ -45,6 +48,10 @@ export class PtyManager {
       // renderer-side createdPtys Set is reset but the main process map persists)
       const existing = this.ptys.get(opts.paneId);
       if (!existing) return { paneId: opts.paneId, pid: 0 };
+      log.debug('PTY already exists, returning existing pid', {
+        paneId: opts.paneId,
+        pid: existing.process.pid
+      });
       return { paneId: opts.paneId, pid: existing.process.pid };
     }
 
@@ -61,10 +68,11 @@ export class PtyManager {
       }
     }
 
-    // eslint-disable-next-line no-console
-    console.log(
-      `[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`
-    );
+    log.debug('spawning PTY', {
+      shell,
+      cwd: opts.cwd,
+      pathPrefix: process.env.PATH?.substring(0, 80)
+    });
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: opts.cols ?? 80,
@@ -88,6 +96,10 @@ export class PtyManager {
     entry.dataDisposable = proc.onData((data: string) => {
       entry.outputBuffer += data;
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
+        log.debug('backpressure pause', {
+          paneId: opts.paneId,
+          bufferBytes: entry.outputBuffer.length
+        });
         entry.paused = true;
         this.flushPane(opts.paneId);
         proc.pause();
@@ -109,6 +121,7 @@ export class PtyManager {
   resize(paneId: string, cols: number, rows: number): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('resize', { paneId, cols, rows });
       entry.process.resize(cols, rows);
     }
   }
@@ -120,6 +133,7 @@ export class PtyManager {
   kill(paneId: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('kill', { paneId, pid: entry.process.pid });
       entry.dataDisposable?.dispose();
       entry.exitDisposable?.dispose();
       this.dataCallbacks.delete(paneId);
@@ -187,10 +201,9 @@ export class PtyManager {
     if (!entry) return;
 
     if (this.dataCallbacks.has(paneId)) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[pty] onData for ${paneId} already registered — skipping to prevent silent overwrite`
-      );
+      log.warn('onData already registered for pane, skipping to prevent silent overwrite', {
+        paneId
+      });
       return;
     }
 
@@ -204,6 +217,7 @@ export class PtyManager {
   resume(paneId: string): void {
     const entry = this.ptys.get(paneId);
     if (entry) {
+      log.debug('resume', { paneId });
       entry.paused = false;
       entry.process.resume();
     }
@@ -215,6 +229,7 @@ export class PtyManager {
       // Dispose previous exit listener to prevent stacking (e.g. on HMR re-register)
       entry.exitDisposable?.dispose();
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
+        log.debug('exit', { paneId, exitCode });
         entry.dataDisposable?.dispose();
         this.dataCallbacks.delete(paneId);
         this.ptys.delete(paneId);

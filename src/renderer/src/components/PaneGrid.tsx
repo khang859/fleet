@@ -4,6 +4,9 @@ import { TerminalPane } from './TerminalPane';
 import { ImageViewerPane } from './ImageViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { createLogger } from '../logger';
+
+const log = createLogger('layout:panes');
 
 // --- Calc-based absolute positioning system ---
 // Each dimension is expressed as `calc(pct% + px)` to handle the 6px resize
@@ -217,6 +220,8 @@ function AbsoluteResizeHandle({
       const grid = gridRef.current;
       if (!grid) return;
 
+      log.debug('resize start', { splitNodePath: path });
+
       const gridRect = grid.getBoundingClientRect();
 
       document.body.style.cursor = isH ? 'col-resize' : 'row-resize';
@@ -245,6 +250,7 @@ function AbsoluteResizeHandle({
         if (inner) inner.classList.remove('bg-blue-500');
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
+        log.debug('resize complete', { splitNodePath: path });
       };
 
       document.addEventListener('mousemove', onMouseMove);

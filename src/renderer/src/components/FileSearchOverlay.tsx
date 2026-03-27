@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, ArrowDownAZ, Clock, HardDrive, Image, FolderOpen, Layers } from 'lucide-react';
+import { createLogger } from '../logger';
+const log = createLogger('overlay:file-search');
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useStarCommandStore } from '../store/star-command-store';
 import { useImageStore } from '../store/image-store';
@@ -245,8 +247,15 @@ export function FileSearchOverlay({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
+  const activeTab = useWorkspaceStore((s) => {
+    const tabId = s.activeTabId;
+    return tabId ? s.workspace.tabs.find((t) => t.id === tabId) : undefined;
+  });
   const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
-  const targetPaneId = activePaneId ?? admiralPaneId;
+  // Star Command tab's workspace paneId doesn't match the Admiral PTY paneId,
+  // so prefer admiralPaneId when the active tab is Star Command.
+  const targetPaneId =
+    activeTab?.type === 'star-command' ? (admiralPaneId ?? activePaneId) : (activePaneId ?? admiralPaneId);
   const generations = useImageStore((s) => s.generations);
   const loadGenerations = useImageStore((s) => s.loadGenerations);
 
@@ -384,6 +393,7 @@ export function FileSearchOverlay({
 
   const handleSelect = useCallback(
     (file: FileSearchResult) => {
+      log.debug('handleSelect', { targetPaneId, activePaneId, admiralPaneId, filePath: file.path });
       if (!targetPaneId) return;
       const quoted = quotePathForShell(file.path, window.fleet.platform) + ' ';
       window.fleet.pty.input({ paneId: targetPaneId, data: bracketedPaste(quoted) });

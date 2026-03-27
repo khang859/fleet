@@ -1,6 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { SocketServer, type ServiceRegistry, type AsyncServiceRegistry } from './socket-server';
 import type { ImageService } from './image-service';
+import { createLogger } from './logger';
+
+const log = createLogger('socket-supervisor');
 
 const MAX_RESTARTS = 5;
 const WINDOW_MS = 5 * 60 * 1000; // 5 minutes
@@ -45,7 +48,7 @@ export class SocketSupervisor extends EventEmitter {
       this.restartTimestamps = this.restartTimestamps.filter((t) => now - t < WINDOW_MS);
 
       if (this.restartTimestamps.length >= MAX_RESTARTS) {
-        console.error('[socket-supervisor] Max restarts exceeded in 5-minute window, giving up');
+        log.error('Max restarts exceeded in 5-minute window, giving up');
         this.emit('failed');
         return;
       }
@@ -59,7 +62,9 @@ export class SocketSupervisor extends EventEmitter {
         try {
           await this.server.stop();
         } catch (err) {
-          console.error('[socket-supervisor] Error stopping server during restart:', err);
+          log.error('Error stopping server during restart', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
         this.server = null;
       }
@@ -68,11 +73,12 @@ export class SocketSupervisor extends EventEmitter {
       await this.server.start();
 
       this.restartTimestamps.push(Date.now());
-      // eslint-disable-next-line no-console
-      console.log('[socket-supervisor] Server restarted successfully');
+      log.info('Server restarted successfully');
       this.emit('restarted');
     } catch (err) {
-      console.error('[socket-supervisor] Restart failed:', err);
+      log.error('Restart failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
       this.restartTimestamps.push(Date.now());
     } finally {
       this.isRestarting = false;
@@ -91,14 +97,22 @@ export class SocketSupervisor extends EventEmitter {
     });
 
     server.on('server-error', (err: Error) => {
-      console.error('[socket-supervisor] Server error detected:', err.message);
-      this.restart().catch((e) => console.error('[socket-supervisor] Auto-restart failed:', e));
+      log.error('Server error detected', { error: err.message });
+      this.restart().catch((e) =>
+        log.error('Auto-restart failed', {
+          error: e instanceof Error ? e.message : String(e)
+        })
+      );
     });
 
     server.on('server-close', () => {
       if (!this.isStopped) {
-        console.warn('[socket-supervisor] Server closed unexpectedly');
-        this.restart().catch((e) => console.error('[socket-supervisor] Auto-restart failed:', e));
+        log.warn('Server closed unexpectedly');
+        this.restart().catch((e) =>
+          log.error('Auto-restart failed', {
+            error: e instanceof Error ? e.message : String(e)
+          })
+        );
       }
     });
 

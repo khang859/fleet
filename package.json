@@ -1,7 +1,7 @@
 {
   "name": "fleet",
   "productName": "Fleet",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
   "author": {
@@ -78,6 +78,8 @@
     "shiki": "^4.0.2",
     "simple-git": "^3.33.0",
     "tailwind-merge": "^3.5.0",
+    "winston": "^3.19.0",
+    "winston-daily-rotate-file": "^5.0.0",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },

@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import type { NotificationLevel } from '../../../shared/types';
+import { createLogger } from '../logger';
+
+const log = createLogger('store:notifications');
 
 type NotificationRecord = {
   paneId: string;
@@ -25,6 +28,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   notifications: new Map(),
 
   setNotification: (record) => {
+    log.debug('setNotification', { paneId: record.paneId, level: record.level });
     set((state) => {
       const next = new Map(state.notifications);
       const existing = next.get(record.paneId);
@@ -36,6 +40,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
   },
 
   clearPane: (paneId) => {
+    log.debug('clearPane', { paneId });
     set((state) => {
       const next = new Map(state.notifications);
       next.delete(paneId);

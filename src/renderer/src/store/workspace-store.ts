@@ -2,6 +2,10 @@ import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
 import { useCwdStore } from './cwd-store';
 import { injectLiveCwd } from '../lib/workspace-utils';
+import { createLogger } from '../logger';
+
+const logTabs = createLogger('sidebar:tabs');
+const logLayout = createLogger('layout:state');
 
 const RECENT_FILES_KEY = 'fleet:recent-files';
 const MAX_RECENT_FILES = 20;
@@ -191,6 +195,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       cwd,
       splitRoot: leaf
     };
+    logTabs.debug('addTab', { tabId: tab.id, label: resolvedLabel, cwd, paneId: leaf.id });
     set((state) => ({
       workspace: {
         ...state.workspace,
@@ -224,6 +229,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   closeTab: (tabId, serializedPanes) => {
+    logTabs.debug('closeTab', { tabId });
     set((state) => {
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const rawTab = state.workspace.tabs[tabIndex];
@@ -249,6 +255,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   undoCloseTab: () => {
+    logTabs.debug('undoCloseTab');
     set((state) => {
       if (!state.lastClosedTab) return state;
       const { tab, index } = state.lastClosedTab;
@@ -265,6 +272,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   renameTab: (tabId, label) => {
+    logTabs.debug('renameTab', { tabId, label });
     set((state) => ({
       workspace: {
         ...state.workspace,
@@ -289,6 +297,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   setActiveTab: (tabId) => {
+    logTabs.debug('setActiveTab', { tabId });
     const tab = get().workspace.tabs.find((t) => t.id === tabId);
     if (tab) {
       const paneIds = collectPaneIds(tab.splitRoot);
@@ -297,6 +306,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   reorderTab: (fromIndex, toIndex) => {
+    logTabs.debug('reorderTab', { fromIndex, toIndex, tabCount: get().workspace.tabs.length });
     set((state) => {
       const tabs = [...state.workspace.tabs];
       if (fromIndex < 0 || fromIndex >= tabs.length) return state;
@@ -304,6 +314,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (fromIndex === toIndex) return state;
       const [moved] = tabs.splice(fromIndex, 1);
       tabs.splice(toIndex, 0, moved);
+      logTabs.debug('reorderTab result', { movedTabId: moved.id, newOrder: tabs.map(t => t.id) });
       return {
         workspace: { ...state.workspace, tabs },
         isDirty: true
@@ -312,6 +323,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   splitPane: (paneId, direction) => {
+    logLayout.debug('splitPane', { paneId, direction });
     const liveCwd = useCwdStore.getState().cwds.get(paneId);
     const tabCwd =
       get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/';
@@ -347,10 +359,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true
     }));
 
+    logLayout.debug('splitPane created', { newPaneId: newLeaf.id });
     return newLeaf.id;
   },
 
   closePane: (paneId) => {
+    logLayout.debug('closePane', { paneId });
     set((state) => {
       const tabs = state.workspace.tabs
         .map((tab) => {
@@ -395,6 +409,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   loadWorkspace: (workspace) => {
+    logLayout.debug('loadWorkspace', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
     // Backward compat: old saved workspaces may lack labelIsCustom
     const migratedTabs = workspace.tabs.map((t) => ({
       ...t,
@@ -422,6 +437,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   switchWorkspace: (ws) => {
+    logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = target.tabs.map((t) => ({
