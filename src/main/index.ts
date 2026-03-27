@@ -15,10 +15,7 @@ import { SettingsStore } from './settings-store';
 import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
 import { SocketSupervisor } from './socket-supervisor';
 import { FleetCommandHandler } from './socket-command-handler';
-import { AgentStateTracker } from './agent-state-tracker';
-import { JsonlWatcher } from './jsonl-watcher';
 import { CwdPoller } from './cwd-poller';
-import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import { AdmiralProcess } from './starbase/admiral-process';
 import { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import { installFleetCLI } from './install-fleet-cli';
@@ -56,8 +53,6 @@ const commandHandler = new FleetCommandHandler(
   notificationState
 );
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
-const agentTracker = new AgentStateTracker(eventBus);
-const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR);
 const admiralStateDetector = new AdmiralStateDetector(eventBus);
 const runtimeClient = new StarbaseRuntimeClient(
   new URL('./starbase-runtime-process.mjs', import.meta.url)
@@ -627,48 +622,6 @@ void app.whenReady().then(() => {
 
   imageService.resumeInterrupted();
 
-  // Wire JSONL watcher to agent state tracker
-  // Maps JSONL sessionId → Fleet paneId
-  const sessionToPaneMap = new Map<string, string>();
-
-  jsonlWatcher.onRecord((sessionId, record) => {
-    // Already mapped?
-    const existingPane = sessionToPaneMap.get(sessionId);
-    if (existingPane) {
-      agentTracker.handleJsonlRecord(existingPane, record);
-      return;
-    }
-
-    // Correlate by matching the record's cwd to a pane's cwd
-    // Use the most specific (longest) matching pane CWD to avoid
-    // parent dirs like ~ matching everything.
-    const recordCwd = 'cwd' in record && typeof record.cwd === 'string' ? record.cwd : undefined;
-    if (recordCwd) {
-      const mappedPanes = new Set(sessionToPaneMap.values());
-      const activePanes = ptyManager.paneIds();
-
-      let bestPane: string | null = null;
-      let bestLen = 0;
-
-      for (const paneId of activePanes) {
-        if (mappedPanes.has(paneId)) continue;
-        const paneCwd = ptyManager.getCwd(paneId);
-        if (paneCwd && recordCwd.startsWith(paneCwd) && paneCwd.length > bestLen) {
-          bestPane = paneId;
-          bestLen = paneCwd.length;
-        }
-      }
-
-      if (bestPane) {
-        sessionToPaneMap.set(sessionId, bestPane);
-        agentTracker.handleJsonlRecord(bestPane, record);
-        return;
-      }
-    }
-  });
-
-  jsonlWatcher.start();
-
   // Forward admiral state detail changes to renderer
   eventBus.on('admiral-state-change', (event) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -679,24 +632,9 @@ void app.whenReady().then(() => {
     }
   });
 
-  // Forward agent state changes to renderer
-  eventBus.on('agent-state-change', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.AGENT_STATE, {
-        states: agentTracker.getAllStates()
-      });
-    }
-  });
-
-  // Clean up session mapping and CWD polling when panes close
+  // Clean up CWD polling when panes close
   eventBus.on('pane-closed', (event) => {
     cwdPoller.stopPolling(event.paneId);
-    for (const [sessionId, paneId] of sessionToPaneMap) {
-      if (paneId === event.paneId) {
-        sessionToPaneMap.delete(sessionId);
-        break;
-      }
-    }
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync
@@ -955,7 +893,6 @@ function shutdownAll(): void {
   );
   admiralProcess?.stop();
   admiralStateDetector.dispose();
-  jsonlWatcher.stop();
   runtimeClient.stop();
   imageService.shutdown();
 }

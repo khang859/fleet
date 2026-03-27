@@ -13,7 +13,6 @@ import type {
   LayoutListResponse,
   NotificationPayload,
   PaneFocusedPayload,
-  AgentStatePayload,
   GitStatusPayload,
   GitIsRepoPayload,
   HostPlatform,
@@ -134,10 +133,6 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.NOTIFICATION, callback),
     paneFocused: (payload: PaneFocusedPayload): void =>
       ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload)
-  },
-  agentState: {
-    onStateUpdate: (callback: (payload: AgentStatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.AGENT_STATE, callback)
   },
   homeDir: getHomeDir(),
   platform: ((): HostPlatform => {

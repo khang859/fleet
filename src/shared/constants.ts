@@ -11,8 +11,6 @@ export const DEFAULT_SCROLLBACK = 10_000;
 export const SOCKET_PATH =
   process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock');
 
-export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
-
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
     defaultShell: '',

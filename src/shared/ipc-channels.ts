@@ -14,7 +14,6 @@ export const IPC_CHANNELS = {
   LAYOUT_DELETE: 'layout:delete',
   NOTIFICATION: 'notification',
   PANE_FOCUSED: 'pane:focused',
-  AGENT_STATE: 'agent:state',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
   GIT_IS_REPO: 'git:is-repo',

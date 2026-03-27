@@ -1,4 +1,4 @@
-import type { Workspace, NotificationEvent, AgentVisualState } from './types';
+import type { Workspace, NotificationEvent } from './types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -63,10 +63,6 @@ export type PaneFocusedPayload = {
 export type PtyCwdPayload = {
   paneId: string;
   cwd: string;
-};
-
-export type AgentStatePayload = {
-  states: AgentVisualState[];
 };
 
 export type GitFileStatus = {
