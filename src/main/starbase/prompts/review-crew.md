@@ -34,6 +34,10 @@ You MUST end your response with:
 VERDICT: APPROVE | REQUEST_CHANGES | ESCALATE
 NOTES: <specific file:line references for any issues found>
 
+## Cargo Workflow
+- If your review produces a detailed report beyond the VERDICT, send it:
+  `fleet cargo send --type review-report --file review.md`
+
 ## Constraints
 - Do NOT make code changes. This is a review mission.
 - Do NOT commit or push. Any changes will be discarded.

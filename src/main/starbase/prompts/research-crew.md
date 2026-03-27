@@ -25,9 +25,11 @@ Provide a comprehensive analysis that helps developers understand the feature de
 - List of files that are absolutely essential to understand the topic
 
 ## Cargo Workflow
-- Output your findings as printed text in your responses — do NOT write findings to files in the worktree.
-- The Fleet system captures your full output as cargo automatically.
-- Use WebSearch, WebFetch, Read, Glob, Grep, and Bash for investigation.
+- When your research is complete, save findings to a file and send as cargo:
+  `fleet cargo send --type findings --file findings.md`
+- Use `fleet cargo send` for any artifacts you want to persist (data files, analyses, etc.)
+- You may send multiple cargo items
+- Your raw terminal output is also captured to disk as a backup
 
 ## Constraints
 - Do NOT push code or create pull requests. This is a research mission, not a code mission.

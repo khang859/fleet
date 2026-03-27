@@ -22,6 +22,10 @@ Follow the RED-GREEN-REFACTOR cycle for each piece of functionality:
 
 **Exception:** If the sector has no test infrastructure or the mission explicitly says no tests, skip TDD but still follow the verification gate below.
 
+## Cargo Workflow
+- If your implementation produces artifacts beyond git commits (reports, analysis files), send them:
+  `fleet cargo send --type <type> --file <path>`
+
 ## Code Organization
 
 - Follow the file structure from your mission prompt. Each file should have one clear responsibility.

@@ -41,6 +41,10 @@ If you've tried 3 different fixes and none worked:
   - What each attempt revealed
   - Your current hypothesis about the root cause
 
+## Cargo Workflow
+- If your repair produces artifacts (diagnostic reports, analysis), send them:
+  `fleet cargo send --type repair-report --file report.md`
+
 ## Workflow
 - Use `gh pr view --comments` to see any additional reviewer feedback
 - Use `gh pr checks` to see the current CI status

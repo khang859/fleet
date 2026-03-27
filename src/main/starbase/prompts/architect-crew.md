@@ -23,9 +23,11 @@ Produce a comprehensive implementation blueprint:
 - **Build Sequence**: Phased implementation steps as a checklist
 
 ## Cargo Workflow
-- Output your blueprint as printed text in your responses — do NOT write designs to files in the worktree.
-- The Fleet system captures your full output as cargo automatically.
-- Use Read, Glob, Grep, Bash, and WebFetch to explore the codebase before designing.
+- When your design is complete, save your blueprint to a file and send it as cargo:
+  `fleet cargo send --type blueprint --file blueprint.md`
+- Use `fleet cargo send` for any artifacts you want to persist (diagrams, specs, etc.)
+- You may send multiple cargo items
+- Your raw terminal output is also captured to disk as a backup
 
 ## Constraints
 - Do NOT write code or create pull requests. This is a design mission, not a code mission.
