@@ -342,6 +342,13 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_architect', '"claude-haiku-4-5"');
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_repair', '"claude-haiku-4-5"');
     `
+  },
+  {
+    version: 17,
+    name: '017-cargo-checked',
+    sql: `
+      ALTER TABLE missions ADD COLUMN cargo_checked INTEGER DEFAULT 0;
+    `
   }
 ];
 
