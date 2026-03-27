@@ -12,6 +12,7 @@ import type { ConfigService } from './starbase/config-service';
 import type { ShipsLog } from './starbase/ships-log';
 import type { ProtocolService } from './starbase/protocol-service';
 import type { ImageService } from './image-service';
+import type { ImageProviderSettings } from '../shared/types';
 import { CodedError } from './errors';
 
 export interface ServiceRegistry {
@@ -1088,7 +1089,7 @@ export class SocketServer extends EventEmitter {
         if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
         const prompt = typeof args.prompt === 'string' ? args.prompt : undefined;
         if (!prompt) throw new CodedError('image.generate requires a prompt', 'BAD_REQUEST');
-        const result = await this.imageService.generate({
+        const result = this.imageService.generate({
           prompt,
           provider: typeof args.provider === 'string' ? args.provider : undefined,
           model: typeof args.model === 'string' ? args.model : undefined,
@@ -1108,7 +1109,7 @@ export class SocketServer extends EventEmitter {
         const rawImages = args.images;
         const images = Array.isArray(rawImages) ? rawImages.filter((x): x is string => typeof x === 'string') : typeof rawImages === 'string' ? [rawImages] : [];
         if (images.length === 0) throw new CodedError('image.edit requires --images', 'BAD_REQUEST');
-        const editResult = await this.imageService.edit({
+        const editResult = this.imageService.edit({
           prompt: editPrompt,
           images,
           provider: typeof args.provider === 'string' ? args.provider : undefined,
@@ -1140,7 +1141,7 @@ export class SocketServer extends EventEmitter {
         if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
         const retryId = typeof args.id === 'string' ? args.id : undefined;
         if (!retryId) throw new CodedError('image.retry requires an id', 'BAD_REQUEST');
-        const retryResult = await this.imageService.retry(retryId);
+        const retryResult = this.imageService.retry(retryId);
         this.emit('state-change', 'image:changed', { id: retryResult.id });
         return retryResult;
       }
@@ -1168,14 +1169,14 @@ export class SocketServer extends EventEmitter {
         if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
         const providerId = typeof args.provider === 'string' ? args.provider : undefined;
         const providerKey = providerId ?? this.imageService.getSettings().defaultProvider;
-        const providerUpdate: Record<string, string> = {};
+        const providerUpdate: Partial<ImageProviderSettings> = {};
         if (typeof args['api-key'] === 'string') providerUpdate.apiKey = args['api-key'];
         if (typeof args['default-model'] === 'string') providerUpdate.defaultModel = args['default-model'];
         if (typeof args['default-resolution'] === 'string') providerUpdate.defaultResolution = args['default-resolution'];
         if (typeof args['default-output-format'] === 'string') providerUpdate.defaultOutputFormat = args['default-output-format'];
         if (typeof args['default-aspect-ratio'] === 'string') providerUpdate.defaultAspectRatio = args['default-aspect-ratio'];
         if (Object.keys(providerUpdate).length > 0) {
-          this.imageService.updateSettings({ providers: { [providerKey]: providerUpdate as unknown as import('../shared/types').ImageProviderSettings } });
+          this.imageService.updateSettings({ providers: { [providerKey]: providerUpdate } });
         }
         this.emit('state-change', 'image:changed', {});
         return { updated: true };

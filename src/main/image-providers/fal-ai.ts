@@ -8,7 +8,7 @@ import type {
 } from './types';
 
 function isEditOpts(opts: GenerateOpts | EditOpts): opts is EditOpts {
-  return 'imageUrls' in opts && Array.isArray((opts as EditOpts).imageUrls);
+  return 'imageUrls' in opts && Array.isArray(opts.imageUrls);
 }
 
 export class FalAiProvider implements ImageProvider {
@@ -35,11 +35,9 @@ export class FalAiProvider implements ImageProvider {
     if (opts.aspectRatio) input.aspect_ratio = opts.aspectRatio;
     if (opts.outputFormat) input.output_format = opts.outputFormat;
     if (opts.numImages) input.num_images = opts.numImages;
-    if (isEdit) input.image_urls = (opts as EditOpts).imageUrls;
+    if (isEdit) input.image_urls = opts.imageUrls;
 
-    const result = await fal.queue.submit(endpoint as Parameters<typeof fal.queue.submit>[0], {
-      input: input as Parameters<typeof fal.queue.submit>[1]['input']
-    });
+    const result = await fal.queue.submit(endpoint, { input });
     return { requestId: result.request_id };
   }
 
@@ -62,11 +60,12 @@ export class FalAiProvider implements ImageProvider {
   }
 
   async getResult(requestId: string): Promise<GenerationResult> {
-    const result = await fal.queue.result(
-      this.currentModel as Parameters<typeof fal.queue.result>[0],
-      { requestId }
-    );
-    const data = result.data as Record<string, unknown>;
+    const result = await fal.queue.result(this.currentModel, { requestId });
+    const raw: unknown = result.data;
+    const data: Record<string, unknown> =
+      raw != null && typeof raw === 'object' && !Array.isArray(raw)
+        ? { ...raw }
+        : {};
     const rawImages = Array.isArray(data.images) ? data.images : [];
 
     const images = rawImages

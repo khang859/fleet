@@ -837,12 +837,13 @@ export class StarbaseRuntimeCore {
       },
       sentinel: deps.sentinel
         ? (() => {
-            const status = deps.sentinel!.getStatus();
+            const sentinel = deps.sentinel;
+            const status = sentinel.getStatus();
             if (!status.running) {
               trace('sentinel stopped — restarting');
-              deps.sentinel!.start();
+              sentinel.start();
             }
-            return { ...deps.sentinel!.getStatus(), alerts: sentinelAlerts };
+            return { ...sentinel.getStatus(), alerts: sentinelAlerts };
           })()
         : null
     };

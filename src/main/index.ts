@@ -27,7 +27,7 @@ import { enrichProcessEnv } from './shell-env';
 import { normalizeRuntimeEnv } from './runtime-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus } from '../shared/types';
+import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
 import { StarbaseRuntimeClient } from './starbase-runtime-client';
 import { createSocketRuntimeServices } from './starbase-runtime-socket-services';
 import pkg from 'electron-updater';
@@ -811,13 +811,13 @@ void app.whenReady().then(() => {
   });
 
   // Image generation IPC handlers
-  ipcMain.handle(IPC_CHANNELS.IMAGES_GENERATE, async (_e, opts) => imageService.generate(opts));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, async (_e, opts) => imageService.edit(opts));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_STATUS, async (_e, id: string) => imageService.getStatus(id));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST, async () => imageService.list());
-  ipcMain.handle(IPC_CHANNELS.IMAGES_RETRY, async (_e, id: string) => imageService.retry(id));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, async (_e, id: string) => { imageService.delete(id); });
-  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_GET, async () => {
+  ipcMain.handle(IPC_CHANNELS.IMAGES_GENERATE, (_e, opts: Parameters<typeof imageService.generate>[0]) => imageService.generate(opts));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, (_e, opts: Parameters<typeof imageService.edit>[0]) => imageService.edit(opts));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_STATUS, (_e, id: string) => imageService.getStatus(id));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST, () => imageService.list());
+  ipcMain.handle(IPC_CHANNELS.IMAGES_RETRY, (_e, id: string) => imageService.retry(id));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, (_e, id: string) => { imageService.delete(id); });
+  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_GET, () => {
     const settings = imageService.getSettings();
     const redacted = { ...settings, providers: { ...settings.providers } };
     for (const [key, val] of Object.entries(redacted.providers)) {
@@ -825,7 +825,7 @@ void app.whenReady().then(() => {
     }
     return redacted;
   });
-  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_SET, async (_e, partial) => {
+  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_SET, (_e, partial: Partial<ImageSettings>) => {
     imageService.updateSettings(partial);
   });
 

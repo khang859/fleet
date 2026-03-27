@@ -41,6 +41,17 @@ function generateId(): string {
   return `${ts}-${rand}`;
 }
 
+function isImageGenerationMeta(value: unknown): value is ImageGenerationMeta {
+  return (
+    value != null &&
+    typeof value === 'object' &&
+    'id' in value &&
+    'status' in value &&
+    'createdAt' in value &&
+    'provider' in value
+  );
+}
+
 export class ImageService extends EventEmitter {
   private providers = new Map<string, ImageProvider>();
   private activePolls = new Map<string, AbortController>();
@@ -66,12 +77,12 @@ export class ImageService extends EventEmitter {
     return { ...DEFAULT_SETTINGS };
   }
 
-  updateSettings(partial: Partial<ImageSettings>): void {
+  updateSettings(partial: { defaultProvider?: string; providers?: Record<string, Partial<ImageProviderSettings>> }): void {
     const current = this.getSettings();
     if (partial.defaultProvider) current.defaultProvider = partial.defaultProvider;
     if (partial.providers) {
       for (const [key, val] of Object.entries(partial.providers)) {
-        current.providers[key] = { ...current.providers[key], ...val };
+        current.providers[key] = { ...current.providers[key], ...val } as ImageProviderSettings;
       }
     }
     writeFileSync(SETTINGS_PATH, JSON.stringify(current, null, 2));
@@ -83,7 +94,7 @@ export class ImageService extends EventEmitter {
     for (const [id, provider] of this.providers) {
       const providerSettings = settings.providers[id];
       if (providerSettings) {
-        provider.configure(providerSettings as unknown as Record<string, unknown>);
+        provider.configure({ ...providerSettings });
       }
     }
   }
@@ -104,7 +115,7 @@ export class ImageService extends EventEmitter {
 
   // ── Generate ────────────────────────────────────────────────────────────
 
-  async generate(opts: {
+  generate(opts: {
     prompt: string;
     provider?: string;
     model?: string;
@@ -112,7 +123,7 @@ export class ImageService extends EventEmitter {
     aspectRatio?: string;
     outputFormat?: string;
     numImages?: number;
-  }): Promise<{ id: string }> {
+  }): { id: string } {
     const provider = this.getProvider(opts.provider);
     const defaults = this.getProviderDefaults(opts.provider);
     const id = generateId();
@@ -142,7 +153,7 @@ export class ImageService extends EventEmitter {
 
   // ── Edit ────────────────────────────────────────────────────────────────
 
-  async edit(opts: {
+  edit(opts: {
     prompt: string;
     images: string[];
     provider?: string;
@@ -151,7 +162,7 @@ export class ImageService extends EventEmitter {
     aspectRatio?: string;
     outputFormat?: string;
     numImages?: number;
-  }): Promise<{ id: string }> {
+  }): { id: string } {
     const provider = this.getProvider(opts.provider);
     const defaults = this.getProviderDefaults(opts.provider);
     const id = generateId();
@@ -207,7 +218,7 @@ export class ImageService extends EventEmitter {
 
   // ── Retry ───────────────────────────────────────────────────────────────
 
-  async retry(id: string): Promise<{ id: string }> {
+  retry(id: string): { id: string } {
     const meta = this.readMeta(id);
     if (!meta) throw new Error(`Generation not found: ${id}`);
     if (meta.status !== 'failed' && meta.status !== 'timeout' && meta.status !== 'partial') {
@@ -324,8 +335,11 @@ export class ImageService extends EventEmitter {
   // ── Internal: meta helpers ──────────────────────────────────────────────
 
   private readMeta(id: string): ImageGenerationMeta | null {
-    try { return JSON.parse(readFileSync(join(GENERATIONS_DIR, id, 'meta.json'), 'utf8')) as ImageGenerationMeta; }
-    catch { return null; }
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(join(GENERATIONS_DIR, id, 'meta.json'), 'utf8'));
+      if (isImageGenerationMeta(parsed)) return parsed;
+      return null;
+    } catch { return null; }
   }
 
   private writeMeta(id: string, meta: ImageGenerationMeta): void {
