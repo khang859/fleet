@@ -223,18 +223,25 @@ function createTerminal(
     window.fleet.pty.input({ paneId: options.paneId, data });
   });
 
-  if (!options.attachOnly && !isPreCreated) {
+  if (options.attachOnly) {
+    // attachOnly mode (e.g. Admiral PTY pre-created by main process):
+    // Always call attach to drain any buffered output and resume a paused PTY.
+    // This is critical after hard refresh where the PTY may have accumulated
+    // output (and been paused due to buffer overflow) while the renderer was reloading.
+    void window.fleet.pty.attach(options.paneId).then(({ data }) => {
+      if (!term.element) return;
+      if (data) writeToTerm(data);
+    });
+  } else if (!isPreCreated) {
     createdPtys.add(options.paneId);
     void window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd
     });
-  }
-
-  // For pre-created PTYs (crew deployments), attach to get buffered output
-  // and transition to live streaming. This closes the race where PTY data
-  // arrives before the renderer mounts the terminal.
-  if (isPreCreated && !options.attachOnly) {
+  } else {
+    // For pre-created PTYs (crew deployments), attach to get buffered output
+    // and transition to live streaming. This closes the race where PTY data
+    // arrives before the renderer mounts the terminal.
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {
       if (!term.element) return; // terminal disposed during round-trip
       if (data) writeToTerm(data);

@@ -135,6 +135,11 @@ export function registerIpcHandlers(
     if (!entry) return { data: '' };
     const data = entry.outputBuffer;
     entry.outputBuffer = '';
+    // Resume the PTY if it was paused due to buffer overflow (e.g. during
+    // a hard refresh when the renderer wasn't consuming data).
+    if (entry.paused) {
+      ptyManager.resume(paneId);
+    }
     return { data };
   });
 
