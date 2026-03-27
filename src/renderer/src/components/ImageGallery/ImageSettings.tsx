@@ -137,15 +137,19 @@ export function ImageSettings(): React.JSX.Element {
             <label className="block text-xs text-neutral-400 mb-2">Action Models</label>
             <div className="space-y-2">
               {actions.map((action) => {
-                const currentModel = provider.actions?.[action.actionType]?.model;
+                const overrideModel = provider.actions?.[action.actionType]?.model;
+                const effectiveModel = overrideModel ?? action.model;
                 return (
                   <div key={action.id}>
                     <label className="block text-xs text-neutral-500 mb-1">{action.name}</label>
+                    <div className="text-sm text-neutral-200 bg-neutral-800 rounded px-3 py-1.5 mb-1">
+                      {effectiveModel}
+                    </div>
                     <div className="flex gap-2">
                       <input
                         type="text"
-                        className="flex-1 bg-neutral-800 text-neutral-200 rounded px-3 py-1.5 text-sm border border-neutral-700 focus:border-cyan-500 outline-none"
-                        placeholder={currentModel ?? action.model}
+                        className="flex-1 bg-neutral-800 text-neutral-200 rounded px-3 py-1.5 text-sm border border-neutral-700 focus:border-cyan-500 outline-none placeholder:text-neutral-600"
+                        placeholder="Override model ID"
                         value={actionModelInputs[action.actionType] ?? ''}
                         onChange={(e) =>
                           setActionModelInputs((prev) => ({
@@ -164,9 +168,6 @@ export function ImageSettings(): React.JSX.Element {
                         Save
                       </button>
                     </div>
-                    {currentModel && (
-                      <div className="text-xs text-neutral-500 mt-0.5">{currentModel}</div>
-                    )}
                   </div>
                 );
               })}
