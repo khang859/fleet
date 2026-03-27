@@ -283,10 +283,12 @@ export function App(): React.JSX.Element {
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       };
       void window.fleet.layout.save({ workspace: activeWithContent });
 
@@ -294,10 +296,12 @@ export function App(): React.JSX.Element {
       for (const bgWs of state.backgroundWorkspaces.values()) {
         const bgWithContent = {
           ...bgWs,
-          tabs: bgWs.tabs.map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
+          tabs: bgWs.tabs
+            .filter((tab) => tab.type !== 'settings')
+            .map((tab) => ({
+              ...tab,
+              splitRoot: injectLiveCwd(tab.splitRoot)
+            }))
         };
         void window.fleet.layout.save({ workspace: bgWithContent });
       }
@@ -575,9 +579,15 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'crew') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* File/terminal/image tab icons (excluding star-command, images, crew) */}
+            {/* File/terminal/image tab icons (excluding star-command, images, crew, settings) */}
             {workspace.tabs
-              .filter((t) => t.type !== 'star-command' && t.type !== 'images' && t.type !== 'crew')
+              .filter(
+                (t) =>
+                  t.type !== 'star-command' &&
+                  t.type !== 'images' &&
+                  t.type !== 'crew' &&
+                  t.type !== 'settings'
+              )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
@@ -667,14 +677,25 @@ export function App(): React.JSX.Element {
               </Popover.Portal>
             </Popover.Root>
             {/* Settings button */}
-            <MiniSidebarTooltip label="Settings">
-              <button
-                onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
-                className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-              >
-                <Settings size={16} />
-              </button>
-            </MiniSidebarTooltip>
+            {(() => {
+              const isSettingsActive = workspace.tabs.some(
+                (t) => t.type === 'settings' && t.id === activeTabId
+              );
+              return (
+                <MiniSidebarTooltip label="Settings">
+                  <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+                    className={`p-2 rounded transition-colors ${
+                      isSettingsActive
+                        ? 'text-white bg-neutral-700 ring-1 ring-neutral-600'
+                        : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800'
+                    }`}
+                  >
+                    <Settings size={16} />
+                  </button>
+                </MiniSidebarTooltip>
+              );
+            })()}
           </div>
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
