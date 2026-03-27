@@ -93,8 +93,16 @@ export class FalAiProvider implements ImageProvider {
         endpoint: 'https://fal.run/fal-ai/bria/background/remove',
         inputMapping: (url: string) => ({ image_url: url, sync_mode: true }),
         outputMapping: (response: unknown) => {
-          const res = response as { image: { url: string; width: number; height: number } };
-          return { url: res.image.url, width: res.image.width, height: res.image.height };
+          const data = response != null && typeof response === 'object' ? response : {};
+          const img =
+            'image' in data && data.image != null && typeof data.image === 'object'
+              ? data.image
+              : {};
+          return {
+            url: 'url' in img && typeof img.url === 'string' ? img.url : '',
+            width: 'width' in img && typeof img.width === 'number' ? img.width : 0,
+            height: 'height' in img && typeof img.height === 'number' ? img.height : 0
+          };
         },
         outputFormat: 'png'
       }

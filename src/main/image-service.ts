@@ -11,7 +11,11 @@ import type {
   ImageFileEntry
 } from '../shared/types';
 import type { ImageProvider, GenerateOpts, EditOpts } from './image-providers/types';
-import { toActionInfo, type ImageActionConfig, type ImageActionInfo } from './image-providers/action-types';
+import {
+  toActionInfo,
+  type ImageActionConfig,
+  type ImageActionInfo
+} from './image-providers/action-types';
 import { FalAiProvider } from './image-providers/fal-ai';
 
 const IMAGES_DIR = join(homedir(), '.fleet', 'images');
@@ -137,7 +141,10 @@ export class ImageService extends EventEmitter {
     return actions;
   }
 
-  private findAction(actionType: string, providerId?: string): { config: ImageActionConfig; apiKey: string } {
+  private findAction(
+    actionType: string,
+    providerId?: string
+  ): { config: ImageActionConfig; apiKey: string } {
     const settings = this.getSettings();
     const id = providerId ?? settings.defaultProvider;
     const provider = this.providers.get(id);
@@ -145,13 +152,20 @@ export class ImageService extends EventEmitter {
     const config = provider.getActions().find((a) => a.actionType === actionType);
     if (!config) throw new Error(`Action "${actionType}" not available for provider "${id}"`);
     const apiKey = settings.providers[id]?.apiKey ?? '';
-    if (!apiKey) throw new Error(`No API key configured for provider "${id}". Run: fleet images config --api-key <key>`);
+    if (!apiKey)
+      throw new Error(
+        `No API key configured for provider "${id}". Run: fleet images config --api-key <key>`
+      );
     return { config, apiKey };
   }
 
-  private async resolveSourceImage(source: string): Promise<string> {
+  private resolveSourceImage(source: string): string {
     // URL — pass through
-    if (source.startsWith('http://') || source.startsWith('https://') || source.startsWith('data:')) {
+    if (
+      source.startsWith('http://') ||
+      source.startsWith('https://') ||
+      source.startsWith('data:')
+    ) {
       return source;
     }
 
@@ -173,11 +187,7 @@ export class ImageService extends EventEmitter {
     return `data:${mimeType};base64,${data.toString('base64')}`;
   }
 
-  runAction(opts: {
-    actionType: string;
-    source: string;
-    provider?: string;
-  }): { id: string } {
+  runAction(opts: { actionType: string; source: string; provider?: string }): { id: string } {
     const { config, apiKey } = this.findAction(opts.actionType, opts.provider);
     const id = generateId();
     mkdirSync(join(GENERATIONS_DIR, id), { recursive: true });
@@ -213,7 +223,7 @@ export class ImageService extends EventEmitter {
     source: string
   ): Promise<void> {
     try {
-      const imageUrl = await this.resolveSourceImage(source);
+      const imageUrl = this.resolveSourceImage(source);
       const input = config.inputMapping(imageUrl);
 
       const response = await fetch(config.endpoint, {

@@ -36,7 +36,11 @@ type ImageStore = {
     outputFormat?: string;
     numImages?: number;
   }) => Promise<{ id: string }>;
-  runAction: (opts: { actionType: string; source: string; provider?: string; }) => Promise<{ id: string }>;
+  runAction: (opts: {
+    actionType: string;
+    source: string;
+    provider?: string;
+  }) => Promise<{ id: string }>;
   retry: (id: string) => Promise<void>;
   deleteGeneration: (id: string) => Promise<void>;
   updateConfig: (partial: Partial<ImageSettings>) => Promise<void>;
