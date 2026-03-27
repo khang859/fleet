@@ -378,10 +378,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       }
     });
 
@@ -423,10 +425,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       };
       void window.fleet.layout
         .save({
@@ -469,10 +473,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       }
     });
 

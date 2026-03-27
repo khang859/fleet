@@ -35,12 +35,9 @@ function FontFamilyPicker({
   const parsed = parseFontSelection(fontFamily);
   const [customValue, setCustomValue] = useState(parsed.customValue);
 
-  const debouncedOnChange = useDebouncedCallback(
-    (value: unknown) => {
-      onChange(resolveFontFamily({ type: 'custom', name: (value as string) || 'monospace' }));
-    },
-    300
-  );
+  const debouncedOnChange = useDebouncedCallback((value: string) => {
+    onChange(resolveFontFamily({ type: 'custom', name: value || 'monospace' }));
+  }, 300);
 
   return (
     <div className="space-y-2">
@@ -134,22 +131,22 @@ export function GeneralSection(): React.JSX.Element {
     settings?.general.scrollbackSize !== undefined ? String(settings.general.scrollbackSize) : '10000'
   );
 
-  const debouncedSaveShell = useDebouncedCallback((value: unknown) => {
+  const debouncedSaveShell = useDebouncedCallback((value: string) => {
     if (!settings) return;
-    void updateSettings({ general: { ...settings.general, defaultShell: value as string } });
+    void updateSettings({ general: { ...settings.general, defaultShell: value } });
   }, 300);
 
-  const debouncedSaveFontSize = useDebouncedCallback((value: unknown) => {
+  const debouncedSaveFontSize = useDebouncedCallback((value: string) => {
     if (!settings) return;
     void updateSettings({
-      general: { ...settings.general, fontSize: parseInt(value as string) || 14 }
+      general: { ...settings.general, fontSize: parseInt(value) || 14 }
     });
   }, 300);
 
-  const debouncedSaveScrollback = useDebouncedCallback((value: unknown) => {
+  const debouncedSaveScrollback = useDebouncedCallback((value: string) => {
     if (!settings) return;
     void updateSettings({
-      general: { ...settings.general, scrollbackSize: parseInt(value as string) || 10000 }
+      general: { ...settings.general, scrollbackSize: parseInt(value) || 10000 }
     });
   }, 300);
 

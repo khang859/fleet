@@ -1,9 +1,10 @@
 import { useRef, useCallback, useEffect } from 'react';
 
-export function useDebouncedCallback<T extends (...args: unknown[]) => void>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- generic callback type requires any for Parameters<T>
+export function useDebouncedCallback<T extends (...args: any[]) => void>(
   callback: T,
   delay: number
-): T {
+): (...args: Parameters<T>) => void {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const callbackRef = useRef(callback);
   callbackRef.current = callback;
@@ -15,12 +16,12 @@ export function useDebouncedCallback<T extends (...args: unknown[]) => void>(
   }, []);
 
   return useCallback(
-    (...args: unknown[]) => {
+    (...args: Parameters<T>) => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {
         callbackRef.current(...args);
       }, delay);
     },
     [delay]
-  ) as T;
+  );
 }

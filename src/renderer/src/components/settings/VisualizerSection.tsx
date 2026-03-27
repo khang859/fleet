@@ -5,19 +5,20 @@ import type { VisualizerEffects } from '../../../../shared/types';
 export function VisualizerSection(): React.JSX.Element | null {
   const { settings, updateSettings } = useSettingsStore();
   if (!settings) return null;
+  const s = settings; // narrowed const — safe in closures without non-null assertion
 
   function effectToggle(key: keyof VisualizerEffects, label: string): React.JSX.Element {
     return (
       <SettingRow label={label}>
         <input
           type="checkbox"
-          checked={settings!.visualizer.effects[key]}
+          checked={s.visualizer.effects[key]}
           onChange={(e) => {
             void updateSettings({
               visualizer: {
-                ...settings!.visualizer,
+                ...s.visualizer,
                 effects: {
-                  ...settings!.visualizer.effects,
+                  ...s.visualizer.effects,
                   [key]: e.target.checked
                 }
               }
