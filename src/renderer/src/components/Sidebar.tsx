@@ -378,10 +378,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       }
     });
 
@@ -423,10 +425,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       };
       void window.fleet.layout
         .save({
@@ -469,10 +473,12 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       }
     });
 
@@ -773,7 +779,13 @@ export function Sidebar({
             <div className="h-px bg-neutral-800 mx-1 my-1" />
           )}
           {workspace.tabs
-            .filter((t) => t.type !== 'star-command' && t.type !== 'crew' && t.type !== 'images')
+            .filter(
+              (t) =>
+                t.type !== 'star-command' &&
+                t.type !== 'crew' &&
+                t.type !== 'images' &&
+                t.type !== 'settings'
+            )
             .map((tab, index) => {
               const paneIds = collectPaneIds(tab.splitRoot);
               const isFile = tab.type === 'file' || tab.type === 'image';
@@ -974,17 +986,28 @@ export function Sidebar({
 
       {/* Settings + Update indicator */}
       <div className="border-t border-neutral-800 px-3 py-2 space-y-1">
-        <button
-          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
-          onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
-          title="Settings (⌘,)"
-        >
-          <Settings size={14} />
-          Settings
-          {updateReady && (
-            <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-          )}
-        </button>
+        {(() => {
+          const isSettingsActive = workspace.tabs.some(
+            (t) => t.type === 'settings' && t.id === activeTabId
+          );
+          return (
+            <button
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md transition-colors ${
+                isSettingsActive
+                  ? 'text-white bg-neutral-700 ring-1 ring-neutral-600'
+                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+              }`}
+              onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+              title="Settings (⌘,)"
+            >
+              <Settings size={14} />
+              Settings
+              {updateReady && (
+                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              )}
+            </button>
+          );
+        })()}
       </div>
 
       {/* File close confirmation dialog */}

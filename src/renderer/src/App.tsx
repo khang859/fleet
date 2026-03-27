@@ -17,7 +17,7 @@ import { useSettingsStore } from './store/settings-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
-import { SettingsModal } from './components/SettingsModal';
+import { SettingsTab } from './components/settings/SettingsTab';
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 import { CommandPalette } from './components/CommandPalette';
 import { GitChangesModal } from './components/GitChangesModal';
@@ -115,7 +115,6 @@ export function App(): React.JSX.Element {
     }
   });
 
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [gitChangesOpen, setGitChangesOpen] = useState(false);
@@ -135,9 +134,31 @@ export function App(): React.JSX.Element {
     return initCwdListener();
   }, []);
 
-  // Settings modal toggle
+  // Settings tab toggle — create singleton or focus existing
   useEffect(() => {
-    const handler = (): void => setSettingsOpen((prev) => !prev);
+    const handler = (): void => {
+      const state = useWorkspaceStore.getState();
+      const existing = state.workspace.tabs.find((t) => t.type === 'settings');
+      if (existing) {
+        state.setActiveTab(existing.id);
+      } else {
+        const leaf = { type: 'leaf' as const, id: crypto.randomUUID(), cwd: '/' };
+        const tab = {
+          id: crypto.randomUUID(),
+          label: 'Settings',
+          labelIsCustom: true,
+          cwd: '/',
+          type: 'settings' as const,
+          splitRoot: leaf
+        };
+        useWorkspaceStore.setState((s) => ({
+          workspace: { ...s.workspace, tabs: [...s.workspace.tabs, tab] },
+          activeTabId: tab.id,
+          activePaneId: leaf.id,
+          isDirty: true
+        }));
+      }
+    };
     document.addEventListener('fleet:toggle-settings', handler);
     return () => document.removeEventListener('fleet:toggle-settings', handler);
   }, []);
@@ -262,10 +283,12 @@ export function App(): React.JSX.Element {
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs
+          .filter((tab) => tab.type !== 'settings')
+          .map((tab) => ({
+            ...tab,
+            splitRoot: injectLiveCwd(tab.splitRoot)
+          }))
       };
       void window.fleet.layout.save({ workspace: activeWithContent });
 
@@ -273,10 +296,12 @@ export function App(): React.JSX.Element {
       for (const bgWs of state.backgroundWorkspaces.values()) {
         const bgWithContent = {
           ...bgWs,
-          tabs: bgWs.tabs.map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
+          tabs: bgWs.tabs
+            .filter((tab) => tab.type !== 'settings')
+            .map((tab) => ({
+              ...tab,
+              splitRoot: injectLiveCwd(tab.splitRoot)
+            }))
         };
         void window.fleet.layout.save({ workspace: bgWithContent });
       }
@@ -554,9 +579,15 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'crew') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* File/terminal/image tab icons (excluding star-command, images, crew) */}
+            {/* File/terminal/image tab icons (excluding star-command, images, crew, settings) */}
             {workspace.tabs
-              .filter((t) => t.type !== 'star-command' && t.type !== 'images' && t.type !== 'crew')
+              .filter(
+                (t) =>
+                  t.type !== 'star-command' &&
+                  t.type !== 'images' &&
+                  t.type !== 'crew' &&
+                  t.type !== 'settings'
+              )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
@@ -646,14 +677,25 @@ export function App(): React.JSX.Element {
               </Popover.Portal>
             </Popover.Root>
             {/* Settings button */}
-            <MiniSidebarTooltip label="Settings">
-              <button
-                onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
-                className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-              >
-                <Settings size={16} />
-              </button>
-            </MiniSidebarTooltip>
+            {(() => {
+              const isSettingsActive = workspace.tabs.some(
+                (t) => t.type === 'settings' && t.id === activeTabId
+              );
+              return (
+                <MiniSidebarTooltip label="Settings">
+                  <button
+                    onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
+                    className={`p-2 rounded transition-colors ${
+                      isSettingsActive
+                        ? 'text-white bg-neutral-700 ring-1 ring-neutral-600'
+                        : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800'
+                    }`}
+                  >
+                    <Settings size={16} />
+                  </button>
+                </MiniSidebarTooltip>
+              );
+            })()}
           </div>
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
@@ -672,6 +714,8 @@ export function App(): React.JSX.Element {
                         <StarCommandTab />
                       ) : tab.type === 'images' ? (
                         <ImageGallery />
+                      ) : tab.type === 'settings' ? (
+                        <SettingsTab />
                       ) : (
                         <PaneGrid
                           root={tab.splitRoot}
@@ -762,7 +806,6 @@ export function App(): React.JSX.Element {
         {/* end content column */}
       </div>
       {/* end sidebar+content row */}
-      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
       <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <CommandPalette isOpen={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
       <GitChangesModal
