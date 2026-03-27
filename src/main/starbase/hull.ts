@@ -444,6 +444,16 @@ export class Hull {
     return true;
   }
 
+  /**
+   * Extend the crew's deadline without sending a message.
+   * Used by guidance protection to prevent timeout during awaiting-guidance.
+   */
+  extendDeadline(): boolean {
+    if (this.status !== 'active') return false;
+    this.resetTimeout();
+    return true;
+  }
+
   kill(): void {
     if (this.process) {
       // Graceful: close stdin so Claude finishes current turn then exits

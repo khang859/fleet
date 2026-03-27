@@ -336,6 +336,26 @@ export class CrewService {
     return hull.sendMessage(message);
   }
 
+  /**
+   * Update a crew's status. Used by the comms layer for guidance protection.
+   */
+  setCrewStatus(crewId: string, status: string): void {
+    this.deps.db
+      .prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(status, crewId);
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+  }
+
+  /**
+   * Reset the timeout for an active crew's Hull process.
+   * Returns true if the hull was found and timeout was reset.
+   */
+  resetCrewTimeout(crewId: string): boolean {
+    const hull = this.hulls.get(crewId);
+    if (!hull) return false;
+    return hull.extendDeadline();
+  }
+
   listCrew(filter?: { sectorId?: string }): CrewRow[] {
     let sql = "SELECT * FROM crew WHERE status IN ('active', 'complete', 'error', 'timeout')";
     const params: unknown[] = [];
