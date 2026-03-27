@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { useImageStore } from '../store/image-store';
 
 function getBasename(filePath: string): string {
   return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -193,6 +194,21 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
     return () => window.removeEventListener('keydown', onKey);
   }, [applyFit, adjustZoom]);
 
+  const { actions, loadActions, runAction } = useImageStore();
+  const [runningAction, setRunningAction] = useState<string | null>(null);
+
+  useEffect(() => {
+    void loadActions();
+  }, [loadActions]);
+
+  const handleAction = useCallback(
+    (actionType: string) => {
+      setRunningAction(actionType);
+      void runAction({ actionType, source: filePath }).finally(() => setRunningAction(null));
+    },
+    [filePath, runAction]
+  );
+
   const zoomPercent = Math.round(zoom * 100);
   const cursor = isFit ? 'default' : isDragging ? 'grabbing' : 'grab';
 
@@ -281,6 +297,20 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
             >
               1:1
             </ToolbarButton>
+          </div>
+        )}
+        {imageSrc && actions.length > 0 && (
+          <div className="flex items-center gap-0.5 ml-2">
+            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
+            {actions.map((action) => (
+              <ToolbarButton
+                key={action.id}
+                onClick={() => handleAction(action.actionType)}
+                title={action.description}
+              >
+                {runningAction === action.actionType ? '...' : action.name}
+              </ToolbarButton>
+            ))}
           </div>
         )}
       </div>
