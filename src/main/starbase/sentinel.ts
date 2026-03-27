@@ -958,6 +958,7 @@ export class Sentinel {
        WHERE m.status = 'pending-review'
          AND m.pr_branch IS NOT NULL
          AND m.type IN ('code', 'repair')
+         AND m.crew_id IS NULL
        ORDER BY m.priority ASC, m.completed_at ASC
        LIMIT ?`
       )
@@ -1027,6 +1028,7 @@ NOTES: <your review notes — specific file:line references for issues>`;
        WHERE m.status = 'changes-requested'
          AND m.pr_branch IS NOT NULL
          AND m.type IN ('code', 'repair')
+         AND m.crew_id IS NULL
        ORDER BY m.priority ASC
        LIMIT 5`
       )

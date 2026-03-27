@@ -901,7 +901,7 @@ export class Hull {
           const missionStatus = statusMap[verdict] ?? 'escalated';
 
           db.prepare(
-            'UPDATE missions SET review_verdict = ?, review_notes = ?, status = ? WHERE id = ?'
+            'UPDATE missions SET review_verdict = ?, review_notes = ?, status = ?, crew_id = NULL WHERE id = ?'
           ).run(verdict, notes, missionStatus, missionId);
 
           if (missionStatus === 'changes-requested') {
@@ -1153,7 +1153,7 @@ export class Hull {
         const missionStatus = statusMap[verdict] ?? 'escalated';
 
         db.prepare(
-          'UPDATE missions SET review_verdict = ?, review_notes = ?, status = ? WHERE id = ?'
+          'UPDATE missions SET review_verdict = ?, review_notes = ?, status = ?, crew_id = NULL WHERE id = ?'
         ).run(verdict, notes, missionStatus, missionId);
 
         if (missionStatus === 'changes-requested') {
