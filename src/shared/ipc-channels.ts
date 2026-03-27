@@ -97,5 +97,6 @@ export const IPC_CHANNELS = {
   IMAGES_CONFIG_SET: 'images:config:set',
   IMAGES_CHANGED: 'images:changed',
   IMAGES_RUN_ACTION: 'images:run-action',
-  IMAGES_LIST_ACTIONS: 'images:list-actions'
+  IMAGES_LIST_ACTIONS: 'images:list-actions',
+  LOG_BATCH: 'log:batch'
 } as const;
