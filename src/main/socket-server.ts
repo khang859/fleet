@@ -91,7 +91,7 @@ export type AsyncServiceRegistry = {
   cargoService: Promisified<
     Pick<
       ServiceRegistry['cargoService'],
-      'listCargo' | 'getCargo' | 'produceCargo' | 'getUndelivered'
+      'listCargo' | 'getCargo' | 'produceCargo' | 'getUndelivered' | 'sendCargo'
     >
   >;
   supplyRouteService: Promisified<
@@ -940,6 +940,54 @@ export class SocketServer extends EventEmitter {
           );
         }
         return cargoService.getUndelivered(rawPendingSector);
+      }
+
+      case 'cargo.send': {
+        const cargoType = typeof args.type === 'string' ? args.type : undefined;
+        const cargoContent = typeof args.content === 'string' ? args.content : undefined;
+        const cargoFile = typeof args.file === 'string' ? args.file : undefined;
+        const starbaseId = typeof args.starbaseId === 'string' ? args.starbaseId : undefined;
+
+        if (!cargoType) {
+          throw new CodedError(
+            'cargo.send requires --type <type>.\n' +
+              'Usage: fleet cargo send --type <type> --file <path>\n' +
+              '   or: fleet cargo send --type <type> --content "<string>"',
+            'BAD_REQUEST'
+          );
+        }
+        if (!cargoContent && !cargoFile) {
+          throw new CodedError(
+            'cargo.send requires --file <path> or --content "<string>".\n' +
+              'Usage: fleet cargo send --type <type> --file <path>',
+            'BAD_REQUEST'
+          );
+        }
+
+        const crewId = typeof args.crewId === 'string' ? args.crewId : undefined;
+        const missionId =
+          typeof args.missionId === 'string' || typeof args.missionId === 'number'
+            ? Number(args.missionId)
+            : undefined;
+        const sectorId = typeof args.sectorId === 'string' ? args.sectorId : undefined;
+
+        if (!sectorId || !missionId || !crewId) {
+          throw new CodedError(
+            'cargo.send requires crew context (FLEET_CREW_ID, FLEET_MISSION_ID, FLEET_SECTOR_ID).\n' +
+              'This command should be run from within a crew session.',
+            'BAD_REQUEST'
+          );
+        }
+
+        return cargoService.sendCargo({
+          crewId,
+          missionId,
+          sectorId,
+          type: cargoType,
+          content: cargoContent,
+          filePath: cargoFile,
+          starbaseId: starbaseId ?? 'unknown'
+        });
       }
 
       // ── Supply Routes ─────────────────────────────────────────────────────────

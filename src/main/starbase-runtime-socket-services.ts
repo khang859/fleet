@@ -55,7 +55,8 @@ export function createSocketRuntimeServices(runtime: StarbaseRuntimeClient): Asy
       listCargo: async (filter?: unknown) => runtime.invoke('cargo.list', filter),
       getCargo: async (id: number) => runtime.invoke('cargo.get', id),
       produceCargo: async (opts: unknown) => runtime.invoke('cargo.produce', opts),
-      getUndelivered: async (sectorId: string) => runtime.invoke('cargo.getUndelivered', sectorId)
+      getUndelivered: async (sectorId: string) => runtime.invoke('cargo.getUndelivered', sectorId),
+      sendCargo: async (opts: unknown) => runtime.invoke('cargo.send', opts)
     },
     supplyRouteService: {
       listRoutes: async () => runtime.invoke('supplyRoute.list'),
