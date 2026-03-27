@@ -723,7 +723,18 @@ export function Sidebar({
 
       {/* Tab list */}
       <div className="flex-1 min-h-0 relative">
-        <div ref={tabListRef} className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2">
+        <div
+          ref={tabListRef}
+          className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            handleDrop();
+          }}
+        >
           {/* Star Command tab (pinned, not closeable) */}
           {workspace.tabs
             .filter((tab) => tab.type === 'star-command')

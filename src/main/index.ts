@@ -200,8 +200,11 @@ function createWindow(): void {
       : { titleBarOverlay: { color: '#0a0a0a', symbolColor: '#a3a3a3', height: 36 } })
   });
 
-  // Log renderer console messages and errors to main process stdout
+  // Log renderer console messages and errors to main process stdout.
+  // Skip messages from the renderer logger (tag format [xxx:yyy]) — those are
+  // already captured via the LOG_BATCH IPC bridge with proper structured metadata.
   mainWindow.webContents.on('console-message', (event) => {
+    if (event.message.startsWith('%c') && /\[[\w:]+\]/.test(event.message)) return;
     log.info(event.message, { renderer: true });
   });
 
