@@ -1197,6 +1197,16 @@ export class SocketServer extends EventEmitter {
           providerUpdate.defaultOutputFormat = args['default-output-format'];
         if (typeof args['default-aspect-ratio'] === 'string')
           providerUpdate.defaultAspectRatio = args['default-aspect-ratio'];
+        // Action-level model override: --action remove-background --model fal-ai/birefnet/v2
+        if (typeof args.action === 'string' && typeof args.model === 'string') {
+          const currentSettings = this.imageService.getSettings();
+          const currentProvider = currentSettings.providers[providerKey];
+          const existingActions = currentProvider?.actions ?? {};
+          providerUpdate.actions = {
+            ...existingActions,
+            [args.action]: { model: args.model }
+          };
+        }
         if (Object.keys(providerUpdate).length > 0) {
           this.imageService.updateSettings({ providers: { [providerKey]: providerUpdate } });
         }
