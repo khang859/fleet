@@ -184,11 +184,7 @@ function ImagesTabCard({
       return;
     }
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${lastCompleted.id}/${thumbFile.filename}`;
-    void window.fleet.file.readBinary(filePath).then((result) => {
-      if (result.success && result.data) {
-        setThumbSrc(`data:${result.data.mimeType};base64,${result.data.base64}`);
-      }
-    });
+    setThumbSrc(`fleet-image://${filePath}`);
   }, [lastCompleted?.id, thumbFile?.filename]);
 
   const inProgress = generations.filter(

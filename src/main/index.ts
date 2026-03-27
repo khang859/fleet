@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { appendFileSync, existsSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -319,7 +319,17 @@ app.on('child-process-gone', (_event, details) => {
   }
 });
 
+// Register fleet-image:// protocol to serve local images without base64 IPC overhead
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } }
+]);
+
 void app.whenReady().then(() => {
+  protocol.handle('fleet-image', async (request) => {
+    const filePath = decodeURIComponent(new URL(request.url).pathname);
+    return net.fetch(`file://${filePath}`);
+  });
+
   createWindow();
 
   // Set dock icon on macOS

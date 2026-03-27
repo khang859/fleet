@@ -50,9 +50,8 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
 
   const filename = getBasename(filePath);
 
-  // Load image as blob URL via IPC
+  // Load image via custom protocol (avoids base64 IPC overhead)
   useEffect(() => {
-    let blobUrl: string | null = null;
     setImageSrc(null);
     setError(null);
     setDimensions(null);
@@ -60,29 +59,11 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
     setIsFit(true);
     setOffset({ x: 0, y: 0 });
 
-    void window.fleet.file.readBinary(filePath).then((result) => {
-      if (!result.success || !result.data) {
-        setError(result.error || 'Failed to load image');
-        return;
-      }
-      const { base64, mimeType } = result.data;
-      const byteChars = atob(base64);
-      const byteArray = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) {
-        byteArray[i] = byteChars.charCodeAt(i);
-      }
-      const blob = new Blob([byteArray], { type: mimeType });
-      blobUrl = URL.createObjectURL(blob);
-      setImageSrc(blobUrl);
-    });
+    setImageSrc(`fleet-image://${filePath}`);
 
     void window.fleet.file.stat(filePath).then((result) => {
       if (result.success && result.data) setFileSize(result.data.size);
     });
-
-    return () => {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    };
   }, [filePath]);
 
   // Calculate fit zoom (scale to fill pane without cropping)
@@ -244,6 +225,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
             src={imageSrc}
             alt={filename}
             onLoad={handleImageLoad}
+            onError={() => setError('Failed to load image')}
             draggable={false}
             style={{
               position: 'absolute',

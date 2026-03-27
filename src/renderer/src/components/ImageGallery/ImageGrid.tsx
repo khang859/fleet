@@ -13,11 +13,7 @@ function Thumbnail({ generation }: { generation: ImageGenerationMeta }): React.J
   useEffect(() => {
     if (!firstImage?.filename) return;
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
-    void window.fleet.file.readBinary(filePath).then((result) => {
-      if (result.success && result.data) {
-        setSrc(`data:${result.data.mimeType};base64,${result.data.base64}`);
-      }
-    });
+    setSrc(`fleet-image://${filePath}`);
   }, [generation.id, firstImage?.filename]);
 
   if (src) return <img src={src} alt={generation.prompt} className="w-full h-full object-cover" />;

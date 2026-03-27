@@ -16,16 +16,7 @@ function DetailImage({
   filename: string;
   alt: string;
 }): React.JSX.Element {
-  const [src, setSrc] = useState<string | null>(null);
-  useEffect(() => {
-    const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generationId}/${filename}`;
-    void window.fleet.file.readBinary(filePath).then((result) => {
-      if (result.success && result.data)
-        setSrc(`data:${result.data.mimeType};base64,${result.data.base64}`);
-    });
-  }, [generationId, filename]);
-
-  if (!src) return <div className="w-32 h-32 bg-neutral-800 rounded animate-pulse" />;
+  const src = `fleet-image://${window.fleet.homeDir}/.fleet/images/generations/${generationId}/${filename}`;
   return <img src={src} alt={alt} className="max-w-full max-h-[70vh] rounded-lg object-contain" />;
 }
 
