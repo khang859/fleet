@@ -7,6 +7,7 @@ const isDev = !app.isPackaged;
 const level = process.env.LOG_LEVEL ?? (isDev ? 'debug' : 'info');
 
 const consoleFormat = winston.format.combine(
+  winston.format.errors({ stack: true }),
   winston.format.timestamp({ format: 'HH:mm:ss.SSS' }),
   winston.format.printf(({ timestamp, level: lvl, message, tag, ...meta }) => {
     const prefix = tag ? `[${tag}]` : '';
@@ -15,7 +16,11 @@ const consoleFormat = winston.format.combine(
   })
 );
 
-const fileFormat = winston.format.combine(winston.format.timestamp(), winston.format.json());
+const fileFormat = winston.format.combine(
+  winston.format.errors({ stack: true }),
+  winston.format.timestamp(),
+  winston.format.json()
+);
 
 const logDir = join(app.getPath('home'), '.fleet', 'logs');
 
