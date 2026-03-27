@@ -403,7 +403,7 @@ export class Sentinel {
     await this.navigatorSweep();
 
     // 12. Cargo evaluation sweep — check missions awaiting cargo
-    await this.cargoEvaluationSweep();
+    this.cargoEvaluationSweep();
   }
 
   private async getDiskUsage(): Promise<number | null> {
@@ -1380,7 +1380,7 @@ ${mission.review_notes ?? 'No specific notes provided'}
     }
   }
 
-  private async cargoEvaluationSweep(): Promise<void> {
+  private cargoEvaluationSweep(): void {
     const { db } = this.deps;
 
     // Find missions in awaiting-cargo-check that haven't been evaluated
