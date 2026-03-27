@@ -143,7 +143,7 @@ export function ImageSettings(): React.JSX.Element {
                   <div key={action.id}>
                     <label className="block text-xs text-neutral-500 mb-1">{action.name}</label>
                     <div className="text-sm text-neutral-200 bg-neutral-800 rounded px-3 py-1.5 mb-1">
-                      {effectiveModel}
+                      {effectiveModel || 'fal-ai/bria/background/remove'}
                     </div>
                     <div className="flex gap-2">
                       <input
