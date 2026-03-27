@@ -1,6 +1,7 @@
 import type Database from 'better-sqlite3';
 import { spawn, type ChildProcess, execSync, type ExecSyncOptions } from 'child_process';
-import { writeFileSync, unlinkSync, mkdirSync, existsSync, readFileSync } from 'fs';
+import { writeFileSync, unlinkSync, mkdirSync, existsSync, readFileSync, createWriteStream } from 'fs';
+import type { WriteStream } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
@@ -206,6 +207,7 @@ export class Hull {
   private systemPromptFile: string | null = null;
   private pid: number | null = null;
   private stdoutBuffer = '';
+  private rawOutputStream: WriteStream | null = null;
   private sessionId: string | null = null;
 
   private resultText: string | null = null;
@@ -324,6 +326,31 @@ export class Hull {
       }
       if (this.opts.mcpConfig) {
         cmdArgs.push('--mcp-config', this.opts.mcpConfig);
+      }
+
+      // Open raw output stream for full untruncated capture
+      if (this.opts.starbaseId) {
+        const rawCargoDir = join(
+          process.env.HOME ?? '~',
+          '.fleet',
+          'starbases',
+          `starbase-${this.opts.starbaseId}`,
+          'cargo',
+          this.opts.sectorId,
+          String(missionId)
+        );
+        try {
+          mkdirSync(rawCargoDir, { recursive: true });
+          this.rawOutputStream = createWriteStream(
+            join(rawCargoDir, 'raw-output.md'),
+            { flags: 'w', encoding: 'utf-8' }
+          );
+        } catch (err) {
+          log.error('failed to open raw output stream', {
+            error: err instanceof Error ? err.message : String(err),
+            crewId
+          });
+        }
       }
 
       const mergedEnv: Record<string, string> = {
@@ -505,6 +532,10 @@ export class Hull {
   forceKill(): void {
     if (this.lifesignTimer) clearInterval(this.lifesignTimer);
     if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
+    if (this.rawOutputStream) {
+      this.rawOutputStream.end();
+      this.rawOutputStream = null;
+    }
     if (this.process && !this.process.killed) {
       try {
         this.process.kill('SIGKILL');
@@ -527,6 +558,12 @@ export class Hull {
   appendOutput(data: string): void {
     const lines = data.split('\n');
     this.outputLines.push(...lines);
+
+    // Stream full output to disk (uncapped)
+    if (this.rawOutputStream) {
+      this.rawOutputStream.write(data + '\n');
+    }
+
     const maxLines =
       this.opts.missionType === 'research' ||
       this.opts.missionType === 'review' ||
@@ -729,6 +766,10 @@ export class Hull {
     // Stop timers
     if (this.lifesignTimer) clearInterval(this.lifesignTimer);
     if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
+    if (this.rawOutputStream) {
+      this.rawOutputStream.end();
+      this.rawOutputStream = null;
+    }
 
     const gitOpts: ExecSyncOptions = { cwd: worktreePath, stdio: 'pipe' };
     let overrideStatus: HullStatus | null = null;
