@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.11.0
+
+- Converted settings modal to full tab page (#160)
+- Added per-action model configuration for image actions (CLI flags + Settings UI)
+- Fixed model name display in action settings
+
 ## v2.10.0
 
 - Added extensible image actions system for generated images (#159)
