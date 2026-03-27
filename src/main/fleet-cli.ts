@@ -397,7 +397,9 @@ const COMMAND_MAP: Record<string, string> = {
   'images.status': 'image.status',
   'images.list': 'image.list',
   'images.retry': 'image.retry',
-  'images.config': 'image.config.get'
+  'images.config': 'image.config.get',
+  'images.action': 'image.action',
+  'images.actions': 'image.actions.list'
 };
 
 function mapCommand(group: string, action: string): string {
@@ -666,6 +668,12 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return `Error: images ${command === 'image.status' ? 'status' : 'retry'} requires an ID.\n\nUsage: fleet images ${command === 'image.status' ? 'status' : 'retry'} <generation-id>`;
       return null;
 
+    case 'image.action': {
+      if (!args.action && !args.id)
+        return 'Error: images action requires an action type and source.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
+      return null;
+    }
+
     default:
       return null;
   }
@@ -699,7 +707,7 @@ Crew to execute them, monitor progress via Comms, and manage Sectors (repos).
 | cargo | Inspect and produce Cargo artifacts. Use when you need to view outputs produced by research Missions or record new artifacts. |
 | log | View Ship's Log entries. Use when you want to see grouped log entries for debugging or auditing. |
 | protocols | Manage and execute multi-step Protocols. Use when you want to list available protocols, view their steps, enable/disable them, or check execution status. |
-| images | Generate and manage AI images. Use when you want to create images from text prompts, edit existing images, or check generation status. |
+| images | Generate, edit, and transform AI images. Use when you want to create images from text prompts, edit existing images, run actions like background removal, or check generation status. |
 | open | Open files or images in Fleet tabs. Use when you want to display a file in the Fleet UI. |
 
 ## Core Workflow
@@ -1119,6 +1127,8 @@ Manage AI image generation.
   fleet images retry <id>                      Retry a failed generation
   fleet images config                          Show current configuration
   fleet images config --api-key <key>          Set fal.ai API key
+  fleet images action <type> <source>          Run an action on an image (e.g. remove-background)
+  fleet images actions                         List available actions
 
 ## Options (generate/edit)
 
@@ -1134,6 +1144,9 @@ Manage AI image generation.
   fleet images generate --prompt "A cat in space" --resolution 2K
   fleet images edit --prompt "Add a hat" --images ./cat.png
   fleet images config --api-key sk-xxx
+  fleet images action remove-background ./photo.png
+  fleet images action remove-background ./photo.png --provider fal-ai
+  fleet images actions
 `
 };
 
