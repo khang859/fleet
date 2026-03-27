@@ -2,6 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+
+// Mock the fal.ai client so tests never make real API calls
+vi.mock('@fal-ai/client', () => ({
+  fal: {
+    config: vi.fn(),
+    queue: {
+      submit: vi.fn().mockResolvedValue({ request_id: 'mock-request-id' }),
+      status: vi.fn().mockResolvedValue({ status: 'COMPLETED' }),
+      result: vi.fn().mockResolvedValue({ data: { images: [] } }),
+      cancel: vi.fn().mockResolvedValue(undefined)
+    }
+  }
+}));
+
 import { ImageService } from '../image-service';
 
 // Store original homedir and temporarily replace it
