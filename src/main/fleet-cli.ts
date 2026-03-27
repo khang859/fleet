@@ -150,7 +150,7 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
       const next = argv[i + 1];
 
       if (next !== undefined && !next.startsWith('--')) {
-        if (key === 'depends-on') {
+        if (key === 'depends-on' || key === 'images') {
           // Accumulate into array for repeated flags
           const existing = result[key];
           result[key] =
@@ -389,7 +389,15 @@ const COMMAND_MAP: Record<string, string> = {
   'protocols.executions.update': 'execution.update',
   'protocol.executions.list': 'execution.list',
   'protocol.executions.show': 'execution.show',
-  'protocol.executions.update': 'execution.update'
+  'protocol.executions.update': 'execution.update',
+
+  // Images
+  'images.generate': 'image.generate',
+  'images.edit': 'image.edit',
+  'images.status': 'image.status',
+  'images.list': 'image.list',
+  'images.retry': 'image.retry',
+  'images.config': 'image.config.get'
 };
 
 function mapCommand(group: string, action: string): string {
@@ -623,6 +631,35 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return 'Error: config set requires --value <value>.\n\nUsage: fleet config set --key <config-key> --value <value>';
       return null;
 
+    // ── Images ────────────────────────────────────────────────────────────
+    case 'image.generate':
+      if (!args.prompt)
+        return 'Error: images generate requires --prompt.\n\nUsage: fleet images generate --prompt "description"';
+      return null;
+
+    case 'image.edit': {
+      if (!args.prompt)
+        return 'Error: images edit requires --prompt.\n\nUsage: fleet images edit --prompt "description" --images <file1> [file2 ...]';
+      if (!args.images)
+        return 'Error: images edit requires --images.\n\nUsage: fleet images edit --prompt "description" --images <file1> [file2 ...]';
+      const imageFiles = Array.isArray(args.images) ? args.images : [args.images];
+      for (const img of imageFiles) {
+        if (typeof img !== 'string') continue;
+        if (img.startsWith('http://') || img.startsWith('https://')) continue;
+        const resolved = resolve(img);
+        if (!existsSync(resolved)) {
+          return `Error: file not found: ${img}`;
+        }
+      }
+      return null;
+    }
+
+    case 'image.status':
+    case 'image.retry':
+      if (!args.id)
+        return `Error: images ${command === 'image.status' ? 'status' : 'retry'} requires an ID.\n\nUsage: fleet images ${command === 'image.status' ? 'status' : 'retry'} <generation-id>`;
+      return null;
+
     default:
       return null;
   }
@@ -656,6 +693,7 @@ Crew to execute them, monitor progress via Comms, and manage Sectors (repos).
 | cargo | Inspect and produce Cargo artifacts. Use when you need to view outputs produced by research Missions or record new artifacts. |
 | log | View Ship's Log entries. Use when you want to see grouped log entries for debugging or auditing. |
 | protocols | Manage and execute multi-step Protocols. Use when you want to list available protocols, view their steps, enable/disable them, or check execution status. |
+| images | Generate and manage AI images. Use when you want to create images from text prompts, edit existing images, or check generation status. |
 | open | Open files or images in Fleet tabs. Use when you want to display a file in the Fleet UI. |
 
 ## Core Workflow
@@ -1059,7 +1097,38 @@ Use \`fleet config\` when you need to read or update Starbase-level settings.
 \`\`\`bash
 fleet config get worktree_budget_mb
 fleet config set worktree_budget_mb --value 5000
-\`\`\``
+\`\`\``,
+
+  images: `
+# fleet images
+
+Manage AI image generation.
+
+## Commands
+
+  fleet images generate --prompt "..."         Generate image(s) from a text prompt
+  fleet images edit --prompt "..." --images <file1> [file2 ...]  Edit images with a prompt
+  fleet images status <id>                     Check generation status
+  fleet images list                            List all generations
+  fleet images retry <id>                      Retry a failed generation
+  fleet images config                          Show current configuration
+  fleet images config --api-key <key>          Set fal.ai API key
+
+## Options (generate/edit)
+
+  --provider <id>         Image provider (default: fal-ai)
+  --model <model>         Model to use (default: fal-ai/nano-banana-2)
+  --resolution <res>      0.5K, 1K, 2K, or 4K (default: 1K)
+  --aspect-ratio <ratio>  e.g. 1:1, 16:9, 9:16 (default: 1:1)
+  --format <fmt>          png, jpeg, or webp (default: png)
+  --num-images <n>        1-4 (default: 1)
+
+## Examples
+
+  fleet images generate --prompt "A cat in space" --resolution 2K
+  fleet images edit --prompt "Add a hat" --images ./cat.png
+  fleet images config --api-key sk-xxx
+`
 };
 
 export function getHelpText(argv: string[]): string | null {
@@ -1152,6 +1221,44 @@ export async function runCLI(
     }
   }
 
+  // ── Images config (get or set based on flags) ──────────────────────────
+  if (group === 'images' && action === 'config') {
+    const configArgs = parseArgs(rest.filter((t) => t !== '--quiet'));
+    const hasSetFlags = Object.keys(configArgs).some((k) =>
+      ['api-key', 'default-model', 'default-resolution', 'default-output-format', 'default-aspect-ratio', 'provider'].includes(k)
+    );
+    const configCommand = hasSetFlags ? 'image.config.set' : 'image.config.get';
+    const cli = new FleetCLI(sockPath);
+    try {
+      const response = opts?.retry
+        ? await cli.sendWithRetry(configCommand, configArgs)
+        : await cli.send(configCommand, configArgs);
+      if (!response.ok) return `Error: ${response.error ?? 'Unknown error'}`;
+      if (configCommand === 'image.config.set') return 'Configuration updated.';
+      if (isRecord(response.data)) {
+        const lines: string[] = [];
+        const data = response.data;
+        if (data.defaultProvider) lines.push(`defaultProvider: ${toStr(data.defaultProvider)}`);
+        const providers = data.providers;
+        if (isRecord(providers)) {
+          for (const [name, val] of Object.entries(providers)) {
+            lines.push(`${name}:`);
+            if (isRecord(val)) {
+              for (const [k, v] of Object.entries(val)) {
+                lines.push(`  ${k}: ${toStr(v)}`);
+              }
+            }
+          }
+        }
+        return lines.join('\n');
+      }
+      return toStr(response.data);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error: ${msg}`;
+    }
+  }
+
   if (!group || !action) {
     return 'Usage: fleet <group> <action> [--key value ...]';
   }
@@ -1228,6 +1335,43 @@ export async function runCLI(
         : 0;
     if (unread === 0) return '';
     return `${unread} unread transmission(s) — run: fleet comms list --unread`;
+  }
+
+  // ── image.generate / image.edit formatting ──────────────────────────────
+  if ((command === 'image.generate' || command === 'image.edit') && isRecord(data) && typeof data.id === 'string') {
+    return `Submitted: ${data.id}`;
+  }
+
+  // ── image.status formatting ─────────────────────────────────────────────
+  if (command === 'image.status' && isRecord(data)) {
+    const lines: string[] = [];
+    lines.push(`status: ${toStr(data.status)}`);
+    if (data.status === 'completed' || data.status === 'partial') {
+      lines.push(`path: ~/.fleet/images/generations/${toStr(data.id)}`);
+      if (Array.isArray(data.images)) {
+        const filenames = data.images
+          .filter((img): img is Record<string, unknown> => isRecord(img) && typeof img.filename === 'string')
+          .map((img) => img.filename);
+        if (filenames.length > 0) lines.push(`images: ${filenames.join(', ')}`);
+      }
+    }
+    if (data.error) lines.push(`error: ${toStr(data.error)}`);
+    return lines.join('\n');
+  }
+
+  // ── image.list formatting ───────────────────────────────────────────────
+  if (command === 'image.list') {
+    if (!Array.isArray(data) || data.length === 0) return 'No images found.';
+    const rows = data
+      .filter((d): d is Record<string, unknown> => isRecord(d))
+      .map((d) => ({
+        ID: toStr(d.id),
+        STATUS: toStr(d.status),
+        MODE: toStr(d.mode),
+        MODEL: toStr(d.model),
+        PROMPT: toStr(d.prompt).slice(0, 40) + (toStr(d.prompt).length > 40 ? '...' : '')
+      }));
+    return formatTable(rows);
   }
 
   // ── protocol.list formatting ──────────────────────────────────────────────
