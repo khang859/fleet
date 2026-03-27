@@ -428,6 +428,17 @@ export class ImageService extends EventEmitter {
     meta.providerRequestId = null;
     this.writeMeta(id, meta);
 
+    // Action-mode retries re-run through runAction
+    if (meta.mode.startsWith('action:') && meta.sourceImage) {
+      const actionType = meta.mode.slice('action:'.length);
+      meta.status = 'processing';
+      this.writeMeta(id, meta);
+      this.emit('changed', id);
+      const { config, apiKey } = this.findAction(actionType, meta.provider);
+      void this.executeAction(id, config, apiKey, meta.sourceImage);
+      return { id };
+    }
+
     const isEdit = meta.mode === 'edit';
     const opts = isEdit
       ? ({

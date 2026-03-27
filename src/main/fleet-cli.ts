@@ -669,8 +669,10 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       return null;
 
     case 'image.action': {
-      if (!args.action && !args.id)
-        return 'Error: images action requires an action type and source.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
+      if (!args.action)
+        return 'Error: images action requires an action type.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
+      if (!args.source)
+        return 'Error: images action requires a source image.\n\nUsage: fleet images action <action-type> <source> [--provider <id>]';
       return null;
     }
 
@@ -1322,6 +1324,29 @@ export async function runCLI(
   }
   const args = parseArgs(cleanRest);
 
+  // ── image.action: remap positionals to named args ───────────────────────
+  if (command === 'image.action') {
+    // cleanRest was ['remove-background', './photo.png', ...flags]
+    // parseArgs mapped all positionals to 'id' (last wins), so we re-parse:
+    const positionals = cleanRest.filter((t) => !t.startsWith('--'));
+    if (positionals.length >= 1 && !args.action) args.action = positionals[0];
+    if (positionals.length >= 2 && !args.source) {
+      const src = positionals[1];
+      // Resolve relative file paths to absolute
+      if (typeof src === 'string' && !src.startsWith('http') && !src.startsWith('data:')) {
+        const resolved = resolve(src);
+        if (existsSync(resolved)) {
+          args.source = resolved;
+        } else {
+          // Could be a generation ref like <genId>/image-001.png
+          args.source = src;
+        }
+      } else {
+        args.source = src;
+      }
+    }
+  }
+
   // ── Client-side validation ──────────────────────────────────────────────
   const validationError = validateCommand(command, args);
   if (validationError) return validationError;
@@ -1365,7 +1390,7 @@ export async function runCLI(
 
   // ── image.generate / image.edit formatting ──────────────────────────────
   if (
-    (command === 'image.generate' || command === 'image.edit') &&
+    (command === 'image.generate' || command === 'image.edit' || command === 'image.action') &&
     isRecord(data) &&
     typeof data.id === 'string'
   ) {

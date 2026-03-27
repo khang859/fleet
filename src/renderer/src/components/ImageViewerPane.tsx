@@ -307,6 +307,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
                 key={action.id}
                 onClick={() => handleAction(action.actionType)}
                 title={action.description}
+                disabled={runningAction !== null}
               >
                 {runningAction === action.actionType ? '...' : action.name}
               </ToolbarButton>
@@ -321,17 +322,20 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
 function ToolbarButton({
   children,
   onClick,
-  title
+  title,
+  disabled
 }: {
   children: React.ReactNode;
   onClick: () => void;
   title?: string;
+  disabled?: boolean;
 }): React.JSX.Element {
   return (
     <button
-      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors"
+      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
       onClick={onClick}
       title={title}
+      disabled={disabled}
     >
       {children}
     </button>
