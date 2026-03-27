@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.10.0
+
+- Added extensible image actions system for generated images (#159)
+- Made sidebar consistent across all tab types (#158)
+- Fixed socket single instance lock to prevent multi-instance socket conflicts
+- Added generated images to File overlay with scoped tabs
+
 ## v2.9.0
 
 - Added fal.ai image generation integration via `fleet images` CLI commands (generate, edit, status, list, retry, config)
