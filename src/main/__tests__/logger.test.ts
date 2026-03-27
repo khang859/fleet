@@ -1,23 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock electron app before importing logger
-vi.mock('electron', () => ({
-  app: {
-    isPackaged: false,
-    getPath: (name: string) => {
-      if (name === 'home') return '/tmp/fleet-logger-test';
-      return '/tmp';
-    }
-  }
-}));
-
-// Mock winston-daily-rotate-file to avoid real file I/O in tests
-vi.mock('winston-daily-rotate-file', () => {
-  const Transport = vi.fn();
-  Transport.prototype.on = vi.fn();
-  Transport.prototype.log = vi.fn();
-  return { default: Transport };
-});
+// electron and winston-daily-rotate-file are mocked globally in src/test-setup.ts
 
 describe('logger', () => {
   beforeEach(() => {
