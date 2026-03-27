@@ -96,17 +96,7 @@ export function MemoPanel({ onClose }: MemoPanelProps): React.JSX.Element {
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  a: ({ href, children }) => (
-                    <a
-                      href={href}
-                      onClick={(e) => {
-                        e.preventDefault();
-                        if (e.shiftKey && href) void window.fleet.shell.openExternal(href);
-                      }}
-                    >
-                      {children}
-                    </a>
-                  )
+                  a: ({ href, children }) => <a href={href}>{children}</a>
                 }}
               >
                 {content}

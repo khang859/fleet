@@ -22,22 +22,26 @@ window.addEventListener('unhandledrejection', (event) => {
 
 // Global click handler for Shift+Click on links to open in default browser.
 // Catches clicks on <a> tags before other handlers and opens external URLs.
-window.addEventListener('click', (event) => {
-  if (!event.shiftKey) return;
+window.addEventListener(
+  'click',
+  (event) => {
+    if (!event.shiftKey) return;
 
-  const link = (event.target as Element).closest('a');
-  if (!link) return;
+    const link = event.target instanceof Element ? event.target.closest('a') : null;
+    if (!link) return;
 
-  const href = link.getAttribute('href');
-  if (!href) return;
+    const href = link.getAttribute('href');
+    if (!href) return;
 
-  // Only handle external URLs (http/https)
-  if (!href.startsWith('http://') && !href.startsWith('https://')) return;
+    // Only handle external URLs (http/https)
+    if (!href.startsWith('http://') && !href.startsWith('https://')) return;
 
-  event.preventDefault();
-  event.stopPropagation();
-  void window.fleet.shell.openExternal(href);
-}, true); // Use capture phase to intercept before other handlers
+    event.preventDefault();
+    event.stopPropagation();
+    void window.fleet.shell.openExternal(href);
+  },
+  true
+); // Use capture phase to intercept before other handlers
 
 // Force-load bundled Nerd Fonts before rendering.
 // xterm.js draws on <canvas> which doesn't trigger @font-face downloads
