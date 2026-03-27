@@ -22,6 +22,7 @@ import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 import { AdmiralProcess } from './starbase/admiral-process';
 import { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import { installFleetCLI } from './install-fleet-cli';
+import { ImageService } from './image-service';
 import { enrichProcessEnv } from './shell-env';
 import { normalizeRuntimeEnv } from './runtime-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
@@ -56,6 +57,13 @@ const admiralStateDetector = new AdmiralStateDetector(eventBus);
 const runtimeClient = new StarbaseRuntimeClient(
   new URL('./starbase-runtime-process.mjs', import.meta.url)
 );
+const imageService = new ImageService();
+imageService.on('changed', (id: string) => {
+  const windowRef = mainWindow;
+  if (windowRef && !windowRef.isDestroyed()) {
+    windowRef.webContents.send(IPC_CHANNELS.IMAGES_CHANGED, { id });
+  }
+});
 const STARBASE_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log';
 
 // eslint-disable-next-line no-console
@@ -364,7 +372,8 @@ void app.whenReady().then(() => {
 
         socketSupervisor = new SocketSupervisor(
           SOCKET_PATH,
-          createSocketRuntimeServices(runtimeClient)
+          createSocketRuntimeServices(runtimeClient),
+          imageService
         );
         // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: socket supervisor created', { socketPath: SOCKET_PATH });
@@ -549,6 +558,8 @@ void app.whenReady().then(() => {
   void bootstrapStarbase().catch(() => {
     // Initial bootstrap failures are surfaced through runtime status for the renderer.
   });
+
+  imageService.resumeInterrupted();
 
   // Wire JSONL watcher to agent state tracker
   // Maps JSONL sessionId → Fleet paneId
@@ -798,6 +809,25 @@ void app.whenReady().then(() => {
     sendUpdateStatus({ state: 'error', message: err.message });
   });
 
+  // Image generation IPC handlers
+  ipcMain.handle(IPC_CHANNELS.IMAGES_GENERATE, async (_e, opts) => imageService.generate(opts));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, async (_e, opts) => imageService.edit(opts));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_STATUS, async (_e, id: string) => imageService.getStatus(id));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST, async () => imageService.list());
+  ipcMain.handle(IPC_CHANNELS.IMAGES_RETRY, async (_e, id: string) => imageService.retry(id));
+  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, async (_e, id: string) => { imageService.delete(id); });
+  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_GET, async () => {
+    const settings = imageService.getSettings();
+    const redacted = { ...settings, providers: { ...settings.providers } };
+    for (const [key, val] of Object.entries(redacted.providers)) {
+      redacted.providers[key] = { ...val, apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : '' };
+    }
+    return redacted;
+  });
+  ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_SET, async (_e, partial) => {
+    imageService.updateSettings(partial);
+  });
+
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     if (updateState === 'checking' || updateState === 'downloading') return;
     try {
@@ -838,6 +868,7 @@ function shutdownAll(): void {
   admiralStateDetector.dispose();
   jsonlWatcher.stop();
   runtimeClient.stop();
+  imageService.shutdown();
 }
 
 app.on('window-all-closed', () => {
