@@ -6,7 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
 
 /** Copy static assets (e.g. prompt templates) into the main-process build output. */
-function copyStaticAssets(assets: { src: string; dest: string }[]): Plugin {
+function copyStaticAssets(assets: Array<{ src: string; dest: string }>): Plugin {
   return {
     name: 'copy-static-assets',
     closeBundle() {
@@ -19,11 +19,7 @@ function copyStaticAssets(assets: { src: string; dest: string }[]): Plugin {
 
 export default defineConfig({
   main: {
-    plugins: [
-      copyStaticAssets([
-        { src: 'src/main/starbase/prompts', dest: 'out/main/prompts' }
-      ])
-    ],
+    plugins: [copyStaticAssets([{ src: 'src/main/starbase/prompts', dest: 'out/main/prompts' }])],
     build: {
       rollupOptions: {
         input: {
