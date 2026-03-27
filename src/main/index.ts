@@ -838,6 +838,14 @@ void app.whenReady().then(() => {
   ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_SET, (_e, partial: Partial<ImageSettings>) => {
     imageService.updateSettings(partial);
   });
+  ipcMain.handle(
+    IPC_CHANNELS.IMAGES_RUN_ACTION,
+    (_e, opts: { actionType: string; source: string; provider?: string }) =>
+      imageService.runAction(opts)
+  );
+  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST_ACTIONS, (_e, provider?: string) =>
+    imageService.listActions(provider)
+  );
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     if (updateState === 'checking' || updateState === 'downloading') return;
