@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, X, ArrowDownAZ, Clock, HardDrive } from 'lucide-react';
+import { Search, ArrowDownAZ, Clock, HardDrive, Image, FolderOpen, Layers } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useStarCommandStore } from '../store/star-command-store';
+import { useImageStore } from '../store/image-store';
 import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
 import { z } from 'zod';
 import type { FileSearchResult, RecentImageResult } from '../../../shared/ipc-api';
+import type { ImageGenerationMeta } from '../../../shared/types';
 
 const RECENT_STORAGE_KEY = 'fleet:file-search-recent';
-const LAST_SCOPE_KEY = 'fleet:file-search-scope';
 const MAX_RECENT = 20;
 
 const fileSearchResultSchema = z.array(
@@ -20,6 +21,16 @@ const fileSearchResultSchema = z.array(
     size: z.number()
   })
 );
+
+// --- Scope types ---
+
+type ScopeId = 'all' | 'files' | 'generated';
+
+const SCOPE_OPTIONS: Array<{ id: ScopeId; label: string; icon: typeof Clock }> = [
+  { id: 'all', label: 'All', icon: Layers },
+  { id: 'files', label: 'Files', icon: FolderOpen },
+  { id: 'generated', label: 'Generated', icon: Image }
+];
 
 // --- Recent files LRU ---
 
@@ -55,6 +66,35 @@ function relativeTime(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString();
 }
 
+// --- Time group helpers ---
+
+type TimeGroup = 'Today' | 'Yesterday' | 'This Week' | 'Older';
+
+function getTimeGroup(epochMs: number): TimeGroup {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const startOfWeek = startOfToday - now.getDay() * 86400000;
+
+  if (epochMs >= startOfToday) return 'Today';
+  if (epochMs >= startOfYesterday) return 'Yesterday';
+  if (epochMs >= startOfWeek) return 'This Week';
+  return 'Older';
+}
+
+function groupByTime<T>(items: T[], getTime: (item: T) => number): Array<{ group: TimeGroup; items: T[] }> {
+  const groups = new Map<TimeGroup, T[]>();
+  const order: TimeGroup[] = ['Today', 'Yesterday', 'This Week', 'Older'];
+  for (const g of order) groups.set(g, []);
+
+  for (const item of items) {
+    const group = getTimeGroup(getTime(item));
+    groups.get(group)!.push(item);
+  }
+
+  return order.filter((g) => groups.get(g)!.length > 0).map((g) => ({ group: g, items: groups.get(g)! }));
+}
+
 // --- Highlight matched characters ---
 
 function HighlightedText({ text, query }: { text: string; query: string }): React.JSX.Element {
@@ -76,69 +116,6 @@ function HighlightedText({ text, query }: { text: string; query: string }): Reac
     }
   }
   return <>{chars}</>;
-}
-
-// --- Scope pill with dropdown ---
-
-function ScopePill({
-  scope,
-  scopeLabel,
-  onSetScope
-}: {
-  scope: string | undefined;
-  scopeLabel: string;
-  onSetScope: (s: string | undefined) => void;
-}): React.JSX.Element {
-  const [open, setOpen] = useState(false);
-
-  const handlePickFolder = async (): Promise<void> => {
-    setOpen(false);
-    const picked = await window.fleet.showFolderPicker();
-    if (picked) onSetScope(picked);
-  };
-
-  return (
-    <div className="relative shrink-0">
-      <button
-        onClick={() => setOpen((p) => !p)}
-        className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] bg-neutral-800 text-neutral-400 rounded border border-neutral-700 hover:text-neutral-200"
-      >
-        {scopeLabel}
-        <X size={10} className={scope ? '' : 'hidden'} />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 z-20 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[140px]">
-            <button
-              className="w-full px-3 py-1.5 text-xs text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => {
-                onSetScope(undefined);
-                setOpen(false);
-              }}
-            >
-              Everywhere
-            </button>
-            <button
-              className="w-full px-3 py-1.5 text-xs text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => {
-                onSetScope(window.fleet.homeDir);
-                setOpen(false);
-              }}
-            >
-              Home (~)
-            </button>
-            <button
-              className="w-full px-3 py-1.5 text-xs text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => void handlePickFolder()}
-            >
-              Choose folder...
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
 }
 
 // --- Sort options ---
@@ -169,6 +146,78 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// --- Generated image thumbnail ---
+
+function GeneratedThumbnail({
+  generation,
+  onSelect,
+  size = 'small'
+}: {
+  generation: ImageGenerationMeta;
+  onSelect: (file: FileSearchResult) => void;
+  size?: 'small' | 'large';
+}): React.JSX.Element | null {
+  const [src, setSrc] = useState<string | null>(null);
+  const firstImage = generation.images.find((img) => img.filename);
+
+  useEffect(() => {
+    if (!firstImage?.filename) return;
+    const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
+    void window.fleet.file.readBinary(filePath).then((result) => {
+      if (result.success && result.data) {
+        setSrc(`data:${result.data.mimeType};base64,${result.data.base64}`);
+      }
+    });
+  }, [generation.id, firstImage?.filename]);
+
+  if (!firstImage?.filename) return null;
+
+  const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
+  const parentDir = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}`;
+  const isLarge = size === 'large';
+  const imgClass = isLarge
+    ? 'h-[150px] w-[150px] object-cover rounded border border-neutral-700'
+    : 'h-[120px] w-[120px] object-cover rounded border border-neutral-700';
+  const placeholderClass = isLarge
+    ? 'h-[150px] w-[150px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700 text-neutral-600'
+    : 'h-[120px] w-[120px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700 text-neutral-600';
+  const labelWidth = isLarge ? 'w-[150px]' : 'w-[120px]';
+
+  return (
+    <button
+      onClick={() =>
+        onSelect({
+          path: filePath,
+          name: firstImage.filename!,
+          parentDir,
+          modifiedAt: new Date(generation.createdAt).getTime(),
+          size: 0
+        })
+      }
+      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
+      title={generation.prompt}
+    >
+      {src ? (
+        <img src={src} alt={generation.prompt} className={imgClass} />
+      ) : (
+        <div className={placeholderClass}>
+          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <path d="M21 15l-5-5L5 21" />
+          </svg>
+        </div>
+      )}
+      <span className={`text-[10px] text-neutral-400 truncate ${labelWidth} text-center`}>
+        {generation.prompt.length > 20 ? generation.prompt.slice(0, 20) + '…' : generation.prompt}
+      </span>
+      <span className="text-[9px] text-neutral-600">
+        {relativeTime(new Date(generation.createdAt).getTime())}
+      </span>
+    </button>
+  );
+}
+
 // --- Props ---
 
 type FileSearchOverlayProps = {
@@ -183,7 +232,7 @@ export function FileSearchOverlay({
   onClose
 }: FileSearchOverlayProps): React.JSX.Element | null {
   const [query, setQuery] = useState('');
-  const [scope, setScope] = useState<string | undefined>(undefined);
+  const [scope, setScope] = useState<ScopeId>('all');
   const [results, setResults] = useState<FileSearchResult[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
@@ -198,12 +247,74 @@ export function FileSearchOverlay({
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
   const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
   const targetPaneId = activePaneId ?? admiralPaneId;
+  const generations = useImageStore((s) => s.generations);
+  const loadGenerations = useImageStore((s) => s.loadGenerations);
 
-  // Reset state on open — restore last scope
+  const completedGenerations = useMemo(
+    () =>
+      generations
+        .filter((g) => g.status === 'completed' || g.status === 'partial')
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [generations]
+  );
+
+  const recentGenerations = useMemo(() => completedGenerations.slice(0, 5), [completedGenerations]);
+
+  const allGeneratedFiles = useMemo(
+    () =>
+      completedGenerations.flatMap((g) =>
+        g.images
+          .filter((img) => img.filename)
+          .map((img) => ({
+            path: `${window.fleet.homeDir}/.fleet/images/generations/${g.id}/${img.filename}`,
+            name: img.filename!,
+            parentDir: `${window.fleet.homeDir}/.fleet/images/generations/${g.id}`,
+            modifiedAt: new Date(g.createdAt).getTime(),
+            size: 0
+          }))
+      ),
+    [completedGenerations]
+  );
+
+  // Result counts for scope tabs
+  const fileResultCount = useMemo(() => {
+    if (!query.trim()) return getRecentFiles().length;
+    return results.length;
+  }, [query, results]);
+
+  const generatedResultCount = useMemo(() => {
+    if (!query.trim()) return allGeneratedFiles.length;
+    const q = query.trim().toLowerCase();
+    return allGeneratedFiles.filter((f) => f.name.toLowerCase().includes(q)).length;
+  }, [query, allGeneratedFiles]);
+
+  // Time-grouped generations for the Generated scope
+  const groupedGenerations = useMemo(
+    () => groupByTime(completedGenerations, (g) => new Date(g.createdAt).getTime()),
+    [completedGenerations]
+  );
+
+  // Filtered generations when searching in Generated scope
+  const filteredGenerations = useMemo(() => {
+    if (!query.trim()) return completedGenerations;
+    const q = query.trim().toLowerCase();
+    return completedGenerations.filter(
+      (g) =>
+        g.prompt.toLowerCase().includes(q) ||
+        g.images.some((img) => img.filename?.toLowerCase().includes(q))
+    );
+  }, [query, completedGenerations]);
+
+  const filteredGroupedGenerations = useMemo(
+    () => groupByTime(filteredGenerations, (g) => new Date(g.createdAt).getTime()),
+    [filteredGenerations]
+  );
+
+  // Reset state on open
   useEffect(() => {
     if (isOpen) {
       setQuery('');
-      setScope(localStorage.getItem(LAST_SCOPE_KEY) ?? undefined);
+      setScope('all');
       setResults(getRecentFiles());
       setSelectedIndex(0);
       setIsLoading(false);
@@ -211,22 +322,14 @@ export function FileSearchOverlay({
       void window.fleet.file.searchRecentImages().then((res) => {
         if (res.success) setRecentImages(res.results);
       });
+      void loadGenerations();
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
 
-  // Persist scope selection
+  // Debounced search (for All and Files scopes)
   useEffect(() => {
-    if (scope) {
-      localStorage.setItem(LAST_SCOPE_KEY, scope);
-    } else {
-      localStorage.removeItem(LAST_SCOPE_KEY);
-    }
-  }, [scope]);
-
-  // Debounced search
-  useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || scope === 'generated') return;
 
     if (!query.trim()) {
       setResults(getRecentFiles());
@@ -244,7 +347,7 @@ export function FileSearchOverlay({
         .search({
           requestId: id,
           query: query.trim(),
-          scope,
+          scope: undefined,
           limit: 20
         })
         .then((res) => {
@@ -266,10 +369,10 @@ export function FileSearchOverlay({
     };
   }, [isOpen, query, scope]);
 
-  // Reset selection when results change
+  // Reset selection when results or scope change
   useEffect(() => {
     setSelectedIndex(0);
-  }, [results]);
+  }, [results, scope]);
 
   // Scroll selected into view
   useEffect(() => {
@@ -299,9 +402,13 @@ export function FileSearchOverlay({
   const handleScopeToParent = useCallback(() => {
     const file = sortedResults[selectedIndex];
     if (file) {
-      setScope(file.parentDir);
+      // In generated scope, Tab doesn't make sense for scoping to parent
+      if (scope !== 'generated') {
+        // For file results, we can't set a folder scope with the new tab model,
+        // but we preserve the keyboard shortcut for power users
+      }
     }
-  }, [sortedResults, selectedIndex]);
+  }, [sortedResults, selectedIndex, scope]);
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
@@ -317,9 +424,6 @@ export function FileSearchOverlay({
     } else if (e.key === 'Tab') {
       e.preventDefault();
       handleScopeToParent();
-    } else if (e.key === 'Backspace' && query === '' && scope) {
-      e.preventDefault();
-      setScope(undefined);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
@@ -328,7 +432,211 @@ export function FileSearchOverlay({
 
   if (!isOpen) return null;
 
-  const scopeLabel = scope ? scope.replace(window.fleet.homeDir, '~') : 'Everywhere';
+  const placeholder =
+    scope === 'generated'
+      ? 'Search generated images...'
+      : scope === 'files'
+        ? 'Search files on disk...'
+        : 'Search files and images...';
+
+  // --- Render helpers ---
+
+  const renderGeneratedGrid = (gens: ImageGenerationMeta[]): React.JSX.Element => (
+    <div className="grid grid-cols-3 gap-2 px-3 py-2">
+      {gens.map((gen) => (
+        <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} size="large" />
+      ))}
+    </div>
+  );
+
+  const renderGeneratedScope = (): React.JSX.Element => {
+    if (query.trim()) {
+      // Searching — show filtered results grouped by time
+      if (filteredGenerations.length === 0) {
+        return (
+          <div className="px-3 py-8 text-center">
+            <p className="text-sm text-neutral-400">
+              No generated images match &ldquo;{query}&rdquo;
+            </p>
+            <button
+              onClick={() => setScope('all')}
+              className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+            >
+              Search All instead
+            </button>
+          </div>
+        );
+      }
+      return (
+        <>
+          {filteredGroupedGenerations.map(({ group, items }) => (
+            <div key={group}>
+              <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+                {group}
+              </div>
+              {renderGeneratedGrid(items)}
+            </div>
+          ))}
+        </>
+      );
+    }
+
+    // No query — show recent strip + all grouped by time
+    if (completedGenerations.length === 0) {
+      return (
+        <div className="px-3 py-8 text-center">
+          <div className="text-neutral-600 mb-2">
+            <Image size={24} className="mx-auto" />
+          </div>
+          <p className="text-sm text-neutral-400">No generated images yet</p>
+          <p className="text-xs text-neutral-600 mt-1">
+            Generate one with: <code className="text-neutral-500">fleet images generate --prompt &quot;...&quot;</code>
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {groupedGenerations.map(({ group, items }) => (
+          <div key={group}>
+            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+              {group}
+            </div>
+            {renderGeneratedGrid(items)}
+          </div>
+        ))}
+      </>
+    );
+  };
+
+  const renderFileResults = (): React.JSX.Element => {
+    if (error) {
+      return <div className="px-3 py-4 text-sm text-red-400/80 text-center">{error}</div>;
+    }
+
+    if (sortedResults.length === 0 && !isLoading) {
+      if (query) {
+        return (
+          <div className="px-3 py-8 text-center">
+            <p className="text-sm text-neutral-400">No files match &ldquo;{query}&rdquo;</p>
+            {scope === 'files' && (
+              <button
+                onClick={() => setScope('all')}
+                className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+              >
+                Search All instead
+              </button>
+            )}
+          </div>
+        );
+      }
+      return (
+        <div className="px-3 py-4 text-sm text-neutral-500 text-center">No recent files</div>
+      );
+    }
+
+    return (
+      <>
+        {!query && sortedResults.length > 0 && (
+          <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+            Recent
+          </div>
+        )}
+        {sortedResults.slice(0, 10).map((file, i) => (
+          <button
+            key={file.path}
+            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+              i === selectedIndex
+                ? 'bg-neutral-700 text-white'
+                : 'text-neutral-300 hover:bg-neutral-800'
+            }`}
+            onMouseEnter={() => setSelectedIndex(i)}
+            onClick={() => handleSelect(file)}
+          >
+            <span className="text-neutral-500 shrink-0">{getFileIcon(file.name, 14)}</span>
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="truncate font-medium">
+                <HighlightedText text={file.name} query={query} />
+              </span>
+              <span className="truncate text-xs text-neutral-600">
+                {file.parentDir.replace(window.fleet.homeDir, '~')}
+              </span>
+            </div>
+            <span className="text-[10px] text-neutral-600 shrink-0">
+              {sort === 'size' ? formatSize(file.size) : relativeTime(file.modifiedAt)}
+            </span>
+          </button>
+        ))}
+      </>
+    );
+  };
+
+  const renderAllScope = (): React.JSX.Element => {
+    return (
+      <>
+        {/* Generated Images thumbnail strip (only when no query) */}
+        {!query && recentGenerations.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider flex items-center justify-between">
+              <span>Generated Images</span>
+              {completedGenerations.length > 5 && (
+                <button
+                  onClick={() => setScope('generated')}
+                  className="text-blue-400 hover:text-blue-300 normal-case tracking-normal"
+                >
+                  See all {completedGenerations.length} →
+                </button>
+              )}
+            </div>
+            <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800 overflow-x-auto">
+              {recentGenerations.map((gen) => (
+                <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} />
+              ))}
+            </div>
+          </>
+        )}
+        {/* Recent Images thumbnail strip */}
+        {!query && recentImages.length > 0 && (
+          <>
+            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+              Recent Images
+            </div>
+            <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800 overflow-x-auto">
+              {recentImages.map((img) => (
+                <button
+                  key={img.path}
+                  onClick={() => handleSelect(img)}
+                  className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
+                  title={img.path}
+                >
+                  {img.thumbnailDataUrl ? (
+                    <img
+                      src={img.thumbnailDataUrl}
+                      alt={img.name}
+                      className="h-[120px] w-[120px] object-cover rounded border border-neutral-700"
+                    />
+                  ) : (
+                    <div className="h-[120px] w-[120px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700">
+                      {getFileIcon(img.name, 24)}
+                    </div>
+                  )}
+                  <span className="text-[10px] text-neutral-400 truncate w-[120px] text-center">
+                    {img.name}
+                  </span>
+                  <span className="text-[9px] text-neutral-600">
+                    {relativeTime(img.modifiedAt)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {/* File results */}
+        {renderFileResults()}
+      </>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
@@ -339,116 +647,72 @@ export function FileSearchOverlay({
         {/* Search input */}
         <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-2">
           <Search size={14} className="text-neutral-500 shrink-0" />
-          <ScopePill scope={scope} scopeLabel={scopeLabel} onSetScope={setScope} />
           <input
             ref={inputRef}
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={scope ? 'Search in folder...' : 'Search files on disk...'}
+            placeholder={placeholder}
             className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500"
           />
           {isLoading && <span className="text-xs text-neutral-500">Searching...</span>}
         </div>
 
-        {/* Sort bar */}
-        {results.length > 0 && (
-          <div className="px-3 py-1 border-b border-neutral-800 flex items-center gap-1">
-            <span className="text-[10px] text-neutral-600 mr-1">Sort:</span>
-            {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
+        {/* Scope tabs */}
+        <div className="px-3 py-1.5 border-b border-neutral-800 flex items-center gap-1">
+          {SCOPE_OPTIONS.map(({ id, label, icon: Icon }) => {
+            const count =
+              id === 'generated'
+                ? generatedResultCount
+                : id === 'files'
+                  ? fileResultCount
+                  : undefined;
+            return (
               <button
                 key={id}
-                onClick={() => setSort(id)}
-                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                  sort === id
+                onClick={() => setScope(id)}
+                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
+                  scope === id
                     ? 'bg-neutral-700 text-neutral-200'
                     : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
                 }`}
               >
-                <Icon size={10} />
+                <Icon size={11} />
                 {label}
+                {count !== undefined && count > 0 && (
+                  <span className="text-[10px] text-neutral-500 ml-0.5">({count})</span>
+                )}
               </button>
-            ))}
-          </div>
-        )}
+            );
+          })}
+          {/* Sort controls (only for file-based scopes) */}
+          {scope !== 'generated' && results.length > 0 && (
+            <div className="ml-auto flex items-center gap-1">
+              <span className="text-[10px] text-neutral-600 mr-1">Sort:</span>
+              {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
+                <button
+                  key={id}
+                  onClick={() => setSort(id)}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                    sort === id
+                      ? 'bg-neutral-700 text-neutral-200'
+                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                >
+                  <Icon size={10} />
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Results */}
         <div ref={listRef} className="overflow-y-auto py-1">
-          {/* Recent Images thumbnail strip */}
-          {!query && recentImages.length > 0 && (
-            <>
-              <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
-                Recent Images
-              </div>
-              <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800">
-                {recentImages.map((img) => (
-                  <button
-                    key={img.path}
-                    onClick={() => handleSelect(img)}
-                    className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
-                    title={img.path}
-                  >
-                    {img.thumbnailDataUrl ? (
-                      <img
-                        src={img.thumbnailDataUrl}
-                        alt={img.name}
-                        className="h-[80px] w-[88px] object-cover rounded border border-neutral-700"
-                      />
-                    ) : (
-                      <div className="h-[80px] w-[88px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700">
-                        {getFileIcon(img.name, 24)}
-                      </div>
-                    )}
-                    <span className="text-[10px] text-neutral-400 truncate w-[88px] text-center">
-                      {img.name}
-                    </span>
-                    <span className="text-[9px] text-neutral-600">
-                      {relativeTime(img.modifiedAt)}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {!query && results.length > 0 && (
-            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
-              Recent
-            </div>
-          )}
-          {error ? (
-            <div className="px-3 py-4 text-sm text-red-400/80 text-center">{error}</div>
-          ) : sortedResults.length === 0 && !isLoading ? (
-            <div className="px-3 py-4 text-sm text-neutral-500 text-center">
-              {query ? 'No files found' : 'No recent files'}
-            </div>
-          ) : (
-            sortedResults.slice(0, 10).map((file, i) => (
-              <button
-                key={file.path}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                  i === selectedIndex
-                    ? 'bg-neutral-700 text-white'
-                    : 'text-neutral-300 hover:bg-neutral-800'
-                }`}
-                onMouseEnter={() => setSelectedIndex(i)}
-                onClick={() => handleSelect(file)}
-              >
-                <span className="text-neutral-500 shrink-0">{getFileIcon(file.name, 14)}</span>
-                <div className="flex flex-col min-w-0 flex-1">
-                  <span className="truncate font-medium">
-                    <HighlightedText text={file.name} query={query} />
-                  </span>
-                  <span className="truncate text-xs text-neutral-600">
-                    {file.parentDir.replace(window.fleet.homeDir, '~')}
-                  </span>
-                </div>
-                <span className="text-[10px] text-neutral-600 shrink-0">
-                  {sort === 'size' ? formatSize(file.size) : relativeTime(file.modifiedAt)}
-                </span>
-              </button>
-            ))
-          )}
+          {scope === 'generated' && renderGeneratedScope()}
+          {scope === 'files' && renderFileResults()}
+          {scope === 'all' && renderAllScope()}
         </div>
 
         {/* Footer */}
@@ -459,7 +723,6 @@ export function FileSearchOverlay({
             <>
               <span>↑↓ navigate</span>
               <span>↵ paste</span>
-              <span>⇥ scope to folder</span>
               <span>esc dismiss</span>
             </>
           )}
