@@ -60,4 +60,32 @@ export class LayoutStore {
     workspace.tabs.unshift(starTab);
     this.save(workspace);
   }
+
+  ensureImagesTab(workspaceId: string, cwd: string): void {
+    const workspace = this.load(workspaceId);
+    if (!workspace) return;
+
+    const hasImages = workspace.tabs.some((t) => t.type === 'images');
+    if (hasImages) return;
+
+    const paneId = randomUUID();
+    const imagesTab: Tab = {
+      id: randomUUID(),
+      label: 'Images',
+      labelIsCustom: true,
+      cwd,
+      type: 'images',
+      splitRoot: { type: 'leaf', id: paneId, cwd }
+    };
+
+    // Insert after star-command tab if it exists, otherwise at the start
+    const starIdx = workspace.tabs.findIndex((t) => t.type === 'star-command');
+    if (starIdx !== -1) {
+      workspace.tabs.splice(starIdx + 1, 0, imagesTab);
+    } else {
+      workspace.tabs.unshift(imagesTab);
+    }
+
+    this.save(workspace);
+  }
 }

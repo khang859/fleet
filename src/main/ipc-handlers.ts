@@ -156,6 +156,7 @@ export function registerIpcHandlers(
     try {
       layoutStore.save(req.workspace);
       layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
+      layoutStore.ensureImagesTab(req.workspace.id, workspacePath);
     } catch (err) {
       console.error('[layout-save] Failed to save workspace:', err);
     }

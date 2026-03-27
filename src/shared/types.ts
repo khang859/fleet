@@ -11,7 +11,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image';
+  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images';
   avatarVariant?: string;
   splitRoot: PaneNode;
 };
@@ -31,7 +31,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image';
+  paneType?: 'terminal' | 'file' | 'image' | 'images';
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;

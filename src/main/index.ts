@@ -440,6 +440,7 @@ void app.whenReady().then(() => {
         traceStarbase('unread memos fetched', { lastUnreadMemosCount });
         for (const ws of layoutStore.list()) {
           layoutStore.ensureStarCommandTab(ws.id, workspacePath);
+          layoutStore.ensureImagesTab(ws.id, workspacePath);
         }
         // eslint-disable-next-line no-console
         console.log('[starbase] bootstrap: ensured star command tab');
