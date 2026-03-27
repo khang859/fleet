@@ -10,10 +10,13 @@ Replace the Star Command status sidebar with a full space scene canvas. The scen
 ## Layout Change
 
 `StarCommandTab` layout changes from:
+
 ```
 [CrtFrame chat panel] [StatusPanel w-72]
 ```
+
 to:
+
 ```
 [CrtFrame chat panel] [StarCommandScene flex-1]
 ```
@@ -57,22 +60,25 @@ The station hub and ring are always centered at `(canvas.width / 2, canvas.heigh
 From `useStarCommandStore`:
 
 **Sectors → `SectorState[]`**
+
 ```ts
-sectors.map(s => ({
+sectors.map((s) => ({
   id: s.id,
   name: s.name,
-  active: crewList.some(c => c.sector_id === s.id && c.status === 'active'),
-}))
+  active: crewList.some((c) => c.sector_id === s.id && c.status === 'active')
+}));
 ```
 
 **Crew → `PodState[]`**
+
 ```ts
-crewList.map(c => ({
+crewList.map((c) => ({
   crewId: c.id,
   sectorId: c.sector_id,
-  status: (c.status as PodState['status']) ?? 'idle',
-}))
+  status: (c.status as PodState['status']) ?? 'idle'
+}));
 ```
+
 `c.status` is `string` in the store; cast to `PodState['status']` union with `'idle'` fallback for unrecognised values.
 
 **Comms beams** — a `lastBeamSpawn` ref (timestamp) is checked inside the RAF loop at step 8. If `elapsed - lastBeamSpawn >= 3000`, iterate hailing crew and call `commsBeams.addBeam(c.id, 'hub', '#14b8a6')`, then update `lastBeamSpawn`. Spawning is always synchronous with step 6 (position registration), so every new beam immediately has a valid `from` position on its first rendered frame.
@@ -88,37 +94,44 @@ The scene applies a uniform scale factor based on `Math.min(canvas.width, canvas
 ### Performance
 
 #### Adaptive frame rate
+
 Two speed modes driven by a `mode` ref checked at the top of every RAF callback:
 
-| Mode | FPS | Condition |
-|------|-----|-----------|
-| `idle` | 10fps (`>= 100ms`) | No active/hailing crew and no beams in flight |
-| `active` | 30fps (`>= 33ms`) | Any active/hailing crew or beams in flight |
+| Mode     | FPS                | Condition                                     |
+| -------- | ------------------ | --------------------------------------------- |
+| `idle`   | 10fps (`>= 100ms`) | No active/hailing crew and no beams in flight |
+| `active` | 30fps (`>= 33ms`)  | Any active/hailing crew or beams in flight    |
 
 The mode is re-evaluated once per frame. This means the loop runs at 10fps when nobody is deployed — the ring and hub still animate, just at low cost.
 
 #### Full pause when hidden
+
 The RAF loop stops entirely (no `requestAnimationFrame` call) in two cases:
+
 - `document.visibilitychange` fires with `document.hidden === true`
 - Electron's `BrowserWindow` emits `hide` or `minimize` (forwarded to renderer via existing IPC or `window.addEventListener('blur')` as a proxy)
 
 On becoming visible again, the loop resumes from the current `performance.now()` timestamp to avoid a large `deltaMs` spike.
 
 #### Offscreen star canvas
+
 Stars are pre-rendered to a secondary `OffscreenCanvas` (same size as the main canvas). The offscreen canvas is redrawn at a fixed **5fps** (`>= 200ms` between star redraws). Every main-canvas frame simply blits it via `ctx.drawImage(starOffscreen, 0, 0)`. Since stars twinkle slowly, 5fps updates are imperceptible. On canvas resize, the offscreen canvas is resized and the star positions are re-scattered.
 
 #### Opaque canvas context
+
 The 2d context is acquired with `{ alpha: false }`. Since the background is always a solid fill, the browser skips alpha compositing for this canvas layer — a free GPU win.
 
 #### Store data in refs, not React state
+
 `sectorStatesRef` and `podStatesRef` are `useRef` values updated by a `useEffect` that subscribes to `useStarCommandStore`. The RAF loop reads from refs directly. This means store updates (crew status changes, new sectors) never trigger a React re-render of the component — only the ref values change, and the next RAF frame picks them up.
 
 #### ResizeObserver debounce
+
 Canvas dimensions are only updated on the next `requestAnimationFrame` after a resize event fires, not synchronously in the observer callback. This coalesces rapid resize events (e.g. window drag) into a single resize per frame.
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/renderer/src/components/StarCommandTab.tsx` | Remove `StatusPanel`, `statusPanelOpen`, `toggleStatusPanel`, "Show/Hide Status" button; add `<StarCommandScene className="flex-1 min-w-0" />` |
-| `src/renderer/src/components/star-command/StarCommandScene.tsx` | New file |
+| File                                                            | Change                                                                                                                                         |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/renderer/src/components/StarCommandTab.tsx`                | Remove `StatusPanel`, `statusPanelOpen`, `toggleStatusPanel`, "Show/Hide Status" button; add `<StarCommandScene className="flex-1 min-w-0" />` |
+| `src/renderer/src/components/star-command/StarCommandScene.tsx` | New file                                                                                                                                       |

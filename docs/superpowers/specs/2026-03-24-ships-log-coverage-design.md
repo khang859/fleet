@@ -30,54 +30,54 @@ All `shipsLog.log()` calls are fire-and-forget — wrap in try/catch and swallow
 
 **Existing (migrate from raw SQL to ShipsLog):**
 
-| Event Type | Location | crew_id | Notes |
-|---|---|---|---|
-| `lifesign_lost` | `_runSweep()` — stale crew detected | yes | |
-| `timeout` | `_runSweep()` — deadline expired | yes | |
-| `sector_path_missing` | `_runSweep()` — sector path inaccessible | no | |
-| `socket_restart` | `checkSocketHealth()` — 3 consecutive ping failures | no | |
-| `first_officer_dispatched` | `firstOfficerSweep()` — inside onExit callback | yes | Logged when FO process exits, not on dispatch. Name is legacy — keep for backward compat. |
-| `review_crew_dispatched` | `reviewSweep()` — review crew deployed | no | |
-| `review_escalated` | `reviewSweep()` — max review rounds reached | no | |
-| `fix_crew_dispatched` | `reviewSweep()` — fix crew deployed | no | |
+| Event Type                 | Location                                            | crew_id | Notes                                                                                     |
+| -------------------------- | --------------------------------------------------- | ------- | ----------------------------------------------------------------------------------------- |
+| `lifesign_lost`            | `_runSweep()` — stale crew detected                 | yes     |                                                                                           |
+| `timeout`                  | `_runSweep()` — deadline expired                    | yes     |                                                                                           |
+| `sector_path_missing`      | `_runSweep()` — sector path inaccessible            | no      |                                                                                           |
+| `socket_restart`           | `checkSocketHealth()` — 3 consecutive ping failures | no      |                                                                                           |
+| `first_officer_dispatched` | `firstOfficerSweep()` — inside onExit callback      | yes     | Logged when FO process exits, not on dispatch. Name is legacy — keep for backward compat. |
+| `review_crew_dispatched`   | `reviewSweep()` — review crew deployed              | no      |                                                                                           |
+| `review_escalated`         | `reviewSweep()` — max review rounds reached         | no      |                                                                                           |
+| `fix_crew_dispatched`      | `reviewSweep()` — fix crew deployed                 | no      |                                                                                           |
 
 **New events to add:**
 
-| Event Type | Location | crew_id | Detail | Notes |
-|---|---|---|---|---|
-| `disk_warning` | `_runSweep()` step 5 | no | `{ usedGb, budgetGb, percent }` | Only log when `lastAlertLevel` changes (same dedup guard as comms) |
-| `memory_warning` | `_runSweep()` step 6 | no | `{ freeMemoryGb, level }` | Only log when `lastAlertLevel` changes (same dedup guard as comms) |
-| `gate_expired` | `navigatorSweep()` | no | `{ executionId, protocolId }` | |
-| `navigator_fan_out_failed` | `navigatorSweep()` — crew-failed fan-out dispatches navigator | no | `{ executionId, protocolSlug, step }` | Logged by Sentinel on behalf of Navigator |
-| `navigator_fan_out_completed` | `navigatorSweep()` — crew-completed fan-out dispatches navigator | no | `{ executionId, missionId }` | Logged by Sentinel on behalf of Navigator |
+| Event Type                    | Location                                                         | crew_id | Detail                                | Notes                                                              |
+| ----------------------------- | ---------------------------------------------------------------- | ------- | ------------------------------------- | ------------------------------------------------------------------ |
+| `disk_warning`                | `_runSweep()` step 5                                             | no      | `{ usedGb, budgetGb, percent }`       | Only log when `lastAlertLevel` changes (same dedup guard as comms) |
+| `memory_warning`              | `_runSweep()` step 6                                             | no      | `{ freeMemoryGb, level }`             | Only log when `lastAlertLevel` changes (same dedup guard as comms) |
+| `gate_expired`                | `navigatorSweep()`                                               | no      | `{ executionId, protocolId }`         |                                                                    |
+| `navigator_fan_out_failed`    | `navigatorSweep()` — crew-failed fan-out dispatches navigator    | no      | `{ executionId, protocolSlug, step }` | Logged by Sentinel on behalf of Navigator                          |
+| `navigator_fan_out_completed` | `navigatorSweep()` — crew-completed fan-out dispatches navigator | no      | `{ executionId, missionId }`          | Logged by Sentinel on behalf of Navigator                          |
 
 ### First Officer — migrate 3 existing + add 2 new events
 
 **Existing (migrate from raw SQL to ShipsLog):**
 
-| Event Type | Location | crew_id |
-|---|---|---|
-| `first_officer_retried` | `resolveRetry()` | yes |
-| `first_officer_recovered` | `resolveRecovery()` | yes |
-| `first_officer_dismissed` | `resolveEscalation()` | yes |
+| Event Type                | Location              | crew_id |
+| ------------------------- | --------------------- | ------- |
+| `first_officer_retried`   | `resolveRetry()`      | yes     |
+| `first_officer_recovered` | `resolveRecovery()`   | yes     |
+| `first_officer_dismissed` | `resolveEscalation()` | yes     |
 
 **New events to add:**
 
-| Event Type | Location | crew_id | Detail |
-|---|---|---|---|
-| `hailing_memo_written` | `writeHailingMemo()` | yes | `{ missionId, sectorName }` |
-| `auto_escalation` | `writeAutoEscalationComm()` | yes | `{ missionId, classification, fingerprint }` |
+| Event Type             | Location                    | crew_id | Detail                                       |
+| ---------------------- | --------------------------- | ------- | -------------------------------------------- |
+| `hailing_memo_written` | `writeHailingMemo()`        | yes     | `{ missionId, sectorName }`                  |
+| `auto_escalation`      | `writeAutoEscalationComm()` | yes     | `{ missionId, classification, fingerprint }` |
 
 Note: `writeAutoEscalationComm()` is called from the Sentinel's `firstOfficerSweep()` path (via circuit-breaker logic when persistent/non-retryable errors are detected before FO dispatch). The log call lives inside the First Officer class method itself.
 
 ### Navigator — add 4 new events
 
-| Event Type | Location | crew_id | Detail |
-|---|---|---|---|
-| `navigator_dispatched` | `dispatch()` — after process spawned successfully | no | `{ executionId, protocolSlug, step }` |
-| `navigator_completed` | `dispatch()` — exit handler, code === 0 | no | `{ executionId, protocolSlug }` |
-| `navigator_failed` | `dispatch()` — exit handler, code !== 0, or `error` event | no | `{ executionId, protocolSlug, reason }` |
-| `navigator_timeout` | `dispatch()` — killed by timeout timer | no | `{ executionId, protocolSlug }` |
+| Event Type             | Location                                                  | crew_id | Detail                                  |
+| ---------------------- | --------------------------------------------------------- | ------- | --------------------------------------- |
+| `navigator_dispatched` | `dispatch()` — after process spawned successfully         | no      | `{ executionId, protocolSlug, step }`   |
+| `navigator_completed`  | `dispatch()` — exit handler, code === 0                   | no      | `{ executionId, protocolSlug }`         |
+| `navigator_failed`     | `dispatch()` — exit handler, code !== 0, or `error` event | no      | `{ executionId, protocolSlug, reason }` |
+| `navigator_timeout`    | `dispatch()` — killed by timeout timer                    | no      | `{ executionId, protocolSlug }`         |
 
 **Dependency injection:** Add `shipsLog?: ShipsLog` to `NavigatorDeps`.
 
@@ -85,19 +85,20 @@ Note: `writeAutoEscalationComm()` is called from the Sentinel's `firstOfficerSwe
 
 ### Analyst — add 5 new events
 
-| Event Type | Location | crew_id | Detail |
-|---|---|---|---|
-| `analyst_classified` | `classifyError()` — success | no | `{ classification, method: 'classifyError' }` |
-| `analyst_summarized` | `summarizeCILogs()` — success | no | `{ method: 'summarizeCILogs' }` |
-| `analyst_verdict_extracted` | `extractPRVerdict()` — success | no | `{ verdict, method: 'extractPRVerdict' }` |
-| `analyst_hailing_context` | `writeHailingContext()` — success | no | `{ method: 'writeHailingContext' }` |
-| `analyst_degraded` | `writeDegradedComm()` — method failed | no | `{ method, reason }` |
+| Event Type                  | Location                              | crew_id | Detail                                        |
+| --------------------------- | ------------------------------------- | ------- | --------------------------------------------- |
+| `analyst_classified`        | `classifyError()` — success           | no      | `{ classification, method: 'classifyError' }` |
+| `analyst_summarized`        | `summarizeCILogs()` — success         | no      | `{ method: 'summarizeCILogs' }`               |
+| `analyst_verdict_extracted` | `extractPRVerdict()` — success        | no      | `{ verdict, method: 'extractPRVerdict' }`     |
+| `analyst_hailing_context`   | `writeHailingContext()` — success     | no      | `{ method: 'writeHailingContext' }`           |
+| `analyst_degraded`          | `writeDegradedComm()` — method failed | no      | `{ method, reason }`                          |
 
 **Dependency injection:** Add `shipsLog?: ShipsLog` to `AnalystDeps`. Guard all log calls with `this.shipsLog?.log(...)`.
 
 ### Wiring
 
 In `starbase-runtime-core.ts`, the `ShipsLog` instance is already created. Pass it into all four roles:
+
 - `Sentinel` deps — required `shipsLog: ShipsLog`
 - `FirstOfficer` deps — required `shipsLog: ShipsLog`
 - `Navigator` deps — optional `shipsLog?: ShipsLog`
@@ -106,6 +107,7 @@ In `starbase-runtime-core.ts`, the `ShipsLog` instance is already created. Pass 
 ### Testing
 
 Each role's existing test file gets new assertions:
+
 - **Sentinel tests:** verify `ShipsLog` calls replace raw SQL for all 8 existing events, plus 5 new events are logged. Assert no raw `INSERT INTO ships_log` SQL remains in migrated code paths (grep guard).
 - **First Officer tests:** verify `ShipsLog` calls replace raw SQL for 3 existing events, plus hailing memo and auto-escalation events. Assert no raw `INSERT INTO ships_log` SQL remains.
 - **Navigator tests:** verify dispatched/completed/failed/timeout events are logged with correct event types and details.
@@ -117,9 +119,9 @@ Use a `ShipsLog` instance backed by an in-memory SQLite DB (already the pattern 
 
 Total: **27 event types** across 4 roles.
 
-| Role | Migrated | New | Total |
-|---|---|---|---|
-| Sentinel | 8 | 5 | 13 |
-| First Officer | 3 | 2 | 5 |
-| Navigator | 0 | 4 | 4 |
-| Analyst | 0 | 5 | 5 |
+| Role          | Migrated | New | Total |
+| ------------- | -------- | --- | ----- |
+| Sentinel      | 8        | 5   | 13    |
+| First Officer | 3        | 2   | 5     |
+| Navigator     | 0        | 4   | 4     |
+| Analyst       | 0        | 5   | 5     |

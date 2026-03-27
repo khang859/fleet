@@ -1,14 +1,16 @@
 # CI Hanging Issue: Stream Cleanup Bug in Navigator
 
 ## Problem
+
 CI sometimes hung for ~45 minutes while other times it completed in <1 minute. This was caused by child processes spawning in tests without proper stream cleanup.
 
 ## Root Cause
+
 `Navigator.dispatch()` spawns a real child process (`claude` binary) with stdio pipes. When the spawn fails (ENOENT on CI), the error handler didn't properly clean up the stdio streams:
 
 ```typescript
 const proc = spawn('claude', cmdArgs, {
-  stdio: ['pipe', 'pipe', 'pipe']  // Creates stdout, stderr, stdin
+  stdio: ['pipe', 'pipe', 'pipe'] // Creates stdout, stderr, stdin
 });
 
 // ... attach event handlers ...
@@ -26,6 +28,7 @@ When spawn fails before the process fully initializes, the stdout/stderr streams
 vitest's `forceExit: true` config (added in commit 5fa4ca9) was a workaround, but it only masked the symptom by force-exiting when tests timeout (explaining the ~45 minute variable waits).
 
 ## Solution
+
 Properly destroy all stdio streams in error handlers and shutdown methods:
 
 1. **Error handler (line 255-272)**: Destroy stdout, stderr, stdin when spawn fails
@@ -68,12 +71,15 @@ shutdown(): void {
 ```
 
 ## Impact
+
 - **Before**: Tests sometimes hung for 45+ minutes waiting for streams to close
 - **After**: Full test suite completes in ~20 seconds consistently
 - **All 664 tests pass** with the fix
 
 ## Key Lesson
+
 When dealing with spawned child processes:
+
 1. Always destroy streams when processes fail or exit
 2. Don't rely on process.kill() alone—cleanup streams explicitly
 3. Test for both success and failure paths (spawn fails with ENOENT on CI)

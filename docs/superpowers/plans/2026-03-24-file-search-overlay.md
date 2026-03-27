@@ -15,6 +15,7 @@
 ### Task 1: IPC Channel & Type Definitions
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/shared/ipc-api.ts`
 
@@ -63,11 +64,13 @@ git commit -m "feat(file-search): add IPC channel and type definitions"
 ### Task 2: Search Backend (Main Process)
 
 **Files:**
+
 - Create: `src/main/file-search.ts`
 
 - [ ] **Step 1: Create the search module**
 
 Create `src/main/file-search.ts`. This module exports a single `searchFiles` function that:
+
 1. Picks the right OS search command based on `process.platform`
 2. Spawns a child process, stores its handle for cancellation
 3. Parses output lines into file paths
@@ -177,12 +180,19 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
       activeProcess = null;
 
       // If locate/es.exe not found, fallback to find (Linux) or PowerShell (Windows)
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT' && (cmd === 'locate' || cmd === 'es.exe')) {
+      if (
+        (err as NodeJS.ErrnoException).code === 'ENOENT' &&
+        (cmd === 'locate' || cmd === 'es.exe')
+      ) {
         const fallbackScope = scope ?? homedir();
         const isWin = process.platform === 'win32';
         const fallbackCmd = isWin ? 'powershell' : 'find';
         const fallbackArgs = isWin
-          ? ['-NoProfile', '-Command', `Get-ChildItem -Path '${fallbackScope}' -Recurse -Filter '*${query}*' -File -ErrorAction SilentlyContinue | Select-Object -First ${limit} -ExpandProperty FullName`]
+          ? [
+              '-NoProfile',
+              '-Command',
+              `Get-ChildItem -Path '${fallbackScope}' -Recurse -Filter '*${query}*' -File -ErrorAction SilentlyContinue | Select-Object -First ${limit} -ExpandProperty FullName`
+            ]
           : [fallbackScope, '-maxdepth', '5', '-iname', `*${query}*`, '-type', 'f'];
         const findProc = spawn(fallbackCmd, fallbackArgs, {
           stdio: ['ignore', 'pipe', 'pipe']
@@ -269,6 +279,7 @@ git commit -m "feat(file-search): add platform-specific search backend"
 ### Task 3: Register IPC Handler
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 
 - [ ] **Step 1: Import and register the handler**
@@ -283,9 +294,8 @@ import type { FileSearchRequest } from '../shared/ipc-api';
 Then in the `registerIpcHandlers` function, add a new handler (near the other `FILE_*` handlers):
 
 ```ts
-ipcMain.handle(
-  IPC_CHANNELS.FILE_SEARCH,
-  async (_event, req: FileSearchRequest) => searchFiles(req)
+ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) =>
+  searchFiles(req)
 );
 ```
 
@@ -301,6 +311,7 @@ git commit -m "feat(file-search): register IPC handler in main process"
 ### Task 4: Expose in Preload Bridge
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 - [ ] **Step 1: Add import**
@@ -337,6 +348,7 @@ git commit -m "feat(file-search): expose search API in preload bridge"
 ### Task 5: Add Shortcut & Command Palette Entry
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts`
 - Modify: `src/renderer/src/lib/commands.ts`
 
@@ -379,6 +391,7 @@ git commit -m "feat(file-search): add keyboard shortcut and command palette entr
 ### Task 6: FileSearchOverlay Component
 
 **Files:**
+
 - Create: `src/renderer/src/components/FileSearchOverlay.tsx`
 
 - [ ] **Step 1: Create the overlay component**
@@ -485,13 +498,19 @@ function ScopePill({
           <div className="absolute top-full left-0 mt-1 z-20 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg py-1 min-w-[140px]">
             <button
               className="w-full px-3 py-1.5 text-xs text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => { onSetScope(undefined); setOpen(false); }}
+              onClick={() => {
+                onSetScope(undefined);
+                setOpen(false);
+              }}
             >
               Everywhere
             </button>
             <button
               className="w-full px-3 py-1.5 text-xs text-neutral-300 hover:text-white hover:bg-neutral-700 text-left"
-              onClick={() => { onSetScope(window.fleet.homeDir); setOpen(false); }}
+              onClick={() => {
+                onSetScope(window.fleet.homeDir);
+                setOpen(false);
+              }}
             >
               Home (~)
             </button>
@@ -563,23 +582,25 @@ export function FileSearchOverlay({
 
     debounceRef.current = setTimeout(() => {
       const id = ++requestIdRef.current;
-      void window.fleet.file.search({
-        requestId: id,
-        query: query.trim(),
-        scope,
-        limit: 20
-      }).then((res) => {
-        // Discard stale responses
-        if (id !== requestIdRef.current) return;
-        setIsLoading(false);
-        if (res.success) {
-          setResults(res.results);
-          setError(null);
-        } else {
-          setResults([]);
-          setError(res.error);
-        }
-      });
+      void window.fleet.file
+        .search({
+          requestId: id,
+          query: query.trim(),
+          scope,
+          limit: 20
+        })
+        .then((res) => {
+          // Discard stale responses
+          if (id !== requestIdRef.current) return;
+          setIsLoading(false);
+          if (res.success) {
+            setResults(res.results);
+            setError(null);
+          } else {
+            setResults([]);
+            setError(res.error);
+          }
+        });
     }, 150);
 
     return () => {
@@ -641,9 +662,7 @@ export function FileSearchOverlay({
 
   if (!isOpen) return null;
 
-  const scopeLabel = scope
-    ? scope.replace(window.fleet.homeDir, '~')
-    : 'Everywhere';
+  const scopeLabel = scope ? scope.replace(window.fleet.homeDir, '~') : 'Everywhere';
 
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
@@ -654,11 +673,7 @@ export function FileSearchOverlay({
         {/* Search input */}
         <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-2">
           <Search size={14} className="text-neutral-500 shrink-0" />
-          <ScopePill
-            scope={scope}
-            scopeLabel={scopeLabel}
-            onSetScope={setScope}
-          />
+          <ScopePill scope={scope} scopeLabel={scopeLabel} onSetScope={setScope} />
           <input
             ref={inputRef}
             type="text"
@@ -744,6 +759,7 @@ git commit -m "feat(file-search): add FileSearchOverlay component"
 ### Task 7: Wire Overlay into App
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add import**
@@ -793,6 +809,7 @@ git commit -m "feat(file-search): wire overlay into App with event listener"
 ### Task 8: Add Pane Toolbar Button
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
 - Modify: `src/renderer/src/components/TerminalPane.tsx`
 
@@ -807,18 +824,20 @@ onFileSearch?: () => void;
 Add a button in the JSX, after the file browser button and before the search button:
 
 ```tsx
-{onFileSearch && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      onFileSearch();
-    }}
-    className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-    title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
-  >
-    <Search size={14} />
-  </button>
-)}
+{
+  onFileSearch && (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onFileSearch();
+      }}
+      className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+      title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
+    >
+      <Search size={14} />
+    </button>
+  );
+}
 ```
 
 Note: `Search` is already imported from `lucide-react` in this file.
@@ -871,6 +890,7 @@ Expected: Successful build.
 - [ ] **Step 4: Manual smoke test**
 
 Launch the app (`npm run dev`) and verify:
+
 1. `Cmd+Shift+O` opens the overlay
 2. Typing a filename shows results from the filesystem
 3. Arrow keys navigate, Enter pastes the quoted path into the focused terminal

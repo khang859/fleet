@@ -29,6 +29,7 @@ Add a `ping` command to `SocketServer.dispatch()`. Returns `{ ok: true, data: { 
 New `SocketSupervisor` class that wraps `SocketServer` and provides automatic restart on failure.
 
 **Responsibilities:**
+
 - Owns the `SocketServer` instance and its lifecycle
 - Monitors for server errors (`close`, `error` events on the `net.Server`)
 - On failure: tears down the dead server, cleans up socket file, creates new `SocketServer`, calls `start()`
@@ -39,6 +40,7 @@ New `SocketSupervisor` class that wraps `SocketServer` and provides automatic re
 - Proxies `state-change` events from inner `SocketServer`
 
 **Integration in `index.ts`:**
+
 ```typescript
 // Before:
 socketServer = new SocketServer(SOCKET_PATH, { ...services })
@@ -72,6 +74,7 @@ Extend existing Sentinel sweep loop with an 8th check that probes the socket.
 - Counter resets to 0 on successful ping
 
 **Separation of concerns:**
+
 - Sentinel does detection (sweep loop, alerting infrastructure)
 - Supervisor does restart (mechanics, backoff logic)
 - If Supervisor is already restarting (due to `net.Server` error), Sentinel's `restart()` call is a no-op (guarded by `isRestarting`)
@@ -87,6 +90,7 @@ Extend existing Sentinel sweep loop with an 8th check that probes the socket.
 New `sendWithRetry()` method on `FleetCLI`, used by `runCLI()`.
 
 **Behavior:**
+
 - Socket file missing: poll every 500ms for up to 15 seconds. Prints `"Waiting for Fleet app to start..."` to stderr (once, not per poll)
 - ECONNREFUSED: retry up to 4 times with exponential backoff (200ms, 400ms, 800ms, 1.6s — 2x multiplier). Prints brief retry status to stderr per attempt
 - Other errors (timeout, invalid JSON, unknown command): fail immediately — not transient
@@ -116,13 +120,13 @@ New `sendWithRetry()` method on `FleetCLI`, used by `runCLI()`.
 
 ## Touch Points Summary
 
-| Component | File | Change Size |
-|-----------|------|-------------|
-| `ping` command | `socket-server.ts` | ~5 lines |
-| Socket Supervisor | `socket-supervisor.ts` | New file, ~100 lines |
-| Sentinel health check | `sentinel.ts` | ~25 lines |
-| CLI retry | `fleet-cli.ts` | ~40 lines |
-| Startup recovery + cleanup | `index.ts` | ~15 lines |
+| Component                  | File                   | Change Size          |
+| -------------------------- | ---------------------- | -------------------- |
+| `ping` command             | `socket-server.ts`     | ~5 lines             |
+| Socket Supervisor          | `socket-supervisor.ts` | New file, ~100 lines |
+| Sentinel health check      | `sentinel.ts`          | ~25 lines            |
+| CLI retry                  | `fleet-cli.ts`         | ~40 lines            |
+| Startup recovery + cleanup | `index.ts`             | ~15 lines            |
 
 ## What's NOT Changing
 

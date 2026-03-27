@@ -8,7 +8,6 @@ import { TabItem } from './TabItem';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 
-
 import { useStarCommandStore } from '../store/star-command-store';
 import { useImageStore } from '../store/image-store';
 import admiralDefault from '../assets/admiral-default.png';
@@ -76,14 +75,17 @@ function StarCommandTabCard({
       style={{
         background: isActive ? '#0a0a1a' : 'rgba(10,10,26,0.4)',
         border: isActive ? '1px solid rgba(20,184,166,0.35)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: isActive ? '0 0 10px rgba(20,184,166,0.15), inset 0 0 20px rgba(20,184,166,0.03)' : 'none'
+        boxShadow: isActive
+          ? '0 0 10px rgba(20,184,166,0.15), inset 0 0 20px rgba(20,184,166,0.03)'
+          : 'none'
       }}
     >
       {/* Scanline overlay */}
       <div
         className="absolute inset-0 pointer-events-none z-10"
         style={{
-          backgroundImage: 'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(0,0,0,0.12) 1px, rgba(0,0,0,0.12) 2px)',
+          backgroundImage:
+            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(0,0,0,0.12) 1px, rgba(0,0,0,0.12) 2px)',
           backgroundSize: '100% 2px'
         }}
       />
@@ -197,9 +199,7 @@ function ImagesTabCard({
       className="cursor-pointer rounded-md overflow-hidden relative transition-all"
       style={{
         background: isActive ? '#0d0a1a' : 'rgba(13,10,26,0.4)',
-        border: isActive
-          ? '1px solid rgba(168,85,247,0.35)'
-          : '1px solid rgba(255,255,255,0.05)',
+        border: isActive ? '1px solid rgba(168,85,247,0.35)' : '1px solid rgba(255,255,255,0.05)',
         boxShadow: isActive
           ? '0 0 10px rgba(168,85,247,0.15), inset 0 0 20px rgba(168,85,247,0.03)'
           : 'none'
@@ -235,10 +235,7 @@ function ImagesTabCard({
           )}
           {inProgress > 0 && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-500/30 overflow-hidden">
-              <div
-                className="h-full bg-purple-400 animate-pulse"
-                style={{ width: '60%' }}
-              />
+              <div className="h-full bg-purple-400 animate-pulse" style={{ width: '60%' }} />
             </div>
           )}
         </div>
@@ -300,20 +297,22 @@ export function Sidebar({
     renameWorkspace,
     isDirty,
     markClean
-  } = useWorkspaceStore(useShallow((s) => ({
-    workspace: s.workspace,
-    activeTabId: s.activeTabId,
-    activePaneId: s.activePaneId,
-    setActiveTab: s.setActiveTab,
-    closeTab: s.closeTab,
-    renameTab: s.renameTab,
-    resetTabLabel: s.resetTabLabel,
-    addTab: s.addTab,
-    reorderTab: s.reorderTab,
-    renameWorkspace: s.renameWorkspace,
-    isDirty: s.isDirty,
-    markClean: s.markClean
-  })));
+  } = useWorkspaceStore(
+    useShallow((s) => ({
+      workspace: s.workspace,
+      activeTabId: s.activeTabId,
+      activePaneId: s.activePaneId,
+      setActiveTab: s.setActiveTab,
+      closeTab: s.closeTab,
+      renameTab: s.renameTab,
+      resetTabLabel: s.resetTabLabel,
+      addTab: s.addTab,
+      reorderTab: s.reorderTab,
+      renameWorkspace: s.renameWorkspace,
+      isDirty: s.isDirty,
+      markClean: s.markClean
+    }))
+  );
   const { getTabBadge } = useNotificationStore();
 
   // --- Drag-and-drop state ---
@@ -361,7 +360,6 @@ export function Sidebar({
     window.addEventListener('dragend', handleDragEnd);
     return () => window.removeEventListener('dragend', handleDragEnd);
   }, []);
-
 
   // --- Saved workspaces ---
   const [savedWorkspaces, setSavedWorkspaces] = useState<Array<{ id: string; label: string }>>([]);

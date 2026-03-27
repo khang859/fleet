@@ -15,6 +15,7 @@
 ## File Structure
 
 ### New Files
+
 - `src/main/socket-server.ts` — Unix socket server, command routing, ServiceRegistry
 - `src/main/fleet-cli.ts` — CLI client logic (connects to socket, sends commands, prints output)
 - `src/main/starbase/admiral-process.ts` — AdmiralProcess class (workspace init, PTY lifecycle)
@@ -24,6 +25,7 @@
 - `src/main/__tests__/fleet-cli.test.ts` — Fleet CLI integration tests
 
 ### Modified Files
+
 - `src/main/pty-manager.ts` — Add optional `env` field to `PtyCreateOptions`
 - `src/main/index.ts` — Replace Admiral instantiation with SocketServer + AdmiralProcess
 - `src/main/ipc-handlers.ts` — Remove Admiral handlers, add admiral:status-changed
@@ -33,6 +35,7 @@
 - `src/preload/index.ts` — Remove admiral API, add admiralProcess API
 
 ### Deleted Files
+
 - `src/main/starbase/admiral.ts`
 - `src/main/starbase/admiral-tools.ts`
 - `src/main/starbase/admiral-system-prompt.ts`
@@ -44,6 +47,7 @@
 The foundation — all Fleet CLI commands flow through this.
 
 **Files:**
+
 - Create: `src/main/socket-server.ts`
 - Create: `src/main/__tests__/socket-server.test.ts`
 
@@ -51,12 +55,12 @@ The foundation — all Fleet CLI commands flow through this.
 
 ```typescript
 // src/main/__tests__/socket-server.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { SocketServer } from '../socket-server'
-import { createConnection } from 'node:net'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { SocketServer } from '../socket-server';
+import { createConnection } from 'node:net';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 function makeRegistry() {
   return {
@@ -69,52 +73,58 @@ function makeRegistry() {
     configService: {},
     ptyManager: {},
     createTab: vi.fn(),
-    db: {},
-  } as any
+    db: {}
+  } as any;
 }
 
 describe('SocketServer', () => {
-  let tmp: string
-  let sockPath: string
-  let server: SocketServer
+  let tmp: string;
+  let sockPath: string;
+  let server: SocketServer;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'fleet-sock-'))
-    sockPath = join(tmp, 'fleet.sock')
-  })
+    tmp = mkdtempSync(join(tmpdir(), 'fleet-sock-'));
+    sockPath = join(tmp, 'fleet.sock');
+  });
 
   afterEach(async () => {
-    await server?.stop()
-    rmSync(tmp, { recursive: true, force: true })
-  })
+    await server?.stop();
+    rmSync(tmp, { recursive: true, force: true });
+  });
 
   it('starts listening on the socket path', async () => {
-    server = new SocketServer(sockPath, makeRegistry())
-    await server.start()
+    server = new SocketServer(sockPath, makeRegistry());
+    await server.start();
 
     // Verify we can connect
-    const client = createConnection(sockPath)
+    const client = createConnection(sockPath);
     await new Promise<void>((resolve, reject) => {
-      client.on('connect', () => { client.end(); resolve() })
-      client.on('error', reject)
-    })
-  })
+      client.on('connect', () => {
+        client.end();
+        resolve();
+      });
+      client.on('error', reject);
+    });
+  });
 
   it('cleans up stale socket file on start', async () => {
     // Create a stale socket file
-    const { writeFileSync } = await import('node:fs')
-    writeFileSync(sockPath, '')
+    const { writeFileSync } = await import('node:fs');
+    writeFileSync(sockPath, '');
 
-    server = new SocketServer(sockPath, makeRegistry())
-    await server.start()
+    server = new SocketServer(sockPath, makeRegistry());
+    await server.start();
 
-    const client = createConnection(sockPath)
+    const client = createConnection(sockPath);
     await new Promise<void>((resolve, reject) => {
-      client.on('connect', () => { client.end(); resolve() })
-      client.on('error', reject)
-    })
-  })
-})
+      client.on('connect', () => {
+        client.end();
+        resolve();
+      });
+      client.on('error', reject);
+    });
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -126,244 +136,262 @@ Expected: FAIL — cannot resolve `../socket-server`
 
 ```typescript
 // src/main/socket-server.ts
-import { createServer, type Server, type Socket } from 'node:net'
-import { existsSync, unlinkSync } from 'node:fs'
-import type { CrewService } from './starbase/crew-service'
-import type { MissionService } from './starbase/mission-service'
-import type { CommsService } from './starbase/comms-service'
-import type { SectorService } from './starbase/sector-service'
-import type { CargoService } from './starbase/cargo-service'
-import type { SupplyRouteService } from './starbase/supply-route-service'
-import type { ConfigService } from './starbase/config-service'
-import type { PtyManager } from './pty-manager'
-import type { StarbaseDB } from './starbase/db'
+import { createServer, type Server, type Socket } from 'node:net';
+import { existsSync, unlinkSync } from 'node:fs';
+import type { CrewService } from './starbase/crew-service';
+import type { MissionService } from './starbase/mission-service';
+import type { CommsService } from './starbase/comms-service';
+import type { SectorService } from './starbase/sector-service';
+import type { CargoService } from './starbase/cargo-service';
+import type { SupplyRouteService } from './starbase/supply-route-service';
+import type { ConfigService } from './starbase/config-service';
+import type { PtyManager } from './pty-manager';
+import type { StarbaseDB } from './starbase/db';
 
 export interface ServiceRegistry {
-  crewService: CrewService
-  missionService: MissionService
-  commsService: CommsService
-  sectorService: SectorService
-  cargoService: CargoService
-  supplyRouteService: SupplyRouteService
-  configService: ConfigService
-  ptyManager: PtyManager
-  createTab: (label: string, cwd: string) => string
-  db: StarbaseDB
+  crewService: CrewService;
+  missionService: MissionService;
+  commsService: CommsService;
+  sectorService: SectorService;
+  cargoService: CargoService;
+  supplyRouteService: SupplyRouteService;
+  configService: ConfigService;
+  ptyManager: PtyManager;
+  createTab: (label: string, cwd: string) => string;
+  db: StarbaseDB;
 }
 
-export type StateChangeListener = (event: string, data: unknown) => void
+export type StateChangeListener = (event: string, data: unknown) => void;
 
 export class SocketServer {
-  private server: Server | null = null
-  private clients: Set<Socket> = new Set()
-  private onStateChange: StateChangeListener | null = null
+  private server: Server | null = null;
+  private clients: Set<Socket> = new Set();
+  private onStateChange: StateChangeListener | null = null;
 
   constructor(
     private sockPath: string,
-    private registry: ServiceRegistry,
+    private registry: ServiceRegistry
   ) {}
 
   setOnStateChange(listener: StateChangeListener): void {
-    this.onStateChange = listener
+    this.onStateChange = listener;
   }
 
   async start(): Promise<void> {
     // Clean up stale socket
     if (existsSync(this.sockPath)) {
-      const isAlive = await this.probeSocket()
+      const isAlive = await this.probeSocket();
       if (isAlive) {
-        throw new Error('Another Fleet instance is running')
+        throw new Error('Another Fleet instance is running');
       }
-      unlinkSync(this.sockPath)
+      unlinkSync(this.sockPath);
     }
 
-    this.server = createServer((client) => this.handleConnection(client))
+    this.server = createServer((client) => this.handleConnection(client));
 
     return new Promise((resolve, reject) => {
-      this.server!.on('error', reject)
-      this.server!.listen(this.sockPath, () => resolve())
-    })
+      this.server!.on('error', reject);
+      this.server!.listen(this.sockPath, () => resolve());
+    });
   }
 
   async stop(): Promise<void> {
     for (const client of this.clients) {
-      client.destroy()
+      client.destroy();
     }
-    this.clients.clear()
+    this.clients.clear();
 
     return new Promise((resolve) => {
-      if (!this.server) return resolve()
+      if (!this.server) return resolve();
       this.server.close(() => {
-        if (existsSync(this.sockPath)) unlinkSync(this.sockPath)
-        this.server = null
-        resolve()
-      })
-    })
+        if (existsSync(this.sockPath)) unlinkSync(this.sockPath);
+        this.server = null;
+        resolve();
+      });
+    });
   }
 
   private async probeSocket(): Promise<boolean> {
-    const { createConnection } = await import('node:net')
+    const { createConnection } = await import('node:net');
     return new Promise((resolve) => {
-      const client = createConnection(this.sockPath)
-      client.on('connect', () => { client.end(); resolve(true) })
-      client.on('error', () => resolve(false))
-      setTimeout(() => { client.destroy(); resolve(false) }, 1000)
-    })
+      const client = createConnection(this.sockPath);
+      client.on('connect', () => {
+        client.end();
+        resolve(true);
+      });
+      client.on('error', () => resolve(false));
+      setTimeout(() => {
+        client.destroy();
+        resolve(false);
+      }, 1000);
+    });
   }
 
   private handleConnection(client: Socket): void {
-    this.clients.add(client)
-    let buffer = ''
+    this.clients.add(client);
+    let buffer = '';
 
     client.on('data', (chunk) => {
-      buffer += chunk.toString()
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (!line.trim()) continue
-        this.handleRequest(client, line)
+        if (!line.trim()) continue;
+        this.handleRequest(client, line);
       }
-    })
+    });
 
-    client.on('close', () => this.clients.delete(client))
-    client.on('error', () => this.clients.delete(client))
+    client.on('close', () => this.clients.delete(client));
+    client.on('error', () => this.clients.delete(client));
   }
 
   private async handleRequest(client: Socket, raw: string): Promise<void> {
-    let id: string | undefined
+    let id: string | undefined;
     try {
-      const req = JSON.parse(raw)
-      id = req.id
-      const result = await this.dispatch(req.command, req.args ?? {})
-      const response = JSON.stringify({ id, ok: true, data: result })
-      client.write(response + '\n')
+      const req = JSON.parse(raw);
+      id = req.id;
+      const result = await this.dispatch(req.command, req.args ?? {});
+      const response = JSON.stringify({ id, ok: true, data: result });
+      client.write(response + '\n');
     } catch (err: any) {
       const response = JSON.stringify({
         id,
         ok: false,
         error: err.message ?? 'Unknown error',
-        code: err.code ?? 'INTERNAL_ERROR',
-      })
-      client.write(response + '\n')
+        code: err.code ?? 'INTERNAL_ERROR'
+      });
+      client.write(response + '\n');
     }
   }
 
   private async dispatch(command: string, args: Record<string, any>): Promise<unknown> {
-    const { crewService, missionService, commsService, sectorService,
-            cargoService, supplyRouteService, configService, ptyManager,
-            createTab, db } = this.registry
+    const {
+      crewService,
+      missionService,
+      commsService,
+      sectorService,
+      cargoService,
+      supplyRouteService,
+      configService,
+      ptyManager,
+      createTab,
+      db
+    } = this.registry;
 
     switch (command) {
       // Sector commands
       case 'sector.list':
-        return sectorService.listSectors()
+        return sectorService.listSectors();
       case 'sector.info':
-        return sectorService.getSector(args.id ?? args.sectorId ?? args.name)
+        return sectorService.getSector(args.id ?? args.sectorId ?? args.name);
       case 'sector.add':
-        return sectorService.addSector(args)
+        return sectorService.addSector(args);
       case 'sector.remove':
-        return sectorService.removeSector(args.id ?? args.sectorId ?? args.name)
+        return sectorService.removeSector(args.id ?? args.sectorId ?? args.name);
 
       // Mission commands
       case 'mission.create': {
         const missionOpts = {
           sectorId: args.sector ?? args.sectorId,
           summary: args.summary,
-          prompt: args.prompt,
-        }
-        const result = missionService.createMission(missionOpts)
-        this.emitStateChange('mission:changed', result)
-        return result
+          prompt: args.prompt
+        };
+        const result = missionService.createMission(missionOpts);
+        this.emitStateChange('mission:changed', result);
+        return result;
       }
       case 'mission.list':
-        return missionService.listMissions(args)
+        return missionService.listMissions(args);
       case 'mission.status':
-        return missionService.getMission(args.id ?? args.missionId)
+        return missionService.getMission(args.id ?? args.missionId);
       case 'mission.cancel': {
-        const result = missionService.abortMission(args.id ?? args.missionId)
-        this.emitStateChange('mission:changed', result)
-        return result
+        const result = missionService.abortMission(args.id ?? args.missionId);
+        this.emitStateChange('mission:changed', result);
+        return result;
       }
 
       // Crew commands
       case 'crew.list':
-        return crewService.listCrew()
+        return crewService.listCrew();
       case 'crew.deploy': {
         const deployOpts = {
           sectorId: args.sector ?? args.sectorId,
           prompt: args.prompt ?? args.summary ?? '',
-          missionId: args.mission ? Number(args.mission) : args.missionId,
-        }
-        const result = await crewService.deployCrew(deployOpts, ptyManager, createTab)
-        this.emitStateChange('crew:changed', result)
-        return result
+          missionId: args.mission ? Number(args.mission) : args.missionId
+        };
+        const result = await crewService.deployCrew(deployOpts, ptyManager, createTab);
+        this.emitStateChange('crew:changed', result);
+        return result;
       }
       case 'crew.recall': {
-        const crewId = args.crewId ?? args.id
-        await crewService.recallCrew(crewId, ptyManager)
-        this.emitStateChange('crew:changed', { crewId })
-        return { crewId, status: 'recalled' }
+        const crewId = args.crewId ?? args.id;
+        await crewService.recallCrew(crewId, ptyManager);
+        this.emitStateChange('crew:changed', { crewId });
+        return { crewId, status: 'recalled' };
       }
       case 'crew.observe': {
-        const raw = crewService.observeCrew(args.crewId ?? args.id)
+        const raw = crewService.observeCrew(args.crewId ?? args.id);
         // Strip ANSI escape codes to save Admiral context tokens
-        return typeof raw === 'string' ? raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '') : raw
+        return typeof raw === 'string' ? raw.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '') : raw;
       }
 
       // Comms commands
       case 'comms.list':
-        return commsService.listTransmissions(args)
+        return commsService.listTransmissions(args);
       case 'comms.read':
-        return commsService.readTransmission(args.id ?? args.transmissionId)
+        return commsService.readTransmission(args.id ?? args.transmissionId);
       case 'comms.send': {
         const sendOpts = {
           from: 'admiral',
           to: args.to,
           type: args.type ?? 'directive',
-          payload: args.message ?? args.payload ?? args._positional?.[0] ?? '',
-        }
-        const result = commsService.send(sendOpts)
-        this.emitStateChange('comms:changed', result)
-        return result
+          payload: args.message ?? args.payload ?? args._positional?.[0] ?? ''
+        };
+        const result = commsService.send(sendOpts);
+        this.emitStateChange('comms:changed', result);
+        return result;
       }
       case 'comms.check':
-        return { unread: commsService.getUnread('admiral').length }
+        return { unread: commsService.getUnread('admiral').length };
 
       // Cargo commands
       case 'cargo.list':
-        return cargoService.listCargo(args)
+        return cargoService.listCargo(args);
       case 'cargo.inspect':
-        return cargoService.getCargo(args.cargoId)
+        return cargoService.getCargo(args.cargoId);
 
       // Supply route commands
       case 'supply-route.list':
-        return supplyRouteService.listRoutes()
+        return supplyRouteService.listRoutes();
       case 'supply-route.add':
-        return supplyRouteService.addRoute(args)
+        return supplyRouteService.addRoute(args);
       case 'supply-route.remove':
-        return supplyRouteService.removeRoute(args.routeId)
+        return supplyRouteService.removeRoute(args.routeId);
 
       // Config commands
       case 'config.get':
-        return configService.get(args.key)
+        return configService.get(args.key);
       case 'config.set':
-        return configService.set(args.key, args.value)
+        return configService.set(args.key, args.value);
 
       // Log commands
       case 'log.show':
-        return db.prepare('SELECT * FROM ships_log WHERE (? IS NULL OR crew_id = ?) ORDER BY created_at DESC LIMIT ?')
-          .all(args.crew ?? null, args.crew ?? null, args.last ? Number(args.last) : 20)
+        return db
+          .prepare(
+            'SELECT * FROM ships_log WHERE (? IS NULL OR crew_id = ?) ORDER BY created_at DESC LIMIT ?'
+          )
+          .all(args.crew ?? null, args.crew ?? null, args.last ? Number(args.last) : 20);
 
       default:
-        const err = new Error(`Unknown command: ${command}`)
-        ;(err as any).code = 'NOT_FOUND'
-        throw err
+        const err = new Error(`Unknown command: ${command}`);
+        (err as any).code = 'NOT_FOUND';
+        throw err;
     }
   }
 
   private emitStateChange(event: string, data: unknown): void {
-    this.onStateChange?.(event, data)
+    this.onStateChange?.(event, data);
   }
 }
 ```
@@ -379,60 +407,60 @@ Add to `src/main/__tests__/socket-server.test.ts`:
 
 ```typescript
 it('dispatches sector.list and returns result', async () => {
-  const registry = makeRegistry()
-  registry.sectorService.listSectors = vi.fn().mockReturnValue([
-    { id: 1, name: 'api', root_path: '/tmp/api' },
-  ])
+  const registry = makeRegistry();
+  registry.sectorService.listSectors = vi
+    .fn()
+    .mockReturnValue([{ id: 1, name: 'api', root_path: '/tmp/api' }]);
 
-  server = new SocketServer(sockPath, registry)
-  await server.start()
+  server = new SocketServer(sockPath, registry);
+  await server.start();
 
   const result = await sendCommand(sockPath, {
     id: 'req-1',
     command: 'sector.list',
-    args: {},
-  })
+    args: {}
+  });
 
   expect(result).toEqual({
     id: 'req-1',
     ok: true,
-    data: [{ id: 1, name: 'api', root_path: '/tmp/api' }],
-  })
-})
+    data: [{ id: 1, name: 'api', root_path: '/tmp/api' }]
+  });
+});
 
 it('returns error for unknown command', async () => {
-  server = new SocketServer(sockPath, makeRegistry())
-  await server.start()
+  server = new SocketServer(sockPath, makeRegistry());
+  await server.start();
 
   const result = await sendCommand(sockPath, {
     id: 'req-2',
     command: 'nonexistent',
-    args: {},
-  })
+    args: {}
+  });
 
-  expect(result.ok).toBe(false)
-  expect(result.code).toBe('NOT_FOUND')
-})
+  expect(result.ok).toBe(false);
+  expect(result.code).toBe('NOT_FOUND');
+});
 
 // Helper
 function sendCommand(sockPath: string, req: any): Promise<any> {
   return new Promise((resolve, reject) => {
-    const client = createConnection(sockPath)
-    let buffer = ''
+    const client = createConnection(sockPath);
+    let buffer = '';
     client.on('data', (chunk) => {
-      buffer += chunk.toString()
-      const lines = buffer.split('\n')
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
       for (const line of lines) {
-        if (!line.trim()) continue
-        client.end()
-        resolve(JSON.parse(line))
+        if (!line.trim()) continue;
+        client.end();
+        resolve(JSON.parse(line));
       }
-    })
-    client.on('error', reject)
+    });
+    client.on('error', reject);
     client.on('connect', () => {
-      client.write(JSON.stringify(req) + '\n')
-    })
-  })
+      client.write(JSON.stringify(req) + '\n');
+    });
+  });
 }
 ```
 
@@ -447,23 +475,23 @@ Add to `src/main/__tests__/socket-server.test.ts`:
 
 ```typescript
 it('emits state change events on mutating commands', async () => {
-  const registry = makeRegistry()
-  registry.commsService.send = vi.fn().mockReturnValue(42)
+  const registry = makeRegistry();
+  registry.commsService.send = vi.fn().mockReturnValue(42);
 
-  server = new SocketServer(sockPath, registry)
-  const events: any[] = []
-  server.setOnStateChange((event, data) => events.push({ event, data }))
-  await server.start()
+  server = new SocketServer(sockPath, registry);
+  const events: any[] = [];
+  server.setOnStateChange((event, data) => events.push({ event, data }));
+  await server.start();
 
   await sendCommand(sockPath, {
     id: 'req-3',
     command: 'comms.send',
-    args: { from: 'admiral', to: 'crew-1', type: 'directive', payload: 'hello' },
-  })
+    args: { from: 'admiral', to: 'crew-1', type: 'directive', payload: 'hello' }
+  });
 
-  expect(events).toHaveLength(1)
-  expect(events[0]).toEqual({ event: 'comms:changed', data: 42 })
-})
+  expect(events).toHaveLength(1);
+  expect(events[0]).toEqual({ event: 'comms:changed', data: 42 });
+});
 ```
 
 - [ ] **Step 8: Run test to verify it passes**
@@ -485,6 +513,7 @@ git commit -m "feat: add SocketServer with Unix socket command routing and state
 The thin CLI binary that the Admiral's Claude Code calls via bash.
 
 **Files:**
+
 - Create: `src/main/fleet-cli.ts`
 - Create: `src/main/__tests__/fleet-cli.test.ts`
 
@@ -492,54 +521,57 @@ The thin CLI binary that the Admiral's Claude Code calls via bash.
 
 ```typescript
 // src/main/__tests__/fleet-cli.test.ts
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { SocketServer } from '../socket-server'
-import { FleetCLI } from '../fleet-cli'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { SocketServer } from '../socket-server';
+import { FleetCLI } from '../fleet-cli';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('FleetCLI', () => {
-  let tmp: string
-  let sockPath: string
-  let server: SocketServer
-  let cli: FleetCLI
+  let tmp: string;
+  let sockPath: string;
+  let server: SocketServer;
+  let cli: FleetCLI;
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'fleet-cli-'))
-    sockPath = join(tmp, 'fleet.sock')
+    tmp = mkdtempSync(join(tmpdir(), 'fleet-cli-'));
+    sockPath = join(tmp, 'fleet.sock');
 
     const registry = {
       sectorService: {
-        listSectors: () => [{ id: 1, name: 'api', root_path: '/tmp/api' }],
+        listSectors: () => [{ id: 1, name: 'api', root_path: '/tmp/api' }]
       },
       commsService: {
-        getUnread: () => [{ id: 1, payload: 'test' }, { id: 2, payload: 'test2' }],
-        listTransmissions: () => [],
-      },
-    } as any
+        getUnread: () => [
+          { id: 1, payload: 'test' },
+          { id: 2, payload: 'test2' }
+        ],
+        listTransmissions: () => []
+      }
+    } as any;
 
-    server = new SocketServer(sockPath, registry)
-    await server.start()
-    cli = new FleetCLI(sockPath)
-  })
+    server = new SocketServer(sockPath, registry);
+    await server.start();
+    cli = new FleetCLI(sockPath);
+  });
 
   afterEach(async () => {
-    await server?.stop()
-    rmSync(tmp, { recursive: true, force: true })
-  })
+    await server?.stop();
+    rmSync(tmp, { recursive: true, force: true });
+  });
 
   it('sends a command and returns parsed result', async () => {
-    const result = await cli.send('sector.list', {})
-    expect(result.ok).toBe(true)
-    expect(result.data).toEqual([{ id: 1, name: 'api', root_path: '/tmp/api' }])
-  })
+    const result = await cli.send('sector.list', {});
+    expect(result.ok).toBe(true);
+    expect(result.data).toEqual([{ id: 1, name: 'api', root_path: '/tmp/api' }]);
+  });
 
   it('times out if server does not respond', async () => {
-    await server.stop()
-    await expect(cli.send('sector.list', {}, 500)).rejects.toThrow()
-  })
-})
+    await server.stop();
+    await expect(cli.send('sector.list', {}, 500)).rejects.toThrow();
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -551,165 +583,167 @@ Expected: FAIL — cannot resolve `../fleet-cli`
 
 ```typescript
 // src/main/fleet-cli.ts
-import { createConnection, type Socket } from 'node:net'
-import { randomUUID } from 'node:crypto'
+import { createConnection, type Socket } from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 export interface CLIResponse {
-  id: string
-  ok: boolean
-  data?: unknown
-  error?: string
-  code?: string
+  id: string;
+  ok: boolean;
+  data?: unknown;
+  error?: string;
+  code?: string;
 }
 
 export class FleetCLI {
   constructor(private sockPath: string) {}
 
   async send(command: string, args: Record<string, any>, timeoutMs = 60_000): Promise<CLIResponse> {
-    const id = randomUUID()
-    const req = JSON.stringify({ id, command, args }) + '\n'
+    const id = randomUUID();
+    const req = JSON.stringify({ id, command, args }) + '\n';
 
     return new Promise((resolve, reject) => {
-      const client = createConnection(this.sockPath)
-      let buffer = ''
+      const client = createConnection(this.sockPath);
+      let buffer = '';
       const timer = setTimeout(() => {
-        client.destroy()
-        reject(new Error(`Timeout waiting for response to ${command}`))
-      }, timeoutMs)
+        client.destroy();
+        reject(new Error(`Timeout waiting for response to ${command}`));
+      }, timeoutMs);
 
-      client.on('connect', () => client.write(req))
+      client.on('connect', () => client.write(req));
 
       client.on('data', (chunk) => {
-        buffer += chunk.toString()
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (!line.trim()) continue
-          clearTimeout(timer)
-          client.end()
-          resolve(JSON.parse(line))
-          return
+          if (!line.trim()) continue;
+          clearTimeout(timer);
+          client.end();
+          resolve(JSON.parse(line));
+          return;
         }
-      })
+      });
 
       client.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-    })
+        clearTimeout(timer);
+        reject(err);
+      });
+    });
   }
 }
 
 // --- CLI entrypoint (for ~/.fleet/lib/fleet-cli.js) ---
 
 function stripAnsi(str: string): string {
-  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '')
+  return str.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
 }
 
 function formatTable(rows: Record<string, any>[], columns?: string[]): string {
-  if (rows.length === 0) return '(none)'
-  const keys = columns ?? Object.keys(rows[0])
-  const widths = keys.map((k) => Math.max(k.length, ...rows.map((r) => String(r[k] ?? '').length)))
-  const header = keys.map((k, i) => k.padEnd(widths[i])).join('  ')
-  const sep = widths.map((w) => '-'.repeat(w)).join('  ')
-  const body = rows.map((r) => keys.map((k, i) => String(r[k] ?? '').padEnd(widths[i])).join('  ')).join('\n')
-  return `${header}\n${sep}\n${body}`
+  if (rows.length === 0) return '(none)';
+  const keys = columns ?? Object.keys(rows[0]);
+  const widths = keys.map((k) => Math.max(k.length, ...rows.map((r) => String(r[k] ?? '').length)));
+  const header = keys.map((k, i) => k.padEnd(widths[i])).join('  ');
+  const sep = widths.map((w) => '-'.repeat(w)).join('  ');
+  const body = rows
+    .map((r) => keys.map((k, i) => String(r[k] ?? '').padEnd(widths[i])).join('  '))
+    .join('\n');
+  return `${header}\n${sep}\n${body}`;
 }
 
 export async function runCLI(argv: string[], sockPath: string): Promise<string> {
-  const cli = new FleetCLI(sockPath)
-  const [group, action, ...rest] = argv
-  const args = parseArgs(rest)
-  const quiet = !!args.quiet
-  delete args.quiet
+  const cli = new FleetCLI(sockPath);
+  const [group, action, ...rest] = argv;
+  const args = parseArgs(rest);
+  const quiet = !!args.quiet;
+  delete args.quiet;
 
   if (!group || group === '--help') {
     return `Usage: fleet <group> <action> [options]
 
 Groups: crew, mission, comms, sector, cargo, supply-route, config, log
 
-Run 'fleet <group> --help' for details.`
+Run 'fleet <group> --help' for details.`;
   }
 
-  const command = `${group}.${action}`
+  const command = `${group}.${action}`;
 
-  let result: CLIResponse
+  let result: CLIResponse;
   try {
-    result = await cli.send(command, args)
+    result = await cli.send(command, args);
   } catch (err: any) {
     // In quiet mode (used by hooks), swallow all errors silently
-    if (quiet) return ''
-    return `Error: ${err.message}`
+    if (quiet) return '';
+    return `Error: ${err.message}`;
   }
 
   if (!result.ok) {
-    if (quiet) return ''
-    return `Error: ${result.error}`
+    if (quiet) return '';
+    return `Error: ${result.error}`;
   }
 
   // Format output based on command
   if (command === 'comms.check') {
-    const { unread } = result.data as { unread: number }
-    if (unread === 0) return ''
-    return `${unread} unread transmission(s) — run: fleet comms list --unread`
+    const { unread } = result.data as { unread: number };
+    if (unread === 0) return '';
+    return `${unread} unread transmission(s) — run: fleet comms list --unread`;
   }
 
   if (Array.isArray(result.data)) {
-    return formatTable(result.data)
+    return formatTable(result.data);
   }
 
   if (typeof result.data === 'string') {
-    return stripAnsi(result.data)
+    return stripAnsi(result.data);
   }
 
   if (typeof result.data === 'object' && result.data !== null) {
     return Object.entries(result.data)
       .map(([k, v]) => `${k}: ${typeof v === 'string' ? stripAnsi(v) : v}`)
-      .join('\n')
+      .join('\n');
   }
 
-  return String(result.data ?? 'OK')
+  return String(result.data ?? 'OK');
 }
 
 // CLI entrypoint — this is what gets written to ~/.fleet/lib/fleet-cli.js
 // When run as a script, it reads the socket path and calls runCLI
 if (typeof process !== 'undefined' && process.argv[1]?.endsWith('fleet-cli.js')) {
-  const { join } = await import('node:path')
-  const { homedir } = await import('node:os')
-  const sockPath = join(homedir(), '.fleet', 'fleet.sock')
-  const output = await runCLI(process.argv.slice(2), sockPath)
-  if (output) process.stdout.write(output + '\n')
+  const { join } = await import('node:path');
+  const { homedir } = await import('node:os');
+  const sockPath = join(homedir(), '.fleet', 'fleet.sock');
+  const output = await runCLI(process.argv.slice(2), sockPath);
+  if (output) process.stdout.write(output + '\n');
 }
 
 function parseArgs(rest: string[]): Record<string, any> {
-  const args: Record<string, any> = {}
+  const args: Record<string, any> = {};
   for (let i = 0; i < rest.length; i++) {
-    const arg = rest[i]
+    const arg = rest[i];
     if (arg.startsWith('--')) {
-      const key = arg.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase())
-      const next = rest[i + 1]
+      const key = arg.slice(2).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      const next = rest[i + 1];
       if (!next || next.startsWith('--')) {
-        args[key] = true
+        args[key] = true;
       } else {
-        args[key] = next
-        i++
+        args[key] = next;
+        i++;
       }
     } else {
       // Positional: first positional is the ID for single-resource commands
-      if (!args._positional) args._positional = []
-      args._positional.push(arg)
+      if (!args._positional) args._positional = [];
+      args._positional.push(arg);
     }
   }
 
   // Map common positional patterns
   if (args._positional?.length === 1) {
     // Single positional arg is usually an ID
-    args.id = args._positional[0]
+    args.id = args._positional[0];
   }
-  delete args._positional
+  delete args._positional;
 
-  return args
+  return args;
 }
 ```
 
@@ -723,31 +757,31 @@ Expected: PASS (2 tests)
 Add to `src/main/__tests__/fleet-cli.test.ts`:
 
 ```typescript
-import { runCLI } from '../fleet-cli'
+import { runCLI } from '../fleet-cli';
 
 it('formats comms.check with 0 unread as empty string', async () => {
   const registry = {
     commsService: {
-      getUnread: () => [],
-    },
-  } as any
-  server = new SocketServer(sockPath, registry)
-  await server.start()
+      getUnread: () => []
+    }
+  } as any;
+  server = new SocketServer(sockPath, registry);
+  await server.start();
 
-  const output = await runCLI(['comms', 'check'], sockPath)
-  expect(output).toBe('')
-})
+  const output = await runCLI(['comms', 'check'], sockPath);
+  expect(output).toBe('');
+});
 
 it('formats comms.check with N unread as notification', async () => {
-  const output = await runCLI(['comms', 'check'], sockPath)
-  expect(output).toContain('2 unread')
-})
+  const output = await runCLI(['comms', 'check'], sockPath);
+  expect(output).toContain('2 unread');
+});
 
 it('formats sector.list as table', async () => {
-  const output = await runCLI(['sector', 'list'], sockPath)
-  expect(output).toContain('api')
-  expect(output).toContain('/tmp/api')
-})
+  const output = await runCLI(['sector', 'list'], sockPath);
+  expect(output).toContain('api');
+  expect(output).toContain('/tmp/api');
+});
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
@@ -769,6 +803,7 @@ git commit -m "feat: add Fleet CLI client with socket communication and output f
 Template generators for CLAUDE.md, SKILL.md, and settings.json.
 
 **Files:**
+
 - Create: `src/main/starbase/workspace-templates.ts`
 - Create: `src/main/__tests__/workspace-templates.test.ts`
 
@@ -776,8 +811,13 @@ Template generators for CLAUDE.md, SKILL.md, and settings.json.
 
 ```typescript
 // src/main/__tests__/workspace-templates.test.ts
-import { describe, it, expect } from 'vitest'
-import { generateClaudeMd, generateSkillMd, generateSettings, updateAutoSection } from '../starbase/workspace-templates'
+import { describe, it, expect } from 'vitest';
+import {
+  generateClaudeMd,
+  generateSkillMd,
+  generateSettings,
+  updateAutoSection
+} from '../starbase/workspace-templates';
 
 describe('workspace-templates', () => {
   describe('generateClaudeMd', () => {
@@ -786,18 +826,18 @@ describe('workspace-templates', () => {
         starbaseName: 'Horizon',
         sectors: [
           { name: 'api', root_path: '/projects/api', stack: 'node', base_branch: 'main' },
-          { name: 'web', root_path: '/projects/web', stack: 'react', base_branch: 'main' },
-        ],
-      })
+          { name: 'web', root_path: '/projects/web', stack: 'react', base_branch: 'main' }
+        ]
+      });
 
-      expect(result).toContain('# Admiral — Horizon')
-      expect(result).toContain('## Prime Directive')
-      expect(result).toContain('fleet:auto-start:sectors')
-      expect(result).toContain('**api**')
-      expect(result).toContain('**web**')
-      expect(result).toContain('fleet:auto-end:sectors')
-    })
-  })
+      expect(result).toContain('# Admiral — Horizon');
+      expect(result).toContain('## Prime Directive');
+      expect(result).toContain('fleet:auto-start:sectors');
+      expect(result).toContain('**api**');
+      expect(result).toContain('**web**');
+      expect(result).toContain('fleet:auto-end:sectors');
+    });
+  });
 
   describe('updateAutoSection', () => {
     it('replaces content between markers, preserving surrounding text', () => {
@@ -811,17 +851,21 @@ Some custom notes the admiral wrote.
 <!-- fleet:auto-end:sectors -->
 
 ## My Learnings
-I learned something important.`
+I learned something important.`;
 
-      const result = updateAutoSection(existing, 'sectors', '- **new-sector** — /new/path (go, base: main)')
+      const result = updateAutoSection(
+        existing,
+        'sectors',
+        '- **new-sector** — /new/path (go, base: main)'
+      );
 
-      expect(result).toContain('Some custom notes')
-      expect(result).toContain('**new-sector**')
-      expect(result).not.toContain('**old-sector**')
-      expect(result).toContain('My Learnings')
-    })
-  })
-})
+      expect(result).toContain('Some custom notes');
+      expect(result).toContain('**new-sector**');
+      expect(result).not.toContain('**old-sector**');
+      expect(result).toContain('My Learnings');
+    });
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -835,21 +879,24 @@ Expected: FAIL — cannot resolve `../starbase/workspace-templates`
 // src/main/starbase/workspace-templates.ts
 
 interface SectorInfo {
-  name: string
-  root_path: string
-  stack?: string
-  base_branch?: string
+  name: string;
+  root_path: string;
+  stack?: string;
+  base_branch?: string;
 }
 
 interface ClaudeMdOptions {
-  starbaseName: string
-  sectors: SectorInfo[]
+  starbaseName: string;
+  sectors: SectorInfo[];
 }
 
 export function generateClaudeMd(opts: ClaudeMdOptions): string {
   const sectorLines = opts.sectors
-    .map((s) => `- **${s.name}** — ${s.root_path} (${s.stack ?? 'unknown'}, base: ${s.base_branch ?? 'main'})`)
-    .join('\n')
+    .map(
+      (s) =>
+        `- **${s.name}** — ${s.root_path} (${s.stack ?? 'unknown'}, base: ${s.base_branch ?? 'main'})`
+    )
+    .join('\n');
 
   return `# Admiral — ${opts.starbaseName}
 
@@ -881,7 +928,7 @@ ${sectorLines || '(no sectors registered)'}
 - Ask for clarification rather than guessing
 - Write docs and learnings in this workspace — they persist across sessions
 - On fresh start, run \`fleet crew list\` and \`fleet mission list\` to get situational awareness
-`
+`;
 }
 
 export function generateSkillMd(): string {
@@ -982,32 +1029,46 @@ On startup or restart, you lose conversation context. Immediately:
 - "Worktree limit reached" → recall idle crew or wait for missions to complete
 - "Sector not found" → run \`fleet sector list\` to check available sectors
 - "Socket not connected" → Fleet app may not be running, wait and retry
-`
+`;
 }
 
 export function generateSettings(): string {
-  return JSON.stringify({
-    hooks: {
-      PreToolUse: [
-        {
-          command: 'fleet comms check --quiet',
-          description: 'Check for unread transmissions before taking action',
-        },
-      ],
+  return JSON.stringify(
+    {
+      hooks: {
+        PreToolUse: [
+          {
+            command: 'fleet comms check --quiet',
+            description: 'Check for unread transmissions before taking action'
+          }
+        ]
+      }
     },
-  }, null, 2)
+    null,
+    2
+  );
 }
 
-export function updateAutoSection(content: string, sectionName: string, newContent: string): string {
-  const startMarker = `<!-- fleet:auto-start:${sectionName} -->`
-  const endMarker = `<!-- fleet:auto-end:${sectionName} -->`
+export function updateAutoSection(
+  content: string,
+  sectionName: string,
+  newContent: string
+): string {
+  const startMarker = `<!-- fleet:auto-start:${sectionName} -->`;
+  const endMarker = `<!-- fleet:auto-end:${sectionName} -->`;
 
-  const startIdx = content.indexOf(startMarker)
-  const endIdx = content.indexOf(endMarker)
+  const startIdx = content.indexOf(startMarker);
+  const endIdx = content.indexOf(endMarker);
 
-  if (startIdx === -1 || endIdx === -1) return content
+  if (startIdx === -1 || endIdx === -1) return content;
 
-  return content.slice(0, startIdx + startMarker.length) + '\n' + newContent + '\n' + content.slice(endIdx)
+  return (
+    content.slice(0, startIdx + startMarker.length) +
+    '\n' +
+    newContent +
+    '\n' +
+    content.slice(endIdx)
+  );
 }
 ```
 
@@ -1023,23 +1084,23 @@ Add to `src/main/__tests__/workspace-templates.test.ts`:
 ```typescript
 describe('generateSkillMd', () => {
   it('generates SKILL.md with frontmatter and command reference', () => {
-    const result = generateSkillMd()
-    expect(result).toContain('name: fleet')
-    expect(result).toContain('fleet crew deploy')
-    expect(result).toContain('## Mission Scoping')
-    expect(result).toContain('## PR Review Workflow')
-    expect(result).toContain('## Recovery')
-  })
-})
+    const result = generateSkillMd();
+    expect(result).toContain('name: fleet');
+    expect(result).toContain('fleet crew deploy');
+    expect(result).toContain('## Mission Scoping');
+    expect(result).toContain('## PR Review Workflow');
+    expect(result).toContain('## Recovery');
+  });
+});
 
 describe('generateSettings', () => {
   it('generates settings.json with PreToolUse hook', () => {
-    const result = generateSettings()
-    const parsed = JSON.parse(result)
-    expect(parsed.hooks.PreToolUse).toHaveLength(1)
-    expect(parsed.hooks.PreToolUse[0].command).toContain('fleet comms check')
-  })
-})
+    const result = generateSettings();
+    const parsed = JSON.parse(result);
+    expect(parsed.hooks.PreToolUse).toHaveLength(1);
+    expect(parsed.hooks.PreToolUse[0].command).toContain('fleet comms check');
+  });
+});
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
@@ -1061,6 +1122,7 @@ git commit -m "feat: add workspace template generators for CLAUDE.md, SKILL.md, 
 Add `env` support to PtyManager, then implement workspace initialization and PTY lifecycle.
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts` — add optional `env` field to `PtyCreateOptions`
 - Create: `src/main/starbase/admiral-process.ts`
 - Create: `src/main/__tests__/admiral-process.test.ts`
@@ -1083,25 +1145,25 @@ env: opts.env ?? process.env as Record<string, string>,
 
 ```typescript
 // src/main/__tests__/admiral-process.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { AdmiralProcess } from '../starbase/admiral-process'
-import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { AdmiralProcess } from '../starbase/admiral-process';
+import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('AdmiralProcess', () => {
-  let tmp: string
-  let workspace: string
-  let admiral: AdmiralProcess
+  let tmp: string;
+  let workspace: string;
+  let admiral: AdmiralProcess;
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'fleet-admiral-'))
-    workspace = join(tmp, 'admiral')
-  })
+    tmp = mkdtempSync(join(tmpdir(), 'fleet-admiral-'));
+    workspace = join(tmp, 'admiral');
+  });
 
   afterEach(() => {
-    rmSync(tmp, { recursive: true, force: true })
-  })
+    rmSync(tmp, { recursive: true, force: true });
+  });
 
   describe('ensureWorkspace', () => {
     it('creates workspace directory structure and files', async () => {
@@ -1110,22 +1172,22 @@ describe('AdmiralProcess', () => {
         starbaseName: 'TestBase',
         sectors: [{ name: 'api', root_path: '/tmp/api', stack: 'node', base_branch: 'main' }],
         ptyManager: {} as any,
-        fleetBinPath: '/tmp/fleet/bin',
-      })
+        fleetBinPath: '/tmp/fleet/bin'
+      });
 
-      await admiral.ensureWorkspace()
+      await admiral.ensureWorkspace();
 
-      expect(existsSync(join(workspace, 'CLAUDE.md'))).toBe(true)
-      expect(existsSync(join(workspace, '.claude', 'skills', 'fleet', 'SKILL.md'))).toBe(true)
-      expect(existsSync(join(workspace, '.claude', 'settings.json'))).toBe(true)
-      expect(existsSync(join(workspace, 'docs'))).toBe(true)
-      expect(existsSync(join(workspace, 'learnings'))).toBe(true)
-      expect(existsSync(join(workspace, '.git'))).toBe(true)
+      expect(existsSync(join(workspace, 'CLAUDE.md'))).toBe(true);
+      expect(existsSync(join(workspace, '.claude', 'skills', 'fleet', 'SKILL.md'))).toBe(true);
+      expect(existsSync(join(workspace, '.claude', 'settings.json'))).toBe(true);
+      expect(existsSync(join(workspace, 'docs'))).toBe(true);
+      expect(existsSync(join(workspace, 'learnings'))).toBe(true);
+      expect(existsSync(join(workspace, '.git'))).toBe(true);
 
-      const claude = readFileSync(join(workspace, 'CLAUDE.md'), 'utf-8')
-      expect(claude).toContain('Admiral — TestBase')
-      expect(claude).toContain('**api**')
-    })
+      const claude = readFileSync(join(workspace, 'CLAUDE.md'), 'utf-8');
+      expect(claude).toContain('Admiral — TestBase');
+      expect(claude).toContain('**api**');
+    });
 
     it('updates auto-generated sections on re-run without overwriting custom content', async () => {
       admiral = new AdmiralProcess({
@@ -1133,17 +1195,17 @@ describe('AdmiralProcess', () => {
         starbaseName: 'TestBase',
         sectors: [{ name: 'api', root_path: '/tmp/api', stack: 'node', base_branch: 'main' }],
         ptyManager: {} as any,
-        fleetBinPath: '/tmp/fleet/bin',
-      })
+        fleetBinPath: '/tmp/fleet/bin'
+      });
 
-      await admiral.ensureWorkspace()
+      await admiral.ensureWorkspace();
 
       // Simulate Admiral adding custom content
-      const { writeFileSync } = await import('node:fs')
-      const claudePath = join(workspace, 'CLAUDE.md')
-      let content = readFileSync(claudePath, 'utf-8')
-      content = content.replace('## Rules', '## My Notes\nI learned something.\n\n## Rules')
-      writeFileSync(claudePath, content)
+      const { writeFileSync } = await import('node:fs');
+      const claudePath = join(workspace, 'CLAUDE.md');
+      let content = readFileSync(claudePath, 'utf-8');
+      content = content.replace('## Rules', '## My Notes\nI learned something.\n\n## Rules');
+      writeFileSync(claudePath, content);
 
       // Re-run with different sectors
       admiral = new AdmiralProcess({
@@ -1151,19 +1213,19 @@ describe('AdmiralProcess', () => {
         starbaseName: 'TestBase',
         sectors: [{ name: 'web', root_path: '/tmp/web', stack: 'react', base_branch: 'main' }],
         ptyManager: {} as any,
-        fleetBinPath: '/tmp/fleet/bin',
-      })
+        fleetBinPath: '/tmp/fleet/bin'
+      });
 
-      await admiral.ensureWorkspace()
+      await admiral.ensureWorkspace();
 
-      const updated = readFileSync(claudePath, 'utf-8')
-      expect(updated).toContain('My Notes')
-      expect(updated).toContain('I learned something')
-      expect(updated).toContain('**web**')
-      expect(updated).not.toContain('**api**')
-    })
-  })
-})
+      const updated = readFileSync(claudePath, 'utf-8');
+      expect(updated).toContain('My Notes');
+      expect(updated).toContain('I learned something');
+      expect(updated).toContain('**web**');
+      expect(updated).not.toContain('**api**');
+    });
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1175,55 +1237,60 @@ Expected: FAIL — cannot resolve `../starbase/admiral-process`
 
 ```typescript
 // src/main/starbase/admiral-process.ts
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { execSync } from 'node:child_process'
-import { generateClaudeMd, generateSkillMd, generateSettings, updateAutoSection } from './workspace-templates'
-import type { PtyManager } from '../pty-manager'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { execSync } from 'node:child_process';
+import {
+  generateClaudeMd,
+  generateSkillMd,
+  generateSettings,
+  updateAutoSection
+} from './workspace-templates';
+import type { PtyManager } from '../pty-manager';
 
 interface SectorInfo {
-  name: string
-  root_path: string
-  stack?: string
-  base_branch?: string
+  name: string;
+  root_path: string;
+  stack?: string;
+  base_branch?: string;
 }
 
 export interface AdmiralProcessOpts {
-  workspace: string
-  starbaseName: string
-  sectors: SectorInfo[]
-  ptyManager: PtyManager
-  fleetBinPath: string
+  workspace: string;
+  starbaseName: string;
+  sectors: SectorInfo[];
+  ptyManager: PtyManager;
+  fleetBinPath: string;
 }
 
-export type AdmiralStatus = 'running' | 'stopped' | 'starting'
+export type AdmiralStatus = 'running' | 'stopped' | 'starting';
 
 export class AdmiralProcess {
-  readonly workspace: string
-  private starbaseName: string
-  private sectors: SectorInfo[]
-  private ptyManager: PtyManager
-  private fleetBinPath: string
+  readonly workspace: string;
+  private starbaseName: string;
+  private sectors: SectorInfo[];
+  private ptyManager: PtyManager;
+  private fleetBinPath: string;
 
-  paneId: string | null = null
-  status: AdmiralStatus = 'stopped'
+  paneId: string | null = null;
+  status: AdmiralStatus = 'stopped';
 
-  private onStatusChange: ((status: AdmiralStatus, error?: string) => void) | null = null
+  private onStatusChange: ((status: AdmiralStatus, error?: string) => void) | null = null;
 
   constructor(opts: AdmiralProcessOpts) {
-    this.workspace = opts.workspace
-    this.starbaseName = opts.starbaseName
-    this.sectors = opts.sectors
-    this.ptyManager = opts.ptyManager
-    this.fleetBinPath = opts.fleetBinPath
+    this.workspace = opts.workspace;
+    this.starbaseName = opts.starbaseName;
+    this.sectors = opts.sectors;
+    this.ptyManager = opts.ptyManager;
+    this.fleetBinPath = opts.fleetBinPath;
   }
 
   setOnStatusChange(listener: (status: AdmiralStatus, error?: string) => void): void {
-    this.onStatusChange = listener
+    this.onStatusChange = listener;
   }
 
   updateSectors(sectors: SectorInfo[]): void {
-    this.sectors = sectors
+    this.sectors = sectors;
   }
 
   async ensureWorkspace(): Promise<void> {
@@ -1232,93 +1299,102 @@ export class AdmiralProcess {
       this.workspace,
       join(this.workspace, '.claude', 'skills', 'fleet'),
       join(this.workspace, 'docs'),
-      join(this.workspace, 'learnings'),
-    ]
+      join(this.workspace, 'learnings')
+    ];
     for (const dir of dirs) {
-      mkdirSync(dir, { recursive: true })
+      mkdirSync(dir, { recursive: true });
     }
 
     // Git init if needed
     if (!existsSync(join(this.workspace, '.git'))) {
-      execSync('git init', { cwd: this.workspace, stdio: 'ignore' })
+      execSync('git init', { cwd: this.workspace, stdio: 'ignore' });
     }
 
     // CLAUDE.md — update auto sections if exists, generate fresh if not
-    const claudePath = join(this.workspace, 'CLAUDE.md')
+    const claudePath = join(this.workspace, 'CLAUDE.md');
     if (existsSync(claudePath)) {
-      let content = readFileSync(claudePath, 'utf-8')
+      let content = readFileSync(claudePath, 'utf-8');
       const sectorLines = this.sectors
-        .map((s) => `- **${s.name}** — ${s.root_path} (${s.stack ?? 'unknown'}, base: ${s.base_branch ?? 'main'})`)
-        .join('\n')
-      content = updateAutoSection(content, 'sectors', sectorLines || '(no sectors registered)')
-      writeFileSync(claudePath, content)
+        .map(
+          (s) =>
+            `- **${s.name}** — ${s.root_path} (${s.stack ?? 'unknown'}, base: ${s.base_branch ?? 'main'})`
+        )
+        .join('\n');
+      content = updateAutoSection(content, 'sectors', sectorLines || '(no sectors registered)');
+      writeFileSync(claudePath, content);
     } else {
-      writeFileSync(claudePath, generateClaudeMd({
-        starbaseName: this.starbaseName,
-        sectors: this.sectors,
-      }))
+      writeFileSync(
+        claudePath,
+        generateClaudeMd({
+          starbaseName: this.starbaseName,
+          sectors: this.sectors
+        })
+      );
     }
 
     // SKILL.md — always overwrite (managed by Fleet, not Admiral-authored)
-    writeFileSync(join(this.workspace, '.claude', 'skills', 'fleet', 'SKILL.md'), generateSkillMd())
+    writeFileSync(
+      join(this.workspace, '.claude', 'skills', 'fleet', 'SKILL.md'),
+      generateSkillMd()
+    );
 
     // settings.json — always overwrite
-    writeFileSync(join(this.workspace, '.claude', 'settings.json'), generateSettings())
+    writeFileSync(join(this.workspace, '.claude', 'settings.json'), generateSettings());
   }
 
   async start(): Promise<string> {
-    this.status = 'starting'
-    this.onStatusChange?.('starting')
+    this.status = 'starting';
+    this.onStatusChange?.('starting');
 
-    await this.ensureWorkspace()
+    await this.ensureWorkspace();
 
     try {
-      const env = { ...process.env } as Record<string, string>
-      env.PATH = `${this.fleetBinPath}:${env.PATH ?? ''}`
+      const env = { ...process.env } as Record<string, string>;
+      env.PATH = `${this.fleetBinPath}:${env.PATH ?? ''}`;
 
-      const admiralPaneId = `admiral-${Date.now()}`
+      const admiralPaneId = `admiral-${Date.now()}`;
       const { paneId } = this.ptyManager.create({
         paneId: admiralPaneId,
         cwd: this.workspace,
         cmd: 'claude --dangerously-skip-permissions',
-        env,
-      })
+        env
+      });
 
-      this.paneId = paneId
-      this.status = 'running'
-      this.onStatusChange?.('running')
+      this.paneId = paneId;
+      this.status = 'running';
+      this.onStatusChange?.('running');
 
-      this.ptyManager.protect(paneId)
+      this.ptyManager.protect(paneId);
 
       this.ptyManager.onExit(paneId, () => {
-        this.paneId = null
-        this.status = 'stopped'
-        this.onStatusChange?.('stopped')
-      })
+        this.paneId = null;
+        this.status = 'stopped';
+        this.onStatusChange?.('stopped');
+      });
 
-      return paneId
+      return paneId;
     } catch (err: any) {
-      this.status = 'stopped'
+      this.status = 'stopped';
       const msg = err.message?.includes('ENOENT')
         ? 'Claude Code not found. Install with: npm install -g @anthropic-ai/claude-code'
-        : err.message
-      this.onStatusChange?.('stopped', msg)
-      throw err
+        : err.message;
+      this.onStatusChange?.('stopped', msg);
+      throw err;
     }
   }
 
   async stop(): Promise<void> {
     if (this.paneId) {
-      this.ptyManager.kill(this.paneId)
-      this.paneId = null
+      this.ptyManager.kill(this.paneId);
+      this.paneId = null;
     }
-    this.status = 'stopped'
-    this.onStatusChange?.('stopped')
+    this.status = 'stopped';
+    this.onStatusChange?.('stopped');
   }
 
   async restart(): Promise<string> {
-    await this.stop()
-    return this.start()
+    await this.stop();
+    return this.start();
   }
 }
 ```
@@ -1342,6 +1418,7 @@ git commit -m "feat: add AdmiralProcess with workspace initialization and PTY li
 Connect the new components to the Electron app bootstrap.
 
 **Files:**
+
 - Modify: `src/main/index.ts` — replace Admiral with SocketServer + AdmiralProcess
 - Modify: `src/main/ipc-handlers.ts` — remove Admiral handlers, add admiral:status-changed
 - Modify: `src/shared/constants.ts` — update IPC channels
@@ -1351,6 +1428,7 @@ Connect the new components to the Electron app bootstrap.
 Read `src/shared/constants.ts` and remove Admiral streaming channels (lines ~47-52), add `ADMIRAL_STATUS_CHANGED` and `ADMIRAL_RESTART`.
 
 In `src/shared/constants.ts`, remove:
+
 ```typescript
 ADMIRAL_SEND: 'admiral:send-message',
 ADMIRAL_GET_HISTORY: 'admiral:get-history',
@@ -1361,6 +1439,7 @@ ADMIRAL_STREAM_ERROR: 'admiral:stream-error',
 ```
 
 Add:
+
 ```typescript
 ADMIRAL_STATUS_CHANGED: 'admiral:status-changed',
 ADMIRAL_RESTART: 'admiral:restart',
@@ -1395,16 +1474,15 @@ Replace Admiral instantiation (lines ~184-212) with SocketServer + AdmiralProces
 // admiral = new Admiral({ ... })
 
 // Add:
-import { SocketServer } from './socket-server'
-import { AdmiralProcess } from './starbase/admiral-process'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { SocketServer } from './socket-server';
+import { AdmiralProcess } from './starbase/admiral-process';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
-const fleetHome = join(homedir(), '.fleet')
-const sockPath = process.platform === 'win32'
-  ? '\\\\.\\pipe\\fleet'
-  : join(fleetHome, 'fleet.sock')
-const fleetBinPath = join(fleetHome, 'bin')
+const fleetHome = join(homedir(), '.fleet');
+const sockPath =
+  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(fleetHome, 'fleet.sock');
+const fleetBinPath = join(fleetHome, 'bin');
 
 // Socket Server
 const socketServer = new SocketServer(sockPath, {
@@ -1417,34 +1495,38 @@ const socketServer = new SocketServer(sockPath, {
   configService,
   ptyManager,
   createTab,
-  db,
-})
+  db
+});
 
 socketServer.setOnStateChange((event, data) => {
   if (!w.isDestroyed()) {
-    w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
+    w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data });
   }
-})
+});
 
-await socketServer.start()
+await socketServer.start();
 
 // Admiral Process
-const admiralWorkspace = join(fleetHome, 'starbase', starbaseId, 'admiral')
+const admiralWorkspace = join(fleetHome, 'starbase', starbaseId, 'admiral');
 const admiralProcess = new AdmiralProcess({
   workspace: admiralWorkspace,
   starbaseName: starbaseName,
   sectors: sectorService.listSectors(),
   ptyManager,
-  fleetBinPath,
-})
+  fleetBinPath
+});
 
 admiralProcess.setOnStatusChange((status, error) => {
   if (!w.isDestroyed()) {
-    w.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, { status, paneId: admiralProcess.paneId, error })
+    w.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
+      status,
+      paneId: admiralProcess.paneId,
+      error
+    });
   }
-})
+});
 
-const admiralPaneId = await admiralProcess.start()
+const admiralPaneId = await admiralProcess.start();
 ```
 
 Pass `admiralProcess` to `registerIpcHandlers` instead of `admiral`.
@@ -1468,6 +1550,7 @@ git commit -m "feat: wire SocketServer and AdmiralProcess into Electron main pro
 Replace the custom chat UI with xterm.js terminal.
 
 **Files:**
+
 - Modify: `src/renderer/src/store/star-command-store.ts` — simplify state
 - Modify: `src/renderer/src/components/StarCommandTab.tsx` — replace chat with terminal
 - Modify: `src/preload/index.ts` — update exposed APIs
@@ -1479,26 +1562,30 @@ Read `src/renderer/src/store/star-command-store.ts`. Remove message/streaming st
 ```typescript
 interface StarCommandStore {
   // Admiral PTY
-  admiralPaneId: string | null
-  admiralStatus: 'running' | 'stopped' | 'starting'
-  admiralError: string | null
+  admiralPaneId: string | null;
+  admiralStatus: 'running' | 'stopped' | 'starting';
+  admiralError: string | null;
 
   // Starbase state (kept from before)
-  crewList: CrewStatus[]
-  missionQueue: MissionInfo[]
-  sectors: SectorInfo[]
-  unreadCount: number
+  crewList: CrewStatus[];
+  missionQueue: MissionInfo[];
+  sectors: SectorInfo[];
+  unreadCount: number;
 
   // Visual state (kept)
-  admiralAvatarState: 'standby' | 'thinking' | 'speaking' | 'alert'
+  admiralAvatarState: 'standby' | 'thinking' | 'speaking' | 'alert';
 
   // Actions
-  setAdmiralPty: (paneId: string | null, status: 'running' | 'stopped' | 'starting', error?: string | null) => void
-  setCrewList: (crew: CrewStatus[]) => void
-  setMissionQueue: (missions: MissionInfo[]) => void
-  setSectors: (sectors: SectorInfo[]) => void
-  setUnreadCount: (count: number) => void
-  setAdmiralAvatarState: (state: 'standby' | 'thinking' | 'speaking' | 'alert') => void
+  setAdmiralPty: (
+    paneId: string | null,
+    status: 'running' | 'stopped' | 'starting',
+    error?: string | null
+  ) => void;
+  setCrewList: (crew: CrewStatus[]) => void;
+  setMissionQueue: (missions: MissionInfo[]) => void;
+  setSectors: (sectors: SectorInfo[]) => void;
+  setUnreadCount: (count: number) => void;
+  setAdmiralAvatarState: (state: 'standby' | 'thinking' | 'speaking' | 'alert') => void;
 }
 ```
 
@@ -1522,6 +1609,7 @@ admiralProcess: {
 Read `src/renderer/src/components/StarCommandTab.tsx`. The chat message list and input bar get replaced with a terminal component. The terminal connects to `admiralPaneId` the same way crew terminal tabs work (via TerminalPane or the useTerminal hook).
 
 Key changes:
+
 - Remove: message list rendering, input bar, send handler, stream IPC listeners
 - Add: useEffect to listen for `admiral:status-changed`, set store state
 - Add: on mount, call `window.fleet.admiralProcess.getPaneId()` to get initial paneId
@@ -1537,6 +1625,7 @@ The status bar data source changes from Admiral-driven push to SocketServer-driv
 - [ ] **Step 4: Test manually**
 
 Run: `npm run dev`
+
 1. Open Fleet
 2. Star Command tab should show xterm.js terminal
 3. Claude Code should be running in the terminal
@@ -1557,6 +1646,7 @@ git commit -m "feat: replace Star Command chat UI with xterm.js terminal for Adm
 Ensure the `fleet` binary is available in the Admiral's PTY environment.
 
 **Files:**
+
 - Modify: `src/main/index.ts` — add CLI installation on startup
 - Create: `scripts/install-fleet-cli.ts` — CLI installer script
 
@@ -1566,31 +1656,31 @@ Ensure the `fleet` binary is available in the Admiral's PTY environment.
 // scripts/install-fleet-cli.ts
 // Called from main process on startup to ensure ~/.fleet/bin/fleet exists
 
-import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { mkdirSync, writeFileSync, chmodSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 export function installFleetCLI(fleetCliSource: string): string {
-  const fleetHome = join(homedir(), '.fleet')
-  const binDir = join(fleetHome, 'bin')
-  const libDir = join(fleetHome, 'lib')
-  const binPath = join(binDir, 'fleet')
+  const fleetHome = join(homedir(), '.fleet');
+  const binDir = join(fleetHome, 'bin');
+  const libDir = join(fleetHome, 'lib');
+  const binPath = join(binDir, 'fleet');
 
-  mkdirSync(binDir, { recursive: true })
-  mkdirSync(libDir, { recursive: true })
+  mkdirSync(binDir, { recursive: true });
+  mkdirSync(libDir, { recursive: true });
 
   // Write the CLI logic
-  writeFileSync(join(libDir, 'fleet-cli.js'), fleetCliSource)
+  writeFileSync(join(libDir, 'fleet-cli.js'), fleetCliSource);
 
   // Write the shell wrapper
   // Use the system's node since we're in dev; in production, use Electron's bundled node
   const wrapper = `#!/bin/bash
 exec node "${join(libDir, 'fleet-cli.js')}" "$@"
-`
-  writeFileSync(binPath, wrapper)
-  chmodSync(binPath, 0o755)
+`;
+  writeFileSync(binPath, wrapper);
+  chmodSync(binPath, 0o755);
 
-  return binDir
+  return binDir;
 }
 ```
 
@@ -1616,6 +1706,7 @@ In `src/main/index.ts`, call `installFleetCLI()` before starting AdmiralProcess.
 - [ ] **Step 4: Test manually**
 
 Run: `npm run dev`
+
 1. Check `~/.fleet/bin/fleet` exists and is executable
 2. Run `~/.fleet/bin/fleet --help` — should print usage
 3. Run `~/.fleet/bin/fleet sector list` — should return data from running Fleet app
@@ -1634,6 +1725,7 @@ git commit -m "feat: add Fleet CLI binary installation on app startup"
 Remove the replaced code.
 
 **Files:**
+
 - Delete: `src/main/starbase/admiral.ts`
 - Delete: `src/main/starbase/admiral-tools.ts`
 - Delete: `src/main/starbase/admiral-system-prompt.ts`
@@ -1657,6 +1749,7 @@ grep -r "admiral-tools\|admiral-system-prompt\|from.*admiral'" src/ --include="*
 ```
 
 Fix any remaining references. Key places:
+
 - `src/main/index.ts` — remove `import { Admiral }` line
 - `src/main/ipc-handlers.ts` — remove `Admiral` type import if still referenced
 - Any test files that import the old Admiral
@@ -1701,76 +1794,77 @@ Replaced by AdmiralProcess (Claude Code PTY) + Fleet CLI + SocketServer."
 End-to-end verification that all components work together.
 
 **Files:**
+
 - Create: `src/main/__tests__/admiral-integration.test.ts`
 
 - [ ] **Step 1: Write integration test for full flow**
 
 ```typescript
 // src/main/__tests__/admiral-integration.test.ts
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { SocketServer } from '../socket-server'
-import { FleetCLI, runCLI } from '../fleet-cli'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { SocketServer } from '../socket-server';
+import { FleetCLI, runCLI } from '../fleet-cli';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('Admiral Integration', () => {
-  let tmp: string
-  let sockPath: string
-  let server: SocketServer
+  let tmp: string;
+  let sockPath: string;
+  let server: SocketServer;
 
   beforeEach(async () => {
-    tmp = mkdtempSync(join(tmpdir(), 'fleet-integ-'))
-    sockPath = join(tmp, 'fleet.sock')
-  })
+    tmp = mkdtempSync(join(tmpdir(), 'fleet-integ-'));
+    sockPath = join(tmp, 'fleet.sock');
+  });
 
   afterEach(async () => {
-    await server?.stop()
-    rmSync(tmp, { recursive: true, force: true })
-  })
+    await server?.stop();
+    rmSync(tmp, { recursive: true, force: true });
+  });
 
   it('full CLI workflow: list sectors, check comms, create mission', async () => {
-    const missions: any[] = []
+    const missions: any[] = [];
     const registry = {
       sectorService: {
-        listSectors: () => [{ id: 1, name: 'api', root_path: '/tmp/api', stack: 'node' }],
+        listSectors: () => [{ id: 1, name: 'api', root_path: '/tmp/api', stack: 'node' }]
       },
       commsService: {
-        getUnread: () => [],
+        getUnread: () => []
       },
       missionService: {
         createMission: (args: any) => {
-          const m = { id: missions.length + 1, ...args, status: 'pending' }
-          missions.push(m)
-          return m
+          const m = { id: missions.length + 1, ...args, status: 'pending' };
+          missions.push(m);
+          return m;
         },
-        listMissions: () => missions,
-      },
-    } as any
+        listMissions: () => missions
+      }
+    } as any;
 
-    server = new SocketServer(sockPath, registry)
-    await server.start()
+    server = new SocketServer(sockPath, registry);
+    await server.start();
 
     // Step 1: List sectors
-    const sectors = await runCLI(['sector', 'list'], sockPath)
-    expect(sectors).toContain('api')
+    const sectors = await runCLI(['sector', 'list'], sockPath);
+    expect(sectors).toContain('api');
 
     // Step 2: Check comms (should be silent)
-    const comms = await runCLI(['comms', 'check'], sockPath)
-    expect(comms).toBe('')
+    const comms = await runCLI(['comms', 'check'], sockPath);
+    expect(comms).toBe('');
 
     // Step 3: Create mission
     const mission = await runCLI(
       ['mission', 'create', '--sector', 'api', '--summary', 'Add tests'],
-      sockPath,
-    )
-    expect(mission).toContain('Add tests')
+      sockPath
+    );
+    expect(mission).toContain('Add tests');
 
     // Step 4: List missions
-    const missionList = await runCLI(['mission', 'list'], sockPath)
-    expect(missionList).toContain('Add tests')
-  })
-})
+    const missionList = await runCLI(['mission', 'list'], sockPath);
+    expect(missionList).toContain('Add tests');
+  });
+});
 ```
 
 - [ ] **Step 2: Run integration test**
@@ -1789,14 +1883,14 @@ git commit -m "test: add Admiral integration test for full CLI workflow"
 
 ## Summary
 
-| Task | Component | New Files | Key Deliverable |
-|------|-----------|-----------|-----------------|
-| 1 | Socket Server | `socket-server.ts` + test | Unix socket command routing |
-| 2 | Fleet CLI | `fleet-cli.ts` + test | CLI client with formatting |
-| 3 | Workspace Templates | `workspace-templates.ts` + test | CLAUDE.md, SKILL.md, settings generators |
-| 4 | AdmiralProcess | `admiral-process.ts` + test | Workspace init + PTY lifecycle |
-| 5 | Main Process Wiring | (modify existing) | Connect SocketServer + AdmiralProcess |
-| 6 | Star Command UI | (modify existing) | xterm.js terminal replaces chat |
-| 7 | CLI Installation | `install-fleet-cli.ts` | Binary on PATH for Admiral |
-| 8 | Cleanup | (delete old files) | Remove Admiral SDK code |
-| 9 | Integration Test | `admiral-integration.test.ts` | End-to-end verification |
+| Task | Component           | New Files                       | Key Deliverable                          |
+| ---- | ------------------- | ------------------------------- | ---------------------------------------- |
+| 1    | Socket Server       | `socket-server.ts` + test       | Unix socket command routing              |
+| 2    | Fleet CLI           | `fleet-cli.ts` + test           | CLI client with formatting               |
+| 3    | Workspace Templates | `workspace-templates.ts` + test | CLAUDE.md, SKILL.md, settings generators |
+| 4    | AdmiralProcess      | `admiral-process.ts` + test     | Workspace init + PTY lifecycle           |
+| 5    | Main Process Wiring | (modify existing)               | Connect SocketServer + AdmiralProcess    |
+| 6    | Star Command UI     | (modify existing)               | xterm.js terminal replaces chat          |
+| 7    | CLI Installation    | `install-fleet-cli.ts`          | Binary on PATH for Admiral               |
+| 8    | Cleanup             | (delete old files)              | Remove Admiral SDK code                  |
+| 9    | Integration Test    | `admiral-integration.test.ts`   | End-to-end verification                  |

@@ -15,6 +15,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/starbase/db.ts` — StarbaseDB class: open/create database, run migrations, manage index.json
 - `src/main/starbase/migrations.ts` — Migration runner + migration SQL strings (hardcoded array, not file-based)
 - `src/main/starbase/sector-service.ts` — Sector CRUD: add, remove, update, list, get
@@ -24,6 +25,7 @@
 - `src/main/__tests__/config-service.test.ts` — ConfigService unit tests
 
 **Modified files:**
+
 - `package.json` — Add `better-sqlite3` and `@types/better-sqlite3`
 - `src/shared/constants.ts` — Add Starbase IPC channel constants
 - `src/shared/ipc-api.ts` — Add Starbase-related payload types
@@ -38,6 +40,7 @@
 ### Task 1: Install better-sqlite3
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install better-sqlite3 and types**
@@ -66,6 +69,7 @@ git commit -m "chore: add better-sqlite3 for Star Command database"
 ### Task 2: Write StarbaseDB — migration runner + open/close
 
 **Files:**
+
 - Create: `src/main/starbase/migrations.ts`
 - Create: `src/main/starbase/db.ts`
 - Create: `src/main/__tests__/starbase-db.test.ts`
@@ -100,11 +104,15 @@ describe('StarbaseDB', () => {
 
     // Verify schema_version is set
     const raw = db.getDb();
-    const meta = raw.prepare('SELECT schema_version FROM _meta').get() as { schema_version: number };
+    const meta = raw.prepare('SELECT schema_version FROM _meta').get() as {
+      schema_version: number;
+    };
     expect(meta.schema_version).toBe(1);
 
     // Verify sectors table exists
-    const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
+    const tables = raw.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as {
+      name: string;
+    }[];
     const tableNames = tables.map((t) => t.name);
     expect(tableNames).toContain('sectors');
     expect(tableNames).toContain('missions');
@@ -143,7 +151,9 @@ describe('StarbaseDB', () => {
 
     // Schema version still 1 (not re-incremented)
     const raw = db2.getDb();
-    const meta = raw.prepare('SELECT schema_version FROM _meta').get() as { schema_version: number };
+    const meta = raw.prepare('SELECT schema_version FROM _meta').get() as {
+      schema_version: number;
+    };
     expect(meta.schema_version).toBe(1);
     db2.close();
   });
@@ -279,8 +289,8 @@ export const MIGRATIONS: Migration[] = [
         value TEXT NOT NULL,
         updated_at DATETIME DEFAULT (datetime('now'))
       );
-    `,
-  },
+    `
+  }
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {
@@ -294,7 +304,7 @@ export const CONFIG_DEFAULTS: Record<string, unknown> = {
   lifesign_interval_sec: 10,
   lifesign_timeout_sec: 30,
   default_review_mode: 'admiral-review',
-  review_timeout_min: 10,
+  review_timeout_min: 10
 };
 ```
 
@@ -320,7 +330,7 @@ export class StarbaseDB {
 
   constructor(
     private workspacePath: string,
-    basePath?: string,
+    basePath?: string
   ) {
     this.basePath = basePath ?? join(process.env.HOME ?? '~', '.fleet', 'starbases');
     this.starbaseId = createHash('sha256').update(workspacePath).digest('hex').slice(0, 6);
@@ -399,11 +409,11 @@ export class StarbaseDB {
           // First migration — insert _meta row
           db.prepare('INSERT INTO _meta (schema_version, workspace_path) VALUES (?, ?)').run(
             migration.version,
-            this.workspacePath,
+            this.workspacePath
           );
           // Seed config defaults
           const insertConfig = db.prepare(
-            "INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)",
+            'INSERT OR IGNORE INTO starbase_config (key, value) VALUES (?, ?)'
           );
           for (const [key, value] of Object.entries(CONFIG_DEFAULTS)) {
             insertConfig.run(key, JSON.stringify(value));
@@ -439,7 +449,7 @@ export class StarbaseDB {
       index.starbases.push({
         workspacePath: this.workspacePath,
         starbaseId: this.starbaseId,
-        dbPath: this.dbPath,
+        dbPath: this.dbPath
       });
     }
 
@@ -473,6 +483,7 @@ git commit -m "feat(starbase): add StarbaseDB with migration runner and schema"
 ### Task 3: Write SectorService with CRUD operations
 
 **Files:**
+
 - Create: `src/main/starbase/sector-service.ts`
 - Create: `src/main/__tests__/sector-service.test.ts`
 
@@ -626,7 +637,7 @@ type UpdateSectorFields = {
 export class SectorService {
   constructor(
     private db: Database.Database,
-    private workspaceRoot: string,
+    private workspaceRoot: string
   ) {}
 
   addSector(opts: AddSectorOpts): SectorRow {
@@ -646,9 +657,7 @@ export class SectorService {
       .prepare('SELECT id FROM sectors WHERE root_path = ?')
       .get(absolutePath) as { id: string } | undefined;
     if (existing) {
-      throw new SectorValidationError(
-        `Path already registered as sector '${existing.id}'`,
-      );
+      throw new SectorValidationError(`Path already registered as sector '${existing.id}'`);
     }
 
     const id = this.generateSlugId(absolutePath);
@@ -658,7 +667,7 @@ export class SectorService {
     this.db
       .prepare(
         `INSERT INTO sectors (id, name, root_path, stack, description, base_branch, merge_strategy)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         id,
@@ -667,7 +676,7 @@ export class SectorService {
         stack,
         opts.description ?? null,
         opts.baseBranch ?? 'main',
-        opts.mergeStrategy ?? 'pr',
+        opts.mergeStrategy ?? 'pr'
       );
 
     return this.getSector(id)!;
@@ -696,9 +705,7 @@ export class SectorService {
     sets.push("updated_at = datetime('now')");
     values.push(sectorId);
 
-    this.db
-      .prepare(`UPDATE sectors SET ${sets.join(', ')} WHERE id = ?`)
-      .run(...values);
+    this.db.prepare(`UPDATE sectors SET ${sets.join(', ')} WHERE id = ?`).run(...values);
   }
 
   getSector(sectorId: string): SectorRow | undefined {
@@ -712,13 +719,17 @@ export class SectorService {
   }
 
   private generateSlugId(absolutePath: string): string {
-    const base = basename(absolutePath).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const base = basename(absolutePath)
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-');
     // Check for collision
     const existing = this.db.prepare('SELECT id FROM sectors WHERE id = ?').get(base);
     if (!existing) return base;
 
     // Append parent directory name as prefix
-    const parent = basename(dirname(absolutePath)).toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const parent = basename(dirname(absolutePath))
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '-');
     const prefixed = `${parent}-${base}`;
     const existingPrefixed = this.db.prepare('SELECT id FROM sectors WHERE id = ?').get(prefixed);
     if (!existingPrefixed) return prefixed;
@@ -765,6 +776,7 @@ git commit -m "feat(starbase): add SectorService with CRUD and stack detection"
 ### Task 4: Write ConfigService
 
 **Files:**
+
 - Create: `src/main/starbase/config-service.ts`
 - Create: `src/main/__tests__/config-service.test.ts`
 
@@ -855,7 +867,7 @@ export class ConfigService {
   set(key: string, value: unknown): void {
     this.db
       .prepare(
-        "INSERT OR REPLACE INTO starbase_config (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+        "INSERT OR REPLACE INTO starbase_config (key, value, updated_at) VALUES (?, ?, datetime('now'))"
       )
       .run(key, JSON.stringify(value));
   }
@@ -897,6 +909,7 @@ git commit -m "feat(starbase): add ConfigService with typed defaults"
 ### Task 5: Add IPC channel constants and types
 
 **Files:**
+
 - Modify: `src/shared/constants.ts`
 - Modify: `src/shared/ipc-api.ts`
 
@@ -963,6 +976,7 @@ git commit -m "feat(starbase): add IPC channel constants and payload types"
 ### Task 6: Register IPC handlers and socket commands
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/main/socket-command-handler.ts`
 - Modify: `src/main/index.ts`
@@ -974,10 +988,16 @@ In `src/main/ipc-handlers.ts`, add a new registration function (or extend the ex
 ```typescript
 ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, () => sectorService.listSectors());
 ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, (_e, req) => sectorService.addSector(req));
-ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, (_e, { sectorId }) => sectorService.removeSector(sectorId));
-ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, (_e, { sectorId, fields }) => sectorService.updateSector(sectorId, fields));
+ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, (_e, { sectorId }) =>
+  sectorService.removeSector(sectorId)
+);
+ipcMain.handle(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, (_e, { sectorId, fields }) =>
+  sectorService.updateSector(sectorId, fields)
+);
 ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, () => configService.getAll());
-ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, (_e, { key, value }) => configService.set(key, value));
+ipcMain.handle(IPC_CHANNELS.STARBASE_SET_CONFIG, (_e, { key, value }) =>
+  configService.set(key, value)
+);
 ```
 
 - [ ] **Step 2: Add socket commands for starbase**

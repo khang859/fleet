@@ -9,6 +9,7 @@
 **Tech Stack:** Electron `clipboard` API (main process), IPC channels, React, Tailwind, xterm.js bracketed paste
 
 **References:**
+
 - Issue: https://github.com/khang859/fleet/issues/157
 - Existing overlay pattern: `src/renderer/src/components/FileSearchOverlay.tsx`
 - Shell utils (bracketedPaste): `src/renderer/src/lib/shell-utils.ts`
@@ -18,24 +19,25 @@
 
 ## File Structure
 
-| Action | File | Responsibility |
-|--------|------|---------------|
-| Create | `src/main/clipboard-monitor.ts` | Main-process clipboard polling, change detection, history storage |
-| Create | `src/renderer/src/components/ClipboardHistoryOverlay.tsx` | Overlay UI: list, preview, keyboard nav, paste action |
-| Modify | `src/shared/ipc-channels.ts` | Add `CLIPBOARD_HISTORY` and `CLIPBOARD_CHANGED` channels |
-| Modify | `src/shared/ipc-api.ts` | Add `ClipboardEntry` and `ClipboardHistoryResponse` types |
-| Modify | `src/main/ipc-handlers.ts` | Register clipboard IPC handlers, start/stop monitor |
-| Modify | `src/preload/index.ts` | Expose clipboard bridge to renderer |
-| Modify | `src/renderer/src/lib/shortcuts.ts` | Add `clipboard-history` shortcut (Cmd+Shift+H) |
-| Modify | `src/renderer/src/lib/commands.ts` | Add command palette entry |
-| Modify | `src/renderer/src/hooks/use-pane-navigation.ts` | Add keyboard handler for new shortcut |
-| Modify | `src/renderer/src/App.tsx` | Mount overlay, event listener, subscribe to clipboard changes |
+| Action | File                                                      | Responsibility                                                    |
+| ------ | --------------------------------------------------------- | ----------------------------------------------------------------- |
+| Create | `src/main/clipboard-monitor.ts`                           | Main-process clipboard polling, change detection, history storage |
+| Create | `src/renderer/src/components/ClipboardHistoryOverlay.tsx` | Overlay UI: list, preview, keyboard nav, paste action             |
+| Modify | `src/shared/ipc-channels.ts`                              | Add `CLIPBOARD_HISTORY` and `CLIPBOARD_CHANGED` channels          |
+| Modify | `src/shared/ipc-api.ts`                                   | Add `ClipboardEntry` and `ClipboardHistoryResponse` types         |
+| Modify | `src/main/ipc-handlers.ts`                                | Register clipboard IPC handlers, start/stop monitor               |
+| Modify | `src/preload/index.ts`                                    | Expose clipboard bridge to renderer                               |
+| Modify | `src/renderer/src/lib/shortcuts.ts`                       | Add `clipboard-history` shortcut (Cmd+Shift+H)                    |
+| Modify | `src/renderer/src/lib/commands.ts`                        | Add command palette entry                                         |
+| Modify | `src/renderer/src/hooks/use-pane-navigation.ts`           | Add keyboard handler for new shortcut                             |
+| Modify | `src/renderer/src/App.tsx`                                | Mount overlay, event listener, subscribe to clipboard changes     |
 
 ---
 
 ### Task 1: IPC Types and Channels
 
 **Files:**
+
 - Modify: `src/shared/ipc-api.ts:355-357` (append after `RecentImagesResponse`)
 - Modify: `src/shared/ipc-channels.ts:73` (append after `FILE_RECENT_IMAGES`)
 
@@ -82,6 +84,7 @@ git commit -m "feat(clipboard): add IPC types and channels for clipboard history
 ### Task 2: Clipboard Monitor (Main Process)
 
 **Files:**
+
 - Create: `src/main/clipboard-monitor.ts`
 
 - [ ] **Step 1: Create the clipboard monitor module**
@@ -166,6 +169,7 @@ git commit -m "feat(clipboard): add main-process clipboard monitor with 500ms po
 ### Task 3: IPC Handlers
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts:602-607` (append after file search handlers)
 
 - [ ] **Step 1: Import and register clipboard handlers**
@@ -179,12 +183,12 @@ import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor'
 Add the handler registration at the end of the `registerIpcHandlers` function, after the `FILE_RECENT_IMAGES` handler:
 
 ```typescript
-  // Clipboard history
-  ipcMain.handle(IPC_CHANNELS.CLIPBOARD_HISTORY, () => ({
-    entries: getClipboardHistory()
-  }));
+// Clipboard history
+ipcMain.handle(IPC_CHANNELS.CLIPBOARD_HISTORY, () => ({
+  entries: getClipboardHistory()
+}));
 
-  startClipboardMonitor();
+startClipboardMonitor();
 ```
 
 - [ ] **Step 2: Commit**
@@ -199,6 +203,7 @@ git commit -m "feat(clipboard): register IPC handler and start clipboard monitor
 ### Task 4: Preload Bridge
 
 **Files:**
+
 - Modify: `src/preload/index.ts:314` (add after `searchRecentImages`)
 
 - [ ] **Step 1: Add clipboard namespace to the preload bridge**
@@ -228,6 +233,7 @@ git commit -m "feat(clipboard): expose clipboard bridge to renderer"
 ### Task 5: Keyboard Shortcut and Command Palette
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts:127` (append after `file-search`)
 - Modify: `src/renderer/src/lib/commands.ts:123` (append after `file-search` command)
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts:132` (append after `file-search` handler)
@@ -285,6 +291,7 @@ git commit -m "feat(clipboard): add Cmd+Shift+H shortcut and command palette ent
 ### Task 6: Clipboard History Overlay Component
 
 **Files:**
+
 - Create: `src/renderer/src/components/ClipboardHistoryOverlay.tsx`
 
 - [ ] **Step 1: Create the overlay component**
@@ -488,6 +495,7 @@ git commit -m "feat(clipboard): add ClipboardHistoryOverlay component"
 ### Task 7: Mount Overlay in App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add import**

@@ -24,6 +24,7 @@ The crew list in `AdmiralSidebar` shows raw crew IDs and a 2×2px status dot —
 Replace the current flat list with a sector-grouped list.
 
 **Structure:**
+
 ```
 Crew                              ← existing section header
 
@@ -36,6 +37,7 @@ api-service
 ```
 
 **Row changes:**
+
 - Primary label: `crew.mission_summary?.trim() || crew.id`
 - Sector names rendered as dim sub-headers between groups (same `text-[10px] font-mono text-neutral-600` style)
 - Each row: `cursor-pointer` + `hover:bg-neutral-800` to signal clickability
@@ -43,12 +45,13 @@ api-service
 - Sector name fallback: `sector?.name ?? sectorId` (optional chaining — `sector` may not exist in the sectors list)
 
 **Grouping logic** (same pattern as `CrewChips.tsx`):
+
 ```ts
-const bySector = new Map<string, CrewStatus[]>()
+const bySector = new Map<string, CrewStatus[]>();
 for (const crew of crewList) {
-  const list = bySector.get(crew.sector_id) ?? []
-  list.push(crew)
-  bySector.set(crew.sector_id, list)
+  const list = bySector.get(crew.sector_id) ?? [];
+  list.push(crew);
+  bySector.set(crew.sector_id, list);
 }
 ```
 
@@ -59,6 +62,7 @@ for (const crew of crewList) {
 Clicking a crew row opens a Radix `Popover` anchored to that row. The popover opens to the **left** (`side="left"` on `Popover.Content`) — the sidebar sits at the right edge of the window so there is no space to the right. Dismissed by clicking outside, pressing Escape, or clicking the close button.
 
 **Layout:**
+
 ```
 ┌─────────────────────────────────────────┐
 │ ● ACTIVE                    [✕]         │
@@ -78,48 +82,57 @@ Clicking a crew row opens a Radix `Popover` anchored to that row. The popover op
 ```
 
 **Metadata rules:**
+
 - Rows are only rendered when data is present
 - `Branch`: only if `crew.worktree_branch` is non-empty
 - `Last seen`: only if `crew.last_lifesign` is non-null
 - `Tokens`: only if `crew.token_budget != null` (use `!= null` not truthy, so `0` is handled correctly)
 
 **Token bar (plain CSS, no library):**
+
 ```tsx
-{crew.token_budget != null && (
-  <div>
-    <div
-      className="w-full bg-neutral-700 rounded-full h-1.5"
-      role="progressbar"
-      aria-valuemin={0}
-      aria-valuenow={crew.tokens_used ?? 0}
-      aria-valuemax={crew.token_budget}
-    >
+{
+  crew.token_budget != null && (
+    <div>
       <div
-        className="bg-teal-500 h-1.5 rounded-full"
-        style={{ width: `${Math.min(100, ((crew.tokens_used ?? 0) / crew.token_budget) * 100)}%` }}
-      />
+        className="w-full bg-neutral-700 rounded-full h-1.5"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuenow={crew.tokens_used ?? 0}
+        aria-valuemax={crew.token_budget}
+      >
+        <div
+          className="bg-teal-500 h-1.5 rounded-full"
+          style={{
+            width: `${Math.min(100, ((crew.tokens_used ?? 0) / crew.token_budget) * 100)}%`
+          }}
+        />
+      </div>
+      <span className="text-[10px] font-mono text-neutral-500">
+        {crew.tokens_used ?? 0} / {crew.token_budget}
+      </span>
     </div>
-    <span className="text-[10px] font-mono text-neutral-500">
-      {crew.tokens_used ?? 0} / {crew.token_budget}
-    </span>
-  </div>
-)}
+  );
+}
 ```
 
 **`last_lifesign` relative time:**
 `last_lifesign` is an ISO 8601 string (e.g. `"2026-03-22T14:10:00.000Z"`). Parse with `new Date(crew.last_lifesign)`. If `isNaN(date.getTime())`, omit the row entirely. Thresholds:
+
 - `< 60s` → "just now"
 - `< 60m` → "X min ago"
 - `< 24h` → "X hr ago"
 - `>= 24h` → "X days ago"
 
 **Observe flow:**
+
 - Button label: "Observe" (idle) → "Loading..." + disabled (in-flight) → "Observe" (done)
 - On success: output string displayed in a scrollable `<pre>` block below the button row
 - On error: error message displayed in red below the button row (same as `CrewPanel`)
 - If the popover is closed while the call is in-flight: the component unmounts; no stale state risk because all local state lives inside the popover content component
 
 **Recall flow:**
+
 - Two-step confirmation: first click shows inline Confirm/Cancel (same pattern as `CrewPanel` and `StarCommandTab`)
 - On successful recall: `CrewPopover` calls `window.fleet.starbase.listCrew()` and dispatches `setCrewList` directly (same pattern as `CrewPanel.refresh`), then calls `setOpenCrewId(null)` via the `onClose` prop — the row disappears naturally as `crewList` updates. No `onRefresh` prop is needed on `AdmiralSidebar`.
 - On error: show error message in red below the confirmation row
@@ -131,12 +144,13 @@ Clicking a crew row opens a Radix `Popover` anchored to that row. The popover op
 ### 3. Component Structure
 
 The popover content is an **extracted sub-component** (e.g. `CrewPopover`) that accepts:
+
 ```ts
 type CrewPopoverProps = {
-  crew: CrewStatus
-  sector: SectorInfo | undefined
-  onClose: () => void
-}
+  crew: CrewStatus;
+  sector: SectorInfo | undefined;
+  onClose: () => void;
+};
 ```
 
 This scopes observe/recall local state to the popover and keeps `AdmiralSidebar` clean. When `openCrewId` changes, the old `CrewPopover` unmounts, killing any in-flight observe calls naturally.
@@ -144,25 +158,26 @@ This scopes observe/recall local state to the popover and keeps `AdmiralSidebar`
 ### 4. State
 
 One new local state in `AdmiralSidebar`:
+
 ```ts
-const [openCrewId, setOpenCrewId] = useState<string | null>(null)
+const [openCrewId, setOpenCrewId] = useState<string | null>(null);
 ```
 
 No store changes. All required data (`crewList`, `sectors`, `token_budget`, `tokens_used`, `last_lifesign`) is already in `useStarCommandStore`.
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
+| File                                                          | Change                                                                                                |
+| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `src/renderer/src/components/star-command/AdmiralSidebar.tsx` | Sector grouping, mission label, clickable rows, Radix Popover + extracted `CrewPopover` sub-component |
 
 ## Files Unchanged
 
-| File | Reason |
-|------|--------|
+| File                                                     | Reason                                       |
+| -------------------------------------------------------- | -------------------------------------------- |
 | `src/renderer/src/components/star-command/CrewPanel.tsx` | Unchanged — remains the full management view |
-| `src/renderer/src/store/star-command-store.ts` | All needed fields already present |
-| All other files | No changes required |
+| `src/renderer/src/store/star-command-store.ts`           | All needed fields already present            |
+| All other files                                          | No changes required                          |
 
 ## Out of Scope
 

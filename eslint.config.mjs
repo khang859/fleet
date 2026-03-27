@@ -1,18 +1,33 @@
-import { defineConfig } from 'eslint/config'
-import tseslint from '@electron-toolkit/eslint-config-ts'
-import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
-import eslintPluginReact from 'eslint-plugin-react'
-import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
-import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig } from 'eslint/config';
+import tseslint from '@electron-toolkit/eslint-config-ts';
+import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier';
+import eslintPluginReact from 'eslint-plugin-react';
+import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
+import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', 'reference/**', '.claude/**', '.worktrees/**', 'eslint.config.mjs'] },
+  {
+    ignores: [
+      '**/node_modules',
+      '**/dist',
+      '**/out',
+      'reference/**',
+      '.claude/**',
+      '.worktrees/**',
+      'eslint.config.mjs'
+    ]
+  },
   tseslint.configs.recommendedTypeChecked,
   {
     languageOptions: {
       parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.web.json', './tsconfig.test.json', './tsconfig.scripts.json'],
-        tsconfigRootDir: import.meta.dirname,
+        project: [
+          './tsconfig.node.json',
+          './tsconfig.web.json',
+          './tsconfig.test.json',
+          './tsconfig.scripts.json'
+        ],
+        tsconfigRootDir: import.meta.dirname
       }
     }
   },
@@ -43,8 +58,14 @@ export default defineConfig(
     files: ['**/*.{ts,tsx}'],
     rules: {
       // Consistency — auto-fixable
-      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports', fixStyle: 'inline-type-imports' }],
-      '@typescript-eslint/consistent-type-exports': ['error', { fixMixedExportsWithInlineTypeSpecifier: true }],
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' }
+      ],
+      '@typescript-eslint/consistent-type-exports': [
+        'error',
+        { fixMixedExportsWithInlineTypeSpecifier: true }
+      ],
       '@typescript-eslint/no-import-type-side-effects': 'error',
       '@typescript-eslint/array-type': ['error', { default: 'array-simple' }],
       '@typescript-eslint/no-inferrable-types': 'error',
@@ -72,8 +93,8 @@ export default defineConfig(
       '@typescript-eslint/no-useless-empty-export': 'error',
 
       // Core JS
-      'eqeqeq': ['error', 'always', { null: 'ignore' }],
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      eqeqeq: ['error', 'always', { null: 'ignore' }],
+      'no-console': ['warn', { allow: ['warn', 'error'] }]
     }
   },
   // Ban unsafe type assertions in source files (not tests)
@@ -81,7 +102,7 @@ export default defineConfig(
     files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
     ignores: ['**/__tests__/**'],
     rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
   },
   // Relax rules in test files — allow `as any` casts and their downstream effects
@@ -98,8 +119,8 @@ export default defineConfig(
       '@typescript-eslint/no-non-null-assertion': 'off',
       '@typescript-eslint/no-empty-function': 'off',
       '@typescript-eslint/unbound-method': 'off',
-      'no-console': 'off',
+      'no-console': 'off'
     }
   },
   eslintConfigPrettier
-)
+);

@@ -15,6 +15,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/starbase/admiral.ts` — Admiral AI service: conversation management, tool dispatch
 - `src/main/starbase/admiral-system-prompt.ts` — System prompt template function
 - `src/main/starbase/admiral-tools.ts` — Tool definitions for Bridge Controls
@@ -25,6 +26,7 @@
 - `src/renderer/src/store/star-command-store.ts` — Zustand store for Star Command state
 
 **Modified files:**
+
 - `package.json` — Add `@anthropic-ai/sdk`
 - `src/shared/types.ts` — Add `type` field to Tab type
 - `src/shared/constants.ts` — Add admiral/comms IPC channels
@@ -42,6 +44,7 @@
 ### Task 1: Install Anthropic SDK
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install @anthropic-ai/sdk**
@@ -68,6 +71,7 @@ git commit -m "chore: add @anthropic-ai/sdk for Admiral AI"
 ### Task 2: Write CommsService
 
 **Files:**
+
 - Create: `src/main/starbase/comms-service.ts`
 - Create: `src/main/__tests__/comms-service.test.ts`
 
@@ -119,7 +123,12 @@ describe('CommsService', () => {
   });
 
   it('should resolve a transmission with reply', () => {
-    const id = svc.send({ from: 'crew-1', to: 'admiral', type: 'hailing', payload: '{"question":"help"}' });
+    const id = svc.send({
+      from: 'crew-1',
+      to: 'admiral',
+      type: 'hailing',
+      payload: '{"question":"help"}'
+    });
     svc.resolve(id, 'Here is your answer');
     const unread = svc.getUnread('admiral');
     expect(unread).toHaveLength(0); // original marked read
@@ -167,14 +176,23 @@ export class CommsService {
   send(opts: SendOpts): number {
     const result = this.db
       .prepare(
-        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)',
+        'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)'
       )
-      .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null);
+      .run(
+        opts.from,
+        opts.to,
+        opts.type,
+        opts.payload,
+        opts.threadId ?? null,
+        opts.inReplyTo ?? null
+      );
     return result.lastInsertRowid as number;
   }
 
   resolve(transmissionId: number, response: string): number {
-    const original = this.db.prepare('SELECT * FROM comms WHERE id = ?').get(transmissionId) as TransmissionRow | undefined;
+    const original = this.db.prepare('SELECT * FROM comms WHERE id = ?').get(transmissionId) as
+      | TransmissionRow
+      | undefined;
     if (!original) throw new Error(`Transmission not found: ${transmissionId}`);
 
     this.markRead(transmissionId);
@@ -185,7 +203,7 @@ export class CommsService {
       type: 'directive',
       payload: response,
       threadId: original.thread_id ?? String(transmissionId),
-      inReplyTo: transmissionId,
+      inReplyTo: transmissionId
     });
   }
 
@@ -209,7 +227,9 @@ export class CommsService {
     const limit = opts?.limit ?? 50;
     if (opts?.crewId) {
       return this.db
-        .prepare('SELECT * FROM comms WHERE from_crew = ? OR to_crew = ? ORDER BY created_at DESC LIMIT ?')
+        .prepare(
+          'SELECT * FROM comms WHERE from_crew = ? OR to_crew = ? ORDER BY created_at DESC LIMIT ?'
+        )
         .all(opts.crewId, opts.crewId, limit) as TransmissionRow[];
     }
     return this.db
@@ -239,6 +259,7 @@ git commit -m "feat(starbase): add CommsService for Transmission management"
 ### Task 3: Write Admiral system prompt and tool definitions
 
 **Files:**
+
 - Create: `src/main/starbase/admiral-system-prompt.ts`
 - Create: `src/main/starbase/admiral-tools.ts`
 - Create: `src/main/__tests__/admiral-tools.test.ts`
@@ -273,11 +294,13 @@ git commit -m "feat(starbase): add Admiral system prompt and tool definitions"
 ### Task 4: Write Admiral service with streaming conversation
 
 **Files:**
+
 - Create: `src/main/starbase/admiral.ts`
 
 - [ ] **Step 1: Write Admiral class**
 
 The Admiral class manages the Anthropic conversation. Key methods:
+
 - `sendMessage(content)` — sends user message, returns async iterator of response chunks
 - `getHistory()` — returns conversation messages
 - `resetSession()` — clears history
@@ -306,6 +329,7 @@ git commit -m "feat(starbase): add Admiral AI service with streaming and tool di
 ### Task 5: Extend Tab type and add Star Command tab
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 - Modify: `src/main/layout-store.ts`
 
@@ -329,6 +353,7 @@ git commit -m "feat(starbase): extend Tab type with star-command type and auto-c
 ### Task 6: Write StarCommandStore and StarCommandTab component
 
 **Files:**
+
 - Create: `src/renderer/src/store/star-command-store.ts`
 - Create: `src/renderer/src/components/StarCommandTab.tsx`
 - Modify: `src/renderer/src/components/Sidebar.tsx`
@@ -364,6 +389,7 @@ git commit -m "feat(starbase): add Star Command tab UI with chat and status pane
 ### Task 7: Wire Admiral IPC and integrate everything
 
 **Files:**
+
 - Modify: `src/shared/constants.ts`
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/main/index.ts`

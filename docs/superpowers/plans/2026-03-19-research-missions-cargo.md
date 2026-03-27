@@ -15,6 +15,7 @@
 ### Task 1: Database Migration — Add `type` Column to Missions
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts:145-155` (add migration version 6)
 
 - [ ] **Step 1: Write the failing test**
@@ -27,7 +28,7 @@ it('should store and return mission type', () => {
     sectorId: 'api',
     summary: 'Research auth patterns',
     prompt: 'Investigate auth patterns in the codebase',
-    type: 'research',
+    type: 'research'
   });
   expect(m.type).toBe('research');
 });
@@ -36,7 +37,7 @@ it('should default mission type to code', () => {
   const m = missionSvc.addMission({
     sectorId: 'api',
     summary: 'Add endpoint',
-    prompt: 'Create a /users endpoint',
+    prompt: 'Create a /users endpoint'
   });
   expect(m.type).toBe('code');
 });
@@ -67,17 +68,17 @@ In `src/main/starbase/mission-service.ts`, add `type: string` to `MissionRow` (a
 
 ```typescript
 type MissionRow = {
-  id: number
-  sector_id: string
-  crew_id: string | null
-  summary: string
-  prompt: string
-  acceptance_criteria: string | null
-  status: string
-  type: string
-  priority: number
+  id: number;
+  sector_id: string;
+  crew_id: string | null;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  status: string;
+  type: string;
+  priority: number;
   // ... rest unchanged
-}
+};
 ```
 
 - [ ] **Step 5: Update AddMissionOpts**
@@ -86,14 +87,14 @@ In `src/main/starbase/mission-service.ts`, add `type?: string` to `AddMissionOpt
 
 ```typescript
 type AddMissionOpts = {
-  sectorId: string
-  summary: string
-  prompt: string
-  acceptanceCriteria?: string
-  priority?: number
-  dependsOnMissionId?: number
-  type?: string
-}
+  sectorId: string;
+  summary: string;
+  prompt: string;
+  acceptanceCriteria?: string;
+  priority?: number;
+  dependsOnMissionId?: number;
+  type?: string;
+};
 ```
 
 - [ ] **Step 6: Update addMission INSERT**
@@ -140,6 +141,7 @@ git commit -m "feat(starbase): add mission type column with migration and servic
 ### Task 2: Thread Mission Type Through Call Sites
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts:195-204` (mission.create handler)
 - Modify: `src/main/socket-server.ts:230-259` (crew.deploy handler)
 - Modify: `src/main/starbase/crew-service.ts:71-72` (deployCrew opts)
@@ -158,11 +160,11 @@ it('mission.create forwards type parameter', async () => {
 
   const resp = await sendCommand(sock, {
     command: 'mission.create',
-    args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' },
+    args: { sector: 'alpha', summary: 'Research', prompt: 'Investigate', type: 'research' }
   });
 
   expect(services.missionService.addMission).toHaveBeenCalledWith(
-    expect.objectContaining({ type: 'research' }),
+    expect.objectContaining({ type: 'research' })
   );
 
   await server.stop();
@@ -201,7 +203,7 @@ const result = await crewService.deployCrew({
   sectorId: (args.sector ?? args.sectorId) as string,
   prompt,
   missionId,
-  type: args.type as string | undefined,
+  type: args.type as string | undefined
 });
 ```
 
@@ -225,7 +227,7 @@ if (!missionId) {
     sectorId: opts.sectorId,
     summary: opts.prompt.slice(0, 100),
     prompt: opts.prompt,
-    type: opts.type,
+    type: opts.type
   });
   missionId = mission.id;
 }
@@ -248,6 +250,7 @@ git commit -m "feat(starbase): thread mission type through socket-server and cre
 ### Task 3: Wire Mission Type and StarbaseId into Hull
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts:32-59` (HullOpts type)
 - Modify: `src/main/starbase/hull.ts:333-367` (handleStreamMessage — capture resultText)
 - Modify: `src/main/starbase/hull.ts:321-327` (appendOutput — raise cap for research)
@@ -263,8 +266,8 @@ it('should accept missionType and starbaseId in opts', () => {
     sectorId: 'api',
     summary: 'Test',
     prompt: 'echo hello',
-    type: 'research',
-  })
+    type: 'research'
+  });
   const hull = new Hull({
     crewId: 'hull-crew',
     sectorId: 'api',
@@ -276,19 +279,19 @@ it('should accept missionType and starbaseId in opts', () => {
     sectorPath: SECTOR_DIR,
     db: db.getDb(),
     missionType: 'research',
-    starbaseId: 'abc123',
-  })
-  expect(hull).toBeDefined()
-  expect(hull.getStatus()).toBe('pending')
-})
+    starbaseId: 'abc123'
+  });
+  expect(hull).toBeDefined();
+  expect(hull.getStatus()).toBe('pending');
+});
 
 it('should use higher output cap for research missions', () => {
   const mission = missionSvc.addMission({
     sectorId: 'api',
     summary: 'Test',
     prompt: 'echo hello',
-    type: 'research',
-  })
+    type: 'research'
+  });
   const hull = new Hull({
     crewId: 'hull-crew',
     sectorId: 'api',
@@ -300,16 +303,16 @@ it('should use higher output cap for research missions', () => {
     sectorPath: SECTOR_DIR,
     db: db.getDb(),
     missionType: 'research',
-    starbaseId: 'abc123',
-  })
+    starbaseId: 'abc123'
+  });
   // Append 500 lines — should all be kept for research (cap is 2000)
   for (let i = 0; i < 500; i++) {
-    hull.appendOutput(`line ${i}`)
+    hull.appendOutput(`line ${i}`);
   }
-  const output = hull.getOutputBuffer()
-  expect(output).toContain('line 0')
-  expect(output).toContain('line 499')
-})
+  const output = hull.getOutputBuffer();
+  expect(output).toContain('line 0');
+  expect(output).toContain('line 499');
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -325,11 +328,11 @@ In `src/main/starbase/hull.ts`, add to the `HullOpts` type:
 export type HullOpts = {
   // ... existing fields ...
   /** Mission type: 'code' (default) or 'research' */
-  missionType?: string
+  missionType?: string;
   /** Starbase ID for cargo file storage paths */
-  starbaseId?: string
+  starbaseId?: string;
   // ... rest unchanged ...
-}
+};
 ```
 
 - [ ] **Step 4: Add resultText field and capture it**
@@ -375,8 +378,8 @@ In `src/main/starbase/crew-service.ts`, after the missionId is resolved (around 
 
 ```typescript
 // Read mission type for Hull
-const missionRow = missionService.getMission(missionId)!
-const missionType = missionRow.type ?? 'code'
+const missionRow = missionService.getMission(missionId)!;
+const missionType = missionRow.type ?? 'code';
 ```
 
 Then in the Hull construction (around line 142), add the new fields:
@@ -385,7 +388,7 @@ Then in the Hull construction (around line 142), add the new fields:
 const hull = new Hull({
   // ... existing fields ...
   missionType,
-  starbaseId,
+  starbaseId
   // ... rest unchanged ...
 });
 ```
@@ -407,6 +410,7 @@ git commit -m "feat(starbase): wire missionType and starbaseId into Hull, captur
 ### Task 4: Research Mission Cleanup — Cargo Production
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts:409-493` (cleanup method — research branch)
 
 - [ ] **Step 1: Write the failing test**
@@ -416,111 +420,125 @@ Add a new describe block to `src/main/__tests__/hull.test.ts`:
 ```typescript
 describe('Hull — Research mission cleanup', () => {
   function createMockProcess() {
-    const proc = new EventEmitter() as any
-    proc.stdin = { write: vi.fn(), end: vi.fn(), writable: true }
-    proc.stdout = new EventEmitter()
-    proc.stderr = new EventEmitter()
-    proc.killed = false
-    proc.pid = 12345
-    proc.kill = vi.fn()
-    return proc
+    const proc = new EventEmitter() as any;
+    proc.stdin = { write: vi.fn(), end: vi.fn(), writable: true };
+    proc.stdout = new EventEmitter();
+    proc.stderr = new EventEmitter();
+    proc.killed = false;
+    proc.pid = 12345;
+    proc.kill = vi.fn();
+    return proc;
   }
 
   beforeEach(() => {
-    mockProc = createMockProcess()
-  })
+    mockProc = createMockProcess();
+  });
 
-  const BARE_REMOTE_DIR = join(TEST_DIR, 'remote.git')
+  const BARE_REMOTE_DIR = join(TEST_DIR, 'remote.git');
 
   // Setup worktree with NO changes (research scenario)
   function setupWorktreeNoChanges() {
-    mkdirSync(BARE_REMOTE_DIR, { recursive: true })
-    execSync('git init --bare', { cwd: BARE_REMOTE_DIR })
-    execSync(`git remote add origin "${BARE_REMOTE_DIR}"`, { cwd: SECTOR_DIR })
-    execSync('git push -u origin main', { cwd: SECTOR_DIR })
-    execSync('git branch crew/test-branch main', { cwd: SECTOR_DIR })
-    mkdirSync(join(TEST_DIR, 'worktrees', 'test-sb'), { recursive: true })
-    execSync(`git worktree add "${WORKTREE_DIR}" crew/test-branch`, { cwd: SECTOR_DIR })
+    mkdirSync(BARE_REMOTE_DIR, { recursive: true });
+    execSync('git init --bare', { cwd: BARE_REMOTE_DIR });
+    execSync(`git remote add origin "${BARE_REMOTE_DIR}"`, { cwd: SECTOR_DIR });
+    execSync('git push -u origin main', { cwd: SECTOR_DIR });
+    execSync('git branch crew/test-branch main', { cwd: SECTOR_DIR });
+    mkdirSync(join(TEST_DIR, 'worktrees', 'test-sb'), { recursive: true });
+    execSync(`git worktree add "${WORKTREE_DIR}" crew/test-branch`, { cwd: SECTOR_DIR });
     // No new files — worktree matches base branch exactly
   }
 
-  it('research mission with no changes — marks completed, produces cargo', { timeout: 60_000 }, async () => {
-    setupWorktreeNoChanges()
-    const mission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Research auth',
-      prompt: 'Investigate auth patterns',
-      type: 'research',
-    })
-    const opts: HullOpts = {
-      crewId: `crew-${mission.id}`,
-      sectorId: 'api',
-      missionId: mission.id,
-      prompt: 'Investigate auth patterns',
-      worktreePath: WORKTREE_DIR,
-      worktreeBranch: 'crew/test-branch',
-      baseBranch: 'main',
-      sectorPath: SECTOR_DIR,
-      db: db.getDb(),
-      lifesignIntervalSec: 9999,
-      timeoutMin: 9999,
-      missionType: 'research',
-      starbaseId: 'test01',
+  it(
+    'research mission with no changes — marks completed, produces cargo',
+    { timeout: 60_000 },
+    async () => {
+      setupWorktreeNoChanges();
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Research auth',
+        prompt: 'Investigate auth patterns',
+        type: 'research'
+      });
+      const opts: HullOpts = {
+        crewId: `crew-${mission.id}`,
+        sectorId: 'api',
+        missionId: mission.id,
+        prompt: 'Investigate auth patterns',
+        worktreePath: WORKTREE_DIR,
+        worktreeBranch: 'crew/test-branch',
+        baseBranch: 'main',
+        sectorPath: SECTOR_DIR,
+        db: db.getDb(),
+        lifesignIntervalSec: 9999,
+        timeoutMin: 9999,
+        missionType: 'research',
+        starbaseId: 'test01'
+      };
+      const hull = new Hull(opts);
+
+      // Add some output to simulate research work
+      await hull.start();
+      // Simulate assistant output via stdout
+      const outputMsg = JSON.stringify({
+        type: 'assistant',
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Found 3 auth patterns in the codebase.' }]
+        },
+        session_id: 'test'
+      });
+      mockProc.stdout.emit('data', Buffer.from(outputMsg + '\n'));
+      mockProc.emit('exit', 0);
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Mission should be completed, not failed
+      const row = db
+        .getDb()
+        .prepare('SELECT status, result FROM missions WHERE id = ?')
+        .get(mission.id) as any;
+      expect(row.status).toBe('completed');
+      expect(row.result).toContain('Research completed');
+
+      // Crew should be complete, not error
+      const crew = db
+        .getDb()
+        .prepare('SELECT status FROM crew WHERE id = ?')
+        .get(opts.crewId) as any;
+      expect(crew.status).toBe('complete');
+
+      // Cargo should exist
+      const cargo = db
+        .getDb()
+        .prepare('SELECT * FROM cargo WHERE mission_id = ?')
+        .all(mission.id) as any[];
+      expect(cargo.length).toBe(2);
+      expect(cargo.map((c: any) => c.type).sort()).toEqual([
+        'documentation_full',
+        'documentation_summary'
+      ]);
+      expect(cargo.every((c: any) => c.verified === 1)).toBe(true);
+
+      // Comms should be sent
+      const comms = db
+        .getDb()
+        .prepare("SELECT payload FROM comms WHERE from_crew = ? AND type = 'mission_complete'")
+        .get(opts.crewId) as any;
+      expect(comms).toBeTruthy();
+      const payload = JSON.parse(comms.payload);
+      expect(payload.status).toBe('completed');
+      expect(payload.cargoProduced).toBe(true);
     }
-    const hull = new Hull(opts)
-
-    // Add some output to simulate research work
-    await hull.start()
-    // Simulate assistant output via stdout
-    const outputMsg = JSON.stringify({
-      type: 'assistant',
-      message: { role: 'assistant', content: [{ type: 'text', text: 'Found 3 auth patterns in the codebase.' }] },
-      session_id: 'test'
-    })
-    mockProc.stdout.emit('data', Buffer.from(outputMsg + '\n'))
-    mockProc.emit('exit', 0)
-
-    await new Promise((r) => setTimeout(r, 500))
-
-    // Mission should be completed, not failed
-    const row = db.getDb()
-      .prepare('SELECT status, result FROM missions WHERE id = ?')
-      .get(mission.id) as any
-    expect(row.status).toBe('completed')
-    expect(row.result).toContain('Research completed')
-
-    // Crew should be complete, not error
-    const crew = db.getDb()
-      .prepare('SELECT status FROM crew WHERE id = ?')
-      .get(opts.crewId) as any
-    expect(crew.status).toBe('complete')
-
-    // Cargo should exist
-    const cargo = db.getDb()
-      .prepare('SELECT * FROM cargo WHERE mission_id = ?')
-      .all(mission.id) as any[]
-    expect(cargo.length).toBe(2)
-    expect(cargo.map((c: any) => c.type).sort()).toEqual(['documentation_full', 'documentation_summary'])
-    expect(cargo.every((c: any) => c.verified === 1)).toBe(true)
-
-    // Comms should be sent
-    const comms = db.getDb()
-      .prepare("SELECT payload FROM comms WHERE from_crew = ? AND type = 'mission_complete'")
-      .get(opts.crewId) as any
-    expect(comms).toBeTruthy()
-    const payload = JSON.parse(comms.payload)
-    expect(payload.status).toBe('completed')
-    expect(payload.cargoProduced).toBe(true)
-  })
+  );
 
   it('research mission that crashes — still marks as error', { timeout: 60_000 }, async () => {
-    setupWorktreeNoChanges()
+    setupWorktreeNoChanges();
     const mission = missionSvc.addMission({
       sectorId: 'api',
       summary: 'Research auth',
       prompt: 'Investigate auth patterns',
-      type: 'research',
-    })
+      type: 'research'
+    });
     const opts: HullOpts = {
       crewId: `crew-crash-${mission.id}`,
       sectorId: 'api',
@@ -534,79 +552,85 @@ describe('Hull — Research mission cleanup', () => {
       lifesignIntervalSec: 9999,
       timeoutMin: 9999,
       missionType: 'research',
-      starbaseId: 'test01',
-    }
-    const hull = new Hull(opts)
+      starbaseId: 'test01'
+    };
+    const hull = new Hull(opts);
 
-    await hull.start()
+    await hull.start();
     // Simulate crash — non-zero exit
-    mockProc.emit('exit', 1)
+    mockProc.emit('exit', 1);
 
-    await new Promise((r) => setTimeout(r, 500))
+    await new Promise((r) => setTimeout(r, 500));
 
     // Mission should be failed, NOT completed
-    const row = db.getDb()
+    const row = db
+      .getDb()
       .prepare('SELECT status, result FROM missions WHERE id = ?')
-      .get(mission.id) as any
-    expect(row.status).toBe('failed')
-    expect(row.result).toBe('No work produced')
+      .get(mission.id) as any;
+    expect(row.status).toBe('failed');
+    expect(row.result).toBe('No work produced');
 
     // Crew should be error
-    const crew = db.getDb()
-      .prepare('SELECT status FROM crew WHERE id = ?')
-      .get(opts.crewId) as any
-    expect(crew.status).toBe('error')
+    const crew = db.getDb().prepare('SELECT status FROM crew WHERE id = ?').get(opts.crewId) as any;
+    expect(crew.status).toBe('error');
 
     // No cargo should be produced
-    const cargo = db.getDb()
+    const cargo = db
+      .getDb()
       .prepare('SELECT * FROM cargo WHERE mission_id = ?')
-      .all(mission.id) as any[]
-    expect(cargo.length).toBe(0)
-  })
+      .all(mission.id) as any[];
+    expect(cargo.length).toBe(0);
+  });
 
-  it('code mission with no changes — still marks as failed (existing behavior)', { timeout: 60_000 }, async () => {
-    setupWorktreeNoChanges()
-    const mission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Add endpoint',
-      prompt: 'Create a /users endpoint',
-    })
-    const opts: HullOpts = {
-      crewId: `crew-${mission.id}`,
-      sectorId: 'api',
-      missionId: mission.id,
-      prompt: 'Create a /users endpoint',
-      worktreePath: WORKTREE_DIR,
-      worktreeBranch: 'crew/test-branch',
-      baseBranch: 'main',
-      sectorPath: SECTOR_DIR,
-      db: db.getDb(),
-      lifesignIntervalSec: 9999,
-      timeoutMin: 9999,
-      missionType: 'code',
-      starbaseId: 'test01',
+  it(
+    'code mission with no changes — still marks as failed (existing behavior)',
+    { timeout: 60_000 },
+    async () => {
+      setupWorktreeNoChanges();
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Add endpoint',
+        prompt: 'Create a /users endpoint'
+      });
+      const opts: HullOpts = {
+        crewId: `crew-${mission.id}`,
+        sectorId: 'api',
+        missionId: mission.id,
+        prompt: 'Create a /users endpoint',
+        worktreePath: WORKTREE_DIR,
+        worktreeBranch: 'crew/test-branch',
+        baseBranch: 'main',
+        sectorPath: SECTOR_DIR,
+        db: db.getDb(),
+        lifesignIntervalSec: 9999,
+        timeoutMin: 9999,
+        missionType: 'code',
+        starbaseId: 'test01'
+      };
+      const hull = new Hull(opts);
+
+      await hull.start();
+      mockProc.emit('exit', 0);
+
+      await new Promise((r) => setTimeout(r, 500));
+
+      // Mission should be failed (existing behavior)
+      const row = db
+        .getDb()
+        .prepare('SELECT status, result FROM missions WHERE id = ?')
+        .get(mission.id) as any;
+      expect(row.status).toBe('failed');
+      expect(row.result).toBe('No work produced');
+
+      // Crew should be error
+      const crew = db
+        .getDb()
+        .prepare('SELECT status FROM crew WHERE id = ?')
+        .get(opts.crewId) as any;
+      expect(crew.status).toBe('error');
     }
-    const hull = new Hull(opts)
-
-    await hull.start()
-    mockProc.emit('exit', 0)
-
-    await new Promise((r) => setTimeout(r, 500))
-
-    // Mission should be failed (existing behavior)
-    const row = db.getDb()
-      .prepare('SELECT status, result FROM missions WHERE id = ?')
-      .get(mission.id) as any
-    expect(row.status).toBe('failed')
-    expect(row.result).toBe('No work produced')
-
-    // Crew should be error
-    const crew = db.getDb()
-      .prepare('SELECT status FROM crew WHERE id = ?')
-      .get(opts.crewId) as any
-    expect(crew.status).toBe('error')
-  })
-})
+  );
+});
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -623,90 +647,101 @@ if (!hasChanges) {
   if (status !== 'aborted') {
     if (this.opts.missionType === 'research' && status !== 'error') {
       // Research mission completed — produce cargo instead of failing
-      overrideStatus = 'complete'
+      overrideStatus = 'complete';
 
       // Write cargo files to starbase directory
       const cargoDir = join(
         process.env.HOME ?? '~',
-        '.fleet', 'starbases',
+        '.fleet',
+        'starbases',
         `starbase-${this.opts.starbaseId}`,
-        'cargo', this.opts.sectorId, String(missionId)
-      )
-      const fullOutput = this.outputLines.join('\n')
-      const summary = this.resultText ?? this.outputLines.slice(-20).join('\n')
-      const hasOutput = fullOutput.trim().length > 0
-      const resultMsg = hasOutput ? 'Research completed' : 'Research completed (no output captured)'
+        'cargo',
+        this.opts.sectorId,
+        String(missionId)
+      );
+      const fullOutput = this.outputLines.join('\n');
+      const summary = this.resultText ?? this.outputLines.slice(-20).join('\n');
+      const hasOutput = fullOutput.trim().length > 0;
+      const resultMsg = hasOutput
+        ? 'Research completed'
+        : 'Research completed (no output captured)';
 
       // Attempt to write cargo files
-      let fullOutputPath: string | null = null
-      let summaryPath: string | null = null
-      let fullManifest: string
-      let summaryManifest: string
+      let fullOutputPath: string | null = null;
+      let summaryPath: string | null = null;
+      let fullManifest: string;
+      let summaryManifest: string;
 
       try {
-        mkdirSync(cargoDir, { recursive: true })
-        fullOutputPath = join(cargoDir, 'full-output.md')
-        summaryPath = join(cargoDir, 'summary.md')
-        writeFileSync(fullOutputPath, fullOutput, 'utf-8')
-        writeFileSync(summaryPath, summary, 'utf-8')
-        fullManifest = JSON.stringify({ path: fullOutputPath })
-        summaryManifest = JSON.stringify({ path: summaryPath })
+        mkdirSync(cargoDir, { recursive: true });
+        fullOutputPath = join(cargoDir, 'full-output.md');
+        summaryPath = join(cargoDir, 'summary.md');
+        writeFileSync(fullOutputPath, fullOutput, 'utf-8');
+        writeFileSync(summaryPath, summary, 'utf-8');
+        fullManifest = JSON.stringify({ path: fullOutputPath });
+        summaryManifest = JSON.stringify({ path: summaryPath });
       } catch (fileErr) {
-        console.error(`[hull:${crewId}] cargo file write failed:`, fileErr)
+        console.error(`[hull:${crewId}] cargo file write failed:`, fileErr);
         // Fallback: store content directly in manifest
-        fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) })
-        summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) })
+        fullManifest = JSON.stringify({ content: fullOutput.slice(0, 50000) });
+        summaryManifest = JSON.stringify({ content: summary.slice(0, 10000) });
       }
 
       // Insert cargo records
       db.prepare(
         `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
          VALUES (?, ?, ?, 'documentation_full', ?, 1)`
-      ).run(crewId, missionId, this.opts.sectorId, fullManifest)
+      ).run(crewId, missionId, this.opts.sectorId, fullManifest);
 
       db.prepare(
         `INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified)
          VALUES (?, ?, ?, 'documentation_summary', ?, 1)`
-      ).run(crewId, missionId, this.opts.sectorId, summaryManifest)
+      ).run(crewId, missionId, this.opts.sectorId, summaryManifest);
 
       // Update mission
       db.prepare(
         "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
-      ).run(resultMsg, missionId)
+      ).run(resultMsg, missionId);
 
       // Send comms
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
-      ).run(crewId, JSON.stringify({
-        missionId, status: 'completed', reason: resultMsg, cargoProduced: true
-      }))
+      ).run(
+        crewId,
+        JSON.stringify({
+          missionId,
+          status: 'completed',
+          reason: resultMsg,
+          cargoProduced: true
+        })
+      );
 
       // Log exit
       db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
         crewId,
         JSON.stringify({ status: 'complete', reason: resultMsg })
-      )
+      );
     } else {
       // Code mission: Genuine failure — no work produced
       db.prepare(
         "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
-      ).run('No work produced', missionId)
+      ).run('No work produced', missionId);
       db.prepare(
         "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
-      ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }))
+      ).run(crewId, JSON.stringify({ missionId, status: 'failed', reason: 'No work produced' }));
       db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
         crewId,
         JSON.stringify({ status: 'error', reason: 'No work produced' })
-      )
-      overrideStatus = 'error'
+      );
+      overrideStatus = 'error';
     }
   } else {
     // Intentional recall with no changes: mark mission as aborted
     db.prepare(
       "UPDATE missions SET status = 'aborted', completed_at = datetime('now') WHERE id = ?"
-    ).run(missionId)
+    ).run(missionId);
   }
-  return
+  return;
 }
 ```
 
@@ -734,6 +769,7 @@ git commit -m "feat(starbase): research missions produce cargo instead of errori
 ### Task 5: Final Integration Verification
 
 **Files:**
+
 - No new files — verification only
 
 - [ ] **Step 1: Run full test suite**
@@ -754,6 +790,7 @@ Expected: Build succeeds
 - [ ] **Step 4: Commit (if any type fixes needed)**
 
 Only if step 2 or 3 required fixes:
+
 ```bash
 git add -A
 git commit -m "fix(starbase): resolve type errors from research missions feature"

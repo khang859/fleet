@@ -15,6 +15,7 @@ This aligns the Admiral with how crew already works (Claude Code in a PTY) and g
 The Admiral's most important job is **mission decomposition**. When given a task, the Admiral breaks it into the smallest possible missions, each completable in a single Claude Code run (`claude -p "prompt"`, no interaction, exits when done).
 
 Constraints:
+
 - Each mission has ONE clear objective
 - Each mission should complete in under 15 minutes
 - If a mission needs human input or clarification, it's too big — split further
@@ -23,6 +24,7 @@ Constraints:
 
 **Bad:** "Build the authentication system"
 **Good:**
+
 - "Add bcrypt password hashing to User model with tests"
 - "Add POST /login endpoint that returns JWT token"
 - "Add auth middleware that validates JWT on protected routes"
@@ -70,6 +72,7 @@ Fleet CLI (~/.fleet/bin/fleet)
 **Location:** `~/.fleet/starbase/{starbaseId}/admiral/`
 
 **Structure:**
+
 ```
 admiral/
 ├── CLAUDE.md
@@ -84,6 +87,7 @@ admiral/
 ```
 
 **Initialization:** When a starbase loads, `AdmiralProcess.ensureWorkspace()`:
+
 1. Creates directory structure if missing
 2. Runs `git init` if no `.git/`
 3. Writes/updates `CLAUDE.md` — regenerates auto-generated sections, preserves Admiral-authored content
@@ -91,6 +95,7 @@ admiral/
 5. Writes/updates `.claude/skills/fleet/SKILL.md`
 
 **CLAUDE.md structure:**
+
 ```markdown
 # Admiral — {starbaseName}
 
@@ -100,6 +105,7 @@ and oversee all sectors.
 ## Prime Directive
 
 Your most important job is decomposition. When given a task:
+
 1. Break it into the smallest possible missions
 2. Each mission must be completable in a single Claude Code run
 3. A mission should have ONE clear objective and take <15 minutes
@@ -112,11 +118,15 @@ Use the `fleet` command to manage your starbase. See the /fleet skill for
 full reference and workflows.
 
 ## Sectors
+
 <!-- fleet:auto-start:sectors -->
+
 (auto-generated sector list)
+
 <!-- fleet:auto-end:sectors -->
 
 ## Rules
+
 - Always check comms before starting new work
 - Scope missions tightly — one clear objective per crewmate
 - Ask for clarification rather than guessing
@@ -140,16 +150,16 @@ A thin Node.js CLI client that communicates with the running Fleet Electron app 
 
 **Command groups:**
 
-| Group | Commands | Service |
-|-------|----------|---------|
-| `fleet crew` | `deploy`, `recall`, `list`, `observe` | CrewService |
-| `fleet mission` | `create`, `list`, `status`, `cancel` | MissionService |
-| `fleet comms` | `list`, `read`, `send`, `check` | CommsService |
-| `fleet sector` | `list`, `info`, `add`, `remove` | SectorService |
-| `fleet cargo` | `list`, `inspect` | CargoService |
-| `fleet supply-route` | `list`, `add`, `remove` | SupplyRouteService |
-| `fleet config` | `get`, `set` | ConfigService |
-| `fleet log` | `show`, `tail` | ShipsLog |
+| Group                | Commands                              | Service            |
+| -------------------- | ------------------------------------- | ------------------ |
+| `fleet crew`         | `deploy`, `recall`, `list`, `observe` | CrewService        |
+| `fleet mission`      | `create`, `list`, `status`, `cancel`  | MissionService     |
+| `fleet comms`        | `list`, `read`, `send`, `check`       | CommsService       |
+| `fleet sector`       | `list`, `info`, `add`, `remove`       | SectorService      |
+| `fleet cargo`        | `list`, `inspect`                     | CargoService       |
+| `fleet supply-route` | `list`, `add`, `remove`               | SupplyRouteService |
+| `fleet config`       | `get`, `set`                          | ConfigService      |
+| `fleet log`          | `show`, `tail`                        | ShipsLog           |
 
 **Output format:** Human-readable tables/text by default. Claude Code reads terminal output, so plain text is optimal.
 
@@ -171,6 +181,7 @@ The actual CLI logic lives in `~/.fleet/lib/fleet-cli.js`, extracted from the El
 New class in the Electron main process. Starts when Fleet launches.
 
 **Responsibilities:**
+
 - Listen on `~/.fleet/fleet.sock`
 - Parse incoming JSON commands
 - Route to existing service methods
@@ -181,16 +192,16 @@ New class in the Electron main process. Starts when Fleet launches.
 
 ```typescript
 interface ServiceRegistry {
-  crewService: CrewService
-  missionService: MissionService
-  commsService: CommsService
-  sectorService: SectorService
-  cargoService: CargoService
-  supplyRouteService: SupplyRouteService
-  configService: ConfigService
-  ptyManager: PtyManager
-  createTab: (label: string, cwd: string) => string  // returns tabId
-  db: StarbaseDB
+  crewService: CrewService;
+  missionService: MissionService;
+  commsService: CommsService;
+  sectorService: SectorService;
+  cargoService: CargoService;
+  supplyRouteService: SupplyRouteService;
+  configService: ConfigService;
+  ptyManager: PtyManager;
+  createTab: (label: string, cwd: string) => string; // returns tabId
+  db: StarbaseDB;
 }
 ```
 
@@ -213,6 +224,7 @@ Request IDs allow the Admiral to fire multiple CLI commands concurrently without
 **Timeout:** Commands have a 60-second timeout. The CLI prints an error and exits if no response arrives.
 
 **Stale socket handling on startup:**
+
 1. Check if `~/.fleet/fleet.sock` exists
 2. If yes, try connecting — if connection succeeds, another Fleet instance is running → warn user and abort socket server
 3. If connection fails (stale file) → unlink and recreate
@@ -224,17 +236,20 @@ Request IDs allow the Admiral to fire multiple CLI commands concurrently without
 Replaces the current `Admiral` class.
 
 **Properties:**
+
 - `workspace: string` — path to Admiral workspace
 - `paneId: string | null` — PTY reference
 - `status: 'running' | 'stopped' | 'starting'`
 
 **Methods:**
+
 - `ensureWorkspace()` — create/update workspace directory, CLAUDE.md, skill, hooks
 - `start()` — spawn `claude --dangerously-skip-permissions` with cwd=workspace, return paneId
 - `stop()` — kill PTY
 - `restart()` — stop + start
 
 **Spawn:** Uses existing `PtyManager.create()` with:
+
 - `cmd`: `claude`
 - `args`: `['--dangerously-skip-permissions']`
 - `cwd`: Admiral workspace path
@@ -255,6 +270,7 @@ PTY is marked as protected (not garbage collected).
 Transforms from custom chat UI to terminal + chrome.
 
 **Layout:**
+
 ```
 ┌─────────────────────────────────────────────────────┐
 │ CRT Frame                                           │
@@ -271,12 +287,14 @@ Transforms from custom chat UI to terminal + chrome.
 ```
 
 **Changes:**
+
 - Replace custom message list with xterm.js terminal attached to Admiral paneId
 - Delete: message types, stream buffer, tool call cards, Admiral IPC channels
 - Simplify store to: `admiralPaneId`, `admiralStatus`, crew list, mission queue, sectors, unread count
 - Keep: CRT frame, status bar, crew chips, galaxy map scene, avatar states
 
 **Admiral status in UI:**
+
 - Running → terminal is live, status bar shows crew/mission counts
 - Stopped → terminal shows exit message, restart button available
 
@@ -285,6 +303,7 @@ Transforms from custom chat UI to terminal + chrome.
 **Location:** `.claude/skills/fleet/SKILL.md`
 
 Teaches the Admiral how and when to use the Fleet CLI. Contains:
+
 - Core workflow (check comms → review status → take action)
 - Decision framework (when to deploy crew vs do it yourself)
 - Full command reference with examples
@@ -297,6 +316,7 @@ Teaches the Admiral how and when to use the Fleet CLI. Contains:
 ### 7. Hooks Configuration
 
 **`.claude/settings.json`:**
+
 ```json
 {
   "hooks": {
@@ -311,6 +331,7 @@ Teaches the Admiral how and when to use the Fleet CLI. Contains:
 ```
 
 **`fleet comms check --quiet` behavior:**
+
 - 0 unread → silent exit (code 0, no output)
 - N unread → prints notification, exits 0
 - Socket error → silent exit (code 0, no output) — never blocks tool use
@@ -321,28 +342,28 @@ Gentle reminder, not a gate. Always exits 0 regardless of outcome — this ensur
 
 ## Deleted Code
 
-| File | Reason |
-|------|--------|
-| `src/main/starbase/admiral.ts` | Replaced by AdmiralProcess + Claude Code |
-| `src/main/starbase/admiral-tools.ts` | Replaced by Fleet CLI + skill |
-| `src/main/starbase/admiral-system-prompt.ts` | Replaced by CLAUDE.md |
-| Admiral IPC channels in `constants.ts` | No longer needed — PTY data flows via xterm |
-| Admiral IPC handlers in `ipc-handlers.ts` | Same |
-| Chat UI components (message list, stream) | Replaced by xterm.js terminal |
-| Store: message/stream state | Simplified to paneId + status |
+| File                                         | Reason                                      |
+| -------------------------------------------- | ------------------------------------------- |
+| `src/main/starbase/admiral.ts`               | Replaced by AdmiralProcess + Claude Code    |
+| `src/main/starbase/admiral-tools.ts`         | Replaced by Fleet CLI + skill               |
+| `src/main/starbase/admiral-system-prompt.ts` | Replaced by CLAUDE.md                       |
+| Admiral IPC channels in `constants.ts`       | No longer needed — PTY data flows via xterm |
+| Admiral IPC handlers in `ipc-handlers.ts`    | Same                                        |
+| Chat UI components (message list, stream)    | Replaced by xterm.js terminal               |
+| Store: message/stream state                  | Simplified to paneId + status               |
 
 ## Kept / Unchanged
 
-| Component | Reason |
-|-----------|--------|
-| CrewService, Hull, WorktreeManager | Crew deployment unchanged |
-| MissionService | Missions unchanged, now created via Fleet CLI |
-| CommsService | Comms unchanged, now accessed via Fleet CLI |
-| SectorService, CargoService | Unchanged |
-| StarbaseDB, migrations | Unchanged |
-| PtyManager | Unchanged — Admiral uses it like any other PTY |
-| Galaxy map, CRT frame, sprites | Visual chrome stays |
-| Status bar, crew chips | Stay, data source changes (see below) |
+| Component                          | Reason                                         |
+| ---------------------------------- | ---------------------------------------------- |
+| CrewService, Hull, WorktreeManager | Crew deployment unchanged                      |
+| MissionService                     | Missions unchanged, now created via Fleet CLI  |
+| CommsService                       | Comms unchanged, now accessed via Fleet CLI    |
+| SectorService, CargoService        | Unchanged                                      |
+| StarbaseDB, migrations             | Unchanged                                      |
+| PtyManager                         | Unchanged — Admiral uses it like any other PTY |
+| Galaxy map, CRT frame, sprites     | Visual chrome stays                            |
+| Status bar, crew chips             | Stay, data source changes (see below)          |
 
 ## Status Bar Data Source
 

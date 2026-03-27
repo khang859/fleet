@@ -15,6 +15,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/starbase/supply-route-service.ts` — Route CRUD with cycle detection
 - `src/main/starbase/cargo-service.ts` — Cargo CRUD with verification tagging
 - `src/main/starbase/retention-service.ts` — TTL-based cleanup + VACUUM
@@ -27,6 +28,7 @@
 - `src/renderer/src/components/visualizer/comms-beams.ts` — Comms beam animations
 
 **Modified files:**
+
 - `src/main/starbase/hull.ts` — Gate 2 (verify/lint) and Gate 3 (Admiral review)
 - `src/main/starbase/admiral.ts` — PR review processing, decomposition prompt updates
 - `src/main/starbase/admiral-system-prompt.ts` — Add decomposition instructions
@@ -43,6 +45,7 @@
 ### Task 1: Write SupplyRouteService
 
 **Files:**
+
 - Create: `src/main/starbase/supply-route-service.ts`
 - Create: `src/main/__tests__/supply-route-service.test.ts`
 
@@ -66,6 +69,7 @@ git commit -m "feat(starbase): add SupplyRouteService with cycle detection"
 ### Task 2: Write CargoService
 
 **Files:**
+
 - Create: `src/main/starbase/cargo-service.ts`
 - Create: `src/main/__tests__/cargo-service.test.ts`
 
@@ -91,6 +95,7 @@ git commit -m "feat(starbase): add CargoService with Supply Route integration"
 ### Task 3: Add Gate 2 (verify/lint) to Hull
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 
 - [ ] **Step 1: Add verify command execution**
@@ -113,6 +118,7 @@ git commit -m "feat(starbase): add Gate 2 verification and lint to Hull"
 ### Task 4: Add Gate 3 (Admiral review)
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 - Modify: `src/main/starbase/admiral.ts`
 
@@ -138,6 +144,7 @@ git commit -m "feat(starbase): add Gate 3 Admiral PR review"
 ### Task 5: Update Admiral system prompt for decomposition
 
 **Files:**
+
 - Modify: `src/main/starbase/admiral-system-prompt.ts`
 - Modify: `src/main/starbase/admiral-tools.ts`
 
@@ -154,6 +161,7 @@ git commit -m "feat(starbase): add Mission decomposition and Supply Route tools 
 ### Task 6: Build Config panel UI
 
 **Files:**
+
 - Create: `src/renderer/src/components/StarCommandConfig.tsx`
 - Modify: `src/renderer/src/components/StarCommandTab.tsx`
 
@@ -179,6 +187,7 @@ git commit -m "feat(starbase): add Config panel UI with Sector/Route/Settings ma
 ### Task 7: Add station ring, pods, and Comms beams to visualizer
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/station-ring.ts`
 - Create: `src/renderer/src/components/visualizer/crew-pods.ts`
 - Create: `src/renderer/src/components/visualizer/comms-beams.ts`
@@ -213,6 +222,7 @@ git commit -m "feat(starbase): add station ring, crew pods, and Comms beams to v
 ### Task 8: Write RetentionService and add schema migration
 
 **Files:**
+
 - Create: `src/main/starbase/retention-service.ts`
 - Create: `src/main/__tests__/retention-service.test.ts`
 - Modify: `src/main/starbase/migrations.ts`
@@ -237,6 +247,7 @@ git commit -m "feat(starbase): add RetentionService and schema indexes"
 ### Task 9: Final integration and verification
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
 

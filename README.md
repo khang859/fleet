@@ -67,15 +67,15 @@ Fleet checks GitHub Releases on launch and prompts you to install new versions.
 
 ## Keyboard Shortcuts
 
-| Action | macOS | Windows/Linux |
-|--------|-------|---------------|
-| New tab | `Cmd+T` | `Ctrl+T` |
-| Close tab | `Cmd+W` | `Ctrl+W` |
-| Split vertical | `Cmd+Shift+E` | `Ctrl+Shift+E` |
-| Split horizontal | `Cmd+Shift+O` | `Ctrl+Shift+O` |
+| Action            | macOS         | Windows/Linux  |
+| ----------------- | ------------- | -------------- |
+| New tab           | `Cmd+T`       | `Ctrl+T`       |
+| Close tab         | `Cmd+W`       | `Ctrl+W`       |
+| Split vertical    | `Cmd+Shift+E` | `Ctrl+Shift+E` |
+| Split horizontal  | `Cmd+Shift+O` | `Ctrl+Shift+O` |
 | Toggle visualizer | `Cmd+Shift+V` | `Ctrl+Shift+V` |
-| Settings | `Cmd+,` | `Ctrl+,` |
-| Show shortcuts | `Cmd+?` | `Ctrl+?` |
+| Settings          | `Cmd+,`       | `Ctrl+,`       |
+| Show shortcuts    | `Cmd+?`       | `Ctrl+?`       |
 
 ## Development
 

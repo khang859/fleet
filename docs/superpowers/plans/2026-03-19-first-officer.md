@@ -15,6 +15,7 @@
 ### Task 1: Database Migration — memos table + missions column
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts`
 
 - [ ] **Step 1: Add migration version 7**
@@ -74,86 +75,85 @@ git commit -m "feat(starbase): add first officer database migration"
 ### Task 2: MemoService — CRUD for memo records
 
 **Files:**
+
 - Create: `src/main/starbase/memo-service.ts`
 
 - [ ] **Step 1: Create MemoService**
 
 ```typescript
-import type Database from 'better-sqlite3'
-import { randomBytes } from 'crypto'
-import type { EventBus } from '../event-bus'
+import type Database from 'better-sqlite3';
+import { randomBytes } from 'crypto';
+import type { EventBus } from '../event-bus';
 
 export type MemoRow = {
-  id: string
-  crew_id: string | null
-  mission_id: number | null
-  event_type: string
-  file_path: string
-  status: string
-  retry_count: number
-  created_at: string
-  updated_at: string
-}
+  id: string;
+  crew_id: string | null;
+  mission_id: number | null;
+  event_type: string;
+  file_path: string;
+  status: string;
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export class MemoService {
   constructor(
     private db: Database.Database,
-    private eventBus?: EventBus,
+    private eventBus?: EventBus
   ) {}
 
   insert(opts: {
-    crewId: string | null
-    missionId: number | null
-    eventType: string
-    filePath: string
-    retryCount?: number
+    crewId: string | null;
+    missionId: number | null;
+    eventType: string;
+    filePath: string;
+    retryCount?: number;
   }): MemoRow {
-    const id = `memo-${randomBytes(4).toString('hex')}`
+    const id = `memo-${randomBytes(4).toString('hex')}`;
     this.db
       .prepare(
         `INSERT INTO memos (id, crew_id, mission_id, event_type, file_path, retry_count)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
-      .run(id, opts.crewId, opts.missionId, opts.eventType, opts.filePath, opts.retryCount ?? 0)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-    return this.get(id)!
+      .run(id, opts.crewId, opts.missionId, opts.eventType, opts.filePath, opts.retryCount ?? 0);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+    return this.get(id)!;
   }
 
   get(id: string): MemoRow | undefined {
-    return this.db.prepare('SELECT * FROM memos WHERE id = ?').get(id) as MemoRow | undefined
+    return this.db.prepare('SELECT * FROM memos WHERE id = ?').get(id) as MemoRow | undefined;
   }
 
   listUnread(): MemoRow[] {
     return this.db
       .prepare("SELECT * FROM memos WHERE status = 'unread' ORDER BY created_at DESC")
-      .all() as MemoRow[]
+      .all() as MemoRow[];
   }
 
   listAll(): MemoRow[] {
-    return this.db
-      .prepare("SELECT * FROM memos ORDER BY created_at DESC")
-      .all() as MemoRow[]
+    return this.db.prepare('SELECT * FROM memos ORDER BY created_at DESC').all() as MemoRow[];
   }
 
   markRead(id: string): void {
     this.db
       .prepare("UPDATE memos SET status = 'read', updated_at = datetime('now') WHERE id = ?")
-      .run(id)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(id);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   dismiss(id: string): void {
     this.db
       .prepare("UPDATE memos SET status = 'dismissed', updated_at = datetime('now') WHERE id = ?")
-      .run(id)
-    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+      .run(id);
+    this.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   getUnreadCount(): number {
     const row = this.db
       .prepare("SELECT COUNT(*) as count FROM memos WHERE status = 'unread'")
-      .get() as { count: number }
-    return row.count
+      .get() as { count: number };
+    return row.count;
   }
 }
 ```
@@ -170,6 +170,7 @@ git commit -m "feat(starbase): add MemoService for first officer memos"
 ### Task 3: FirstOfficer process manager
 
 **Files:**
+
 - Create: `src/main/starbase/first-officer.ts`
 
 This is the core module. It spawns short-lived Claude Code processes for triage, tracks them in-memory, and handles cleanup.
@@ -177,84 +178,84 @@ This is the core module. It spawns short-lived Claude Code processes for triage,
 - [ ] **Step 1: Create the FirstOfficer class**
 
 ```typescript
-import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { randomBytes } from 'crypto'
-import type Database from 'better-sqlite3'
-import type { ConfigService } from './config-service'
-import type { MemoService } from './memo-service'
-import type { EventBus } from '../event-bus'
+import { spawn, ChildProcess } from 'child_process';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, unlinkSync, readdirSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { randomBytes } from 'crypto';
+import type Database from 'better-sqlite3';
+import type { ConfigService } from './config-service';
+import type { MemoService } from './memo-service';
+import type { EventBus } from '../event-bus';
 
 type FirstOfficerDeps = {
-  db: Database.Database
-  configService: ConfigService
-  memoService: MemoService
-  eventBus?: EventBus
-  starbaseId: string
+  db: Database.Database;
+  configService: ConfigService;
+  memoService: MemoService;
+  eventBus?: EventBus;
+  starbaseId: string;
   /** Enriched env with PATH containing claude binary */
-  crewEnv?: Record<string, string>
+  crewEnv?: Record<string, string>;
   /** Path to MCP config JSON for Bridge Controls */
-  mcpConfigPath?: string
-}
+  mcpConfigPath?: string;
+};
 
 type ActionableEvent = {
-  crewId: string
-  missionId: number
-  sectorId: string
-  sectorName: string
-  eventType: string
-  missionSummary: string
-  missionPrompt: string
-  acceptanceCriteria: string | null
-  verifyCommand: string | null
-  crewOutput: string
-  verifyResult: string | null
-  reviewNotes: string | null
-  retryCount: number
-}
+  crewId: string;
+  missionId: number;
+  sectorId: string;
+  sectorName: string;
+  eventType: string;
+  missionSummary: string;
+  missionPrompt: string;
+  acceptanceCriteria: string | null;
+  verifyCommand: string | null;
+  crewOutput: string;
+  verifyResult: string | null;
+  reviewNotes: string | null;
+  retryCount: number;
+};
 
 type RunningProcess = {
-  proc: ChildProcess
-  crewId: string
-  missionId: number
-  startedAt: number
-}
+  proc: ChildProcess;
+  crewId: string;
+  missionId: number;
+  startedAt: number;
+};
 
 export class FirstOfficer {
-  private running = new Map<string, RunningProcess>()
+  private running = new Map<string, RunningProcess>();
 
   constructor(private deps: FirstOfficerDeps) {}
 
   /** Key for dedup map */
   private key(crewId: string, missionId: number): string {
-    return `${crewId}:${missionId}`
+    return `${crewId}:${missionId}`;
   }
 
   /** How many First Officer processes are currently running */
   get activeCount(): number {
-    return this.running.size
+    return this.running.size;
   }
 
   /** Is a process already running for this crew+mission? */
   isRunning(crewId: string, missionId: number): boolean {
-    return this.running.has(this.key(crewId, missionId))
+    return this.running.has(this.key(crewId, missionId));
   }
 
   /** Get status text for UI */
   getStatusText(): string {
-    if (this.running.size === 0) return 'Idle'
-    const entries = [...this.running.values()]
-    if (entries.length === 1) return `Triaging ${entries[0].crewId}`
-    return `Triaging ${entries.length} issues`
+    if (this.running.size === 0) return 'Idle';
+    const entries = [...this.running.values()];
+    if (entries.length === 1) return `Triaging ${entries[0].crewId}`;
+    return `Triaging ${entries.length} issues`;
   }
 
   /** Get status for UI: 'idle' | 'working' | 'memo' */
   getStatus(): 'idle' | 'working' | 'memo' {
-    if (this.running.size > 0) return 'working'
-    if (this.deps.memoService.getUnreadCount() > 0) return 'memo'
-    return 'idle'
+    if (this.running.size > 0) return 'working';
+    if (this.deps.memoService.getUnreadCount() > 0) return 'memo';
+    return 'idle';
   }
 
   /**
@@ -262,202 +263,232 @@ export class FirstOfficer {
    * Returns false if dedup/concurrency prevents spawning.
    */
   async dispatch(event: ActionableEvent): Promise<boolean> {
-    const { configService } = this.deps
-    const maxConcurrent = configService.get('first_officer_max_concurrent') as number
-    const maxRetries = configService.get('first_officer_max_retries') as number
-    const timeout = configService.get('first_officer_timeout') as number
-    const model = configService.get('first_officer_model') as string
+    const { configService } = this.deps;
+    const maxConcurrent = configService.get('first_officer_max_concurrent') as number;
+    const maxRetries = configService.get('first_officer_max_retries') as number;
+    const timeout = configService.get('first_officer_timeout') as number;
+    const model = configService.get('first_officer_model') as string;
 
-    const k = this.key(event.crewId, event.missionId)
+    const k = this.key(event.crewId, event.missionId);
 
     // Dedup: already running for this crew+mission
-    if (this.running.has(k)) return false
+    if (this.running.has(k)) return false;
 
     // Concurrency limit
-    if (this.running.size >= maxConcurrent) return false
+    if (this.running.size >= maxConcurrent) return false;
 
     // Retries exhausted — force escalation
     if (event.retryCount >= maxRetries) {
-      this.writeEscalationMemo(event, 'Maximum retries exhausted')
-      return true
+      this.writeEscalationMemo(event, 'Maximum retries exhausted');
+      return true;
     }
 
     // Ensure workspace exists
-    const workspace = this.getWorkspacePath()
-    const memosDir = join(workspace, 'memos')
-    mkdirSync(memosDir, { recursive: true })
+    const workspace = this.getWorkspacePath();
+    const memosDir = join(workspace, 'memos');
+    mkdirSync(memosDir, { recursive: true });
 
     // Ensure CLAUDE.md exists
-    const claudeMdPath = join(workspace, 'CLAUDE.md')
+    const claudeMdPath = join(workspace, 'CLAUDE.md');
     if (!existsSync(claudeMdPath)) {
-      writeFileSync(claudeMdPath, this.generateClaudeMd(), 'utf-8')
+      writeFileSync(claudeMdPath, this.generateClaudeMd(), 'utf-8');
     }
 
     // Write system prompt to temp file
-    const promptDir = join(tmpdir(), 'fleet-first-officer')
-    mkdirSync(promptDir, { recursive: true })
-    const spFile = join(promptDir, `${event.crewId}-sp.md`)
-    writeFileSync(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8')
+    const promptDir = join(tmpdir(), 'fleet-first-officer');
+    mkdirSync(promptDir, { recursive: true });
+    const spFile = join(promptDir, `${event.crewId}-sp.md`);
+    writeFileSync(spFile, this.buildSystemPrompt(event, maxRetries), 'utf-8');
 
     // Write initial message to temp file
-    const msgFile = join(promptDir, `${event.crewId}-msg.md`)
-    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8')
+    const msgFile = join(promptDir, `${event.crewId}-msg.md`);
+    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8');
 
     // Build CLI args
     const cmdArgs = [
-      '--output-format', 'stream-json',
-      '--input-format', 'stream-json',
+      '--output-format',
+      'stream-json',
+      '--input-format',
+      'stream-json',
       '--dangerously-skip-permissions',
-      '--model', model,
-      '--append-system-prompt-file', spFile,
-    ]
+      '--model',
+      model,
+      '--append-system-prompt-file',
+      spFile
+    ];
     if (this.deps.mcpConfigPath) {
-      cmdArgs.push('--mcp-config', this.deps.mcpConfigPath)
+      cmdArgs.push('--mcp-config', this.deps.mcpConfigPath);
     }
 
     const mergedEnv: Record<string, string> = {
       ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
       FLEET_FIRST_OFFICER: '1',
       FLEET_CREW_ID: event.crewId,
-      FLEET_MISSION_ID: String(event.missionId),
-    }
+      FLEET_MISSION_ID: String(event.missionId)
+    };
 
     try {
       const proc = spawn('claude', cmdArgs, {
         cwd: workspace,
         env: mergedEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      })
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
 
       const entry: RunningProcess = {
         proc,
         crewId: event.crewId,
         missionId: event.missionId,
-        startedAt: Date.now(),
-      }
-      this.running.set(k, entry)
+        startedAt: Date.now()
+      };
+      this.running.set(k, entry);
 
       // Send initial message
-      const initMsg = JSON.stringify({
-        type: 'user',
-        message: {
-          role: 'user',
-          content: `Read and execute the triage instructions in ${msgFile}. Delete the file when done.`,
-        },
-        parent_tool_use_id: null,
-        session_id: '',
-      }) + '\n'
-      proc.stdin!.write(initMsg)
+      const initMsg =
+        JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `Read and execute the triage instructions in ${msgFile}. Delete the file when done.`
+          },
+          parent_tool_use_id: null,
+          session_id: ''
+        }) + '\n';
+      proc.stdin!.write(initMsg);
 
       // Parse stdout for result message
-      let stdoutBuffer = ''
+      let stdoutBuffer = '';
       proc.stdout!.on('data', (chunk: Buffer) => {
-        stdoutBuffer += chunk.toString()
-        const lines = stdoutBuffer.split('\n')
-        stdoutBuffer = lines.pop() ?? ''
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop() ?? '';
         for (const line of lines) {
-          if (!line.trim()) continue
+          if (!line.trim()) continue;
           try {
-            const msg = JSON.parse(line)
+            const msg = JSON.parse(line);
             if (msg.type === 'result') {
-              try { proc.stdin?.end() } catch { /* ignore */ }
+              try {
+                proc.stdin?.end();
+              } catch {
+                /* ignore */
+              }
             }
-          } catch { /* non-JSON */ }
+          } catch {
+            /* non-JSON */
+          }
         }
-      })
+      });
 
       proc.stderr!.on('data', (chunk: Buffer) => {
-        console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim())
-      })
+        console.error(`[first-officer:${event.crewId}] stderr:`, chunk.toString().trim());
+      });
 
       // Hard timeout
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          console.warn(`[first-officer] Timeout for ${k}, killing`)
-          try { proc.kill('SIGTERM') } catch { /* already dead */ }
+          console.warn(`[first-officer] Timeout for ${k}, killing`);
+          try {
+            proc.kill('SIGTERM');
+          } catch {
+            /* already dead */
+          }
           setTimeout(() => {
-            if (!proc.killed) try { proc.kill('SIGKILL') } catch { /* ignore */ }
-          }, 5000)
+            if (!proc.killed)
+              try {
+                proc.kill('SIGKILL');
+              } catch {
+                /* ignore */
+              }
+          }, 5000);
         }
-      }, timeout * 1000)
+      }, timeout * 1000);
 
       // Cleanup on exit
       proc.on('exit', (code) => {
-        clearTimeout(timer)
-        this.running.delete(k)
+        clearTimeout(timer);
+        this.running.delete(k);
 
         // Clean up temp files
-        try { unlinkSync(spFile) } catch { /* ignore */ }
-        try { unlinkSync(msgFile) } catch { /* ignore */ }
+        try {
+          unlinkSync(spFile);
+        } catch {
+          /* ignore */
+        }
+        try {
+          unlinkSync(msgFile);
+        } catch {
+          /* ignore */
+        }
 
         if (code !== 0) {
           // First Officer itself crashed — fallback escalation
-          this.writeEscalationMemo(event, `First Officer process crashed (exit code: ${code})`)
+          this.writeEscalationMemo(event, `First Officer process crashed (exit code: ${code})`);
         }
 
         // Check if new memos were written and insert DB records
-        this.scanForNewMemos(event)
+        this.scanForNewMemos(event);
 
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      })
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      });
 
       proc.on('error', (err) => {
-        clearTimeout(timer)
-        this.running.delete(k)
-        this.writeEscalationMemo(event, `First Officer spawn failed: ${err.message}`)
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      })
+        clearTimeout(timer);
+        this.running.delete(k);
+        this.writeEscalationMemo(event, `First Officer spawn failed: ${err.message}`);
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      });
 
-      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      return true
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      return true;
     } catch (err) {
       this.writeEscalationMemo(
         event,
-        `First Officer spawn failed: ${err instanceof Error ? err.message : 'unknown'}`,
-      )
-      return false
+        `First Officer spawn failed: ${err instanceof Error ? err.message : 'unknown'}`
+      );
+      return false;
     }
   }
 
   /** Scan memos dir for files not yet in DB and insert records */
   private scanForNewMemos(event: ActionableEvent): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    if (!existsSync(memosDir)) return
+    const memosDir = join(this.getWorkspacePath(), 'memos');
+    if (!existsSync(memosDir)) return;
 
     try {
-      const files = readdirSync(memosDir) as string[]
+      const files = readdirSync(memosDir) as string[];
       for (const file of files) {
-        if (!file.endsWith('.md')) continue
-        const filePath = join(memosDir, file)
+        if (!file.endsWith('.md')) continue;
+        const filePath = join(memosDir, file);
         // Check if already tracked
         const existing = this.deps.db
           .prepare('SELECT 1 FROM memos WHERE file_path = ? LIMIT 1')
-          .get(filePath)
-        if (existing) continue
+          .get(filePath);
+        if (existing) continue;
 
         this.deps.memoService.insert({
           crewId: event.crewId,
           missionId: event.missionId,
           eventType: event.eventType,
           filePath,
-          retryCount: event.retryCount,
-        })
+          retryCount: event.retryCount
+        });
       }
-    } catch { /* ignore scan errors */ }
+    } catch {
+      /* ignore scan errors */
+    }
   }
 
   /** Write a fallback escalation memo when the First Officer itself fails */
   private writeEscalationMemo(event: ActionableEvent, reason: string): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    mkdirSync(memosDir, { recursive: true })
+    const memosDir = join(this.getWorkspacePath(), 'memos');
+    mkdirSync(memosDir, { recursive: true });
 
     const slug = event.missionSummary
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
-      .slice(0, 40)
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
-    const filename = `${ts}-${event.crewId}-${slug}.md`
-    const filePath = join(memosDir, filename)
+      .slice(0, 40);
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const filename = `${ts}-${event.crewId}-${slug}.md`;
+    const filePath = join(memosDir, filename);
 
     const content = `## Triage Failed: ${event.missionSummary}
 
@@ -476,25 +507,26 @@ ${event.crewOutput.split('\n').slice(-30).join('\n')}
 
 ### Recommendation
 Manual investigation required. The automated triage process was unable to resolve this issue.
-`
+`;
 
-    writeFileSync(filePath, content, 'utf-8')
+    writeFileSync(filePath, content, 'utf-8');
     this.deps.memoService.insert({
       crewId: event.crewId,
       missionId: event.missionId,
       eventType: event.eventType,
       filePath,
-      retryCount: event.retryCount,
-    })
+      retryCount: event.retryCount
+    });
   }
 
   private getWorkspacePath(): string {
     return join(
       process.env.HOME ?? '~',
-      '.fleet', 'starbases',
+      '.fleet',
+      'starbases',
       `starbase-${this.deps.starbaseId}`,
-      'first-officer',
-    )
+      'first-officer'
+    );
   }
 
   private generateClaudeMd(): string {
@@ -523,7 +555,7 @@ Write a markdown memo to \`./memos/\` with:
 - Never modify sectors or supply routes
 - Never answer hailing questions — only escalate them as memos
 - Keep memos concise and actionable
-`
+`;
   }
 
   private buildSystemPrompt(event: ActionableEvent, maxRetries: number): string {
@@ -553,7 +585,7 @@ Rules:
 - If the mission scope seems too large, recommend splitting in your memo
 - Never retry more than ${maxRetries} times total
 - Write memos in markdown
-`
+`;
   }
 
   private buildInitialMessage(event: ActionableEvent): string {
@@ -573,41 +605,41 @@ ${event.missionPrompt}
 \`\`\`
 ${event.crewOutput}
 \`\`\`
-`
+`;
 
     if (event.verifyResult) {
-      msg += `\n## Verification Result\n\`\`\`json\n${event.verifyResult}\n\`\`\`\n`
+      msg += `\n## Verification Result\n\`\`\`json\n${event.verifyResult}\n\`\`\`\n`;
     }
 
     if (event.reviewNotes) {
-      msg += `\n## Review Notes\n${event.reviewNotes}\n`
+      msg += `\n## Review Notes\n${event.reviewNotes}\n`;
     }
 
-    msg += `\nAnalyze this failure and decide: RETRY or ESCALATE.\n`
-    return msg
+    msg += `\nAnalyze this failure and decide: RETRY or ESCALATE.\n`;
+    return msg;
   }
 
   /** Write a memo for an unanswered hailing request (no process spawn needed) */
   writeHailingMemo(opts: {
-    crewId: string
-    missionId: number | null
-    sectorName: string
-    payload: string
-    createdAt: string
+    crewId: string;
+    missionId: number | null;
+    sectorName: string;
+    payload: string;
+    createdAt: string;
   }): void {
-    const memosDir = join(this.getWorkspacePath(), 'memos')
-    mkdirSync(memosDir, { recursive: true })
+    const memosDir = join(this.getWorkspacePath(), 'memos');
+    mkdirSync(memosDir, { recursive: true });
 
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16)
-    const filename = `${ts}-${opts.crewId}-hailing.md`
-    const filePath = join(memosDir, filename)
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+    const filename = `${ts}-${opts.crewId}-hailing.md`;
+    const filePath = join(memosDir, filename);
 
-    let payloadText = ''
+    let payloadText = '';
     try {
-      const parsed = JSON.parse(opts.payload)
-      payloadText = parsed.message ?? parsed.question ?? JSON.stringify(parsed, null, 2)
+      const parsed = JSON.parse(opts.payload);
+      payloadText = parsed.message ?? parsed.question ?? JSON.stringify(parsed, null, 2);
     } catch {
-      payloadText = opts.payload
+      payloadText = opts.payload;
     }
 
     const content = `## Unanswered Hailing: ${opts.crewId}
@@ -619,21 +651,25 @@ ${payloadText}
 
 ### Action Required
 This crew has been waiting for a response for over 60 seconds. Please review and respond via the Admiral.
-`
-    writeFileSync(filePath, content, 'utf-8')
+`;
+    writeFileSync(filePath, content, 'utf-8');
     this.deps.memoService.insert({
       crewId: opts.crewId,
       missionId: opts.missionId,
       eventType: 'unanswered-hailing',
-      filePath,
-    })
+      filePath
+    });
   }
 
   /** Kill all running processes (app shutdown) */
   shutdown(): void {
     for (const [k, entry] of this.running) {
-      try { entry.proc.kill('SIGKILL') } catch { /* already dead */ }
-      this.running.delete(k)
+      try {
+        entry.proc.kill('SIGKILL');
+      } catch {
+        /* already dead */
+      }
+      this.running.delete(k);
     }
   }
 
@@ -641,7 +677,7 @@ This crew has been waiting for a response for over 60 seconds. Please review and
   reconcile(): void {
     // First Officer processes are ephemeral (max 120s) — if Fleet restarted,
     // they're already dead. Just clear the map.
-    this.running.clear()
+    this.running.clear();
   }
 }
 ```
@@ -658,6 +694,7 @@ git commit -m "feat(starbase): add FirstOfficer process manager"
 ### Task 4: Sentinel integration — detect actionable events and dispatch
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 
 - [ ] **Step 1: Add FirstOfficer dependency to Sentinel**
@@ -677,18 +714,18 @@ Add a new `MissionRow` type at the top (after `SectorRow`):
 
 ```typescript
 type MissionRow = {
-  id: number
-  sector_id: string
-  crew_id: string | null
-  summary: string
-  prompt: string
-  acceptance_criteria: string | null
-  status: string
-  result: string | null
-  verify_result: string | null
-  review_notes: string | null
-  first_officer_retry_count: number
-}
+  id: number;
+  sector_id: string;
+  crew_id: string | null;
+  summary: string;
+  prompt: string;
+  acceptance_criteria: string | null;
+  status: string;
+  result: string | null;
+  verify_result: string | null;
+  review_notes: string | null;
+  first_officer_retry_count: number;
+};
 ```
 
 - [ ] **Step 2: Add First Officer sweep step after socket health check**
@@ -698,7 +735,7 @@ At the end of `runSweep()`, after the socket health check (step 8), add:
 ```typescript
 // 9. First Officer triage — detect actionable failures and dispatch
 if (this.deps.firstOfficer) {
-  await this.firstOfficerSweep()
+  await this.firstOfficerSweep();
 }
 ```
 
@@ -845,7 +882,7 @@ private async firstOfficerSweep(): Promise<void> {
 Add the required import at the top of sentinel.ts:
 
 ```typescript
-import { join } from 'path'
+import { join } from 'path';
 ```
 
 - [ ] **Step 4: Commit**
@@ -860,6 +897,7 @@ git commit -m "feat(starbase): integrate first officer triage into sentinel swee
 ### Task 5: Wire FirstOfficer into app initialization
 
 **Files:**
+
 - Modify: `src/main/index.ts` (the starbase initialization section)
 
 - [ ] **Step 1: Import and instantiate FirstOfficer + MemoService**
@@ -867,11 +905,11 @@ git commit -m "feat(starbase): integrate first officer triage into sentinel swee
 After the existing service instantiations (crewService, missionService, etc.), add:
 
 ```typescript
-import { MemoService } from './starbase/memo-service'
-import { FirstOfficer } from './starbase/first-officer'
+import { MemoService } from './starbase/memo-service';
+import { FirstOfficer } from './starbase/first-officer';
 
 // After configService, commsService, etc. are created:
-const memoService = new MemoService(starbaseDb.getDb(), eventBus)
+const memoService = new MemoService(starbaseDb.getDb(), eventBus);
 
 const firstOfficer = new FirstOfficer({
   db: starbaseDb.getDb(),
@@ -880,8 +918,8 @@ const firstOfficer = new FirstOfficer({
   eventBus,
   starbaseId: starbaseDb.getStarbaseId(),
   crewEnv: crewEnv,
-  mcpConfigPath: undefined, // TODO: wire MCP config when available
-})
+  mcpConfigPath: undefined // TODO: wire MCP config when available
+});
 ```
 
 - [ ] **Step 2: Pass FirstOfficer to Sentinel**
@@ -896,8 +934,8 @@ sentinel = new Sentinel({
   supervisor: socketSupervisor ?? undefined,
   socketPath: SOCKET_PATH,
   firstOfficer,
-  crewService,
-})
+  crewService
+});
 ```
 
 - [ ] **Step 3: Add FirstOfficer to app shutdown**
@@ -905,7 +943,7 @@ sentinel = new Sentinel({
 In the `app.on('before-quit')` or shutdown handler, add:
 
 ```typescript
-firstOfficer.shutdown()
+firstOfficer.shutdown();
 ```
 
 - [ ] **Step 4: Add First Officer status to starbase-changed event payload**
@@ -914,8 +952,8 @@ In the `eventBus.on('starbase-changed')` handler, add memo data to the payload s
 
 ```typescript
 eventBus.on('starbase-changed', () => {
-  const w = mainWindow
-  if (!w || w.isDestroyed()) return
+  const w = mainWindow;
+  if (!w || w.isDestroyed()) return;
   w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
     crew: crewService!.listCrew(),
     missions: missionService!.listMissions(),
@@ -924,10 +962,10 @@ eventBus.on('starbase-changed', () => {
     firstOfficer: {
       status: firstOfficer.getStatus(),
       statusText: firstOfficer.getStatusText(),
-      unreadMemos: memoService.getUnreadCount(),
-    },
-  })
-})
+      unreadMemos: memoService.getUnreadCount()
+    }
+  });
+});
 ```
 
 - [ ] **Step 5: Add reconciliation call and ensure workspace exists**
@@ -935,16 +973,17 @@ eventBus.on('starbase-changed', () => {
 In the reconciliation section, add:
 
 ```typescript
-firstOfficer.reconcile()
+firstOfficer.reconcile();
 
 // Ensure First Officer workspace exists
 const foWorkspace = join(
   process.env.HOME ?? '~',
-  '.fleet', 'starbases',
+  '.fleet',
+  'starbases',
   `starbase-${starbaseDb.getStarbaseId()}`,
-  'first-officer',
-)
-mkdirSync(join(foWorkspace, 'memos'), { recursive: true })
+  'first-officer'
+);
+mkdirSync(join(foWorkspace, 'memos'), { recursive: true });
 ```
 
 - [ ] **Step 6: Commit**
@@ -959,6 +998,7 @@ git commit -m "feat(starbase): wire first officer into app initialization"
 ### Task 6: IPC handlers for memo operations
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts` (or wherever starbase IPC handlers live)
 - Modify: `src/shared/constants.ts` (add IPC channel names)
 - Modify: `src/preload/index.ts` (expose to renderer)
@@ -980,30 +1020,30 @@ Register handlers for memo operations:
 
 ```typescript
 ipcMain.handle(IPC_CHANNELS.MEMO_LIST, () => {
-  return memoService.listAll()
-})
+  return memoService.listAll();
+});
 
 ipcMain.handle(IPC_CHANNELS.MEMO_READ, (_e, id: string) => {
-  memoService.markRead(id)
-})
+  memoService.markRead(id);
+});
 
 ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, (_e, id: string) => {
-  memoService.dismiss(id)
-})
+  memoService.dismiss(id);
+});
 
 ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, (_e, filePath: string) => {
   // Security: only allow reading from the first-officer/memos/ directory
-  const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases')
-  const resolved = require('path').resolve(filePath)
+  const allowedBase = join(process.env.HOME ?? '~', '.fleet', 'starbases');
+  const resolved = require('path').resolve(filePath);
   if (!resolved.startsWith(allowedBase) || !resolved.includes('first-officer/memos/')) {
-    return null
+    return null;
   }
   try {
-    return readFileSync(resolved, 'utf-8')
+    return readFileSync(resolved, 'utf-8');
   } catch {
-    return null
+    return null;
   }
-})
+});
 ```
 
 - [ ] **Step 3: Expose in preload**
@@ -1034,6 +1074,7 @@ git commit -m "feat(starbase): add memo IPC handlers"
 ### Task 7: Install renderer dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install markdown rendering dependencies**
@@ -1047,7 +1088,7 @@ npm install react-markdown remark-gfm @tailwindcss/typography
 In the Tailwind config file, add `@tailwindcss/typography` to plugins:
 
 ```typescript
-plugins: [require('@tailwindcss/typography')]
+plugins: [require('@tailwindcss/typography')];
 ```
 
 - [ ] **Step 3: Commit**
@@ -1062,6 +1103,7 @@ git commit -m "chore: add react-markdown and typography dependencies"
 ### Task 8: Zustand store — First Officer state
 
 **Files:**
+
 - Modify: `src/renderer/src/store/star-command-store.ts`
 
 - [ ] **Step 1: Add First Officer state to the store**
@@ -1070,22 +1112,22 @@ Add types:
 
 ```typescript
 export type MemoInfo = {
-  id: string
-  crew_id: string | null
-  mission_id: number | null
-  event_type: string
-  file_path: string
-  status: string
-  retry_count: number
-  created_at: string
-  updated_at: string
-}
+  id: string;
+  crew_id: string | null;
+  mission_id: number | null;
+  event_type: string;
+  file_path: string;
+  status: string;
+  retry_count: number;
+  created_at: string;
+  updated_at: string;
+};
 
 export type FirstOfficerStatus = {
-  status: 'idle' | 'working' | 'memo'
-  statusText: string
-  unreadMemos: number
-}
+  status: 'idle' | 'working' | 'memo';
+  statusText: string;
+  unreadMemos: number;
+};
 ```
 
 Add to `StarCommandStore`:
@@ -1122,6 +1164,7 @@ git commit -m "feat(ui): add first officer state to star command store"
 ### Task 9: First Officer sidebar section
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/AdmiralSidebar.tsx`
 
 - [ ] **Step 1: Add First Officer section below the Admiral section**
@@ -1129,7 +1172,9 @@ git commit -m "feat(ui): add first officer state to star command store"
 After the Admiral avatar section, add:
 
 ```tsx
-{/* First Officer */}
+{
+  /* First Officer */
+}
 <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
   <img
     src={foSrc}
@@ -1169,30 +1214,30 @@ After the Admiral avatar section, add:
       </span>
     </button>
   )}
-</div>
+</div>;
 ```
 
 Import First Officer images (use Admiral images as placeholders until real assets are generated):
 
 ```typescript
 // TODO: Replace with actual First Officer pixel art assets when generated
-import foDefault from '../../assets/admiral-default.png'
-import foWorking from '../../assets/admiral-thinking.png'
-import foEscalation from '../../assets/admiral-alert.png'
-import foIdle from '../../assets/admiral-standby.png'
+import foDefault from '../../assets/admiral-default.png';
+import foWorking from '../../assets/admiral-thinking.png';
+import foEscalation from '../../assets/admiral-alert.png';
+import foIdle from '../../assets/admiral-standby.png';
 
 const FO_IMAGES: Record<string, string> = {
   idle: foIdle,
   working: foWorking,
   memo: foEscalation,
-  default: foDefault,
-}
+  default: foDefault
+};
 ```
 
 Update the `<img>` src to switch based on status:
 
 ```typescript
-const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default
+const foSrc = FO_IMAGES[firstOfficerStatus.status] ?? FO_IMAGES.default;
 ```
 
 Add props for the memo click handler and first officer status from the store.
@@ -1209,57 +1254,58 @@ git commit -m "feat(ui): add first officer section to sidebar"
 ### Task 10: Memo viewer panel
 
 **Files:**
+
 - Create: `src/renderer/src/components/star-command/MemoPanel.tsx`
 
 - [ ] **Step 1: Create MemoPanel component**
 
 ```tsx
-import { useState, useEffect } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import type { MemoInfo } from '../../store/star-command-store'
+import { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import type { MemoInfo } from '../../store/star-command-store';
 
 type MemoPanelProps = {
-  onClose: () => void
-}
+  onClose: () => void;
+};
 
 export function MemoPanel({ onClose }: MemoPanelProps) {
-  const [memos, setMemos] = useState<MemoInfo[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [content, setContent] = useState<string | null>(null)
+  const [memos, setMemos] = useState<MemoInfo[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [content, setContent] = useState<string | null>(null);
 
   useEffect(() => {
-    loadMemos()
-  }, [])
+    loadMemos();
+  }, []);
 
   async function loadMemos() {
-    const list = await window.fleet.starbase.memoList()
-    setMemos(list)
+    const list = await window.fleet.starbase.memoList();
+    setMemos(list);
     if (list.length > 0 && !selectedId) {
-      selectMemo(list[0])
+      selectMemo(list[0]);
     }
   }
 
   async function selectMemo(memo: MemoInfo) {
-    setSelectedId(memo.id)
-    const text = await window.fleet.starbase.memoContent(memo.file_path)
-    setContent(text)
+    setSelectedId(memo.id);
+    const text = await window.fleet.starbase.memoContent(memo.file_path);
+    setContent(text);
     if (memo.status === 'unread') {
-      await window.fleet.starbase.memoRead(memo.id)
-      loadMemos()
+      await window.fleet.starbase.memoRead(memo.id);
+      loadMemos();
     }
   }
 
   async function dismissMemo(id: string) {
-    await window.fleet.starbase.memoDismiss(id)
-    loadMemos()
+    await window.fleet.starbase.memoDismiss(id);
+    loadMemos();
     if (selectedId === id) {
-      setSelectedId(null)
-      setContent(null)
+      setSelectedId(null);
+      setContent(null);
     }
   }
 
-  const activeMemos = memos.filter((m) => m.status !== 'dismissed')
+  const activeMemos = memos.filter((m) => m.status !== 'dismissed');
 
   return (
     <div className="flex flex-col h-full bg-neutral-900">
@@ -1268,10 +1314,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         <h2 className="text-sm font-mono text-teal-400 uppercase tracking-widest">
           First Officer Memos
         </h2>
-        <button
-          onClick={onClose}
-          className="text-neutral-500 hover:text-neutral-300 text-sm"
-        >
+        <button onClick={onClose} className="text-neutral-500 hover:text-neutral-300 text-sm">
           Close
         </button>
       </div>
@@ -1294,9 +1337,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
                   {memo.status === 'unread' && (
                     <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" />
                   )}
-                  <span className="text-xs text-neutral-300 truncate">
-                    {memo.event_type}
-                  </span>
+                  <span className="text-xs text-neutral-300 truncate">{memo.event_type}</span>
                 </div>
                 <div className="text-[10px] text-neutral-600 mt-0.5">
                   {memo.crew_id} · {new Date(memo.created_at).toLocaleTimeString()}
@@ -1310,14 +1351,10 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         <div className="flex-1 overflow-y-auto p-6">
           {content ? (
             <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {content}
-              </ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
             </div>
           ) : (
-            <div className="text-xs text-neutral-500">
-              Select a memo to read
-            </div>
+            <div className="text-xs text-neutral-500">Select a memo to read</div>
           )}
 
           {selectedId && (
@@ -1333,7 +1370,7 @@ export function MemoPanel({ onClose }: MemoPanelProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }
 ```
 
@@ -1353,6 +1390,7 @@ git commit -m "feat(ui): add memo viewer panel with markdown rendering"
 ### Task 11: Pixel art asset prompts
 
 **Files:**
+
 - Modify: `star-command-asset-prompts.md`
 
 - [ ] **Step 1: Add First Officer section to the asset prompts file**
@@ -1364,6 +1402,7 @@ Add a new section after the Admiral portraits (section 2):
 
 ### 2b-a. First Officer Portrait — Default
 ```
+
 {style prefix}, pixel art character portrait, front-facing bust shot,
 female First Officer with sharp features, short practical hair, small
 tactical headset with amber LED accent on one ear, holding a glowing
@@ -1371,34 +1410,42 @@ data-pad at chest level, confident focused expression, fitted dark coat
 with high collar similar to Admiral but with amber rank stripe on shoulder,
 dark navy background with subtle teal grid lines, 64x64 pixels, portrait
 avatar, clean readable face details
+
 ```
 
 ### 2b-b. First Officer Portrait — Working
 ```
+
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,
 eyes focused down on glowing data-pad, small teal processing indicators
 near headset, concentrated expression, dark navy background,
 64x64 pixels, portrait avatar
+
 ```
 
 ### 2b-c. First Officer Portrait — Escalation
 ```
+
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,
 looking up from data-pad with alert expression, headset flashing amber,
 one hand raised slightly as if flagging attention, dark navy background
 with subtle amber tint, 64x64 pixels, portrait avatar
+
 ```
 
 ### 2b-d. First Officer Portrait — Idle
 ```
+
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,
 relaxed neutral expression, data-pad lowered to side, headset glow dimmed,
 dark navy background slightly darker than default, 64x64 pixels,
 portrait avatar
+
 ```
+
 ```
 
 - [ ] **Step 2: Commit**
@@ -1413,6 +1460,7 @@ git commit -m "docs: add first officer pixel art asset prompts"
 ### Task 12: Integration test
 
 **Files:**
+
 - Create: `src/main/__tests__/first-officer.test.ts`
 
 - [ ] **Step 1: Write test for FirstOfficer dispatch and memo creation**
@@ -1420,55 +1468,55 @@ git commit -m "docs: add first officer pixel art asset prompts"
 Test the core flow: create a FirstOfficer with a mock DB, dispatch an event with retries exhausted, verify a memo file is written and DB record created.
 
 ```typescript
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import Database from 'better-sqlite3'
-import { mkdtempSync, existsSync, readdirSync, rmSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import { runMigrations } from '../starbase/db'
-import { MemoService } from '../starbase/memo-service'
-import { FirstOfficer } from '../starbase/first-officer'
-import { ConfigService } from '../starbase/config-service'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { mkdtempSync, existsSync, readdirSync, rmSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { runMigrations } from '../starbase/db';
+import { MemoService } from '../starbase/memo-service';
+import { FirstOfficer } from '../starbase/first-officer';
+import { ConfigService } from '../starbase/config-service';
 
 describe('FirstOfficer', () => {
-  let db: Database.Database
-  let tmpDir: string
-  let memoService: MemoService
-  let configService: ConfigService
-  let firstOfficer: FirstOfficer
+  let db: Database.Database;
+  let tmpDir: string;
+  let memoService: MemoService;
+  let configService: ConfigService;
+  let firstOfficer: FirstOfficer;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'fo-test-'))
-    db = new Database(':memory:')
-    runMigrations(db)
-    configService = new ConfigService(db)
-    memoService = new MemoService(db)
+    tmpDir = mkdtempSync(join(tmpdir(), 'fo-test-'));
+    db = new Database(':memory:');
+    runMigrations(db);
+    configService = new ConfigService(db);
+    memoService = new MemoService(db);
 
     // Override HOME so workspace is created in tmpDir
-    process.env.HOME = tmpDir
+    process.env.HOME = tmpDir;
 
     firstOfficer = new FirstOfficer({
       db,
       configService,
       memoService,
-      starbaseId: 'test',
-    })
-  })
+      starbaseId: 'test'
+    });
+  });
 
   afterEach(() => {
-    db.close()
-    rmSync(tmpDir, { recursive: true, force: true })
-  })
+    db.close();
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it('writes escalation memo when retries exhausted', async () => {
     // Insert test sector + mission + crew
-    db.prepare("INSERT INTO sectors (id, name, root_path) VALUES ('api', 'API', '/tmp/api')").run()
+    db.prepare("INSERT INTO sectors (id, name, root_path) VALUES ('api', 'API', '/tmp/api')").run();
     db.prepare(
       "INSERT INTO missions (sector_id, summary, prompt, first_officer_retry_count) VALUES ('api', 'Add rate limiting', 'Add rate limiting to /api/users', 3)"
-    ).run()
+    ).run();
     db.prepare(
       "INSERT INTO crew (id, sector_id, mission_id, status) VALUES ('api-crew-1234', 'api', 1, 'error')"
-    ).run()
+    ).run();
 
     const dispatched = await firstOfficer.dispatch({
       crewId: 'api-crew-1234',
@@ -1483,28 +1531,28 @@ describe('FirstOfficer', () => {
       crewOutput: 'Error: test failed',
       verifyResult: null,
       reviewNotes: null,
-      retryCount: 3, // >= max retries
-    })
+      retryCount: 3 // >= max retries
+    });
 
-    expect(dispatched).toBe(true)
+    expect(dispatched).toBe(true);
 
     // Check memo was created
-    const memos = memoService.listAll()
-    expect(memos.length).toBe(1)
-    expect(memos[0].event_type).toBe('error')
-    expect(memos[0].crew_id).toBe('api-crew-1234')
-    expect(existsSync(memos[0].file_path)).toBe(true)
-  })
+    const memos = memoService.listAll();
+    expect(memos.length).toBe(1);
+    expect(memos[0].event_type).toBe('error');
+    expect(memos[0].crew_id).toBe('api-crew-1234');
+    expect(existsSync(memos[0].file_path)).toBe(true);
+  });
 
   it('respects concurrency limit', async () => {
-    expect(firstOfficer.activeCount).toBe(0)
-    expect(firstOfficer.getStatus()).toBe('idle')
-  })
+    expect(firstOfficer.activeCount).toBe(0);
+    expect(firstOfficer.getStatus()).toBe('idle');
+  });
 
   it('deduplicates by crew+mission', () => {
-    expect(firstOfficer.isRunning('crew-1', 1)).toBe(false)
-  })
-})
+    expect(firstOfficer.isRunning('crew-1', 1)).toBe(false);
+  });
+});
 ```
 
 - [ ] **Step 2: Run tests**
@@ -1535,6 +1583,7 @@ Check SQLite database for `memos` table and `first_officer_retry_count` column o
 - [ ] **Step 3: Manually trigger a failure scenario**
 
 Deploy a crew with a mission designed to fail (e.g., impossible acceptance criteria). Wait for it to error. Verify:
+
 - Sentinel detects the failure
 - First Officer process spawns (check console logs for `[first-officer]` prefix)
 - Either a retry occurs or a memo appears in the sidebar

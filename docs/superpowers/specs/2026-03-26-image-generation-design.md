@@ -69,9 +69,7 @@ Per-provider settings. Not all providers will have the same fields — each prov
     "num_images": 1
   },
   "referenceImages": [],
-  "images": [
-    { "filename": "image-001.png", "width": 1024, "height": 1024 }
-  ],
+  "images": [{ "filename": "image-001.png", "width": 1024, "height": 1024 }],
   "providerRequestId": "req_abc123"
 }
 ```
@@ -81,12 +79,17 @@ Per-provider settings. Not all providers will have the same fields — each prov
 **Edit mode:** `mode` is `"edit"`, `referenceImages` contains the original paths/URLs used as input.
 
 **Partial success** (e.g., requested 4 images, 2 downloaded):
+
 ```json
 {
   "status": "partial",
   "images": [
     { "filename": "image-001.png", "width": 1024, "height": 1024 },
-    { "filename": null, "error": "Download failed: connection reset", "providerUrl": "https://fal.media/..." }
+    {
+      "filename": null,
+      "error": "Download failed: connection reset",
+      "providerUrl": "https://fal.media/..."
+    }
   ]
 }
 ```
@@ -97,8 +100,8 @@ Per-provider settings. Not all providers will have the same fields — each prov
 
 ```typescript
 interface ImageProvider {
-  id: string;                                          // 'fal-ai'
-  name: string;                                        // 'fal.ai'
+  id: string; // 'fal-ai'
+  name: string; // 'fal.ai'
   configure(settings: Record<string, unknown>): void;
   submit(opts: GenerateOpts | EditOpts): Promise<{ requestId: string }>;
   poll(requestId: string): Promise<PollResult>;
@@ -121,6 +124,7 @@ type GenerationResult = {
 ### fal.ai Provider (Initial Implementation)
 
 Uses `@fal-ai/client` library:
+
 - `submit()` → `fal.queue.submit("fal-ai/nano-banana-2", { input })`
 - `poll()` → `fal.queue.status("fal-ai/nano-banana-2", { requestId })`
 - `getResult()` → `fal.queue.result("fal-ai/nano-banana-2", { requestId })`
@@ -143,16 +147,16 @@ Singleton initialized at app startup. Holds a `Map<string, ImageProvider>` (init
 
 ### Methods
 
-| Method | Returns | Description |
-|--------|---------|-------------|
-| `generate(opts)` | `{ id }` | Submit to provider queue, start background poll, return immediately |
-| `edit(opts)` | `{ id }` | Validate reference images, submit, start background poll |
-| `getStatus(id)` | `meta` | Read meta.json for a generation |
-| `list()` | `meta[]` | Scan generations/ directory |
-| `retry(id)` | `{ id }` | Resubmit a failed/timeout generation |
-| `delete(id)` | `void` | Remove generation directory |
-| `getSettings()` | `settings` | Read settings.json |
-| `updateSettings(partial)` | `void` | Merge into settings.json, reconfigure providers |
+| Method                    | Returns    | Description                                                         |
+| ------------------------- | ---------- | ------------------------------------------------------------------- |
+| `generate(opts)`          | `{ id }`   | Submit to provider queue, start background poll, return immediately |
+| `edit(opts)`              | `{ id }`   | Validate reference images, submit, start background poll            |
+| `getStatus(id)`           | `meta`     | Read meta.json for a generation                                     |
+| `list()`                  | `meta[]`   | Scan generations/ directory                                         |
+| `retry(id)`               | `{ id }`   | Resubmit a failed/timeout generation                                |
+| `delete(id)`              | `void`     | Remove generation directory                                         |
+| `getSettings()`           | `settings` | Read settings.json                                                  |
+| `updateSettings(partial)` | `void`     | Merge into settings.json, reconfigure providers                     |
 
 ### Background Poll Lifecycle
 
@@ -166,30 +170,30 @@ Singleton initialized at app startup. Holds a `Map<string, ImageProvider>` (init
 
 ### Failure Handling
 
-| Failure | Behavior |
-|---------|----------|
-| Network failure mid-poll | Mark `failed`, store error, retry-able |
-| Download failure | Store provider URL in meta.json, mark `partial` or `failed`, allow retry of just the download |
-| Invalid API key (401) | Mark `failed`, error: "Invalid API key" |
-| Rate limited (429) | Mark `failed`, error: "Rate limited", retry-able |
-| Partial download | Store what succeeded, mark `partial`, allow retry of missing images |
-| Disk write failure | Mark `failed`, error describes IO problem |
-| Reference image not found (edit) | Reject synchronously before submitting to provider |
-| Queue timeout (>5min) | Mark `timeout`, retry-able |
+| Failure                          | Behavior                                                                                      |
+| -------------------------------- | --------------------------------------------------------------------------------------------- |
+| Network failure mid-poll         | Mark `failed`, store error, retry-able                                                        |
+| Download failure                 | Store provider URL in meta.json, mark `partial` or `failed`, allow retry of just the download |
+| Invalid API key (401)            | Mark `failed`, error: "Invalid API key"                                                       |
+| Rate limited (429)               | Mark `failed`, error: "Rate limited", retry-able                                              |
+| Partial download                 | Store what succeeded, mark `partial`, allow retry of missing images                           |
+| Disk write failure               | Mark `failed`, error describes IO problem                                                     |
+| Reference image not found (edit) | Reject synchronously before submitting to provider                                            |
+| Queue timeout (>5min)            | Mark `timeout`, retry-able                                                                    |
 
 ## CLI Commands
 
 ### Command Mapping
 
-| CLI Syntax | Socket Command | Description |
-|------------|---------------|-------------|
-| `fleet images generate --prompt ...` | `image.generate` | Generate image(s) from prompt |
-| `fleet images edit --prompt ... --images ...` | `image.edit` | Edit image(s) with prompt + references |
-| `fleet images status <id>` | `image.status` | Check generation status |
-| `fleet images list` | `image.list` | List all generations |
-| `fleet images retry <id>` | `image.retry` | Retry failed/timeout generation |
-| `fleet images config` | `image.config.get` | Show current config |
-| `fleet images config --api-key ...` | `image.config.set` | Update config |
+| CLI Syntax                                    | Socket Command     | Description                            |
+| --------------------------------------------- | ------------------ | -------------------------------------- |
+| `fleet images generate --prompt ...`          | `image.generate`   | Generate image(s) from prompt          |
+| `fleet images edit --prompt ... --images ...` | `image.edit`       | Edit image(s) with prompt + references |
+| `fleet images status <id>`                    | `image.status`     | Check generation status                |
+| `fleet images list`                           | `image.list`       | List all generations                   |
+| `fleet images retry <id>`                     | `image.retry`      | Retry failed/timeout generation        |
+| `fleet images config`                         | `image.config.get` | Show current config                    |
+| `fleet images config --api-key ...`           | `image.config.set` | Update config                          |
 
 ### Generate
 
@@ -205,6 +209,7 @@ fleet images generate \
 ```
 
 Returns immediately:
+
 ```
 Submitted: 20260326-143052-a1b2c3
 ```
@@ -268,16 +273,16 @@ $ fleet images config --provider fal-ai --api-key sk-xxx
 
 ### New Dispatch Cases
 
-| Command | Args | Returns |
-|---------|------|---------|
-| `image.generate` | prompt, provider?, model?, resolution?, aspectRatio?, outputFormat?, numImages? | `{ id }` |
-| `image.edit` | prompt, images, provider?, model?, resolution? | `{ id }` |
-| `image.status` | id | Full meta.json contents |
-| `image.list` | — | Array of all meta.json contents |
-| `image.retry` | id | `{ id }` |
-| `image.delete` | id | `void` |
-| `image.config.get` | — | Settings (API key redacted) |
-| `image.config.set` | provider?, apiKey?, defaultModel?, defaultResolution?, defaultAspectRatio?, defaultOutputFormat? | `void` |
+| Command            | Args                                                                                             | Returns                         |
+| ------------------ | ------------------------------------------------------------------------------------------------ | ------------------------------- |
+| `image.generate`   | prompt, provider?, model?, resolution?, aspectRatio?, outputFormat?, numImages?                  | `{ id }`                        |
+| `image.edit`       | prompt, images, provider?, model?, resolution?                                                   | `{ id }`                        |
+| `image.status`     | id                                                                                               | Full meta.json contents         |
+| `image.list`       | —                                                                                                | Array of all meta.json contents |
+| `image.retry`      | id                                                                                               | `{ id }`                        |
+| `image.delete`     | id                                                                                               | `void`                          |
+| `image.config.get` | —                                                                                                | Settings (API key redacted)     |
+| `image.config.set` | provider?, apiKey?, defaultModel?, defaultResolution?, defaultAspectRatio?, defaultOutputFormat? | `void`                          |
 
 All mutating commands emit `state-change` event `image:changed`.
 
@@ -307,8 +312,11 @@ window.fleet.images = {
   delete: (id) => ipcRenderer.invoke('images:delete', id),
   getConfig: () => ipcRenderer.invoke('images:config:get'),
   setConfig: (partial) => ipcRenderer.invoke('images:config:set', partial),
-  onChanged: (cb) => { ipcRenderer.on('images:changed', cb); return () => ipcRenderer.removeListener('images:changed', cb); },
-}
+  onChanged: (cb) => {
+    ipcRenderer.on('images:changed', cb);
+    return () => ipcRenderer.removeListener('images:changed', cb);
+  }
+};
 ```
 
 ## Renderer
@@ -341,6 +349,7 @@ Tab type: `'images'`. Always present in sidebar, not closeable. Shows gallery ic
 **Three sub-views:**
 
 #### Grid View (default)
+
 - Thumbnail grid, newest first
 - Each card: thumbnail (first image), status indicator, prompt (truncated), model, timestamp
 - Queued/processing: spinner overlay
@@ -348,11 +357,13 @@ Tab type: `'images'`. Always present in sidebar, not closeable. Shows gallery ic
 - Partial: warning badge
 
 #### Detail View (click a card)
+
 - Large image preview with carousel if multiple images
 - Full metadata sidebar: prompt, model, provider, resolution, aspect ratio, format, timestamps, reference images (as clickable thumbnails for edits), provider request ID, status + error
 - Actions: retry, delete, open in Finder/Explorer, copy path
 
 #### Settings Sub-tab
+
 - Provider selector (dropdown, just fal.ai for now)
 - Per-provider settings:
   - API key (password input with show/hide toggle)
@@ -368,6 +379,7 @@ New npm dependency: `@fal-ai/client` — installed in the main process (Node.js)
 ## Files to Create/Modify
 
 ### New Files
+
 - `src/main/image-service.ts` — ImageService singleton
 - `src/main/image-providers/types.ts` — ImageProvider interface and shared types
 - `src/main/image-providers/fal-ai.ts` — fal.ai provider implementation
@@ -378,6 +390,7 @@ New npm dependency: `@fal-ai/client` — installed in the main process (Node.js)
 - `src/renderer/src/components/ImageGallery/ImageSettings.tsx` — settings sub-tab
 
 ### Modified Files
+
 - `src/shared/types.ts` — add image-related types (ImageGeneration, ImageSettings, etc.)
 - `src/shared/ipc-channels.ts` — add `images:*` channels
 - `src/preload/index.ts` — add `window.fleet.images` namespace

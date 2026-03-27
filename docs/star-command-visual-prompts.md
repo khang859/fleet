@@ -445,19 +445,19 @@ npx tsx scripts/generate-image.ts "Same space station hub, rotated 315 degrees c
 
 ## Summary
 
-| Category | Count | Base Images | Edit Images |
-|----------|-------|------------|-------------|
-| Admiral Avatars | 5 | 1 | 4 |
-| Crew Avatars | 5 | 1 | 4 |
-| CRT Frame | 7 | 1 | 6 |
-| Status Bar | 3 | 1 | 2 |
-| Status Chips | 7 | 1 (frame) + 1 (dot) | 5 |
-| Shuttle | 4 | 1 | 3 |
-| Particles | 16 | 5 | 11 |
-| Data Orbs | 3 | 1 | 2 |
-| Beacon | 2 | 1 | 1 |
-| Station Hub | 8 | 1 | 7 |
-| **Total** | **60** | **15** | **45** |
+| Category        | Count  | Base Images         | Edit Images |
+| --------------- | ------ | ------------------- | ----------- |
+| Admiral Avatars | 5      | 1                   | 4           |
+| Crew Avatars    | 5      | 1                   | 4           |
+| CRT Frame       | 7      | 1                   | 6           |
+| Status Bar      | 3      | 1                   | 2           |
+| Status Chips    | 7      | 1 (frame) + 1 (dot) | 5           |
+| Shuttle         | 4      | 1                   | 3           |
+| Particles       | 16     | 5                   | 11          |
+| Data Orbs       | 3      | 1                   | 2           |
+| Beacon          | 2      | 1                   | 1           |
+| Station Hub     | 8      | 1                   | 7           |
+| **Total**       | **60** | **15**              | **45**      |
 
 **Recommended generation order:** Admiral → Crew → CRT → StatusBar → Chips → Shuttle → Particles → Orbs → Beacon → Checkmark → Station
 

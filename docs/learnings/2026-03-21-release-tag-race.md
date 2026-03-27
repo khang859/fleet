@@ -7,6 +7,7 @@
 **Root cause:** `git tag v2.3.2` resolved `HEAD` before `git commit` finished. Running those commands concurrently introduced a race on which commit `HEAD` pointed to at tag creation time.
 
 **Fix:** Run release git steps sequentially:
+
 1. Commit the version bump
 2. Verify `HEAD`
 3. Create the tag on that exact commit

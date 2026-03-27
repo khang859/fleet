@@ -32,11 +32,11 @@ Electron v39 (our version) removed `file.path`. File paths must be resolved via 
 
 ```typescript
 // preload/index.ts
-import { webUtils } from 'electron'
+import { webUtils } from 'electron';
 
 // Add to fleetApi object:
 utils: {
-  getFilePath: (file: File) => webUtils.getPathForFile(file)
+  getFilePath: (file: File) => webUtils.getPathForFile(file);
 }
 ```
 
@@ -57,6 +57,7 @@ For each dropped file (including directories — treated identically):
 Platform detection: use `process.platform` exposed via preload (already available as we're in Electron).
 
 Examples (macOS/Linux):
+
 - Clean path: `'/usr/bin/node' `
 - Path with spaces: `'/Users/me/My Documents/file.txt' `
 - Path with single quote: `'/Users/me/it'\''s a file.txt' `

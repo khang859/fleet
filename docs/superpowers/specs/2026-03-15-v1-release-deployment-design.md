@@ -11,11 +11,11 @@ Set up CI/CD to build, sign, and publish Fleet as a cross-platform Electron app 
 
 ## Build Matrix
 
-| Platform | Runner            | Arch   | Artifacts          |
-|----------|-------------------|--------|--------------------|
-| macOS    | `macos-latest`    | x64 + arm64 (universal) | DMG |
-| Windows  | `windows-latest`  | x64    | NSIS installer (.exe) |
-| Linux    | `ubuntu-latest`   | x64    | AppImage, .deb     |
+| Platform | Runner           | Arch                    | Artifacts             |
+| -------- | ---------------- | ----------------------- | --------------------- |
+| macOS    | `macos-latest`   | x64 + arm64 (universal) | DMG                   |
+| Windows  | `windows-latest` | x64                     | NSIS installer (.exe) |
+| Linux    | `ubuntu-latest`  | x64                     | AppImage, .deb        |
 
 Each platform builds in parallel as a separate job.
 
@@ -94,23 +94,23 @@ app.whenReady().then(() => {
 
 ## Required GitHub Secrets
 
-| Secret              | Purpose                              |
-|---------------------|--------------------------------------|
-| `CSC_LINK`          | Base64-encoded .p12 signing cert     |
-| `CSC_KEY_PASSWORD`  | Certificate password                 |
-| `APPLE_ID`          | Apple ID for notarization            |
-| `APPLE_APP_PASSWORD`| App-specific password for notarization|
-| `APPLE_TEAM_ID`     | Apple Developer Team ID              |
+| Secret               | Purpose                                |
+| -------------------- | -------------------------------------- |
+| `CSC_LINK`           | Base64-encoded .p12 signing cert       |
+| `CSC_KEY_PASSWORD`   | Certificate password                   |
+| `APPLE_ID`           | Apple ID for notarization              |
+| `APPLE_APP_PASSWORD` | App-specific password for notarization |
+| `APPLE_TEAM_ID`      | Apple Developer Team ID                |
 
 `GITHUB_TOKEN` is automatically provided by GitHub Actions.
 
 ## Files to Create/Modify
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `.github/workflows/release.yml` | Create | CI/CD release workflow |
-| `package.json` | Modify | Version bump, publish config, Linux targets, universal mac |
-| `src/main/index.ts` | Modify | Add `autoUpdater.checkForUpdatesAndNotify()` call |
+| File                            | Action | Purpose                                                    |
+| ------------------------------- | ------ | ---------------------------------------------------------- |
+| `.github/workflows/release.yml` | Create | CI/CD release workflow                                     |
+| `package.json`                  | Modify | Version bump, publish config, Linux targets, universal mac |
+| `src/main/index.ts`             | Modify | Add `autoUpdater.checkForUpdatesAndNotify()` call          |
 
 ## Release Process
 

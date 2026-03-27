@@ -12,19 +12,31 @@ Replace the single `<canvas>` in `SpaceCanvas.tsx` with 3 stacked canvases insid
 
 ### Layer Assignment
 
-| Layer | Ref | Target FPS | Systems |
-|-------|-----|-----------|---------|
-| Background | `bgCanvasRef` | 10 | background fill, aurora, nebula |
-| Mid | `midCanvasRef` | 30 | starfield, shooting stars, celestials, asteroids |
-| Active | `activeCanvasRef` | 30 | ships, particles, bloom glow, space weather, engine trails |
+| Layer      | Ref               | Target FPS | Systems                                                    |
+| ---------- | ----------------- | ---------- | ---------------------------------------------------------- |
+| Background | `bgCanvasRef`     | 10         | background fill, aurora, nebula                            |
+| Mid        | `midCanvasRef`    | 30         | starfield, shooting stars, celestials, asteroids           |
+| Active     | `activeCanvasRef` | 30         | ships, particles, bloom glow, space weather, engine trails |
 
 ### DOM Structure
 
 ```tsx
 <div className="relative w-full h-full">
-  <canvas ref={bgCanvasRef} className="absolute inset-0 w-full h-full" style={{ imageRendering: 'pixelated', pointerEvents: 'none' }} />
-  <canvas ref={midCanvasRef} className="absolute inset-0 w-full h-full" style={{ imageRendering: 'pixelated', pointerEvents: 'none' }} />
-  <canvas ref={activeCanvasRef} className="absolute inset-0 w-full h-full cursor-pointer" style={{ imageRendering: 'pixelated' }} />
+  <canvas
+    ref={bgCanvasRef}
+    className="absolute inset-0 w-full h-full"
+    style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+  />
+  <canvas
+    ref={midCanvasRef}
+    className="absolute inset-0 w-full h-full"
+    style={{ imageRendering: 'pixelated', pointerEvents: 'none' }}
+  />
+  <canvas
+    ref={activeCanvasRef}
+    className="absolute inset-0 w-full h-full cursor-pointer"
+    style={{ imageRendering: 'pixelated' }}
+  />
   {tooltip && <TooltipOverlay />}
 </div>
 ```
@@ -97,6 +109,7 @@ On a 60Hz Retina display: active layer goes from 60fps at 4x pixels to 30fps at 
 **Problem:** The far layer (layer 0, speed 5px/s) applies a CSS blur filter to every individual `fillRect` — ~10 blurred draw ops per frame. This is the single most expensive operation in the pipeline. Canvas 2D filters trigger Chromium's Skia software rasterization path.
 
 **Fix:** Pre-render all far-layer stars onto a dedicated `OffscreenCanvas` with the blur applied once. On each frame, `drawImage` the cached buffer with an X-offset for parallax scroll. The buffer is drawn in world-space after the camera transform — at position `(0, 0)` in world coordinates, scrolled left by `star.x` drift. The mid-layer canvas applies the full camera transform (`ctx.translate(-camera.x, -camera.y)`) before rendering, just like the current single-canvas code. Re-render the OffscreenCanvas only when:
+
 - A star wraps around (respawns off the right edge)
 - The starfield resizes
 
@@ -107,6 +120,7 @@ The blur cost drops from ~10 filtered draws per frame to ~1 filtered full-buffer
 **Problem:** `renderConstellations()` runs O(n²) distance checks with `Math.sqrt` on ~20 mid-layer stars every frame (190 sqrt calls + per-line `beginPath/stroke`).
 
 **Fix:**
+
 1. Compare `dx*dx + dy*dy < 1600` instead of `Math.sqrt(dx*dx + dy*dy) < 40`
 2. Cache edge list as `Array<[number, number]>` index pairs. Recompute on a 500ms timer (stars drift continuously, so wrap-only invalidation would miss edges forming between converging stars or retain stale edges between diverging ones). At 500ms intervals, the visual difference is imperceptible given the 0.05 alpha line opacity.
 3. Batch all constellation lines into a single `beginPath()` → N × `moveTo/lineTo` → one `stroke()`.
@@ -118,6 +132,7 @@ Result: 0 sqrts + 1 stroke on most frames.
 **Problem:** Every star creates an `rgba(R, G, B, alpha)` template string per frame (~60 string allocations).
 
 **Fix:**
+
 - Non-twinkling stars (~70%): Cache the `rgba()` string on the Star object at creation time.
 - Twinkling stars (~30%): Quantize alpha to 20 discrete levels. Maintain a lookup table of pre-built strings (5 star colors × 20 alpha levels = 100 strings total).
 
@@ -159,15 +174,15 @@ The fallback path in `bloom.ts` `render()` reads back the entire canvas with `ct
 
 ## Files Modified
 
-| File | Change |
-|------|--------|
-| `SpaceCanvas.tsx` | Restructure to 3 canvases, 3 loops, DPR cap, visibility pausing, shared resize observer |
-| `starfield.ts` | Far-layer OffscreenCanvas cache, constellation edge caching (500ms timer), fillStyle pre-computation |
-| `aurora.ts` | OffscreenCanvas band caching with hue-based invalidation |
-| `bloom.ts` | Remove fallback `render()` method and its OffscreenCanvas buffer |
-| `space-renderer.ts` | Reusable sort buffer |
-| `particles.ts` | In-place compaction, replace shift() with index-0 overwrite |
-| `space-weather.ts` | In-place compaction |
+| File                | Change                                                                                               |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| `SpaceCanvas.tsx`   | Restructure to 3 canvases, 3 loops, DPR cap, visibility pausing, shared resize observer              |
+| `starfield.ts`      | Far-layer OffscreenCanvas cache, constellation edge caching (500ms timer), fillStyle pre-computation |
+| `aurora.ts`         | OffscreenCanvas band caching with hue-based invalidation                                             |
+| `bloom.ts`          | Remove fallback `render()` method and its OffscreenCanvas buffer                                     |
+| `space-renderer.ts` | Reusable sort buffer                                                                                 |
+| `particles.ts`      | In-place compaction, replace shift() with index-0 overwrite                                          |
+| `space-weather.ts`  | In-place compaction                                                                                  |
 
 No new files created. No systems removed.
 
@@ -175,13 +190,13 @@ No new files created. No systems removed.
 
 ## Expected Impact
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Frame rate (active layer) | 60fps | 30fps |
-| Frame rate (background) | 60fps | 10fps |
-| Canvas DPR | 2.0 (Retina) | 1.0 |
-| Pixel fill per frame | 4x | 1x |
-| Far-layer blur ops/frame | ~10 | 0 (cached) |
-| Constellation sqrt/frame | ~190 | 0 (cached) |
-| String allocs/frame (stars) | ~60 | ~6 (twinklers only) |
-| Estimated CPU reduction | — | 70-85% |
+| Metric                      | Before       | After               |
+| --------------------------- | ------------ | ------------------- |
+| Frame rate (active layer)   | 60fps        | 30fps               |
+| Frame rate (background)     | 60fps        | 10fps               |
+| Canvas DPR                  | 2.0 (Retina) | 1.0                 |
+| Pixel fill per frame        | 4x           | 1x                  |
+| Far-layer blur ops/frame    | ~10          | 0 (cached)          |
+| Constellation sqrt/frame    | ~190         | 0 (cached)          |
+| String allocs/frame (stars) | ~60          | ~6 (twinklers only) |
+| Estimated CPU reduction     | —            | 70-85%              |

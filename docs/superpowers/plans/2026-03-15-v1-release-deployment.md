@@ -15,6 +15,7 @@
 ### Task 1: Update `package.json`
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Update version, author, homepage**
@@ -95,6 +96,7 @@ git commit -m "chore: update build config for v1.0.0 release"
 ### Task 2: Production guards in main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Guard auto-updater behind `app.isPackaged`**
@@ -135,11 +137,13 @@ git commit -m "chore: guard devtools and auto-updater behind app.isPackaged"
 ### Task 3: Update GitHub Actions workflow
 
 **Files:**
+
 - Modify: `.github/workflows/build.yml`
 
 - [ ] **Step 1: Rewrite `build.yml` with per-platform jobs**
 
 Replace the entire file with a workflow that has:
+
 - `workflow_dispatch` trigger (manual fallback)
 - Separate jobs for mac, win, linux (native modules need platform-specific builds)
 - CI job for PRs/pushes (typecheck + test only, no packaging)

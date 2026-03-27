@@ -186,7 +186,15 @@ export function StarCommandTab(): React.JSX.Element {
     });
 
     return cleanup;
-  }, [setCrewList, setMissionQueue, setSectors, setUnreadCount, setFirstOfficerStatus, setNavigatorStatus, setSentinelStatus]);
+  }, [
+    setCrewList,
+    setMissionQueue,
+    setSectors,
+    setUnreadCount,
+    setFirstOfficerStatus,
+    setNavigatorStatus,
+    setSentinelStatus
+  ]);
 
   // Initial status fetch + poll fallback
   const refreshStatus = useCallback(() => {

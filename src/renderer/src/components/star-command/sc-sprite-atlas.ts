@@ -2,19 +2,19 @@
 
 export interface SpriteRegion {
   /** X position in the sprite sheet */
-  x: number
+  x: number;
   /** Y position in the sprite sheet */
-  y: number
+  y: number;
   /** Width of a single frame */
-  w: number
+  w: number;
   /** Height of a single frame */
-  h: number
+  h: number;
   /** Number of animation frames (sequential, left to right) */
-  frames: number
+  frames: number;
   /** Milliseconds per frame (0 = static) */
-  frameDuration: number
+  frameDuration: number;
   /** Frames per row for multi-row animations (defaults to frames if unset) */
-  framesPerRow?: number
+  framesPerRow?: number;
 }
 
 export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
@@ -58,18 +58,18 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'shuttle-thrust': { x: 24, y: 184, w: 24, h: 24, frames: 3, frameDuration: 100 },
   'checkmark-holo': { x: 112, y: 208, w: 16, h: 16, frames: 1, frameDuration: 0 },
   'dock-sparkle': { x: 64, y: 208, w: 8, h: 8, frames: 3, frameDuration: 150 },
-  'explosion': { x: 0, y: 208, w: 16, h: 16, frames: 4, frameDuration: 100 },
+  explosion: { x: 0, y: 208, w: 16, h: 16, frames: 4, frameDuration: 100 },
   'gas-puff': { x: 112, y: 184, w: 12, h: 12, frames: 3, frameDuration: 200 },
-  'spark': { x: 96, y: 184, w: 8, h: 8, frames: 2, frameDuration: 300 },
+  spark: { x: 96, y: 184, w: 8, h: 8, frames: 2, frameDuration: 300 },
   'thruster-flame': { x: 88, y: 208, w: 8, h: 12, frames: 3, frameDuration: 100 },
   'orb-amber': { x: 140, y: 208, w: 12, h: 12, frames: 1, frameDuration: 0 },
   'orb-cargo': { x: 152, y: 208, w: 16, h: 16, frames: 1, frameDuration: 0 },
   'orb-teal': { x: 128, y: 208, w: 12, h: 12, frames: 1, frameDuration: 0 },
-  'beacon': { x: 168, y: 208, w: 12, h: 12, frames: 2, frameDuration: 500 },
-  'station-hub': { x: 0, y: 224, w: 64, h: 64, frames: 32, frameDuration: 625, framesPerRow: 8 },
-}
+  beacon: { x: 168, y: 208, w: 12, h: 12, frames: 2, frameDuration: 500 },
+  'station-hub': { x: 0, y: 224, w: 64, h: 64, frames: 32, frameDuration: 625, framesPerRow: 8 }
+};
 
-export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const
-export const FIRST_OFFICER_VARIANTS = ['default', 'working', 'escalation', 'idle'] as const
-export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const
-export const NAVIGATOR_VARIANTS = ['default', 'working', 'standby', 'thinking', 'alert'] as const
+export const ADMIRAL_VARIANTS = ['default', 'speaking', 'thinking', 'alert', 'standby'] as const;
+export const FIRST_OFFICER_VARIANTS = ['default', 'working', 'escalation', 'idle'] as const;
+export const CREW_VARIANTS = ['hoodie', 'headphones', 'robot', 'cap', 'glasses'] as const;
+export const NAVIGATOR_VARIANTS = ['default', 'working', 'standby', 'thinking', 'alert'] as const;

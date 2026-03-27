@@ -13,6 +13,7 @@ When a code crew completes and creates a PR, two scenarios can leave it stranded
 2. **Human review comments** — A teammate leaves `REQUEST_CHANGES` on the PR after the FO approved.
 
 Manually deploying a new crew to fix these fails with:
+
 ```
 fatal: 'branchName' is already checked out at '/old/worktree/path'
 ```
@@ -62,13 +63,13 @@ A first-class mission type alongside `code`, `research`, `review`, and `architec
 
 ### Mission type matrix
 
-| Type | Produces | Creates PR? | Requires `prBranch` |
-|---|---|---|---|
-| `code` | git commits | yes (new PR) | no |
-| `research` | cargo/findings | no | no |
-| `review` | verdict | no | no |
-| `architect` | blueprint cargo | no | no |
-| `repair` | git commits | no (pushes to existing PR) | yes |
+| Type        | Produces        | Creates PR?                | Requires `prBranch` |
+| ----------- | --------------- | -------------------------- | ------------------- |
+| `code`      | git commits     | yes (new PR)               | no                  |
+| `research`  | cargo/findings  | no                         | no                  |
+| `review`    | verdict         | no                         | no                  |
+| `architect` | blueprint cargo | no                         | no                  |
+| `repair`    | git commits     | no (pushes to existing PR) | yes                 |
 
 ### Two mission rows
 
@@ -149,9 +150,9 @@ if (this.opts.missionType === 'repair') {
   // Push succeeded — update the ORIGINAL code mission to pending-review
   // so the review crew is dispatched for a fresh quality check
   if (this.opts.originalMissionId != null) {
-    db.prepare(
-      "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
-    ).run(this.opts.originalMissionId);
+    db.prepare("UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?").run(
+      this.opts.originalMissionId
+    );
   }
   // Mark the repair mission itself as completed
   db.prepare(
@@ -177,9 +178,9 @@ if (this.opts.missionType === 'repair') {
     "UPDATE missions SET status = 'completed', result = 'No changes needed', completed_at = datetime('now') WHERE id = ?"
   ).run(missionId);
   if (this.opts.originalMissionId != null) {
-    db.prepare(
-      "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
-    ).run(this.opts.originalMissionId);
+    db.prepare("UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?").run(
+      this.opts.originalMissionId
+    );
   }
   return;
 }
@@ -192,9 +193,9 @@ If a repair crew times out, the original code mission would be stuck as `repairi
 ```typescript
 if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
   // Revert original mission to ci-failed so prMonitorSweep can retry
-  db.prepare(
-    "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
-  ).run(this.opts.originalMissionId);
+  db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(
+    this.opts.originalMissionId
+  );
 }
 ```
 
@@ -233,14 +234,15 @@ Update the review preamble to include PR comment and CI context:
 
 ### New mission statuses (on the original code mission)
 
-| Status | Meaning |
-|---|---|
+| Status      | Meaning                                                 |
+| ----------- | ------------------------------------------------------- |
 | `ci-failed` | CI failure detected on PR, repair crew not yet deployed |
-| `repairing` | Repair crew actively working — atomic deployment guard |
+| `repairing` | Repair crew actively working — atomic deployment guard  |
 
 ### Sweep query
 
 Watches original code missions where:
+
 - `pr_branch IS NOT NULL`
 - `status = 'approved'` — only post-FO-approval missions
 
@@ -260,27 +262,34 @@ Runs on a **5-minute timer** (separate from the main Sentinel sweep loop) to kee
 For each mission returned:
 
 **Step 1 — Check CI:**
+
 ```bash
 gh pr checks <pr_branch> --json name,state,conclusion,required
 ```
+
 Parse result: if any check with `required: true` has `conclusion: failure` → proceed.
 
 **Step 2 — Get failure details:**
+
 ```bash
 gh run list --branch <pr_branch> --json databaseId,headSha --limit 5
 # Use the run matching the branch's HEAD SHA for reliability
 gh run view <run-id> --log-failed
 ```
+
 Filter by the branch's HEAD SHA (`git rev-parse <pr_branch>`) to avoid picking up runs from earlier commits.
 
 **Step 3 — Atomic claim:**
+
 ```sql
 UPDATE missions SET status = 'repairing'
 WHERE id = ? AND status IN ('approved', 'ci-failed')
 ```
+
 If `changes === 0` → another process already claimed it. Skip.
 
 **Step 4 — Create repair mission:**
+
 ```typescript
 const repairMission = missionService.addMission({
   sectorId: original.sector_id,
@@ -288,11 +297,12 @@ const repairMission = missionService.addMission({
   summary: `Fix CI failures: ${original.summary}`,
   prompt: buildRepairPrompt(original, ciFailureOutput),
   prBranch: original.pr_branch,
-  originalMissionId: original.id   // new field
+  originalMissionId: original.id // new field
 });
 ```
 
 **Step 5 — Deploy:**
+
 ```typescript
 try {
   await crewService.deployCrew({
@@ -304,9 +314,9 @@ try {
   });
 } catch (err) {
   // Rollback: revert original mission so the next sweep can retry
-  db.prepare(
-    "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
-  ).run(original.id);
+  db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(
+    original.id
+  );
   // Delete the orphaned repair mission
   db.prepare('DELETE FROM missions WHERE id = ?').run(repairMission.id);
   throw err;
@@ -342,6 +352,7 @@ if (original.review_round >= MAX_REPAIR_ROUNDS) {
 `MAX_REPAIR_ROUNDS` default: `2` (matches existing review round limit). Configurable via `starbase_config`.
 
 Increment `review_round` on the original mission when a repair crew is deployed (Step 3, after atomic claim):
+
 ```sql
 UPDATE missions SET review_round = review_round + 1 WHERE id = ?
 ```
@@ -367,7 +378,7 @@ function buildRepairPrompt(original: MissionRow, ciOutput: string): string {
     ciOutput.slice(0, 4000),
     '',
     'Push your fixes to the current branch — the PR already exists and will be updated automatically.',
-    'Do NOT create a new PR.',
+    'Do NOT create a new PR.'
   ].join('\n');
 }
 ```
@@ -377,7 +388,7 @@ function buildRepairPrompt(original: MissionRow, ciOutput: string): string {
 ```typescript
 type SentinelDeps = {
   // ... existing fields ...
-  missionService: MissionService;  // ADD — needed for prMonitorSweep to create repair missions
+  missionService: MissionService; // ADD — needed for prMonitorSweep to create repair missions
 };
 ```
 
@@ -449,13 +460,13 @@ The Admiral must also manually set the original mission to `repairing` before de
 
 ## Files to Change
 
-| File | Change |
-|---|---|
-| `src/main/starbase/worktree-manager.ts` | Add `git worktree prune` (in try/catch) before `git worktree add` in `createForExistingBranch` |
-| `src/main/starbase/hull.ts` | Add `repairPreamble`; add `originalMissionId` to `HullOpts`; update `createPR` repair path; add no-changes and timeout handling for repair type |
-| `src/main/starbase/crew-service.ts` | Add `repair` guard (require `prBranch`); pass `originalMissionId` through to Hull |
-| `src/main/starbase/sentinel.ts` | Add `prMonitorSweep()` on 5-min timer; add `missionService` to `SentinelDeps` |
-| `src/main/starbase/mission-service.ts` | Add `originalMissionId` to `AddMissionOpts` and `INSERT` |
-| `src/main/starbase/migrations.ts` | Add `original_mission_id` column to `missions` table |
-| `src/main/starbase/workspace-templates.ts` | Add `repair` to mission type lists and env var docs in both `generateClaudeMd()` and `generateSkillMd()`; add repair workflow section |
-| `src/main/fleet-cli.ts` | Add `repair` to valid types in `mission.create` handler; add `--pr-branch` and `--original-mission-id` flags; update help text |
+| File                                       | Change                                                                                                                                          |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/worktree-manager.ts`    | Add `git worktree prune` (in try/catch) before `git worktree add` in `createForExistingBranch`                                                  |
+| `src/main/starbase/hull.ts`                | Add `repairPreamble`; add `originalMissionId` to `HullOpts`; update `createPR` repair path; add no-changes and timeout handling for repair type |
+| `src/main/starbase/crew-service.ts`        | Add `repair` guard (require `prBranch`); pass `originalMissionId` through to Hull                                                               |
+| `src/main/starbase/sentinel.ts`            | Add `prMonitorSweep()` on 5-min timer; add `missionService` to `SentinelDeps`                                                                   |
+| `src/main/starbase/mission-service.ts`     | Add `originalMissionId` to `AddMissionOpts` and `INSERT`                                                                                        |
+| `src/main/starbase/migrations.ts`          | Add `original_mission_id` column to `missions` table                                                                                            |
+| `src/main/starbase/workspace-templates.ts` | Add `repair` to mission type lists and env var docs in both `generateClaudeMd()` and `generateSkillMd()`; add repair workflow section           |
+| `src/main/fleet-cli.ts`                    | Add `repair` to valid types in `mission.create` handler; add `--pr-branch` and `--original-mission-id` flags; update help text                  |

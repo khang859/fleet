@@ -27,6 +27,7 @@ export type Tab = {
 ```
 
 The Star Command tab:
+
 - Auto-created when a workspace opens (if a Starbase exists for the workspace)
 - Always pinned at position 0 in the sidebar
 - One per workspace, cannot be closed or duplicated
@@ -43,6 +44,7 @@ Maintains a conversational AI session that has access to all Bridge Controls as 
 **Model:** Uses `claude-sonnet-4-20250514` by default (good balance of speed, cost, and tool-use capability). Configurable via `starbase_config` key `admiral_model`.
 
 **Session management:**
+
 - Uses the Anthropic SDK (`@anthropic-ai/sdk`) to maintain a conversation with Claude
 - System prompt is defined in `src/main/starbase/admiral-system-prompt.ts` as a template function that takes live state and returns the prompt string. The prompt includes: Starbase context (workspace path, registered Sectors with configs), current Crew status summary, Mission queue state, space terminology glossary, and behavioral instructions (scope Missions tightly, prefer specific over vague, use acceptance criteria, ask for clarification on ambiguous requests).
 - On each turn, the system prompt is refreshed with live state from the database
@@ -52,30 +54,31 @@ Maintains a conversational AI session that has access to all Bridge Controls as 
 **Tool definitions (Bridge Controls):**
 The Admiral's tool list maps to the spec's Bridge Controls:
 
-| Tool Name | Maps To | Description |
-|-----------|---------|-------------|
-| `deploy` | `crewService.deployCrew()` | Deploy a Crewmate to a Sector |
-| `recall` | `crewService.recallCrew()` | Recall a Crewmate |
-| `crew` | `crewService.listCrew()` | List Crew, optionally by Sector |
-| `observe` | `crewService.observeCrew()` | Read recent output from a Crewmate |
-| `hail` | `commsService.send()` | Send a Transmission to a Crewmate |
-| `inbox` | `commsService.getUnread('admiral')` | Get unread Transmissions |
-| `resolve` | `commsService.resolve()` | Respond to a hailing request (sends reply + marks original as read) |
-| `ask` | `crewService.ask()` | Send a directive to a Crewmate and wait for response (deferred — returns "not yet implemented" until Phase 4) |
-| `sectors` | `sectorService.listSectors()` | List all Sectors |
-| `add_sector` | `sectorService.addSector()` | Register a new Sector |
-| `sector_status` | Combined query | Get Crew, Missions, Cargo for a Sector |
-| `remove_sector` | `sectorService.removeSector()` | Deregister a Sector |
-| `add_mission` | `missionService.addMission()` | Queue a Mission |
-| `missions` | `missionService.listMissions()` | List Missions |
-| `next_mission` | `missionService.nextMission()` | Get next queued Mission for a Sector |
-| `complete_mission` | `missionService.completeMission()` | Mark a Mission done |
-| `abort_mission` | `missionService.abortMission()` | Abort a queued Mission |
-| `add_supply_route` | Deferred | Deferred to Phase 5 — returns "Supply Routes not yet available" |
+| Tool Name          | Maps To                             | Description                                                                                                   |
+| ------------------ | ----------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `deploy`           | `crewService.deployCrew()`          | Deploy a Crewmate to a Sector                                                                                 |
+| `recall`           | `crewService.recallCrew()`          | Recall a Crewmate                                                                                             |
+| `crew`             | `crewService.listCrew()`            | List Crew, optionally by Sector                                                                               |
+| `observe`          | `crewService.observeCrew()`         | Read recent output from a Crewmate                                                                            |
+| `hail`             | `commsService.send()`               | Send a Transmission to a Crewmate                                                                             |
+| `inbox`            | `commsService.getUnread('admiral')` | Get unread Transmissions                                                                                      |
+| `resolve`          | `commsService.resolve()`            | Respond to a hailing request (sends reply + marks original as read)                                           |
+| `ask`              | `crewService.ask()`                 | Send a directive to a Crewmate and wait for response (deferred — returns "not yet implemented" until Phase 4) |
+| `sectors`          | `sectorService.listSectors()`       | List all Sectors                                                                                              |
+| `add_sector`       | `sectorService.addSector()`         | Register a new Sector                                                                                         |
+| `sector_status`    | Combined query                      | Get Crew, Missions, Cargo for a Sector                                                                        |
+| `remove_sector`    | `sectorService.removeSector()`      | Deregister a Sector                                                                                           |
+| `add_mission`      | `missionService.addMission()`       | Queue a Mission                                                                                               |
+| `missions`         | `missionService.listMissions()`     | List Missions                                                                                                 |
+| `next_mission`     | `missionService.nextMission()`      | Get next queued Mission for a Sector                                                                          |
+| `complete_mission` | `missionService.completeMission()`  | Mark a Mission done                                                                                           |
+| `abort_mission`    | `missionService.abortMission()`     | Abort a queued Mission                                                                                        |
+| `add_supply_route` | Deferred                            | Deferred to Phase 5 — returns "Supply Routes not yet available"                                               |
 
 **Tool execution:** When Claude calls a tool, the Admiral service executes it against the real services and returns the result. Tool results are JSON-serialized and fed back to the conversation. **Tool errors** (e.g. `deployCrew` throws because sector not found) are caught and returned as tool error results to Claude, allowing it to inform the user naturally rather than crashing the stream.
 
 **Public API:**
+
 - `sendMessage(content: string)` — Send a user message, returns an async iterator of response chunks (for streaming)
 - `getHistory()` — Return conversation history for the renderer
 - `resetSession()` — Clear conversation history, Admiral re-reads state from DB on next message
@@ -85,6 +88,7 @@ The Admiral's tool list maps to the spec's Bridge Controls:
 Manages the Transmission channel.
 
 **Public API:**
+
 - `send({ from, to, type, payload, threadId?, inReplyTo? })` — Insert into `comms` table
 - `resolve(transmissionId, response)` — Send a reply Transmission (auto-sets `inReplyTo`, same `threadId`) and marks the original as read
 - `getUnread(crewId)` — Query unread Transmissions addressed to a Crewmate (or "admiral")
@@ -92,19 +96,21 @@ Manages the Transmission channel.
 - `getThread(threadId)` — Get all Transmissions in a thread
 - `getRecent({ crewId?, limit? })` — Recent Transmissions with optional filter
 
-*Note:* Phase 2 writes to the `comms` table directly (INSERT for mission_complete Transmission). This service formalizes that into a proper API. Phase 2's ad-hoc writes should be migrated to use CommsService.
+_Note:_ Phase 2 writes to the `comms` table directly (INSERT for mission_complete Transmission). This service formalizes that into a proper API. Phase 2's ad-hoc writes should be migrated to use CommsService.
 
 ### Star Command Tab Renderer (`src/renderer/src/components/StarCommandTab.tsx`)
 
 A split layout with chat and status:
 
 **Chat panel (left/main area):**
+
 - Message list showing conversation history: user messages (right-aligned), Admiral responses (left-aligned with Admiral avatar), tool call results (collapsed by default, expandable)
 - Streaming response display with typing indicator
 - Input bar at the bottom with send button, supports multi-line (Shift+Enter)
 - Messages persist across tab switches (stored in component state / zustand store)
 
 **Status panel (right sidebar, collapsible):**
+
 - **Active Crew** section: cards showing each Crewmate's name, Sector, status badge (color-coded), Mission summary, duration. Click a card to jump to that Crewmate's terminal tab.
 - **Mission Queue** section: grouped by Sector, showing queued/active/completed counts. Expandable to see individual Missions.
 - **Sectors** section: list of registered Sectors with Crew count and status summary.
@@ -122,6 +128,7 @@ A split layout with chat and status:
 ### StarCommandStore (`src/renderer/src/store/star-command-store.ts`)
 
 Zustand store for Star Command UI state:
+
 - `messages: AdmiralMessage[]` — Chat history
 - `isStreaming: boolean` — Whether the Admiral is currently responding
 - `crewList: CrewStatus[]` — Current Crew states
@@ -133,6 +140,7 @@ Zustand store for Star Command UI state:
 ### IPC Plumbing
 
 New IPC channels:
+
 - `admiral:send-message` → Admiral.sendMessage(), returns stream
 - `admiral:get-history` → Admiral.getHistory()
 - `admiral:reset` → Admiral.resetSession()

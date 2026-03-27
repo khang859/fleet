@@ -614,11 +614,36 @@ const CONFIG_FIELDS: Array<{
   options?: string[];
 }> = [
   { key: 'crew_model_code', label: 'Crew Model (Code)', type: 'select', options: MODEL_OPTIONS },
-  { key: 'crew_model_research', label: 'Crew Model (Research)', type: 'select', options: MODEL_OPTIONS },
-  { key: 'crew_model_review', label: 'Crew Model (Review)', type: 'select', options: MODEL_OPTIONS },
-  { key: 'crew_model_architect', label: 'Crew Model (Architect)', type: 'select', options: MODEL_OPTIONS },
-  { key: 'crew_model_repair', label: 'Crew Model (Repair)', type: 'select', options: MODEL_OPTIONS },
-  { key: 'first_officer_model', label: 'First Officer Model', type: 'select', options: MODEL_OPTIONS },
+  {
+    key: 'crew_model_research',
+    label: 'Crew Model (Research)',
+    type: 'select',
+    options: MODEL_OPTIONS
+  },
+  {
+    key: 'crew_model_review',
+    label: 'Crew Model (Review)',
+    type: 'select',
+    options: MODEL_OPTIONS
+  },
+  {
+    key: 'crew_model_architect',
+    label: 'Crew Model (Architect)',
+    type: 'select',
+    options: MODEL_OPTIONS
+  },
+  {
+    key: 'crew_model_repair',
+    label: 'Crew Model (Repair)',
+    type: 'select',
+    options: MODEL_OPTIONS
+  },
+  {
+    key: 'first_officer_model',
+    label: 'First Officer Model',
+    type: 'select',
+    options: MODEL_OPTIONS
+  },
   { key: 'navigator_model', label: 'Navigator Model', type: 'select', options: MODEL_OPTIONS },
   { key: 'analyst_model', label: 'Analyst Model', type: 'select', options: MODEL_OPTIONS },
   { key: 'max_concurrent_worktrees', label: 'Max Concurrent Worktrees', type: 'number' },

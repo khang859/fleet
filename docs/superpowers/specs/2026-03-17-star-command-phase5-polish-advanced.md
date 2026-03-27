@@ -15,6 +15,7 @@ The remaining spec features: Supply Routes, Quality Gates, Mission decomposition
 Manages Sector dependency graph.
 
 **Public API:**
+
 - `addRoute({ upstreamSectorId, downstreamSectorId, relationship? })` — Insert into `supply_routes`. Before insertion, run cycle detection (DFS from downstream back to upstream through existing routes). If cycle would be created, throw `CyclicDependencyError` with the cycle path.
 - `removeRoute(routeId)` — Delete from `supply_routes`.
 - `listRoutes({ sectorId? })` — List all routes, optionally filtered to routes involving a Sector.
@@ -29,6 +30,7 @@ Manages Sector dependency graph.
 Manages artifacts produced by Crew.
 
 **Public API:**
+
 - `produceCargo({ crewId, missionId, sectorId, type, manifest })` — Insert into `cargo` with `mission_id`. Checks the Mission's status via `missionId` — if status is "error"/"lost"/"timeout", set `verified = false`.
 - `listCargo({ sectorId?, crewId?, type?, verified? })` — Query with filters.
 - `getUndelivered(sectorId)` — Get Cargo from upstream Sectors (via Supply Routes) that was produced after the last deployment in this Sector. This is what the Admiral includes in Mission briefings for downstream Sectors.
@@ -38,6 +40,7 @@ Manages artifacts produced by Crew.
 
 **Cargo forwarding flow:**
 When Cargo is produced in Sector A, and Sector B has a Supply Route from A:
+
 1. Cargo is stored in the `cargo` table tagged with Sector A
 2. Next time a Crewmate deploys in Sector B, the Admiral calls `getUndelivered('B')`
 3. Relevant Cargo manifests are included in the Mission prompt: "Note: upstream Sector 'A' recently produced: {cargo summary}"
@@ -68,14 +71,13 @@ When Cargo is produced in Sector A, and Sector B has a Supply Route from A:
 
 **After PR creation, if `sector.review_mode` is "admiral-review":**
 
-1. Hull sends a Transmission to Admiral: type "pr_review_request" with payload `{ prNumber, prUrl, missionId, diffSummary, acceptanceCriteria }`. *Note: "pr_review_request" is a new Comms type not in the parent spec's original list — it's an extension for Quality Gate 3.*
+1. Hull sends a Transmission to Admiral: type "pr_review_request" with payload `{ prNumber, prUrl, missionId, diffSummary, acceptanceCriteria }`. _Note: "pr_review_request" is a new Comms type not in the parent spec's original list — it's an extension for Quality Gate 3._
 
 2. Admiral processes the review (triggered automatically when the Transmission arrives). **If the review itself fails** (e.g. `gh pr diff` errors, API timeout, diff too large for context), the Mission is marked "pending-review" and surfaced to the user on next interaction. The review is not retried automatically — the user decides whether to review manually or retry.
    a. Fetches the PR diff via `gh pr diff {prNumber}`
    b. Reads the Mission's `acceptance_criteria` array
    c. Checks each criterion against the diff
    d. Produces a verdict:
-
    - **Pass:** All criteria met. Admiral approves the PR (`gh pr review --approve`). Mission status → "completed". Review notes stored in `missions.review_notes`.
    - **Request-changes:** Most criteria met, minor gaps. Admiral can either:
      - Deploy a follow-up "fix" Mission on the same branch: `deployCrew({ sectorId, prompt: "Fix: {gaps}", branch: existingBranch })`
@@ -87,6 +89,7 @@ When Cargo is produced in Sector A, and Sector B has a Supply Route from A:
 4. **Review timeout:** If no review within `review_timeout_min` (read from `starbase_config`, default 10 minutes), Mission marked "pending-review" and surfaced to user next time they interact with Star Command.
 
 **Review modes per Sector:**
+
 - `"admiral-review"` (default) — Full Gate 3
 - `"verify-only"` — Skip Gate 3, rely on Gate 2 only
 - `"manual"` — PR created, left for human review
@@ -96,6 +99,7 @@ When Cargo is produced in Sector A, and Sector B has a Supply Route from A:
 **Admiral system prompt enhancement:**
 
 When the user gives a large/vague request, the Admiral should:
+
 1. Identify that the request spans multiple concerns
 2. Break it into discrete Missions following the spec's scoping rules:
    - Specific (not vague)
@@ -188,6 +192,7 @@ The existing visualizer renders ships in space. For Star Command, we add a new r
 - `getStats()` — Return table row counts and database file size.
 
 TTL values stored in `starbase_config`:
+
 - `comms_retention_days`: 30
 - `cargo_retention_days`: 14
 - `ships_log_retention_days`: 30
@@ -204,24 +209,30 @@ PRs now include the full spec template:
 **Duration:** {started → completed}
 
 ### Acceptance Criteria
+
 - [x] Criterion 1 (checked/unchecked based on Admiral review)
 - [x] Criterion 2
 - [ ] Criterion 3 (if not met)
 
 ### Changes
+
 {git diff --stat}
 
 ### Verification
+
 - Build/Test: {verify_command result — pass/fail with output}
 - Lint: {lint_command result or "skipped"}
 
 ### Mission Debrief
+
 {Crewmate's final output summary}
 
 ### Admiral Review
+
 {review_notes or "Skipped (verify-only mode)" or "Pending"}
 
 ---
+
 Deployed by Star Command | Starbase: {starbaseId}
 ```
 

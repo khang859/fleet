@@ -30,109 +30,109 @@ All sprites are 16-bit pixel art, retro game aesthetic. Color palette: deep navy
 
 ### Avatars (64x64 each)
 
-| Key | Description | Frames |
-|-----|-------------|--------|
-| `admiral-default` | Commander: long dark coat, high collar, teal headset | 1 |
-| `admiral-speaking` | Mouth open, headset glow brighter | 1 |
-| `admiral-thinking` | Eyes closed, hand on chin, dim headset | 1 |
-| `admiral-alert` | Eyes wide, headset flashing amber | 1 |
-| `admiral-standby` | Relaxed pose, low headset glow | 1 |
-| `crew-hoodie` | Hoodie dev, laptop glow on face | 1 |
-| `crew-headphones` | Headphones dev, waveform on ear cups | 1 |
-| `crew-robot` | Robot crewmate, antenna, visor eyes | 1 |
-| `crew-cap` | Cap dev, baseball cap, casual | 1 |
-| `crew-glasses` | Glasses dev, round frames, focused | 1 |
+| Key                | Description                                          | Frames |
+| ------------------ | ---------------------------------------------------- | ------ |
+| `admiral-default`  | Commander: long dark coat, high collar, teal headset | 1      |
+| `admiral-speaking` | Mouth open, headset glow brighter                    | 1      |
+| `admiral-thinking` | Eyes closed, hand on chin, dim headset               | 1      |
+| `admiral-alert`    | Eyes wide, headset flashing amber                    | 1      |
+| `admiral-standby`  | Relaxed pose, low headset glow                       | 1      |
+| `crew-hoodie`      | Hoodie dev, laptop glow on face                      | 1      |
+| `crew-headphones`  | Headphones dev, waveform on ear cups                 | 1      |
+| `crew-robot`       | Robot crewmate, antenna, visor eyes                  | 1      |
+| `crew-cap`         | Cap dev, baseball cap, casual                        | 1      |
+| `crew-glasses`     | Glasses dev, round frames, focused                   | 1      |
 
 **10 images, 64x64 each. Sheet row 0-1 (5 per row).**
 
 ### CRT Frame Pieces (variable sizes)
 
-| Key | Size | Description |
-|-----|------|-------------|
+| Key             | Size  | Description                                                        |
+| --------------- | ----- | ------------------------------------------------------------------ |
 | `crt-corner-tl` | 32x32 | Top-left CRT bezel corner, rounded, dark plastic with subtle sheen |
-| `crt-corner-tr` | 32x32 | Top-right (mirror of TL) |
-| `crt-corner-bl` | 32x32 | Bottom-left |
-| `crt-corner-br` | 32x32 | Bottom-right |
-| `crt-edge-h` | 32x8 | Horizontal edge tile (repeats) |
-| `crt-edge-v` | 8x32 | Vertical edge tile (repeats) |
-| `crt-scanline` | 4x4 | Scanline overlay pattern tile |
+| `crt-corner-tr` | 32x32 | Top-right (mirror of TL)                                           |
+| `crt-corner-bl` | 32x32 | Bottom-left                                                        |
+| `crt-corner-br` | 32x32 | Bottom-right                                                       |
+| `crt-edge-h`    | 32x8  | Horizontal edge tile (repeats)                                     |
+| `crt-edge-v`    | 8x32  | Vertical edge tile (repeats)                                       |
+| `crt-scanline`  | 4x4   | Scanline overlay pattern tile                                      |
 
 **7 images. Sheet row 2.**
 
 ### Status Bar (metal texture)
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `statusbar-tile` | 64x24 | Dark brushed metal texture, tileable horizontally |
-| `statusbar-rivet` | 8x8 | Single rivet, dark metal with highlight |
-| `statusbar-divider` | 4x24 | Thin vertical divider groove |
+| Key                 | Size  | Description                                       |
+| ------------------- | ----- | ------------------------------------------------- |
+| `statusbar-tile`    | 64x24 | Dark brushed metal texture, tileable horizontally |
+| `statusbar-rivet`   | 8x8   | Single rivet, dark metal with highlight           |
+| `statusbar-divider` | 4x24  | Thin vertical divider groove                      |
 
 **3 images. Sheet row 3.**
 
 ### Status Chips
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `chip-frame` | 48x20 | Rounded badge frame, dark with subtle border glow |
-| `chip-dot-active` | 8x8 | Teal dot |
-| `chip-dot-hailing` | 8x8 | Amber dot |
-| `chip-dot-error` | 8x8 | Red dot |
-| `chip-dot-complete` | 8x8 | Green dot |
-| `chip-dot-idle` | 8x8 | Dim teal dot |
-| `chip-dot-lost` | 8x8 | Grey dot |
+| Key                 | Size  | Description                                       |
+| ------------------- | ----- | ------------------------------------------------- |
+| `chip-frame`        | 48x20 | Rounded badge frame, dark with subtle border glow |
+| `chip-dot-active`   | 8x8   | Teal dot                                          |
+| `chip-dot-hailing`  | 8x8   | Amber dot                                         |
+| `chip-dot-error`    | 8x8   | Red dot                                           |
+| `chip-dot-complete` | 8x8   | Green dot                                         |
+| `chip-dot-idle`     | 8x8   | Dim teal dot                                      |
+| `chip-dot-lost`     | 8x8   | Grey dot                                          |
 
 **7 images. Sheet row 3 (after statusbar).**
 
 ### Shuttle
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `shuttle-idle` | 24x24 | Small pixel art shuttle, side view, engines off |
-| `shuttle-thrust-1` | 24x24 | Engines firing, flame frame 1 |
-| `shuttle-thrust-2` | 24x24 | Engines firing, flame frame 2 |
-| `shuttle-thrust-3` | 24x24 | Engines firing, flame frame 3 |
+| Key                | Size  | Description                                     |
+| ------------------ | ----- | ----------------------------------------------- |
+| `shuttle-idle`     | 24x24 | Small pixel art shuttle, side view, engines off |
+| `shuttle-thrust-1` | 24x24 | Engines firing, flame frame 1                   |
+| `shuttle-thrust-2` | 24x24 | Engines firing, flame frame 2                   |
+| `shuttle-thrust-3` | 24x24 | Engines firing, flame frame 3                   |
 
 **4 images. Sheet row 4.**
 
 ### Particle Sprites
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `spark-1` | 8x8 | Small bright spark |
-| `spark-2` | 8x8 | Slightly different spark shape |
-| `gas-puff-1` | 12x12 | Gas vent cloud frame 1 |
-| `gas-puff-2` | 12x12 | Gas vent cloud frame 2 |
-| `gas-puff-3` | 12x12 | Gas vent cloud frame 3 |
-| `explosion-1` | 16x16 | Small explosion frame 1 |
-| `explosion-2` | 16x16 | Frame 2, expanding |
-| `explosion-3` | 16x16 | Frame 3, dissipating |
-| `explosion-4` | 16x16 | Frame 4, fading |
-| `dock-sparkle-1` | 8x8 | Docking sparkle frame 1 |
-| `dock-sparkle-2` | 8x8 | Frame 2 |
-| `dock-sparkle-3` | 8x8 | Frame 3 |
-| `thruster-flame-1` | 8x12 | Thruster flame frame 1 |
-| `thruster-flame-2` | 8x12 | Frame 2 |
-| `thruster-flame-3` | 8x12 | Frame 3 |
-| `checkmark-holo` | 16x16 | Green holographic checkmark |
+| Key                | Size  | Description                    |
+| ------------------ | ----- | ------------------------------ |
+| `spark-1`          | 8x8   | Small bright spark             |
+| `spark-2`          | 8x8   | Slightly different spark shape |
+| `gas-puff-1`       | 12x12 | Gas vent cloud frame 1         |
+| `gas-puff-2`       | 12x12 | Gas vent cloud frame 2         |
+| `gas-puff-3`       | 12x12 | Gas vent cloud frame 3         |
+| `explosion-1`      | 16x16 | Small explosion frame 1        |
+| `explosion-2`      | 16x16 | Frame 2, expanding             |
+| `explosion-3`      | 16x16 | Frame 3, dissipating           |
+| `explosion-4`      | 16x16 | Frame 4, fading                |
+| `dock-sparkle-1`   | 8x8   | Docking sparkle frame 1        |
+| `dock-sparkle-2`   | 8x8   | Frame 2                        |
+| `dock-sparkle-3`   | 8x8   | Frame 3                        |
+| `thruster-flame-1` | 8x12  | Thruster flame frame 1         |
+| `thruster-flame-2` | 8x12  | Frame 2                        |
+| `thruster-flame-3` | 8x12  | Frame 3                        |
+| `checkmark-holo`   | 16x16 | Green holographic checkmark    |
 
 **16 images. Sheet rows 4-5.**
 
 ### Data Orbs
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `orb-teal` | 12x12 | Teal data orb with glow (crew → bridge) |
-| `orb-amber` | 12x12 | Amber data orb (bridge → crew) |
+| Key         | Size  | Description                                   |
+| ----------- | ----- | --------------------------------------------- |
+| `orb-teal`  | 12x12 | Teal data orb with glow (crew → bridge)       |
+| `orb-amber` | 12x12 | Amber data orb (bridge → crew)                |
 | `orb-cargo` | 16x16 | Larger cargo transfer orb, teal-cyan gradient |
 
 **3 images. Sheet row 5.**
 
 ### Beacon
 
-| Key | Size | Description |
-|-----|------|-------------|
-| `beacon-on` | 12x12 | Amber warning beacon, lit |
-| `beacon-off` | 12x12 | Beacon, unlit |
+| Key          | Size  | Description               |
+| ------------ | ----- | ------------------------- |
+| `beacon-on`  | 12x12 | Amber warning beacon, lit |
+| `beacon-off` | 12x12 | Beacon, unlit             |
 
 **2 images. Sheet row 5.**
 
@@ -162,6 +162,7 @@ Max extent: 320x224. Fits easily in 512x512 with room to spare.
 New file: `scripts/assemble-star-command-sprites.ts`
 
 Follows the exact same pattern as `scripts/assemble-sprites.ts`:
+
 - Reads from `sprites-raw/star-command/` subdirectories
 - Outputs `src/renderer/src/assets/star-command-sprites.png`
 - Generates `src/renderer/src/components/star-command/sc-sprite-atlas.ts`
@@ -253,9 +254,9 @@ export const SC_SPRITE_ATLAS: Record<string, SpriteRegion> = {
   'crt-corner-tl': { x: 0, y: 128, w: 32, h: 32, frames: 1, frameDuration: 0 },
   // ...
   'shuttle-idle': { x: 0, y: 192, w: 24, h: 24, frames: 1, frameDuration: 0 },
-  'shuttle-thrust': { x: 24, y: 192, w: 24, h: 24, frames: 3, frameDuration: 100 },
+  'shuttle-thrust': { x: 24, y: 192, w: 24, h: 24, frames: 3, frameDuration: 100 }
   // ...
-}
+};
 ```
 
 ## Phase 2: CRT Frame & Chrome
@@ -375,6 +376,7 @@ New component: `src/renderer/src/components/star-command/Avatar.tsx`
 ### Admiral State Machine
 
 Admiral avatar state follows the streaming lifecycle:
+
 - `standby` — no active stream
 - `thinking` — stream started, waiting for first text chunk
 - `speaking` — text chunks arriving
@@ -472,14 +474,14 @@ New module: `src/renderer/src/components/visualizer/sc-particles.ts`
 
 ### Trigger Map
 
-| Event | Effect | Location |
-|-------|--------|----------|
-| Shuttle dock starts | `thruster` | Behind shuttle |
-| Shuttle docks at pod | `dock-sparkle` | Pod position |
-| Shuttle undock starts | `thruster` | Behind shuttle |
-| Crew status → error | `hull-spark` | Pod position |
-| Crew status → lost | `gas-vent` | Pod position |
-| Crew status → lost (critical) | `explosion` | Pod position |
+| Event                         | Effect         | Location       |
+| ----------------------------- | -------------- | -------------- |
+| Shuttle dock starts           | `thruster`     | Behind shuttle |
+| Shuttle docks at pod          | `dock-sparkle` | Pod position   |
+| Shuttle undock starts         | `thruster`     | Behind shuttle |
+| Crew status → error           | `hull-spark`   | Pod position   |
+| Crew status → lost            | `gas-vent`     | Pod position   |
+| Crew status → lost (critical) | `explosion`    | Pod position   |
 
 ### Canvas Integration
 

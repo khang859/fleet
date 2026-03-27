@@ -39,7 +39,13 @@ import type {
   RecentImagesResponse,
   ClipboardHistoryResponse
 } from '../shared/ipc-api';
-import type { Workspace, FleetSettings, UpdateStatus, ImageGenerationMeta, ImageSettings } from '../shared/types';
+import type {
+  Workspace,
+  FleetSettings,
+  UpdateStatus,
+  ImageGenerationMeta,
+  ImageSettings
+} from '../shared/types';
 
 type Unsubscribe = () => void;
 
@@ -255,8 +261,7 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.STARBASE_LOG_ENTRY, callback)
   },
   system: {
-    check: async (): Promise<SystemDepResult[]> =>
-      typedInvoke(IPC_CHANNELS.SYSTEM_CHECK)
+    check: async (): Promise<SystemDepResult[]> => typedInvoke(IPC_CHANNELS.SYSTEM_CHECK)
   },
   showFolderPicker: async (): Promise<string | null> =>
     typedInvoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),

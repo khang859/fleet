@@ -20,11 +20,11 @@ Add an error classifier to the sentinel's `firstOfficerSweep()`, evaluated **bef
 
 **Categories:**
 
-| Category | Detection | Action | Examples |
-|---|---|---|---|
-| `transient` | Default; fingerprint differs from last attempt | Dispatch FO (bounded by budget) | Timeout, OOM, crash, lifesign lost |
-| `persistent` | Same `error_fingerprint` as previous attempt | Auto-escalate, skip FO | Same test failing repeatedly |
-| `non-retryable` | Pattern match on error output | Auto-escalate immediately | `ENOENT`, `EACCES`, `MODULE_NOT_FOUND`, `401`, `403`, `config.*not found` |
+| Category        | Detection                                      | Action                          | Examples                                                                  |
+| --------------- | ---------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------- |
+| `transient`     | Default; fingerprint differs from last attempt | Dispatch FO (bounded by budget) | Timeout, OOM, crash, lifesign lost                                        |
+| `persistent`    | Same `error_fingerprint` as previous attempt   | Auto-escalate, skip FO          | Same test failing repeatedly                                              |
+| `non-retryable` | Pattern match on error output                  | Auto-escalate immediately       | `ENOENT`, `EACCES`, `MODULE_NOT_FOUND`, `401`, `403`, `config.*not found` |
 
 **Pattern matching implementation:** Simple regex array scanned against `missions.result` + `missions.verify_result`. Not exhaustive — unknown errors default to `transient` and the fingerprint catches repetition on the next failure.
 
@@ -34,8 +34,8 @@ const NON_RETRYABLE_PATTERNS = [
   /MODULE_NOT_FOUND|Cannot find module/,
   /401|403|Unauthorized|Forbidden/,
   /config.*not found|missing.*configuration/i,
-  /no such file or directory/i,
-]
+  /no such file or directory/i
+];
 ```
 
 ### 2. Fingerprint Tracking
@@ -43,11 +43,13 @@ const NON_RETRYABLE_PATTERNS = [
 New column on `missions`: `last_error_fingerprint TEXT`.
 
 Computed by:
+
 1. Take last 50 lines of crew output (`missions.result`) + verify stderr (`missions.verify_result`)
 2. Strip variable parts: timestamps, PIDs, memory addresses, absolute file paths with hashes
 3. SHA-256 hash, truncated to 16 hex chars
 
 The sentinel stores the fingerprint on each failure. On subsequent failures for the same mission:
+
 - **Same fingerprint** → classify as `persistent`, auto-escalate
 - **Different fingerprint** → new failure mode, allow FO triage
 
@@ -60,6 +62,7 @@ New column on `missions`: `mission_deployment_count INTEGER DEFAULT 0`.
 Incremented in `crewService.deployCrew()` every time ANY crew is deployed for that mission — code crews, fix crews, review crews, FO-initiated retries.
 
 The sentinel checks before any dispatch:
+
 ```
 if mission_deployment_count >= max_mission_deployments → auto-escalate
 ```
@@ -111,10 +114,11 @@ Before spawning, query comms for previous memo-type entries for this mission. Bu
 
 ```markdown
 ## Previous Attempts
-| # | Action | Error Fingerprint | Outcome |
-|---|--------|-------------------|---------|
-| 1 | RETRY: narrowed scope to auth module | a3f2b1c9 (test timeout) | Same test timeout |
-| 2 | RETRY: added explicit timeout config | a3f2b1c9 (test timeout) | Same test timeout |
+
+| #   | Action                               | Error Fingerprint       | Outcome           |
+| --- | ------------------------------------ | ----------------------- | ----------------- |
+| 1   | RETRY: narrowed scope to auth module | a3f2b1c9 (test timeout) | Same test timeout |
+| 2   | RETRY: added explicit timeout config | a3f2b1c9 (test timeout) | Same test timeout |
 ```
 
 Built from comms payload data + fingerprint. Max ~10 lines regardless of attempt count. If the FO needs full details, it can `fleet missions show <id>` or read memo files directly.
@@ -122,11 +126,13 @@ Built from comms payload data + fingerprint. Max ~10 lines regardless of attempt
 #### 4c. Mandatory Retry Memo
 
 Update the FO's CLAUDE.md: when choosing RETRY, the FO **must also** write a short memo to `./memos/` documenting:
+
 - What it analyzed
 - What action it took (the revised prompt or scope change)
 - Why it expects the retry to succeed
 
 This serves two purposes:
+
 1. **Audit trail** — feeds into 4b for the next FO attempt
 2. **Dedup guard** — the comms entry prevents double-dispatch while the retry is in flight
 
@@ -174,6 +180,7 @@ comms row:
 Full memo markdown files still get written to disk for detailed context. The comms entry carries a short summary + file path pointer.
 
 **Changes:**
+
 - Add `mission_id INTEGER` column to `comms` table (nullable FK to missions) — used for efficient dedup queries instead of JSON LIKE scanning
 - `firstOfficer.writeEscalationMemo()` and `scanForNewMemos()` insert comms rows instead of memos rows
 - `firstOfficer.writeHailingMemo()` also migrates to comms: `type = 'hailing-memo'`, same payload structure. The sentinel's hailing dedup guard (`sentinel.ts:376-381`) switches from memos to: `NOT EXISTS (SELECT 1 FROM comms WHERE type = 'hailing-memo' AND mission_id = cr.mission_id AND read = 0)` — note: the hailing query context uses `cr` (crew alias), not `m`, and `cr.mission_id` can be NULL so the outer query should add `AND cr.mission_id IS NOT NULL`
@@ -203,6 +210,7 @@ DROP TABLE IF EXISTS memos;
 ```
 
 Config additions:
+
 ```typescript
 max_mission_deployments: 8,
 first_officer_model: 'claude-haiku-4-5',  // changed from claude-sonnet-4-6
@@ -210,23 +218,23 @@ first_officer_model: 'claude-haiku-4-5',  // changed from claude-sonnet-4-6
 
 ## Files to Modify
 
-| File | Change |
-|---|---|
-| `src/main/starbase/sentinel.ts` | Error classifier, fingerprint computation, async dispatch, query dedup, comms-based dedup, global budget check |
-| `src/main/starbase/first-officer.ts` | `onExit` callback param, attempt history in prompt, mandatory retry memo in CLAUDE.md/system prompt, model default change, write comms instead of memos, `getStatus()` uses comms query |
-| `src/main/starbase/hull.ts` | Migrate review escalation write at line 623 from `INSERT INTO memos` to `INSERT INTO comms` with `type = 'memo'` and `mission_id` column |
-| `src/main/starbase/crew-service.ts` | Increment `mission_deployment_count` in `deployCrew()` |
-| `src/main/starbase/migrations.ts` | New migration: add columns to missions, add `mission_id` to comms, drop memos table, update config defaults |
-| `src/main/starbase/memo-service.ts` | Delete file (replaced by comms queries) |
-| `src/main/starbase/workspace-templates.ts` | Update Admiral CLAUDE.md to explain `memo` type comms |
-| `src/main/ipc-handlers.ts` | Replace `memoList`, `memoRead`, `memoDismiss` handlers with comms-based equivalents |
-| `src/main/index.ts` | Update FO dependency injection (remove MemoService, add DB access for comms queries) |
-| `src/preload/index.ts` | Update preload API surface for renamed memo IPC calls |
-| `src/renderer/src/components/star-command/MemoPanel.tsx` | Read from comms instead of memos |
-| `src/renderer/src/store/star-command-store.ts` | Update memo-related state to use comms |
-| `src/main/starbase/config-service.ts` | Add `max_mission_deployments` default |
-| `src/main/__tests__/first-officer.test.ts` | Update tests for new behavior |
-| `src/main/__tests__/sentinel.test.ts` | Add tests for error classifier, fingerprint, dedup |
+| File                                                     | Change                                                                                                                                                                                  |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/sentinel.ts`                          | Error classifier, fingerprint computation, async dispatch, query dedup, comms-based dedup, global budget check                                                                          |
+| `src/main/starbase/first-officer.ts`                     | `onExit` callback param, attempt history in prompt, mandatory retry memo in CLAUDE.md/system prompt, model default change, write comms instead of memos, `getStatus()` uses comms query |
+| `src/main/starbase/hull.ts`                              | Migrate review escalation write at line 623 from `INSERT INTO memos` to `INSERT INTO comms` with `type = 'memo'` and `mission_id` column                                                |
+| `src/main/starbase/crew-service.ts`                      | Increment `mission_deployment_count` in `deployCrew()`                                                                                                                                  |
+| `src/main/starbase/migrations.ts`                        | New migration: add columns to missions, add `mission_id` to comms, drop memos table, update config defaults                                                                             |
+| `src/main/starbase/memo-service.ts`                      | Delete file (replaced by comms queries)                                                                                                                                                 |
+| `src/main/starbase/workspace-templates.ts`               | Update Admiral CLAUDE.md to explain `memo` type comms                                                                                                                                   |
+| `src/main/ipc-handlers.ts`                               | Replace `memoList`, `memoRead`, `memoDismiss` handlers with comms-based equivalents                                                                                                     |
+| `src/main/index.ts`                                      | Update FO dependency injection (remove MemoService, add DB access for comms queries)                                                                                                    |
+| `src/preload/index.ts`                                   | Update preload API surface for renamed memo IPC calls                                                                                                                                   |
+| `src/renderer/src/components/star-command/MemoPanel.tsx` | Read from comms instead of memos                                                                                                                                                        |
+| `src/renderer/src/store/star-command-store.ts`           | Update memo-related state to use comms                                                                                                                                                  |
+| `src/main/starbase/config-service.ts`                    | Add `max_mission_deployments` default                                                                                                                                                   |
+| `src/main/__tests__/first-officer.test.ts`               | Update tests for new behavior                                                                                                                                                           |
+| `src/main/__tests__/sentinel.test.ts`                    | Add tests for error classifier, fingerprint, dedup                                                                                                                                      |
 
 ## References
 

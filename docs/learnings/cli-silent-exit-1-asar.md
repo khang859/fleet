@@ -15,8 +15,9 @@ Running `fleet <command>` exits with code 1 and no output, even when `node` is a
 `install-fleet-cli.ts` determines whether it's running in a packaged app by checking:
 
 ```typescript
-const isPackaged = existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs'))
-  || existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js'))
+const isPackaged =
+  existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs')) ||
+  existsSync(join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js'));
 ```
 
 Since `fleet-cli.mjs` is never built, this is **always `false`** — even inside the packaged Electron app.
@@ -26,8 +27,8 @@ Since `fleet-cli.mjs` is never built, this is **always `false`** — even inside
 Because `isPackaged` is `false`, the packaged app takes the "dev mode" install path. It writes a `~/.fleet/lib/fleet-cli.js` shim with hardcoded paths like:
 
 ```javascript
-const tsSource = "/Applications/Fleet.app/Contents/Resources/app.asar/src/main/fleet-cli.ts";
-const tsx = "/Applications/Fleet.app/Contents/Resources/app.asar/node_modules/.bin/tsx";
+const tsSource = '/Applications/Fleet.app/Contents/Resources/app.asar/src/main/fleet-cli.ts';
+const tsx = '/Applications/Fleet.app/Contents/Resources/app.asar/node_modules/.bin/tsx';
 ```
 
 These paths are **inside the `.asar` archive**.
@@ -41,7 +42,7 @@ Electron patches its internal `fs` module to transparently read from `.asar` arc
 ```javascript
 const result = spawnSync(tsx, [tsSource, ...process.argv.slice(2)], {
   stdio: 'inherit',
-  env: process.env,
+  env: process.env
 });
 process.exit(result.status ?? 1);
 ```
@@ -96,8 +97,8 @@ exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
 Replace the file-existence check with Electron's authoritative API:
 
 ```typescript
-import { app } from 'electron'
-const isPackaged = app.isPackaged
+import { app } from 'electron';
+const isPackaged = app.isPackaged;
 ```
 
 Then in the packaged path, use `app.getAppPath()` to get the Electron-aware path to the asar contents (readable inside Electron's process).

@@ -15,6 +15,7 @@
 ### Task 1: Add `serializedContent` to `PaneLeaf` type
 
 **Files:**
+
 - Modify: `src/shared/types.ts:26-35`
 
 - [ ] **Step 1: Add the field to the PaneLeaf type**
@@ -52,6 +53,7 @@ git commit -m "feat: add serializedContent field to PaneLeaf type"
 ### Task 2: Serialize terminal content on app close
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx:1-178`
 
 - [ ] **Step 1: Add the `injectSerializedContent` helper**
@@ -69,10 +71,7 @@ function injectSerializedContent(node: PaneNode): PaneNode {
   }
   return {
     ...node,
-    children: [
-      injectSerializedContent(node.children[0]),
-      injectSerializedContent(node.children[1]),
-    ],
+    children: [injectSerializedContent(node.children[0]), injectSerializedContent(node.children[1])]
   };
 }
 ```
@@ -99,8 +98,8 @@ const handleBeforeUnload = () => {
     ...state.workspace,
     tabs: state.workspace.tabs.map((tab) => ({
       ...tab,
-      splitRoot: injectSerializedContent(tab.splitRoot),
-    })),
+      splitRoot: injectSerializedContent(tab.splitRoot)
+    }))
   };
   window.fleet.layout.save({ workspace: workspaceWithContent });
 };
@@ -123,6 +122,7 @@ git commit -m "feat: serialize terminal content on app close for session persist
 ### Task 3: Restore serialized content on app open
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneGrid.tsx:73`
 
 - [ ] **Step 1: Fall back to `node.serializedContent` in PaneNodeRenderer**

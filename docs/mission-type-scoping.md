@@ -5,12 +5,14 @@
 **Gap identified:** `crew deploy` reads `mission.type` from DB but Hull did NOT apply different model/system_prompt/allowedTools per mission type at spawn time. Research crews received identical tool access as code crews.
 
 ### Code Locations
+
 - `hull.ts:155-196` — Claude process spawn, env building, system prompt injection
 - `crew-service.ts:92-93` — mission type read from DB
 - `crew-service.ts:179` — `allowedTools` passed to Hull
 - `socket-server.ts:432-496` — deploy command handler
 
 ### Root Cause
+
 `CrewService.deployCrew()` passes `sector.allowed_tools` directly to Hull with no fallback for mission type. Hull builds a single system prompt from `sector.system_prompt` only — no mission-type-aware preamble was injected.
 
 ---
@@ -22,8 +24,9 @@
 When `missionType === 'research'`, Hull now injects a preamble before the sector-level `system_prompt`:
 
 ```typescript
-const researchPreamble = this.opts.missionType === 'research'
-  ? `# Research Mission Instructions
+const researchPreamble =
+  this.opts.missionType === 'research'
+    ? `# Research Mission Instructions
 
 You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=research).
 
@@ -36,11 +39,11 @@ You are a research crew deployed on a research mission (FLEET_MISSION_TYPE=resea
 - Do NOT commit changes. Git changes will be discarded at mission end.
 - Focus on investigation, analysis, and producing written findings.
 `
-  : null
+    : null;
 
 const combinedSystemPrompt = [researchPreamble, this.opts.systemPrompt]
   .filter(Boolean)
-  .join('\n\n')
+  .join('\n\n');
 ```
 
 The preamble comes **before** the sector `system_prompt`, so sector config can override with additional instructions appended after.
@@ -71,8 +74,8 @@ const mergedEnv = {
   FLEET_CREW_ID: crewId,
   FLEET_SECTOR_ID: this.opts.sectorId,
   FLEET_MISSION_ID: String(this.opts.missionId),
-  FLEET_MISSION_TYPE: this.opts.missionType ?? 'code',  // NEW
-}
+  FLEET_MISSION_TYPE: this.opts.missionType ?? 'code' // NEW
+};
 ```
 
 Crews can branch on mission type in their prompts or skill logic:
@@ -96,6 +99,7 @@ system_prompt: Focus on security vulnerabilities. Always check CVE databases.
 ```
 
 Research missions automatically get:
+
 - Read-only tool defaults (no Bash — use Read/Glob/Grep for file access)
 - Research preamble injected before the sector system_prompt
 - `FLEET_MISSION_TYPE=research` in env
@@ -124,11 +128,11 @@ Code missions are unrestricted as before.
 
 ## Behavior Summary
 
-| Mission Type | `sector.allowed_tools` set? | Effective `allowedTools` |
-|---|---|---|
-| `research` | No | `Read,Glob,Grep,WebSearch,WebFetch` |
-| `research` | Yes | Sector value (overrides default) |
-| `code` | No | All tools (no restriction) |
-| `code` | Yes | Sector value |
-| `review` | No | All tools (no restriction) |
-| `review` | Yes | Sector value |
+| Mission Type | `sector.allowed_tools` set? | Effective `allowedTools`            |
+| ------------ | --------------------------- | ----------------------------------- |
+| `research`   | No                          | `Read,Glob,Grep,WebSearch,WebFetch` |
+| `research`   | Yes                         | Sector value (overrides default)    |
+| `code`       | No                          | All tools (no restriction)          |
+| `code`       | Yes                         | Sector value                        |
+| `review`     | No                          | All tools (no restriction)          |
+| `review`     | Yes                         | Sector value                        |

@@ -3,6 +3,7 @@
 ## What happened
 
 When running a TUI like Claude Code inside Fleet, **two cursors** appear simultaneously:
+
 1. The TUI-drawn cursor glyph (rendered by Claude Code into the terminal buffer)
 2. xterm.js's hardware cursor (which should be suppressed in TUI/alt-screen mode)
 

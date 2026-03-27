@@ -30,11 +30,13 @@ When a research mission completes, Hull:
 ## Ships Log Warning
 
 When the safety guard discards files, a `safety_guard` event is logged to `ships_log` with:
+
 - `filesDiscarded`: count of discarded files
 - `paths`: list of discarded file paths (up to 20)
 - `recommendation`: guidance to use stdout instead
 
 To check for discarded changes:
+
 ```bash
 fleet log groups list
 fleet log groups show <group-id>
@@ -42,12 +44,12 @@ fleet log groups show <group-id>
 
 ## Environment Variables Available to Research Crews
 
-| Variable | Value | Description |
-|----------|-------|-------------|
-| `FLEET_MISSION_TYPE` | `research` | Identifies this as a research mission |
-| `FLEET_CREW_ID` | e.g. `my-sector-crew-a1b2` | Crew identity for comms |
-| `FLEET_MISSION_ID` | e.g. `42` | Mission ID for comms |
-| `FLEET_SECTOR_ID` | e.g. `my-app` | Sector the crew is deployed to |
+| Variable             | Value                      | Description                           |
+| -------------------- | -------------------------- | ------------------------------------- |
+| `FLEET_MISSION_TYPE` | `research`                 | Identifies this as a research mission |
+| `FLEET_CREW_ID`      | e.g. `my-sector-crew-a1b2` | Crew identity for comms               |
+| `FLEET_MISSION_ID`   | e.g. `42`                  | Mission ID for comms                  |
+| `FLEET_SECTOR_ID`    | e.g. `my-app`              | Sector the crew is deployed to        |
 
 Crews can check `$FLEET_MISSION_TYPE` to adapt their behavior.
 

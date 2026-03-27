@@ -31,6 +31,7 @@ src/renderer/
 ```
 
 Modifications:
+
 - `src/renderer/src/App.tsx` — mount VisualizerPanel, subscribe to agent state IPC
 - `src/renderer/src/hooks/use-pane-navigation.ts` — add Cmd+Shift+V shortcut
 
@@ -41,11 +42,13 @@ Modifications:
 ### Task 1: Visualizer store (renderer)
 
 **Files:**
+
 - Create: `src/renderer/src/store/visualizer-store.ts`
 
 - [ ] **Step 1: Write the visualizer store**
 
 Create `src/renderer/src/store/visualizer-store.ts`:
+
 ```ts
 import { create } from 'zustand';
 import type { AgentVisualState } from '../../../shared/types';
@@ -67,18 +70,20 @@ export const useVisualizerStore = create<VisualizerStore>((set) => ({
 
   setAgents: (agents) => set({ agents }),
   toggleVisible: () => set((state) => ({ isVisible: !state.isVisible })),
-  setPanelMode: (mode) => set({ panelMode: mode }),
+  setPanelMode: (mode) => set({ panelMode: mode })
 }));
 ```
 
 - [ ] **Step 2: Wire IPC to update store**
 
 In `src/renderer/src/App.tsx`, add import:
+
 ```ts
 import { useVisualizerStore } from './store/visualizer-store';
 ```
 
 Inside the `App` component, add the subscription effect:
+
 ```ts
 const { setAgents } = useVisualizerStore();
 
@@ -93,6 +98,7 @@ useEffect(() => {
 - [ ] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -109,12 +115,14 @@ git commit -m "feat: add visualizer store with IPC-driven agent state updates"
 ### Task 2: Starfield system
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/starfield.ts`
 - Create: `src/renderer/src/components/visualizer/__tests__/starfield.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/renderer/src/components/visualizer/__tests__/starfield.test.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { Starfield, StarLayer } from '../starfield';
@@ -179,6 +187,7 @@ describe('Starfield', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/starfield.test.ts
 ```
@@ -188,6 +197,7 @@ Expected: FAIL — `Cannot find module '../starfield'`
 - [ ] **Step 3: Write the implementation**
 
 Create `src/renderer/src/components/visualizer/starfield.ts`:
+
 ```ts
 export type Star = {
   x: number;
@@ -204,9 +214,9 @@ export type StarLayer = {
 };
 
 const LAYER_CONFIGS = [
-  { speed: 5, brightness: 0.3, size: 1, density: 10 },  // far
+  { speed: 5, brightness: 0.3, size: 1, density: 10 }, // far
   { speed: 15, brightness: 0.6, size: 1.5, density: 20 }, // mid
-  { speed: 30, brightness: 0.9, size: 2, density: 30 },  // near
+  { speed: 30, brightness: 0.9, size: 2, density: 30 } // near
 ];
 
 // Reference area for density scaling (roughly a small panel)
@@ -234,7 +244,7 @@ export class Starfield {
           x: Math.random() * this.width,
           y: Math.random() * this.height,
           size: config.size + (Math.random() - 0.5) * 0.5,
-          brightness: config.brightness + (Math.random() - 0.5) * 0.15,
+          brightness: config.brightness + (Math.random() - 0.5) * 0.15
         });
       }
 
@@ -242,7 +252,7 @@ export class Starfield {
         stars,
         speed: config.speed,
         brightness: config.brightness,
-        size: config.size,
+        size: config.size
       };
     });
   }
@@ -286,7 +296,7 @@ export class Starfield {
           x: Math.random() * width,
           y: Math.random() * height,
           size: config.size + (Math.random() - 0.5) * 0.5,
-          brightness: config.brightness + (Math.random() - 0.5) * 0.15,
+          brightness: config.brightness + (Math.random() - 0.5) * 0.15
         });
       }
 
@@ -308,7 +318,7 @@ export class Starfield {
           Math.round(star.x),
           Math.round(star.y),
           Math.round(star.size),
-          Math.round(star.size),
+          Math.round(star.size)
         );
       }
     }
@@ -319,6 +329,7 @@ export class Starfield {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/starfield.test.ts
 ```
@@ -339,12 +350,14 @@ git commit -m "feat: add parallax starfield system with 3 scroll layers"
 ### Task 3: Particle system
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/particles.ts`
 - Create: `src/renderer/src/components/visualizer/__tests__/particles.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/renderer/src/components/visualizer/__tests__/particles.test.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { ParticleSystem, WarpEffect } from '../particles';
@@ -435,6 +448,7 @@ describe('WarpEffect', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/particles.test.ts
 ```
@@ -444,6 +458,7 @@ Expected: FAIL — `Cannot find module '../particles'`
 - [ ] **Step 3: Write the implementation**
 
 Create `src/renderer/src/components/visualizer/particles.ts`:
+
 ```ts
 const MAX_PARTICLES = 100;
 const MIN_LIFETIME = 0.5; // seconds
@@ -481,7 +496,7 @@ export class ParticleSystem {
         size: 1 + Math.random() * 2,
         color,
         life: maxLife,
-        maxLife,
+        maxLife
       });
     }
   }
@@ -625,7 +640,7 @@ export class WarpEffect {
         Math.round(this.currentX - burstSize / 2),
         Math.round(this.targetY - burstSize / 2),
         burstSize,
-        burstSize,
+        burstSize
       );
     }
 
@@ -637,6 +652,7 @@ export class WarpEffect {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/particles.test.ts
 ```
@@ -653,12 +669,14 @@ git commit -m "feat: add particle system for engine trails and warp streak effec
 ### Task 4: Ship state machine
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/ships.ts`
 - Create: `src/renderer/src/components/visualizer/__tests__/ships.test.ts`
 
 - [ ] **Step 1: Write the failing test**
 
 Create `src/renderer/src/components/visualizer/__tests__/ships.test.ts`:
+
 ```ts
 import { describe, it, expect } from 'vitest';
 import { ShipManager } from '../ships';
@@ -671,7 +689,7 @@ function makeAgent(overrides: Partial<AgentVisualState> = {}): AgentVisualState 
     state: 'working',
     subAgents: [],
     uptime: 1000,
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -690,7 +708,7 @@ describe('ShipManager', () => {
     const agents = [
       makeAgent({ paneId: 'pane-1' }),
       makeAgent({ paneId: 'pane-2', label: 'Agent 2' }),
-      makeAgent({ paneId: 'pane-3', label: 'Agent 3' }),
+      makeAgent({ paneId: 'pane-3', label: 'Agent 3' })
     ];
     sm.update(agents, 16, 400, 200);
 
@@ -735,9 +753,7 @@ describe('ShipManager', () => {
   it('creates smaller trailing ships for subagents', () => {
     const sm = new ShipManager();
     const agent = makeAgent({
-      subAgents: [
-        makeAgent({ paneId: 'pane-1:sub:1', label: 'sub-agent', state: 'reading' }),
-      ],
+      subAgents: [makeAgent({ paneId: 'pane-1:sub:1', label: 'sub-agent', state: 'reading' })]
     });
     sm.update([agent], 16, 400, 200);
 
@@ -756,7 +772,7 @@ describe('ShipManager', () => {
   it('caps rendered subagents at 4 with overflow badge', () => {
     const sm = new ShipManager();
     const subs = Array.from({ length: 6 }, (_, i) =>
-      makeAgent({ paneId: `pane-1:sub:${i}`, label: `sub-${i}`, state: 'working' }),
+      makeAgent({ paneId: `pane-1:sub:${i}`, label: `sub-${i}`, state: 'working' })
     );
     const agent = makeAgent({ subAgents: subs });
     sm.update([agent], 16, 400, 200);
@@ -814,6 +830,7 @@ describe('ShipManager', () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/ships.test.ts
 ```
@@ -823,6 +840,7 @@ Expected: FAIL — `Cannot find module '../ships'`
 - [ ] **Step 3: Write the implementation**
 
 Create `src/renderer/src/components/visualizer/ships.ts`:
+
 ```ts
 import type { AgentVisualState } from '../../../../shared/types';
 import { WarpEffect } from './particles';
@@ -834,7 +852,7 @@ const STATE_COLORS: Record<string, string> = {
   walking: '#9ca3af',
   'needs-permission': '#fbbf24',
   waiting: '#34d399',
-  'not-agent': '#9ca3af',
+  'not-agent': '#9ca3af'
 };
 
 const ACCENT_PALETTES = [
@@ -843,7 +861,7 @@ const ACCENT_PALETTES = [
   '#a78bfa', // purple
   '#f472b6', // pink
   '#2dd4bf', // cyan
-  '#facc15', // yellow
+  '#facc15' // yellow
 ];
 
 const BASE_X = 0.35;
@@ -892,17 +910,13 @@ export class ShipManager {
     const visibleAgents = agents.filter((a) => a.state !== 'not-agent');
 
     // Recalculate Y positions based on current count
-    const ySpacing = visibleAgents.length > 1
-      ? Y_RANGE / (visibleAgents.length - 1)
-      : 0;
+    const ySpacing = visibleAgents.length > 1 ? Y_RANGE / (visibleAgents.length - 1) : 0;
 
     // Spawn / update parent ships
     for (let i = 0; i < visibleAgents.length; i++) {
       const agent = visibleAgents[i];
       activeIds.add(agent.paneId);
-      const targetY = visibleAgents.length === 1
-        ? Y_START + Y_RANGE / 2
-        : Y_START + i * ySpacing;
+      const targetY = visibleAgents.length === 1 ? Y_START + Y_RANGE / 2 : Y_START + i * ySpacing;
 
       if (!this.ships.has(agent.paneId)) {
         this.spawnShip(agent, i, targetY, canvasW, canvasH);
@@ -933,7 +947,9 @@ export class ShipManager {
       }
 
       // Despawn subs that are no longer in the agent's subAgents list
-      const activeSubIds = new Set(agent.subAgents.slice(0, MAX_RENDERED_SUBS).map((s) => s.paneId));
+      const activeSubIds = new Set(
+        agent.subAgents.slice(0, MAX_RENDERED_SUBS).map((s) => s.paneId)
+      );
       for (const [id, ship] of this.ships) {
         if (ship.isSubAgent && id.startsWith(agent.paneId + ':sub:') && !activeSubIds.has(id)) {
           if (!ship.despawning) {
@@ -950,7 +966,7 @@ export class ShipManager {
         ship.despawning = true;
         ship.warp.startWarpOut(
           ship.currentX || ship.targetX * canvasW,
-          ship.currentY || ship.targetY * canvasH,
+          ship.currentY || ship.targetY * canvasH
         );
       }
     }
@@ -962,10 +978,7 @@ export class ShipManager {
         ship.spawnDelayElapsed += deltaMs;
         if (ship.spawnDelayElapsed >= ship.spawnDelay) {
           // Now start the actual warp-in
-          ship.warp.startWarpIn(
-            ship.targetX * canvasW,
-            ship.targetY * canvasH,
-          );
+          ship.warp.startWarpIn(ship.targetX * canvasW, ship.targetY * canvasH);
         }
         continue;
       }
@@ -1013,10 +1026,7 @@ export class ShipManager {
       const sx = ship.currentX - ship.width / 2;
       const sy = ship.currentY - ship.height / 2;
 
-      if (
-        pixelX >= sx && pixelX <= sx + ship.width &&
-        pixelY >= sy && pixelY <= sy + ship.height
-      ) {
+      if (pixelX >= sx && pixelX <= sx + ship.width && pixelY >= sy && pixelY <= sy + ship.height) {
         return ship.paneId;
       }
     }
@@ -1039,7 +1049,7 @@ export class ShipManager {
     index: number,
     targetY: number,
     canvasW: number,
-    canvasH: number,
+    canvasH: number
   ): void {
     const warp = new WarpEffect();
     const delay = this.nextSpawnDelay;
@@ -1065,7 +1075,7 @@ export class ShipManager {
       despawning: false,
       spawnDelay: delay,
       spawnDelayElapsed: 0,
-      pulsePhase: 0,
+      pulsePhase: 0
     };
 
     // If no delay, start warp immediately
@@ -1084,7 +1094,7 @@ export class ShipManager {
     targetX: number,
     targetY: number,
     canvasW: number,
-    canvasH: number,
+    canvasH: number
   ): void {
     const parent = this.ships.get(parentPaneId);
     const parentIndex = this.spawnOrder.indexOf(parentPaneId);
@@ -1115,11 +1125,16 @@ export class ShipManager {
       despawning: false,
       spawnDelay: 0,
       spawnDelayElapsed: 0,
-      pulsePhase: 0,
+      pulsePhase: 0
     });
   }
 
-  private updateShip(agent: AgentVisualState, targetY: number, canvasW: number, canvasH: number): void {
+  private updateShip(
+    agent: AgentVisualState,
+    targetY: number,
+    canvasW: number,
+    canvasH: number
+  ): void {
     const ship = this.ships.get(agent.paneId);
     if (!ship || ship.despawning) return;
 
@@ -1184,6 +1199,7 @@ export class ShipManager {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npx vitest run src/renderer/src/components/visualizer/__tests__/ships.test.ts
 ```
@@ -1204,11 +1220,13 @@ git commit -m "feat: add ship manager with positioning, subagent trailing, warp 
 ### Task 5: Space renderer (canvas compositor)
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/space-renderer.ts`
 
 - [ ] **Step 1: Write the space renderer**
 
 Create `src/renderer/src/components/visualizer/space-renderer.ts`:
+
 ```ts
 import type { Ship } from './ships';
 import { ParticleSystem } from './particles';
@@ -1221,7 +1239,7 @@ const TRAIL_RATES: Record<string, { count: number; interval: number }> = {
   walking: { count: 0, interval: 0 },
   'needs-permission': { count: 1, interval: 200 },
   waiting: { count: 2, interval: 150 },
-  'not-agent': { count: 0, interval: 0 },
+  'not-agent': { count: 0, interval: 0 }
 };
 
 export class SpaceRenderer {
@@ -1246,7 +1264,7 @@ export class SpaceRenderer {
           ship.currentX - ship.width / 2 - 2,
           ship.currentY,
           ship.stateColor,
-          rate.count,
+          rate.count
         );
         this.trailTimers.set(ship.paneId, 0);
       } else {
@@ -1307,22 +1325,17 @@ export class SpaceRenderer {
     const cy = y + h / 2;
 
     ctx.beginPath();
-    ctx.moveTo(x + w, cy);           // nose (right)
-    ctx.lineTo(x + w * 0.3, y);      // top-left
-    ctx.lineTo(x, y + h * 0.25);     // rear top
-    ctx.lineTo(x, y + h * 0.75);     // rear bottom
-    ctx.lineTo(x + w * 0.3, y + h);  // bottom-left
+    ctx.moveTo(x + w, cy); // nose (right)
+    ctx.lineTo(x + w * 0.3, y); // top-left
+    ctx.lineTo(x, y + h * 0.25); // rear top
+    ctx.lineTo(x, y + h * 0.75); // rear bottom
+    ctx.lineTo(x + w * 0.3, y + h); // bottom-left
     ctx.closePath();
     ctx.fill();
 
     // Accent stripe (cockpit / wing marking)
     ctx.fillStyle = ship.accentColor;
-    ctx.fillRect(
-      Math.round(x + w * 0.4),
-      Math.round(cy - 1),
-      Math.round(w * 0.3),
-      2,
-    );
+    ctx.fillRect(Math.round(x + w * 0.4), Math.round(cy - 1), Math.round(w * 0.3), 2);
 
     // Engine glow (accent color, at rear)
     ctx.fillStyle = ship.accentColor;
@@ -1352,6 +1365,7 @@ export class SpaceRenderer {
 - [ ] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1368,11 +1382,13 @@ git commit -m "feat: add space renderer with ship drawing, engine trails, and wa
 ### Task 6: SpaceCanvas React component
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
 - [ ] **Step 1: Write the SpaceCanvas component**
 
 Create `src/renderer/src/components/visualizer/SpaceCanvas.tsx`:
+
 ```tsx
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
@@ -1495,40 +1511,37 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
         onShipClick(hit);
       }
     },
-    [onShipClick],
+    [onShipClick]
   );
 
   // Hover handling for tooltips
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-      const hit = shipManagerRef.current.hitTest(x, y, canvas.width, canvas.height);
-      if (hit) {
-        const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
-        if (ship) {
-          // Keep tooltip within canvas bounds
-          const tooltipX = Math.min(x, rect.width - 160);
-          const tooltipY = Math.max(y - 60, 0);
-          setTooltip({
-            x: tooltipX,
-            y: tooltipY,
-            label: ship.label,
-            tool: ship.currentTool ?? 'none',
-            uptime: formatUptime(ship.uptime),
-          });
-          return;
-        }
+    const hit = shipManagerRef.current.hitTest(x, y, canvas.width, canvas.height);
+    if (hit) {
+      const ship = shipManagerRef.current.getShips().find((s) => s.paneId === hit);
+      if (ship) {
+        // Keep tooltip within canvas bounds
+        const tooltipX = Math.min(x, rect.width - 160);
+        const tooltipY = Math.max(y - 60, 0);
+        setTooltip({
+          x: tooltipX,
+          y: tooltipY,
+          label: ship.label,
+          tool: ship.currentTool ?? 'none',
+          uptime: formatUptime(ship.uptime)
+        });
+        return;
       }
-      setTooltip(null);
-    },
-    [],
-  );
+    }
+    setTooltip(null);
+  }, []);
 
   return (
     <div className="relative w-full h-full">
@@ -1558,6 +1571,7 @@ export function SpaceCanvas({ onShipClick }: SpaceCanvasProps) {
 - [ ] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1574,6 +1588,7 @@ git commit -m "feat: add SpaceCanvas React component with game loop, tooltips, a
 ### Task 7: VisualizerPanel and wiring
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/VisualizerPanel.tsx`
 - Modify: `src/renderer/src/App.tsx`
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts`
@@ -1581,6 +1596,7 @@ git commit -m "feat: add SpaceCanvas React component with game loop, tooltips, a
 - [ ] **Step 1: Write the VisualizerPanel component**
 
 Create `src/renderer/src/components/visualizer/VisualizerPanel.tsx`:
+
 ```tsx
 import { useState, useCallback } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
@@ -1594,36 +1610,44 @@ export function VisualizerPanel({ onShipClick }: VisualizerPanelProps) {
   const { isVisible, panelMode } = useVisualizerStore();
   const [drawerHeight, setDrawerHeight] = useState(200);
 
-  const handleResizeStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startHeight = drawerHeight;
+  const handleResizeStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startHeight = drawerHeight;
 
-    function onMove(moveEvent: PointerEvent) {
-      const delta = startY - moveEvent.clientY;
-      setDrawerHeight(Math.max(100, Math.min(600, startHeight + delta)));
-    }
+      function onMove(moveEvent: PointerEvent) {
+        const delta = startY - moveEvent.clientY;
+        setDrawerHeight(Math.max(100, Math.min(600, startHeight + delta)));
+      }
 
-    function onUp() {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-    }
+      function onUp() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      }
 
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-  }, [drawerHeight]);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    },
+    [drawerHeight]
+  );
 
   if (!isVisible) return null;
 
   if (panelMode === 'drawer') {
     return (
-      <div className="border-t border-neutral-800 bg-[#0a0a1a]" style={{ height: `${drawerHeight}px` }}>
+      <div
+        className="border-t border-neutral-800 bg-[#0a0a1a]"
+        style={{ height: `${drawerHeight}px` }}
+      >
         <div
           className="h-1 cursor-row-resize bg-neutral-800 hover:bg-blue-500 transition-colors"
           onPointerDown={handleResizeStart}
         />
         <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-800">
-          <span className="text-xs text-neutral-500 uppercase tracking-wider">Fleet Visualizer</span>
+          <span className="text-xs text-neutral-500 uppercase tracking-wider">
+            Fleet Visualizer
+          </span>
         </div>
         <div className="h-[calc(100%-32px)]">
           <SpaceCanvas onShipClick={onShipClick} />
@@ -1644,11 +1668,13 @@ export function VisualizerPanel({ onShipClick }: VisualizerPanelProps) {
 - [ ] **Step 2: Add VisualizerPanel to App.tsx**
 
 In `src/renderer/src/App.tsx`, add import:
+
 ```ts
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 ```
 
 Add inside the `App` component's return, after the `<main>` section and before the closing `</div>`:
+
 ```tsx
 <VisualizerPanel
   onShipClick={(paneId) => {
@@ -1661,21 +1687,24 @@ Add inside the `App` component's return, after the `<main>` section and before t
 - [ ] **Step 3: Add Cmd+Shift+V toggle shortcut**
 
 In `src/renderer/src/hooks/use-pane-navigation.ts`, add import:
+
 ```ts
 import { useVisualizerStore } from '../store/visualizer-store';
 ```
 
 Add inside `handleKeyDown`:
+
 ```ts
-      if (mod && e.shiftKey && e.key === 'V') {
-        e.preventDefault();
-        useVisualizerStore.getState().toggleVisible();
-      }
+if (mod && e.shiftKey && e.key === 'V') {
+  e.preventDefault();
+  useVisualizerStore.getState().toggleVisible();
+}
 ```
 
 - [ ] **Step 4: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1685,6 +1714,7 @@ Expected: TypeScript compiler exits with code 0.
 - [ ] **Step 5: Run the app and test**
 
 Run:
+
 ```bash
 npm run dev
 ```

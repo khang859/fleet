@@ -15,6 +15,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/starbase/sentinel.ts` — Watchdog sweep: Lifesigns, deadlines, disk, memory
 - `src/main/starbase/reconciliation.ts` — Startup crash recovery
 - `src/main/starbase/ships-log.ts` — Ship's Log service
@@ -25,6 +26,7 @@
 - `src/main/__tests__/lockfile.test.ts`
 
 **Modified files:**
+
 - `src/main/starbase/worktree-manager.ts` — Add concurrency limits, worktree pool, recycling
 - `src/main/starbase/hull.ts` — Add rebase handling, PR creation, merge strategy execution
 - `src/main/starbase/crew-service.ts` — Auto-deploy on free slot, queue when at limit
@@ -39,6 +41,7 @@
 ### Task 1: Write Ship's Log service
 
 **Files:**
+
 - Create: `src/main/starbase/ships-log.ts`
 - Create: `src/main/__tests__/ships-log.test.ts`
 
@@ -62,6 +65,7 @@ git commit -m "feat(starbase): add Ship's Log service for audit trail"
 ### Task 2: Write Lockfile
 
 **Files:**
+
 - Create: `src/main/starbase/lockfile.ts`
 - Create: `src/main/__tests__/lockfile.test.ts`
 
@@ -87,12 +91,14 @@ git commit -m "feat(starbase): add lockfile for duplicate instance detection"
 ### Task 3: Write Sentinel watchdog
 
 **Files:**
+
 - Create: `src/main/starbase/sentinel.ts`
 - Create: `src/main/__tests__/sentinel.test.ts`
 
 - [ ] **Step 1: Write failing tests**
 
 Test scenarios:
+
 - Stale Lifesign → crew marked "lost"
 - Expired deadline → crew terminated
 - Missing Sector path → Sector disabled
@@ -117,12 +123,14 @@ git commit -m "feat(starbase): add Sentinel watchdog for failure detection"
 ### Task 4: Write startup reconciliation
 
 **Files:**
+
 - Create: `src/main/starbase/reconciliation.ts`
 - Create: `src/main/__tests__/reconciliation.test.ts`
 
 - [ ] **Step 1: Write failing tests**
 
 Test scenarios:
+
 - Active crew with dead PID → marked "lost"
 - Active crew with PID alive but > 24h old → treated as stale
 - Orphaned worktree directories → cleaned up
@@ -147,6 +155,7 @@ git commit -m "feat(starbase): add startup reconciliation for crash recovery"
 ### Task 5: Add concurrency limits and worktree pool to WorktreeManager
 
 **Files:**
+
 - Modify: `src/main/starbase/worktree-manager.ts`
 - Modify: `src/main/starbase/migrations.ts` — add migration 002
 - Modify: `src/main/__tests__/worktree-manager.test.ts`
@@ -188,6 +197,7 @@ git commit -m "feat(starbase): add worktree concurrency limits and recycling poo
 ### Task 6: Add rebase handling and PR creation to Hull
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 
 - [ ] **Step 1: Add rebase logic after push**
@@ -212,6 +222,7 @@ git commit -m "feat(starbase): add rebase handling and PR creation to Hull"
 ### Task 7: Add auto-deploy on free slot and comms rate limiting
 
 **Files:**
+
 - Modify: `src/main/starbase/crew-service.ts`
 - Modify: `src/main/starbase/comms-service.ts`
 
@@ -230,6 +241,7 @@ git commit -m "feat(starbase): add auto-deploy on free slot and comms rate limit
 ### Task 8: Wire Sentinel and reconciliation into main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Run reconciliation on app startup after StarbaseDB opens**

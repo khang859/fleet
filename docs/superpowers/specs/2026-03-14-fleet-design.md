@@ -19,28 +19,26 @@ type Workspace = {
 
 type Tab = {
   id: string;
-  label: string;         // user-editable, defaults to cwd basename + git branch
-  cwd: string;           // initial cwd for the tab — used as default for new panes
-  splitRoot: PaneNode;   // root of the binary split tree
+  label: string; // user-editable, defaults to cwd basename + git branch
+  cwd: string; // initial cwd for the tab — used as default for new panes
+  splitRoot: PaneNode; // root of the binary split tree
 };
 
-type PaneNode =
-  | PaneSplit
-  | PaneLeaf;
+type PaneNode = PaneSplit | PaneLeaf;
 
 type PaneSplit = {
   type: 'split';
   direction: 'horizontal' | 'vertical';
-  ratio: number;         // 0.0–1.0, position of the divider
+  ratio: number; // 0.0–1.0, position of the divider
   children: [PaneNode, PaneNode];
 };
 
 type PaneLeaf = {
   type: 'leaf';
-  id: string;            // paneId — used consistently across event bus, socket API, and visualizer
+  id: string; // paneId — used consistently across event bus, socket API, and visualizer
   ptyPid?: number;
-  shell?: string;        // shell or command spawned in this pane
-  cwd: string;           // initial cwd at pane creation — not live-tracked (shell may cd elsewhere)
+  shell?: string; // shell or command spawned in this pane
+  cwd: string; // initial cwd at pane creation — not live-tracked (shell may cd elsewhere)
 };
 
 // level values map to notification table rows:
@@ -139,12 +137,12 @@ Watches PTY data streams for signals and routes them through a central event bus
 
 ### Notification Types & Defaults
 
-| Event                  | Badge       | Sound | OS Notification |
-|------------------------|-------------|-------|-----------------|
-| Task complete (OSC 9)  | Yes (blue)  | Off   | Off             |
-| Needs permission       | Yes (amber) | On    | On              |
-| Process exit (non-zero)| Yes (red)   | Off   | Off             |
-| Process exit (zero)    | Subtle      | Off   | Off             |
+| Event                   | Badge       | Sound | OS Notification |
+| ----------------------- | ----------- | ----- | --------------- |
+| Task complete (OSC 9)   | Yes (blue)  | Off   | Off             |
+| Needs permission        | Yes (amber) | On    | On              |
+| Process exit (non-zero) | Yes (red)   | Off   | Off             |
+| Process exit (zero)     | Subtle      | Off   | Off             |
 
 All configurable per-type in a settings panel. Users toggle each channel (badge/sound/OS) independently for each event type.
 
@@ -213,21 +211,21 @@ Exposes Fleet's internals for scripts and agents. Sits in the main process, list
 
 ### Commands
 
-| Command            | Description                                              |
-|--------------------|----------------------------------------------------------|
-| `list-workspaces`  | List saved workspaces                                    |
-| `load-workspace`   | Switch to a workspace                                    |
-| `list-tabs`        | List tabs in current workspace                           |
-| `new-tab`          | Create a new tab, optionally with a command and cwd      |
-| `close-tab`        | Close a tab by ID                                        |
-| `list-panes`       | List panes in a tab                                      |
-| `new-pane`         | Split a pane (direction, command, cwd)                   |
-| `close-pane`       | Close a pane by ID                                       |
-| `focus-pane`       | Focus a specific pane                                    |
-| `send-input`       | Send keystrokes to a pane                                |
-| `get-output`       | Snapshot of last N lines from a pane's scrollback (default 100, max capped at scrollback buffer size) |
-| `get-state`        | Get full app state (workspace, tabs, panes, notifications)|
-| `subscribe`        | Stream events (see Subscription Lifecycle below). Valid event types: `notification`, `pane-created`, `pane-closed`, `agent-state-change`, `workspace-loaded` |
+| Command           | Description                                                                                                                                                  |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list-workspaces` | List saved workspaces                                                                                                                                        |
+| `load-workspace`  | Switch to a workspace                                                                                                                                        |
+| `list-tabs`       | List tabs in current workspace                                                                                                                               |
+| `new-tab`         | Create a new tab, optionally with a command and cwd                                                                                                          |
+| `close-tab`       | Close a tab by ID                                                                                                                                            |
+| `list-panes`      | List panes in a tab                                                                                                                                          |
+| `new-pane`        | Split a pane (direction, command, cwd)                                                                                                                       |
+| `close-pane`      | Close a pane by ID                                                                                                                                           |
+| `focus-pane`      | Focus a specific pane                                                                                                                                        |
+| `send-input`      | Send keystrokes to a pane                                                                                                                                    |
+| `get-output`      | Snapshot of last N lines from a pane's scrollback (default 100, max capped at scrollback buffer size)                                                        |
+| `get-state`       | Get full app state (workspace, tabs, panes, notifications)                                                                                                   |
+| `subscribe`       | Stream events (see Subscription Lifecycle below). Valid event types: `notification`, `pane-created`, `pane-closed`, `agent-state-change`, `workspace-loaded` |
 
 ### Subscription Lifecycle
 
@@ -303,15 +301,15 @@ Non-agent panes (dev servers, build watchers) don't get a character. The visuali
 
 ### Agent States
 
-| State            | Trigger                                         | Animation                        |
-|------------------|-------------------------------------------------|----------------------------------|
-| Working          | `tool_use` detected (Write, Edit, Bash)         | Seated, typing (2-frame)         |
-| Reading          | `tool_use` detected (Read, Grep, Glob)          | Seated, reading (2-frame)        |
-| Walking          | Character moving to desk or wander tile         | 4-frame walk cycle               |
-| Idle             | No tool activity for >5 seconds                 | Standing, occasional wander      |
-| Needs permission | Permission prompt detected                      | Typing + amber speech bubble     |
-| Waiting          | Agent waiting for user input                    | Idle + green checkmark bubble    |
-| Not an agent     | No agent patterns detected after 30s            | No character shown               |
+| State            | Trigger                                 | Animation                     |
+| ---------------- | --------------------------------------- | ----------------------------- |
+| Working          | `tool_use` detected (Write, Edit, Bash) | Seated, typing (2-frame)      |
+| Reading          | `tool_use` detected (Read, Grep, Glob)  | Seated, reading (2-frame)     |
+| Walking          | Character moving to desk or wander tile | 4-frame walk cycle            |
+| Idle             | No tool activity for >5 seconds         | Standing, occasional wander   |
+| Needs permission | Permission prompt detected              | Typing + amber speech bubble  |
+| Waiting          | Agent waiting for user input            | Idle + green checkmark bubble |
+| Not an agent     | No agent patterns detected after 30s    | No character shown            |
 
 Walking is a transitional state: triggered when a character needs to move from its current tile to the desk seat (on activation) or to a wander tile (when idle). Uses BFS pathfinding against the office tilemap.
 
@@ -335,6 +333,7 @@ Sub-agents are detected via JSONL `progress` records:
 ### Workspace Switching
 
 When a workspace switch occurs:
+
 - All agent characters despawn simultaneously with the matrix rain effect.
 - Seat assignments are reset.
 - New agents from the loaded workspace spawn fresh with new seat assignments and matrix rain.
@@ -380,31 +379,31 @@ Configurable, with platform-aware defaults:
 
 **macOS defaults:**
 
-| Shortcut          | Action              |
-|-------------------|---------------------|
-| `Cmd+T`           | New tab             |
-| `Cmd+W`           | Close pane          |
-| `Cmd+D`           | Split horizontal    |
-| `Cmd+Shift+D`     | Split vertical      |
-| `Cmd+[/]`         | Navigate panes      |
-| `Cmd+1-9`         | Switch tabs         |
-| `Cmd+F`           | Search in pane      |
-| `Cmd+Shift+V`     | Toggle visualizer   |
-| `Cmd+/`           | Show shortcuts panel|
+| Shortcut      | Action               |
+| ------------- | -------------------- |
+| `Cmd+T`       | New tab              |
+| `Cmd+W`       | Close pane           |
+| `Cmd+D`       | Split horizontal     |
+| `Cmd+Shift+D` | Split vertical       |
+| `Cmd+[/]`     | Navigate panes       |
+| `Cmd+1-9`     | Switch tabs          |
+| `Cmd+F`       | Search in pane       |
+| `Cmd+Shift+V` | Toggle visualizer    |
+| `Cmd+/`       | Show shortcuts panel |
 
 **Windows defaults** (adjusted to avoid shell conflicts):
 
-| Shortcut            | Action              |
-|---------------------|---------------------|
-| `Ctrl+T`            | New tab             |
-| `Ctrl+Shift+W`      | Close pane          |
-| `Ctrl+Shift+D`      | Split horizontal    |
-| `Ctrl+Shift+Alt+D`  | Split vertical      |
-| `Ctrl+[/]`          | Navigate panes      |
-| `Ctrl+1-9`          | Switch tabs         |
-| `Ctrl+Shift+F`      | Search in pane      |
-| `Ctrl+Shift+V`      | Toggle visualizer   |
-| `Ctrl+/`            | Show shortcuts panel|
+| Shortcut           | Action               |
+| ------------------ | -------------------- |
+| `Ctrl+T`           | New tab              |
+| `Ctrl+Shift+W`     | Close pane           |
+| `Ctrl+Shift+D`     | Split horizontal     |
+| `Ctrl+Shift+Alt+D` | Split vertical       |
+| `Ctrl+[/]`         | Navigate panes       |
+| `Ctrl+1-9`         | Switch tabs          |
+| `Ctrl+Shift+F`     | Search in pane       |
+| `Ctrl+Shift+V`     | Toggle visualizer    |
+| `Ctrl+/`           | Show shortcuts panel |
 
 Note: `Ctrl+D` (EOF), `Ctrl+W` (word delete), and `Ctrl+F` (some shells use it) are avoided on Windows to prevent conflicts with shell interactions.
 
@@ -416,10 +415,10 @@ Note: `Ctrl+D` (EOF), `Ctrl+W` (word delete), and `Ctrl+F` (some shells use it) 
 
 ### Distribution
 
-| Platform | Format                          | Tooling            |
-|----------|---------------------------------|--------------------|
-| macOS    | `.dmg` (universal arm64 + x64)  | `electron-builder` |
-| Windows  | `.exe` NSIS installer           | `electron-builder` |
+| Platform | Format                         | Tooling            |
+| -------- | ------------------------------ | ------------------ |
+| macOS    | `.dmg` (universal arm64 + x64) | `electron-builder` |
+| Windows  | `.exe` NSIS installer          | `electron-builder` |
 
 GitHub Actions CI builds both targets on push to `main`, uploads artifacts to GitHub Release.
 
@@ -436,12 +435,12 @@ GitHub Actions CI builds both targets on push to `main`, uploads artifacts to Gi
 
 ## Stack
 
-| Layer              | Choice                          |
-|--------------------|---------------------------------|
-| Shell              | Electron                        |
+| Layer              | Choice                             |
+| ------------------ | ---------------------------------- |
+| Shell              | Electron                           |
 | Build              | electron-vite + React + TypeScript |
 | Terminal emulation | xterm.js (WebGL + canvas fallback) |
-| PTY                | node-pty                        |
-| UI chrome          | shadcn/ui + Tailwind            |
-| Layout persistence | electron-store                  |
+| PTY                | node-pty                           |
+| UI chrome          | shadcn/ui + Tailwind               |
+| Layout persistence | electron-store                     |
 | Auto-updater       | electron-updater + GitHub Releases |

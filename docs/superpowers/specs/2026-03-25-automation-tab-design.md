@@ -38,18 +38,18 @@ Each automation is a JSON file in `~/.fleet/automations/`. Files are named by UU
 
 ### Schedule presets
 
-| Preset key | Display label | Cron expression |
-|------------|--------------|-----------------|
-| `every-5m` | Every 5 minutes | `*/5 * * * *` |
-| `every-15m` | Every 15 minutes | `*/15 * * * *` |
-| `every-hour` | Every hour | `0 * * * *` |
-| `every-6h` | Every 6 hours | `0 */6 * * *` |
-| `daily-9am` | Daily at 9am | `0 9 * * *` |
-| `daily-midnight` | Daily at midnight | `0 0 * * *` |
-| `weekdays-9am` | Weekdays at 9am | `0 9 * * MON-FRI` |
-| `weekly-mon-9am` | Weekly Monday 9am | `0 9 * * MON` |
-| `monthly-1st-9am` | Monthly 1st at 9am | `0 9 1 * *` |
-| `monthly-1st-midnight` | First of month midnight | `0 0 1 * *` |
+| Preset key             | Display label           | Cron expression   |
+| ---------------------- | ----------------------- | ----------------- |
+| `every-5m`             | Every 5 minutes         | `*/5 * * * *`     |
+| `every-15m`            | Every 15 minutes        | `*/15 * * * *`    |
+| `every-hour`           | Every hour              | `0 * * * *`       |
+| `every-6h`             | Every 6 hours           | `0 */6 * * *`     |
+| `daily-9am`            | Daily at 9am            | `0 9 * * *`       |
+| `daily-midnight`       | Daily at midnight       | `0 0 * * *`       |
+| `weekdays-9am`         | Weekdays at 9am         | `0 9 * * MON-FRI` |
+| `weekly-mon-9am`       | Weekly Monday 9am       | `0 9 * * MON`     |
+| `monthly-1st-9am`      | Monthly 1st at 9am      | `0 9 1 * *`       |
+| `monthly-1st-midnight` | First of month midnight | `0 0 1 * *`       |
 
 ### Output directory
 
@@ -100,13 +100,13 @@ Vercel AI SDK (`ai` package) for multi-provider LLM support. Unified `generateTe
 
 ### New dependencies
 
-| Package | Purpose |
-|---------|---------|
-| `ai` | Vercel AI SDK core |
+| Package             | Purpose            |
+| ------------------- | ------------------ |
+| `ai`                | Vercel AI SDK core |
 | `@ai-sdk/anthropic` | Anthropic provider |
-| `@ai-sdk/openai` | OpenAI provider |
-| `@ai-sdk/google` | Google provider |
-| `node-cron` | Cron scheduler |
+| `@ai-sdk/openai`    | OpenAI provider    |
+| `@ai-sdk/google`    | Google provider    |
+| `node-cron`         | Cron scheduler     |
 
 Additional provider packages added as needed.
 
@@ -115,7 +115,7 @@ Additional provider packages added as needed.
 API keys are stored in Fleet's settings via `electron-store` (consistent with existing settings persistence). New settings field:
 
 ```ts
-aiProviders: Record<string, { apiKey: string; baseUrl?: string }>
+aiProviders: Record<string, { apiKey: string; baseUrl?: string }>;
 // e.g. { anthropic: { apiKey: "sk-ant-..." }, openai: { apiKey: "sk-..." } }
 ```
 
@@ -209,18 +209,20 @@ Settings UI: a new "AI Providers" section in the settings dialog with add/remove
 ### Middle — Configuration Form
 
 **Trigger section:**
+
 - Checkboxes: Manual, Schedule (can enable both)
 - Schedule presets dropdown (see preset table in Data Model)
 - "Custom" option reveals raw cron input with human-readable preview
 
 **Agent section:**
+
 - Provider dropdown (populated by configured API keys in Fleet settings)
 - Model dropdown (filters based on selected provider)
 - System prompt: optional, collapsible multiline textarea
 - Prompt: multiline textarea, monospace, the core of the automation
 - Tools: multi-select checklist (shell, read_file, write_file, fleet)
 - Max steps: number input, default 25 (caps the tool-use loop iterations)
-- Max tokens: number input, default 8192 (per generation step, not total — with maxSteps=25 theoretical max is 25 * 8192 = 204,800 tokens)
+- Max tokens: number input, default 8192 (per generation step, not total — with maxSteps=25 theoretical max is 25 \* 8192 = 204,800 tokens)
 
 ### Bottom — Logs Panel
 
@@ -233,12 +235,12 @@ Settings UI: a new "AI Providers" section in the settings dialog with add/remove
 
 ```ts
 interface LogEvent {
-  automationId: string
-  runId: string
-  type: 'text' | 'tool-call' | 'tool-result' | 'error' | 'status'
-  timestamp: string
-  content: string
-  toolName?: string  // for tool-call and tool-result
+  automationId: string;
+  runId: string;
+  type: 'text' | 'tool-call' | 'tool-result' | 'error' | 'status';
+  timestamp: string;
+  content: string;
+  toolName?: string; // for tool-call and tool-result
 }
 ```
 
@@ -247,6 +249,7 @@ interface LogEvent {
 Displays files produced by automation runs.
 
 **Design principles (from Baymard/NNG research):**
+
 - Two-level progressive disclosure: runs > files, no deeper
 - Summary in collapsed state: timestamp, file count, status visible without expanding
 - Most recent run auto-expanded
@@ -258,6 +261,7 @@ Displays files produced by automation runs.
 - File type icons: distinct icons for CSV, JSON, log, image, etc.
 
 **Empty state:**
+
 ```
          No outputs yet.
   Run your automation to see
@@ -267,6 +271,7 @@ Displays files produced by automation runs.
 ```
 
 **File row hover state:**
+
 ```
 ├── 📊 report.csv    2.1 KB    Open  📋 Copy  📂
 ```
@@ -294,12 +299,12 @@ Lives in Electron's main process. All async operations use promises (never block
 
 ### Tool implementations
 
-| Tool | Implementation |
-|------|---------------|
-| `shell` | `util.promisify(child_process.exec)`. 60-second default timeout. Returns stdout/stderr. |
-| `read_file` | `fs.promises.readFile()`. Returns file contents as string. |
+| Tool         | Implementation                                                                                                                                                                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shell`      | `util.promisify(child_process.exec)`. 60-second default timeout. Returns stdout/stderr.                                                                                                                                            |
+| `read_file`  | `fs.promises.readFile()`. Returns file contents as string.                                                                                                                                                                         |
 | `write_file` | `fs.promises.writeFile()`. Relative paths resolved against run output directory. Absolute paths written as-is (no sandboxing — agent is trusted at user level). Creates parent dirs with `fs.promises.mkdir({ recursive: true })`. |
-| `fleet` | Calls `FleetCommandHandler.handleCommand()` directly (in-process, no socket overhead). Returns JSON response. |
+| `fleet`      | Calls `FleetCommandHandler.handleCommand()` directly (in-process, no socket overhead). Returns JSON response.                                                                                                                      |
 
 ### Cancellation
 
@@ -323,15 +328,15 @@ When `stopAutomation(id)` is called:
 
 ### Error handling
 
-| Scenario | Behavior |
-|----------|----------|
-| API key missing/invalid (401) | Log error, set run status to `error`, show "API key not configured for [provider]" in logs panel |
-| Provider unreachable (network) | Log error, set run status to `error`, show network error message in logs panel |
-| `generateText()` throws mid-loop | Catch error, log it, set run status to `error`, keep partial outputs |
-| `shell` command hangs | 60-second timeout (configurable via `agent.shellTimeout` in JSON), kill process, report timeout to agent who can retry or fail |
-| `write_file` permission error | Report error to agent, agent can retry with different path or fail |
-| Automation JSON corrupt/unreadable | Skip on load with console warning, show error indicator on sidebar item |
-| App crash during run | On next launch, scan for `run.json` with `status: "running"`, mark as `error` |
+| Scenario                           | Behavior                                                                                                                       |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| API key missing/invalid (401)      | Log error, set run status to `error`, show "API key not configured for [provider]" in logs panel                               |
+| Provider unreachable (network)     | Log error, set run status to `error`, show network error message in logs panel                                                 |
+| `generateText()` throws mid-loop   | Catch error, log it, set run status to `error`, keep partial outputs                                                           |
+| `shell` command hangs              | 60-second timeout (configurable via `agent.shellTimeout` in JSON), kill process, report timeout to agent who can retry or fail |
+| `write_file` permission error      | Report error to agent, agent can retry with different path or fail                                                             |
+| Automation JSON corrupt/unreadable | Skip on load with console warning, show error indicator on sidebar item                                                        |
+| App crash during run               | On next launch, scan for `run.json` with `status: "running"`, mark as `error`                                                  |
 
 ## State Management
 
@@ -339,30 +344,30 @@ When `stopAutomation(id)` is called:
 
 ```ts
 interface AutomationMeta {
-  id: string
-  name: string
-  description: string
-  status: 'idle' | 'running' | 'error' | 'cancelled'
-  hasSchedule: boolean  // for sidebar schedule icon
+  id: string;
+  name: string;
+  description: string;
+  status: 'idle' | 'running' | 'error' | 'cancelled';
+  hasSchedule: boolean; // for sidebar schedule icon
 }
 
 interface RunState {
-  runId: string         // timestamp-based, unique per run
-  automationId: string
-  startedAt: string
-  logs: LogEvent[]
-  status: 'running' | 'success' | 'error' | 'cancelled'
+  runId: string; // timestamp-based, unique per run
+  automationId: string;
+  startedAt: string;
+  logs: LogEvent[];
+  status: 'running' | 'success' | 'error' | 'cancelled';
 }
 
 interface AutomationStore {
   // List
-  automations: AutomationMeta[]
-  loadAutomations: () => Promise<void>
+  automations: AutomationMeta[];
+  loadAutomations: () => Promise<void>;
 
   // Execution
-  runningAutomations: Record<string, RunState>  // keyed by automation ID
-  runAutomation: (id: string) => void
-  stopAutomation: (id: string) => void
+  runningAutomations: Record<string, RunState>; // keyed by automation ID
+  runAutomation: (id: string) => void;
+  stopAutomation: (id: string) => void;
 }
 ```
 
@@ -370,16 +375,16 @@ Uses `Record<string, RunState>` instead of `Map` for Zustand compatibility (refe
 
 ### New IPC channels
 
-| Channel | Type | Purpose |
-|---------|------|---------|
-| `AUTOMATION_LIST` | handle (invoke/return) | List all automation files |
-| `AUTOMATION_READ` | handle (invoke/return) | Read a single automation by ID |
-| `AUTOMATION_WRITE` | handle (invoke/return) | Create or update an automation |
-| `AUTOMATION_DELETE` | handle (invoke/return) | Delete automation file + output directory |
-| `AUTOMATION_RUN` | handle (invoke/return) | Start execution, returns run ID |
-| `AUTOMATION_STOP` | handle (invoke/return) | Cancel running automation, returns acknowledgment |
-| `AUTOMATION_LOG` | push (main → renderer) | Log events via `webContents.send()`, same pattern as `PTY_DATA` |
-| `AUTOMATION_OUTPUTS` | handle (invoke/return) | List output files/runs for an automation |
+| Channel              | Type                   | Purpose                                                         |
+| -------------------- | ---------------------- | --------------------------------------------------------------- |
+| `AUTOMATION_LIST`    | handle (invoke/return) | List all automation files                                       |
+| `AUTOMATION_READ`    | handle (invoke/return) | Read a single automation by ID                                  |
+| `AUTOMATION_WRITE`   | handle (invoke/return) | Create or update an automation                                  |
+| `AUTOMATION_DELETE`  | handle (invoke/return) | Delete automation file + output directory                       |
+| `AUTOMATION_RUN`     | handle (invoke/return) | Start execution, returns run ID                                 |
+| `AUTOMATION_STOP`    | handle (invoke/return) | Cancel running automation, returns acknowledgment               |
+| `AUTOMATION_LOG`     | push (main → renderer) | Log events via `webContents.send()`, same pattern as `PTY_DATA` |
+| `AUTOMATION_OUTPUTS` | handle (invoke/return) | List output files/runs for an automation                        |
 
 ### Preload bridge
 
@@ -463,15 +468,15 @@ Existing types that need extending:
 
 ### Validation rules
 
-| Field | Constraints |
-|-------|------------|
-| `name` | Required, 1-100 characters |
-| `description` | Optional, max 500 characters |
-| `prompt` | Required, non-empty |
-| `tools` | Required, at least one tool selected |
-| `maxSteps` | 1-100, default 25 |
-| `maxTokens` | 256-32768, default 8192 |
-| `cron` (custom) | Must be valid cron expression |
+| Field           | Constraints                          |
+| --------------- | ------------------------------------ |
+| `name`          | Required, 1-100 characters           |
+| `description`   | Optional, max 500 characters         |
+| `prompt`        | Required, non-empty                  |
+| `tools`         | Required, at least one tool selected |
+| `maxSteps`      | 1-100, default 25                    |
+| `maxTokens`     | 256-32768, default 8192              |
+| `cron` (custom) | Must be valid cron expression        |
 
 ### Status lifecycle
 

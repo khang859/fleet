@@ -14,10 +14,10 @@
 
 ## File Map
 
-| File | Action |
-|------|--------|
+| File                                                          | Action                                                                                              |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `src/renderer/src/components/star-command/AdmiralSidebar.tsx` | Modify — add `CrewPopover` sub-component, sector grouping, `openCrewId` state, Radix Popover wiring |
-| `package.json` | Modify — add `@radix-ui/react-popover` |
+| `package.json`                                                | Modify — add `@radix-ui/react-popover`                                                              |
 
 No other files change.
 
@@ -26,6 +26,7 @@ No other files change.
 ## Task 1: Install `@radix-ui/react-popover`
 
 **Files:**
+
 - Modify: `package.json`
 
 `@radix-ui/react-popover` is not installed. It must be added before any import can be written.
@@ -58,6 +59,7 @@ git commit -m "chore: add @radix-ui/react-popover"
 ## Task 2: Add `relativeTime` helper and `CrewPopover` sub-component to `AdmiralSidebar.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/AdmiralSidebar.tsx`
 
 Add the `relativeTime` module-level function and the `CrewPopover` component **before** the existing `AdmiralSidebar` export. Do not touch any existing code yet.
@@ -65,11 +67,13 @@ Add the `relativeTime` module-level function and the `CrewPopover` component **b
 - [ ] **Step 1: Add the Radix Popover import and `useState` import**
 
 At the top of `AdmiralSidebar.tsx`, the existing import line is:
+
 ```ts
 import { useStarCommandStore } from '../../store/star-command-store';
 ```
 
 Add above it:
+
 ```ts
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
@@ -232,7 +236,9 @@ function CrewPopover({
       <div className="px-3 py-2 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <button
-            onClick={() => { void handleObserve(); }}
+            onClick={() => {
+              void handleObserve();
+            }}
             disabled={observing}
             className="text-neutral-400 hover:text-neutral-200 transition-colors disabled:opacity-50"
           >
@@ -243,7 +249,9 @@ function CrewPopover({
             <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
               <span className="text-[10px] text-red-300">Recall?</span>
               <button
-                onClick={() => { void handleRecall(); }}
+                onClick={() => {
+                  void handleRecall();
+                }}
                 disabled={recalling}
                 className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
               >
@@ -301,6 +309,7 @@ git commit -m "feat(sidebar): add CrewPopover sub-component with observe/recall"
 ## Task 3: Update AdmiralSidebar crew list to sector-grouped + popover wiring
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/AdmiralSidebar.tsx`
 
 This task replaces the existing flat crew list with the sector-grouped popover-enabled version.
@@ -338,81 +347,79 @@ Also add `onScroll` to the outermost sidebar `<div>` (line 60, the one with `ove
 Find the existing Crew section in the JSX (around line 195–212 in the original file):
 
 ```tsx
-{/* Crew list */}
-{crewList.length > 0 && (
-  <div>
-    <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
-      Crew
-    </h3>
-    <div className="space-y-1">
-      {crewList.map((crew) => (
-        <div key={crew.id} className="flex items-center gap-2 py-0.5">
-          <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
-          <span className="text-xs text-neutral-300 truncate flex-1">{crew.id}</span>
-          <span className="text-[10px] font-mono text-neutral-600 uppercase">
-            {crew.status}
-          </span>
-        </div>
-      ))}
+{
+  /* Crew list */
+}
+{
+  crewList.length > 0 && (
+    <div>
+      <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
+        Crew
+      </h3>
+      <div className="space-y-1">
+        {crewList.map((crew) => (
+          <div key={crew.id} className="flex items-center gap-2 py-0.5">
+            <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
+            <span className="text-xs text-neutral-300 truncate flex-1">{crew.id}</span>
+            <span className="text-[10px] font-mono text-neutral-600 uppercase">{crew.status}</span>
+          </div>
+        ))}
+      </div>
     </div>
-  </div>
-)}
+  );
+}
 ```
 
 Replace it entirely with:
 
 ```tsx
-{/* Crew list — sector-grouped with popover detail */}
-{crewList.length > 0 && (
-  <div>
-    <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
-      Crew
-    </h3>
-    {Array.from(bySector.entries()).map(([sectorId, sectorCrew]) => {
-      const sector = sectors.find((s) => s.id === sectorId);
-      const sectorLabel = sector?.name ?? sectorId;
-      return (
-        <div key={sectorId} className="mb-2">
-          <div className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest mb-1 pl-0.5">
-            {sectorLabel}
+{
+  /* Crew list — sector-grouped with popover detail */
+}
+{
+  crewList.length > 0 && (
+    <div>
+      <h3 className="text-[10px] font-mono text-neutral-500 uppercase tracking-widest mb-2">
+        Crew
+      </h3>
+      {Array.from(bySector.entries()).map(([sectorId, sectorCrew]) => {
+        const sector = sectors.find((s) => s.id === sectorId);
+        const sectorLabel = sector?.name ?? sectorId;
+        return (
+          <div key={sectorId} className="mb-2">
+            <div className="text-[9px] font-mono text-neutral-600 uppercase tracking-widest mb-1 pl-0.5">
+              {sectorLabel}
+            </div>
+            {sectorCrew.map((crew) => (
+              <Popover.Root
+                key={crew.id}
+                open={openCrewId === crew.id}
+                onOpenChange={(open) => setOpenCrewId(open ? crew.id : null)}
+              >
+                <Popover.Trigger asChild>
+                  <div className="flex items-center gap-2 py-0.5 pl-2 rounded cursor-pointer hover:bg-neutral-800 transition-colors">
+                    <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
+                    <span className="text-xs text-neutral-300 truncate flex-1">
+                      {crew.mission_summary?.trim() || crew.id}
+                    </span>
+                    <span className="text-[10px] font-mono text-neutral-600 uppercase flex-shrink-0">
+                      {crew.status}
+                    </span>
+                  </div>
+                </Popover.Trigger>
+                <Popover.Portal>
+                  <Popover.Content side="left" sideOffset={8} className="z-50">
+                    <CrewPopover crew={crew} sector={sector} onClose={() => setOpenCrewId(null)} />
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover.Root>
+            ))}
           </div>
-          {sectorCrew.map((crew) => (
-            <Popover.Root
-              key={crew.id}
-              open={openCrewId === crew.id}
-              onOpenChange={(open) => setOpenCrewId(open ? crew.id : null)}
-            >
-              <Popover.Trigger asChild>
-                <div className="flex items-center gap-2 py-0.5 pl-2 rounded cursor-pointer hover:bg-neutral-800 transition-colors">
-                  <StatusDot color={STATUS_COLORS[crew.status] ?? 'bg-neutral-500'} />
-                  <span className="text-xs text-neutral-300 truncate flex-1">
-                    {crew.mission_summary?.trim() || crew.id}
-                  </span>
-                  <span className="text-[10px] font-mono text-neutral-600 uppercase flex-shrink-0">
-                    {crew.status}
-                  </span>
-                </div>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  side="left"
-                  sideOffset={8}
-                  className="z-50"
-                >
-                  <CrewPopover
-                    crew={crew}
-                    sector={sector}
-                    onClose={() => setOpenCrewId(null)}
-                  />
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
-          ))}
-        </div>
-      );
-    })}
-  </div>
-)}
+        );
+      })}
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 3: Typecheck**
@@ -434,6 +441,7 @@ Expected: exits 0 with no errors.
 - [ ] **Step 5: Manual smoke test**
 
 Run the app in dev mode (`npm run dev`) and open Star Command. With crew deployed:
+
 - Crew section shows sector sub-headers
 - Each row shows mission summary (or ID fallback) + status
 - Clicking a row opens the popover to the left
@@ -456,6 +464,7 @@ git commit -m "feat(sidebar): sector-grouped crew list with mission label and de
 ## Done
 
 All tasks complete. The `AdmiralSidebar` now shows:
+
 - Crew grouped by sector with human-readable mission summaries as primary labels
 - Per-row popover (left-anchored, Escape-dismissable) with full metadata, token bar, observe output, and recall confirmation
 - No changes to any other file

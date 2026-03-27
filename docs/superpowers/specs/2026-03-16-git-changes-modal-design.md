@@ -98,6 +98,7 @@ Focus is trapped within the modal. Initial focus goes to the file list. Single-k
 ### Main Process
 
 **New module: `src/main/git-service.ts`**
+
 - Uses `simple-git` library
 - Two functions:
   - `checkIsRepo(cwd: string)` — lightweight check via `git rev-parse --is-inside-work-tree` (used by pane toolbar)
@@ -106,22 +107,23 @@ Focus is trapped within the modal. Initial focus goes to the file list. Single-k
 
 ```typescript
 interface GitStatusPayload {
-  isRepo: boolean
-  branch: string
+  isRepo: boolean;
+  branch: string;
   files: Array<{
-    path: string
-    status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
-    insertions: number
-    deletions: number
-  }>
-  diff: string // raw unified diff (all files combined)
-  error?: string // set if git operation failed
+    path: string;
+    status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+    insertions: number;
+    deletions: number;
+  }>;
+  diff: string; // raw unified diff (all files combined)
+  error?: string; // set if git operation failed
 }
 ```
 
 ### IPC Channels
 
 Added to `src/shared/constants.ts`:
+
 - `GIT_IS_REPO` — lightweight invoke, returns `{ isRepo: boolean }` for toolbar visibility
 - `GIT_STATUS` — full invoke, returns `GitStatusPayload`
 
@@ -130,6 +132,7 @@ Handlers registered in `src/main/ipc-handlers.ts`.
 ### Preload Bridge
 
 Added to `src/preload/index.ts`:
+
 ```typescript
 git: {
   isRepo: (cwd: string) => ipcRenderer.invoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
@@ -151,26 +154,29 @@ git: {
 ### Pane Toolbar
 
 Git icon button in `PaneToolbar`:
+
 - Calls `window.fleet.git.isRepo(cwd)` on pane focus via the lightweight `GIT_IS_REPO` channel
 - Hidden when CWD is undefined or not inside a git repo
 - Click dispatches `fleet:toggle-git-changes`
 
 ## Dependencies (New)
 
-| Package | Purpose |
-|---------|---------|
-| `simple-git` | Git operations from main process |
-| `@git-diff-view/react` | Diff parsing + rendering |
-| `@git-diff-view/shiki` | Syntax highlighting integration |
-| `shiki` | TextMate-based syntax highlighting engine (lazy-loaded, custom bundle with common languages + `github-dark` theme) |
+| Package                | Purpose                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `simple-git`           | Git operations from main process                                                                                   |
+| `@git-diff-view/react` | Diff parsing + rendering                                                                                           |
+| `@git-diff-view/shiki` | Syntax highlighting integration                                                                                    |
+| `shiki`                | TextMate-based syntax highlighting engine (lazy-loaded, custom bundle with common languages + `github-dark` theme) |
 
 ## Files to Create/Modify
 
 **New files:**
+
 - `src/main/git-service.ts` — git operations module
 - `src/renderer/src/components/GitChangesModal.tsx` — modal component
 
 **Modified files:**
+
 - `src/shared/constants.ts` — add `GIT_IS_REPO` and `GIT_STATUS` IPC channels
 - `src/shared/ipc-api.ts` — add `GitStatusPayload` type (consistent with existing IPC type location)
 - `src/preload/index.ts` — add `git.isRepo` and `git.getStatus` bridge methods

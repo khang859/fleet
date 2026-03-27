@@ -5,6 +5,7 @@ Add an "Updates" tab to the Settings modal so users can manually check for updat
 ## Current State
 
 Fleet already has `electron-updater` wired up:
+
 - Main process calls `autoUpdater.checkForUpdatesAndNotify()` on launch (packaged builds only)
 - Preload exposes `onUpdateDownloaded` and `installUpdate`
 - App.tsx shows a floating "Update ready — restart to install" button
@@ -15,14 +16,14 @@ The problem: there's no way to know if the updater is working, what version you'
 
 ### Update States
 
-| State | Trigger | UI |
-|---|---|---|
-| `idle` | Default / after `not-available` auto-resets (3s) | Version label + "Check for Updates" button |
-| `checking` | User clicks check or auto-check on launch | "Checking for updates..." |
-| `downloading` | `update-available` fires (auto-download is on, so this is immediate) | Progress bar with percentage + release notes |
-| `ready` | Download complete | "Restart to Update" button + release notes |
-| `not-available` | Already on latest | "You're up to date" (auto-resets to `idle` after 3s) |
-| `error` | Network/auth/signing failure | Error message + "Retry" button |
+| State           | Trigger                                                              | UI                                                   |
+| --------------- | -------------------------------------------------------------------- | ---------------------------------------------------- |
+| `idle`          | Default / after `not-available` auto-resets (3s)                     | Version label + "Check for Updates" button           |
+| `checking`      | User clicks check or auto-check on launch                            | "Checking for updates..."                            |
+| `downloading`   | `update-available` fires (auto-download is on, so this is immediate) | Progress bar with percentage + release notes         |
+| `ready`         | Download complete                                                    | "Restart to Update" button + release notes           |
+| `not-available` | Already on latest                                                    | "You're up to date" (auto-resets to `idle` after 3s) |
+| `error`         | Network/auth/signing failure                                         | Error message + "Retry" button                       |
 
 Note: `electron-updater` auto-starts downloading when `update-available` fires (`autoDownload` defaults to `true`). There is no separate `available` state — the UI goes straight from `checking` to `downloading` with version/release notes shown alongside the progress bar.
 
@@ -32,6 +33,7 @@ Note: `electron-updater` auto-starts downloading when `update-available` fires (
 - `fleet:update-status` — main sends status updates to renderer
 
 Payload shape:
+
 ```ts
 type UpdateStatus =
   | { state: 'idle' }
@@ -43,9 +45,11 @@ type UpdateStatus =
 ```
 
 Existing channel stays:
+
 - `fleet:install-update` — renderer sends to quit and install
 
 New channel:
+
 - `fleet:get-version` — renderer invokes, main returns `app.getVersion()`
 
 ### Main Process (`src/main/index.ts`)
@@ -72,6 +76,7 @@ Keep silent auto-check on launch — it feeds into the same status pipeline.
 ### Preload (`src/preload/index.ts`)
 
 Replace the `updates` object (removing the old `onUpdateDownloaded` and its `fleet:update-downloaded` listener):
+
 ```ts
 updates: {
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke('fleet:update-check'),

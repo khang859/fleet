@@ -727,7 +727,6 @@ export class StarbaseRuntimeCore {
         trace('bootstrap memos dir ensured');
       }
 
-
       this.deps = {
         starbaseDb: localStarbaseDb,
         sectorService,
@@ -803,7 +802,13 @@ export class StarbaseRuntimeCore {
     const deps = this.requireDeps();
     const unreadComms = deps.commsService.getUnread('admiral');
 
-    type AlertRow = { id: number; type: string; payload: string; created_at: string; from_crew: string | null };
+    type AlertRow = {
+      id: number;
+      type: string;
+      payload: string;
+      created_at: string;
+      from_crew: string | null;
+    };
     const sentinelAlerts = deps.starbaseDb
       .getDb()
       .prepare<[], AlertRow>(

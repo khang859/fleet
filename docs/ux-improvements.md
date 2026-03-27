@@ -37,6 +37,7 @@ Research-backed improvements from Baymard Institute and Nielsen Norman Group (NN
 ## Sources
 
 ### Baymard Institute
+
 - [Highlight the User's Current Scope in Navigation](https://baymard.com/blog/highlight-users-navigation-scope)
 - [Core Content Overlooked in Horizontal Tabs](https://baymard.com/blog/avoid-horizontal-tabs)
 - [6 Guidelines for Truncation Design](https://baymard.com/blog/truncation-design)
@@ -47,6 +48,7 @@ Research-backed improvements from Baymard Institute and Nielsen Norman Group (NN
 - [Hotel Search Split View Layout](https://baymard.com/blog/accommodations-split-view)
 
 ### Nielsen Norman Group
+
 - [Indicators, Validations, and Notifications](https://www.nngroup.com/articles/indicators-validations-notifications/)
 - [Push Notification Mistakes](https://www.nngroup.com/articles/push-notification/)
 - [Designing for Serial Task Switching](https://www.nngroup.com/articles/serial-task-switching/)

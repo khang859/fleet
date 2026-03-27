@@ -57,6 +57,7 @@ The following extensions are rejected as unsupported binary files: `.zip`, `.tar
 **Command:** `file.open`
 
 **Payload:**
+
 ```typescript
 {
   command: 'file.open',
@@ -70,6 +71,7 @@ The following extensions are rejected as unsupported binary files: `.zip`, `.tar
 ```
 
 **Response:**
+
 ```typescript
 { ok: true, data: { fileCount: number } }
 ```
@@ -83,13 +85,14 @@ The response is a simple acknowledgment with the number of files sent to the ren
 **IPC Channel:** `file:open-in-tab`
 
 **IPC Payload:**
+
 ```typescript
 {
   files: Array<{
-    path: string
-    paneType: 'file' | 'image'
-    label: string  // basename of the file, e.g., "file.md"
-  }>
+    path: string;
+    paneType: 'file' | 'image';
+    label: string; // basename of the file, e.g., "file.md"
+  }>;
 }
 ```
 

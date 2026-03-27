@@ -30,14 +30,14 @@ The First Officer is an automated triage layer that reduces micro-management in 
 
 ### Actionable Events
 
-| Event | First Officer Action |
-|-------|---------------------|
-| Crew status → `error` | Read crew's last output, diagnose failure, re-queue with tweaked prompt (up to 3 retries) |
-| Crew status → `lost` | Check if PID died or timeout — re-queue if transient |
-| Crew status → `timeout` | Analyze if mission scope was too large, re-queue with narrower scope or escalate |
-| Mission failed verification (Gate 2) | Read test output, tweak mission prompt to address failures, re-deploy |
-| Unanswered hailing > 60s | Write a memo summarizing the hailing request so the operator can address it (never auto-answers — hailing requires human judgment) |
-| Mission review rejected (Gate 3) | Read rejection reason, revise mission prompt, re-deploy |
+| Event                                | First Officer Action                                                                                                               |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Crew status → `error`                | Read crew's last output, diagnose failure, re-queue with tweaked prompt (up to 3 retries)                                          |
+| Crew status → `lost`                 | Check if PID died or timeout — re-queue if transient                                                                               |
+| Crew status → `timeout`              | Analyze if mission scope was too large, re-queue with narrower scope or escalate                                                   |
+| Mission failed verification (Gate 2) | Read test output, tweak mission prompt to address failures, re-deploy                                                              |
+| Unanswered hailing > 60s             | Write a memo summarizing the hailing request so the operator can address it (never auto-answers — hailing requires human judgment) |
+| Mission review rejected (Gate 3)     | Read rejection reason, revise mission prompt, re-deploy                                                                            |
 
 ### What It Does NOT Do
 
@@ -69,6 +69,7 @@ The First Officer is an automated triage layer that reduces micro-management in 
 ### First Officer CLAUDE.md
 
 Contains:
+
 - Role identity: "You are the First Officer, not the Admiral"
 - Explicit instruction to ignore any other CLAUDE.md role instructions
 - Memo writing conventions and format
@@ -143,12 +144,12 @@ ALTER TABLE missions ADD COLUMN first_officer_retry_count INTEGER DEFAULT 0;
 
 ### New Config Keys in `starbase_config`
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `first_officer_max_retries` | 3 | Max retries before forced escalation |
-| `first_officer_max_concurrent` | 2 | Max concurrent First Officer processes |
-| `first_officer_timeout` | 120 | Hard timeout per invocation (seconds) |
-| `first_officer_model` | `sonnet` | Claude model to use |
+| Key                            | Default  | Description                            |
+| ------------------------------ | -------- | -------------------------------------- |
+| `first_officer_max_retries`    | 3        | Max retries before forced escalation   |
+| `first_officer_max_concurrent` | 2        | Max concurrent First Officer processes |
+| `first_officer_timeout`        | 120      | Hard timeout per invocation (seconds)  |
+| `first_officer_model`          | `sonnet` | Claude model to use                    |
 
 ### Sentinel Additions
 
@@ -184,9 +185,11 @@ The First Officer gets a presence in `AdmiralSidebar.tsx`, below the Admiral sec
 ## Pixel Art Assets
 
 Style prefix (same as all Star Command assets):
+
 > `16-bit pixel art, dark sci-fi space station theme, limited color palette of deep navy, teal, cyan, amber, soft red, and white accents, clean pixel edges, no anti-aliasing, retro game aesthetic, deep space black background with stars`
 
 ### First Officer Portrait — Default
+
 ```
 {style prefix}, pixel art character portrait, front-facing bust shot,
 female First Officer with sharp features, short practical hair, small
@@ -198,6 +201,7 @@ avatar, clean readable face details
 ```
 
 ### First Officer Portrait — Working
+
 ```
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,
@@ -207,6 +211,7 @@ near headset, concentrated expression, dark navy background,
 ```
 
 ### First Officer Portrait — Escalation
+
 ```
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,
@@ -216,6 +221,7 @@ with subtle amber tint, 64x64 pixels, portrait avatar
 ```
 
 ### First Officer Portrait — Idle
+
 ```
 {style prefix}, pixel art character portrait, front-facing bust shot,
 same female First Officer with short practical hair and tactical headset,

@@ -10,11 +10,11 @@ Tasks 4.1–4.4 from the original plan are unchanged (JSONL watcher, agent state
 
 Procedural parallax starfield with 3 layers:
 
-| Layer | Speed | Brightness | Dot size |
-|-------|-------|-----------|----------|
-| Far   | Slow  | Dim       | 1px      |
-| Mid   | Medium| Brighter  | 1–2px    |
-| Near  | Fast  | Brightest | 2px      |
+| Layer | Speed  | Brightness | Dot size |
+| ----- | ------ | ---------- | -------- |
+| Far   | Slow   | Dim        | 1px      |
+| Mid   | Medium | Brighter   | 1–2px    |
+| Near  | Fast   | Brightest  | 2px      |
 
 Stars scroll right-to-left, creating the illusion of ships flying left-to-right. Canvas background is near-black (`#0a0a1a`). No tilemap, no grid. Ships have floating-point X/Y positions in pixel space.
 
@@ -54,13 +54,13 @@ Subagents trail behind their parent, each offset by `(-0.06, +0.04)` in normaliz
 
 Each agent state maps to a ship body color and engine trail behavior:
 
-| State              | Ship color         | Engine trail                          |
-|--------------------|--------------------|---------------------------------------|
-| `working`          | Green `#4ade80`    | Bright, long exhaust particles (4–6)  |
-| `reading`          | Blue `#60a5fa`     | Medium exhaust (2–3 particles)        |
-| `idle`             | Gray `#9ca3af`     | Dim/no exhaust, ship drifts slightly  |
-| `needs-permission` | Amber `#fbbf24`    | Pulsing glow around ship              |
-| `waiting`          | Teal `#34d399`     | Gentle exhaust, steady                |
+| State              | Ship color      | Engine trail                         |
+| ------------------ | --------------- | ------------------------------------ |
+| `working`          | Green `#4ade80` | Bright, long exhaust particles (4–6) |
+| `reading`          | Blue `#60a5fa`  | Medium exhaust (2–3 particles)       |
+| `idle`             | Gray `#9ca3af`  | Dim/no exhaust, ship drifts slightly |
+| `needs-permission` | Amber `#fbbf24` | Pulsing glow around ship             |
+| `waiting`          | Teal `#34d399`  | Gentle exhaust, steady               |
 
 ### Engine Trail Particles
 

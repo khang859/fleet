@@ -4,27 +4,27 @@ A meta-agent orchestration layer for Fleet. Star Command is a pinned tab at the 
 
 ## Glossary
 
-| Term | Meaning |
-|------|---------|
-| **Starbase** | A workspace — the top-level container for all your projects, crew, and missions |
-| **Star Command** | The pinned orchestrator tab — mission control for the entire Starbase |
-| **Admiral** | The Star Command AI agent — the commander who manages everything |
-| **Sector** | A project within the Starbase (e.g. `api/`, `web/`, `mobile/`) |
-| **Crew** / **Crewmate** | An AI agent working on a mission in a Sector |
-| **Mission** | A task assigned to a Crewmate — a discrete unit of work |
-| **Comms** | Messages between Crew and Star Command |
-| **Transmission** | A single message in the Comms channel |
-| **Cargo** | Artifacts produced by Crew — code, specs, schemas, test results |
-| **Supply Route** | A dependency link between Sectors (e.g. web consumes api) |
-| **Hull** | The wrapper process around each Crewmate — handles lifecycle automatically |
-| **Lifesigns** | Heartbeat pings from the Hull confirming a Crewmate is alive |
-| **Sentinel** | The watchdog system that detects silent failures |
-| **Ship's Log** | The append-only event audit trail |
-| **Hailing** | When a Crewmate is blocked and requesting help from Star Command |
-| **Deploy** | Spawn a new Crewmate |
-| **Recall** | Kill / shut down a Crewmate |
-| **Dock** | A Crewmate arriving at the station (spawn animation) |
-| **Undock** | A Crewmate departing the station (completion animation) |
+| Term                    | Meaning                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| **Starbase**            | A workspace — the top-level container for all your projects, crew, and missions |
+| **Star Command**        | The pinned orchestrator tab — mission control for the entire Starbase           |
+| **Admiral**             | The Star Command AI agent — the commander who manages everything                |
+| **Sector**              | A project within the Starbase (e.g. `api/`, `web/`, `mobile/`)                  |
+| **Crew** / **Crewmate** | An AI agent working on a mission in a Sector                                    |
+| **Mission**             | A task assigned to a Crewmate — a discrete unit of work                         |
+| **Comms**               | Messages between Crew and Star Command                                          |
+| **Transmission**        | A single message in the Comms channel                                           |
+| **Cargo**               | Artifacts produced by Crew — code, specs, schemas, test results                 |
+| **Supply Route**        | A dependency link between Sectors (e.g. web consumes api)                       |
+| **Hull**                | The wrapper process around each Crewmate — handles lifecycle automatically      |
+| **Lifesigns**           | Heartbeat pings from the Hull confirming a Crewmate is alive                    |
+| **Sentinel**            | The watchdog system that detects silent failures                                |
+| **Ship's Log**          | The append-only event audit trail                                               |
+| **Hailing**             | When a Crewmate is blocked and requesting help from Star Command                |
+| **Deploy**              | Spawn a new Crewmate                                                            |
+| **Recall**              | Kill / shut down a Crewmate                                                     |
+| **Dock**                | A Crewmate arriving at the station (spawn animation)                            |
+| **Undock**              | A Crewmate departing the station (completion animation)                         |
 
 ## Concept
 
@@ -160,13 +160,13 @@ When a Crewmate signals completion (or exits cleanly), the Hull runs a **verific
 
 **Sector verify commands.** Each Sector can define a `verify_command` in its config — a shell command the Hull runs after the Crewmate finishes. The Hull runs it in the worktree with a timeout (default 120 seconds). Exit code 0 = pass, anything else = fail.
 
-| Sector Stack | Default Verify Command | What It Checks |
-|-------------|----------------------|----------------|
-| TypeScript/Node | `npm run build && npm test` | Compiles + tests pass |
-| Go | `go build ./... && go test ./...` | Compiles + tests pass |
-| Python | `python -m pytest` | Tests pass |
-| Rust | `cargo build && cargo test` | Compiles + tests pass |
-| Custom | User-defined in Config | Whatever you want |
+| Sector Stack    | Default Verify Command            | What It Checks        |
+| --------------- | --------------------------------- | --------------------- |
+| TypeScript/Node | `npm run build && npm test`       | Compiles + tests pass |
+| Go              | `go build ./... && go test ./...` | Compiles + tests pass |
+| Python          | `python -m pytest`                | Tests pass            |
+| Rust            | `cargo build && cargo test`       | Compiles + tests pass |
+| Custom          | User-defined in Config            | Whatever you want     |
 
 The verify command is configurable per Sector in the Config panel. You can set it to anything — `make check`, `./scripts/ci.sh`, or even just `true` if you want to skip verification. If no verify command is set and the stack isn't auto-detected, the Hull skips this gate (with a warning in the Ship's Log).
 
@@ -192,6 +192,7 @@ After the PR is created, the Admiral reviews it against the Mission's acceptance
 **Pass** — All acceptance criteria are met, the code looks reasonable. The Admiral approves the PR (or leaves it for you to merge, depending on config). Mission status: completed.
 
 **Request-changes** — Most criteria met, but something is off. Maybe a test is missing, or an edge case isn't handled. The Admiral can either:
+
 - Deploy a follow-up "fix" Mission on the same branch to address the gaps
 - Add PR review comments and leave it for you
 
@@ -213,17 +214,20 @@ The PR template includes the acceptance criteria as a checklist, with the Admira
 ## Mission: Add rate limiting to /api/users
 
 ### Acceptance Criteria
+
 - [x] POST /api/users returns 429 after 10 requests in 60 seconds
 - [x] Rate limit headers present on response
 - [x] Existing tests still pass
 - [x] New test covers the 429 case
 
 ### Verification
+
 - Build: ✅ passed
 - Tests: ✅ 47 passed, 0 failed
 - Lint: ⚠️ 2 warnings (non-blocking)
 
 ### Admiral Review
+
 All acceptance criteria verified against the diff. Rate limiting is implemented
 using express-rate-limit with in-memory store as specified. New test at
 test/rate-limit.test.ts covers the 429 case with proper assertions.
@@ -235,27 +239,27 @@ This means every PR is self-documenting — you (or anyone reviewing) can see ex
 
 The `missions` table gets new columns for quality gates:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| acceptance_criteria | TEXT | JSON array of criteria strings |
-| verify_result | TEXT | JSON blob with verify command output (stdout, stderr, exit code) |
-| review_verdict | TEXT | "pass", "request-changes", "reject", or NULL if not yet reviewed |
-| review_notes | TEXT | Admiral's review commentary |
+| Column              | Type | Description                                                      |
+| ------------------- | ---- | ---------------------------------------------------------------- |
+| acceptance_criteria | TEXT | JSON array of criteria strings                                   |
+| verify_result       | TEXT | JSON blob with verify command output (stdout, stderr, exit code) |
+| review_verdict      | TEXT | "pass", "request-changes", "reject", or NULL if not yet reviewed |
+| review_notes        | TEXT | Admiral's review commentary                                      |
 
 The `sectors` table gets verification config:
 
-| Column | Type | Description |
-|--------|------|-------------|
+| Column         | Type | Description                                   |
+| -------------- | ---- | --------------------------------------------- |
 | verify_command | TEXT | Shell command to run after Mission completion |
-| lint_command | TEXT | Optional lint command (warnings only) |
-| review_mode | TEXT | "admiral-review", "verify-only", or "manual" |
+| lint_command   | TEXT | Optional lint command (warnings only)         |
+| review_mode    | TEXT | "admiral-review", "verify-only", or "manual"  |
 
 The `starbase_config` table gets a new default:
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `default_review_mode` | "admiral-review" | Default review mode for new Sectors |
-| `review_timeout_min` | 10 | Minutes before unreviewed PRs get flagged |
+| Key                   | Default          | Description                               |
+| --------------------- | ---------------- | ----------------------------------------- |
+| `default_review_mode` | "admiral-review" | Default review mode for new Sectors       |
+| `review_timeout_min`  | 10               | Minutes before unreviewed PRs get flagged |
 
 ## Database
 
@@ -293,133 +297,133 @@ SQLite is configured with WAL mode (`PRAGMA journal_mode=WAL`) to allow concurre
 
 Tracks every Sector in the Starbase.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | TEXT PK | Short slug like "api", "web", "mobile" |
-| name | TEXT | Display name like "API Service" |
-| root_path | TEXT | Absolute path to the Sector directory |
-| stack | TEXT | Detected tech stack, e.g. "typescript/node" |
-| description | TEXT | Brief description of what this Sector covers |
-| created_at | DATETIME | When the Sector was registered |
-| updated_at | DATETIME | Last change |
+| Column      | Type     | Description                                  |
+| ----------- | -------- | -------------------------------------------- |
+| id          | TEXT PK  | Short slug like "api", "web", "mobile"       |
+| name        | TEXT     | Display name like "API Service"              |
+| root_path   | TEXT     | Absolute path to the Sector directory        |
+| stack       | TEXT     | Detected tech stack, e.g. "typescript/node"  |
+| description | TEXT     | Brief description of what this Sector covers |
+| created_at  | DATETIME | When the Sector was registered               |
+| updated_at  | DATETIME | Last change                                  |
 
 #### `supply_routes` table
 
 Maps which Sectors depend on which, so Star Command can propagate changes along Supply Routes.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER PK | Auto-increment |
-| upstream_sector_id | TEXT | The Sector that produces changes |
-| downstream_sector_id | TEXT | The Sector that consumes/depends on upstream |
-| relationship | TEXT | Type of route, e.g. "api_consumer", "shared_lib", "monorepo_sibling" |
-| created_at | DATETIME | When the Supply Route was established |
+| Column               | Type       | Description                                                          |
+| -------------------- | ---------- | -------------------------------------------------------------------- |
+| id                   | INTEGER PK | Auto-increment                                                       |
+| upstream_sector_id   | TEXT       | The Sector that produces changes                                     |
+| downstream_sector_id | TEXT       | The Sector that consumes/depends on upstream                         |
+| relationship         | TEXT       | Type of route, e.g. "api_consumer", "shared_lib", "monorepo_sibling" |
+| created_at           | DATETIME   | When the Supply Route was established                                |
 
 #### `missions` table
 
 Per-Sector Mission queue that Star Command works through.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER PK | Auto-increment |
-| sector_id | TEXT | FK to sectors table |
-| crew_id | TEXT | FK to crew table, NULL if not yet assigned |
-| summary | TEXT | Short Mission briefing |
-| prompt | TEXT | Full Mission instructions for the Crewmate |
-| status | TEXT | "queued", "active", "completed", "failed", "aborted" |
-| priority | INTEGER | Lower number = higher priority, default 0 |
-| depends_on_mission_id | INTEGER | FK to another Mission that must complete first |
-| result | TEXT | JSON blob with Mission debrief when done |
-| created_at | DATETIME | When the Mission was queued |
-| started_at | DATETIME | When a Crewmate was assigned |
-| completed_at | DATETIME | When the Mission concluded |
+| Column                | Type       | Description                                          |
+| --------------------- | ---------- | ---------------------------------------------------- |
+| id                    | INTEGER PK | Auto-increment                                       |
+| sector_id             | TEXT       | FK to sectors table                                  |
+| crew_id               | TEXT       | FK to crew table, NULL if not yet assigned           |
+| summary               | TEXT       | Short Mission briefing                               |
+| prompt                | TEXT       | Full Mission instructions for the Crewmate           |
+| status                | TEXT       | "queued", "active", "completed", "failed", "aborted" |
+| priority              | INTEGER    | Lower number = higher priority, default 0            |
+| depends_on_mission_id | INTEGER    | FK to another Mission that must complete first       |
+| result                | TEXT       | JSON blob with Mission debrief when done             |
+| created_at            | DATETIME   | When the Mission was queued                          |
+| started_at            | DATETIME   | When a Crewmate was assigned                         |
+| completed_at          | DATETIME   | When the Mission concluded                           |
 
 #### `crew` table
 
 Tracks every Crewmate in the Starbase.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | TEXT PK | Short slug like "auth-crew-1" |
-| tab_id | TEXT | FK to Fleet's tab system |
-| sector_id | TEXT | FK to sectors table |
-| mission_id | INTEGER | FK to missions table, the current Mission |
-| sector_path | TEXT | Working directory for this Crewmate |
-| status | TEXT | "active", "idle", "hailing", "complete", "error", "lost", "timeout" |
-| mission_summary | TEXT | What this Crewmate is working on |
-| avatar_variant | TEXT | Which pixel art variant to display |
-| pid | INTEGER | OS process ID for the Hull |
-| deadline | DATETIME | Optional Mission timeout |
-| token_budget | INTEGER | Max tokens this Crewmate can consume |
-| tokens_used | INTEGER | Tokens consumed so far |
-| last_lifesign | DATETIME | Last Lifesign timestamp from the Hull |
-| created_at | DATETIME | When the Crewmate was deployed |
-| updated_at | DATETIME | Last status change |
+| Column          | Type     | Description                                                         |
+| --------------- | -------- | ------------------------------------------------------------------- |
+| id              | TEXT PK  | Short slug like "auth-crew-1"                                       |
+| tab_id          | TEXT     | FK to Fleet's tab system                                            |
+| sector_id       | TEXT     | FK to sectors table                                                 |
+| mission_id      | INTEGER  | FK to missions table, the current Mission                           |
+| sector_path     | TEXT     | Working directory for this Crewmate                                 |
+| status          | TEXT     | "active", "idle", "hailing", "complete", "error", "lost", "timeout" |
+| mission_summary | TEXT     | What this Crewmate is working on                                    |
+| avatar_variant  | TEXT     | Which pixel art variant to display                                  |
+| pid             | INTEGER  | OS process ID for the Hull                                          |
+| deadline        | DATETIME | Optional Mission timeout                                            |
+| token_budget    | INTEGER  | Max tokens this Crewmate can consume                                |
+| tokens_used     | INTEGER  | Tokens consumed so far                                              |
+| last_lifesign   | DATETIME | Last Lifesign timestamp from the Hull                               |
+| created_at      | DATETIME | When the Crewmate was deployed                                      |
+| updated_at      | DATETIME | Last status change                                                  |
 
 #### `comms` table
 
 The Transmission channel between Crew and Star Command.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER PK | Auto-increment |
-| from_crew | TEXT | Crewmate id or "admiral" |
-| to_crew | TEXT | Crewmate id, "admiral", or "all-hands" |
-| thread_id | TEXT | Groups back-and-forth exchanges |
-| in_reply_to | INTEGER | FK to parent Transmission id |
-| type | TEXT | "status_update", "hailing", "mission_complete", "directive", "question", "cargo_manifest" |
-| payload | TEXT | JSON blob — flexible schema |
-| read | BOOLEAN | Default false |
-| created_at | DATETIME | When the Transmission was sent |
+| Column      | Type       | Description                                                                               |
+| ----------- | ---------- | ----------------------------------------------------------------------------------------- |
+| id          | INTEGER PK | Auto-increment                                                                            |
+| from_crew   | TEXT       | Crewmate id or "admiral"                                                                  |
+| to_crew     | TEXT       | Crewmate id, "admiral", or "all-hands"                                                    |
+| thread_id   | TEXT       | Groups back-and-forth exchanges                                                           |
+| in_reply_to | INTEGER    | FK to parent Transmission id                                                              |
+| type        | TEXT       | "status_update", "hailing", "mission_complete", "directive", "question", "cargo_manifest" |
+| payload     | TEXT       | JSON blob — flexible schema                                                               |
+| read        | BOOLEAN    | Default false                                                                             |
+| created_at  | DATETIME   | When the Transmission was sent                                                            |
 
 #### `cargo` table
 
 Things Crew produce that other Crew or Star Command might need.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER PK | Auto-increment |
-| crew_id | TEXT | Who produced this Cargo |
-| sector_id | TEXT | FK to sectors table — which Sector this Cargo belongs to |
-| type | TEXT | "file_changed", "endpoint_spec", "schema", "test_result" |
-| manifest | TEXT | JSON blob describing the Cargo contents |
-| created_at | DATETIME | When the Cargo was produced |
+| Column     | Type       | Description                                              |
+| ---------- | ---------- | -------------------------------------------------------- |
+| id         | INTEGER PK | Auto-increment                                           |
+| crew_id    | TEXT       | Who produced this Cargo                                  |
+| sector_id  | TEXT       | FK to sectors table — which Sector this Cargo belongs to |
+| type       | TEXT       | "file_changed", "endpoint_spec", "schema", "test_result" |
+| manifest   | TEXT       | JSON blob describing the Cargo contents                  |
+| created_at | DATETIME   | When the Cargo was produced                              |
 
 #### `ships_log` table
 
 Append-only audit trail for debugging and post-mission review.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | INTEGER PK | Auto-increment |
-| crew_id | TEXT | Which Crewmate |
-| event_type | TEXT | "deployed", "lifesign_lost", "exited", "lost", "redeployed", "comms_failed" |
-| detail | TEXT | JSON blob with context |
-| created_at | DATETIME | When it happened |
+| Column     | Type       | Description                                                                 |
+| ---------- | ---------- | --------------------------------------------------------------------------- |
+| id         | INTEGER PK | Auto-increment                                                              |
+| crew_id    | TEXT       | Which Crewmate                                                              |
+| event_type | TEXT       | "deployed", "lifesign_lost", "exited", "lost", "redeployed", "comms_failed" |
+| detail     | TEXT       | JSON blob with context                                                      |
+| created_at | DATETIME   | When it happened                                                            |
 
 #### `starbase_config` table
 
 Key-value configuration store for the entire Starbase. Managed via the Star Command Config panel.
 
-| Column | Type | Description |
-|--------|------|-------------|
-| key | TEXT PK | Config key name |
-| value | TEXT | JSON value |
-| updated_at | DATETIME | Last change |
+| Column     | Type     | Description     |
+| ---------- | -------- | --------------- |
+| key        | TEXT PK  | Config key name |
+| value      | TEXT     | JSON value      |
+| updated_at | DATETIME | Last change     |
 
 **Default config values:**
 
-| Key | Default | Description |
-|-----|---------|-------------|
-| `max_concurrent_worktrees` | 5 | Hard limit on active worktrees across the Starbase |
-| `worktree_pool_size` | 2 | How many idle worktrees to keep warm per Sector |
-| `worktree_disk_budget_gb` | 5 | Max total disk for worktrees before Admiral warns |
-| `default_mission_timeout_min` | 15 | Default Mission deadline in minutes |
-| `default_merge_strategy` | "pr" | Default for new Sectors: "pr", "auto-merge", or "branch-only" |
-| `comms_rate_limit_per_min` | 30 | Max Transmissions a Crewmate can send per minute |
-| `default_token_budget` | 0 | Default token budget per Crewmate (0 = unlimited) |
-| `lifesign_interval_sec` | 10 | How often the Hull sends Lifesign pings |
-| `lifesign_timeout_sec` | 30 | How long before a missing Lifesign triggers Sentinel |
+| Key                           | Default | Description                                                   |
+| ----------------------------- | ------- | ------------------------------------------------------------- |
+| `max_concurrent_worktrees`    | 5       | Hard limit on active worktrees across the Starbase            |
+| `worktree_pool_size`          | 2       | How many idle worktrees to keep warm per Sector               |
+| `worktree_disk_budget_gb`     | 5       | Max total disk for worktrees before Admiral warns             |
+| `default_mission_timeout_min` | 15      | Default Mission deadline in minutes                           |
+| `default_merge_strategy`      | "pr"    | Default for new Sectors: "pr", "auto-merge", or "branch-only" |
+| `comms_rate_limit_per_min`    | 30      | Max Transmissions a Crewmate can send per minute              |
+| `default_token_budget`        | 0       | Default token budget per Crewmate (0 = unlimited)             |
+| `lifesign_interval_sec`       | 10      | How often the Hull sends Lifesign pings                       |
+| `lifesign_timeout_sec`        | 30      | How long before a missing Lifesign triggers Sentinel          |
 
 ### Payload Flexibility
 
@@ -433,36 +437,36 @@ Star Command exposes Starbase operations as MCP tools — the Bridge Controls �
 
 **Crew Operations**
 
-| Tool | Description |
-|------|-------------|
+| Tool                                                | Description                                                 |
+| --------------------------------------------------- | ----------------------------------------------------------- |
 | `starbase.deploy({ sectorId, prompt, missionId? })` | Deploy a Crewmate to a Sector, optionally tied to a Mission |
-| `starbase.hail(crewId, message)` | Send a Transmission to a Crewmate |
-| `starbase.recall(crewId)` | Recall a Crewmate (shut down) |
-| `starbase.observe(crewId)` | Read recent output from a Crewmate |
-| `starbase.crew({ sectorId? })` | List Crew, optionally filtered by Sector |
-| `starbase.inbox()` | Get unread Transmissions addressed to the caller |
-| `starbase.ask(crewId, question)` | Send a directive and wait for response |
-| `starbase.resolve(transmissionId, response)` | Respond to a hailing request |
+| `starbase.hail(crewId, message)`                    | Send a Transmission to a Crewmate                           |
+| `starbase.recall(crewId)`                           | Recall a Crewmate (shut down)                               |
+| `starbase.observe(crewId)`                          | Read recent output from a Crewmate                          |
+| `starbase.crew({ sectorId? })`                      | List Crew, optionally filtered by Sector                    |
+| `starbase.inbox()`                                  | Get unread Transmissions addressed to the caller            |
+| `starbase.ask(crewId, question)`                    | Send a directive and wait for response                      |
+| `starbase.resolve(transmissionId, response)`        | Respond to a hailing request                                |
 
 **Sector Operations**
 
-| Tool | Description |
-|------|-------------|
-| `starbase.sectors()` | List all registered Sectors |
-| `starbase.addSector({ path, name?, description? })` | Register a new Sector in the Starbase |
-| `starbase.sectorStatus(sectorId)` | Get Crew, Missions, and Cargo for a Sector |
-| `starbase.removeSector(sectorId)` | Deregister a Sector (recalls active Crew first) |
-| `starbase.addSupplyRoute({ upstream, downstream, relationship? })` | Establish a Supply Route between Sectors |
+| Tool                                                               | Description                                     |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| `starbase.sectors()`                                               | List all registered Sectors                     |
+| `starbase.addSector({ path, name?, description? })`                | Register a new Sector in the Starbase           |
+| `starbase.sectorStatus(sectorId)`                                  | Get Crew, Missions, and Cargo for a Sector      |
+| `starbase.removeSector(sectorId)`                                  | Deregister a Sector (recalls active Crew first) |
+| `starbase.addSupplyRoute({ upstream, downstream, relationship? })` | Establish a Supply Route between Sectors        |
 
 **Mission Operations**
 
-| Tool | Description |
-|------|-------------|
-| `starbase.addMission({ sectorId, summary, prompt, priority?, dependsOn? })` | Queue a Mission for a Sector |
-| `starbase.missions({ sectorId?, status? })` | List Missions, optionally filtered |
-| `starbase.nextMission(sectorId)` | Get the highest priority queued Mission for a Sector |
-| `starbase.completeMission(missionId, result)` | Mark a Mission done with a debrief |
-| `starbase.abortMission(missionId)` | Abort a queued Mission |
+| Tool                                                                        | Description                                          |
+| --------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `starbase.addMission({ sectorId, summary, prompt, priority?, dependsOn? })` | Queue a Mission for a Sector                         |
+| `starbase.missions({ sectorId?, status? })`                                 | List Missions, optionally filtered                   |
+| `starbase.nextMission(sectorId)`                                            | Get the highest priority queued Mission for a Sector |
+| `starbase.completeMission(missionId, result)`                               | Mark a Mission done with a debrief                   |
+| `starbase.abortMission(missionId)`                                          | Abort a queued Mission                               |
 
 ### Subspace CLI (Fallback)
 
@@ -496,7 +500,7 @@ The Hull handles worktree creation transparently. The Crewmate (whether it's Cla
 7. Hull cleans up: git worktree remove ~/.fleet/worktrees/{starbaseId}/{crewId}
 ```
 
-Fleet owns worktree management exclusively via `git worktree` — no agent-specific worktree features are used. The Hull creates the worktree *before* any agent launches, so the agent never needs built-in worktree support. This means Fleet works identically with Claude Code, OpenCode, Aider, Cursor, Cline, or any CLI-based coding agent. If it can run in a directory, it can run in a Fleet worktree.
+Fleet owns worktree management exclusively via `git worktree` — no agent-specific worktree features are used. The Hull creates the worktree _before_ any agent launches, so the agent never needs built-in worktree support. This means Fleet works identically with Claude Code, OpenCode, Aider, Cursor, Cline, or any CLI-based coding agent. If it can run in a directory, it can run in a Fleet worktree.
 
 ### Worktree Directory Layout
 
@@ -511,22 +515,22 @@ Fleet owns worktree management exclusively via `git worktree` — no agent-speci
 
 The `crew` table tracks worktree state:
 
-| Column | Type | Description |
-|--------|------|-------------|
-| worktree_path | TEXT | Absolute path to the worktree directory |
-| worktree_branch | TEXT | Branch name, e.g. "crew/auth-crew-1" |
+| Column          | Type | Description                             |
+| --------------- | ---- | --------------------------------------- |
+| worktree_path   | TEXT | Absolute path to the worktree directory |
+| worktree_branch | TEXT | Branch name, e.g. "crew/auth-crew-1"    |
 
 ### Agent Compatibility
 
 Every agent gets the same treatment — Hull creates the worktree, sets the agent's working directory to it, done:
 
-| Agent | Spawn Command |
-|-------|--------------|
-| Claude Code | `claude` in worktree cwd |
-| OpenCode | `opencode` in worktree cwd |
-| Aider | `aider` in worktree cwd |
-| Cursor (CLI) | `cursor` in worktree cwd |
-| Cline | `cline` in worktree cwd |
+| Agent         | Spawn Command                   |
+| ------------- | ------------------------------- |
+| Claude Code   | `claude` in worktree cwd        |
+| OpenCode      | `opencode` in worktree cwd      |
+| Aider         | `aider` in worktree cwd         |
+| Cursor (CLI)  | `cursor` in worktree cwd        |
+| Cline         | `cline` in worktree cwd         |
 | Custom script | Any executable, in worktree cwd |
 
 The key insight: git worktrees are invisible to the tools running inside them. `git status`, `git commit`, `git diff` — everything works exactly as if it's a normal clone. No agent needs worktree awareness. Fleet handles it at the infrastructure layer so you can mix and match agents freely.
@@ -594,10 +598,10 @@ Deployed by Star Command | Starbase: {starbase id}
 
 Configured in the `sectors` table:
 
-| Column | Type | Description |
-|--------|------|-------------|
+| Column         | Type | Description                                        |
+| -------------- | ---- | -------------------------------------------------- |
 | merge_strategy | TEXT | "pr", "auto-merge", or "branch-only". Default "pr" |
-| base_branch | TEXT | Branch to merge into, default "main" |
+| base_branch    | TEXT | Branch to merge into, default "main"               |
 
 ### PR Labels and Linking
 
@@ -739,17 +743,17 @@ When the app restarts or Star Command recovers from a crash, the Admiral runs a 
 
 ### Reliability Stack Summary
 
-| Layer | What it does |
-|-------|-------------|
-| Hull | Guaranteed lifecycle tracking for each Crewmate |
-| Lifesigns | Detects silent Crew failures |
-| Sentinel | Watchdog query that sweeps for missing Lifesigns |
-| Main process hooks | Catches PTY death at the Electron level |
-| WAL + retries | Handles database write contention |
-| Comms rate limits | Prevents runaway Transmission spam |
-| Token budget | Prevents runaway cost from a single Crewmate |
-| Startup reconcile | Recovers Starbase state after app crashes |
-| Ship's Log | Explains what went wrong in post-mission review |
+| Layer              | What it does                                     |
+| ------------------ | ------------------------------------------------ |
+| Hull               | Guaranteed lifecycle tracking for each Crewmate  |
+| Lifesigns          | Detects silent Crew failures                     |
+| Sentinel           | Watchdog query that sweeps for missing Lifesigns |
+| Main process hooks | Catches PTY death at the Electron level          |
+| WAL + retries      | Handles database write contention                |
+| Comms rate limits  | Prevents runaway Transmission spam               |
+| Token budget       | Prevents runaway cost from a single Crewmate     |
+| Startup reconcile  | Recovers Starbase state after app crashes        |
+| Ship's Log         | Explains what went wrong in post-mission review  |
 
 ## Failure Modes & Mitigations
 
@@ -761,199 +765,199 @@ The guiding question for each failure: **is it cheaper to fix in place or restar
 
 **Worktree creation fails.** `git worktree add` can fail for several reasons: disk full, branch name collision (a `crew/auth-crew-1` branch already exists from a previous run), git index corruption, or the Sector directory isn't actually a git repo. The Hull must catch the error before spawning the agent.
 
-*Mitigation:* Before creating a worktree, the Hull runs a pre-flight check: verify the Sector is a git repo (`git rev-parse --git-dir`), verify the branch name is available (`git branch --list crew/{crewId}`), verify disk headroom (at least 500MB free). If the branch already exists, append a numeric suffix (`crew/auth-crew-1-2`). If the Sector isn't a git repo, skip worktree creation entirely and run the agent directly in the directory (with a warning to the Admiral). On any unrecoverable error, the Mission goes back to queued status and the Admiral is hailed with the specific error.
+_Mitigation:_ Before creating a worktree, the Hull runs a pre-flight check: verify the Sector is a git repo (`git rev-parse --git-dir`), verify the branch name is available (`git branch --list crew/{crewId}`), verify disk headroom (at least 500MB free). If the branch already exists, append a numeric suffix (`crew/auth-crew-1-2`). If the Sector isn't a git repo, skip worktree creation entirely and run the agent directly in the directory (with a warning to the Admiral). On any unrecoverable error, the Mission goes back to queued status and the Admiral is hailed with the specific error.
 
 **Package install fails or hangs.** `npm install` can hang on network issues, fail on native module compilation, or error on lockfile conflicts in the worktree. The agent can't start working until dependencies are ready.
 
-*Mitigation:* The Hull runs the package install with a hard timeout (default 120 seconds, configurable). If it fails, the Hull retries once. If it hangs, the Hull kills it after timeout. On persistent failure, the Hull tries the `worktree_symlink_modules` approach as a fallback (symlink `node_modules` from the original Sector directory). If that also fails, Mission goes back to queued and the Admiral gets the install error output so it can diagnose (missing native deps, wrong Node version, etc.).
+_Mitigation:_ The Hull runs the package install with a hard timeout (default 120 seconds, configurable). If it fails, the Hull retries once. If it hangs, the Hull kills it after timeout. On persistent failure, the Hull tries the `worktree_symlink_modules` approach as a fallback (symlink `node_modules` from the original Sector directory). If that also fails, Mission goes back to queued and the Admiral gets the install error output so it can diagnose (missing native deps, wrong Node version, etc.).
 
 **Worktree cleanup fails.** After a Mission completes, the Hull runs `git worktree remove`. This can fail if files are still locked (a running process still has handles open), or if the worktree directory was manually modified/moved. Stale worktree refs pile up in `.git/worktrees/`.
 
-*Mitigation:* The Hull terminates all child processes before cleanup. If `git worktree remove` fails, the Hull retries after 2 seconds (handles slow file handle release). If it still fails, the Hull force-removes with `git worktree remove --force` and logs a warning. The startup reconciliation pass runs `git worktree prune` on every Sector repo to clean orphaned references. A background sweep of `~/.fleet/worktrees/` removes any directories not tracked in the crew table.
+_Mitigation:_ The Hull terminates all child processes before cleanup. If `git worktree remove` fails, the Hull retries after 2 seconds (handles slow file handle release). If it still fails, the Hull force-removes with `git worktree remove --force` and logs a warning. The startup reconciliation pass runs `git worktree prune` on every Sector repo to clean orphaned references. A background sweep of `~/.fleet/worktrees/` removes any directories not tracked in the crew table.
 
 **Worktree pool staleness.** Recycled worktrees in the pool might have stale dependencies (e.g., `package.json` changed on main since the worktree was created), uncommitted files from a previous Crewmate, or diverged significantly from the base branch.
 
-*Mitigation:* When recycling a worktree, the Hull runs a refresh sequence: `git checkout {base_branch}`, `git pull`, `git clean -fd`, and a fresh package install. If the refresh fails or takes too long, the Hull discards the pooled worktree and creates a fresh one. Pool worktrees older than 1 hour are automatically evicted.
+_Mitigation:_ When recycling a worktree, the Hull runs a refresh sequence: `git checkout {base_branch}`, `git pull`, `git clean -fd`, and a fresh package install. If the refresh fails or takes too long, the Hull discards the pooled worktree and creates a fresh one. Pool worktrees older than 1 hour are automatically evicted.
 
 ### Git & Push Failures
 
 **Branch push fails.** `git push` can fail because: the remote is unreachable (network down), git credentials have expired (GitHub token revoked), the branch was already pushed by a previous attempt, or the remote rejected the push (pre-receive hook, branch protection).
 
-*Mitigation:* The Hull retries pushes up to 3 times with exponential backoff (2s, 8s, 30s). On auth failure, the Hull hails the Admiral with a specific "git credentials expired" message — the Admiral escalates to you. On network failure, the Hull persists the branch locally, marks the Mission as "push-pending," and registers a retry job. The startup reconciliation pass checks for any "push-pending" Missions and retries them. The branch is never deleted until the push succeeds — partial work is always preserved locally.
+_Mitigation:_ The Hull retries pushes up to 3 times with exponential backoff (2s, 8s, 30s). On auth failure, the Hull hails the Admiral with a specific "git credentials expired" message — the Admiral escalates to you. On network failure, the Hull persists the branch locally, marks the Mission as "push-pending," and registers a retry job. The startup reconciliation pass checks for any "push-pending" Missions and retries them. The branch is never deleted until the push succeeds — partial work is always preserved locally.
 
 **PR creation fails.** The `gh` CLI might not be installed, not authenticated, rate-limited by GitHub's API, or the repo might not have a remote origin configured.
 
-*Mitigation:* On first deploy, the Hull checks for `gh` availability and auth status (`gh auth status`). If `gh` isn't available, the merge strategy automatically falls back to "branch-only" and the Admiral is warned: "PR creation unavailable — branches will be pushed but PRs must be created manually." On GitHub API rate limiting (HTTP 429), the Hull reads the `Retry-After` header and queues the PR creation for later. On any other PR creation failure, the branch is still pushed — worst case you have the code on the remote, just no PR wrapping it.
+_Mitigation:_ On first deploy, the Hull checks for `gh` availability and auth status (`gh auth status`). If `gh` isn't available, the merge strategy automatically falls back to "branch-only" and the Admiral is warned: "PR creation unavailable — branches will be pushed but PRs must be created manually." On GitHub API rate limiting (HTTP 429), the Hull reads the `Retry-After` header and queues the PR creation for later. On any other PR creation failure, the branch is still pushed — worst case you have the code on the remote, just no PR wrapping it.
 
 **Branch naming collision.** Two Crewmates could theoretically get the same crew ID, or a branch from a previous session could still exist on the remote.
 
-*Mitigation:* Crew IDs include a short random suffix (e.g., `auth-crew-a3f8`). Before creating a branch, the Hull checks both local (`git branch --list`) and remote (`git ls-remote --heads origin crew/{crewId}`) for conflicts. If the name is taken, append an incrementing suffix.
+_Mitigation:_ Crew IDs include a short random suffix (e.g., `auth-crew-a3f8`). Before creating a branch, the Hull checks both local (`git branch --list`) and remote (`git ls-remote --heads origin crew/{crewId}`) for conflicts. If the name is taken, append an incrementing suffix.
 
 **Agent force-pushes or rewrites history.** An agent running inside a worktree could run `git push --force` or `git rebase` in unexpected ways, potentially overwriting other Crewmates' branches on the remote.
 
-*Mitigation:* The Hull sets `receive.denyNonFastForwards` in the worktree's git config. Additionally, the Hull configures the worktree git config to restrict push to only the Crewmate's own branch: `git config push.default current`. The main repo's branch protection rules (set up on GitHub/GitLab) are the ultimate guardrail here — Fleet recommends enabling branch protection on the base branch.
+_Mitigation:_ The Hull sets `receive.denyNonFastForwards` in the worktree's git config. Additionally, the Hull configures the worktree git config to restrict push to only the Crewmate's own branch: `git config push.default current`. The main repo's branch protection rules (set up on GitHub/GitLab) are the ultimate guardrail here — Fleet recommends enabling branch protection on the base branch.
 
 **Rebase conflicts during concurrent Crew merge.** Crewmate B finishes after Crewmate A's PR was merged, and the rebase fails with conflicts.
 
-*Mitigation:* Already covered in the spec (draft PR + hail Admiral), but additionally: the Hull captures the conflicting file list from the rebase output and includes it in the hailing Transmission. The Admiral can then deploy a short-lived "rebase Crewmate" with specific instructions: "resolve conflicts in these files: {list}, keeping both sets of changes." If the rebase Crewmate also fails, the Admiral escalates to you.
+_Mitigation:_ Already covered in the spec (draft PR + hail Admiral), but additionally: the Hull captures the conflicting file list from the rebase output and includes it in the hailing Transmission. The Admiral can then deploy a short-lived "rebase Crewmate" with specific instructions: "resolve conflicts in these files: {list}, keeping both sets of changes." If the rebase Crewmate also fails, the Admiral escalates to you.
 
 ### Database Failures
 
 **SQLite corruption.** Power loss or force-kill during a write can corrupt the database even with WAL mode. Rare but possible, especially if the machine crashes.
 
-*Mitigation:* Fleet enables `PRAGMA synchronous=NORMAL` (balances safety and performance with WAL). On startup, Fleet runs `PRAGMA integrity_check` on the database. If corruption is detected, Fleet attempts `PRAGMA recovery` (SQLite 3.42+). If recovery fails, Fleet moves the corrupt file to `starbase-{id}.db.corrupt`, creates a fresh database, and warns you that Starbase history was lost. For critical deployments, Fleet can be configured to take periodic database snapshots (copy the `.db` and `.db-wal` files) every N minutes.
+_Mitigation:_ Fleet enables `PRAGMA synchronous=NORMAL` (balances safety and performance with WAL). On startup, Fleet runs `PRAGMA integrity_check` on the database. If corruption is detected, Fleet attempts `PRAGMA recovery` (SQLite 3.42+). If recovery fails, Fleet moves the corrupt file to `starbase-{id}.db.corrupt`, creates a fresh database, and warns you that Starbase history was lost. For critical deployments, Fleet can be configured to take periodic database snapshots (copy the `.db` and `.db-wal` files) every N minutes.
 
 **Database grows unbounded.** The comms, cargo, and ships_log tables grow forever. A busy Starbase with many Missions over weeks/months could accumulate hundreds of thousands of rows, slowing queries.
 
-*Mitigation:* Fleet implements retention policies with configurable TTLs. Default: comms older than 30 days are archived to a `comms_archive` table (or deleted), cargo older than 14 days is pruned, ships_log older than 30 days is pruned. The Admiral warns when the database exceeds 100MB. A "compact database" button in the Config panel runs `VACUUM` and cleans expired records. Retention settings are stored in `starbase_config`.
+_Mitigation:_ Fleet implements retention policies with configurable TTLs. Default: comms older than 30 days are archived to a `comms_archive` table (or deleted), cargo older than 14 days is pruned, ships_log older than 30 days is pruned. The Admiral warns when the database exceeds 100MB. A "compact database" button in the Config panel runs `VACUUM` and cleans expired records. Retention settings are stored in `starbase_config`.
 
 **Database locked by zombie process.** A crashed Hull process might leave the database file locked (more of a problem on Windows than macOS/Linux). New Crew can't write.
 
-*Mitigation:* WAL mode largely prevents this since readers don't block writers. For the rare case where a writer dies mid-transaction, SQLite's built-in lock recovery timeout handles it (Fleet sets `PRAGMA busy_timeout=5000` — wait up to 5 seconds for the lock to clear). If it's still locked, the Hull logs the error and the startup reconciliation kills any zombie processes holding the file.
+_Mitigation:_ WAL mode largely prevents this since readers don't block writers. For the rare case where a writer dies mid-transaction, SQLite's built-in lock recovery timeout handles it (Fleet sets `PRAGMA busy_timeout=5000` — wait up to 5 seconds for the lock to clear). If it's still locked, the Hull logs the error and the startup reconciliation kills any zombie processes holding the file.
 
 **Schema migrations on Fleet updates.** When Fleet ships a new version that adds columns or tables, existing databases need to be migrated without data loss.
 
-*Mitigation:* The database has a `schema_version` pragma (or a `_meta` table). On open, Fleet compares the on-disk version to the expected version and runs sequential migration scripts. Migrations are always additive (add columns, add tables, add indexes) — never destructive. Each migration is wrapped in a transaction so a failed migration rolls back cleanly. Fleet keeps the migration scripts as simple SQL files versioned alongside the code.
+_Mitigation:_ The database has a `schema_version` pragma (or a `_meta` table). On open, Fleet compares the on-disk version to the expected version and runs sequential migration scripts. Migrations are always additive (add columns, add tables, add indexes) — never destructive. Each migration is wrapped in a transaction so a failed migration rolls back cleanly. Fleet keeps the migration scripts as simple SQL files versioned alongside the code.
 
 ### Agent Behavior Failures
 
 **Agent spawns but never starts working.** The agent process is alive (Hull sees Lifesigns), but the agent is stuck in initialization — loading context, waiting for user input, or encountering an interactive prompt.
 
-*Mitigation:* The Hull monitors the agent's stdout/stderr for activity. If no output is produced for 60 seconds after spawn (configurable `agent_startup_timeout`), the Hull terminates and redeploys with adjusted flags. For Claude Code specifically, the Hull ensures `--yes` or equivalent non-interactive flags are set. The Ship's Log records the timeout so the Admiral can adjust the spawn command for that agent type.
+_Mitigation:_ The Hull monitors the agent's stdout/stderr for activity. If no output is produced for 60 seconds after spawn (configurable `agent_startup_timeout`), the Hull terminates and redeploys with adjusted flags. For Claude Code specifically, the Hull ensures `--yes` or equivalent non-interactive flags are set. The Ship's Log records the timeout so the Admiral can adjust the spawn command for that agent type.
 
 **Agent ignores Bridge Controls entirely.** The MCP tools are injected, but the agent never calls them — it just writes code and exits without ever reporting status, producing Cargo, or calling `completeMission`.
 
-*Mitigation:* This is fine. The Hull tracks lifecycle independently. When the agent exits cleanly (exit code 0), the Hull marks the Mission as complete. The Hull captures the agent's final git diff as an automatic Cargo entry. The Hull auto-generates a Mission debrief from the commit messages. The system is explicitly designed to work even if the agent never touches Bridge Controls — they're a nice-to-have enhancement, not a requirement.
+_Mitigation:_ This is fine. The Hull tracks lifecycle independently. When the agent exits cleanly (exit code 0), the Hull marks the Mission as complete. The Hull captures the agent's final git diff as an automatic Cargo entry. The Hull auto-generates a Mission debrief from the commit messages. The system is explicitly designed to work even if the agent never touches Bridge Controls — they're a nice-to-have enhancement, not a requirement.
 
 **Agent goes into an infinite loop.** The agent keeps committing, modifying, reverting — burning tokens and time but never converging on a solution.
 
-*Mitigation:* The Mission timeout (default 15 min) is the primary guardrail. The token budget is the secondary guardrail. Additionally, the Hull can detect "churn" by monitoring git activity — if the agent has made more than N commits (default 20) without calling `completeMission`, the Sentinel flags it as "churning" and hails the Admiral. The Admiral can recall the Crewmate and re-scope the Mission.
+_Mitigation:_ The Mission timeout (default 15 min) is the primary guardrail. The token budget is the secondary guardrail. Additionally, the Hull can detect "churn" by monitoring git activity — if the agent has made more than N commits (default 20) without calling `completeMission`, the Sentinel flags it as "churning" and hails the Admiral. The Admiral can recall the Crewmate and re-scope the Mission.
 
 **Agent modifies files outside its Sector.** A Crewmate deployed to the `api/` Sector starts editing files in `web/`. In a worktree this is somewhat constrained (the worktree only has its own checkout), but the Crewmate could still create files outside the expected paths.
 
-*Mitigation:* Since worktrees are full copies of the repo, the agent technically can touch any file. The Hull runs a post-Mission validation: `git diff --name-only` against the base branch, and checks that all modified files are within the Sector's `root_path`. If out-of-scope files are modified, the Hull flags it in the PR description ("⚠️ Changes outside Sector boundary") and the Admiral warns you. This is a soft guardrail — sometimes cross-Sector changes are intentional (shared config files, root-level configs).
+_Mitigation:_ Since worktrees are full copies of the repo, the agent technically can touch any file. The Hull runs a post-Mission validation: `git diff --name-only` against the base branch, and checks that all modified files are within the Sector's `root_path`. If out-of-scope files are modified, the Hull flags it in the PR description ("⚠️ Changes outside Sector boundary") and the Admiral warns you. This is a soft guardrail — sometimes cross-Sector changes are intentional (shared config files, root-level configs).
 
 **Agent runs destructive commands.** `rm -rf`, `git reset --hard`, `DROP TABLE`, etc. — an agent could damage the worktree or external resources.
 
-*Mitigation:* Worktree isolation is the primary defense — the agent can't damage the main checkout or other Crewmates' worktrees. For truly destructive commands (deleting the database, hitting production APIs), Fleet doesn't try to sandbox at the OS level — that's not practical for coding agents that need full shell access. Instead, the Admiral should scope Missions to minimize blast radius, and the worktree + PR flow means no destructive changes reach the base branch without review.
+_Mitigation:_ Worktree isolation is the primary defense — the agent can't damage the main checkout or other Crewmates' worktrees. For truly destructive commands (deleting the database, hitting production APIs), Fleet doesn't try to sandbox at the OS level — that's not practical for coding agents that need full shell access. Instead, the Admiral should scope Missions to minimize blast radius, and the worktree + PR flow means no destructive changes reach the base branch without review.
 
 ### Network & External Service Failures
 
 **Network goes down mid-Mission.** The agent might need to install packages, access APIs, or push to the remote. Network failure can strand a Crewmate.
 
-*Mitigation:* Package installs happen at worktree setup time (before the agent starts), so network issues there are caught by the Hull's install timeout. During the Mission itself, network failures are the agent's problem — most coding agents handle this gracefully (they retry or work offline). For the push at Mission completion, the Hull's retry logic with "push-pending" status handles it. The Admiral can batch-retry all pending pushes when network returns.
+_Mitigation:_ Package installs happen at worktree setup time (before the agent starts), so network issues there are caught by the Hull's install timeout. During the Mission itself, network failures are the agent's problem — most coding agents handle this gracefully (they retry or work offline). For the push at Mission completion, the Hull's retry logic with "push-pending" status handles it. The Admiral can batch-retry all pending pushes when network returns.
 
 **GitHub API rate limiting.** Creating many PRs in quick succession (e.g., 5 Crewmates all completing around the same time) can hit GitHub's API rate limit.
 
-*Mitigation:* The Hull reads rate limit headers from `gh` CLI output. When approaching the limit, it spaces out PR creation with increasing delays. A simple token bucket at the Starbase level ensures no more than N PR operations per minute (default 10). PRs that couldn't be created are queued and retried when the rate limit window resets. The Admiral reports: "3 PRs created, 2 queued due to rate limiting — will retry in {N} minutes."
+_Mitigation:_ The Hull reads rate limit headers from `gh` CLI output. When approaching the limit, it spaces out PR creation with increasing delays. A simple token bucket at the Starbase level ensures no more than N PR operations per minute (default 10). PRs that couldn't be created are queued and retried when the rate limit window resets. The Admiral reports: "3 PRs created, 2 queued due to rate limiting — will retry in {N} minutes."
 
 **Remote repo becomes unavailable.** GitHub/GitLab is down, or the repo was deleted/moved.
 
-*Mitigation:* Same as push failure — branch is preserved locally, Mission marked as "push-pending." The Hull periodically retries (every 5 minutes for the first hour, then hourly). If the remote is consistently unreachable for more than 24 hours, the Mission is marked as "push-failed" and the Admiral alerts you. The code is safe in the local worktree and can be manually recovered.
+_Mitigation:_ Same as push failure — branch is preserved locally, Mission marked as "push-pending." The Hull periodically retries (every 5 minutes for the first hour, then hourly). If the remote is consistently unreachable for more than 24 hours, the Mission is marked as "push-failed" and the Admiral alerts you. The code is safe in the local worktree and can be manually recovered.
 
 ### System Resource Failures
 
 **Disk fills up completely.** Worktrees, node_modules, agent outputs, and the database itself all consume disk. A full disk can cause cascading failures — git can't commit, SQLite can't write, agents crash.
 
-*Mitigation:* The disk budget system (`worktree_disk_budget_gb`) is the first line of defense. Additionally, the Sentinel runs a periodic disk check (every 60 seconds) on `~/.fleet/worktrees/` and the database directory. Warning at 90% disk usage, hard stop at 95% — no new Crew deployments, Admiral is hailed with "disk critical." The Admiral can recall idle Crew and clean up completed worktrees to free space. The startup reconciliation aggressively cleans stale worktrees on launch.
+_Mitigation:_ The disk budget system (`worktree_disk_budget_gb`) is the first line of defense. Additionally, the Sentinel runs a periodic disk check (every 60 seconds) on `~/.fleet/worktrees/` and the database directory. Warning at 90% disk usage, hard stop at 95% — no new Crew deployments, Admiral is hailed with "disk critical." The Admiral can recall idle Crew and clean up completed worktrees to free space. The startup reconciliation aggressively cleans stale worktrees on launch.
 
 **Memory exhaustion.** Too many concurrent agents (each with their own node process, potentially running language servers, etc.) can exhaust system memory. The OOM killer starts terminating processes randomly.
 
-*Mitigation:* The worktree limit (default 5) implicitly caps concurrent agents. The Admiral should also factor in system resources when deciding how many Crew to deploy in parallel. Fleet can read system memory stats (`os.freemem()` in Node) and the Admiral can gate deployments: "Only 2GB free memory — deploying 1 Crewmate instead of 3, queuing the rest." The Config panel can add a `max_concurrent_crew` global setting as an additional hard cap independent of worktree limits.
+_Mitigation:_ The worktree limit (default 5) implicitly caps concurrent agents. The Admiral should also factor in system resources when deciding how many Crew to deploy in parallel. Fleet can read system memory stats (`os.freemem()` in Node) and the Admiral can gate deployments: "Only 2GB free memory — deploying 1 Crewmate instead of 3, queuing the rest." The Config panel can add a `max_concurrent_crew` global setting as an additional hard cap independent of worktree limits.
 
 **Fleet app crashes while agents are running.** Electron crashes, gets force-quit, or the machine reboots. Hull processes (which are child processes of Fleet) die with it. Agents running in PTYs may or may not survive depending on how the PTY was set up.
 
-*Mitigation:* The startup reconciliation pass is specifically designed for this. On relaunch, Fleet checks all "active" Crew in the database against running PIDs. Dead ones get marked "lost." Worktrees with uncommitted work are preserved (not cleaned up) so you can recover the code. The Admiral offers to redeploy lost Missions: "Found 2 lost Crew from last session. Crewmate auth-crew-a3f8 had 3 commits on branch crew/auth-crew-a3f8. Redeploy or recover manually?" Branches are never deleted during crash recovery — only during explicit cleanup.
+_Mitigation:_ The startup reconciliation pass is specifically designed for this. On relaunch, Fleet checks all "active" Crew in the database against running PIDs. Dead ones get marked "lost." Worktrees with uncommitted work are preserved (not cleaned up) so you can recover the code. The Admiral offers to redeploy lost Missions: "Found 2 lost Crew from last session. Crewmate auth-crew-a3f8 had 3 commits on branch crew/auth-crew-a3f8. Redeploy or recover manually?" Branches are never deleted during crash recovery — only during explicit cleanup.
 
 ### Supply Route & Cross-Sector Failures
 
 **Circular dependencies in Supply Routes.** User accidentally tells the Admiral "api depends on web" and "web depends on api." This creates a cycle that could cause infinite Cargo forwarding or Mission deadlocks.
 
-*Mitigation:* When adding a Supply Route, the `addSupplyRoute` Bridge Control runs a cycle detection check (simple DFS on the supply_routes graph). If a cycle would be created, the route is rejected with an explanation: "Can't add this Supply Route — it would create a circular dependency: api → web → api." The Config panel shows the dependency graph visually so you can spot issues.
+_Mitigation:_ When adding a Supply Route, the `addSupplyRoute` Bridge Control runs a cycle detection check (simple DFS on the supply_routes graph). If a cycle would be created, the route is rejected with an explanation: "Can't add this Supply Route — it would create a circular dependency: api → web → api." The Config panel shows the dependency graph visually so you can spot issues.
 
 **Cargo forwarded to a Sector with no active Crew.** An API Crewmate produces Cargo that should go to the web Sector via a Supply Route, but no web Crewmate is currently deployed.
 
-*Mitigation:* The Cargo is stored in the cargo table regardless. When a web Crewmate is eventually deployed, the Admiral checks for undelivered Cargo on that Sector's Supply Routes and includes it in the Mission briefing. Cargo doesn't expire quickly (14-day default retention), so even if the downstream Sector isn't worked on for a while, the context is preserved.
+_Mitigation:_ The Cargo is stored in the cargo table regardless. When a web Crewmate is eventually deployed, the Admiral checks for undelivered Cargo on that Sector's Supply Routes and includes it in the Mission briefing. Cargo doesn't expire quickly (14-day default retention), so even if the downstream Sector isn't worked on for a while, the context is preserved.
 
 **Stale Cargo from a failed Mission gets forwarded.** A Crewmate crashes mid-Mission, producing partial or incorrect Cargo. The Supply Route system forwards this stale Cargo to downstream Sectors, which then build on a broken foundation.
 
-*Mitigation:* Cargo produced by Crewmates whose Mission status is "error," "lost," or "timeout" is tagged as `unverified` in the cargo table. When the Admiral forwards Cargo along Supply Routes, it includes the source Mission status: "⚠️ This Cargo came from a failed Mission — verify before using." The Admiral can also choose not to forward Cargo from failed Missions at all (configurable: `forward_failed_cargo: false`).
+_Mitigation:_ Cargo produced by Crewmates whose Mission status is "error," "lost," or "timeout" is tagged as `unverified` in the cargo table. When the Admiral forwards Cargo along Supply Routes, it includes the source Mission status: "⚠️ This Cargo came from a failed Mission — verify before using." The Admiral can also choose not to forward Cargo from failed Missions at all (configurable: `forward_failed_cargo: false`).
 
 **Sector directory moved or deleted while Crew is active.** The user renames or deletes a directory that's registered as a Sector while Crewmates are deployed there.
 
-*Mitigation:* The Sentinel periodically validates Sector paths (check that `root_path` exists and is a directory). If a Sector path goes missing, the Sentinel marks all Crew in that Sector as "lost," hails the Admiral, and disables the Sector in the registry. The Admiral reports: "Sector 'api' path no longer exists at /projects/api. 2 Crew recalled. Update the Sector path in Config or remove it." Worktrees are unaffected (they're in `~/.fleet/worktrees/`, not in the Sector directory) but they can't be merged back since the base repo is gone.
+_Mitigation:_ The Sentinel periodically validates Sector paths (check that `root_path` exists and is a directory). If a Sector path goes missing, the Sentinel marks all Crew in that Sector as "lost," hails the Admiral, and disables the Sector in the registry. The Admiral reports: "Sector 'api' path no longer exists at /projects/api. 2 Crew recalled. Update the Sector path in Config or remove it." Worktrees are unaffected (they're in `~/.fleet/worktrees/`, not in the Sector directory) but they can't be merged back since the base repo is gone.
 
 ### Config & State Failures
 
 **Config changes while agents are running.** User changes the Mission timeout from 15 minutes to 5 minutes while a Crewmate has been running for 10 minutes. Should the Crewmate be killed?
 
-*Mitigation:* Config changes apply to **new** deployments only — they don't retroactively affect running Crew. The Sentinel uses the `deadline` value stored in the crew table row (set at deploy time), not the live config value. The Config panel shows a note: "Changes apply to new Missions. Running Crew keep their original settings." Exception: Lifesign interval/timeout changes apply immediately since those are checked by the Sentinel sweep, not per-Crewmate.
+_Mitigation:_ Config changes apply to **new** deployments only — they don't retroactively affect running Crew. The Sentinel uses the `deadline` value stored in the crew table row (set at deploy time), not the live config value. The Config panel shows a note: "Changes apply to new Missions. Running Crew keep their original settings." Exception: Lifesign interval/timeout changes apply immediately since those are checked by the Sentinel sweep, not per-Crewmate.
 
 **User manually edits the SQLite database.** Someone opens the `.db` file in a SQLite browser and modifies rows directly, putting the state out of sync with reality (e.g., marking a running Crewmate as "complete").
 
-*Mitigation:* Fleet can't prevent this, but the Sentinel reconciliation provides self-healing. If a Crewmate is marked "complete" in the database but its PID is still alive, the Sentinel detects the mismatch and restores the status to "active." The Ship's Log records: "Crewmate status was externally modified — reconciled back to active." For truly corrupted states, the startup reconciliation is the catch-all reset.
+_Mitigation:_ Fleet can't prevent this, but the Sentinel reconciliation provides self-healing. If a Crewmate is marked "complete" in the database but its PID is still alive, the Sentinel detects the mismatch and restores the status to "active." The Ship's Log records: "Crewmate status was externally modified — reconciled back to active." For truly corrupted states, the startup reconciliation is the catch-all reset.
 
 **Index.json gets corrupted or deleted.** The workspace-to-Starbase mapping is lost, so Fleet can't find the database for an existing workspace.
 
-*Mitigation:* Fleet can reconstruct the index by scanning the `~/.fleet/starbases/` directory. Each database file name contains the Starbase ID, and the database itself stores the workspace path in a `_meta` table (added during creation). Fleet rebuilds the index from the database contents. If the database doesn't store the path (older schema), Fleet creates a new Starbase — you lose the history but can re-register Sectors.
+_Mitigation:_ Fleet can reconstruct the index by scanning the `~/.fleet/starbases/` directory. Each database file name contains the Starbase ID, and the database itself stores the workspace path in a `_meta` table (added during creation). Fleet rebuilds the index from the database contents. If the database doesn't store the path (older schema), Fleet creates a new Starbase — you lose the history but can re-register Sectors.
 
 **Multiple Fleet instances open the same Starbase.** A user opens two Fleet windows pointing at the same workspace. Both try to manage the same database and deploy Crew.
 
-*Mitigation:* SQLite with WAL handles concurrent reads fine, and the busy timeout handles write contention. But two Admirals managing the same Starbase would create confusion (duplicate deployments, conflicting directives). Fleet detects this via a lockfile (`starbase-{id}.lock`) in the starbases directory. If the lock is held, the second instance opens the Starbase in read-only mode — you can view status but can't deploy Crew or issue directives. The UI shows: "This Starbase is managed by another Fleet instance."
+_Mitigation:_ SQLite with WAL handles concurrent reads fine, and the busy timeout handles write contention. But two Admirals managing the same Starbase would create confusion (duplicate deployments, conflicting directives). Fleet detects this via a lockfile (`starbase-{id}.lock`) in the starbases directory. If the lock is held, the second instance opens the Starbase in read-only mode — you can view status but can't deploy Crew or issue directives. The UI shows: "This Starbase is managed by another Fleet instance."
 
 ### Edge Cases
 
 **Mission dependency deadlock.** Mission B depends on Mission A, but Mission A is assigned to a Crewmate that's stuck in "hailing" status waiting for input. Mission B can never start.
 
-*Mitigation:* The Sentinel monitors the Mission dependency graph. If a Mission has been in "active" status with a "hailing" Crewmate for longer than 2x the Mission timeout, the Sentinel escalates to the Admiral: "Mission A is blocking Mission B and has been hailing for {N} minutes. Resolve the hail or abort Mission A?" The Missions sub-tab visually highlights blocked dependency chains.
+_Mitigation:_ The Sentinel monitors the Mission dependency graph. If a Mission has been in "active" status with a "hailing" Crewmate for longer than 2x the Mission timeout, the Sentinel escalates to the Admiral: "Mission A is blocking Mission B and has been hailing for {N} minutes. Resolve the hail or abort Mission A?" The Missions sub-tab visually highlights blocked dependency chains.
 
 **Admiral itself fails or gets stuck.** The Admiral is an AI agent too — it can hallucinate, get confused, or go off-track just like any Crewmate. But there's no higher-level agent to catch it.
 
-*Mitigation:* The Admiral is not autonomous — it only acts in response to your directives or Crew hailing requests. It doesn't self-deploy Crew or make decisions without your initiation (except for pre-authorized automation like "auto-deploy the next Mission when one completes"). All Admiral actions are logged to the Ship's Log for review. If the Admiral seems confused, you can restart it (new Claude session) without affecting running Crew — the database is the source of truth, not the Admiral's conversation context. On restart, the Admiral reads the current Starbase state from the database and resumes.
+_Mitigation:_ The Admiral is not autonomous — it only acts in response to your directives or Crew hailing requests. It doesn't self-deploy Crew or make decisions without your initiation (except for pre-authorized automation like "auto-deploy the next Mission when one completes"). All Admiral actions are logged to the Ship's Log for review. If the Admiral seems confused, you can restart it (new Claude session) without affecting running Crew — the database is the source of truth, not the Admiral's conversation context. On restart, the Admiral reads the current Starbase state from the database and resumes.
 
 **Token budget tracking is inaccurate.** Different agents report token usage differently (or not at all). The Hull's token monitoring depends on parsing agent output, which is fragile.
 
-*Mitigation:* Token budgets are a soft guardrail, not a hard limit. The Hull uses best-effort parsing — for Claude Code it reads the token usage lines from stdout; for other agents it may not be able to track tokens at all. The Mission timeout is the reliable hard limit. Token tracking is marked as "estimated" in the UI, and agents that don't report tokens show "N/A" instead of 0.
+_Mitigation:_ Token budgets are a soft guardrail, not a hard limit. The Hull uses best-effort parsing — for Claude Code it reads the token usage lines from stdout; for other agents it may not be able to track tokens at all. The Mission timeout is the reliable hard limit. Token tracking is marked as "estimated" in the UI, and agents that don't report tokens show "N/A" instead of 0.
 
 ### Failure Mode Summary
 
-| Category | Failure | Severity | Primary Mitigation |
-|----------|---------|----------|--------------------|
-| Worktree | Creation fails | Medium | Pre-flight checks, branch suffix, fallback to direct dir |
-| Worktree | Package install hangs | Medium | Hard timeout, retry, symlink fallback |
-| Worktree | Cleanup fails | Low | Force remove, startup prune sweep |
-| Worktree | Pool staleness | Low | Refresh sequence, age-based eviction |
-| Git | Push fails | High | Retry with backoff, "push-pending" status, local preservation |
-| Git | PR creation fails | Medium | Fallback to branch-only, rate limit awareness |
-| Git | Branch collision | Low | Random suffix, local+remote check |
-| Git | Agent force-push | Medium | Git config restrictions, branch protection |
-| Git | Rebase conflicts | Medium | Draft PR, hail Admiral, rebase Crewmate |
-| Database | Corruption | High | Integrity check, recovery, backup snapshots |
-| Database | Unbounded growth | Medium | Retention policies, VACUUM, size monitoring |
-| Database | Locked by zombie | Low | WAL mode, busy timeout, zombie cleanup |
-| Database | Schema migration | Medium | Versioned additive migrations, transactions |
-| Agent | Never starts | Medium | Startup timeout, non-interactive flags |
-| Agent | Ignores MCP tools | Low | Hull tracks lifecycle independently |
-| Agent | Infinite loop | Medium | Mission timeout, token budget, churn detection |
-| Agent | Out-of-scope edits | Low | Post-Mission diff validation, PR warning |
-| Agent | Destructive commands | Medium | Worktree isolation, PR review gate |
-| Network | Network down | Medium | Retry with backoff, push-pending queue |
-| Network | GitHub rate limit | Low | Token bucket, queued PR creation |
-| Network | Remote unavailable | Medium | Local preservation, periodic retry |
-| System | Disk full | High | Disk budget, Sentinel checks, hard stop at 95% |
-| System | Memory exhaustion | High | Worktree/crew limits, memory-gated deployments |
-| System | Fleet crash | High | Startup reconciliation, branch preservation |
-| Supply Route | Circular deps | Low | Cycle detection on route creation |
-| Supply Route | No downstream Crew | Low | Cargo stored, delivered when Crew deploys |
-| Supply Route | Stale Cargo forwarded | Medium | Tag unverified, include source Mission status |
-| Supply Route | Sector path missing | Medium | Sentinel path validation, auto-disable |
-| Config | Mid-flight changes | Low | New deployments only, exception for Sentinel settings |
-| Config | Manual DB edits | Low | Sentinel reconciliation, Ship's Log audit |
-| Config | Index corruption | Low | Reconstruct from database _meta table |
-| Config | Duplicate instances | Medium | Lockfile, read-only mode for second instance |
-| Edge | Dependency deadlock | Medium | Sentinel monitors dependency graph, escalation timer |
-| Edge | Admiral failure | Low | Stateless restart from database, Ship's Log audit |
-| Edge | Token tracking inaccurate | Low | Soft guardrail, Mission timeout as hard limit |
+| Category     | Failure                   | Severity | Primary Mitigation                                            |
+| ------------ | ------------------------- | -------- | ------------------------------------------------------------- |
+| Worktree     | Creation fails            | Medium   | Pre-flight checks, branch suffix, fallback to direct dir      |
+| Worktree     | Package install hangs     | Medium   | Hard timeout, retry, symlink fallback                         |
+| Worktree     | Cleanup fails             | Low      | Force remove, startup prune sweep                             |
+| Worktree     | Pool staleness            | Low      | Refresh sequence, age-based eviction                          |
+| Git          | Push fails                | High     | Retry with backoff, "push-pending" status, local preservation |
+| Git          | PR creation fails         | Medium   | Fallback to branch-only, rate limit awareness                 |
+| Git          | Branch collision          | Low      | Random suffix, local+remote check                             |
+| Git          | Agent force-push          | Medium   | Git config restrictions, branch protection                    |
+| Git          | Rebase conflicts          | Medium   | Draft PR, hail Admiral, rebase Crewmate                       |
+| Database     | Corruption                | High     | Integrity check, recovery, backup snapshots                   |
+| Database     | Unbounded growth          | Medium   | Retention policies, VACUUM, size monitoring                   |
+| Database     | Locked by zombie          | Low      | WAL mode, busy timeout, zombie cleanup                        |
+| Database     | Schema migration          | Medium   | Versioned additive migrations, transactions                   |
+| Agent        | Never starts              | Medium   | Startup timeout, non-interactive flags                        |
+| Agent        | Ignores MCP tools         | Low      | Hull tracks lifecycle independently                           |
+| Agent        | Infinite loop             | Medium   | Mission timeout, token budget, churn detection                |
+| Agent        | Out-of-scope edits        | Low      | Post-Mission diff validation, PR warning                      |
+| Agent        | Destructive commands      | Medium   | Worktree isolation, PR review gate                            |
+| Network      | Network down              | Medium   | Retry with backoff, push-pending queue                        |
+| Network      | GitHub rate limit         | Low      | Token bucket, queued PR creation                              |
+| Network      | Remote unavailable        | Medium   | Local preservation, periodic retry                            |
+| System       | Disk full                 | High     | Disk budget, Sentinel checks, hard stop at 95%                |
+| System       | Memory exhaustion         | High     | Worktree/crew limits, memory-gated deployments                |
+| System       | Fleet crash               | High     | Startup reconciliation, branch preservation                   |
+| Supply Route | Circular deps             | Low      | Cycle detection on route creation                             |
+| Supply Route | No downstream Crew        | Low      | Cargo stored, delivered when Crew deploys                     |
+| Supply Route | Stale Cargo forwarded     | Medium   | Tag unverified, include source Mission status                 |
+| Supply Route | Sector path missing       | Medium   | Sentinel path validation, auto-disable                        |
+| Config       | Mid-flight changes        | Low      | New deployments only, exception for Sentinel settings         |
+| Config       | Manual DB edits           | Low      | Sentinel reconciliation, Ship's Log audit                     |
+| Config       | Index corruption          | Low      | Reconstruct from database \_meta table                        |
+| Config       | Duplicate instances       | Medium   | Lockfile, read-only mode for second instance                  |
+| Edge         | Dependency deadlock       | Medium   | Sentinel monitors dependency graph, escalation timer          |
+| Edge         | Admiral failure           | Low      | Stateless restart from database, Ship's Log audit             |
+| Edge         | Token tracking inaccurate | Low      | Soft guardrail, Mission timeout as hard limit                 |
 
 ## Visual Design
 
@@ -977,14 +981,14 @@ Cross-Sector Comms are visualized as data beams that arc across the station ring
 
 ### Pod Status Animations
 
-| Crew Status | Pod Visual |
-|-------------|-----------|
-| Active | Teal window glow pulsing, data stream from antenna |
-| Hailing | Amber window glow, flashing warning beacon |
-| Error | Red flicker, sparks and venting gas |
-| Idle | Dim teal, no antenna activity |
-| Complete | Green flash, checkmark hologram, calm green glow |
-| Lost | Hull sparks, gas vent, optional small explosion |
+| Crew Status | Pod Visual                                         |
+| ----------- | -------------------------------------------------- |
+| Active      | Teal window glow pulsing, data stream from antenna |
+| Hailing     | Amber window glow, flashing warning beacon         |
+| Error       | Red flicker, sparks and venting gas                |
+| Idle        | Dim teal, no antenna activity                      |
+| Complete    | Green flash, checkmark hologram, calm green glow   |
+| Lost        | Hull sparks, gas vent, optional small explosion    |
 
 ### Comms Visuals
 
@@ -1025,24 +1029,29 @@ The Star Command tab has sub-tabs along its top edge for switching between diffe
 Config panel sections:
 
 **Worktrees**
+
 - Max concurrent worktrees (default: 5, range: 1-20)
 - Worktree pool size per Sector (default: 2, range: 0-10)
 - Disk budget in GB (default: 5)
 - Symlink node_modules toggle (default: off)
 
 **Missions**
+
 - Default Mission timeout in minutes (default: 15, range: 5-60)
 - Default merge strategy dropdown: PR / Auto-merge / Branch-only
 
 **Crew**
+
 - Default token budget per Crewmate (default: 0 = unlimited)
 - Comms rate limit per minute (default: 30)
 
 **Sentinel**
+
 - Lifesign interval in seconds (default: 10, range: 5-60)
 - Lifesign timeout in seconds (default: 30, range: 10-120)
 
 **Sectors** — Per-Sector overrides. A list of all registered Sectors, each expandable to configure:
+
 - Merge strategy override
 - Base branch override
 - Worktree enabled toggle
@@ -1106,7 +1115,9 @@ Most animations are **CSS-driven**, not canvas-driven. CSS animations run on the
   image-rendering: pixelated;
 }
 @keyframes rotate {
-  to { background-position: -2560px 0; } /* 8 frames × 320px */
+  to {
+    background-position: -2560px 0;
+  } /* 8 frames × 320px */
 }
 ```
 
@@ -1186,12 +1197,12 @@ Each visual element (pod, shuttle, data orb) has a simple state machine that map
 ```typescript
 // Pod state machine — maps DB status to CSS class
 const POD_CLASS: Record<CrewStatus, string> = {
-  active:   'pod pod--active',    // teal pulse animation
-  hailing:  'pod pod--hailing',   // amber flash animation
-  error:    'pod pod--error',     // red flicker + trigger spark effect
-  idle:     'pod pod--idle',      // static dim teal
-  complete: 'pod pod--complete',  // green glow + trigger undock
-  lost:     'pod pod--lost',      // trigger gas vent effect
+  active: 'pod pod--active', // teal pulse animation
+  hailing: 'pod pod--hailing', // amber flash animation
+  error: 'pod pod--error', // red flicker + trigger spark effect
+  idle: 'pod pod--idle', // static dim teal
+  complete: 'pod pod--complete', // green glow + trigger undock
+  lost: 'pod pod--lost' // trigger gas vent effect
 };
 ```
 
@@ -1201,15 +1212,15 @@ The visualizer targets under **20MB** of memory for all sprite assets combined. 
 
 ### Performance Budget Summary
 
-| Metric | Target | How |
-|--------|--------|-----|
-| CPU at idle (nothing changing) | ~0% | No RAF loop, CSS animations on compositor |
-| CPU during status change | < 1% spike | Class swap triggers CSS transition |
-| CPU during particle effect | < 5% for < 2s | One-shot RAF, self-terminating |
-| Memory (all sprites) | < 20MB | Pixel art is tiny, PNG sprite sheets |
-| GPU | Minimal | CSS compositor, no WebGL |
-| Battery drain | Negligible | Visibility throttling, low-power mode |
-| Hidden tab cost | 0% | All animations paused, polling slowed |
+| Metric                         | Target        | How                                       |
+| ------------------------------ | ------------- | ----------------------------------------- |
+| CPU at idle (nothing changing) | ~0%           | No RAF loop, CSS animations on compositor |
+| CPU during status change       | < 1% spike    | Class swap triggers CSS transition        |
+| CPU during particle effect     | < 5% for < 2s | One-shot RAF, self-terminating            |
+| Memory (all sprites)           | < 20MB        | Pixel art is tiny, PNG sprite sheets      |
+| GPU                            | Minimal       | CSS compositor, no WebGL                  |
+| Battery drain                  | Negligible    | Visibility throttling, low-power mode     |
+| Hidden tab cost                | 0%            | All animations paused, polling slowed     |
 
 ### Database Location
 

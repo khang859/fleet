@@ -12,25 +12,27 @@
 
 ## File Map
 
-| File | What changes |
-|------|-------------|
-| `src/shared/types.ts` | Add `activeTabId?: string` and `activePaneId?: string` to `Workspace` |
-| `src/renderer/src/store/workspace-store.ts` | Add 2 imports; fix `loadWorkspace`, `switchWorkspace`, `splitPane`, `closeTab` |
-| `src/renderer/src/store/__tests__/workspace-store.test.ts` | New tests for all four fixes |
-| `src/renderer/src/components/Sidebar.tsx` | Autosave adds new fields; `doSwitchWorkspace` and `commitNewWorkspace` flush before switching |
-| `src/renderer/src/App.tsx` | `flushWorkspace` closure adds new fields to the active workspace snapshot |
-| `src/renderer/src/components/WorkspacePicker.tsx` | `handleSaveCurrent`, `handleSwitchWorkspace`, `commitNewWorkspace` flush before switching |
+| File                                                       | What changes                                                                                  |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`                                      | Add `activeTabId?: string` and `activePaneId?: string` to `Workspace`                         |
+| `src/renderer/src/store/workspace-store.ts`                | Add 2 imports; fix `loadWorkspace`, `switchWorkspace`, `splitPane`, `closeTab`                |
+| `src/renderer/src/store/__tests__/workspace-store.test.ts` | New tests for all four fixes                                                                  |
+| `src/renderer/src/components/Sidebar.tsx`                  | Autosave adds new fields; `doSwitchWorkspace` and `commitNewWorkspace` flush before switching |
+| `src/renderer/src/App.tsx`                                 | `flushWorkspace` closure adds new fields to the active workspace snapshot                     |
+| `src/renderer/src/components/WorkspacePicker.tsx`          | `handleSaveCurrent`, `handleSwitchWorkspace`, `commitNewWorkspace` flush before switching     |
 
 ---
 
 ## Task 1: Extend the `Workspace` type
 
 **Files:**
+
 - Modify: `src/shared/types.ts:1-36`
 
 - [ ] **Step 1: Add the two optional fields**
 
 Open `src/shared/types.ts`. The `Workspace` type currently is:
+
 ```ts
 export type Workspace = {
   id: string;
@@ -40,6 +42,7 @@ export type Workspace = {
 ```
 
 Change it to:
+
 ```ts
 export type Workspace = {
   id: string;
@@ -55,6 +58,7 @@ export type Workspace = {
 ```bash
 npm run typecheck
 ```
+
 Expected: passes (the new fields are optional, so all existing `Workspace` literals remain valid).
 
 - [ ] **Step 3: Commit**
@@ -69,6 +73,7 @@ git commit -m "feat: add activeTabId and activePaneId to Workspace type"
 ## Task 2: Fix `loadWorkspace` and `switchWorkspace` to restore active tab/pane
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts:391-433`
 - Test: `src/renderer/src/store/__tests__/workspace-store.test.ts`
 
@@ -86,8 +91,20 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activeTabId: 'tab-x2',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
-        { id: 'tab-x2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x2', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        },
+        {
+          id: 'tab-x2',
+          label: 'B',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x2', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -100,7 +117,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activeTabId: 'tab-gone',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -114,7 +137,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       activeTabId: 'tab-x1',
       activePaneId: 'pane-x1',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -127,7 +156,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activePaneId: 'pane-gone',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -145,8 +180,20 @@ describe('switchWorkspace — active tab/pane restoration', () => {
       label: 'Beta',
       activeTabId: 'tab-b2',
       tabs: [
-        { id: 'tab-b1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b1', cwd: '/' } },
-        { id: 'tab-b2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b2', cwd: '/' } },
+        {
+          id: 'tab-b1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-b1', cwd: '/' }
+        },
+        {
+          id: 'tab-b2',
+          label: 'B',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-b2', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.setState({ backgroundWorkspaces: new Map([['ws-b', wsBMulti]]) });
@@ -167,6 +214,7 @@ describe('switchWorkspace — active tab/pane restoration', () => {
 ```bash
 npm test -- --reporter=verbose 2>&1 | grep -E "(FAIL|PASS|✓|✗|×)" | head -30
 ```
+
 Expected: the new tests fail (`activeTabId` not yet restored from workspace object).
 
 - [ ] **Step 3: Fix `loadWorkspace` in workspace-store.ts**
@@ -251,6 +299,7 @@ Note: live CWD injection into the stash happens in Task 5 (Fix 3 Part B). This t
 ```bash
 npm test -- --reporter=verbose 2>&1 | grep -E "(FAIL|PASS|✓|✗|×)" | head -30
 ```
+
 Expected: all new tests pass; no existing tests broken.
 
 - [ ] **Step 6: Typecheck**
@@ -271,6 +320,7 @@ git commit -m "fix: restore active tab and pane from persisted workspace state"
 ## Task 3: Include activeTabId/activePaneId in all save paths
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx` (autosave effect, ~line 257)
 - Modify: `src/renderer/src/App.tsx` (flushWorkspace closure, ~line 213)
 - Modify: `src/renderer/src/components/WorkspacePicker.tsx` (handleSaveCurrent, ~line 61)
@@ -309,6 +359,7 @@ const activeWithContent = {
   }))
 };
 ```
+
 The background workspace loop below does NOT get these fields — they are meaningless for workspaces not currently active.
 
 - [ ] **Step 3: Fix WorkspacePicker.tsx handleSaveCurrent**
@@ -350,6 +401,7 @@ git commit -m "fix: include activeTabId and activePaneId in all workspace save p
 ## Task 4: Fix splitPane to use live CWD
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts` (imports + `splitPane` action, ~line 309)
 - Test: `src/renderer/src/store/__tests__/workspace-store.test.ts`
 
@@ -392,6 +444,7 @@ describe('splitPane — live CWD', () => {
 ```
 
 Also add the import at the top of the test file:
+
 ```ts
 import { collectPaneLeafs } from '../workspace-store';
 ```
@@ -401,6 +454,7 @@ import { collectPaneLeafs } from '../workspace-store';
 ```bash
 npm test -- --reporter=verbose 2>&1 | grep -E "splitPane" | head -10
 ```
+
 Expected: both new splitPane tests fail (live CWD not yet used).
 
 - [ ] **Step 3: Add imports to workspace-store.ts**
@@ -455,6 +509,7 @@ git commit -m "fix: split pane inherits live CWD instead of tab's initial CWD"
 ## Task 5: Fix workspace switch — inject live CWDs into stash and flush to disk
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts` (`switchWorkspace`, ~line 408)
 - Modify: `src/renderer/src/components/Sidebar.tsx` (`doSwitchWorkspace`, `commitNewWorkspace`)
 - Modify: `src/renderer/src/components/WorkspacePicker.tsx` (`handleSwitchWorkspace`, `commitNewWorkspace`)
@@ -706,6 +761,7 @@ Fix any TypeScript errors (most likely `void` on unawaited async calls in event 
 ```bash
 npm test
 ```
+
 Expected: all tests pass.
 
 - [ ] **Step 12: Commit**
@@ -720,6 +776,7 @@ git commit -m "fix: flush workspace to disk before switching workspaces"
 ## Task 6: Fix closeTab to inject live CWDs for undo-close
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts` (`closeTab` action, ~line 223)
 - Test: `src/renderer/src/store/__tests__/workspace-store.test.ts`
 
@@ -759,19 +816,19 @@ npm test -- --reporter=verbose 2>&1 | grep -E "closeTab.*live CWD" | head -5
 - [ ] **Step 3: Fix closeTab in workspace-store.ts**
 
 Find the `closeTab` action (around line 223). The current code has:
+
 ```ts
 const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
 const closedTab = state.workspace.tabs[tabIndex];
 ```
 
 Rename the variable and inject CWDs:
+
 ```ts
 const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
 const rawTab = state.workspace.tabs[tabIndex];
 // Inject live CWDs so undo-close restores the PTY at the correct directory
-const closedTab = rawTab
-  ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) }
-  : rawTab;
+const closedTab = rawTab ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) } : rawTab;
 ```
 
 All remaining references to `closedTab` in the action body are unchanged — they now operate on the CWD-injected version.
@@ -783,6 +840,7 @@ All remaining references to `closedTab` in the action body are unchanged — the
 ```bash
 npm test
 ```
+
 Expected: all tests pass.
 
 - [ ] **Step 5: Typecheck**
@@ -807,6 +865,7 @@ git commit -m "fix: inject live CWDs into closed tab so undo-close restores at c
 ```bash
 npm test
 ```
+
 Expected: all tests pass.
 
 - [ ] **Step 2: Run typecheck and lint**
@@ -814,11 +873,13 @@ Expected: all tests pass.
 ```bash
 npm run typecheck && npm run lint
 ```
+
 Expected: no errors.
 
 - [ ] **Step 3: Manual smoke test**
 
 Launch the app in dev mode and verify:
+
 1. Open two tabs, navigate to different directories in each, switch to the second tab, quit — reopen and confirm the second tab is restored as active
 2. Open a terminal, `cd /tmp`, split the pane horizontally — confirm the new pane opens in `/tmp` not the original tab CWD
 3. Open two workspaces, `cd` in one, switch workspaces — switch back and confirm the CWD was preserved

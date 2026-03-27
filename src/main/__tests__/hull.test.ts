@@ -979,289 +979,287 @@ describe('Hull — Review mission with Analyst', () => {
     execSync(`git worktree add "${WORKTREE_DIR}" crew/test-branch`, { cwd: SECTOR_DIR });
   }
 
-  it(
-    'uses analyst verdict when analyst returns a result',
-    { timeout: 60_000 },
-    async () => {
-      setupWorktreeNoChanges();
-      const mission = missionSvc.addMission({
-        sectorId: 'api',
-        summary: 'Review PR',
-        prompt: 'Review the PR',
-        type: 'review'
-      });
+  it('uses analyst verdict when analyst returns a result', { timeout: 60_000 }, async () => {
+    setupWorktreeNoChanges();
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Review PR',
+      prompt: 'Review the PR',
+      type: 'review'
+    });
 
-      // Mock analyst that returns APPROVE
-      const mockAnalyst = {
-        extractPRVerdict: vi.fn().mockResolvedValue({
-          verdict: 'APPROVE',
-          notes: 'Looks good to me'
-        })
-      };
+    // Mock analyst that returns APPROVE
+    const mockAnalyst = {
+      extractPRVerdict: vi.fn().mockResolvedValue({
+        verdict: 'APPROVE',
+        notes: 'Looks good to me'
+      })
+    };
 
-      const opts: HullOpts = {
-        crewId: `crew-review-${mission.id}`,
-        sectorId: 'api',
-        missionId: mission.id,
-        prompt: 'Review the PR',
-        worktreePath: WORKTREE_DIR,
-        worktreeBranch: 'crew/test-branch',
-        baseBranch: 'main',
-        sectorPath: SECTOR_DIR,
-        db: db.getDb(),
-        lifesignIntervalSec: 9999,
-        timeoutMin: 9999,
-        missionType: 'review',
-        starbaseId: 'test01',
-        analyst: mockAnalyst as any
-      };
-      const hull = new Hull(opts);
+    const opts: HullOpts = {
+      crewId: `crew-review-${mission.id}`,
+      sectorId: 'api',
+      missionId: mission.id,
+      prompt: 'Review the PR',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/test-branch',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999,
+      missionType: 'review',
+      starbaseId: 'test01',
+      analyst: mockAnalyst as any
+    };
+    const hull = new Hull(opts);
 
-      hull.start();
-      mockProc.emit('exit', 0);
+    hull.start();
+    mockProc.emit('exit', 0);
 
-      await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500));
 
-      expect(mockAnalyst.extractPRVerdict).toHaveBeenCalled();
+    expect(mockAnalyst.extractPRVerdict).toHaveBeenCalled();
 
-      const row = db
-        .getDb()
-        .prepare('SELECT review_verdict, review_notes, status FROM missions WHERE id = ?')
-        .get(mission.id) as any;
-      expect(row.review_verdict).toBe('approve');
-      expect(row.review_notes).toBe('Looks good to me');
-      expect(row.status).toBe('approved');
-    }
-  );
+    const row = db
+      .getDb()
+      .prepare('SELECT review_verdict, review_notes, status FROM missions WHERE id = ?')
+      .get(mission.id) as any;
+    expect(row.review_verdict).toBe('approve');
+    expect(row.review_notes).toBe('Looks good to me');
+    expect(row.status).toBe('approved');
+  });
 
-  it(
-    'falls back to regex when analyst returns null',
-    { timeout: 60_000 },
-    async () => {
-      setupWorktreeNoChanges();
-      const mission = missionSvc.addMission({
-        sectorId: 'api',
-        summary: 'Review PR',
-        prompt: 'Review the PR',
-        type: 'review'
-      });
+  it('falls back to regex when analyst returns null', { timeout: 60_000 }, async () => {
+    setupWorktreeNoChanges();
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Review PR',
+      prompt: 'Review the PR',
+      type: 'review'
+    });
 
-      // Mock analyst that returns null (failure)
-      const mockAnalyst = {
-        extractPRVerdict: vi.fn().mockResolvedValue(null)
-      };
+    // Mock analyst that returns null (failure)
+    const mockAnalyst = {
+      extractPRVerdict: vi.fn().mockResolvedValue(null)
+    };
 
-      const opts: HullOpts = {
-        crewId: `crew-review-fallback-${mission.id}`,
-        sectorId: 'api',
-        missionId: mission.id,
-        prompt: 'Review the PR',
-        worktreePath: WORKTREE_DIR,
-        worktreeBranch: 'crew/test-branch',
-        baseBranch: 'main',
-        sectorPath: SECTOR_DIR,
-        db: db.getDb(),
-        lifesignIntervalSec: 9999,
-        timeoutMin: 9999,
-        missionType: 'review',
-        starbaseId: 'test01',
-        analyst: mockAnalyst as any
-      };
-      const hull = new Hull(opts);
+    const opts: HullOpts = {
+      crewId: `crew-review-fallback-${mission.id}`,
+      sectorId: 'api',
+      missionId: mission.id,
+      prompt: 'Review the PR',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/test-branch',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999,
+      missionType: 'review',
+      starbaseId: 'test01',
+      analyst: mockAnalyst as any
+    };
+    const hull = new Hull(opts);
 
-      // Emit output with VERDICT: so regex fallback can extract it
-      hull.appendOutput('Review complete.\nVERDICT: REQUEST_CHANGES\nNOTES: Please fix the tests\n\n');
+    // Emit output with VERDICT: so regex fallback can extract it
+    hull.appendOutput(
+      'Review complete.\nVERDICT: REQUEST_CHANGES\nNOTES: Please fix the tests\n\n'
+    );
 
-      hull.start();
-      mockProc.emit('exit', 0);
+    hull.start();
+    mockProc.emit('exit', 0);
 
-      await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500));
 
-      expect(mockAnalyst.extractPRVerdict).toHaveBeenCalled();
+    expect(mockAnalyst.extractPRVerdict).toHaveBeenCalled();
 
-      const row = db
-        .getDb()
-        .prepare('SELECT review_verdict, review_notes, status FROM missions WHERE id = ?')
-        .get(mission.id) as any;
-      expect(row.review_verdict).toBe('request-changes');
-      expect(row.status).toBe('changes-requested');
-    }
-  );
+    const row = db
+      .getDb()
+      .prepare('SELECT review_verdict, review_notes, status FROM missions WHERE id = ?')
+      .get(mission.id) as any;
+    expect(row.review_verdict).toBe('request-changes');
+    expect(row.status).toBe('changes-requested');
+  });
 
-  it(
-    'uses escalate when no analyst and no VERDICT in output',
-    { timeout: 60_000 },
-    async () => {
-      setupWorktreeNoChanges();
-      const mission = missionSvc.addMission({
-        sectorId: 'api',
-        summary: 'Review PR',
-        prompt: 'Review the PR',
-        type: 'review'
-      });
+  it('uses escalate when no analyst and no VERDICT in output', { timeout: 60_000 }, async () => {
+    setupWorktreeNoChanges();
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Review PR',
+      prompt: 'Review the PR',
+      type: 'review'
+    });
 
-      const opts: HullOpts = {
-        crewId: `crew-review-noanalyst-${mission.id}`,
-        sectorId: 'api',
-        missionId: mission.id,
-        prompt: 'Review the PR',
-        worktreePath: WORKTREE_DIR,
-        worktreeBranch: 'crew/test-branch',
-        baseBranch: 'main',
-        sectorPath: SECTOR_DIR,
-        db: db.getDb(),
-        lifesignIntervalSec: 9999,
-        timeoutMin: 9999,
-        missionType: 'review',
-        starbaseId: 'test01'
-        // no analyst
-      };
-      const hull = new Hull(opts);
+    const opts: HullOpts = {
+      crewId: `crew-review-noanalyst-${mission.id}`,
+      sectorId: 'api',
+      missionId: mission.id,
+      prompt: 'Review the PR',
+      worktreePath: WORKTREE_DIR,
+      worktreeBranch: 'crew/test-branch',
+      baseBranch: 'main',
+      sectorPath: SECTOR_DIR,
+      db: db.getDb(),
+      lifesignIntervalSec: 9999,
+      timeoutMin: 9999,
+      missionType: 'review',
+      starbaseId: 'test01'
+      // no analyst
+    };
+    const hull = new Hull(opts);
 
-      hull.start();
-      mockProc.emit('exit', 0);
+    hull.start();
+    mockProc.emit('exit', 0);
 
-      await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500));
 
-      const row = db
-        .getDb()
-        .prepare('SELECT review_verdict, status FROM missions WHERE id = ?')
-        .get(mission.id) as any;
-      expect(row.review_verdict).toBe('escalate');
-      expect(row.status).toBe('escalated');
-    }
-  );
+    const row = db
+      .getDb()
+      .prepare('SELECT review_verdict, status FROM missions WHERE id = ?')
+      .get(mission.id) as any;
+    expect(row.review_verdict).toBe('escalate');
+    expect(row.status).toBe('escalated');
+  });
 });
 
 describe('Hull — Repair mission SIGTERM handling', () => {
-  it('SIGTERM (143) with new commits — transition original to pending-review', { timeout: 60_000 }, async () => {
-    // Create a "worktree" with git history
-    mkdirSync(WORKTREE_DIR, { recursive: true });
-    execSync('git init', { cwd: WORKTREE_DIR });
-    execSync('git config user.email "test@test.com" && git config user.name "Test"', {
-      cwd: WORKTREE_DIR
-    });
-    execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
-    writeFileSync(join(WORKTREE_DIR, 'fix.ts'), 'export const fix = () => {};');
-    execSync('git add -A && git commit -m "repair fix"', { cwd: WORKTREE_DIR });
+  it(
+    'SIGTERM (143) with new commits — transition original to pending-review',
+    { timeout: 60_000 },
+    async () => {
+      // Create a "worktree" with git history
+      mkdirSync(WORKTREE_DIR, { recursive: true });
+      execSync('git init', { cwd: WORKTREE_DIR });
+      execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+        cwd: WORKTREE_DIR
+      });
+      execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
+      writeFileSync(join(WORKTREE_DIR, 'fix.ts'), 'export const fix = () => {};');
+      execSync('git add -A && git commit -m "repair fix"', { cwd: WORKTREE_DIR });
 
-    // Create missions
-    const originalMission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Fix the bug',
-      prompt: 'Fix the bug',
-      type: 'code'
-    });
+      // Create missions
+      const originalMission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Fix the bug',
+        prompt: 'Fix the bug',
+        type: 'code'
+      });
 
-    const repairMission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Repair the code',
-      prompt: 'Repair the code',
-      type: 'repair',
-      originalMissionId: originalMission.id
-    });
+      const repairMission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Repair the code',
+        prompt: 'Repair the code',
+        type: 'repair',
+        originalMissionId: originalMission.id
+      });
 
-    const opts: HullOpts = {
-      crewId: 'repair-crew',
-      sectorId: 'api',
-      missionId: repairMission.id,
-      prompt: 'Repair the code',
-      worktreePath: WORKTREE_DIR,
-      worktreeBranch: 'repair-branch',
-      baseBranch: 'main',
-      sectorPath: SECTOR_DIR,
-      db: db.getDb(),
-      lifesignIntervalSec: 9999,
-      timeoutMin: 9999,
-      missionType: 'repair',
-      originalMissionId: originalMission.id,
-      starbaseId: 'test01'
-    };
+      const opts: HullOpts = {
+        crewId: 'repair-crew',
+        sectorId: 'api',
+        missionId: repairMission.id,
+        prompt: 'Repair the code',
+        worktreePath: WORKTREE_DIR,
+        worktreeBranch: 'repair-branch',
+        baseBranch: 'main',
+        sectorPath: SECTOR_DIR,
+        db: db.getDb(),
+        lifesignIntervalSec: 9999,
+        timeoutMin: 9999,
+        missionType: 'repair',
+        originalMissionId: originalMission.id,
+        starbaseId: 'test01'
+      };
 
-    const hull = new Hull(opts);
-    hull.start();
+      const hull = new Hull(opts);
+      hull.start();
 
-    // Simulate SIGTERM after commits were made
-    mockProc.emit('exit', 143);
+      // Simulate SIGTERM after commits were made
+      mockProc.emit('exit', 143);
 
-    await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 500));
 
-    // Check that original mission was transitioned to pending-review
-    const originalRow = db
-      .getDb()
-      .prepare('SELECT status FROM missions WHERE id = ?')
-      .get(originalMission.id) as any;
-    expect(originalRow.status).toBe('pending-review');
+      // Check that original mission was transitioned to pending-review
+      const originalRow = db
+        .getDb()
+        .prepare('SELECT status FROM missions WHERE id = ?')
+        .get(originalMission.id) as any;
+      expect(originalRow.status).toBe('pending-review');
 
-    // Check that repair mission was completed
-    const repairRow = db
-      .getDb()
-      .prepare('SELECT status FROM missions WHERE id = ?')
-      .get(repairMission.id) as any;
-    expect(repairRow.status).toBe('completed');
-  });
+      // Check that repair mission was completed
+      const repairRow = db
+        .getDb()
+        .prepare('SELECT status FROM missions WHERE id = ?')
+        .get(repairMission.id) as any;
+      expect(repairRow.status).toBe('completed');
+    }
+  );
 
-  it('SIGTERM (143) without commits — mark original as ci-failed', { timeout: 60_000 }, async () => {
-    // Create a worktree without commits
-    mkdirSync(WORKTREE_DIR, { recursive: true });
-    execSync('git init', { cwd: WORKTREE_DIR });
-    execSync('git config user.email "test@test.com" && git config user.name "Test"', {
-      cwd: WORKTREE_DIR
-    });
-    execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
-    // NO commits made
+  it(
+    'SIGTERM (143) without commits — mark original as ci-failed',
+    { timeout: 60_000 },
+    async () => {
+      // Create a worktree without commits
+      mkdirSync(WORKTREE_DIR, { recursive: true });
+      execSync('git init', { cwd: WORKTREE_DIR });
+      execSync('git config user.email "test@test.com" && git config user.name "Test"', {
+        cwd: WORKTREE_DIR
+      });
+      execSync('git checkout -b repair-branch', { cwd: WORKTREE_DIR });
+      // NO commits made
 
-    // Create missions
-    const originalMission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Fix the bug',
-      prompt: 'Fix the bug',
-      type: 'code'
-    });
+      // Create missions
+      const originalMission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Fix the bug',
+        prompt: 'Fix the bug',
+        type: 'code'
+      });
 
-    // Mark as repairing
-    db.getDb()
-      .prepare("UPDATE missions SET status = 'repairing' WHERE id = ?")
-      .run(originalMission.id);
+      // Mark as repairing
+      db.getDb()
+        .prepare("UPDATE missions SET status = 'repairing' WHERE id = ?")
+        .run(originalMission.id);
 
-    const repairMission = missionSvc.addMission({
-      sectorId: 'api',
-      summary: 'Repair the code',
-      prompt: 'Repair the code',
-      type: 'repair',
-      originalMissionId: originalMission.id
-    });
+      const repairMission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Repair the code',
+        prompt: 'Repair the code',
+        type: 'repair',
+        originalMissionId: originalMission.id
+      });
 
-    const opts: HullOpts = {
-      crewId: 'repair-crew-2',
-      sectorId: 'api',
-      missionId: repairMission.id,
-      prompt: 'Repair the code',
-      worktreePath: WORKTREE_DIR,
-      worktreeBranch: 'repair-branch',
-      baseBranch: 'main',
-      sectorPath: SECTOR_DIR,
-      db: db.getDb(),
-      lifesignIntervalSec: 9999,
-      timeoutMin: 9999,
-      missionType: 'repair',
-      originalMissionId: originalMission.id,
-      starbaseId: 'test01'
-    };
+      const opts: HullOpts = {
+        crewId: 'repair-crew-2',
+        sectorId: 'api',
+        missionId: repairMission.id,
+        prompt: 'Repair the code',
+        worktreePath: WORKTREE_DIR,
+        worktreeBranch: 'repair-branch',
+        baseBranch: 'main',
+        sectorPath: SECTOR_DIR,
+        db: db.getDb(),
+        lifesignIntervalSec: 9999,
+        timeoutMin: 9999,
+        missionType: 'repair',
+        originalMissionId: originalMission.id,
+        starbaseId: 'test01'
+      };
 
-    const hull = new Hull(opts);
-    hull.start();
+      const hull = new Hull(opts);
+      hull.start();
 
-    // Simulate SIGTERM without any commits
-    mockProc.emit('exit', 143);
+      // Simulate SIGTERM without any commits
+      mockProc.emit('exit', 143);
 
-    await new Promise((r) => setTimeout(r, 500));
+      await new Promise((r) => setTimeout(r, 500));
 
-    // Check that original mission was marked as ci-failed
-    const originalRow = db
-      .getDb()
-      .prepare('SELECT status FROM missions WHERE id = ?')
-      .get(originalMission.id) as any;
-    expect(originalRow.status).toBe('ci-failed');
-  });
+      // Check that original mission was marked as ci-failed
+      const originalRow = db
+        .getDb()
+        .prepare('SELECT status FROM missions WHERE id = ?')
+        .get(originalMission.id) as any;
+      expect(originalRow.status).toBe('ci-failed');
+    }
+  );
 });

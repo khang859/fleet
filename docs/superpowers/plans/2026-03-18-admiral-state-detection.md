@@ -14,24 +14,25 @@
 
 ## File Map
 
-| Action | File | Responsibility |
-|--------|------|---------------|
-| Create | `src/main/starbase/admiral-state-detector.ts` | Core detection logic — ANSI stripping, pattern matching, idle timer, debounce, event emission |
-| Modify | `src/main/event-bus.ts:4-12` | Add `admiral-state-change` to `FleetEvent` union |
-| Modify | `src/shared/constants.ts:5-52` | Add `ADMIRAL_STATE_CHANGED` to `IPC_CHANNELS` |
-| Modify | `src/shared/ipc-api.ts` | Add `AdmiralStatePayload` type |
-| Modify | `src/main/index.ts:44-54` | Instantiate `AdmiralStateDetector`, wire to data handlers and cleanup |
-| Modify | `src/main/ipc-handlers.ts:33-51,213-229` | Accept detector param, call `scan()` in `wireAdmiralPty()` |
-| Modify | `src/preload/index.ts:92-101` | Add `onStateChanged` listener |
-| Modify | `src/renderer/src/store/star-command-store.ts:27-69` | Add `admiralStatusText` field and `setAdmiralState` action |
-| Modify | `src/renderer/src/components/StarCommandTab.tsx:29-84` | Subscribe to state change IPC, update store |
-| Modify | `src/renderer/src/components/star-command/AdmiralSidebar.tsx:30-71` | Display dynamic `admiralStatusText` |
+| Action | File                                                                | Responsibility                                                                                |
+| ------ | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Create | `src/main/starbase/admiral-state-detector.ts`                       | Core detection logic — ANSI stripping, pattern matching, idle timer, debounce, event emission |
+| Modify | `src/main/event-bus.ts:4-12`                                        | Add `admiral-state-change` to `FleetEvent` union                                              |
+| Modify | `src/shared/constants.ts:5-52`                                      | Add `ADMIRAL_STATE_CHANGED` to `IPC_CHANNELS`                                                 |
+| Modify | `src/shared/ipc-api.ts`                                             | Add `AdmiralStatePayload` type                                                                |
+| Modify | `src/main/index.ts:44-54`                                           | Instantiate `AdmiralStateDetector`, wire to data handlers and cleanup                         |
+| Modify | `src/main/ipc-handlers.ts:33-51,213-229`                            | Accept detector param, call `scan()` in `wireAdmiralPty()`                                    |
+| Modify | `src/preload/index.ts:92-101`                                       | Add `onStateChanged` listener                                                                 |
+| Modify | `src/renderer/src/store/star-command-store.ts:27-69`                | Add `admiralStatusText` field and `setAdmiralState` action                                    |
+| Modify | `src/renderer/src/components/StarCommandTab.tsx:29-84`              | Subscribe to state change IPC, update store                                                   |
+| Modify | `src/renderer/src/components/star-command/AdmiralSidebar.tsx:30-71` | Display dynamic `admiralStatusText`                                                           |
 
 ---
 
 ### Task 1: Add `admiral-state-change` event to EventBus
 
 **Files:**
+
 - Modify: `src/main/event-bus.ts:4-12`
 
 - [ ] **Step 1: Add the new event type to the FleetEvent union**
@@ -60,6 +61,7 @@ git commit -m "feat(starbase): add admiral-state-change event type to EventBus"
 ### Task 2: Add IPC channel constant and payload type
 
 **Files:**
+
 - Modify: `src/shared/constants.ts:47`
 - Modify: `src/shared/ipc-api.ts`
 
@@ -77,9 +79,9 @@ In `src/shared/ipc-api.ts`, add at the end of the file:
 
 ```typescript
 export type AdmiralStateDetailPayload = {
-  state: 'standby' | 'thinking' | 'speaking' | 'alert'
-  statusText: string
-}
+  state: 'standby' | 'thinking' | 'speaking' | 'alert';
+  statusText: string;
+};
 ```
 
 - [ ] **Step 3: Verify build compiles**
@@ -99,6 +101,7 @@ git commit -m "feat(starbase): add ADMIRAL_STATE_DETAIL IPC channel and payload 
 ### Task 3: Create `AdmiralStateDetector` class
 
 **Files:**
+
 - Create: `src/main/starbase/admiral-state-detector.ts`
 
 - [ ] **Step 1: Create the detector file with full implementation**
@@ -106,177 +109,178 @@ git commit -m "feat(starbase): add ADMIRAL_STATE_DETAIL IPC channel and payload 
 Create `src/main/starbase/admiral-state-detector.ts`:
 
 ```typescript
-import { EventBus } from '../event-bus'
+import { EventBus } from '../event-bus';
 
-type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert'
+type AdmiralAvatarState = 'standby' | 'thinking' | 'speaking' | 'alert';
 
 export interface AdmiralStateEvent {
-  state: AdmiralAvatarState
-  statusText: string
+  state: AdmiralAvatarState;
+  statusText: string;
 }
 
 // Strip ANSI escape sequences before pattern matching
-const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+const ANSI_RE = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 
 // Thinking — braille spinner characters used by Claude Code
-const THINKING_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/
+const THINKING_RE = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 
 // Tool execution — Claude Code tool use headers
 const TOOL_RE =
-  /⏺\s+(Bash|Read|Edit|Write|Glob|Grep|MultiEdit|TodoWrite|WebFetch|WebSearch|Agent|Skill|NotebookEdit)/
+  /⏺\s+(Bash|Read|Edit|Write|Glob|Grep|MultiEdit|TodoWrite|WebFetch|WebSearch|Agent|Skill|NotebookEdit)/;
 
 // Permission prompt patterns
 const PERMISSION_RES = [
   /Do you want to (?:allow|proceed|continue)/i,
   /\(y\/n\)\s*$/,
   /Allow this action\?/i,
-  /Press Enter to confirm/i,
-]
+  /Press Enter to confirm/i
+];
 
 // Error patterns
-const ERROR_RES = [
-  /^Error:/m,
-  /connection failed/i,
-  /fatal:/i,
-  /SIGTERM|SIGKILL/,
-]
+const ERROR_RES = [/^Error:/m, /connection failed/i, /fatal:/i, /SIGTERM|SIGKILL/];
 
-const IDLE_TIMEOUT_MS = 2000
-const DEBOUNCE_MS = 200
-const MAX_BUFFER = 1024
+const IDLE_TIMEOUT_MS = 2000;
+const DEBOUNCE_MS = 200;
+const MAX_BUFFER = 1024;
 
 export class AdmiralStateDetector {
-  private eventBus: EventBus
-  private admiralPaneId: string | null = null
-  private buffer = ''
-  private currentState: AdmiralAvatarState = 'standby'
-  private currentStatusText = 'Standing by'
-  private idleTimer: ReturnType<typeof setTimeout> | null = null
-  private debounceTimer: ReturnType<typeof setTimeout> | null = null
+  private eventBus: EventBus;
+  private admiralPaneId: string | null = null;
+  private buffer = '';
+  private currentState: AdmiralAvatarState = 'standby';
+  private currentStatusText = 'Standing by';
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(eventBus: EventBus) {
-    this.eventBus = eventBus
+    this.eventBus = eventBus;
   }
 
   setAdmiralPaneId(paneId: string | null): void {
-    this.admiralPaneId = paneId
-    this.buffer = ''
-    this.clearTimers()
+    this.admiralPaneId = paneId;
+    this.buffer = '';
+    this.clearTimers();
     if (paneId === null) {
       // Admiral stopped — handled by reset()
     }
   }
 
   scan(paneId: string, data: string): void {
-    if (paneId !== this.admiralPaneId) return
+    if (paneId !== this.admiralPaneId) return;
 
     // Strip ANSI and append to rolling buffer
-    const clean = data.replace(ANSI_RE, '')
-    this.buffer += clean
+    const clean = data.replace(ANSI_RE, '');
+    this.buffer += clean;
     if (this.buffer.length > MAX_BUFFER) {
-      this.buffer = this.buffer.slice(-MAX_BUFFER)
+      this.buffer = this.buffer.slice(-MAX_BUFFER);
     }
 
     // Reset idle timer on any output
-    this.resetIdleTimer()
+    this.resetIdleTimer();
 
     // Detect state from cleaned data (priority order)
-    const detected = this.detect(clean)
+    const detected = this.detect(clean);
     if (detected) {
-      this.transition(detected.state, detected.statusText)
+      this.transition(detected.state, detected.statusText);
     }
   }
 
   reset(): void {
-    this.buffer = ''
-    this.clearTimers()
-    this.emitImmediate('standby', 'Standing by')
+    this.buffer = '';
+    this.clearTimers();
+    this.emitImmediate('standby', 'Standing by');
   }
 
   dispose(): void {
-    this.clearTimers()
+    this.clearTimers();
   }
 
   private detect(clean: string): AdmiralStateEvent | null {
     // Priority 1: Permission prompt
     for (const re of PERMISSION_RES) {
       if (re.test(clean)) {
-        return { state: 'alert', statusText: 'Awaiting permission' }
+        return { state: 'alert', statusText: 'Awaiting permission' };
       }
     }
 
     // Priority 1: Error
     for (const re of ERROR_RES) {
       if (re.test(clean)) {
-        return { state: 'alert', statusText: 'Error' }
+        return { state: 'alert', statusText: 'Error' };
       }
     }
 
     // Priority 2: Tool execution
-    const toolMatch = TOOL_RE.exec(clean)
+    const toolMatch = TOOL_RE.exec(clean);
     if (toolMatch) {
-      return { state: 'thinking', statusText: `Executing: ${toolMatch[1]}` }
+      return { state: 'thinking', statusText: `Executing: ${toolMatch[1]}` };
     }
 
     // Priority 3: Thinking (spinner)
     if (THINKING_RE.test(clean)) {
-      return { state: 'thinking', statusText: 'Thinking...' }
+      return { state: 'thinking', statusText: 'Thinking...' };
     }
 
     // Priority 4: Speaking (any non-whitespace output that didn't match above)
     if (clean.trim().length > 0) {
-      return { state: 'speaking', statusText: 'Speaking' }
+      return { state: 'speaking', statusText: 'Speaking' };
     }
 
-    return null
+    return null;
   }
 
   private transition(state: AdmiralAvatarState, statusText: string): void {
     // Alert bypasses debounce
     if (state === 'alert') {
-      this.emitImmediate(state, statusText)
-      return
+      this.emitImmediate(state, statusText);
+      return;
     }
 
     // Same state — skip (but update statusText if different, e.g. different tool name)
     if (state === this.currentState && statusText === this.currentStatusText) {
-      return
+      return;
     }
 
     // Debounce non-alert transitions
-    if (this.debounceTimer) clearTimeout(this.debounceTimer)
+    if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
-      this.debounceTimer = null
-      this.emitImmediate(state, statusText)
-    }, DEBOUNCE_MS)
+      this.debounceTimer = null;
+      this.emitImmediate(state, statusText);
+    }, DEBOUNCE_MS);
   }
 
   private emitImmediate(state: AdmiralAvatarState, statusText: string): void {
     if (this.debounceTimer) {
-      clearTimeout(this.debounceTimer)
-      this.debounceTimer = null
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
     }
-    this.currentState = state
-    this.currentStatusText = statusText
+    this.currentState = state;
+    this.currentStatusText = statusText;
     this.eventBus.emit('admiral-state-change', {
       type: 'admiral-state-change',
       state,
-      statusText,
-    })
+      statusText
+    });
   }
 
   private resetIdleTimer(): void {
-    if (this.idleTimer) clearTimeout(this.idleTimer)
+    if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => {
-      this.idleTimer = null
+      this.idleTimer = null;
       // Idle bypasses debounce (2s silence is sufficient debouncing)
-      this.emitImmediate('standby', 'Standing by')
-    }, IDLE_TIMEOUT_MS)
+      this.emitImmediate('standby', 'Standing by');
+    }, IDLE_TIMEOUT_MS);
   }
 
   private clearTimers(): void {
-    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null }
-    if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null }
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
   }
 }
 ```
@@ -298,6 +302,7 @@ git commit -m "feat(starbase): add AdmiralStateDetector for PTY output state det
 ### Task 4: Wire detector into main process
 
 **Files:**
+
 - Modify: `src/main/index.ts:44-54` (instantiation)
 - Modify: `src/main/index.ts:262-286` (startAdmiralAndWire — add scan call)
 - Modify: `src/main/index.ts:251-259` (admiral status change — add reset call)
@@ -308,13 +313,13 @@ git commit -m "feat(starbase): add AdmiralStateDetector for PTY output state det
 In `src/main/index.ts`, add import after line 28 (`import { AdmiralProcess } from './starbase/admiral-process'`):
 
 ```typescript
-import { AdmiralStateDetector } from './starbase/admiral-state-detector'
+import { AdmiralStateDetector } from './starbase/admiral-state-detector';
 ```
 
 Add instantiation after line 54 (`const jsonlWatcher = ...`):
 
 ```typescript
-const admiralStateDetector = new AdmiralStateDetector(eventBus)
+const admiralStateDetector = new AdmiralStateDetector(eventBus);
 ```
 
 - [ ] **Step 2: Call `scan()` in `startAdmiralAndWire` data handler**
@@ -323,13 +328,13 @@ In `src/main/index.ts`, inside the `startAdmiralAndWire` function, modify the `p
 
 ```typescript
 ptyManager.onData(paneId, (data) => {
-  notificationDetector.scan(paneId, data)
-  admiralStateDetector.scan(paneId, data)
-  const w = mainWindow
+  notificationDetector.scan(paneId, data);
+  admiralStateDetector.scan(paneId, data);
+  const w = mainWindow;
   if (w && !w.isDestroyed()) {
-    w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+    w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
   }
-})
+});
 ```
 
 - [ ] **Step 3: Set paneId after Admiral starts**
@@ -337,7 +342,7 @@ ptyManager.onData(paneId, (data) => {
 In `startAdmiralAndWire`, after `const paneId = await admiralProcess!.start()` (line 264), add:
 
 ```typescript
-admiralStateDetector.setAdmiralPaneId(paneId)
+admiralStateDetector.setAdmiralPaneId(paneId);
 ```
 
 - [ ] **Step 4: Reset detector on Admiral stop**
@@ -347,17 +352,17 @@ In the `admiralProcess.setOnStatusChange` callback (around line 251-259), add re
 ```typescript
 admiralProcess.setOnStatusChange((status, error) => {
   if (status === 'stopped') {
-    admiralStateDetector.reset()
-    admiralStateDetector.setAdmiralPaneId(null)
+    admiralStateDetector.reset();
+    admiralStateDetector.setAdmiralPaneId(null);
   }
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
       status,
       paneId: admiralProcess!.paneId,
-      error,
-    })
+      error
+    });
   }
-})
+});
 ```
 
 - [ ] **Step 5: Forward admiral-state-change events to renderer**
@@ -370,10 +375,10 @@ eventBus.on('admiral-state-change', (event) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, {
       state: event.state,
-      statusText: event.statusText,
-    })
+      statusText: event.statusText
+    });
   }
-})
+});
 ```
 
 - [ ] **Step 6: Dispose detector on window-all-closed**
@@ -381,7 +386,7 @@ eventBus.on('admiral-state-change', (event) => {
 In the `window-all-closed` handler (around line 643-656), add after `admiralProcess?.stop()`:
 
 ```typescript
-admiralStateDetector.dispose()
+admiralStateDetector.dispose();
 ```
 
 - [ ] **Step 7: Verify build compiles**
@@ -401,6 +406,7 @@ git commit -m "feat(starbase): wire AdmiralStateDetector into main process lifec
 ### Task 5: Wire detector into ipc-handlers `wireAdmiralPty`
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts:33-51` (add param)
 - Modify: `src/main/ipc-handlers.ts:213-229` (add scan call)
 
@@ -409,7 +415,7 @@ git commit -m "feat(starbase): wire AdmiralStateDetector into main process lifec
 Add import at top of `src/main/ipc-handlers.ts` after line 27:
 
 ```typescript
-import type { AdmiralStateDetector } from './starbase/admiral-state-detector'
+import type { AdmiralStateDetector } from './starbase/admiral-state-detector';
 ```
 
 - [ ] **Step 2: Add parameter to registerIpcHandlers**
@@ -428,44 +434,46 @@ In `wireAdmiralPty` (line 214), add `admiralStateDetector?.scan(paneId, data)` i
 ```typescript
 const wireAdmiralPty = (paneId: string): void => {
   ptyManager.onData(paneId, (data) => {
-    notificationDetector.scan(paneId, data)
-    admiralStateDetector?.scan(paneId, data)
-    const w = getWindow()
+    notificationDetector.scan(paneId, data);
+    admiralStateDetector?.scan(paneId, data);
+    const w = getWindow();
     if (w && !w.isDestroyed()) {
-      w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+      w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
     }
-  })
+  });
   ptyManager.onExit(paneId, (exitCode) => {
-    const w = getWindow()
+    const w = getWindow();
     if (w && !w.isDestroyed()) {
-      w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+      w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode });
     }
-    eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
-  })
-  cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
-}
+    eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode });
+  });
+  cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
+};
 ```
 
 Also add `setAdmiralPaneId` call inside the restart/reset handlers after wireAdmiralPty:
 
 For `ADMIRAL_RESTART` handler (line 231-235):
+
 ```typescript
 ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
-  const paneId = await admiralProcess.restart()
-  admiralStateDetector?.setAdmiralPaneId(paneId)
-  wireAdmiralPty(paneId)
-  return paneId
-})
+  const paneId = await admiralProcess.restart();
+  admiralStateDetector?.setAdmiralPaneId(paneId);
+  wireAdmiralPty(paneId);
+  return paneId;
+});
 ```
 
 For `ADMIRAL_RESET` handler (line 236-240):
+
 ```typescript
 ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
-  const paneId = await admiralProcess.reset()
-  admiralStateDetector?.setAdmiralPaneId(paneId)
-  wireAdmiralPty(paneId)
-  return paneId
-})
+  const paneId = await admiralProcess.reset();
+  admiralStateDetector?.setAdmiralPaneId(paneId);
+  wireAdmiralPty(paneId);
+  return paneId;
+});
 ```
 
 - [ ] **Step 4: Pass detector in registerIpcHandlers call**
@@ -493,7 +501,7 @@ registerIpcHandlers(
   cargoService,
   retentionService,
   admiralStateDetector
-)
+);
 ```
 
 - [ ] **Step 5: Verify build compiles**
@@ -513,6 +521,7 @@ git commit -m "feat(starbase): wire AdmiralStateDetector into ipc-handlers wireA
 ### Task 6: Add preload API listener
 
 **Files:**
+
 - Modify: `src/preload/index.ts:92-101`
 
 - [ ] **Step 1: Import the payload type**
@@ -536,7 +545,7 @@ import type {
   GitStatusPayload,
   GitIsRepoPayload,
   AdmiralStateDetailPayload
-} from '../shared/ipc-api'
+} from '../shared/ipc-api';
 ```
 
 - [ ] **Step 2: Add `onStateChanged` to the admiral namespace**
@@ -568,6 +577,7 @@ git commit -m "feat(starbase): expose admiral.onStateDetail in preload API"
 ### Task 7: Update Zustand store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/star-command-store.ts:27-69`
 
 - [ ] **Step 1: Add `admiralStatusText` field and `setAdmiralState` action**
@@ -575,21 +585,25 @@ git commit -m "feat(starbase): expose admiral.onStateDetail in preload API"
 In `src/renderer/src/store/star-command-store.ts`:
 
 Add to the `StarCommandStore` type (after `admiralAvatarState` on line 42):
+
 ```typescript
 admiralStatusText: string;
 ```
 
 Add to the Actions section (after `setAdmiralAvatarState` on line 50):
+
 ```typescript
 setAdmiralState: (state: AdmiralAvatarState, statusText: string) => void;
 ```
 
 Add to the store initial state (after `admiralAvatarState: 'standby'` on line 61):
+
 ```typescript
 admiralStatusText: 'Standing by',
 ```
 
 Add to the store actions (after `setAdmiralAvatarState` on line 68):
+
 ```typescript
 setAdmiralState: (state, statusText) => set({ admiralAvatarState: state, admiralStatusText: statusText }),
 ```
@@ -611,6 +625,7 @@ git commit -m "feat(starbase): add admiralStatusText and setAdmiralState to stor
 ### Task 8: Subscribe to state detail IPC in StarCommandTab
 
 **Files:**
+
 - Modify: `src/renderer/src/components/StarCommandTab.tsx:29-84`
 
 - [ ] **Step 1: Subscribe to admiral state detail IPC**
@@ -618,6 +633,7 @@ git commit -m "feat(starbase): add admiralStatusText and setAdmiralState to stor
 In `src/renderer/src/components/StarCommandTab.tsx`:
 
 Add `setAdmiralState` to the destructured store values (around line 30-40):
+
 ```typescript
 const {
   admiralPaneId,
@@ -629,8 +645,8 @@ const {
   setSectors,
   setUnreadCount,
   admiralAvatarState,
-  setAdmiralState,
-} = useStarCommandStore()
+  setAdmiralState
+} = useStarCommandStore();
 ```
 
 Add a new `useEffect` after the existing `onStatusChanged` subscription (after line 84):
@@ -639,13 +655,10 @@ Add a new `useEffect` after the existing `onStatusChanged` subscription (after l
 // Listen for detailed admiral state changes (thinking, speaking, etc.)
 useEffect(() => {
   const cleanup = window.fleet.admiral.onStateDetail((data) => {
-    setAdmiralState(
-      data.state as 'standby' | 'thinking' | 'speaking' | 'alert',
-      data.statusText
-    )
-  })
-  return cleanup
-}, [setAdmiralState])
+    setAdmiralState(data.state as 'standby' | 'thinking' | 'speaking' | 'alert', data.statusText);
+  });
+  return cleanup;
+}, [setAdmiralState]);
 ```
 
 - [ ] **Step 2: Verify build compiles**
@@ -665,6 +678,7 @@ git commit -m "feat(starbase): subscribe to admiral state detail IPC in StarComm
 ### Task 9: Display dynamic status text in AdmiralSidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/AdmiralSidebar.tsx:30-71`
 
 - [ ] **Step 1: Read `admiralStatusText` from store and display it**
@@ -672,8 +686,9 @@ git commit -m "feat(starbase): subscribe to admiral state detail IPC in StarComm
 In `src/renderer/src/components/star-command/AdmiralSidebar.tsx`:
 
 Add `admiralStatusText` to the destructured store values (line 35):
+
 ```typescript
-const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText } = useStarCommandStore()
+const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText } = useStarCommandStore();
 ```
 
 Replace the hardcoded status text block (lines 58-71) — the current `<div className="flex items-center gap-1.5 mt-1">` block that shows `admiralStatus`:
@@ -724,6 +739,7 @@ Open the Star Command tab. Admiral should start and the sidebar should show "Sta
 - [ ] **Step 3: Interact with Admiral and verify state transitions**
 
 Type a message to the Admiral. Observe:
+
 - Avatar changes to `thinking` when spinner appears
 - Status text shows "Thinking..."
 - Avatar changes to `speaking` when response streams

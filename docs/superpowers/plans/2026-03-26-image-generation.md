@@ -15,6 +15,7 @@
 ### Task 1: Install dependency and add shared types
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `src/shared/types.ts`
 - Modify: `src/shared/ipc-channels.ts`
@@ -32,7 +33,13 @@ Append after the `UpdateStatus` type at the end of the file:
 ```typescript
 // ── Image Generation ────────────────────────────────────────────────────────
 
-export type ImageGenerationStatus = 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'timeout';
+export type ImageGenerationStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'timeout';
 
 export type ImageGenerationMode = 'generate' | 'edit';
 
@@ -116,6 +123,7 @@ git commit -m "feat(images): add @fal-ai/client dependency and shared types"
 ### Task 2: Create provider abstraction and fal.ai provider
 
 **Files:**
+
 - Create: `src/main/image-providers/types.ts`
 - Create: `src/main/image-providers/fal-ai.ts`
 
@@ -167,13 +175,7 @@ export interface ImageProvider {
 
 ```typescript
 import { fal } from '@fal-ai/client';
-import type {
-  ImageProvider,
-  GenerateOpts,
-  EditOpts,
-  PollResult,
-  GenerationResult
-} from './types';
+import type { ImageProvider, GenerateOpts, EditOpts, PollResult, GenerationResult } from './types';
 
 function isEditOpts(opts: GenerateOpts | EditOpts): opts is EditOpts {
   return 'imageUrls' in opts && Array.isArray(opts.imageUrls);
@@ -272,6 +274,7 @@ git commit -m "feat(images): add ImageProvider interface and fal.ai provider"
 ### Task 3: Create ImageService
 
 **Files:**
+
 - Create: `src/main/image-service.ts`
 
 - [ ] **Step 1: Create `src/main/image-service.ts`**
@@ -315,7 +318,10 @@ const POLL_TIMEOUT_MS = 300_000; // 5 minutes
 
 function generateId(): string {
   const now = new Date();
-  const ts = now.toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
+  const ts = now
+    .toISOString()
+    .replace(/[-T:.Z]/g, '')
+    .slice(0, 14);
   const rand = randomBytes(3).toString('hex');
   return `${ts}-${rand}`;
 }
@@ -582,10 +588,7 @@ export class ImageService extends EventEmitter {
   resumeInterrupted(): void {
     const metas = this.list();
     for (const meta of metas) {
-      if (
-        (meta.status === 'queued' || meta.status === 'processing') &&
-        meta.providerRequestId
-      ) {
+      if ((meta.status === 'queued' || meta.status === 'processing') && meta.providerRequestId) {
         const provider = this.providers.get(meta.provider);
         if (provider) {
           this.pollLoop(meta.id, provider, meta.providerRequestId);
@@ -605,11 +608,7 @@ export class ImageService extends EventEmitter {
 
   // ── Internal: submit + poll ─────────────────────────────────────────────
 
-  private submitAndPoll(
-    id: string,
-    provider: ImageProvider,
-    opts: GenerateOpts | EditOpts
-  ): void {
+  private submitAndPoll(id: string, provider: ImageProvider, opts: GenerateOpts | EditOpts): void {
     void (async () => {
       try {
         const { requestId } = await provider.submit(opts);
@@ -785,6 +784,7 @@ git commit -m "feat(images): add ImageService with generate, edit, retry, and ba
 ### Task 4: Wire ImageService into socket server dispatch
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 
 - [ ] **Step 1: Add ImageService to constructor and ServiceRegistry**
@@ -947,6 +947,7 @@ git commit -m "feat(images): add image.* dispatch cases to socket server"
 ### Task 5: Initialize ImageService in main process and wire IPC
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
@@ -1045,6 +1046,7 @@ git commit -m "feat(images): wire ImageService into main process with IPC handle
 ### Task 6: Add preload bridge for images
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 - [ ] **Step 1: Add image types to preload imports**
@@ -1114,6 +1116,7 @@ git commit -m "feat(images): add window.fleet.images preload bridge"
 ### Task 7: Add CLI commands for images
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 
 - [ ] **Step 1: Add command mappings to `COMMAND_MAP`**
@@ -1188,44 +1191,51 @@ In `runCLI`, add special handling for `images config` before the standard comman
 Add this before the `if (!group || !action)` check in `runCLI`:
 
 ```typescript
-  // ── Images config (get or set based on flags) ──────────────────────────
-  if (group === 'images' && action === 'config') {
-    const configArgs = parseArgs(rest.filter((t) => t !== '--quiet' && t !== '--format'));
-    const hasSetFlags = Object.keys(configArgs).some((k) =>
-      ['api-key', 'default-model', 'default-resolution', 'default-output-format', 'default-aspect-ratio', 'provider'].includes(k)
-    );
-    const command = hasSetFlags ? 'image.config.set' : 'image.config.get';
-    const cli = new FleetCLI(sockPath);
-    try {
-      const response = opts?.retry
-        ? await cli.sendWithRetry(command, configArgs)
-        : await cli.send(command, configArgs);
-      if (!response.ok) return `Error: ${response.error ?? 'Unknown error'}`;
-      if (command === 'image.config.set') return 'Configuration updated.';
-      // Format config output
-      if (isRecord(response.data)) {
-        const lines: string[] = [];
-        const data = response.data as Record<string, unknown>;
-        if (data.defaultProvider) lines.push(`defaultProvider: ${toStr(data.defaultProvider)}`);
-        const providers = data.providers;
-        if (isRecord(providers)) {
-          for (const [name, val] of Object.entries(providers)) {
-            lines.push(`${name}:`);
-            if (isRecord(val)) {
-              for (const [k, v] of Object.entries(val)) {
-                lines.push(`  ${k}: ${toStr(v)}`);
-              }
+// ── Images config (get or set based on flags) ──────────────────────────
+if (group === 'images' && action === 'config') {
+  const configArgs = parseArgs(rest.filter((t) => t !== '--quiet' && t !== '--format'));
+  const hasSetFlags = Object.keys(configArgs).some((k) =>
+    [
+      'api-key',
+      'default-model',
+      'default-resolution',
+      'default-output-format',
+      'default-aspect-ratio',
+      'provider'
+    ].includes(k)
+  );
+  const command = hasSetFlags ? 'image.config.set' : 'image.config.get';
+  const cli = new FleetCLI(sockPath);
+  try {
+    const response = opts?.retry
+      ? await cli.sendWithRetry(command, configArgs)
+      : await cli.send(command, configArgs);
+    if (!response.ok) return `Error: ${response.error ?? 'Unknown error'}`;
+    if (command === 'image.config.set') return 'Configuration updated.';
+    // Format config output
+    if (isRecord(response.data)) {
+      const lines: string[] = [];
+      const data = response.data as Record<string, unknown>;
+      if (data.defaultProvider) lines.push(`defaultProvider: ${toStr(data.defaultProvider)}`);
+      const providers = data.providers;
+      if (isRecord(providers)) {
+        for (const [name, val] of Object.entries(providers)) {
+          lines.push(`${name}:`);
+          if (isRecord(val)) {
+            for (const [k, v] of Object.entries(val)) {
+              lines.push(`  ${k}: ${toStr(v)}`);
             }
           }
         }
-        return lines.join('\n');
       }
-      return toStr(response.data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      return `Error: ${msg}`;
+      return lines.join('\n');
     }
+    return toStr(response.data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return `Error: ${msg}`;
   }
+}
 ```
 
 - [ ] **Step 5: Add images-specific output formatting**
@@ -1233,42 +1243,48 @@ Add this before the `if (!group || !action)` check in `runCLI`:
 Add after the `comms.check` special formatting in `runCLI`:
 
 ```typescript
-  // ── image.generate / image.edit formatting ──────────────────────────────
-  if ((command === 'image.generate' || command === 'image.edit') && isRecord(data) && typeof data.id === 'string') {
-    return `Submitted: ${data.id}`;
-  }
+// ── image.generate / image.edit formatting ──────────────────────────────
+if (
+  (command === 'image.generate' || command === 'image.edit') &&
+  isRecord(data) &&
+  typeof data.id === 'string'
+) {
+  return `Submitted: ${data.id}`;
+}
 
-  // ── image.status formatting ─────────────────────────────────────────────
-  if (command === 'image.status' && isRecord(data)) {
-    const lines: string[] = [];
-    lines.push(`status: ${toStr(data.status)}`);
-    if (data.status === 'completed' || data.status === 'partial') {
-      lines.push(`path: ~/.fleet/images/generations/${toStr(data.id)}`);
-      if (Array.isArray(data.images)) {
-        const filenames = data.images
-          .filter((img): img is Record<string, unknown> => isRecord(img) && typeof img.filename === 'string')
-          .map((img) => img.filename);
-        if (filenames.length > 0) lines.push(`images: ${filenames.join(', ')}`);
-      }
+// ── image.status formatting ─────────────────────────────────────────────
+if (command === 'image.status' && isRecord(data)) {
+  const lines: string[] = [];
+  lines.push(`status: ${toStr(data.status)}`);
+  if (data.status === 'completed' || data.status === 'partial') {
+    lines.push(`path: ~/.fleet/images/generations/${toStr(data.id)}`);
+    if (Array.isArray(data.images)) {
+      const filenames = data.images
+        .filter(
+          (img): img is Record<string, unknown> => isRecord(img) && typeof img.filename === 'string'
+        )
+        .map((img) => img.filename);
+      if (filenames.length > 0) lines.push(`images: ${filenames.join(', ')}`);
     }
-    if (data.error) lines.push(`error: ${toStr(data.error)}`);
-    return lines.join('\n');
   }
+  if (data.error) lines.push(`error: ${toStr(data.error)}`);
+  return lines.join('\n');
+}
 
-  // ── image.list formatting ───────────────────────────────────────────────
-  if (command === 'image.list') {
-    if (!Array.isArray(data) || data.length === 0) return 'No images found.';
-    const rows = data
-      .filter((d): d is Record<string, unknown> => isRecord(d))
-      .map((d) => ({
-        ID: toStr(d.id),
-        STATUS: toStr(d.status),
-        MODE: toStr(d.mode),
-        MODEL: toStr(d.model),
-        PROMPT: toStr(d.prompt).slice(0, 40) + (toStr(d.prompt).length > 40 ? '...' : '')
-      }));
-    return formatTable(rows);
-  }
+// ── image.list formatting ───────────────────────────────────────────────
+if (command === 'image.list') {
+  if (!Array.isArray(data) || data.length === 0) return 'No images found.';
+  const rows = data
+    .filter((d): d is Record<string, unknown> => isRecord(d))
+    .map((d) => ({
+      ID: toStr(d.id),
+      STATUS: toStr(d.status),
+      MODE: toStr(d.mode),
+      MODEL: toStr(d.model),
+      PROMPT: toStr(d.prompt).slice(0, 40) + (toStr(d.prompt).length > 40 ? '...' : '')
+    }));
+  return formatTable(rows);
+}
 ```
 
 - [ ] **Step 6: Add help text for images**
@@ -1276,7 +1292,7 @@ Add after the `comms.check` special formatting in `runCLI`:
 Add to the `HELP_GROUPS` object:
 
 ```typescript
-  images: `\n# fleet images\n
+images: `\n# fleet images\n
 Manage AI image generation.
 
 ## Commands
@@ -1304,7 +1320,7 @@ Manage AI image generation.
 fleet images generate --prompt "A cat in space" --resolution 2K
 fleet images edit --prompt "Add a hat" --images ./cat.png
 fleet images config --api-key sk-xxx
-\\\`\\\`\\\``
+\\\`\\\`\\\``;
 ```
 
 - [ ] **Step 7: Run typecheck**
@@ -1327,6 +1343,7 @@ git commit -m "feat(images): add fleet images CLI commands"
 ### Task 8: Add pinned Images tab type and ensure it exists
 
 **Files:**
+
 - Modify: `src/shared/types.ts` — add `'images'` to tab type union
 - Modify: `src/main/layout-store.ts` — add `ensureImagesTab`
 
@@ -1402,6 +1419,7 @@ git commit -m "feat(images): add pinned Images tab type and ensureImagesTab"
 ### Task 9: Create Zustand image store
 
 **Files:**
+
 - Create: `src/renderer/src/store/image-store.ts`
 
 - [ ] **Step 1: Create the store**
@@ -1505,6 +1523,7 @@ git commit -m "feat(images): add Zustand image store"
 ### Task 10: Create ImageGallery components
 
 **Files:**
+
 - Create: `src/renderer/src/components/ImageGallery/ImageGallery.tsx`
 - Create: `src/renderer/src/components/ImageGallery/ImageGrid.tsx`
 - Create: `src/renderer/src/components/ImageGallery/ImageDetail.tsx`
@@ -2027,6 +2046,7 @@ git commit -m "feat(images): add ImageGallery, ImageGrid, ImageDetail, and Image
 ### Task 11: Wire Images tab into App.tsx and Sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
@@ -2055,13 +2075,16 @@ In the tab content rendering (where `tab.type === 'star-command'` is checked), a
 Add a pinned Images tab section after the Star Command section, following the same pattern. Add before the crew tabs section:
 
 ```tsx
-{/* Images tab (pinned, not closeable) */}
-{workspace.tabs
-  .filter((tab) => tab.type === 'images')
-  .map((tab) => (
-    <div
-      key={tab.id}
-      className={`
+{
+  /* Images tab (pinned, not closeable) */
+}
+{
+  workspace.tabs
+    .filter((tab) => tab.type === 'images')
+    .map((tab) => (
+      <div
+        key={tab.id}
+        className={`
         flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[36px] transition-colors
         ${
           tab.id === activeTabId
@@ -2069,19 +2092,28 @@ Add a pinned Images tab section after the Star Command section, following the sa
             : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
         }
       `}
-      onClick={() => setActiveTab(tab.id)}
-    >
-      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <path d="M21 15l-5-5L5 21" />
-      </svg>
-      <span className="truncate">Images</span>
-    </div>
-  ))}
-{workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
-  <div className="h-px bg-neutral-800 mx-1 my-1" />
-)}
+        onClick={() => setActiveTab(tab.id)}
+      >
+        <svg
+          className="w-4 h-4 flex-shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <path d="M21 15l-5-5L5 21" />
+        </svg>
+        <span className="truncate">Images</span>
+      </div>
+    ));
+}
+{
+  workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
+    <div className="h-px bg-neutral-800 mx-1 my-1" />
+  );
+}
 ```
 
 - [ ] **Step 3: Hide sidebar when Images tab is active (same as Star Command)**
@@ -2089,13 +2121,10 @@ Add a pinned Images tab section after the Star Command section, following the sa
 Update the `isStarCommand` check that controls sidebar visibility to also include images:
 
 ```typescript
-const isFullScreenTab = useMemo(
-  () => {
-    const tab = workspace.tabs.find((t) => t.id === activeTabId);
-    return tab?.type === 'star-command' || tab?.type === 'images';
-  },
-  [workspace.tabs, activeTabId]
-);
+const isFullScreenTab = useMemo(() => {
+  const tab = workspace.tabs.find((t) => t.id === activeTabId);
+  return tab?.type === 'star-command' || tab?.type === 'images';
+}, [workspace.tabs, activeTabId]);
 const showSidebar = !isFullScreenTab || sidebarManualOpen;
 ```
 
@@ -2121,6 +2150,7 @@ git commit -m "feat(images): wire Images tab into App.tsx and Sidebar"
 ### Task 12: Handle local image loading in renderer
 
 **Files:**
+
 - Modify: `src/main/index.ts` (register protocol) OR use existing `file.readBinary` IPC
 
 The `ImageGrid` and `ImageDetail` components reference images via `fleet-local://` URLs. We need to either:
@@ -2169,6 +2199,7 @@ git commit -m "feat(images): add local image loading for gallery"
 ### Task 13: Wire SocketSupervisor to pass ImageService
 
 **Files:**
+
 - Modify: `src/main/socket-supervisor.ts`
 
 - [ ] **Step 1: Check how SocketSupervisor creates SocketServer**
@@ -2235,6 +2266,7 @@ npm run dev
 ```
 
 Verify:
+
 1. Images tab appears pinned in sidebar below Star Command
 2. Images tab shows empty state with CLI hint
 3. Settings sub-tab shows API key input, resolution/format/aspect ratio dropdowns

@@ -15,6 +15,7 @@
 The Fleet Visualizer currently renders a 3-layer parallax starfield with procedural pixel-art spaceships representing AI agents. The user loves the calming ambient quality of the scrolling starfield and wants to significantly enrich the visual experience. This plan adds 20 enhancements grouped into 7 phases, each delivering visible results independently.
 
 ### Current File Structure
+
 ```
 src/renderer/src/components/visualizer/
   SpaceCanvas.tsx     — Game loop, React wrapper, click/hover
@@ -26,6 +27,7 @@ src/renderer/src/components/visualizer/
 ```
 
 ### Render Order (Final Target)
+
 1. Background fill (day/night tinted)
 2. Aurora bands
 3. Nebula clouds
@@ -45,6 +47,7 @@ src/renderer/src/components/visualizer/
 ### Task 1.1: Add effects config to FleetSettings
 
 **Files:**
+
 - Modify: `src/shared/types.ts:82-85`
 - Modify: `src/shared/constants.ts` (default settings)
 
@@ -81,7 +84,7 @@ visualizer: {
   panelMode: 'drawer' | 'tab';
   effects: VisualizerEffects;
   soundVolume: number; // 0-1
-};
+}
 ```
 
 - [ ] **Step 2: Add default effects config in constants**
@@ -89,6 +92,7 @@ visualizer: {
 In `src/shared/constants.ts`, update `DEFAULT_SETTINGS.visualizer` with all effects defaulting to `true` (except `ambientSound: false` since it produces audio).
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git add src/shared/types.ts src/shared/constants.ts
 git commit -m "feat(visualizer): add effects toggle config to FleetSettings"
@@ -97,6 +101,7 @@ git commit -m "feat(visualizer): add effects toggle config to FleetSettings"
 ### Task 1.2: Star color variety
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts`
 
 - [ ] **Step 1: Add color field to Star type**
@@ -120,6 +125,7 @@ Weighted distribution: ~70% white `#ffffff`, ~10% pale blue `#aaddff`, ~10% pale
 Replace hardcoded `rgba(255, 255, 255, ...)` with the star's color parsed to RGB + brightness alpha. Helper: parse hex to `r,g,b` once at init, store as fields.
 
 - [ ] **Step 4: Verify stars render with color variety, commit**
+
 ```bash
 git commit -m "feat(visualizer): add star color variety (blue, yellow, red, orange tints)"
 ```
@@ -127,13 +133,14 @@ git commit -m "feat(visualizer): add star color variety (blue, yellow, red, oran
 ### Task 1.3: Twinkling stars
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts`
 
 - [ ] **Step 1: Add twinkle fields to Star type**
 
 ```typescript
-twinklePhase: number;  // current phase
-twinkleSpeed: number;  // 0 = no twinkle, >0 = speed
+twinklePhase: number; // current phase
+twinkleSpeed: number; // 0 = no twinkle, >0 = speed
 ```
 
 - [ ] **Step 2: Assign twinkle to ~30% of stars**
@@ -156,6 +163,7 @@ const alpha = Math.max(0, Math.min(1, star.brightness + twinkleMod));
 ```
 
 - [ ] **Step 5: Verify twinkling effect, commit**
+
 ```bash
 git commit -m "feat(visualizer): add star twinkling with subtle brightness oscillation"
 ```
@@ -163,6 +171,7 @@ git commit -m "feat(visualizer): add star twinkling with subtle brightness oscil
 ### Task 1.4: Shooting stars
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/shooting-stars.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -194,6 +203,7 @@ Max 3 active. Each has high velocity (300-500 px/s), slight downward angle, 0.3-
 Instantiate `ShootingStarSystem` in a ref. Call `update()` and `render()` after starfield, before ships.
 
 - [ ] **Step 3: Verify shooting stars appear, commit**
+
 ```bash
 git commit -m "feat(visualizer): add occasional shooting star streaks"
 ```
@@ -205,6 +215,7 @@ git commit -m "feat(visualizer): add occasional shooting star streaks"
 ### Task 2.1: Nebula clouds
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/nebula.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -229,6 +240,7 @@ render(ctx: CanvasRenderingContext2D): void {
 ```
 
 - [ ] **Step 4: Wire into SpaceCanvas, verify, commit**
+
 ```bash
 git commit -m "feat(visualizer): add drifting nebula cloud backgrounds"
 ```
@@ -236,6 +248,7 @@ git commit -m "feat(visualizer): add drifting nebula cloud backgrounds"
 ### Task 2.2: Aurora bands
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/aurora.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -248,6 +261,7 @@ git commit -m "feat(visualizer): add drifting nebula cloud backgrounds"
 Bands gently oscillate vertically using sine waves (amplitude ~20px, period ~30s).
 
 - [ ] **Step 3: Wire into SpaceCanvas (render before nebula), commit**
+
 ```bash
 git commit -m "feat(visualizer): add aurora-like color bands in background"
 ```
@@ -255,6 +269,7 @@ git commit -m "feat(visualizer): add aurora-like color bands in background"
 ### Task 2.3: Distant planets
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/celestials.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -267,6 +282,7 @@ git commit -m "feat(visualizer): add aurora-like color bands in background"
 For variety: one body type has a thin ring (elliptical arc), another has 2-3 small darker circles (craters). Keep it simple — 2-3 extra draw calls per body.
 
 - [ ] **Step 3: Wire into SpaceCanvas after shooting stars, commit**
+
 ```bash
 git commit -m "feat(visualizer): add distant planets/moons in far background"
 ```
@@ -278,6 +294,7 @@ git commit -m "feat(visualizer): add distant planets/moons in far background"
 ### Task 3.1: Colored engine trails
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/space-renderer.ts:109-114`
 
 - [ ] **Step 1: Use accent color for trail particles**
@@ -285,6 +302,7 @@ git commit -m "feat(visualizer): add distant planets/moons in far background"
 Change the `particles.spawn()` call to use `ship.accentColor` instead of `ship.stateColor`. Optionally blend: when working, use accent color; when idle/waiting, interpolate toward a dimmer version.
 
 - [ ] **Step 2: Verify colored trails, commit**
+
 ```bash
 git commit -m "feat(visualizer): color engine trails with agent accent colors"
 ```
@@ -292,6 +310,7 @@ git commit -m "feat(visualizer): color engine trails with agent accent colors"
 ### Task 3.2: Enhanced idle animations
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/ships.ts` (Ship type + drift logic)
 - Modify: `src/renderer/src/components/visualizer/space-renderer.ts` (render with tilt)
 
@@ -310,6 +329,7 @@ When `ship.state === 'idle'`, increase `driftAmountX` by 50% and `driftAmountY` 
 In `space-renderer.ts`, after `ctx.save()`, translate to ship center and rotate by `ship.tiltAngle` before drawing the hull.
 
 - [ ] **Step 4: Verify idle bob/tilt, commit**
+
 ```bash
 git commit -m "feat(visualizer): enhanced idle ship drift and tilt animation"
 ```
@@ -317,16 +337,19 @@ git commit -m "feat(visualizer): enhanced idle ship drift and tilt animation"
 ### Task 3.3: Ship badges
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/space-renderer.ts`
 
 - [ ] **Step 1: Add badge rendering after ship hull**
 
 After drawing the hull in `renderShip()`, check `ship.uptime` thresholds:
+
 - 5+ min: 1 small dot (2x2px) above hull in accent color
 - 30+ min: 2 dots
 - 2+ hours: small chevron (3 fillRect calls forming a V)
 
 - [ ] **Step 2: Verify badges appear, commit**
+
 ```bash
 git commit -m "feat(visualizer): add uptime badges to ships"
 ```
@@ -338,6 +361,7 @@ git commit -m "feat(visualizer): add uptime badges to ships"
 ### Task 4.1: Bloom pass
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/bloom.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -385,6 +409,7 @@ render(sourceCtx, width, height) {
 ```
 
 - [ ] **Step 3: Wire into SpaceCanvas as final render step, commit**
+
 ```bash
 git commit -m "feat(visualizer): add bloom/glow post-processing pass"
 ```
@@ -396,6 +421,7 @@ git commit -m "feat(visualizer): add bloom/glow post-processing pass"
 ### Task 5.1: Day/night cycle
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
 - [ ] **Step 1: Create background color function**
@@ -415,6 +441,7 @@ function getDayNightBackground(): string {
 ```
 
 - [ ] **Step 2: Apply in game loop, commit**
+
 ```bash
 git commit -m "feat(visualizer): add time-of-day background color cycle"
 ```
@@ -422,6 +449,7 @@ git commit -m "feat(visualizer): add time-of-day background color cycle"
 ### Task 5.2: Space weather
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/space-weather.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -430,6 +458,7 @@ git commit -m "feat(visualizer): add time-of-day background color cycle"
 When 3+ agents are in `working` state, spawn extra ambient particles (dust/orange-tinted) moving fast right-to-left. Max 50 particles. Intensity scales with active agent count.
 
 - [ ] **Step 2: Wire into SpaceCanvas, pass agent states, commit**
+
 ```bash
 git commit -m "feat(visualizer): add space weather particle storms for high activity"
 ```
@@ -437,6 +466,7 @@ git commit -m "feat(visualizer): add space weather particle storms for high acti
 ### Task 5.3: Asteroid field
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/asteroids.ts`
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
@@ -445,6 +475,7 @@ git commit -m "feat(visualizer): add space weather particle storms for high acti
 When any ship is in `needs-permission` state, spawn small irregular polygons (3-6 vertex jagged shapes). Max 8 asteroids. Slow drift. Fade in on trigger, fade out when resolved.
 
 - [ ] **Step 2: Render asteroids as path fills, wire into loop, commit**
+
 ```bash
 git commit -m "feat(visualizer): add asteroid field for error/permission states"
 ```
@@ -452,6 +483,7 @@ git commit -m "feat(visualizer): add asteroid field for error/permission states"
 ### Task 5.4: Space station
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/celestials.ts`
 
 - [ ] **Step 1: Add SpaceStation to CelestialBodies**
@@ -459,6 +491,7 @@ git commit -m "feat(visualizer): add asteroid field for error/permission states"
 A small pixel-art station (10x10 to 14x14px) drawn as a cross/plus shape with `fillRect` calls. Spawns every 30-60 seconds, traverses screen in ~15s. Mid-layer speed.
 
 - [ ] **Step 2: Verify station appearance, commit**
+
 ```bash
 git commit -m "feat(visualizer): add space station that periodically drifts by"
 ```
@@ -470,6 +503,7 @@ git commit -m "feat(visualizer): add space station that periodically drifts by"
 ### Task 6.1: Camera follow
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
 - [ ] **Step 1: Add camera state**
@@ -486,7 +520,7 @@ Double-click a ship → set `following` to ship's paneId. Single-click empty spa
 
 ```typescript
 if (camera.following) {
-  const ship = shipManager.getShips().find(s => s.paneId === camera.following);
+  const ship = shipManager.getShips().find((s) => s.paneId === camera.following);
   if (ship) {
     camera.targetX = ship.currentX - canvasW / 2;
     camera.targetY = ship.currentY - canvasH / 2;
@@ -498,6 +532,7 @@ ctx.translate(-camera.x, -camera.y);
 ```
 
 - [ ] **Step 4: Adjust hit-test coordinates by camera offset, commit**
+
 ```bash
 git commit -m "feat(visualizer): add click-to-follow camera for ships"
 ```
@@ -505,6 +540,7 @@ git commit -m "feat(visualizer): add click-to-follow camera for ships"
 ### Task 6.2: Zoom
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
 - [ ] **Step 1: Add zoom state and wheel handler**
@@ -521,6 +557,7 @@ ctx.setTransform(dpr * zoom, 0, 0, dpr * zoom, 0, 0);
 ```
 
 - [ ] **Step 3: Adjust hit-test coordinates by zoom factor, commit**
+
 ```bash
 git commit -m "feat(visualizer): add scroll-wheel zoom"
 ```
@@ -528,6 +565,7 @@ git commit -m "feat(visualizer): add scroll-wheel zoom"
 ### Task 6.3: Formation flying
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/ships.ts`
 
 - [ ] **Step 1: Replace linear sub-agent positioning with V-formation**
@@ -543,6 +581,7 @@ const subTargetY = targetY + angle;
 ```
 
 - [ ] **Step 2: Verify formation, commit**
+
 ```bash
 git commit -m "feat(visualizer): add V-formation flying for sub-agents"
 ```
@@ -554,6 +593,7 @@ git commit -m "feat(visualizer): add V-formation flying for sub-agents"
 ### Task 7.1: Constellation lines
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts`
 
 - [ ] **Step 1: Add constellation line rendering**
@@ -561,6 +601,7 @@ git commit -m "feat(visualizer): add V-formation flying for sub-agents"
 After rendering stars, check mid-layer star pairs within 40px distance. Draw faint lines (white at 0.05 alpha) between them. Only check mid layer (~20 stars) to keep it O(n^2) cheap.
 
 - [ ] **Step 2: Cache connections, recalculate only when a star wraps, commit**
+
 ```bash
 git commit -m "feat(visualizer): add faint constellation lines between nearby stars"
 ```
@@ -568,6 +609,7 @@ git commit -m "feat(visualizer): add faint constellation lines between nearby st
 ### Task 7.2: Depth of field
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts`
 
 - [ ] **Step 1: Render far layer with slight blur**
@@ -575,6 +617,7 @@ git commit -m "feat(visualizer): add faint constellation lines between nearby st
 Use a small offscreen canvas for the far layer. Apply `ctx.filter = 'blur(1px)'` to it, then draw onto main canvas.
 
 - [ ] **Step 2: Commit**
+
 ```bash
 git commit -m "feat(visualizer): add depth-of-field blur for far star layer"
 ```
@@ -582,6 +625,7 @@ git commit -m "feat(visualizer): add depth-of-field blur for far star layer"
 ### Task 7.3: Ambient soundscape
 
 **Files:**
+
 - Create: `src/renderer/src/components/visualizer/ambient-sound.ts`
 - Create: `src/renderer/src/assets/audio/` (audio asset directory)
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
@@ -603,6 +647,7 @@ export class AmbientSoundscape {
 Generate a low ambient drone using `OscillatorNode` (very low frequency sine wave) + white noise filtered through a low-pass `BiquadFilterNode`. No audio files needed — pure synthesis.
 
 - [ ] **Step 2: Wire into SpaceCanvas, respect effects toggle + volume setting, commit**
+
 ```bash
 git commit -m "feat(visualizer): add optional ambient space soundscape"
 ```
@@ -610,6 +655,7 @@ git commit -m "feat(visualizer): add optional ambient space soundscape"
 ### Task 7.4: Settings UI for effect toggles
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/VisualizerPanel.tsx`
 - Modify: `src/renderer/src/components/SettingsModal.tsx`
 
@@ -620,6 +666,7 @@ Group toggles by category (Ambient, Ships, Environment, Interactive, Visual Qual
 - [ ] **Step 2: Add sound volume slider when ambient sound is enabled**
 
 - [ ] **Step 3: Commit**
+
 ```bash
 git commit -m "feat(visualizer): add settings UI for all effect toggles"
 ```
@@ -628,19 +675,19 @@ git commit -m "feat(visualizer): add settings UI for all effect toggles"
 
 ## Performance Budget
 
-| System | Budget | Est. Cost |
-|--------|--------|-----------|
-| Starfield (existing + color/twinkle) | 60 stars | 0.4ms |
-| Shooting stars | Max 3 | 0.05ms |
-| Nebula clouds | 3-5 cached canvases | 0.2ms |
-| Aurora bands | 2-3 gradients | 0.3ms |
-| Celestials | 1-2 bodies + station | 0.1ms |
-| Engine particles (existing) | Max 100 | 0.5ms |
-| Space weather | Max 50 | 0.3ms |
-| Asteroids | Max 8 | 0.1ms |
-| Bloom pass | Half-res offscreen | 1.5ms |
-| Constellation lines | ~15 lines | 0.1ms |
-| **Total** | | **~3.5ms** |
+| System                               | Budget               | Est. Cost  |
+| ------------------------------------ | -------------------- | ---------- |
+| Starfield (existing + color/twinkle) | 60 stars             | 0.4ms      |
+| Shooting stars                       | Max 3                | 0.05ms     |
+| Nebula clouds                        | 3-5 cached canvases  | 0.2ms      |
+| Aurora bands                         | 2-3 gradients        | 0.3ms      |
+| Celestials                           | 1-2 bodies + station | 0.1ms      |
+| Engine particles (existing)          | Max 100              | 0.5ms      |
+| Space weather                        | Max 50               | 0.3ms      |
+| Asteroids                            | Max 8                | 0.1ms      |
+| Bloom pass                           | Half-res offscreen   | 1.5ms      |
+| Constellation lines                  | ~15 lines            | 0.1ms      |
+| **Total**                            |                      | **~3.5ms** |
 
 Frame budget at 60fps = 16.6ms. Existing loop ~3ms + enhancements ~3.5ms = ~6.5ms total. Comfortable headroom.
 
@@ -649,6 +696,7 @@ Frame budget at 60fps = 16.6ms. Existing loop ~3ms + enhancements ~3.5ms = ~6.5m
 ## Verification
 
 After each phase:
+
 1. Run `npm run dev` and open the Fleet Visualizer
 2. Verify new effects render correctly alongside existing ones
 3. Check console for no errors/warnings

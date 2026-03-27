@@ -27,6 +27,7 @@ All four improvements degrade gracefully: on any failure, the Analyst returns `n
 **File:** `src/main/starbase/analyst.ts`
 
 **Constructor deps:**
+
 ```typescript
 interface AnalystDeps {
   db: DB;
@@ -57,6 +58,7 @@ Replaces the regex patterns in `error-fingerprint.ts`.
 **Input size:** Last 50 lines / up to 10,000 characters of error output (consistent with existing fingerprint window).
 
 **Prompt:**
+
 > Given this error output, classify it as one of: "transient" (safe to retry, likely network/timing), "non-retryable" (config/auth/missing file — retrying won't help), or "persistent" (same error repeating across attempts). Reply with `{"classification": "...", "reason": "..."}` only.
 
 **Fallback:** Existing `classifyError()` in `error-fingerprint.ts`, renamed to `classifyFromFingerprint()` to avoid name collision with the Analyst method.
@@ -72,6 +74,7 @@ Called after `gh run view --log-failed` in `checkAndRepairMission()`.
 **Input size:** Caller already truncates to 4,000 chars (`log.slice(0, 4000)`). No additional truncation needed.
 
 **Prompt:**
+
 > Extract only the root cause error lines from this CI failure log. Ignore setup, teardown, and passing step output. Be concise. Reply with `{"summary": "..."}` only.
 
 **Fallback:** Raw logs passed as-is (current behaviour).
@@ -87,6 +90,7 @@ Replaces the `VERDICT:` regex in `hull.ts`.
 **Input size:** Caller truncates to last 4,000 characters of `fullOutput` before passing to the Analyst. Consistent with the existing `notes.slice(-2000)` convention in `hull.ts`.
 
 **Prompt:**
+
 > Extract the review verdict and notes from this crew output. The verdict must be one of: APPROVE, REQUEST_CHANGES, ESCALATE. Reply with `{"verdict": "...", "notes": "..."}` only.
 
 **Fallback:** Current `VERDICT:` and `NOTES:` regex match in `hull.ts`.
@@ -102,6 +106,7 @@ Called in `writeHailingMemo()` in `first-officer.ts`. `payloadText` is the alrea
 **Input size:** `payloadText` is short by nature (a hailing message or question). No truncation needed.
 
 **Prompt:**
+
 > A crew is stuck and unresponsive. They sent this hailing message and have received no response for over 60 seconds. Write 2-3 sentences explaining what likely happened and what the operator should check. Reply with `{"context": "..."}` only.
 
 **Fallback:** Current "Action Required" template text in `writeHailingMemo()`.
@@ -113,6 +118,7 @@ Called in `writeHailingMemo()` in `first-officer.ts`. `payloadText` is the alrea
 ### Injection
 
 `Analyst` is constructed in `starbase-runtime-core.ts` alongside existing services and passed via `deps` to:
+
 - `Sentinel` (for `classifyError`, `summarizeCILogs`)
 - `FirstOfficer` (for `writeHailingContext`)
 - `Hull` opts (for `extractPRVerdict`)
@@ -134,26 +140,26 @@ const classification = result ?? classifyFromFingerprint(errorTail, fingerprint,
 
 ## Error Handling
 
-| Failure Mode | Behaviour |
-|---|---|
-| API key missing | `AnalystError` thrown → fallback + `analyst_degraded` comms |
-| Non-zero exit code | `AnalystError` thrown → fallback + comms |
-| JSON parse failure | `AnalystError` thrown → fallback + comms |
-| 5s timeout | Process killed → fallback + comms |
-| Unknown/invalid JSON fields | Validated at call site → fallback if schema mismatch |
+| Failure Mode                | Behaviour                                                   |
+| --------------------------- | ----------------------------------------------------------- |
+| API key missing             | `AnalystError` thrown → fallback + `analyst_degraded` comms |
+| Non-zero exit code          | `AnalystError` thrown → fallback + comms                    |
+| JSON parse failure          | `AnalystError` thrown → fallback + comms                    |
+| 5s timeout                  | Process killed → fallback + comms                           |
+| Unknown/invalid JSON fields | Validated at call site → fallback if schema mismatch        |
 
 `analyst_degraded` comms are rate-limited (once per 5 minutes per method) via `lastDegradedAt: Map<string, number>` on the `Analyst` instance. This is time-based, not level-change-based.
 
 ## Files Changed
 
-| File | Change |
-|---|---|
-| `src/main/starbase/analyst.ts` | New — `Analyst` class |
-| `src/main/starbase/error-fingerprint.ts` | Rename `classifyError` export to `classifyFromFingerprint` to avoid name collision |
-| `src/main/starbase/sentinel.ts` | Inject `analyst` dep; use `classifyError()` + `summarizeCILogs()`; update import of renamed `classifyFromFingerprint` |
-| `src/main/starbase/hull.ts` | Accept `analyst` in opts; use `extractPRVerdict()` in both `missionType === 'review'` blocks |
-| `src/main/starbase/first-officer.ts` | Inject `analyst` dep; use `writeHailingContext()` in `writeHailingMemo()` |
-| `src/main/starbase-runtime-core.ts` | Construct `Analyst`, pass to Sentinel, FirstOfficer, and Hull opts |
+| File                                     | Change                                                                                                                |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/analyst.ts`           | New — `Analyst` class                                                                                                 |
+| `src/main/starbase/error-fingerprint.ts` | Rename `classifyError` export to `classifyFromFingerprint` to avoid name collision                                    |
+| `src/main/starbase/sentinel.ts`          | Inject `analyst` dep; use `classifyError()` + `summarizeCILogs()`; update import of renamed `classifyFromFingerprint` |
+| `src/main/starbase/hull.ts`              | Accept `analyst` in opts; use `extractPRVerdict()` in both `missionType === 'review'` blocks                          |
+| `src/main/starbase/first-officer.ts`     | Inject `analyst` dep; use `writeHailingContext()` in `writeHailingMemo()`                                             |
+| `src/main/starbase-runtime-core.ts`      | Construct `Analyst`, pass to Sentinel, FirstOfficer, and Hull opts                                                    |
 
 ## Non-Goals
 

@@ -5,15 +5,19 @@
 **Problem:** electron-store v11 is ESM-only. electron-vite defaults to CJS output for the main process, causing `Store is not a constructor` at runtime.
 
 **Fix:** Configure `electron.vite.config.ts` to output ESM:
+
 ```ts
 main: {
   build: {
     rollupOptions: {
-      output: { format: 'es' }
+      output: {
+        format: 'es';
+      }
     }
   }
 }
 ```
+
 Also requires replacing `__dirname` with `fileURLToPath(new URL('.', import.meta.url))` and updating `package.json` main field from `.js` to `.mjs`.
 
 ---
@@ -33,11 +37,13 @@ Also requires replacing `__dirname` with `fileURLToPath(new URL('.', import.meta
 ## React StrictMode double-mounts break xterm.js
 
 **Problem:** StrictMode mounts → unmounts → remounts components. This causes:
+
 1. **Duplicate PTY creation** — `paneId already exists` error
 2. **Disposed terminal access** — `_isDisposed` errors from WebGL addon
 3. **Orphaned terminals** — first mount's terminal renders into a DOM node that gets removed
 
 **Fix:**
+
 - Track created PTYs in a module-level `Set<string>` that survives remounts
 - Create a fresh Terminal instance on each mount (don't try to reuse across StrictMode cycles)
 - Use Canvas addon instead of WebGL (WebGL context is harder to clean up safely)
@@ -103,6 +109,7 @@ Also requires replacing `__dirname` with `fileURLToPath(new URL('.', import.meta
 **Root cause:** PTY processes outlive the `BrowserWindow`. When the window closes, the `BrowserWindow` is destroyed, but PTYs keep emitting data. The IPC callback tries to call `win.webContents.send()` on the destroyed window.
 
 **Fix:** Two-part fix:
+
 1. Kill all PTYs in the `mainWindow.on('close')` event (before destruction)
 2. Guard every IPC send with `if (w && !w.isDestroyed())` — don't capture `win` at PTY creation time, call `getWindow()` each time instead
 

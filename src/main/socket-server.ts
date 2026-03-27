@@ -1094,7 +1094,12 @@ export class SocketServer extends EventEmitter {
           provider: typeof args.provider === 'string' ? args.provider : undefined,
           model: typeof args.model === 'string' ? args.model : undefined,
           resolution: typeof args.resolution === 'string' ? args.resolution : undefined,
-          aspectRatio: typeof args.aspectRatio === 'string' ? args.aspectRatio : typeof args['aspect-ratio'] === 'string' ? String(args['aspect-ratio']) : undefined,
+          aspectRatio:
+            typeof args.aspectRatio === 'string'
+              ? args.aspectRatio
+              : typeof args['aspect-ratio'] === 'string'
+                ? String(args['aspect-ratio'])
+                : undefined,
           outputFormat: typeof args.format === 'string' ? args.format : undefined,
           numImages: typeof args['num-images'] === 'string' ? Number(args['num-images']) : undefined
         });
@@ -1107,15 +1112,25 @@ export class SocketServer extends EventEmitter {
         const editPrompt = typeof args.prompt === 'string' ? args.prompt : undefined;
         if (!editPrompt) throw new CodedError('image.edit requires a prompt', 'BAD_REQUEST');
         const rawImages = args.images;
-        const images = Array.isArray(rawImages) ? rawImages.filter((x): x is string => typeof x === 'string') : typeof rawImages === 'string' ? [rawImages] : [];
-        if (images.length === 0) throw new CodedError('image.edit requires --images', 'BAD_REQUEST');
+        const images = Array.isArray(rawImages)
+          ? rawImages.filter((x): x is string => typeof x === 'string')
+          : typeof rawImages === 'string'
+            ? [rawImages]
+            : [];
+        if (images.length === 0)
+          throw new CodedError('image.edit requires --images', 'BAD_REQUEST');
         const editResult = this.imageService.edit({
           prompt: editPrompt,
           images,
           provider: typeof args.provider === 'string' ? args.provider : undefined,
           model: typeof args.model === 'string' ? args.model : undefined,
           resolution: typeof args.resolution === 'string' ? args.resolution : undefined,
-          aspectRatio: typeof args.aspectRatio === 'string' ? args.aspectRatio : typeof args['aspect-ratio'] === 'string' ? String(args['aspect-ratio']) : undefined,
+          aspectRatio:
+            typeof args.aspectRatio === 'string'
+              ? args.aspectRatio
+              : typeof args['aspect-ratio'] === 'string'
+                ? String(args['aspect-ratio'])
+                : undefined,
           outputFormat: typeof args.format === 'string' ? args.format : undefined,
           numImages: typeof args['num-images'] === 'string' ? Number(args['num-images']) : undefined
         });
@@ -1160,7 +1175,10 @@ export class SocketServer extends EventEmitter {
         const settings = this.imageService.getSettings();
         const redacted = { ...settings, providers: { ...settings.providers } };
         for (const [key, val] of Object.entries(redacted.providers)) {
-          redacted.providers[key] = { ...val, apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : '' };
+          redacted.providers[key] = {
+            ...val,
+            apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : ''
+          };
         }
         return redacted;
       }
@@ -1171,10 +1189,14 @@ export class SocketServer extends EventEmitter {
         const providerKey = providerId ?? this.imageService.getSettings().defaultProvider;
         const providerUpdate: Partial<ImageProviderSettings> = {};
         if (typeof args['api-key'] === 'string') providerUpdate.apiKey = args['api-key'];
-        if (typeof args['default-model'] === 'string') providerUpdate.defaultModel = args['default-model'];
-        if (typeof args['default-resolution'] === 'string') providerUpdate.defaultResolution = args['default-resolution'];
-        if (typeof args['default-output-format'] === 'string') providerUpdate.defaultOutputFormat = args['default-output-format'];
-        if (typeof args['default-aspect-ratio'] === 'string') providerUpdate.defaultAspectRatio = args['default-aspect-ratio'];
+        if (typeof args['default-model'] === 'string')
+          providerUpdate.defaultModel = args['default-model'];
+        if (typeof args['default-resolution'] === 'string')
+          providerUpdate.defaultResolution = args['default-resolution'];
+        if (typeof args['default-output-format'] === 'string')
+          providerUpdate.defaultOutputFormat = args['default-output-format'];
+        if (typeof args['default-aspect-ratio'] === 'string')
+          providerUpdate.defaultAspectRatio = args['default-aspect-ratio'];
         if (Object.keys(providerUpdate).length > 0) {
           this.imageService.updateSettings({ providers: { [providerKey]: providerUpdate } });
         }

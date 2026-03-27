@@ -174,7 +174,7 @@ async function addFleetBinToShellProfile(): Promise<void> {
     join(home, '.zprofile'),
     join(home, '.bash_profile'),
     join(home, '.bashrc'),
-    join(home, '.profile'),
+    join(home, '.profile')
   ];
   const fishProfiles = [join(home, '.config', 'fish', 'config.fish')];
 
@@ -183,7 +183,7 @@ async function addFleetBinToShellProfile(): Promise<void> {
 
   const profilesWithContent: Array<{ path: string; content: string }> = [
     ...posixProfiles.map((p) => ({ path: p, content: posixExport })),
-    ...fishProfiles.map((p) => ({ path: p, content: fishExport })),
+    ...fishProfiles.map((p) => ({ path: p, content: fishExport }))
   ];
 
   for (const { path: profilePath, content } of profilesWithContent) {

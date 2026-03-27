@@ -18,6 +18,7 @@ This skill guides the release process for the Fleet Electron app. Fleet uses ele
 ### Step 1: Determine the New Version
 
 Follow semver conventions:
+
 - **Patch** (1.2.0 → 1.2.1): Bug fixes only
 - **Minor** (1.2.0 → 1.3.0): New features, backward compatible
 - **Major** (1.2.0 → 2.0.0): Breaking changes
@@ -38,6 +39,7 @@ Add the entry at the top of `CHANGELOG.md`:
 
 ```markdown
 ## v<NEW_VERSION>
+
 - Summary of changes
 ```
 
@@ -86,6 +88,7 @@ gh run watch
 ```
 
 Five jobs run for a tag release:
+
 - `release-mac-arm64` (macos-15)
 - `release-mac-x64` (macos-15-intel)
 - `release-win` (windows-latest)
@@ -103,6 +106,7 @@ gh release view v<NEW_VERSION>
 ```
 
 Expected artifacts:
+
 - macOS: `Fleet-<VERSION>-arm64.dmg`, `Fleet-<VERSION>.dmg` (x64), `latest-mac.yml`
 - Windows: `Fleet-Setup-<VERSION>.exe`, `latest.yml`
 - Linux: `Fleet-<VERSION>.AppImage`, `Fleet-<VERSION>.deb`, `latest-linux.yml`
@@ -112,6 +116,7 @@ The `latest-*.yml` files are auto-update manifests used by `electron-updater`.
 ## Troubleshooting
 
 ### "No changelog entry found" error in CI
+
 The `extract-release-notes.ts` script requires a `## vX.Y.Z` heading in `CHANGELOG.md` matching the tag. Add the entry, commit it to main, then move the tag to that commit:
 
 ```bash
@@ -122,6 +127,7 @@ git tag v<NEW_VERSION> && git push origin v<NEW_VERSION>
 Do **not** use `gh run rerun` — the re-run checks out the tag commit, not main, so new commits won't be picked up unless the tag is moved first.
 
 ### CI build job failed — release stays in draft
+
 The `publish-release` job only runs when all four build jobs succeed. If any build fails, the release remains draft. Fix the issue and re-run the failed job:
 
 ```bash
@@ -131,6 +137,7 @@ gh run rerun <RUN_ID> --failed
 `electron-builder` publish is idempotent for draft releases — it will upload/overwrite artifacts. Once the re-run succeeds, `publish-release` will run automatically.
 
 ### Artifacts missing from release
+
 Verify the release is still in draft state. If it was accidentally published before CI completed, delete the release (not the tag), recreate as draft, and re-run CI:
 
 ```bash
@@ -140,4 +147,5 @@ gh workflow run release.yml
 ```
 
 ### Version mismatch error in CI
+
 The `verify-version` job checks that the tag matches `package.json`. Ensure the version bump commit was pushed before the tag was created.

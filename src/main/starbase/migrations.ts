@@ -342,7 +342,7 @@ export const MIGRATIONS: Migration[] = [
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_architect', '"claude-haiku-4-5"');
       INSERT OR IGNORE INTO starbase_config (key, value) VALUES ('crew_model_repair', '"claude-haiku-4-5"');
     `
-  },
+  }
 ];
 
 export const CONFIG_DEFAULTS: Record<string, unknown> = {

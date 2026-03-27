@@ -37,6 +37,7 @@ A watchdog that runs periodic sweeps to detect and handle failures.
 **Constructor:** Takes `{ db, crewService, missionService, sectorService, configService }`.
 
 **Public API:**
+
 - `start()` — Begin the sweep interval
 - `stop()` — Clear the interval
 - `runSweep()` — Execute one sweep (also callable manually)
@@ -69,6 +70,7 @@ The Admiral surfaces this summary on first interaction: "Found N lost Crew from 
 
 **Auto-deploy on free slot:**
 After any Crewmate completes (Hull exit handler), CrewService:
+
 1. Cleans up the worktree
 2. Queries `nextMission()` across all Sectors using a global query: `SELECT * FROM missions WHERE status = 'queued' AND (depends_on_mission_id IS NULL OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed')) ORDER BY priority ASC, created_at ASC LIMIT 1`. This is FIFO within the same priority level, lowest priority number first.
 3. If a queued Mission exists and worktree count is below limit, auto-deploys it
@@ -103,6 +105,7 @@ After pushing the branch, before worktree cleanup:
 - **"pr" (default):** Run `gh pr create --title "{mission.summary}" --body "{prBody}" --base {baseBranch} --head crew/{crewId}`. If rebase had conflicts, create as draft: `--draft`. Add labels: `fleet`, `sector/{sectorId}`, `mission/{missionId}`.
 
   PR body template:
+
   ```
   ## Mission: {summary}
 
@@ -141,6 +144,7 @@ Hull checks `gh` availability once at startup (cached). If a PR creation fails m
 Append-only audit trail.
 
 **Public API:**
+
 - `log({ crewId, eventType, detail })` — Insert into ships_log table. detail is JSON-stringified.
 - `query({ crewId?, eventType?, since?, limit? })` — Query with filters.
 - `getRecent(limit)` — Last N entries across all Crew.
@@ -152,6 +156,7 @@ Append-only audit trail.
 Prevents duplicate Fleet instances managing the same Starbase.
 
 **Implementation:**
+
 - On Starbase open: write `starbase-{id}.lock` in `~/.fleet/starbases/` containing `{ pid, timestamp }`
 - Check if lock exists. If yes, check if PID is alive (`process.kill(pid, 0)`). Also compare the lock's `timestamp` — if the lock is older than 24 hours, treat as stale regardless of PID (guards against PID reuse). If alive and recent → read-only mode. If dead or stale → overwrite.
 - On Starbase close / app quit: remove the lockfile.

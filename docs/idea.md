@@ -18,13 +18,13 @@ A native-feeling desktop app that wraps real PTY processes in a clean UI — ver
 
 ## Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Shell | Electron | Renderer is a real browser, easy IPC, cross-platform |
-| Build | electron-vite + React + TypeScript | Fast HMR, familiar stack |
-| Terminal emulation | xterm.js | Industry standard, WebGL renderer |
-| PTY | node-pty | Spawns real shell processes |
-| UI chrome | shadcn/ui + Tailwind | Covers sidebar, tabs, badges, dialogs |
+| Layer              | Choice                             | Why                                                  |
+| ------------------ | ---------------------------------- | ---------------------------------------------------- |
+| Shell              | Electron                           | Renderer is a real browser, easy IPC, cross-platform |
+| Build              | electron-vite + React + TypeScript | Fast HMR, familiar stack                             |
+| Terminal emulation | xterm.js                           | Industry standard, WebGL renderer                    |
+| PTY                | node-pty                           | Spawns real shell processes                          |
+| UI chrome          | shadcn/ui + Tailwind               | Covers sidebar, tabs, badges, dialogs                |
 
 ---
 
@@ -54,23 +54,23 @@ Terminal output scrolls fast and looks identical across panes. The visualizer gi
 
 ### Visual Elements
 
-| Element | Detail |
-|---|---|
-| **Office tilemap** | Isometric-ish pixel-art floor, walls, desks, chairs, bookshelves — rendered on a `<canvas>` |
-| **Agent characters** | 16×24 pixel sprites, one per running agent. Each gets a unique palette (6 base palettes, hue-shifted beyond 6) |
-| **Speech bubbles** | Small pixel-art bubbles above characters — amber dots for "needs permission," green checkmark for "waiting on you" |
-| **Spawn/despawn FX** | Matrix-style green digital rain when an agent starts or stops |
+| Element              | Detail                                                                                                             |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Office tilemap**   | Isometric-ish pixel-art floor, walls, desks, chairs, bookshelves — rendered on a `<canvas>`                        |
+| **Agent characters** | 16×24 pixel sprites, one per running agent. Each gets a unique palette (6 base palettes, hue-shifted beyond 6)     |
+| **Speech bubbles**   | Small pixel-art bubbles above characters — amber dots for "needs permission," green checkmark for "waiting on you" |
+| **Spawn/despawn FX** | Matrix-style green digital rain when an agent starts or stops                                                      |
 
 ### Agent States → Animations
 
-| Agent State | Character Animation | Trigger |
-|---|---|---|
-| **Working** | Seated at desk, typing animation (2 frames, 0.3s/frame) | Tool execution starts (Write, Edit, Bash, etc.) |
-| **Reading** | Seated at desk, reading animation (2 frames, 0.3s/frame) | Read/Grep/Glob/WebFetch tool detected |
-| **Walking** | 4-frame walk cycle moving between tiles | Transitioning to seat or wandering |
-| **Idle** | Standing still, occasional wander to random tile then back to seat | No active tool, agent waiting for next task |
-| **Needs permission** | Typing + amber bubble | Agent emits a permission request (detected via PTY output parsing) |
-| **Waiting** | Idle + green checkmark bubble (auto-fades after 2s) | Agent signals it's waiting for user input |
+| Agent State          | Character Animation                                                | Trigger                                                            |
+| -------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| **Working**          | Seated at desk, typing animation (2 frames, 0.3s/frame)            | Tool execution starts (Write, Edit, Bash, etc.)                    |
+| **Reading**          | Seated at desk, reading animation (2 frames, 0.3s/frame)           | Read/Grep/Glob/WebFetch tool detected                              |
+| **Walking**          | 4-frame walk cycle moving between tiles                            | Transitioning to seat or wandering                                 |
+| **Idle**             | Standing still, occasional wander to random tile then back to seat | No active tool, agent waiting for next task                        |
+| **Needs permission** | Typing + amber bubble                                              | Agent emits a permission request (detected via PTY output parsing) |
+| **Waiting**          | Idle + green checkmark bubble (auto-fades after 2s)                | Agent signals it's waiting for user input                          |
 
 ### State Detection
 
@@ -83,9 +83,9 @@ Agent activity is detected from the PTY data stream — no special agent protoco
 // Option C: JSONL transcript file watching (like pixel-agents does with .claude/ files)
 
 type AgentVisualState = {
-  id: string;           // maps to paneId
-  label: string;        // pane label / cwd basename
-  isActive: boolean;    // currently executing a tool
+  id: string; // maps to paneId
+  label: string; // pane label / cwd basename
+  isActive: boolean; // currently executing a tool
   currentTool?: string; // 'Read' | 'Edit' | 'Bash' | etc.
   needsPermission: boolean;
   isWaiting: boolean;
@@ -205,10 +205,10 @@ Enables Claude Code hooks to control the terminal layout programmatically.
 
 Standalone installers — no Node.js or npm required on the user's machine.
 
-| Platform | Format | Tooling |
-|---|---|---|
-| macOS | `.dmg` (universal, arm64 + x64) | `electron-builder` |
-| Windows | `.exe` NSIS installer | `electron-builder` |
+| Platform | Format                          | Tooling            |
+| -------- | ------------------------------- | ------------------ |
+| macOS    | `.dmg` (universal, arm64 + x64) | `electron-builder` |
+| Windows  | `.exe` NSIS installer           | `electron-builder` |
 
 ```jsonc
 // electron-builder config
@@ -244,7 +244,9 @@ function hasWSL(): boolean {
   try {
     execSync('wsl.exe --status', { stdio: 'ignore' });
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 ```
 
@@ -255,11 +257,13 @@ On Windows, also auto-detect installed WSL distros via `wsl.exe --list --quiet` 
 ## Platform-Specific Notes
 
 **macOS**
+
 - Request `NSAppleEventsUsageDescription` for AppleScript automation hooks
 - Use `electron-builder`'s notarize step for Gatekeeper compliance
 - Socket API uses a Unix socket at `~/.fleet/fleet.sock`
 
 **Windows**
+
 - Socket API uses a named pipe: `\\.\pipe\fleet`
 - node-pty on Windows spawns via ConPTY (Windows 10 1903+)
 - WSL path translation: strip `/mnt/c/` → `C:\` for cwd display in sidebar
@@ -269,12 +273,12 @@ On Windows, also auto-detect installed WSL distros via `wsl.exe --list --quiet` 
 
 ## Decided
 
-| Decision | Choice |
-|---|---|
-| Layout persistence | `electron-store` — typed, schema-validated, zero-config |
-| Terminal renderer | xterm.js WebGL addon, fallback to canvas on unsupported GPUs |
-| tmux/screen support | Yes — passthrough mode, don't fight it |
-| Auto-updater | `electron-updater` + GitHub Releases |
+| Decision            | Choice                                                       |
+| ------------------- | ------------------------------------------------------------ |
+| Layout persistence  | `electron-store` — typed, schema-validated, zero-config      |
+| Terminal renderer   | xterm.js WebGL addon, fallback to canvas on unsupported GPUs |
+| tmux/screen support | Yes — passthrough mode, don't fight it                       |
+| Auto-updater        | `electron-updater` + GitHub Releases                         |
 
 ### Layout Persistence (`electron-store`)
 

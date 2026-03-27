@@ -184,8 +184,20 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activeTabId: 'tab-x2',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
-        { id: 'tab-x2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x2', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        },
+        {
+          id: 'tab-x2',
+          label: 'B',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x2', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -198,7 +210,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activeTabId: 'tab-gone',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -212,7 +230,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       activeTabId: 'tab-x1',
       activePaneId: 'pane-x1',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -225,7 +249,13 @@ describe('loadWorkspace — active tab/pane restoration', () => {
       label: 'X',
       activePaneId: 'pane-gone',
       tabs: [
-        { id: 'tab-x1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' } },
+        {
+          id: 'tab-x1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-x1', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.getState().loadWorkspace(ws);
@@ -243,8 +273,20 @@ describe('switchWorkspace — active tab/pane restoration', () => {
       label: 'Beta',
       activeTabId: 'tab-b2',
       tabs: [
-        { id: 'tab-b1', label: 'A', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b1', cwd: '/' } },
-        { id: 'tab-b2', label: 'B', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-b2', cwd: '/' } },
+        {
+          id: 'tab-b1',
+          label: 'A',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-b1', cwd: '/' }
+        },
+        {
+          id: 'tab-b2',
+          label: 'B',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-b2', cwd: '/' }
+        }
       ]
     };
     useWorkspaceStore.setState({ backgroundWorkspaces: new Map([['ws-b', wsBMulti]]) });

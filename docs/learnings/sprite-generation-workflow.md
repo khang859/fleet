@@ -21,12 +21,14 @@ npx tsx scripts/generate-image.ts "<prompt>" --output <subdir/name.png>
 - `--output` is required and must match the target filename in `sprites-raw/`
 
 Example — base idle frame (no reference):
+
 ```bash
 npx tsx scripts/generate-image.ts "Pixel art sprite, top-down spaceship..." \
   --output ships/parent-1-arrow-idle-1.png
 ```
 
 Example — animation frame using idle as reference for consistency:
+
 ```bash
 npx tsx scripts/generate-image.ts "Keep the exact same ship design. Engine nozzles blazing bright..." \
   --output ships/parent-1-arrow-thrust-1.png \

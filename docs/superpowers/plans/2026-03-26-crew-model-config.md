@@ -13,6 +13,7 @@
 ### Task 1: Add migration and config defaults for crew model keys
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts:310-367`
 
 - [ ] **Step 1: Add migration 016 to the MIGRATIONS array**
@@ -62,6 +63,7 @@ git commit -m "feat: add crew_model_* config keys via migration 016"
 ### Task 2: Wire crew-service to read model from config
 
 **Files:**
+
 - Modify: `src/main/starbase/crew-service.ts:229`
 - Modify: `src/main/starbase/hull.ts:120-137, 264`
 
@@ -70,8 +72,8 @@ git commit -m "feat: add crew_model_* config keys via migration 016"
 In `src/main/starbase/hull.ts`, change the `model` field in `HullOpts` from optional to required:
 
 ```typescript
-  /** Claude model for the agent session */
-  model: string;
+/** Claude model for the agent session */
+model: string;
 ```
 
 (Remove the `?` from `model?: string` and update the JSDoc to remove "override" and "default" language.)
@@ -81,13 +83,13 @@ In `src/main/starbase/hull.ts`, change the `model` field in `HullOpts` from opti
 In `src/main/starbase/hull.ts` line 264, change:
 
 ```typescript
-      const model = this.opts.model || 'claude-sonnet-4-6';
+const model = this.opts.model || 'claude-sonnet-4-6';
 ```
 
 to:
 
 ```typescript
-      const model = this.opts.model;
+const model = this.opts.model;
 ```
 
 - [ ] **Step 3: Read model from configService in crew-service.ts**
@@ -126,6 +128,7 @@ git commit -m "feat: read crew model from global config by mission type"
 ### Task 3: Add model fields to StarCommandConfig UI
 
 **Files:**
+
 - Modify: `src/renderer/src/components/StarCommandConfig.tsx:618-650, 252-259`
 
 - [ ] **Step 1: Add model config fields to CONFIG_FIELDS**
@@ -148,16 +151,16 @@ In `src/renderer/src/components/StarCommandConfig.tsx`, add these entries to the
 In the same file, remove the per-sector "Model" input block (lines ~251-259). Delete this entire `<div>`:
 
 ```tsx
-            <div>
-              <label className="text-neutral-500 block mb-1">Model</label>
-              <input
-                type="text"
-                value={sector.model ?? ''}
-                placeholder="claude-sonnet-4-6"
-                onChange={(e) => onUpdate(sector.id, { model: e.target.value || null })}
-                className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
-              />
-            </div>
+<div>
+  <label className="text-neutral-500 block mb-1">Model</label>
+  <input
+    type="text"
+    value={sector.model ?? ''}
+    placeholder="claude-sonnet-4-6"
+    onChange={(e) => onUpdate(sector.id, { model: e.target.value || null })}
+    className="w-full bg-neutral-900 text-neutral-300 text-xs rounded px-2 py-1.5 border border-neutral-600 focus:border-blue-500 focus:outline-none font-mono"
+  />
+</div>
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -177,6 +180,7 @@ git commit -m "feat: add per-mission-type model fields to Starbase Settings UI"
 ### Task 4: Clean up stale references to sector-level model
 
 **Files:**
+
 - Modify: `src/main/starbase/workspace-templates.ts:165, 173, 180`
 - Modify: `src/main/fleet-cli.ts:712`
 

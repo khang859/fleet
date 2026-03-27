@@ -386,7 +386,6 @@ export function FileSearchOverlay({
                   <button
                     key={img.path}
                     onClick={() => handleSelect(img)}
-
                     className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
                     title={img.path}
                   >

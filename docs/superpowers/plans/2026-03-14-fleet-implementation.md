@@ -87,12 +87,14 @@ electron-builder.yml                 # electron-builder config for macOS + Windo
 ### Task 0.1: Scaffold electron-vite project
 
 **Files:**
+
 - Create: `package.json`, `electron-builder.yml`, `electron.vite.config.ts`, `tsconfig.json`, `tsconfig.node.json`, `tsconfig.web.json`
 - Create: `src/main/index.ts`, `src/preload/index.ts`, `src/renderer/index.html`, `src/renderer/main.tsx`
 
 - [x] **Step 1: Scaffold the project into a temp directory and merge into repo**
 
 Run:
+
 ```bash
 cd /tmp && npm create @quick-start/electron@latest fleet-scaffold -- --template react-ts
 cd /Users/khangnguyen/Development/fleet
@@ -105,6 +107,7 @@ This copies the scaffolded files into the existing repo root. Existing files (`d
 - [x] **Step 2: Install dependencies and verify the scaffold runs**
 
 Run:
+
 ```bash
 npm install && npm run dev
 ```
@@ -121,11 +124,13 @@ git commit -m "chore: scaffold electron-vite project with React + TypeScript tem
 ### Task 0.2: Install core dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [x] **Step 1: Install production dependencies**
 
 Run:
+
 ```bash
 npm install xterm @xterm/addon-webgl @xterm/addon-canvas @xterm/addon-search @xterm/addon-fit @xterm/addon-unicode11 node-pty electron-store electron-updater
 ```
@@ -133,6 +138,7 @@ npm install xterm @xterm/addon-webgl @xterm/addon-canvas @xterm/addon-search @xt
 - [x] **Step 2: Install UI dependencies (shadcn/ui + Tailwind)**
 
 Run:
+
 ```bash
 npm install -D tailwindcss @tailwindcss/vite
 npm install tailwind-merge clsx class-variance-authority lucide-react
@@ -142,26 +148,29 @@ npm install @radix-ui/react-context-menu @radix-ui/react-dialog @radix-ui/react-
 - [x] **Step 3: Configure Tailwind**
 
 Create `src/renderer/index.css`:
+
 ```css
-@import "tailwindcss";
+@import 'tailwindcss';
 ```
 
 Update `electron.vite.config.ts` to include the Tailwind Vite plugin for the renderer:
+
 ```ts
-import tailwindcss from '@tailwindcss/vite'
+import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
   // ... main and preload configs unchanged
   renderer: {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss()]
     // ... rest unchanged
   }
-})
+});
 ```
 
 - [x] **Step 4: Verify dependencies install and app still runs**
 
 Run:
+
 ```bash
 npm run dev
 ```
@@ -178,6 +187,7 @@ git commit -m "chore: add xterm.js, node-pty, shadcn/ui, and Tailwind dependenci
 ### Task 0.3: Create shared types and constants
 
 **Files:**
+
 - Create: `src/shared/types.ts`
 - Create: `src/shared/constants.ts`
 - Create: `src/shared/ipc-api.ts`
@@ -185,6 +195,7 @@ git commit -m "chore: add xterm.js, node-pty, shadcn/ui, and Tailwind dependenci
 - [x] **Step 1: Write shared types**
 
 Create `src/shared/types.ts`:
+
 ```ts
 export type Workspace = {
   id: string;
@@ -284,7 +295,7 @@ export const IPC_CHANNELS = {
   PANE_FOCUSED: 'pane:focused',
   AGENT_STATE: 'agent:state',
   SETTINGS_GET: 'settings:get',
-  SETTINGS_SET: 'settings:set',
+  SETTINGS_SET: 'settings:set'
 } as const;
 
 export const DEFAULT_SCROLLBACK = 10_000;
@@ -293,9 +304,7 @@ export const DEFAULT_SCROLLBACK = 10_000;
 // Do NOT import these from renderer code.
 
 export const SOCKET_PATH =
-  process.platform === 'win32'
-    ? '\\\\.\\pipe\\fleet'
-    : join(homedir(), '.fleet', 'fleet.sock');
+  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock');
 
 export const CLAUDE_PROJECTS_DIR = join(homedir(), '.claude', 'projects');
 
@@ -305,29 +314,36 @@ export const DEFAULT_SETTINGS: import('./types').FleetSettings = {
     scrollbackSize: DEFAULT_SCROLLBACK,
     fontFamily: 'monospace',
     fontSize: 14,
-    theme: 'dark',
+    theme: 'dark'
   },
   notifications: {
     taskComplete: { badge: true, sound: false, os: false },
     needsPermission: { badge: true, sound: true, os: true },
     processExitError: { badge: true, sound: false, os: false },
-    processExitClean: { badge: false, sound: false, os: false },
+    processExitClean: { badge: false, sound: false, os: false }
   },
   socketApi: {
     enabled: true,
-    socketPath: '',
+    socketPath: ''
   },
   visualizer: {
-    panelMode: 'drawer',
-  },
+    panelMode: 'drawer'
+  }
 };
 ```
 
 - [x] **Step 3: Write IPC API contract**
 
 Create `src/shared/ipc-api.ts`:
+
 ```ts
-import type { Workspace, PaneLeaf, NotificationEvent, AgentVisualState, FleetSettings } from './types';
+import type {
+  Workspace,
+  PaneLeaf,
+  NotificationEvent,
+  AgentVisualState,
+  FleetSettings
+} from './types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -384,6 +400,7 @@ export type AgentStatePayload = {
 - [x] **Step 4: Type-check to verify all types compile**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -400,11 +417,13 @@ git commit -m "feat: add shared types, constants, and IPC API contract"
 ### Task 0.4: Set up preload script with typed IPC
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 - [x] **Step 1: Write the preload script**
 
 Replace `src/preload/index.ts`:
+
 ```ts
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/constants';
@@ -419,7 +438,7 @@ import type {
   LayoutListResponse,
   NotificationPayload,
   PaneFocusedPayload,
-  AgentStatePayload,
+  AgentStatePayload
 } from '../shared/ipc-api';
 import type { Workspace, FleetSettings } from '../shared/types';
 
@@ -427,55 +446,54 @@ const fleetApi = {
   pty: {
     create: (req: PtyCreateRequest): Promise<PtyCreateResponse> =>
       ipcRenderer.invoke(IPC_CHANNELS.PTY_CREATE, req),
-    input: (payload: PtyInputPayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_INPUT, payload),
-    resize: (payload: PtyResizePayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
-    kill: (paneId: string): void =>
-      ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
+    input: (payload: PtyInputPayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_INPUT, payload),
+    resize: (payload: PtyResizePayload): void => ipcRenderer.send(IPC_CHANNELS.PTY_RESIZE, payload),
+    kill: (paneId: string): void => ipcRenderer.send(IPC_CHANNELS.PTY_KILL, paneId),
     onData: (callback: (payload: PtyDataPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) => callback(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyDataPayload) =>
+        callback(payload);
       ipcRenderer.on(IPC_CHANNELS.PTY_DATA, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_DATA, handler);
     },
     onExit: (callback: (payload: PtyExitPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: PtyExitPayload) => callback(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: PtyExitPayload) =>
+        callback(payload);
       ipcRenderer.on(IPC_CHANNELS.PTY_EXIT, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.PTY_EXIT, handler);
-    },
+    }
   },
   layout: {
     save: (req: LayoutSaveRequest): Promise<void> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_SAVE, req),
     load: (workspaceId: string): Promise<Workspace> =>
       ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LOAD, workspaceId),
-    list: (): Promise<LayoutListResponse> =>
-      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
+    list: (): Promise<LayoutListResponse> => ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_LIST),
     delete: (workspaceId: string): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_DELETE, workspaceId),
+      ipcRenderer.invoke(IPC_CHANNELS.LAYOUT_DELETE, workspaceId)
   },
   notifications: {
     onNotification: (callback: (payload: NotificationPayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: NotificationPayload) => callback(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: NotificationPayload) =>
+        callback(payload);
       ipcRenderer.on(IPC_CHANNELS.NOTIFICATION, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.NOTIFICATION, handler);
     },
     paneFocused: (payload: PaneFocusedPayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload),
+      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload)
   },
   agentState: {
     onStateUpdate: (callback: (payload: AgentStatePayload) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: AgentStatePayload) => callback(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: AgentStatePayload) =>
+        callback(payload);
       ipcRenderer.on(IPC_CHANNELS.AGENT_STATE, handler);
       return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_STATE, handler);
-    },
+    }
   },
   settings: {
-    get: (): Promise<FleetSettings> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
+    get: (): Promise<FleetSettings> => ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_GET),
     set: (settings: Partial<FleetSettings>): Promise<void> =>
-      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings),
-  },
+      ipcRenderer.invoke(IPC_CHANNELS.SETTINGS_SET, settings)
+  }
 };
 
 contextBridge.exposeInMainWorld('fleet', fleetApi);
@@ -486,6 +504,7 @@ export type FleetApi = typeof fleetApi;
 - [x] **Step 2: Add global type declaration for the renderer**
 
 Create `src/renderer/env.d.ts`:
+
 ```ts
 import type { FleetApi } from '../preload/index';
 
@@ -499,6 +518,7 @@ declare global {
 - [x] **Step 3: Type-check to verify everything compiles**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -521,37 +541,42 @@ The main process modules for shell detection, PTY management, layout persistence
 ### Task 1.1: Shell detection module
 
 **Files:**
+
 - Create: `src/main/shell-detection.ts`
 - Create: `src/main/__tests__/shell-detection.test.ts`
 
 - [x] **Step 1: Set up Vitest for main process tests**
 
 Run:
+
 ```bash
 npm install -D vitest
 ```
 
 Add to `package.json` scripts:
+
 ```json
 "test": "vitest run",
 "test:watch": "vitest"
 ```
 
 Create `vitest.config.ts` at the project root:
+
 ```ts
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['src/main/__tests__/**/*.test.ts'],
-  },
+    include: ['src/main/__tests__/**/*.test.ts']
+  }
 });
 ```
 
 - [x] **Step 2: Write the failing test**
 
 Create `src/main/__tests__/shell-detection.test.ts`:
+
 ```ts
 import { describe, it, expect, vi } from 'vitest';
 import { getDefaultShell } from '../shell-detection';
@@ -574,6 +599,7 @@ describe('getDefaultShell', () => {
 - [x] **Step 3: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -583,6 +609,7 @@ Expected: FAIL — `Cannot find module '../shell-detection'`
 - [x] **Step 4: Write the implementation**
 
 Create `src/main/shell-detection.ts`:
+
 ```ts
 import { execSync } from 'child_process';
 
@@ -618,6 +645,7 @@ export function getWSLDistros(): string[] {
 - [x] **Step 5: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -634,12 +662,14 @@ git commit -m "feat: add cross-platform shell detection with tests"
 ### Task 1.2: PTY manager
 
 **Files:**
+
 - Create: `src/main/pty-manager.ts`
 - Create: `src/main/__tests__/pty-manager.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/pty-manager.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PtyManager } from '../pty-manager';
@@ -652,8 +682,8 @@ vi.mock('node-pty', () => ({
     onExit: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
-    kill: vi.fn(),
-  })),
+    kill: vi.fn()
+  }))
 }));
 
 describe('PtyManager', () => {
@@ -667,7 +697,7 @@ describe('PtyManager', () => {
     const result = manager.create({
       paneId: 'pane-1',
       cwd: '/tmp',
-      shell: '/bin/zsh',
+      shell: '/bin/zsh'
     });
     expect(result.paneId).toBe('pane-1');
     expect(result.pid).toBe(12345);
@@ -688,9 +718,9 @@ describe('PtyManager', () => {
 
   it('throws when creating a duplicate paneId', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
-    expect(() =>
-      manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
-    ).toThrow('pane-1 already exists');
+    expect(() => manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })).toThrow(
+      'pane-1 already exists'
+    );
   });
 });
 ```
@@ -698,6 +728,7 @@ describe('PtyManager', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -707,6 +738,7 @@ Expected: FAIL — `Cannot find module '../pty-manager'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/pty-manager.ts`:
+
 ```ts
 import * as pty from 'node-pty';
 import { getDefaultShell } from './shell-detection';
@@ -752,7 +784,7 @@ export class PtyManager {
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: process.env as Record<string, string>,
+      env: process.env as Record<string, string>
     });
 
     this.ptys.set(opts.paneId, { process: proc, paneId: opts.paneId });
@@ -822,6 +854,7 @@ export class PtyManager {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -838,12 +871,14 @@ git commit -m "feat: add PTY manager with spawn/kill/resize lifecycle"
 ### Task 1.3: Layout store (workspace persistence)
 
 **Files:**
+
 - Create: `src/main/layout-store.ts`
 - Create: `src/main/__tests__/layout-store.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/layout-store.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LayoutStore } from '../layout-store';
@@ -855,10 +890,14 @@ vi.mock('electron-store', () => {
       const data: Record<string, unknown> = {};
       return {
         get: vi.fn((key: string, defaultVal?: unknown) => data[key] ?? defaultVal),
-        set: vi.fn((key: string, value: unknown) => { data[key] = value; }),
-        delete: vi.fn((key: string) => { delete data[key]; }),
+        set: vi.fn((key: string, value: unknown) => {
+          data[key] = value;
+        }),
+        delete: vi.fn((key: string) => {
+          delete data[key];
+        })
       };
-    }),
+    })
   };
 });
 
@@ -877,12 +916,14 @@ describe('LayoutStore', () => {
     const workspace = {
       id: 'ws-1',
       label: 'Test',
-      tabs: [{
-        id: 'tab-1',
-        label: 'Shell',
-        cwd: '/tmp',
-        splitRoot: { type: 'leaf' as const, id: 'pane-1', cwd: '/tmp' },
-      }],
+      tabs: [
+        {
+          id: 'tab-1',
+          label: 'Shell',
+          cwd: '/tmp',
+          splitRoot: { type: 'leaf' as const, id: 'pane-1', cwd: '/tmp' }
+        }
+      ]
     };
     store.save(workspace);
     expect(store.load('ws-1')).toEqual(workspace);
@@ -907,6 +948,7 @@ describe('LayoutStore', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -916,6 +958,7 @@ Expected: FAIL — `Cannot find module '../layout-store'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/layout-store.ts`:
+
 ```ts
 import Store from 'electron-store';
 import type { Workspace } from '../shared/types';
@@ -931,8 +974,8 @@ export class LayoutStore {
     this.store = new Store<StoreSchema>({
       name: 'fleet-layouts',
       defaults: {
-        workspaces: {},
-      },
+        workspaces: {}
+      }
     });
   }
 
@@ -963,6 +1006,7 @@ export class LayoutStore {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -979,12 +1023,14 @@ git commit -m "feat: add layout store for workspace persistence via electron-sto
 ### Task 1.4: Event bus
 
 **Files:**
+
 - Create: `src/main/event-bus.ts`
 - Create: `src/main/__tests__/event-bus.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/event-bus.test.ts`:
+
 ```ts
 import { describe, it, expect, vi } from 'vitest';
 import { EventBus, FleetEvent } from '../event-bus';
@@ -999,7 +1045,7 @@ describe('EventBus', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: Date.now(),
+      timestamp: Date.now()
     };
     bus.emit('notification', event);
 
@@ -1045,6 +1091,7 @@ describe('EventBus', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -1054,6 +1101,7 @@ Expected: FAIL — `Cannot find module '../event-bus'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/event-bus.ts`:
+
 ```ts
 import { EventEmitter } from 'events';
 import type { NotificationLevel } from '../shared/types';
@@ -1090,6 +1138,7 @@ export class EventBus {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -1106,12 +1155,14 @@ git commit -m "feat: add typed event bus for cross-module communication"
 ### Task 1.5: IPC handlers (wiring main process together)
 
 **Files:**
+
 - Create: `src/main/ipc-handlers.ts`
 - Modify: `src/main/index.ts`
 
 - [x] **Step 1: Write the IPC handlers**
 
 Create `src/main/ipc-handlers.ts`:
+
 ```ts
 import { ipcMain, BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../shared/constants';
@@ -1123,7 +1174,7 @@ import type {
   PtyExitPayload,
   LayoutSaveRequest,
   LayoutListResponse,
-  PaneFocusedPayload,
+  PaneFocusedPayload
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import { PtyManager } from './pty-manager';
@@ -1134,7 +1185,7 @@ export function registerIpcHandlers(
   ptyManager: PtyManager,
   layoutStore: LayoutStore,
   eventBus: EventBus,
-  getWindow: () => BrowserWindow | null,
+  getWindow: () => BrowserWindow | null
 ): void {
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
@@ -1142,11 +1193,17 @@ export function registerIpcHandlers(
     const win = getWindow();
 
     ptyManager.onData(req.paneId, (data) => {
-      win?.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
+      win?.webContents.send(IPC_CHANNELS.PTY_DATA, {
+        paneId: req.paneId,
+        data
+      } satisfies PtyDataPayload);
     });
 
     ptyManager.onExit(req.paneId, (exitCode) => {
-      win?.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId: req.paneId, exitCode } satisfies PtyExitPayload);
+      win?.webContents.send(IPC_CHANNELS.PTY_EXIT, {
+        paneId: req.paneId,
+        exitCode
+      } satisfies PtyExitPayload);
       eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
     });
 
@@ -1204,6 +1261,7 @@ export function registerIpcHandlers(
 - [x] **Step 2: Wire up main process entry point**
 
 Replace `src/main/index.ts` with:
+
 ```ts
 import { app, BrowserWindow } from 'electron';
 import { join } from 'path';
@@ -1223,10 +1281,10 @@ function createWindow(): void {
     height: 800,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: false
     },
     titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 12, y: 12 },
+    trafficLightPosition: { x: 12, y: 12 }
   });
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -1258,6 +1316,7 @@ app.on('window-all-closed', () => {
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1274,11 +1333,13 @@ git commit -m "feat: add IPC handlers wiring PTY manager, layout store, and even
 ### Task 1.6: Workspace store (renderer state)
 
 **Files:**
+
 - Create: `src/renderer/store/workspace-store.ts`
 
 - [x] **Step 1: Install zustand**
 
 Run:
+
 ```bash
 npm install zustand
 ```
@@ -1286,6 +1347,7 @@ npm install zustand
 - [x] **Step 2: Write the workspace store**
 
 Create `src/renderer/store/workspace-store.ts`:
+
 ```ts
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf, PaneSplit } from '../../shared/types';
@@ -1358,10 +1420,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => ({
       workspace: {
         ...state.workspace,
-        tabs: [...state.workspace.tabs, tab],
+        tabs: [...state.workspace.tabs, tab]
       },
       activeTabId: tab.id,
-      activePaneId: leaf.id,
+      activePaneId: leaf.id
     }));
     return leaf.id;
   },
@@ -1373,7 +1435,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
-        activePaneId: nextTab ? collectPaneIds(nextTab.splitRoot)[0] ?? null : null,
+        activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null
       };
     });
   },
@@ -1382,10 +1444,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => ({
       workspace: {
         ...state.workspace,
-        tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label } : t,
-        ),
-      },
+        tabs: state.workspace.tabs.map((t) => (t.id === tabId ? { ...t, label } : t))
+      }
     }));
   },
 
@@ -1398,9 +1458,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   splitPane: (paneId, direction) => {
-    const newLeaf = createLeaf(get().workspace.tabs.find((t) =>
-      collectPaneIds(t.splitRoot).includes(paneId)
-    )?.cwd ?? '/');
+    const newLeaf = createLeaf(
+      get().workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId))?.cwd ?? '/'
+    );
 
     function splitNode(node: PaneNode): PaneNode {
       if (node.type === 'leaf' && node.id === paneId) {
@@ -1408,13 +1468,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           type: 'split',
           direction,
           ratio: 0.5,
-          children: [node, newLeaf],
+          children: [node, newLeaf]
         };
       }
       if (node.type === 'split') {
         return {
           ...node,
-          children: [splitNode(node.children[0]), splitNode(node.children[1])],
+          children: [splitNode(node.children[0]), splitNode(node.children[1])]
         };
       }
       return node;
@@ -1425,10 +1485,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         tabs: state.workspace.tabs.map((tab) => ({
           ...tab,
-          splitRoot: splitNode(tab.splitRoot),
-        })),
+          splitRoot: splitNode(tab.splitRoot)
+        }))
       },
-      activePaneId: newLeaf.id,
+      activePaneId: newLeaf.id
     }));
 
     return newLeaf.id;
@@ -1445,14 +1505,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         .filter((t): t is Tab => t !== null);
 
       const currentTab = tabs.find((t) => t.id === state.activeTabId);
-      const nextPaneId = currentTab
-        ? collectPaneIds(currentTab.splitRoot)[0] ?? null
-        : null;
+      const nextPaneId = currentTab ? (collectPaneIds(currentTab.splitRoot)[0] ?? null) : null;
 
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: currentTab?.id ?? tabs[0]?.id ?? null,
-        activePaneId: nextPaneId,
+        activePaneId: nextPaneId
       };
     });
   },
@@ -1470,7 +1528,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set({
       workspace,
       activeTabId: firstTab?.id ?? null,
-      activePaneId: firstPane ?? null,
+      activePaneId: firstPane ?? null
     });
   },
 
@@ -1480,13 +1538,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   getAllPaneIds: () => {
     return get().workspace.tabs.flatMap((tab) => collectPaneIds(tab.splitRoot));
-  },
+  }
 }));
 ```
 
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1503,12 +1562,14 @@ git commit -m "feat: add zustand workspace store with tab/pane management"
 ### Task 1.7: TerminalPane component
 
 **Files:**
+
 - Create: `src/renderer/hooks/use-terminal.ts`
 - Create: `src/renderer/components/TerminalPane.tsx`
 
 - [x] **Step 1: Write the xterm.js lifecycle hook**
 
 Create `src/renderer/hooks/use-terminal.ts`:
+
 ```ts
 import { useEffect, useRef } from 'react';
 import { Terminal } from 'xterm';
@@ -1529,7 +1590,7 @@ export type UseTerminalOptions = {
 
 export function useTerminal(
   containerRef: React.RefObject<HTMLDivElement | null>,
-  options: UseTerminalOptions,
+  options: UseTerminalOptions
 ) {
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -1546,8 +1607,8 @@ export function useTerminal(
       cursorBlink: true,
       theme: {
         background: '#1a1a2e',
-        foreground: '#e0e0e0',
-      },
+        foreground: '#e0e0e0'
+      }
     });
 
     const fitAddon = new FitAddon();
@@ -1593,7 +1654,7 @@ export function useTerminal(
     // Create PTY
     window.fleet.pty.create({
       paneId: options.paneId,
-      cwd: options.cwd,
+      cwd: options.cwd
     });
 
     // Handle resize
@@ -1602,7 +1663,7 @@ export function useTerminal(
       window.fleet.pty.resize({
         paneId: options.paneId,
         cols: term.cols,
-        rows: term.rows,
+        rows: term.rows
       });
     });
     resizeObserver.observe(container);
@@ -1618,7 +1679,7 @@ export function useTerminal(
     term: termRef,
     fit: () => fitAddonRef.current?.fit(),
     search: (query: string) => searchAddonRef.current?.findNext(query),
-    searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query),
+    searchPrevious: (query: string) => searchAddonRef.current?.findPrevious(query)
   };
 }
 ```
@@ -1626,6 +1687,7 @@ export function useTerminal(
 - [x] **Step 2: Write the TerminalPane component**
 
 Create `src/renderer/components/TerminalPane.tsx`:
+
 ```tsx
 import { useRef } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
@@ -1658,6 +1720,7 @@ export function TerminalPane({ paneId, cwd, isActive, onFocus }: TerminalPanePro
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1674,11 +1737,13 @@ git commit -m "feat: add TerminalPane component with xterm.js WebGL rendering"
 ### Task 1.8: PaneGrid component (recursive split tree)
 
 **Files:**
+
 - Create: `src/renderer/components/PaneGrid.tsx`
 
 - [x] **Step 1: Write the PaneGrid component**
 
 Create `src/renderer/components/PaneGrid.tsx`:
+
 ```tsx
 import { useCallback, useRef, useState } from 'react';
 import type { PaneNode } from '../../shared/types';
@@ -1693,11 +1758,7 @@ type PaneGridProps = {
 export function PaneGrid({ root, activePaneId, onPaneFocus }: PaneGridProps) {
   return (
     <div className="h-full w-full">
-      <PaneNodeRenderer
-        node={root}
-        activePaneId={activePaneId}
-        onPaneFocus={onPaneFocus}
-      />
+      <PaneNodeRenderer node={root} activePaneId={activePaneId} onPaneFocus={onPaneFocus} />
     </div>
   );
 }
@@ -1723,14 +1784,11 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererP
   const isHorizontal = node.direction === 'horizontal';
 
   return (
-    <div
-      className="flex h-full w-full"
-      style={{ flexDirection: isHorizontal ? 'row' : 'column' }}
-    >
+    <div className="flex h-full w-full" style={{ flexDirection: isHorizontal ? 'row' : 'column' }}>
       <div
         style={{
           [isHorizontal ? 'width' : 'height']: `${node.ratio * 100}%`,
-          [isHorizontal ? 'height' : 'width']: '100%',
+          [isHorizontal ? 'height' : 'width']: '100%'
         }}
       >
         <PaneNodeRenderer
@@ -1751,7 +1809,7 @@ function PaneNodeRenderer({ node, activePaneId, onPaneFocus }: PaneNodeRendererP
       <div
         style={{
           [isHorizontal ? 'width' : 'height']: `${(1 - node.ratio) * 100}%`,
-          [isHorizontal ? 'height' : 'width']: '100%',
+          [isHorizontal ? 'height' : 'width']: '100%'
         }}
       >
         <PaneNodeRenderer
@@ -1805,6 +1863,7 @@ function ResizeHandle({ direction, onResize }: ResizeHandleProps) {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1821,12 +1880,14 @@ git commit -m "feat: add recursive PaneGrid component with split tree rendering"
 ### Task 1.9: Sidebar with tabs
 
 **Files:**
+
 - Create: `src/renderer/components/TabItem.tsx`
 - Create: `src/renderer/components/Sidebar.tsx`
 
 - [x] **Step 1: Write the TabItem component**
 
 Create `src/renderer/components/TabItem.tsx`:
+
 ```tsx
 type TabItemProps = {
   id: string;
@@ -1864,13 +1925,13 @@ export function TabItem({ id, label, isActive, onClick, onClose, onRename }: Tab
 - [x] **Step 2: Write the Sidebar component**
 
 Create `src/renderer/components/Sidebar.tsx`:
+
 ```tsx
 import { TabItem } from './TabItem';
 import { useWorkspaceStore } from '../store/workspace-store';
 
 export function Sidebar() {
-  const { workspace, activeTabId, setActiveTab, closeTab, renameTab, addTab } =
-    useWorkspaceStore();
+  const { workspace, activeTabId, setActiveTab, closeTab, renameTab, addTab } = useWorkspaceStore();
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
@@ -1911,6 +1972,7 @@ export function Sidebar() {
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -1927,12 +1989,14 @@ git commit -m "feat: add Sidebar with vertical tab list"
 ### Task 1.10: Root App layout
 
 **Files:**
+
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/main.tsx`
 
 - [x] **Step 1: Write the App component**
 
 Replace `src/renderer/App.tsx`:
+
 ```tsx
 import { useEffect } from 'react';
 import { Sidebar } from './components/Sidebar';
@@ -1940,8 +2004,7 @@ import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore } from './store/workspace-store';
 
 export function App() {
-  const { workspace, activeTabId, activePaneId, setActivePane, addTab } =
-    useWorkspaceStore();
+  const { workspace, activeTabId, activePaneId, setActivePane, addTab } = useWorkspaceStore();
 
   const activeTab = workspace.tabs.find((t) => t.id === activeTabId);
 
@@ -1988,6 +2051,7 @@ export function App() {
 - [x] **Step 2: Update renderer entry point**
 
 Replace `src/renderer/main.tsx`:
+
 ```tsx
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -2007,6 +2071,7 @@ if (root) {
 - [x] **Step 3: Run the app end-to-end**
 
 Run:
+
 ```bash
 npm run dev
 ```
@@ -2023,11 +2088,13 @@ git commit -m "feat: add root App layout with sidebar and terminal pane grid"
 ### Task 1.11: Keyboard shortcuts for tabs and panes
 
 **Files:**
+
 - Create: `src/renderer/hooks/use-pane-navigation.ts`
 
 - [x] **Step 1: Write the keyboard shortcut hook**
 
 Create `src/renderer/hooks/use-pane-navigation.ts`:
+
 ```ts
 import { useEffect } from 'react';
 import { useWorkspaceStore } from '../store/workspace-store';
@@ -2065,9 +2132,10 @@ export function usePaneNavigation() {
         e.preventDefault();
         const allPaneIds = useWorkspaceStore.getState().getAllPaneIds();
         const currentIndex = activePaneId ? allPaneIds.indexOf(activePaneId) : -1;
-        const nextIndex = e.key === ']'
-          ? (currentIndex + 1) % allPaneIds.length
-          : (currentIndex - 1 + allPaneIds.length) % allPaneIds.length;
+        const nextIndex =
+          e.key === ']'
+            ? (currentIndex + 1) % allPaneIds.length
+            : (currentIndex - 1 + allPaneIds.length) % allPaneIds.length;
         if (allPaneIds[nextIndex]) {
           useWorkspaceStore.getState().setActivePane(allPaneIds[nextIndex]);
         }
@@ -2091,11 +2159,13 @@ export function usePaneNavigation() {
 - [x] **Step 2: Add the hook to App.tsx**
 
 Add to the top of the `App` component function body:
+
 ```ts
 usePaneNavigation();
 ```
 
 And add the import:
+
 ```ts
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 ```
@@ -2103,6 +2173,7 @@ import { usePaneNavigation } from './hooks/use-pane-navigation';
 - [x] **Step 3: Verify shortcuts work**
 
 Run:
+
 ```bash
 npm run dev
 ```
@@ -2119,11 +2190,13 @@ git commit -m "feat: add keyboard shortcuts for tab and pane management"
 ### Task 1.12: Search bar
 
 **Files:**
+
 - Create: `src/renderer/components/SearchBar.tsx`
 
 - [x] **Step 1: Write the SearchBar component**
 
 Create `src/renderer/components/SearchBar.tsx`:
+
 ```tsx
 import { useState, useEffect, useRef } from 'react';
 
@@ -2170,10 +2243,7 @@ export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: Searc
         placeholder="Search..."
         className="bg-transparent text-sm text-white outline-none w-48 placeholder-neutral-500"
       />
-      <button
-        onClick={onClose}
-        className="text-neutral-500 hover:text-white text-sm"
-      >
+      <button onClick={onClose} className="text-neutral-500 hover:text-white text-sm">
         ×
       </button>
     </div>
@@ -2186,6 +2256,7 @@ export function SearchBar({ isOpen, onClose, onSearch, onSearchPrevious }: Searc
 This will be integrated when we connect search to the active pane's xterm.js SearchAddon. For now, add `Cmd+F` handling to the keyboard hook in `use-pane-navigation.ts`:
 
 Add to the `handleKeyDown` function:
+
 ```ts
 if (mod && e.key === 'f') {
   e.preventDefault();
@@ -2210,12 +2281,14 @@ Watches PTY data streams for OSC sequences and patterns, routes events through t
 ### Task 2.1: Notification detector (main process)
 
 **Files:**
+
 - Create: `src/main/notification-detector.ts`
 - Create: `src/main/__tests__/notification-detector.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/notification-detector.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationDetector } from '../notification-detector';
@@ -2240,8 +2313,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'info',
-      }),
+        level: 'info'
+      })
     );
   });
 
@@ -2255,8 +2328,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'info',
-      }),
+        level: 'info'
+      })
     );
   });
 
@@ -2270,8 +2343,8 @@ describe('NotificationDetector', () => {
       expect.objectContaining({
         type: 'notification',
         paneId: 'pane-1',
-        level: 'permission',
-      }),
+        level: 'permission'
+      })
     );
   });
 
@@ -2299,6 +2372,7 @@ describe('NotificationDetector', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -2308,6 +2382,7 @@ Expected: FAIL — `Cannot find module '../notification-detector'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/notification-detector.ts`:
+
 ```ts
 import { EventBus } from './event-bus';
 import type { NotificationLevel } from '../shared/types';
@@ -2317,7 +2392,7 @@ const PERMISSION_PATTERNS = [
   /Do you want to (?:allow|proceed|continue)/i,
   /\(y\/n\)\s*$/,
   /Allow this action\?/i,
-  /Press Enter to confirm/i,
+  /Press Enter to confirm/i
 ];
 
 export class NotificationDetector {
@@ -2338,7 +2413,7 @@ export class NotificationDetector {
       type: 'notification',
       paneId,
       level,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
   }
 
@@ -2365,13 +2440,13 @@ export class NotificationDetector {
       }
     }
   }
-
 }
 ```
 
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -2388,6 +2463,7 @@ git commit -m "feat: add notification detector for OSC 9/777 and permission prom
 ### Task 2.2: Wire notification detector into PTY data flow
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 
 - [x] **Step 1: Update ipc-handlers.ts to scan PTY output**
@@ -2399,6 +2475,7 @@ import { NotificationDetector } from './notification-detector';
 ```
 
 Update the function signature:
+
 ```ts
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -2412,17 +2489,21 @@ export function registerIpcHandlers(
 In the `PTY_CREATE` handler, update the `onData` callback to scan before forwarding:
 
 ```ts
-    ptyManager.onData(req.paneId, (data) => {
-      // Scan for notifications BEFORE forwarding to renderer
-      notificationDetector.scan(req.paneId, data);
+ptyManager.onData(req.paneId, (data) => {
+  // Scan for notifications BEFORE forwarding to renderer
+  notificationDetector.scan(req.paneId, data);
 
-      win?.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId: req.paneId, data } satisfies PtyDataPayload);
-    });
+  win?.webContents.send(IPC_CHANNELS.PTY_DATA, {
+    paneId: req.paneId,
+    data
+  } satisfies PtyDataPayload);
+});
 ```
 
 - [x] **Step 2: Update main/index.ts to create and pass the detector**
 
 Add to `src/main/index.ts` imports and instantiation:
+
 ```ts
 import { NotificationDetector } from './notification-detector';
 
@@ -2430,13 +2511,15 @@ const notificationDetector = new NotificationDetector(eventBus);
 ```
 
 Update the `registerIpcHandlers` call:
+
 ```ts
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, () => mainWindow);
+registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, () => mainWindow);
 ```
 
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -2453,12 +2536,14 @@ git commit -m "feat: wire notification detector into PTY data flow"
 ### Task 2.3: Notification state manager (main process)
 
 **Files:**
+
 - Create: `src/main/notification-state.ts`
 - Create: `src/main/__tests__/notification-state.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/notification-state.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotificationStateManager } from '../notification-state';
@@ -2478,13 +2563,13 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     expect(manager.getState('pane-1')).toEqual({
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 1000,
+      timestamp: 1000
     });
   });
 
@@ -2493,7 +2578,7 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     manager.clearPane('pane-1');
@@ -2506,14 +2591,14 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     eventBus.emit('notification', {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: 2000,
+      timestamp: 2000
     });
 
     expect(manager.getState('pane-1')?.level).toBe('permission');
@@ -2524,13 +2609,13 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
     eventBus.emit('notification', {
       type: 'notification',
       paneId: 'pane-2',
       level: 'permission',
-      timestamp: 2000,
+      timestamp: 2000
     });
 
     const all = manager.getAllStates();
@@ -2542,7 +2627,7 @@ describe('NotificationStateManager', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'info',
-      timestamp: 1000,
+      timestamp: 1000
     });
 
     eventBus.emit('pane-closed', { type: 'pane-closed', paneId: 'pane-1' });
@@ -2555,6 +2640,7 @@ describe('NotificationStateManager', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -2564,6 +2650,7 @@ Expected: FAIL — `Cannot find module '../notification-state'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/notification-state.ts`:
+
 ```ts
 import { EventBus } from './event-bus';
 import type { NotificationLevel } from '../shared/types';
@@ -2578,7 +2665,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
   permission: 3,
   error: 2,
   info: 1,
-  subtle: 0,
+  subtle: 0
 };
 
 export class NotificationStateManager {
@@ -2591,7 +2678,7 @@ export class NotificationStateManager {
         this.states.set(event.paneId, {
           paneId: event.paneId,
           level: event.level,
-          timestamp: event.timestamp,
+          timestamp: event.timestamp
         });
       }
     });
@@ -2618,6 +2705,7 @@ export class NotificationStateManager {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -2634,12 +2722,14 @@ git commit -m "feat: add notification state manager with priority tracking"
 ### Task 2.4: Forward notifications to renderer via IPC
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
 - [x] **Step 1: Create NotificationStateManager in main and forward events to renderer**
 
 Update `src/main/index.ts` — add imports and instantiation:
+
 ```ts
 import { NotificationStateManager } from './notification-state';
 
@@ -2648,15 +2738,16 @@ const notificationState = new NotificationStateManager(eventBus);
 ```
 
 Add event forwarding after `registerIpcHandlers`:
+
 ```ts
-  // Forward notification events to renderer
-  eventBus.on('notification', (event) => {
-    mainWindow?.webContents.send(IPC_CHANNELS.NOTIFICATION, {
-      paneId: event.paneId,
-      level: event.level,
-      timestamp: event.timestamp,
-    });
+// Forward notification events to renderer
+eventBus.on('notification', (event) => {
+  mainWindow?.webContents.send(IPC_CHANNELS.NOTIFICATION, {
+    paneId: event.paneId,
+    level: event.level,
+    timestamp: event.timestamp
   });
+});
 ```
 
 - [x] **Step 2: Handle pane-focused IPC to clear notification state**
@@ -2668,6 +2759,7 @@ import { NotificationStateManager } from './notification-state';
 ```
 
 Update function signature:
+
 ```ts
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -2680,20 +2772,30 @@ export function registerIpcHandlers(
 ```
 
 Update the `PANE_FOCUSED` handler:
+
 ```ts
-  ipcMain.on(IPC_CHANNELS.PANE_FOCUSED, (_event, payload: PaneFocusedPayload) => {
-    notificationState.clearPane(payload.paneId);
-  });
+ipcMain.on(IPC_CHANNELS.PANE_FOCUSED, (_event, payload: PaneFocusedPayload) => {
+  notificationState.clearPane(payload.paneId);
+});
 ```
 
 Update the `registerIpcHandlers` call in `src/main/index.ts`:
+
 ```ts
-  registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, () => mainWindow);
+registerIpcHandlers(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationDetector,
+  notificationState,
+  () => mainWindow
+);
 ```
 
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -2710,6 +2812,7 @@ git commit -m "feat: forward notifications to renderer and handle pane focus cle
 ### Task 2.5: Notification store and badges (renderer)
 
 **Files:**
+
 - Create: `src/renderer/store/notification-store.ts`
 - Create: `src/renderer/hooks/use-notifications.ts`
 - Modify: `src/renderer/components/TabItem.tsx`
@@ -2717,6 +2820,7 @@ git commit -m "feat: forward notifications to renderer and handle pane focus cle
 - [x] **Step 1: Write the notification store**
 
 Create `src/renderer/store/notification-store.ts`:
+
 ```ts
 import { create } from 'zustand';
 import type { NotificationLevel } from '../../shared/types';
@@ -2738,7 +2842,7 @@ const PRIORITY: Record<NotificationLevel, number> = {
   permission: 3,
   error: 2,
   info: 1,
-  subtle: 0,
+  subtle: 0
 };
 
 export const useNotificationStore = create<NotificationStore>((set, get) => ({
@@ -2776,13 +2880,14 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       }
     }
     return highest;
-  },
+  }
 }));
 ```
 
 - [x] **Step 2: Write the notifications hook**
 
 Create `src/renderer/hooks/use-notifications.ts`:
+
 ```ts
 import { useEffect } from 'react';
 import { useNotificationStore } from '../store/notification-store';
@@ -2795,7 +2900,7 @@ export function useNotifications() {
       setNotification({
         paneId: payload.paneId,
         level: payload.level,
-        timestamp: payload.timestamp,
+        timestamp: payload.timestamp
       });
     });
     return cleanup;
@@ -2824,7 +2929,7 @@ const BADGE_COLORS: Record<NotificationLevel, string> = {
   permission: 'bg-amber-500',
   error: 'bg-red-500',
   info: 'bg-blue-500',
-  subtle: 'bg-neutral-600',
+  subtle: 'bg-neutral-600'
 };
 
 export function TabItem({ id, label, isActive, badge, onClick, onClose, onRename }: TabItemProps) {
@@ -2863,11 +2968,13 @@ import { useNotificationStore } from '../store/notification-store';
 ```
 
 Inside the `Sidebar` component, add:
+
 ```ts
 const { getTabBadge } = useNotificationStore();
 ```
 
 Inline this helper directly in `Sidebar.tsx`:
+
 ```ts
 function collectPaneIds(node: import('../../shared/types').PaneNode): string[] {
   if (node.type === 'leaf') return [node.id];
@@ -2876,6 +2983,7 @@ function collectPaneIds(node: import('../../shared/types').PaneNode): string[] {
 ```
 
 Update the `TabItem` render to pass the badge:
+
 ```tsx
 <TabItem
   key={tab.id}
@@ -2892,11 +3000,13 @@ Update the `TabItem` render to pass the badge:
 - [x] **Step 5: Add useNotifications hook to App.tsx**
 
 Add to `src/renderer/App.tsx` imports:
+
 ```ts
 import { useNotifications } from './hooks/use-notifications';
 ```
 
 Call at the top of the `App` component body:
+
 ```ts
 useNotifications();
 ```
@@ -2904,6 +3014,7 @@ useNotifications();
 - [x] **Step 6: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -2920,54 +3031,58 @@ git commit -m "feat: add notification badges on sidebar tabs with priority rende
 ### Task 2.6: OS notifications and sound
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Create: `src/assets/sounds/chime.mp3` (placeholder)
 
 - [x] **Step 1: Add OS notification dispatch in main process**
 
 Add `Notification` to the existing electron import at the top of `src/main/index.ts`:
+
 ```ts
 import { app, BrowserWindow, Notification } from 'electron';
 ```
 
 Add `DEFAULT_SETTINGS` to imports:
+
 ```ts
 import { DEFAULT_SETTINGS } from '../shared/constants';
 ```
 
 Then add a second `eventBus.on('notification', ...)` listener after the existing one:
 eventBus.on('notification', (event) => {
-  const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
+const settings = DEFAULT_SETTINGS; // Will read from settings store in Layer 5
 
-  // Determine which settings key maps to this notification level
-  const settingsKey = {
-    permission: 'needsPermission',
-    error: 'processExitError',
-    info: 'taskComplete',
-    subtle: 'processExitClean',
-  }[event.level] as keyof typeof settings.notifications;
+// Determine which settings key maps to this notification level
+const settingsKey = {
+permission: 'needsPermission',
+error: 'processExitError',
+info: 'taskComplete',
+subtle: 'processExitClean',
+}[event.level] as keyof typeof settings.notifications;
 
-  const config = settings.notifications[settingsKey];
+const config = settings.notifications[settingsKey];
 
-  // OS notification
-  if (config.os && Notification.isSupported()) {
-    const notif = new Notification({
-      title: 'Fleet',
-      body: event.level === 'permission'
-        ? 'An agent needs your permission'
-        : 'Task completed',
-    });
-    notif.on('click', () => {
-      mainWindow?.show();
-      mainWindow?.focus();
-      // Send a focus-pane command to the renderer (distinct from PANE_FOCUSED
-      // which flows renderer→main). The renderer listens for this to switch panes.
-      mainWindow?.webContents.send('fleet:focus-pane', { paneId: event.paneId });
-    });
-    notif.show();
-  }
+// OS notification
+if (config.os && Notification.isSupported()) {
+const notif = new Notification({
+title: 'Fleet',
+body: event.level === 'permission'
+? 'An agent needs your permission'
+: 'Task completed',
 });
-```
+notif.on('click', () => {
+mainWindow?.show();
+mainWindow?.focus();
+// Send a focus-pane command to the renderer (distinct from PANE_FOCUSED
+// which flows renderer→main). The renderer listens for this to switch panes.
+mainWindow?.webContents.send('fleet:focus-pane', { paneId: event.paneId });
+});
+notif.show();
+}
+});
+
+````
 
 - [x] **Step 2: Add sound playback in renderer**
 
@@ -3036,11 +3151,12 @@ export function useNotifications() {
     return cleanup;
   }, [setNotification]);
 }
-```
+````
 
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -3057,6 +3173,7 @@ git commit -m "feat: add OS notifications and sound playback for permission prom
 ### Task 2.7: Process exit notifications
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [x] **Step 1: Emit notification on PTY exit**
@@ -3064,20 +3181,21 @@ git commit -m "feat: add OS notifications and sound playback for permission prom
 Add to the event bus subscriptions in `src/main/index.ts`:
 
 ```ts
-  eventBus.on('pty-exit', (event) => {
-    const level = event.exitCode !== 0 ? 'error' : 'subtle';
-    eventBus.emit('notification', {
-      type: 'notification',
-      paneId: event.paneId,
-      level,
-      timestamp: Date.now(),
-    });
+eventBus.on('pty-exit', (event) => {
+  const level = event.exitCode !== 0 ? 'error' : 'subtle';
+  eventBus.emit('notification', {
+    type: 'notification',
+    paneId: event.paneId,
+    level,
+    timestamp: Date.now()
   });
+});
 ```
 
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -3100,12 +3218,14 @@ A JSON-over-newline server on a local Unix socket (macOS) or named pipe (Windows
 ### Task 3.1: Socket server core
 
 **Files:**
+
 - Create: `src/main/socket-api.ts`
 - Create: `src/main/__tests__/socket-api.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/socket-api.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SocketApi, SocketCommandHandler } from '../socket-api';
@@ -3126,14 +3246,16 @@ describe('SocketApi', () => {
   beforeEach(() => {
     socketPath = tmpSocket();
     handler = {
-      handleCommand: vi.fn().mockResolvedValue({ ok: true, data: { message: 'hello' } }),
+      handleCommand: vi.fn().mockResolvedValue({ ok: true, data: { message: 'hello' } })
     };
     api = new SocketApi(socketPath, handler);
   });
 
   afterEach(async () => {
     await api.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('starts and accepts a connection', async () => {
@@ -3149,7 +3271,7 @@ describe('SocketApi', () => {
     await sendCommand(socketPath, { type: 'list-tabs', id: '2' });
 
     expect(handler.handleCommand).toHaveBeenCalledWith(
-      expect.objectContaining({ type: 'list-tabs', id: '2' }),
+      expect.objectContaining({ type: 'list-tabs', id: '2' })
     );
   });
 
@@ -3164,7 +3286,7 @@ describe('SocketApi', () => {
   it('returns error response from handler', async () => {
     handler.handleCommand = vi.fn().mockResolvedValue({
       ok: false,
-      error: 'pane not found: abc',
+      error: 'pane not found: abc'
     });
     await api.start();
 
@@ -3175,7 +3297,10 @@ describe('SocketApi', () => {
 });
 
 // Helper: send a JSON command and read the response
-function sendCommand(socketPath: string, cmd: Record<string, unknown>): Promise<Record<string, unknown>> {
+function sendCommand(
+  socketPath: string,
+  cmd: Record<string, unknown>
+): Promise<Record<string, unknown>> {
   return sendRaw(socketPath, JSON.stringify(cmd) + '\n');
 }
 
@@ -3194,7 +3319,10 @@ function sendRaw(socketPath: string, data: string): Promise<Record<string, unkno
       }
     });
     client.on('error', reject);
-    setTimeout(() => { client.end(); reject(new Error('timeout')); }, 3000);
+    setTimeout(() => {
+      client.end();
+      reject(new Error('timeout'));
+    }, 3000);
   });
 }
 ```
@@ -3202,6 +3330,7 @@ function sendRaw(socketPath: string, data: string): Promise<Record<string, unkno
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -3211,6 +3340,7 @@ Expected: FAIL — `Cannot find module '../socket-api'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/socket-api.ts`:
+
 ```ts
 import { createServer, Server, Socket } from 'net';
 import { mkdirSync } from 'fs';
@@ -3240,7 +3370,7 @@ export class SocketApi {
 
   constructor(
     private socketPath: string,
-    private handler: SocketCommandHandler,
+    private handler: SocketCommandHandler
   ) {}
 
   async start(): Promise<void> {
@@ -3329,7 +3459,7 @@ export class SocketApi {
 
     // Handle subscribe specially — accumulates event types across calls
     if (cmd.type === 'subscribe') {
-      const events = Array.isArray(cmd.events) ? cmd.events as string[] : [];
+      const events = Array.isArray(cmd.events) ? (cmd.events as string[]) : [];
       const existing = this.subscriptions.get(socket) ?? new Set();
       for (const e of events) existing.add(e);
       this.subscriptions.set(socket, existing);
@@ -3344,7 +3474,7 @@ export class SocketApi {
       this.sendResponse(socket, {
         ok: false,
         id: cmd.id,
-        error: err instanceof Error ? err.message : 'Unknown error',
+        error: err instanceof Error ? err.message : 'Unknown error'
       });
     }
   }
@@ -3360,6 +3490,7 @@ export class SocketApi {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -3376,12 +3507,14 @@ git commit -m "feat: add socket API server with JSON-over-newline protocol"
 ### Task 3.2: Command handler (routes socket commands to Fleet internals)
 
 **Files:**
+
 - Create: `src/main/socket-command-handler.ts`
 - Create: `src/main/__tests__/socket-command-handler.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/socket-command-handler.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FleetCommandHandler } from '../socket-command-handler';
@@ -3397,8 +3530,8 @@ vi.mock('node-pty', () => ({
     onExit: vi.fn(),
     write: vi.fn(),
     resize: vi.fn(),
-    kill: vi.fn(),
-  })),
+    kill: vi.fn()
+  }))
 }));
 
 vi.mock('electron-store', () => {
@@ -3407,10 +3540,14 @@ vi.mock('electron-store', () => {
       const data: Record<string, unknown> = {};
       return {
         get: vi.fn((key: string, defaultVal?: unknown) => data[key] ?? defaultVal),
-        set: vi.fn((key: string, value: unknown) => { data[key] = value; }),
-        delete: vi.fn((key: string) => { delete data[key]; }),
+        set: vi.fn((key: string, value: unknown) => {
+          data[key] = value;
+        }),
+        delete: vi.fn((key: string) => {
+          delete data[key];
+        })
       };
-    }),
+    })
   };
 });
 
@@ -3439,7 +3576,7 @@ describe('FleetCommandHandler', () => {
       type: 'new-tab',
       label: 'test',
       cmd: 'echo hello',
-      cwd: '/tmp',
+      cwd: '/tmp'
     });
     expect(result.ok).toBe(true);
     expect(result.tabId).toBeDefined();
@@ -3450,11 +3587,11 @@ describe('FleetCommandHandler', () => {
     const tabResult = await handler.handleCommand({
       type: 'new-tab',
       label: 'test',
-      cwd: '/tmp',
+      cwd: '/tmp'
     });
     const result = await handler.handleCommand({
       type: 'list-panes',
-      tabId: tabResult.tabId,
+      tabId: tabResult.tabId
     });
     expect(result.ok).toBe(true);
     expect(result.panes).toHaveLength(1);
@@ -3476,7 +3613,7 @@ describe('FleetCommandHandler', () => {
   it('returns error for invalid paneId', async () => {
     const result = await handler.handleCommand({
       type: 'focus-pane',
-      paneId: 'does-not-exist',
+      paneId: 'does-not-exist'
     });
     expect(result.ok).toBe(false);
     expect(result.error).toContain('not found');
@@ -3487,6 +3624,7 @@ describe('FleetCommandHandler', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -3496,6 +3634,7 @@ Expected: FAIL — `Cannot find module '../socket-command-handler'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/socket-command-handler.ts`:
+
 ```ts
 import { randomUUID } from 'crypto';
 import type { SocketCommand, SocketResponse, SocketCommandHandler } from './socket-api';
@@ -3517,7 +3656,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     private ptyManager: PtyManager,
     private layoutStore: LayoutStore,
     private eventBus: EventBus,
-    private notificationState: NotificationStateManager,
+    private notificationState: NotificationStateManager
   ) {}
 
   setWindowGetter(getter: () => import('electron').BrowserWindow | null): void {
@@ -3543,8 +3682,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
           tabs: this.workspace.tabs.map((t) => ({
             id: t.id,
             label: t.label,
-            cwd: t.cwd,
-          })),
+            cwd: t.cwd
+          }))
         };
 
       case 'new-tab': {
@@ -3563,7 +3702,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         const ptyResult = this.ptyManager.create({
           paneId,
           cwd,
-          cmd: cmd.cmd as string | undefined,
+          cmd: cmd.cmd as string | undefined
         });
 
         this.eventBus.emit('pane-created', { type: 'pane-created', paneId });
@@ -3599,8 +3738,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
             id: leaf.id,
             cwd: leaf.cwd,
             shell: leaf.shell,
-            hasProcess: this.ptyManager.has(leaf.id),
-          })),
+            hasProcess: this.ptyManager.has(leaf.id)
+          }))
         };
       }
 
@@ -3625,7 +3764,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         this.ptyManager.create({
           paneId: newPaneId,
           cwd,
-          cmd: cmd.cmd as string | undefined,
+          cmd: cmd.cmd as string | undefined
         });
 
         this.eventBus.emit('pane-created', { type: 'pane-created', paneId: newPaneId });
@@ -3674,7 +3813,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         // TODO: Implement IPC round-trip in a follow-up task after Layer 1 is stable.
         return {
           ok: false,
-          error: 'get-output requires renderer IPC round-trip — not yet implemented',
+          error: 'get-output requires renderer IPC round-trip — not yet implemented'
         };
       }
 
@@ -3684,10 +3823,10 @@ export class FleetCommandHandler implements SocketCommandHandler {
           workspace: {
             id: this.workspace.id,
             label: this.workspace.label,
-            tabCount: this.workspace.tabs.length,
+            tabCount: this.workspace.tabs.length
           },
           panes: this.ptyManager.paneIds(),
-          notifications: this.notificationState.getAllStates(),
+          notifications: this.notificationState.getAllStates()
         };
 
       default:
@@ -3697,17 +3836,14 @@ export class FleetCommandHandler implements SocketCommandHandler {
 
   private collectPaneIds(node: import('../shared/types').PaneNode): string[] {
     if (node.type === 'leaf') return [node.id];
-    return [
-      ...this.collectPaneIds(node.children[0]),
-      ...this.collectPaneIds(node.children[1]),
-    ];
+    return [...this.collectPaneIds(node.children[0]), ...this.collectPaneIds(node.children[1])];
   }
 
   private collectPaneLeaves(node: import('../shared/types').PaneNode): PaneLeaf[] {
     if (node.type === 'leaf') return [node];
     return [
       ...this.collectPaneLeaves(node.children[0]),
-      ...this.collectPaneLeaves(node.children[1]),
+      ...this.collectPaneLeaves(node.children[1])
     ];
   }
 
@@ -3717,7 +3853,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     node: import('../shared/types').PaneNode,
     targetPaneId: string,
     newLeaf: PaneLeaf,
-    direction: 'horizontal' | 'vertical',
+    direction: 'horizontal' | 'vertical'
   ): boolean {
     if (node.type === 'leaf' && node.id === targetPaneId) {
       // Replace this leaf with a split containing the original leaf and the new one
@@ -3725,7 +3861,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
         type: 'split',
         direction,
         ratio: 0.5,
-        children: [node, newLeaf],
+        children: [node, newLeaf]
       };
       // Find and replace in parent — simplified: rebuild splitRoot
       tab.splitRoot = this.replaceNode(tab.splitRoot, targetPaneId, split);
@@ -3743,7 +3879,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
   private replaceNode(
     node: import('../shared/types').PaneNode,
     targetId: string,
-    replacement: import('../shared/types').PaneNode,
+    replacement: import('../shared/types').PaneNode
   ): import('../shared/types').PaneNode {
     if (node.type === 'leaf') {
       return node.id === targetId ? replacement : node;
@@ -3752,8 +3888,8 @@ export class FleetCommandHandler implements SocketCommandHandler {
       ...node,
       children: [
         this.replaceNode(node.children[0], targetId, replacement),
-        this.replaceNode(node.children[1], targetId, replacement),
-      ],
+        this.replaceNode(node.children[1], targetId, replacement)
+      ]
     };
   }
 }
@@ -3762,6 +3898,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -3778,11 +3915,13 @@ git commit -m "feat: add socket command handler routing to Fleet internals"
 ### Task 3.3: Wire socket API into main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [x] **Step 1: Create and start the socket API**
 
 Add imports to `src/main/index.ts`:
+
 ```ts
 import { SocketApi } from './socket-api';
 import { FleetCommandHandler } from './socket-command-handler';
@@ -3790,52 +3929,62 @@ import { SOCKET_PATH } from '../shared/constants';
 ```
 
 Add instantiation after the existing module creation:
+
 ```ts
-const commandHandler = new FleetCommandHandler(ptyManager, layoutStore, eventBus, notificationState);
+const commandHandler = new FleetCommandHandler(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationState
+);
 const socketApi = new SocketApi(SOCKET_PATH, commandHandler);
 ```
 
 Wire the window getter for `focus-pane`:
+
 ```ts
-  commandHandler.setWindowGetter(() => mainWindow);
+commandHandler.setWindowGetter(() => mainWindow);
 ```
 
 Start the socket in `app.whenReady()`:
+
 ```ts
-  // Start socket API
-  socketApi.start().catch((err) => {
-    console.error('Failed to start socket API:', err);
-  });
+// Start socket API
+socketApi.start().catch((err) => {
+  console.error('Failed to start socket API:', err);
+});
 ```
 
 Wire event bus to broadcast subscription events:
+
 ```ts
-  // Broadcast events to socket subscribers
-  eventBus.on('notification', (event) => {
-    socketApi.broadcastEvent('notification', {
-      paneId: event.paneId,
-      level: event.level,
-      timestamp: event.timestamp,
-    });
+// Broadcast events to socket subscribers
+eventBus.on('notification', (event) => {
+  socketApi.broadcastEvent('notification', {
+    paneId: event.paneId,
+    level: event.level,
+    timestamp: event.timestamp
   });
+});
 
-  eventBus.on('pane-created', (event) => {
-    socketApi.broadcastEvent('pane-created', { paneId: event.paneId });
-  });
+eventBus.on('pane-created', (event) => {
+  socketApi.broadcastEvent('pane-created', { paneId: event.paneId });
+});
 
-  eventBus.on('pane-closed', (event) => {
-    socketApi.broadcastEvent('pane-closed', { paneId: event.paneId });
-  });
+eventBus.on('pane-closed', (event) => {
+  socketApi.broadcastEvent('pane-closed', { paneId: event.paneId });
+});
 
-  eventBus.on('workspace-loaded', (event) => {
-    socketApi.broadcastEvent('workspace-loaded', { workspaceId: event.workspaceId });
-  });
+eventBus.on('workspace-loaded', (event) => {
+  socketApi.broadcastEvent('workspace-loaded', { workspaceId: event.workspaceId });
+});
 
-  // Note: agent-state-change broadcast will be wired in Chunk 4 (Layer 4)
-  // when agent-state-tracker.ts is implemented.
+// Note: agent-state-change broadcast will be wired in Chunk 4 (Layer 4)
+// when agent-state-tracker.ts is implemented.
 ```
 
 Stop the socket on quit — add to `window-all-closed`:
+
 ```ts
 app.on('window-all-closed', () => {
   ptyManager.killAll();
@@ -3849,6 +3998,7 @@ app.on('window-all-closed', () => {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -3858,11 +4008,13 @@ Expected: TypeScript compiler exits with code 0.
 - [x] **Step 3: Manual smoke test**
 
 Run the app in one terminal:
+
 ```bash
 npm run dev
 ```
 
 In another terminal, test the socket:
+
 ```bash
 echo '{"type":"get-state","id":"1"}' | nc -U ~/.fleet/fleet.sock
 ```
@@ -3885,11 +4037,13 @@ git commit -m "feat: wire socket API into main process with event broadcasting"
 ### Task 3.4: Subscribe integration test
 
 **Files:**
+
 - Create: `src/main/__tests__/socket-subscribe.test.ts`
 
 - [x] **Step 1: Write the subscribe test**
 
 Create `src/main/__tests__/socket-subscribe.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { SocketApi, SocketCommandHandler } from '../socket-api';
@@ -3909,7 +4063,7 @@ describe('SocketApi subscriptions', () => {
   beforeEach(async () => {
     socketPath = tmpSocket();
     const handler: SocketCommandHandler = {
-      handleCommand: vi.fn().mockResolvedValue({ ok: true }),
+      handleCommand: vi.fn().mockResolvedValue({ ok: true })
     };
     api = new SocketApi(socketPath, handler);
     await api.start();
@@ -3917,7 +4071,9 @@ describe('SocketApi subscriptions', () => {
 
   afterEach(async () => {
     await api.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('receives broadcast events after subscribing', async () => {
@@ -3944,7 +4100,10 @@ describe('SocketApi subscriptions', () => {
         }
       });
 
-      setTimeout(() => { client.end(); reject(new Error('timeout')); }, 3000);
+      setTimeout(() => {
+        client.end();
+        reject(new Error('timeout'));
+      }, 3000);
     });
 
     expect(messages).toHaveLength(2);
@@ -3972,11 +4131,17 @@ describe('SocketApi subscriptions', () => {
           // Broadcast a notification event (not subscribed)
           api.broadcastEvent('notification', { paneId: 'p1', level: 'info', timestamp: 1 });
           // Give time for potential delivery, then close
-          setTimeout(() => { client.end(); resolve(collected); }, 200);
+          setTimeout(() => {
+            client.end();
+            resolve(collected);
+          }, 200);
         }
       });
 
-      setTimeout(() => { client.end(); resolve(collected); }, 3000);
+      setTimeout(() => {
+        client.end();
+        resolve(collected);
+      }, 3000);
     });
 
     // Should only have the subscribe ack, not the notification
@@ -3988,6 +4153,7 @@ describe('SocketApi subscriptions', () => {
 - [x] **Step 2: Run tests**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -4010,12 +4176,14 @@ The pixel-art office scene. Consists of two parts: the main-process agent state 
 ### Task 4.1: JSONL watcher (main process)
 
 **Files:**
+
 - Create: `src/main/jsonl-watcher.ts`
 - Create: `src/main/__tests__/jsonl-watcher.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/jsonl-watcher.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JsonlWatcher, JsonlRecord } from '../jsonl-watcher';
@@ -4052,8 +4220,8 @@ describe('JsonlWatcher', () => {
     const record = {
       type: 'assistant',
       message: {
-        content: [{ type: 'tool_use', name: 'Edit', input: {} }],
-      },
+        content: [{ type: 'tool_use', name: 'Edit', input: {} }]
+      }
     };
     writeFileSync(filePath, JSON.stringify(record) + '\n');
 
@@ -4062,7 +4230,7 @@ describe('JsonlWatcher', () => {
 
     expect(callback).toHaveBeenCalledWith(
       'session-1',
-      expect.objectContaining({ type: 'assistant' }),
+      expect.objectContaining({ type: 'assistant' })
     );
   });
 
@@ -4102,6 +4270,7 @@ describe('JsonlWatcher', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -4111,6 +4280,7 @@ Expected: FAIL — `Cannot find module '../jsonl-watcher'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/jsonl-watcher.ts`:
+
 ```ts
 import { watch, FSWatcher, readFileSync, existsSync, readdirSync, statSync } from 'fs';
 import { join, extname, basename } from 'path';
@@ -4206,6 +4376,7 @@ export class JsonlWatcher {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -4222,12 +4393,14 @@ git commit -m "feat: add JSONL transcript file watcher for agent detection"
 ### Task 4.2: Agent state tracker (main process)
 
 **Files:**
+
 - Create: `src/main/agent-state-tracker.ts`
 - Create: `src/main/__tests__/agent-state-tracker.test.ts`
 
 - [x] **Step 1: Write the failing test**
 
 Create `src/main/__tests__/agent-state-tracker.test.ts`:
+
 ```ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentStateTracker } from '../agent-state-tracker';
@@ -4256,8 +4429,8 @@ describe('AgentStateTracker', () => {
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
       message: {
-        content: [{ type: 'tool_use', name: 'Write' }],
-      },
+        content: [{ type: 'tool_use', name: 'Write' }]
+      }
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('working');
@@ -4269,8 +4442,8 @@ describe('AgentStateTracker', () => {
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
       message: {
-        content: [{ type: 'tool_use', name: 'Read' }],
-      },
+        content: [{ type: 'tool_use', name: 'Read' }]
+      }
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('reading');
@@ -4283,7 +4456,7 @@ describe('AgentStateTracker', () => {
       type: 'notification',
       paneId: 'pane-1',
       level: 'permission',
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
 
     expect(tracker.getState('pane-1')?.state).toBe('needs-permission');
@@ -4301,18 +4474,18 @@ describe('AgentStateTracker', () => {
 
     tracker.handleJsonlRecord('pane-1', {
       type: 'assistant',
-      message: { content: [{ type: 'tool_use', name: 'Edit' }] },
+      message: { content: [{ type: 'tool_use', name: 'Edit' }] }
     });
 
     tracker.handleJsonlRecord('pane-1', {
       type: 'progress',
       data: {
         type: 'agent_progress',
-        parentToolUseID: 'tool-abc',
+        parentToolUseID: 'tool-abc'
       },
       message: {
-        content: [{ type: 'tool_use', name: 'Read' }],
-      },
+        content: [{ type: 'tool_use', name: 'Read' }]
+      }
     });
 
     const state = tracker.getState('pane-1');
@@ -4332,6 +4505,7 @@ describe('AgentStateTracker', () => {
 - [x] **Step 2: Run test to verify it fails**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -4341,6 +4515,7 @@ Expected: FAIL — `Cannot find module '../agent-state-tracker'`
 - [x] **Step 3: Write the implementation**
 
 Create `src/main/agent-state-tracker.ts`:
+
 ```ts
 import { EventBus } from './event-bus';
 import type { AgentVisualState } from '../shared/types';
@@ -4373,30 +4548,39 @@ export class AgentStateTracker {
         state: 'not-agent',
         subAgents: new Map(),
         createdAt: Date.now(),
-        lastActivity: Date.now(),
+        lastActivity: Date.now()
       });
 
       // Start 30-second fallback timer: if no JSONL data arrives,
       // switch to PTY output pattern matching as degraded detection.
-      this.fallbackTimers.set(event.paneId, setTimeout(() => {
-        if (!this.hasJsonlData.has(event.paneId)) {
-          // Mark this pane as needing PTY-based detection.
-          // The notification detector's patterns will serve as the
-          // fallback signal for agent state (permission prompts etc.)
-          // This is a degraded mode — state transitions won't be as
-          // granular as JSONL-based detection.
-        }
-        this.fallbackTimers.delete(event.paneId);
-      }, 30_000));
+      this.fallbackTimers.set(
+        event.paneId,
+        setTimeout(() => {
+          if (!this.hasJsonlData.has(event.paneId)) {
+            // Mark this pane as needing PTY-based detection.
+            // The notification detector's patterns will serve as the
+            // fallback signal for agent state (permission prompts etc.)
+            // This is a degraded mode — state transitions won't be as
+            // granular as JSONL-based detection.
+          }
+          this.fallbackTimers.delete(event.paneId);
+        }, 30_000)
+      );
     });
 
     eventBus.on('pane-closed', (event) => {
       this.agents.delete(event.paneId);
       this.hasJsonlData.delete(event.paneId);
       const idleTimer = this.idleTimers.get(event.paneId);
-      if (idleTimer) { clearTimeout(idleTimer); this.idleTimers.delete(event.paneId); }
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        this.idleTimers.delete(event.paneId);
+      }
       const fallbackTimer = this.fallbackTimers.get(event.paneId);
-      if (fallbackTimer) { clearTimeout(fallbackTimer); this.fallbackTimers.delete(event.paneId); }
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        this.fallbackTimers.delete(event.paneId);
+      }
     });
 
     eventBus.on('notification', (event) => {
@@ -4419,7 +4603,11 @@ export class AgentStateTracker {
     }
 
     // Check for sub-agent progress records
-    if (record.type === 'progress' && record.data?.type === 'agent_progress' && record.data?.parentToolUseID) {
+    if (
+      record.type === 'progress' &&
+      record.data?.type === 'agent_progress' &&
+      record.data?.parentToolUseID
+    ) {
       const subId = record.data.parentToolUseID;
       const toolName = this.extractToolName(record);
       const subState = this.classifyTool(toolName);
@@ -4432,7 +4620,7 @@ export class AgentStateTracker {
           currentTool: toolName,
           subAgents: new Map(),
           createdAt: Date.now(),
-          lastActivity: Date.now(),
+          lastActivity: Date.now()
         });
       } else {
         const sub = agent.subAgents.get(subId)!;
@@ -4506,7 +4694,7 @@ export class AgentStateTracker {
       setTimeout(() => {
         this.updateState(paneId, 'idle');
         this.idleTimers.delete(paneId);
-      }, 5000), // 5 seconds of no activity → idle
+      }, 5000) // 5 seconds of no activity → idle
     );
   }
 
@@ -4517,7 +4705,7 @@ export class AgentStateTracker {
         type: 'agent-state-change',
         paneId,
         state: state.state,
-        tool: state.currentTool,
+        tool: state.currentTool
       });
     }
   }
@@ -4529,7 +4717,7 @@ export class AgentStateTracker {
       state: agent.state,
       currentTool: agent.currentTool,
       subAgents: Array.from(agent.subAgents.values()).map((s) => this.toVisualState(s)),
-      uptime: Date.now() - agent.createdAt,
+      uptime: Date.now() - agent.createdAt
     };
   }
 }
@@ -4538,6 +4726,7 @@ export class AgentStateTracker {
 - [x] **Step 4: Run test to verify it passes**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -4554,11 +4743,13 @@ git commit -m "feat: add agent state tracker with JSONL-based tool detection and
 ### Task 4.3: Wire agent tracker into main process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [x] **Step 1: Create tracker, wire JSONL watcher, and forward state to renderer**
 
 Add imports to `src/main/index.ts`:
+
 ```ts
 import { AgentStateTracker } from './agent-state-tracker';
 import { JsonlWatcher } from './jsonl-watcher';
@@ -4566,12 +4757,14 @@ import { CLAUDE_PROJECTS_DIR } from '../shared/constants';
 ```
 
 Add instantiation:
+
 ```ts
 const agentTracker = new AgentStateTracker(eventBus);
 const jsonlWatcher = new JsonlWatcher(CLAUDE_PROJECTS_DIR);
 ```
 
 Wire JSONL records to the tracker — requires correlating sessions to panes. For initial implementation, use a simple heuristic mapping:
+
 ```ts
 // Correlate JSONL sessions to panes by cwd-to-project-hash matching.
 // When a pane is created, record its cwd. When a JSONL file appears in a
@@ -4619,23 +4812,25 @@ jsonlWatcher.start();
 ```
 
 Forward state changes to renderer and socket API (single handler):
+
 ```ts
 eventBus.on('agent-state-change', (event) => {
   // Forward to renderer
   mainWindow?.webContents.send(IPC_CHANNELS.AGENT_STATE, {
-    states: agentTracker.getAllStates(),
+    states: agentTracker.getAllStates()
   });
 
   // Forward to socket API subscribers (fulfills Chunk 3 TODO)
   socketApi.broadcastEvent('agent-state-change', {
     paneId: event.paneId,
     state: event.state,
-    tool: event.tool,
+    tool: event.tool
   });
 });
 ```
 
 Stop the watcher on quit:
+
 ```ts
 app.on('window-all-closed', () => {
   ptyManager.killAll();
@@ -4650,6 +4845,7 @@ app.on('window-all-closed', () => {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -4666,11 +4862,13 @@ git commit -m "feat: wire agent state tracker and JSONL watcher into main proces
 ### Task 4.4: Visualizer store (renderer)
 
 **Files:**
+
 - Create: `src/renderer/store/visualizer-store.ts`
 
 - [x] **Step 1: Write the visualizer store**
 
 Create `src/renderer/store/visualizer-store.ts`:
+
 ```ts
 import { create } from 'zustand';
 import type { AgentVisualState } from '../../shared/types';
@@ -4692,7 +4890,7 @@ export const useVisualizerStore = create<VisualizerStore>((set) => ({
 
   setAgents: (agents) => set({ agents }),
   toggleVisible: () => set((state) => ({ isVisible: !state.isVisible })),
-  setPanelMode: (mode) => set({ panelMode: mode }),
+  setPanelMode: (mode) => set({ panelMode: mode })
 }));
 ```
 
@@ -4705,6 +4903,7 @@ import { useVisualizerStore } from './store/visualizer-store';
 ```
 
 Inside the `App` component:
+
 ```ts
 const { setAgents } = useVisualizerStore();
 
@@ -4719,6 +4918,7 @@ useEffect(() => {
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -4735,11 +4935,13 @@ git commit -m "feat: add visualizer store with IPC-driven agent state updates"
 ### Task 4.5: Sprite loading and hue-shifting
 
 **Files:**
+
 - Create: `src/renderer/components/visualizer/sprites.ts`
 
 - [x] **Step 1: Write the sprite system**
 
 Create `src/renderer/components/visualizer/sprites.ts`:
+
 ```ts
 // Sprite sheet configuration
 // Characters: 16x24 pixels, 6 base palettes
@@ -4779,7 +4981,7 @@ function getSourceId(source: ImageBitmap): number {
 
 export function applyHueShift(
   source: ImageBitmap,
-  hueShift: number,
+  hueShift: number
 ): ImageBitmap | OffscreenCanvas {
   const cacheKey = `src-${getSourceId(source)}-hue-${hueShift}`;
   const cached = hueShiftedCache.get(cacheKey);
@@ -4813,13 +5015,15 @@ export function getPaletteForAgent(agentIndex: number): { palette: number; hueSh
   // Beyond 6 agents, use palette 0 with progressive hue shifts
   return {
     palette: 0,
-    hueShift: ((agentIndex - PALETTE_COUNT) * 60 + 30) % 360,
+    hueShift: ((agentIndex - PALETTE_COUNT) * 60 + 30) % 360
   };
 }
 
 // Color conversion helpers
 function rgbToHsl(r: number, g: number, b: number): [number, number, number] {
-  r /= 255; g /= 255; b /= 255;
+  r /= 255;
+  g /= 255;
+  b /= 255;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
   const l = (max + min) / 2;
@@ -4842,17 +5046,17 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   const hue2rgb = (p: number, q: number, t: number) => {
     if (t < 0) t += 1;
     if (t > 1) t -= 1;
-    if (t < 1/6) return p + (q - p) * 6 * t;
-    if (t < 1/2) return q;
-    if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
     return p;
   };
   const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
   const p = 2 * l - q;
   return [
-    Math.round(hue2rgb(p, q, h + 1/3) * 255),
+    Math.round(hue2rgb(p, q, h + 1 / 3) * 255),
     Math.round(hue2rgb(p, q, h) * 255),
-    Math.round(hue2rgb(p, q, h - 1/3) * 255),
+    Math.round(hue2rgb(p, q, h - 1 / 3) * 255)
   ];
 }
 ```
@@ -4860,6 +5064,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -4876,11 +5081,13 @@ git commit -m "feat: add sprite loading system with palette hue-shifting"
 ### Task 4.6: Character state machine and pathfinding
 
 **Files:**
+
 - Create: `src/renderer/components/visualizer/characters.ts`
 
 - [x] **Step 1: Write the character system**
 
 Create `src/renderer/components/visualizer/characters.ts`:
+
 ```ts
 import type { AgentVisualState } from '../../../shared/types';
 import { getPaletteForAgent } from './sprites';
@@ -4907,8 +5114,14 @@ export type Character = {
 
 // Office layout: 8 desk positions
 const DESK_POSITIONS: Tile[] = [
-  { x: 2, y: 2 }, { x: 5, y: 2 }, { x: 8, y: 2 }, { x: 11, y: 2 },
-  { x: 2, y: 6 }, { x: 5, y: 6 }, { x: 8, y: 6 }, { x: 11, y: 6 },
+  { x: 2, y: 2 },
+  { x: 5, y: 2 },
+  { x: 8, y: 2 },
+  { x: 11, y: 2 },
+  { x: 2, y: 6 },
+  { x: 5, y: 6 },
+  { x: 8, y: 6 },
+  { x: 11, y: 6 }
 ];
 
 // Seat position is one tile in front of the desk
@@ -4997,7 +5210,7 @@ export class CharacterManager {
       direction: 'right',
       isSubAgent: false,
       spawnTime: Date.now(),
-      despawnTime: null,
+      despawnTime: null
     });
   }
 
@@ -5021,7 +5234,7 @@ export class CharacterManager {
       direction: 'down',
       isSubAgent: true,
       spawnTime: Date.now(),
-      despawnTime: null,
+      despawnTime: null
     });
   }
 
@@ -5037,7 +5250,7 @@ export class CharacterManager {
     if ((agent.state === 'working' || agent.state === 'reading') && !this.isAtSeat(char)) {
       char.path = this.findPath(
         { x: Math.round(char.position.x), y: Math.round(char.position.y) },
-        char.seatPosition,
+        char.seatPosition
       );
       char.targetPosition = char.path.shift() ?? char.seatPosition;
     }
@@ -5048,7 +5261,7 @@ export class CharacterManager {
       if (wanderTarget) {
         char.path = this.findPath(
           { x: Math.round(char.position.x), y: Math.round(char.position.y) },
-          wanderTarget,
+          wanderTarget
         );
         char.targetPosition = char.path.shift() ?? null;
       }
@@ -5114,8 +5327,10 @@ export class CharacterManager {
     parent.set(key(start), null);
 
     const dirs = [
-      { x: 0, y: -1 }, { x: 0, y: 1 },
-      { x: -1, y: 0 }, { x: 1, y: 0 },
+      { x: 0, y: -1 },
+      { x: 0, y: 1 },
+      { x: -1, y: 0 },
+      { x: 1, y: 0 }
     ];
 
     while (queue.length > 0) {
@@ -5175,6 +5390,7 @@ export class CharacterManager {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -5191,6 +5407,7 @@ git commit -m "feat: add character manager with state machine, desk assignment, 
 ### Task 4.7: Office canvas renderer
 
 **Files:**
+
 - Create: `src/renderer/components/visualizer/office-renderer.ts`
 - Create: `src/renderer/components/visualizer/matrix-effect.ts`
 - Create: `src/renderer/components/visualizer/office-state.ts`
@@ -5198,6 +5415,7 @@ git commit -m "feat: add character manager with state machine, desk assignment, 
 - [x] **Step 1: Write the office state manager**
 
 Create `src/renderer/components/visualizer/office-state.ts`:
+
 ```ts
 // Office tilemap layout — defines walkable tiles, desk positions, furniture
 export const TILE_SIZE = 16;
@@ -5217,7 +5435,7 @@ const OFFICE_MAP: number[][] = [
   [1, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 2, 0, 1],
   [1, 0, 3, 0, 0, 3, 0, 0, 3, 0, 0, 3, 0, 1],
   [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
-  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
 ];
 
 const TILE_TYPES: TileType[] = ['floor', 'wall', 'desk', 'chair', 'bookshelf'];
@@ -5236,6 +5454,7 @@ export function isWalkable(x: number, y: number): boolean {
 - [x] **Step 2: Write the matrix rain effect**
 
 Create `src/renderer/components/visualizer/matrix-effect.ts`:
+
 ```ts
 type MatrixDrop = {
   x: number;
@@ -5260,11 +5479,12 @@ export class MatrixEffect {
         x,
         y: centerY - radius,
         speed: 40 + Math.random() * 60,
-        chars: Array.from({ length: 6 }, () =>
-          MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)],
+        chars: Array.from(
+          { length: 6 },
+          () => MATRIX_CHARS[Math.floor(Math.random() * MATRIX_CHARS.length)]
         ),
         alpha: 0.8 + Math.random() * 0.2,
-        life: 1.0,
+        life: 1.0
       });
     }
   }
@@ -5312,6 +5532,7 @@ export class MatrixEffect {
 - [x] **Step 3: Write the office renderer**
 
 Create `src/renderer/components/visualizer/office-renderer.ts`:
+
 ```ts
 import type { Character } from './characters';
 import { TILE_SIZE, OFFICE_WIDTH, OFFICE_HEIGHT, getTileAt } from './office-state';
@@ -5322,7 +5543,7 @@ const TILE_COLORS: Record<string, string> = {
   wall: '#1a1a2e',
   desk: '#4a3728',
   chair: '#3a3a4e',
-  bookshelf: '#3d2b1f',
+  bookshelf: '#3d2b1f'
 };
 
 const STATE_COLORS: Record<string, string> = {
@@ -5331,7 +5552,7 @@ const STATE_COLORS: Record<string, string> = {
   idle: '#9ca3af',
   walking: '#9ca3af',
   'needs-permission': '#fbbf24',
-  waiting: '#34d399',
+  waiting: '#34d399'
 };
 
 export class OfficeRenderer {
@@ -5427,7 +5648,12 @@ export class OfficeRenderer {
     }
   }
 
-  private renderBubble(ctx: CanvasRenderingContext2D, char: Character, symbol: string, color: string): void {
+  private renderBubble(
+    ctx: CanvasRenderingContext2D,
+    char: Character,
+    symbol: string,
+    color: string
+  ): void {
     const px = Math.round(char.position.x * TILE_SIZE) + TILE_SIZE / 2;
     const py = Math.round(char.position.y * TILE_SIZE) - 14;
 
@@ -5456,6 +5682,7 @@ export class OfficeRenderer {
 - [x] **Step 4: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -5472,11 +5699,13 @@ git commit -m "feat: add office renderer with tilemap, characters, bubbles, and 
 ### Task 4.8: OfficeCanvas React component
 
 **Files:**
+
 - Create: `src/renderer/components/visualizer/OfficeCanvas.tsx`
 
 - [x] **Step 1: Write the OfficeCanvas component**
 
 Create `src/renderer/components/visualizer/OfficeCanvas.tsx`:
+
 ```tsx
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
@@ -5580,40 +5809,37 @@ export function OfficeCanvas({ onCharacterClick }: OfficeCanvasProps) {
         }
       }
     },
-    [onCharacterClick],
+    [onCharacterClick]
   );
 
   // Hover handling for tooltips
-  const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-      const rect = canvas.getBoundingClientRect();
-      const renderer = rendererRef.current;
-      const scale = canvas.width / renderer.canvasWidth;
-      const x = (e.clientX - rect.left) / scale / TILE_SIZE;
-      const y = (e.clientY - rect.top) / scale / TILE_SIZE;
+    const rect = canvas.getBoundingClientRect();
+    const renderer = rendererRef.current;
+    const scale = canvas.width / renderer.canvasWidth;
+    const x = (e.clientX - rect.left) / scale / TILE_SIZE;
+    const y = (e.clientY - rect.top) / scale / TILE_SIZE;
 
-      const characters = characterManagerRef.current.getCharacters();
-      for (const char of characters) {
-        const dx = char.position.x - x;
-        const dy = char.position.y - y;
-        if (Math.sqrt(dx * dx + dy * dy) < 1) {
-          setTooltip({
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top - 40,
-            label: char.label,
-            tool: char.currentTool ?? 'none',
-            uptime: formatUptime(Date.now() - char.spawnTime),
-          });
-          return;
-        }
+    const characters = characterManagerRef.current.getCharacters();
+    for (const char of characters) {
+      const dx = char.position.x - x;
+      const dy = char.position.y - y;
+      if (Math.sqrt(dx * dx + dy * dy) < 1) {
+        setTooltip({
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top - 40,
+          label: char.label,
+          tool: char.currentTool ?? 'none',
+          uptime: formatUptime(Date.now() - char.spawnTime)
+        });
+        return;
       }
-      setTooltip(null);
-    },
-    [],
-  );
+    }
+    setTooltip(null);
+  }, []);
 
   return (
     <div className="relative w-full h-full">
@@ -5643,6 +5869,7 @@ export function OfficeCanvas({ onCharacterClick }: OfficeCanvasProps) {
 - [x] **Step 2: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -5659,6 +5886,7 @@ git commit -m "feat: add OfficeCanvas React component with game loop and click-t
 ### Task 4.9: VisualizerPanel (toggleable drawer/tab)
 
 **Files:**
+
 - Create: `src/renderer/components/visualizer/VisualizerPanel.tsx`
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
@@ -5666,6 +5894,7 @@ git commit -m "feat: add OfficeCanvas React component with game loop and click-t
 - [x] **Step 1: Write the VisualizerPanel component**
 
 Create `src/renderer/components/visualizer/VisualizerPanel.tsx`:
+
 ```tsx
 import { useState, useCallback } from 'react';
 import { useVisualizerStore } from '../../store/visualizer-store';
@@ -5679,36 +5908,44 @@ export function VisualizerPanel({ onCharacterClick }: VisualizerPanelProps) {
   const { isVisible, panelMode } = useVisualizerStore();
   const [drawerHeight, setDrawerHeight] = useState(200);
 
-  const handleResizeStart = useCallback((e: React.PointerEvent) => {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startHeight = drawerHeight;
+  const handleResizeStart = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      const startY = e.clientY;
+      const startHeight = drawerHeight;
 
-    function onMove(moveEvent: PointerEvent) {
-      const delta = startY - moveEvent.clientY;
-      setDrawerHeight(Math.max(100, Math.min(600, startHeight + delta)));
-    }
+      function onMove(moveEvent: PointerEvent) {
+        const delta = startY - moveEvent.clientY;
+        setDrawerHeight(Math.max(100, Math.min(600, startHeight + delta)));
+      }
 
-    function onUp() {
-      document.removeEventListener('pointermove', onMove);
-      document.removeEventListener('pointerup', onUp);
-    }
+      function onUp() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+      }
 
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-  }, [drawerHeight]);
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    },
+    [drawerHeight]
+  );
 
   if (!isVisible) return null;
 
   if (panelMode === 'drawer') {
     return (
-      <div className="border-t border-neutral-800 bg-neutral-950" style={{ height: `${drawerHeight}px` }}>
+      <div
+        className="border-t border-neutral-800 bg-neutral-950"
+        style={{ height: `${drawerHeight}px` }}
+      >
         <div
           className="h-1 cursor-row-resize bg-neutral-800 hover:bg-blue-500 transition-colors"
           onPointerDown={handleResizeStart}
         />
         <div className="flex items-center justify-between px-3 py-1 border-b border-neutral-800">
-          <span className="text-xs text-neutral-500 uppercase tracking-wider">Agent Visualizer</span>
+          <span className="text-xs text-neutral-500 uppercase tracking-wider">
+            Agent Visualizer
+          </span>
         </div>
         <div className="h-[calc(100%-32px)]">
           <OfficeCanvas onCharacterClick={onCharacterClick} />
@@ -5729,11 +5966,13 @@ export function VisualizerPanel({ onCharacterClick }: VisualizerPanelProps) {
 - [x] **Step 2: Add VisualizerPanel to App.tsx**
 
 Add import:
+
 ```ts
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 ```
 
 Add inside the `App` component's return, after the `<main>` section and before the closing `</div>`:
+
 ```tsx
 <VisualizerPanel
   onCharacterClick={(paneId) => {
@@ -5746,23 +5985,26 @@ Add inside the `App` component's return, after the `<main>` section and before t
 - [x] **Step 3: Add Cmd+Shift+V toggle shortcut**
 
 In `src/renderer/hooks/use-pane-navigation.ts`, add import:
+
 ```ts
 import { useVisualizerStore } from '../store/visualizer-store';
 ```
 
 Add inside `handleKeyDown`:
+
 ```ts
-      if (mod && e.shiftKey && e.key === 'V') {
-        // Cmd+Shift+V is handled separately — don't conflict with paste
-        // Check that it's truly Shift+V (uppercase) not just v
-        e.preventDefault();
-        useVisualizerStore.getState().toggleVisible();
-      }
+if (mod && e.shiftKey && e.key === 'V') {
+  // Cmd+Shift+V is handled separately — don't conflict with paste
+  // Check that it's truly Shift+V (uppercase) not just v
+  e.preventDefault();
+  useVisualizerStore.getState().toggleVisible();
+}
 ```
 
 - [x] **Step 4: Run the app and test**
 
 Run:
+
 ```bash
 npm run dev
 ```
@@ -5785,6 +6027,7 @@ Settings persistence, shortcuts panel, workspace picker, auto-updater, and distr
 ### Task 5.1: Settings store and persistence
 
 **Files:**
+
 - Create: `src/main/settings-store.ts`
 - Create: `src/renderer/store/settings-store.ts`
 - Modify: `src/main/ipc-handlers.ts`
@@ -5793,6 +6036,7 @@ Settings persistence, shortcuts panel, workspace picker, auto-updater, and distr
 - [x] **Step 1: Create a settings store in the main process**
 
 Create `src/main/settings-store.ts`:
+
 ```ts
 import Store from 'electron-store';
 import type { FleetSettings } from '../shared/types';
@@ -5805,8 +6049,8 @@ export class SettingsStore {
     this.store = new Store<{ settings: FleetSettings }>({
       name: 'fleet-settings',
       defaults: {
-        settings: DEFAULT_SETTINGS,
-      },
+        settings: DEFAULT_SETTINGS
+      }
     });
   }
 
@@ -5822,7 +6066,7 @@ export class SettingsStore {
       general: { ...current.general, ...(partial.general ?? {}) },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
-      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) },
+      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) }
     };
     this.store.set('settings', merged);
   }
@@ -5840,19 +6084,21 @@ import { SettingsStore } from './settings-store';
 Update function signature to include `settingsStore: SettingsStore`.
 
 Replace the stub handlers:
-```ts
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => {
-    return settingsStore.get();
-  });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: Partial<FleetSettings>) => {
-    settingsStore.set(settings);
-  });
+```ts
+ipcMain.handle(IPC_CHANNELS.SETTINGS_GET, () => {
+  return settingsStore.get();
+});
+
+ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: Partial<FleetSettings>) => {
+  settingsStore.set(settings);
+});
 ```
 
 - [x] **Step 3: Create and pass SettingsStore in main/index.ts**
 
 Add to `src/main/index.ts`:
+
 ```ts
 import { SettingsStore } from './settings-store';
 
@@ -5860,13 +6106,23 @@ const settingsStore = new SettingsStore();
 ```
 
 Pass to `registerIpcHandlers`:
+
 ```ts
-registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, () => mainWindow);
+registerIpcHandlers(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationDetector,
+  notificationState,
+  settingsStore,
+  () => mainWindow
+);
 ```
 
 - [x] **Step 4: Create renderer-side settings store**
 
 Create `src/renderer/store/settings-store.ts`:
+
 ```ts
 import { create } from 'zustand';
 import type { FleetSettings } from '../../shared/types';
@@ -5891,18 +6147,20 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
     await window.fleet.settings.set(partial);
     const settings = await window.fleet.settings.get();
     set({ settings });
-  },
+  }
 }));
 ```
 
 - [x] **Step 5: Load settings on app startup**
 
 Add to `src/renderer/App.tsx`:
+
 ```ts
 import { useSettingsStore } from './store/settings-store';
 ```
 
 Inside `App` component, add:
+
 ```ts
 const { loadSettings } = useSettingsStore();
 
@@ -5914,6 +6172,7 @@ useEffect(() => {
 - [x] **Step 6: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -5930,6 +6189,7 @@ git commit -m "feat: add settings persistence with electron-store and IPC"
 ### Task 5.2: Settings modal UI
 
 **Files:**
+
 - Create: `src/renderer/components/SettingsModal.tsx`
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
 - Modify: `src/renderer/App.tsx`
@@ -5937,6 +6197,7 @@ git commit -m "feat: add settings persistence with electron-store and IPC"
 - [x] **Step 1: Write the SettingsModal component**
 
 Create `src/renderer/components/SettingsModal.tsx`:
+
 ```tsx
 import { useState, useEffect } from 'react';
 import { useSettingsStore } from '../store/settings-store';
@@ -5953,19 +6214,24 @@ const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   taskComplete: 'Task Complete',
   needsPermission: 'Needs Permission',
   processExitError: 'Process Exit (Error)',
-  processExitClean: 'Process Exit (Clean)',
+  processExitClean: 'Process Exit (Clean)'
 };
 
 export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const { settings, updateSettings } = useSettingsStore();
-  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'socket' | 'visualizer'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'notifications' | 'socket' | 'visualizer'>(
+    'general'
+  );
 
   if (!isOpen || !settings) return null;
 
   const tabs = ['general', 'notifications', 'socket', 'visualizer'] as const;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="bg-neutral-900 border border-neutral-700 rounded-lg w-[520px] max-h-[80vh] overflow-hidden shadow-xl"
         onClick={(e) => e.stopPropagation()}
@@ -5973,7 +6239,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-white">Settings</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">×</button>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+            ×
+          </button>
         </div>
 
         {/* Tab bar */}
@@ -5982,7 +6250,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <button
               key={tab}
               className={`px-4 py-2 text-xs capitalize ${
-                activeTab === tab ? 'text-white border-b-2 border-blue-500' : 'text-neutral-500 hover:text-neutral-300'
+                activeTab === tab
+                  ? 'text-white border-b-2 border-blue-500'
+                  : 'text-neutral-500 hover:text-neutral-300'
               }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -5999,7 +6269,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.general.defaultShell || '(auto-detect)'}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, defaultShell: e.target.value } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: { ...settings.general, defaultShell: e.target.value }
+                    })
+                  }
                   placeholder="(auto-detect)"
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-48 border border-neutral-700"
                 />
@@ -6008,7 +6282,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.fontSize}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: { ...settings.general, fontSize: parseInt(e.target.value) || 14 }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-20 border border-neutral-700"
                 />
               </SettingRow>
@@ -6016,7 +6294,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.general.fontFamily}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, fontFamily: e.target.value } })}
+                  onChange={(e) =>
+                    updateSettings({ general: { ...settings.general, fontFamily: e.target.value } })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-48 border border-neutral-700"
                 />
               </SettingRow>
@@ -6024,14 +6304,25 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="number"
                   value={settings.general.scrollbackSize}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, scrollbackSize: parseInt(e.target.value) || 10000 } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: {
+                        ...settings.general,
+                        scrollbackSize: parseInt(e.target.value) || 10000
+                      }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-24 border border-neutral-700"
                 />
               </SettingRow>
               <SettingRow label="Theme">
                 <select
                   value={settings.general.theme}
-                  onChange={(e) => updateSettings({ general: { ...settings.general, theme: e.target.value as 'dark' | 'light' } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      general: { ...settings.general, theme: e.target.value as 'dark' | 'light' }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
                 >
                   <option value="dark">Dark</option>
@@ -6063,9 +6354,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                               ...settings.notifications,
                               [key]: {
                                 ...settings.notifications[key],
-                                [channel]: e.target.checked,
-                              },
-                            },
+                                [channel]: e.target.checked
+                              }
+                            }
                           });
                         }}
                         className="accent-blue-500"
@@ -6083,7 +6374,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="checkbox"
                   checked={settings.socketApi.enabled}
-                  onChange={(e) => updateSettings({ socketApi: { ...settings.socketApi, enabled: e.target.checked } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      socketApi: { ...settings.socketApi, enabled: e.target.checked }
+                    })
+                  }
                   className="accent-blue-500"
                 />
               </SettingRow>
@@ -6091,7 +6386,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <input
                   type="text"
                   value={settings.socketApi.socketPath || '~/.fleet/fleet.sock'}
-                  onChange={(e) => updateSettings({ socketApi: { ...settings.socketApi, socketPath: e.target.value } })}
+                  onChange={(e) =>
+                    updateSettings({
+                      socketApi: { ...settings.socketApi, socketPath: e.target.value }
+                    })
+                  }
                   className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-64 border border-neutral-700"
                   disabled
                 />
@@ -6103,7 +6402,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             <SettingRow label="Panel Mode">
               <select
                 value={settings.visualizer.panelMode}
-                onChange={(e) => updateSettings({ visualizer: { panelMode: e.target.value as 'drawer' | 'tab' } })}
+                onChange={(e) =>
+                  updateSettings({ visualizer: { panelMode: e.target.value as 'drawer' | 'tab' } })
+                }
                 className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
               >
                 <option value="drawer">Bottom Drawer</option>
@@ -6130,14 +6431,16 @@ function SettingRow({ label, children }: { label: string; children: React.ReactN
 - [x] **Step 2: Add Cmd+, shortcut and wire into App**
 
 Add to `src/renderer/hooks/use-pane-navigation.ts` `handleKeyDown`:
+
 ```ts
-      if (mod && e.key === ',') {
-        e.preventDefault();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-settings'));
-      }
+if (mod && e.key === ',') {
+  e.preventDefault();
+  document.dispatchEvent(new CustomEvent('fleet:toggle-settings'));
+}
 ```
 
 In `src/renderer/App.tsx`, add state and handler:
+
 ```tsx
 import { SettingsModal } from './components/SettingsModal';
 
@@ -6152,6 +6455,7 @@ useEffect(() => {
 ```
 
 Add to the JSX:
+
 ```tsx
 <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 ```
@@ -6159,6 +6463,7 @@ Add to the JSX:
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6175,12 +6480,14 @@ git commit -m "feat: add settings modal with per-type notification toggles"
 ### Task 5.3: Workspace picker
 
 **Files:**
+
 - Create: `src/renderer/components/WorkspacePicker.tsx`
 - Modify: `src/renderer/components/Sidebar.tsx`
 
 - [x] **Step 1: Write the WorkspacePicker component**
 
 Create `src/renderer/components/WorkspacePicker.tsx`:
+
 ```tsx
 import { useState, useEffect } from 'react';
 import { useWorkspaceStore } from '../store/workspace-store';
@@ -6275,6 +6582,7 @@ export function WorkspacePicker() {
 - [x] **Step 2: Replace the static workspace label in Sidebar with WorkspacePicker**
 
 In `src/renderer/components/Sidebar.tsx`, replace:
+
 ```tsx
 <div className="px-3 py-3 text-xs font-semibold text-neutral-500 uppercase tracking-wider">
   {workspace.label}
@@ -6282,11 +6590,13 @@ In `src/renderer/components/Sidebar.tsx`, replace:
 ```
 
 With:
+
 ```tsx
 <WorkspacePicker />
 ```
 
 Add the import:
+
 ```tsx
 import { WorkspacePicker } from './WorkspacePicker';
 ```
@@ -6294,6 +6604,7 @@ import { WorkspacePicker } from './WorkspacePicker';
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6310,6 +6621,7 @@ git commit -m "feat: add workspace picker with save/load/delete"
 ### Task 5.4: Shortcuts panel
 
 **Files:**
+
 - Create: `src/renderer/components/ShortcutsPanel.tsx`
 - Modify: `src/renderer/App.tsx`
 - Modify: `src/renderer/hooks/use-pane-navigation.ts`
@@ -6317,6 +6629,7 @@ git commit -m "feat: add workspace picker with save/load/delete"
 - [x] **Step 1: Write the ShortcutsPanel component**
 
 Create `src/renderer/components/ShortcutsPanel.tsx`:
+
 ```tsx
 const isMac = navigator.platform.includes('Mac');
 
@@ -6333,7 +6646,7 @@ const SHORTCUTS = isMac
       { keys: '⌘+F', action: 'Search in pane' },
       { keys: '⌘+Shift+V', action: 'Toggle visualizer' },
       { keys: '⌘+,', action: 'Settings' },
-      { keys: '⌘+/', action: 'Show shortcuts' },
+      { keys: '⌘+/', action: 'Show shortcuts' }
     ]
   : [
       { keys: 'Ctrl+T', action: 'New tab' },
@@ -6345,7 +6658,7 @@ const SHORTCUTS = isMac
       { keys: 'Ctrl+Shift+F', action: 'Search in pane' },
       { keys: 'Ctrl+Shift+V', action: 'Toggle visualizer' },
       { keys: 'Ctrl+,', action: 'Settings' },
-      { keys: 'Ctrl+/', action: 'Show shortcuts' },
+      { keys: 'Ctrl+/', action: 'Show shortcuts' }
     ];
 
 type ShortcutsPanelProps = {
@@ -6357,14 +6670,19 @@ export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         className="bg-neutral-900 border border-neutral-700 rounded-lg w-[360px] shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">×</button>
+          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+            ×
+          </button>
         </div>
         <div className="p-4 space-y-2">
           {SHORTCUTS.map(({ keys, action }) => (
@@ -6385,16 +6703,18 @@ export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps) {
 - [x] **Step 2: Add Cmd+/ shortcut**
 
 In `src/renderer/hooks/use-pane-navigation.ts` `handleKeyDown`, add:
+
 ```ts
-      if (mod && e.key === '/') {
-        e.preventDefault();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'));
-      }
+if (mod && e.key === '/') {
+  e.preventDefault();
+  document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'));
+}
 ```
 
 - [x] **Step 3: Wire into App.tsx**
 
 Add import and state:
+
 ```tsx
 import { ShortcutsPanel } from './components/ShortcutsPanel';
 
@@ -6408,6 +6728,7 @@ useEffect(() => {
 ```
 
 Add to JSX:
+
 ```tsx
 <ShortcutsPanel isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 ```
@@ -6415,6 +6736,7 @@ Add to JSX:
 - [x] **Step 4: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6431,39 +6753,43 @@ git commit -m "feat: add keyboard shortcuts panel with Cmd+/ toggle"
 ### Task 5.5: Auto-updater
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [x] **Step 1: Add auto-updater to main process**
 
 Add to the top of `src/main/index.ts`:
+
 ```ts
 import { autoUpdater } from 'electron-updater';
 ```
 
 Add inside `app.whenReady()`, after `createWindow()`:
+
 ```ts
-  // Auto-updater — checks GitHub Releases for updates
-  autoUpdater.checkForUpdatesAndNotify().catch(() => {
-    // Silently fail if no internet or no releases configured
-  });
+// Auto-updater — checks GitHub Releases for updates
+autoUpdater.checkForUpdatesAndNotify().catch(() => {
+  // Silently fail if no internet or no releases configured
+});
 
-  autoUpdater.on('update-available', () => {
-    mainWindow?.webContents.send('fleet:update-available');
-  });
+autoUpdater.on('update-available', () => {
+  mainWindow?.webContents.send('fleet:update-available');
+});
 
-  autoUpdater.on('update-downloaded', () => {
-    mainWindow?.webContents.send('fleet:update-downloaded');
-  });
+autoUpdater.on('update-downloaded', () => {
+  mainWindow?.webContents.send('fleet:update-downloaded');
+});
 
-  // Handle renderer requesting install
-  ipcMain.on('fleet:install-update', () => {
-    autoUpdater.quitAndInstall();
-  });
+// Handle renderer requesting install
+ipcMain.on('fleet:install-update', () => {
+  autoUpdater.quitAndInstall();
+});
 ```
 
 - [x] **Step 2: Add update badge to renderer**
 
 Add to `src/renderer/App.tsx`:
+
 ```ts
 const [updateReady, setUpdateReady] = useState(false);
 
@@ -6480,20 +6806,23 @@ useEffect(() => {
 ```
 
 Add to the sidebar area of the JSX (inside `<Sidebar>` or after it):
+
 ```tsx
-{updateReady && (
-  <div className="absolute bottom-2 left-2 right-2 z-10">
-    <button
-      onClick={() => {
-        // Trigger install via IPC
-        (window as any).fleet?.installUpdate?.();
-      }}
-      className="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-md"
-    >
-      Update ready — restart to install
-    </button>
-  </div>
-)}
+{
+  updateReady && (
+    <div className="absolute bottom-2 left-2 right-2 z-10">
+      <button
+        onClick={() => {
+          // Trigger install via IPC
+          (window as any).fleet?.installUpdate?.();
+        }}
+        className="w-full px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded-md"
+      >
+        Update ready — restart to install
+      </button>
+    </div>
+  );
+}
 ```
 
 Note: For a clean implementation, add `installUpdate` to the preload API and wire `ipcRenderer.send('fleet:install-update')`. The exact wiring follows the same pattern as existing IPC methods.
@@ -6501,6 +6830,7 @@ Note: For a clean implementation, add `installUpdate` to the preload API and wir
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6517,12 +6847,14 @@ git commit -m "feat: add auto-updater via electron-updater and GitHub Releases"
 ### Task 5.6: Electron-builder distribution config
 
 **Files:**
+
 - Create: `electron-builder.yml`
 - Modify: `package.json`
 
 - [x] **Step 1: Write the electron-builder config**
 
 Create `electron-builder.yml`:
+
 ```yaml
 appId: com.fleet.app
 productName: Fleet
@@ -6530,13 +6862,13 @@ directories:
   buildResources: build
   output: dist
 files:
-  - "!**/.vscode/*"
-  - "!src/*"
-  - "!electron.vite.config.*"
-  - "!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
-  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
-  - "!reference/**"
-  - "!docs/**"
+  - '!**/.vscode/*'
+  - '!src/*'
+  - '!electron.vite.config.*'
+  - '!{.eslintignore,.eslintrc.cjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
+  - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
+  - '!reference/**'
+  - '!docs/**'
 mac:
   target:
     - target: dmg
@@ -6562,6 +6894,7 @@ publish:
 - [x] **Step 2: Add build scripts to package.json**
 
 Add to `package.json` scripts:
+
 ```json
 "build:mac": "electron-vite build && electron-builder --mac",
 "build:win": "electron-vite build && electron-builder --win",
@@ -6571,6 +6904,7 @@ Add to `package.json` scripts:
 - [x] **Step 3: Verify build config is valid**
 
 Run:
+
 ```bash
 npx electron-builder --help
 ```
@@ -6587,11 +6921,13 @@ git commit -m "chore: add electron-builder config for macOS and Windows distribu
 ### Task 5.7: GitHub Actions CI/CD
 
 **Files:**
+
 - Create: `.github/workflows/build.yml`
 
 - [x] **Step 1: Write the CI workflow**
 
 Create `.github/workflows/build.yml`:
+
 ```yaml
 name: Build & Release
 
@@ -6653,12 +6989,14 @@ git commit -m "ci: add GitHub Actions workflow for build, test, and release"
 ### Task 5.8: Auto-save default workspace on quit
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Modify: `src/renderer/App.tsx`
 
 - [x] **Step 1: Save workspace state before quit**
 
 In `src/renderer/App.tsx`, add a `beforeunload` handler:
+
 ```ts
 useEffect(() => {
   const handleBeforeUnload = () => {
@@ -6673,6 +7011,7 @@ useEffect(() => {
 - [x] **Step 2: Restore default workspace on startup**
 
 Update the initial workspace load in `App.tsx`:
+
 ```ts
 useEffect(() => {
   window.fleet.layout.list().then(({ workspaces }) => {
@@ -6691,6 +7030,7 @@ Remove the previous `useEffect` that unconditionally adds a tab when tabs are em
 - [x] **Step 3: Type-check**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6700,6 +7040,7 @@ Expected: TypeScript compiler exits with code 0.
 - [x] **Step 4: Run the app end-to-end**
 
 Run:
+
 ```bash
 npm run dev
 ```
@@ -6718,6 +7059,7 @@ git commit -m "feat: auto-save and restore default workspace on quit/launch"
 - [x] **Step 1: Run all tests**
 
 Run:
+
 ```bash
 npm test
 ```
@@ -6727,6 +7069,7 @@ Expected: All tests pass.
 - [x] **Step 2: Type-check the entire project**
 
 Run:
+
 ```bash
 npx tsc --noEmit
 ```
@@ -6736,11 +7079,13 @@ Expected: TypeScript compiler exits with code 0.
 - [x] **Step 3: Run the app and verify all features**
 
 Run:
+
 ```bash
 npm run dev
 ```
 
 Manual checklist:
+
 - Terminal pane opens with working shell
 - `Cmd+T` creates new tabs, `Cmd+W` closes panes
 - `Cmd+D` / `Cmd+Shift+D` splits panes horizontally/vertically

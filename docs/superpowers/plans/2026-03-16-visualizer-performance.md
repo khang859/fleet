@@ -14,18 +14,18 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/renderer/src/components/visualizer/SpaceCanvas.tsx` | Modify | 3 stacked canvases, 3 fps-capped loops, DPR cap, visibility pausing, resize observer |
-| `src/renderer/src/components/visualizer/starfield.ts` | Modify | Far-layer OffscreenCanvas cache, constellation edge caching, fillStyle pre-computation |
-| `src/renderer/src/components/visualizer/aurora.ts` | Modify | OffscreenCanvas band caching with hue invalidation |
-| `src/renderer/src/components/visualizer/bloom.ts` | Modify | Remove fallback render() and its OffscreenCanvas buffer |
-| `src/renderer/src/components/visualizer/space-renderer.ts` | Modify | Reusable sort buffer |
-| `src/renderer/src/components/visualizer/particles.ts` | Modify | In-place compaction, replace shift() |
-| `src/renderer/src/components/visualizer/space-weather.ts` | Modify | In-place compaction |
-| `src/renderer/src/components/visualizer/__tests__/starfield.test.ts` | Modify | Add constellation cache + fillStyle tests |
-| `src/renderer/src/components/visualizer/__tests__/particles.test.ts` | Modify | Update cap test for in-place compaction |
-| `src/renderer/src/components/visualizer/__tests__/aurora.test.ts` | Create | Aurora caching tests |
+| File                                                                 | Action | Responsibility                                                                         |
+| -------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------- |
+| `src/renderer/src/components/visualizer/SpaceCanvas.tsx`             | Modify | 3 stacked canvases, 3 fps-capped loops, DPR cap, visibility pausing, resize observer   |
+| `src/renderer/src/components/visualizer/starfield.ts`                | Modify | Far-layer OffscreenCanvas cache, constellation edge caching, fillStyle pre-computation |
+| `src/renderer/src/components/visualizer/aurora.ts`                   | Modify | OffscreenCanvas band caching with hue invalidation                                     |
+| `src/renderer/src/components/visualizer/bloom.ts`                    | Modify | Remove fallback render() and its OffscreenCanvas buffer                                |
+| `src/renderer/src/components/visualizer/space-renderer.ts`           | Modify | Reusable sort buffer                                                                   |
+| `src/renderer/src/components/visualizer/particles.ts`                | Modify | In-place compaction, replace shift()                                                   |
+| `src/renderer/src/components/visualizer/space-weather.ts`            | Modify | In-place compaction                                                                    |
+| `src/renderer/src/components/visualizer/__tests__/starfield.test.ts` | Modify | Add constellation cache + fillStyle tests                                              |
+| `src/renderer/src/components/visualizer/__tests__/particles.test.ts` | Modify | Update cap test for in-place compaction                                                |
+| `src/renderer/src/components/visualizer/__tests__/aurora.test.ts`    | Create | Aurora caching tests                                                                   |
 
 ---
 
@@ -34,6 +34,7 @@
 Eliminate the most expensive per-frame operation: `ctx.filter = 'blur(1px)'` applied to every far-layer star individually.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts:148-174` (render method)
 - Test: `src/renderer/src/components/visualizer/__tests__/starfield.test.ts`
 
@@ -82,12 +83,14 @@ Expected: FAIL — `getFarLayerCache` is not a function
 In `starfield.ts`:
 
 1. Add private fields:
+
 ```ts
 private farCache: OffscreenCanvas | null = null;
 private farCacheDirty = true;
 ```
 
 2. Add public accessor:
+
 ```ts
 getFarLayerCache(): OffscreenCanvas | null { return this.farCache; }
 ```
@@ -95,6 +98,7 @@ getFarLayerCache(): OffscreenCanvas | null { return this.farCache; }
 3. In `update()`, when a far-layer star wraps (inside the `if (star.x < -5)` block for layer index 0), set `this.farCacheDirty = true`.
 
 4. Add a private method to rebuild the cache:
+
 ```ts
 private rebuildFarCache(): void {
   const w = this.width;
@@ -117,6 +121,7 @@ private rebuildFarCache(): void {
 ```
 
 5. In `render()`, replace the far-layer block (the `if (li === 0)` branch at lines 152-161) with:
+
 ```ts
 if (li === 0) {
   if (this.farCacheDirty || !this.farCache) {
@@ -152,6 +157,7 @@ git commit -m "perf(visualizer): cache far-layer starfield to OffscreenCanvas, e
 Replace O(n²) per-frame distance checks + per-line stroke with cached edges recomputed on a 500ms timer.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts:176-197` (renderConstellations method)
 - Test: `src/renderer/src/components/visualizer/__tests__/starfield.test.ts`
 
@@ -196,6 +202,7 @@ Expected: FAIL — `getConstellationEdges` is not a function
 In `starfield.ts`:
 
 1. Add private fields (initialize timer at threshold so first update triggers computation):
+
 ```ts
 private constellationEdges: [number, number][] = [];
 private constellationTimer = 500; // start at threshold to compute edges on first update
@@ -203,11 +210,13 @@ private readonly CONSTELLATION_INTERVAL = 500; // ms
 ```
 
 2. Add public accessor:
+
 ```ts
 getConstellationEdges(): [number, number][] { return this.constellationEdges; }
 ```
 
 3. In `update()`, after moving stars, add:
+
 ```ts
 this.constellationTimer += deltaMs;
 if (this.constellationTimer >= this.CONSTELLATION_INTERVAL) {
@@ -217,6 +226,7 @@ if (this.constellationTimer >= this.CONSTELLATION_INTERVAL) {
 ```
 
 4. Add private method:
+
 ```ts
 private recomputeConstellationEdges(): void {
   const stars = this.layers[1]?.stars;
@@ -238,6 +248,7 @@ private recomputeConstellationEdges(): void {
 ```
 
 5. Replace `renderConstellations()` body:
+
 ```ts
 renderConstellations(ctx: CanvasRenderingContext2D): void {
   const midLayer = this.layers[1];
@@ -274,6 +285,7 @@ git commit -m "perf(visualizer): cache constellation edges on 500ms timer, elimi
 Eliminate ~60 per-frame `rgba()` template string allocations.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/starfield.ts` (Star type + render method)
 - Test: `src/renderer/src/components/visualizer/__tests__/starfield.test.ts`
 
@@ -307,6 +319,7 @@ In `starfield.ts`:
 1. Add `cachedFillStyle?: string` to the `Star` type.
 
 2. Build a lookup table at module level for twinkle stars:
+
 ```ts
 const ALPHA_LEVELS = 20;
 const fillStyleLUT: Map<string, string[]> = new Map();
@@ -335,12 +348,15 @@ function getTwinkleFillStyle(r: number, g: number, b: number, alpha: number): st
 ```
 
 3. In `initLayers()`, after creating each star, if `twinkleSpeed === 0`, set:
+
 ```ts
 star.cachedFillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, ${(config.brightness + (Math.random() - 0.5) * 0.15).toFixed(2)})`;
 ```
+
 (Use the star's actual brightness value.)
 
 4. In `render()`, for non-far layers (li > 0), replace the fillStyle line:
+
 ```ts
 // Before:
 ctx.fillStyle = `rgba(${star.r}, ${star.g}, ${star.b}, ${alpha})`;
@@ -368,6 +384,7 @@ git commit -m "perf(visualizer): pre-compute star fillStyle strings, eliminate p
 Replace per-frame gradient creation with cached OffscreenCanvas bands invalidated on hue shift.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/aurora.ts`
 - Create: `src/renderer/src/components/visualizer/__tests__/aurora.test.ts`
 
@@ -383,7 +400,7 @@ import { AuroraBands } from '../aurora';
 function mockCtx(): CanvasRenderingContext2D {
   return {
     globalAlpha: 1,
-    drawImage: () => {},
+    drawImage: () => {}
     // Add any other methods render() calls if needed
   } as unknown as CanvasRenderingContext2D;
 }
@@ -437,18 +454,21 @@ Expected: FAIL — `getBandCount` / `getBandCacheGeneration` not a function
 In `aurora.ts`:
 
 1. Add fields to `AuroraBand` type:
+
 ```ts
 cachedCanvas: OffscreenCanvas | null;
 lastRenderedHue: number;
 ```
 
 2. Add fields to `AuroraBands` class:
+
 ```ts
 private cacheGeneration = 0;
 private renderWidth = 0;
 ```
 
 3. Add public accessors:
+
 ```ts
 getBandCount(): number { return this.bands.length; }
 getBandCacheGeneration(): number { return this.cacheGeneration; }
@@ -457,6 +477,7 @@ getBandCacheGeneration(): number { return this.cacheGeneration; }
 4. In `init()`, initialize each band with `cachedCanvas: null, lastRenderedHue: -999`.
 
 5. Add a private method to render a band's OffscreenCanvas:
+
 ```ts
 private renderBandCache(band: AuroraBand, width: number, height: number): void {
   const bandHeight = Math.ceil(band.heightFraction * height);
@@ -478,6 +499,7 @@ private renderBandCache(band: AuroraBand, width: number, height: number): void {
 ```
 
 6. Replace `render()`:
+
 ```ts
 render(ctx: CanvasRenderingContext2D, width: number, height: number): void {
   const w = width;
@@ -524,6 +546,7 @@ git commit -m "perf(visualizer): cache aurora bands to OffscreenCanvas, regenera
 Remove the dead-code fallback `render()` path that would break in multi-canvas mode.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/bloom.ts`
 
 - [ ] **Step 1: Remove fallback render() and OffscreenCanvas buffer**
@@ -572,8 +595,14 @@ export class BloomPass {
 
       ctx.drawImage(
         sheet,
-        glowRegion.x, glowRegion.y, glowRegion.w, glowRegion.h,
-        gx, gy, glowSize, glowSize,
+        glowRegion.x,
+        glowRegion.y,
+        glowRegion.w,
+        glowRegion.h,
+        gx,
+        gy,
+        glowSize,
+        glowSize
       );
     }
 
@@ -601,6 +630,7 @@ git commit -m "perf(visualizer): remove bloom fallback render(), dead code in mu
 Eliminate per-frame array allocations from `.filter()` and `.shift()`.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/particles.ts:46-57` (update + spawn)
 - Modify: `src/renderer/src/components/visualizer/space-weather.ts:28-36` (update)
 - Test: `src/renderer/src/components/visualizer/__tests__/particles.test.ts`
@@ -615,6 +645,7 @@ Expected: All PASS (baseline)
 In `particles.ts`:
 
 1. Replace `update()` filter with in-place compaction:
+
 ```ts
 update(deltaMs: number): void {
   const dt = deltaMs / 1000;
@@ -639,6 +670,7 @@ update(deltaMs: number): void {
 ```
 
 2. Replace `shift()` in `spawn()` with index-0 overwrite:
+
 ```ts
 // Before:
 if (this.particles.length >= MAX_PARTICLES) {
@@ -724,6 +756,7 @@ git commit -m "perf(visualizer): in-place particle compaction, eliminate per-fra
 Eliminate per-frame spread allocation in ship rendering.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/space-renderer.ts:64-75` (render method)
 
 - [ ] **Step 1: Add persistent sortBuffer field**
@@ -731,11 +764,13 @@ Eliminate per-frame spread allocation in ship rendering.
 In `space-renderer.ts`:
 
 1. Add a private field:
+
 ```ts
 private sortBuffer: Ship[] = [];
 ```
 
 2. Replace the render method's sort:
+
 ```ts
 // Before:
 const sorted = [...ships].sort((a, b) => a.currentY - b.currentY);
@@ -769,6 +804,7 @@ git commit -m "perf(visualizer): reuse sort buffer in space renderer, eliminate 
 This is the main architectural change. It restructures `SpaceCanvas.tsx` to use 3 stacked canvases with independent fps-capped loops.
 
 **Files:**
+
 - Modify: `src/renderer/src/components/visualizer/SpaceCanvas.tsx`
 
 - [ ] **Step 1: Add canvas refs and update JSX**
@@ -782,6 +818,7 @@ const activeCanvasRef = useRef<HTMLCanvasElement>(null);
 ```
 
 Update the JSX return:
+
 ```tsx
 return (
   <div className="relative w-full h-full">
@@ -824,7 +861,7 @@ Add a helper function inside or above the component:
 ```ts
 function createThrottledLoop(
   targetFps: number,
-  onFrame: (deltaMs: number, timestamp: number) => void,
+  onFrame: (deltaMs: number, timestamp: number) => void
 ): { start: () => void; stop: () => void } {
   const interval = 1000 / targetFps;
   let animFrame = 0;
@@ -856,7 +893,7 @@ function createThrottledLoop(
     },
     stop() {
       cancelAnimationFrame(animFrame);
-    },
+    }
   };
 }
 ```
@@ -881,6 +918,7 @@ function sizeCanvas(canvas: HTMLCanvasElement): { w: number; h: number } {
 Replace the main `useEffect` (lines 92-206) with 3 separate effects. Each follows this pattern:
 
 **Background loop (10fps):**
+
 ```ts
 useEffect(() => {
   if (!isVisible) return;
@@ -914,6 +952,7 @@ useEffect(() => {
 ```
 
 **Mid loop (30fps):**
+
 ```ts
 useEffect(() => {
   if (!isVisible) return;
@@ -946,7 +985,9 @@ useEffect(() => {
     starfield.update(deltaMs);
     shootingStars.update(deltaMs, vw, vh);
     celestials.update(deltaMs, vw, vh);
-    const hasPermissionNeeded = shipManagerRef.current.getShips().some(s => s.state === 'needs-permission');
+    const hasPermissionNeeded = shipManagerRef.current
+      .getShips()
+      .some((s) => s.state === 'needs-permission');
     asteroidField.update(deltaMs, vw, vh, hasPermissionNeeded);
 
     const camera = cameraRef.current;
@@ -965,6 +1006,7 @@ useEffect(() => {
 ```
 
 **Active loop (30fps):**
+
 ```ts
 useEffect(() => {
   if (!isVisible) return;
@@ -986,7 +1028,7 @@ useEffect(() => {
     const vh = h / zoom;
     ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
 
-    const workingCount = agentsRef.current.filter(a => a.state === 'working').length;
+    const workingCount = agentsRef.current.filter((a) => a.state === 'working').length;
     spaceWeather.update(deltaMs, vw, vh, workingCount);
     shipManager.update(agentsRef.current, deltaMs, vw, vh);
     spaceRenderer.updateTrails(shipManager.getShips(), deltaMs);
@@ -994,7 +1036,7 @@ useEffect(() => {
     // Camera follow logic
     const camera = cameraRef.current;
     if (camera.following) {
-      const ship = shipManager.getShips().find(s => s.paneId === camera.following);
+      const ship = shipManager.getShips().find((s) => s.paneId === camera.following);
       if (ship) {
         camera.targetX = ship.currentX - vw / 2;
         camera.targetY = ship.currentY - vh / 2;
@@ -1041,6 +1083,7 @@ Expected: All PASS
 
 Run: `npm run dev`
 Verify:
+
 - 3 canvases visible in DevTools Elements panel
 - Background (aurora + nebula) renders and updates slowly
 - Stars scroll with parallax, shooting stars appear
@@ -1074,10 +1117,12 @@ Expected: All PASS
 Run: `npm run dev`
 
 Open Activity Monitor / Task Manager. Compare CPU usage of the Electron renderer process:
+
 - Before: sustained high CPU (expected 20-40% of a core)
 - After: should drop to 5-10% of a core when idle
 
 Verify all visual effects still work:
+
 - Stars scroll with parallax (3 layers, far layer blurred)
 - Constellation lines appear between nearby mid-layer stars
 - Aurora bands oscillate and shift hue

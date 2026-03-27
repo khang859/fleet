@@ -811,17 +811,27 @@ void app.whenReady().then(() => {
   });
 
   // Image generation IPC handlers
-  ipcMain.handle(IPC_CHANNELS.IMAGES_GENERATE, (_e, opts: Parameters<typeof imageService.generate>[0]) => imageService.generate(opts));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, (_e, opts: Parameters<typeof imageService.edit>[0]) => imageService.edit(opts));
+  ipcMain.handle(
+    IPC_CHANNELS.IMAGES_GENERATE,
+    (_e, opts: Parameters<typeof imageService.generate>[0]) => imageService.generate(opts)
+  );
+  ipcMain.handle(IPC_CHANNELS.IMAGES_EDIT, (_e, opts: Parameters<typeof imageService.edit>[0]) =>
+    imageService.edit(opts)
+  );
   ipcMain.handle(IPC_CHANNELS.IMAGES_STATUS, (_e, id: string) => imageService.getStatus(id));
   ipcMain.handle(IPC_CHANNELS.IMAGES_LIST, () => imageService.list());
   ipcMain.handle(IPC_CHANNELS.IMAGES_RETRY, (_e, id: string) => imageService.retry(id));
-  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, (_e, id: string) => { imageService.delete(id); });
+  ipcMain.handle(IPC_CHANNELS.IMAGES_DELETE, (_e, id: string) => {
+    imageService.delete(id);
+  });
   ipcMain.handle(IPC_CHANNELS.IMAGES_CONFIG_GET, () => {
     const settings = imageService.getSettings();
     const redacted = { ...settings, providers: { ...settings.providers } };
     for (const [key, val] of Object.entries(redacted.providers)) {
-      redacted.providers[key] = { ...val, apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : '' };
+      redacted.providers[key] = {
+        ...val,
+        apiKey: val.apiKey ? `${val.apiKey.slice(0, 4)}***` : ''
+      };
     }
     return redacted;
   });

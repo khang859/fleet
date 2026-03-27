@@ -95,9 +95,9 @@ ipcRenderer.on(IPC_CHANNELS.PTY_DATA, (_event, payload: PtyDataPayload) => {
 **Fix:** Use granular selectors or `useShallow`:
 
 ```typescript
-const workspace = useWorkspaceStore(s => s.workspace);
-const activeTabId = useWorkspaceStore(s => s.activeTabId);
-const setActiveTab = useWorkspaceStore(s => s.setActiveTab);
+const workspace = useWorkspaceStore((s) => s.workspace);
+const activeTabId = useWorkspaceStore((s) => s.activeTabId);
+const setActiveTab = useWorkspaceStore((s) => s.setActiveTab);
 ```
 
 ---

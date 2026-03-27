@@ -12,19 +12,20 @@
 
 ## File Map
 
-| File | Change |
-|------|--------|
-| `src/renderer/src/store/workspace-store.ts` | Add `backgroundWorkspaces`, `switchWorkspace`, `loadBackgroundWorkspaces`; extend `getAllPaneIds` |
-| `src/renderer/src/App.tsx` | Render all workspace tabs; fix GC, startup, pagehide flush, onExit handler |
-| `src/renderer/src/components/WorkspacePicker.tsx` | Remove PTY kill; use `switchWorkspace` |
-| `src/renderer/src/components/Sidebar.tsx` | Remove confirm dialog + PTY kill; use `switchWorkspace` |
-| `src/renderer/src/store/__tests__/workspace-store.test.ts` | New: multi-workspace state tests |
+| File                                                       | Change                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/renderer/src/store/workspace-store.ts`                | Add `backgroundWorkspaces`, `switchWorkspace`, `loadBackgroundWorkspaces`; extend `getAllPaneIds` |
+| `src/renderer/src/App.tsx`                                 | Render all workspace tabs; fix GC, startup, pagehide flush, onExit handler                        |
+| `src/renderer/src/components/WorkspacePicker.tsx`          | Remove PTY kill; use `switchWorkspace`                                                            |
+| `src/renderer/src/components/Sidebar.tsx`                  | Remove confirm dialog + PTY kill; use `switchWorkspace`                                           |
+| `src/renderer/src/store/__tests__/workspace-store.test.ts` | New: multi-workspace state tests                                                                  |
 
 ---
 
 ## Task 1: Extend workspace-store with multi-workspace state
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 ### Background
@@ -38,11 +39,13 @@ The fix: add `backgroundWorkspaces: Map<string, Workspace>` that holds all non-a
 - [ ] **Step 1: Add `backgroundWorkspaces` to the store type and initial state**
 
 In `WorkspaceStore` type (after `isDirty: boolean;`), add:
+
 ```ts
 backgroundWorkspaces: Map<string, Workspace>;
 ```
 
 In the initial state (`create<WorkspaceStore>((set, get) => ({`), add after `isDirty: false,`:
+
 ```ts
 backgroundWorkspaces: new Map(),
 ```
@@ -50,6 +53,7 @@ backgroundWorkspaces: new Map(),
 - [ ] **Step 2: Add `switchWorkspace` and `loadBackgroundWorkspaces` to the type**
 
 In the `WorkspaceStore` type, in the `// Workspace actions` section, add:
+
 ```ts
 switchWorkspace: (ws: Workspace) => void;
 loadBackgroundWorkspaces: (workspaces: Workspace[]) => void;
@@ -146,6 +150,7 @@ git commit -m "feat(store): add backgroundWorkspaces for multi-workspace tab pre
 ## Task 2: Update App.tsx — render all workspaces, fix GC, startup, flush, onExit
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 ### Changes
@@ -153,6 +158,7 @@ git commit -m "feat(store): add backgroundWorkspaces for multi-workspace tab pre
 - [ ] **Step 1: Subscribe to `backgroundWorkspaces` in the component**
 
 In the `useWorkspaceStore()` destructure at the top of `App()`, add `backgroundWorkspaces`:
+
 ```ts
 const {
   workspace,
@@ -167,58 +173,61 @@ const {
 In the main render area, the existing code renders `workspace.tabs.map(...)`. After that block (but inside the same `workspace.tabs.length > 0` check or as its own fragment), render all background workspace tabs:
 
 Replace the outer condition block in `<main>`:
+
 ```tsx
-{workspace.tabs.length > 0 || backgroundWorkspaces.size > 0 ? (
-  <>
-    {workspace.tabs.map((tab) => {
-      const serializedPanes = restoredPanesRef.current.get(tab.id);
-      return (
-        <div
-          key={tab.id}
-          className="h-full w-full"
-          style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-        >
-          {tab.type === 'star-command' ? (
-            <StarCommandTab />
-          ) : (
-            <PaneGrid
-              root={tab.splitRoot}
-              activePaneId={tab.id === activeTabId ? activePaneId : null}
-              onPaneFocus={(paneId) => {
-                setActivePane(paneId);
-                window.fleet.notifications.paneFocused({ paneId });
-                useNotificationStore.getState().clearPane(paneId);
-              }}
-              serializedPanes={serializedPanes}
-              fontFamily={settings?.general.fontFamily}
-              fontSize={settings?.general.fontSize}
-            />
-          )}
-        </div>
-      );
-    })}
-    {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
-      bgWs.tabs.map((tab) => (
-        <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
-          {tab.type !== 'star-command' && (
-            <PaneGrid
-              root={tab.splitRoot}
-              activePaneId={null}
-              onPaneFocus={() => {}}
-              serializedPanes={undefined}
-              fontFamily={settings?.general.fontFamily}
-              fontSize={settings?.general.fontSize}
-            />
-          )}
-        </div>
-      ))
-    )}
-  </>
-) : (
-  <div className="flex items-center justify-center h-full text-neutral-600">
-    No tabs open. Press Cmd+T to create one.
-  </div>
-)}
+{
+  workspace.tabs.length > 0 || backgroundWorkspaces.size > 0 ? (
+    <>
+      {workspace.tabs.map((tab) => {
+        const serializedPanes = restoredPanesRef.current.get(tab.id);
+        return (
+          <div
+            key={tab.id}
+            className="h-full w-full"
+            style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+          >
+            {tab.type === 'star-command' ? (
+              <StarCommandTab />
+            ) : (
+              <PaneGrid
+                root={tab.splitRoot}
+                activePaneId={tab.id === activeTabId ? activePaneId : null}
+                onPaneFocus={(paneId) => {
+                  setActivePane(paneId);
+                  window.fleet.notifications.paneFocused({ paneId });
+                  useNotificationStore.getState().clearPane(paneId);
+                }}
+                serializedPanes={serializedPanes}
+                fontFamily={settings?.general.fontFamily}
+                fontSize={settings?.general.fontSize}
+              />
+            )}
+          </div>
+        );
+      })}
+      {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
+        bgWs.tabs.map((tab) => (
+          <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
+            {tab.type !== 'star-command' && (
+              <PaneGrid
+                root={tab.splitRoot}
+                activePaneId={null}
+                onPaneFocus={() => {}}
+                serializedPanes={undefined}
+                fontFamily={settings?.general.fontFamily}
+                fontSize={settings?.general.fontSize}
+              />
+            )}
+          </div>
+        ))
+      )}
+    </>
+  ) : (
+    <div className="flex items-center justify-center h-full text-neutral-600">
+      No tabs open. Press Cmd+T to create one.
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 3: Fix pagehide flush to save all workspaces**
@@ -350,6 +359,7 @@ git commit -m "feat(app): render all workspace tabs simultaneously, fix GC and f
 ## Task 3: Update WorkspacePicker — remove PTY kill, use switchWorkspace
 
 **Files:**
+
 - Modify: `src/renderer/src/components/WorkspacePicker.tsx`
 
 ### Changes
@@ -357,14 +367,17 @@ git commit -m "feat(app): render all workspace tabs simultaneously, fix GC and f
 - [ ] **Step 1: Remove `clearCreatedPty` import (no longer needed)**
 
 Remove `clearCreatedPty` from the import:
+
 ```ts
 import { serializePane } from '../hooks/use-terminal';
 ```
+
 (Keep `serializePane` — it's still used for `handleCloseTab`.)
 
 - [ ] **Step 2: Rewrite `handleSwitchWorkspace` — no PTY kill**
 
 Replace:
+
 ```ts
 const handleSwitchWorkspace = async (ws: Workspace): Promise<void> => {
   // Save current workspace first
@@ -397,6 +410,7 @@ const handleSwitchWorkspace = async (ws: Workspace): Promise<void> => {
 ```
 
 With:
+
 ```ts
 const handleSwitchWorkspace = (ws: Workspace): void => {
   useWorkspaceStore.getState().switchWorkspace(ws);
@@ -414,6 +428,7 @@ const handleSwitchWorkspace = (ws: Workspace): void => {
 - [ ] **Step 3: Rewrite `commitNewWorkspace` — no PTY kill**
 
 Replace:
+
 ```ts
 // Kill current PTYs
 const currentPaneIds = state.getAllPaneIds();
@@ -432,6 +447,7 @@ loadWorkspace(newWs);
 ```
 
 With:
+
 ```ts
 // Create fresh workspace and switch to it (old workspace moves to background)
 const newWs: Workspace = {
@@ -449,6 +465,7 @@ Also remove the `await window.fleet.layout.save(...)` line at the top of `commit
 - [ ] **Step 4: Update `handleSwitchWorkspace` call sites**
 
 The `onClick` for saved workspaces in the dropdown currently calls:
+
 ```ts
 onClick={() => {
   void handleSwitchWorkspace(ws);
@@ -457,17 +474,21 @@ onClick={() => {
 ```
 
 Since `handleSwitchWorkspace` now calls `setMenuOpen(false)` internally, simplify to:
+
 ```ts
 onClick={() => handleSwitchWorkspace(ws)}
 ```
 
 And the `→` button further down in the current-workspace section:
+
 ```ts
 onClick={() => {
   void handleSwitchWorkspace(ws);
 }}
 ```
+
 →
+
 ```ts
 onClick={() => handleSwitchWorkspace(ws)}
 ```
@@ -492,6 +513,7 @@ git commit -m "feat(workspace-picker): remove PTY teardown on workspace switch, 
 ## Task 4: Update Sidebar — remove confirm dialog and PTY kill, use switchWorkspace
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
 ### Changes
@@ -499,11 +521,13 @@ git commit -m "feat(workspace-picker): remove PTY teardown on workspace switch, 
 - [ ] **Step 1: Remove `switchConfirmId` state and related imports**
 
 Remove `clearCreatedPty` from the import line:
+
 ```ts
 import { serializePane } from '../hooks/use-terminal';
 ```
 
 Remove the `switchConfirmId` state declaration:
+
 ```ts
 const [switchConfirmId, setSwitchConfirmId] = useState<string | null>(null);
 ```
@@ -543,6 +567,7 @@ const handleSwitchWorkspace = useCallback(
 - [ ] **Step 3: Rewrite `commitNewWorkspace` — no PTY kill**
 
 Replace the "Kill current PTYs" block:
+
 ```ts
 // Kill current PTYs
 const currentPaneIds = state.getAllPaneIds();
@@ -561,6 +586,7 @@ state.loadWorkspace(newWs);
 ```
 
 With:
+
 ```ts
 // Create fresh workspace and switch to it (old workspace moves to background)
 const newWs: Workspace = {
@@ -576,6 +602,7 @@ Also remove the `await window.fleet.layout.save({ workspace: state.workspace })`
 - [ ] **Step 4: Remove the confirm dialog from the render**
 
 Remove the entire confirm-before-switch UI in the saved workspaces list. Replace:
+
 ```tsx
 {switchConfirmId === ws.id ? (
   <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
@@ -589,6 +616,7 @@ Remove the entire confirm-before-switch UI in the saved workspaces list. Replace
 ```
 
 With just:
+
 ```tsx
 {deleteConfirmId === ws.id ? (
 ```
@@ -598,9 +626,11 @@ With just:
 - [ ] **Step 5: Subscribe to `backgroundWorkspaces` for the store**
 
 In the `useWorkspaceStore()` destructure in `Sidebar`, add `backgroundWorkspaces`:
+
 ```ts
 const { workspace, backgroundWorkspaces, isDirty, ... } = useWorkspaceStore();
 ```
+
 (Needed so `doSwitchWorkspace` can access it via `state.backgroundWorkspaces`.)
 
 Actually `doSwitchWorkspace` calls `useWorkspaceStore.getState()` directly, so no hook subscription is needed. Skip this step.
@@ -625,6 +655,7 @@ git commit -m "feat(sidebar): remove workspace switch confirm dialog and PTY tea
 ## Task 5: Write tests for multi-workspace store
 
 **Files:**
+
 - Create: `src/renderer/src/store/__tests__/workspace-store.test.ts`
 
 The test environment is Node (see `vitest.config.ts`). `window.fleet` is not available, so only test pure store logic.
@@ -741,7 +772,9 @@ describe('loadBackgroundWorkspaces', () => {
       backgroundWorkspaces: new Map([['ws-b', modifiedB]])
     });
     useWorkspaceStore.getState().loadBackgroundWorkspaces([WS_B]);
-    expect(useWorkspaceStore.getState().backgroundWorkspaces.get('ws-b')?.label).toBe('Already Loaded');
+    expect(useWorkspaceStore.getState().backgroundWorkspaces.get('ws-b')?.label).toBe(
+      'Already Loaded'
+    );
   });
 
   it('does not load the active workspace as a background workspace', () => {
@@ -771,7 +804,15 @@ describe('getAllPaneIds', () => {
     const WS_C: Workspace = {
       id: 'ws-c',
       label: 'Gamma',
-      tabs: [{ id: 'tab-c1', label: 'Shell', labelIsCustom: false, cwd: '/', splitRoot: { type: 'leaf', id: 'pane-c1', cwd: '/' } }]
+      tabs: [
+        {
+          id: 'tab-c1',
+          label: 'Shell',
+          labelIsCustom: false,
+          cwd: '/',
+          splitRoot: { type: 'leaf', id: 'pane-c1', cwd: '/' }
+        }
+      ]
     };
     useWorkspaceStore.getState().switchWorkspace(WS_B);
     useWorkspaceStore.getState().switchWorkspace(WS_C);

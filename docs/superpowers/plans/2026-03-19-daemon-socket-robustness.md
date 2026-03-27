@@ -14,23 +14,24 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `src/main/socket-server.ts` | Modify | Add `ping` command, emit `server-error`/`server-close` events, add `startTime` tracking |
-| `src/main/socket-supervisor.ts` | Create | Wrap `SocketServer`, auto-restart on failure, backoff, concurrent restart guard |
-| `src/main/fleet-cli.ts` | Modify | Add `sendWithRetry()` with wait-for-app and ECONNREFUSED retry |
-| `src/main/starbase/sentinel.ts` | Modify | Add socket ping health check (sweep #8) |
-| `src/main/index.ts` | Modify | Replace `SocketServer` with `SocketSupervisor`, remove dead `SocketApi`, startup ping |
-| `src/main/__tests__/socket-server.test.ts` | Modify | Add ping command test |
-| `src/main/__tests__/socket-supervisor.test.ts` | Create | Supervisor restart, backoff, concurrent guard, event proxying tests |
-| `src/main/__tests__/fleet-cli-retry.test.ts` | Create | CLI retry tests (wait-for-app, ECONNREFUSED backoff, non-transient fail-fast) |
-| `src/main/__tests__/sentinel-socket.test.ts` | Create | Sentinel ping check tests |
+| File                                           | Action | Responsibility                                                                          |
+| ---------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| `src/main/socket-server.ts`                    | Modify | Add `ping` command, emit `server-error`/`server-close` events, add `startTime` tracking |
+| `src/main/socket-supervisor.ts`                | Create | Wrap `SocketServer`, auto-restart on failure, backoff, concurrent restart guard         |
+| `src/main/fleet-cli.ts`                        | Modify | Add `sendWithRetry()` with wait-for-app and ECONNREFUSED retry                          |
+| `src/main/starbase/sentinel.ts`                | Modify | Add socket ping health check (sweep #8)                                                 |
+| `src/main/index.ts`                            | Modify | Replace `SocketServer` with `SocketSupervisor`, remove dead `SocketApi`, startup ping   |
+| `src/main/__tests__/socket-server.test.ts`     | Modify | Add ping command test                                                                   |
+| `src/main/__tests__/socket-supervisor.test.ts` | Create | Supervisor restart, backoff, concurrent guard, event proxying tests                     |
+| `src/main/__tests__/fleet-cli-retry.test.ts`   | Create | CLI retry tests (wait-for-app, ECONNREFUSED backoff, non-transient fail-fast)           |
+| `src/main/__tests__/sentinel-socket.test.ts`   | Create | Sentinel ping check tests                                                               |
 
 ---
 
 ### Task 1: Add `ping` Command to SocketServer
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/__tests__/socket-server.test.ts`
 
@@ -45,7 +46,7 @@ it('responds to ping with pong and uptime', async () => {
   const response = await sendCommand(socketPath, {
     id: 'req-ping',
     command: 'ping',
-    args: {},
+    args: {}
   });
 
   expect(response.id).toBe('req-ping');
@@ -78,7 +79,7 @@ Set it in `start()` after `this.server.listen(...)` resolves:
 
 ```typescript
 this.server.listen(this.socketPath, () => {
-  this.startTime = Date.now();  // ADD THIS
+  this.startTime = Date.now(); // ADD THIS
   resolve();
 });
 ```
@@ -130,6 +131,7 @@ git commit -m "feat: add ping health check command and server lifecycle events t
 ### Task 2: Create SocketSupervisor
 
 **Files:**
+
 - Create: `src/main/socket-supervisor.ts`
 - Create: `src/main/__tests__/socket-supervisor.test.ts`
 
@@ -161,11 +163,18 @@ function sendPing(socketPath: string): Promise<Record<string, unknown>> {
       const lines = buffer.split('\n');
       if (lines.length > 1 && lines[0].trim()) {
         client.end();
-        try { resolve(JSON.parse(lines[0])); } catch (e) { reject(e); }
+        try {
+          resolve(JSON.parse(lines[0]));
+        } catch (e) {
+          reject(e);
+        }
       }
     });
     client.on('error', reject);
-    setTimeout(() => { client.destroy(); reject(new Error('timeout')); }, 3000);
+    setTimeout(() => {
+      client.destroy();
+      reject(new Error('timeout'));
+    }, 3000);
   });
 }
 
@@ -173,12 +182,15 @@ function makeMockServices() {
   return {
     crewService: { listCrew: vi.fn().mockReturnValue([]) },
     missionService: { listMissions: vi.fn().mockReturnValue([]) },
-    commsService: { getRecent: vi.fn().mockReturnValue([]), getUnread: vi.fn().mockReturnValue([]) },
+    commsService: {
+      getRecent: vi.fn().mockReturnValue([]),
+      getUnread: vi.fn().mockReturnValue([])
+    },
     sectorService: { listSectors: vi.fn().mockReturnValue([]) },
     cargoService: { listCargo: vi.fn().mockReturnValue([]) },
     supplyRouteService: { listRoutes: vi.fn().mockReturnValue([]) },
     configService: { get: vi.fn().mockReturnValue('val'), set: vi.fn() },
-    shipsLog: { query: vi.fn().mockReturnValue([]) },
+    shipsLog: { query: vi.fn().mockReturnValue([]) }
   } as any;
 }
 
@@ -195,7 +207,9 @@ describe('SocketSupervisor', () => {
 
   afterEach(async () => {
     await supervisor?.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('starts and accepts ping', async () => {
@@ -218,11 +232,20 @@ describe('SocketSupervisor', () => {
 
     // Trigger a state-change via a command that emits one
     const client = createConnection(socketPath, () => {
-      client.write(JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) + '\n');
+      client.write(
+        JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) +
+          '\n'
+      );
     });
     await new Promise<void>((resolve) => {
-      client.on('data', () => { client.end(); resolve(); });
-      setTimeout(() => { client.destroy(); resolve(); }, 2000);
+      client.on('data', () => {
+        client.end();
+        resolve();
+      });
+      setTimeout(() => {
+        client.destroy();
+        resolve();
+      }, 2000);
     });
 
     expect(events).toContain('comms:changed');
@@ -295,7 +318,7 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private services: ServiceRegistry,
+    private services: ServiceRegistry
   ) {
     super();
   }
@@ -412,6 +435,7 @@ git commit -m "feat: add SocketSupervisor with auto-restart, backoff, and concur
 ### Task 3: Add CLI Retry with Wait-for-App
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 - Create: `src/main/__tests__/fleet-cli-retry.test.ts`
 
@@ -429,7 +453,10 @@ import { unlinkSync, existsSync } from 'fs';
 import { createServer } from 'net';
 
 function tmpSocket(): string {
-  return join(tmpdir(), `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
+  return join(
+    tmpdir(),
+    `fleet-retry-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`
+  );
 }
 
 function makeMockServices() {
@@ -441,7 +468,7 @@ function makeMockServices() {
     cargoService: { listCargo: () => [] },
     supplyRouteService: { listRoutes: () => [] },
     configService: { get: () => 'val', set: () => {} },
-    shipsLog: { query: () => [] },
+    shipsLog: { query: () => [] }
   } as any;
 }
 
@@ -468,10 +495,16 @@ describe('FleetCLI.sendWithRetry', () => {
     await new Promise<void>((resolve) => srv.listen(socketPath, resolve));
     await new Promise<void>((resolve) => srv.close(resolve));
     // Socket file may or may not exist now — remove it to simulate ENOENT
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
 
     const cli = new FleetCLI(socketPath);
-    const result = await cli.sendWithRetry('ping', {}, { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 });
+    const result = await cli.sendWithRetry(
+      'ping',
+      {},
+      { waitForAppMs: 0, maxRetries: 2, initialBackoffMs: 50 }
+    );
     expect(result.ok).toBe(false);
   });
 
@@ -593,6 +626,7 @@ async sendWithRetry(
 ```
 
 Also:
+
 - Add `import { existsSync } from 'node:fs';` at the top of `fleet-cli.ts` (alongside existing imports)
 - Place the `RetryOptions` interface right after the `CLIResponse` interface at the top of the file (outside the class)
 
@@ -630,6 +664,7 @@ git commit -m "feat: add sendWithRetry to FleetCLI with wait-for-app and ECONNRE
 ### Task 4: Add Sentinel Socket Health Check
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 - Create: `src/main/__tests__/sentinel-socket.test.ts`
 
@@ -646,19 +681,25 @@ import { tmpdir } from 'os';
 import { unlinkSync } from 'fs';
 
 function tmpSocket(): string {
-  return join(tmpdir(), `fleet-sentinel-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`);
+  return join(
+    tmpdir(),
+    `fleet-sentinel-test-${Date.now()}-${Math.random().toString(36).slice(2)}.sock`
+  );
 }
 
 function makeMockServices() {
   return {
     crewService: { listCrew: vi.fn().mockReturnValue([]) },
     missionService: { listMissions: vi.fn().mockReturnValue([]) },
-    commsService: { getRecent: vi.fn().mockReturnValue([]), getUnread: vi.fn().mockReturnValue([]) },
+    commsService: {
+      getRecent: vi.fn().mockReturnValue([]),
+      getUnread: vi.fn().mockReturnValue([])
+    },
     sectorService: { listSectors: vi.fn().mockReturnValue([]) },
     cargoService: { listCargo: vi.fn().mockReturnValue([]) },
     supplyRouteService: { listRoutes: vi.fn().mockReturnValue([]) },
     configService: { get: vi.fn().mockReturnValue('val'), set: vi.fn() },
-    shipsLog: { query: vi.fn().mockReturnValue([]) },
+    shipsLog: { query: vi.fn().mockReturnValue([]) }
   } as any;
 }
 
@@ -667,10 +708,10 @@ function makeMockDb() {
   const prepared = {
     all: vi.fn().mockReturnValue([]),
     run: vi.fn(),
-    get: vi.fn(),
+    get: vi.fn()
   };
   return {
-    prepare: vi.fn().mockReturnValue(prepared),
+    prepare: vi.fn().mockReturnValue(prepared)
   } as any;
 }
 
@@ -686,7 +727,9 @@ describe('Sentinel socket health check', () => {
 
   afterEach(async () => {
     await supervisor.stop();
-    try { unlinkSync(socketPath); } catch {}
+    try {
+      unlinkSync(socketPath);
+    } catch {}
   });
 
   it('successful ping resets consecutive failure count', async () => {
@@ -696,13 +739,13 @@ describe('Sentinel socket health check', () => {
         if (key === 'lifesign_timeout_sec') return 30;
         if (key === 'worktree_disk_budget_gb') return 50;
         return null;
-      }),
+      })
     };
     const sentinel = new Sentinel({
       db: makeMockDb(),
       configService: configService as any,
       supervisor,
-      socketPath,
+      socketPath
     });
 
     // Run a sweep — should succeed ping
@@ -723,7 +766,7 @@ describe('Sentinel socket health check', () => {
         if (key === 'lifesign_timeout_sec') return 30;
         if (key === 'worktree_disk_budget_gb') return 50;
         return null;
-      }),
+      })
     };
 
     // Create a new supervisor ref (stopped) just for the sentinel to call restart on
@@ -734,7 +777,7 @@ describe('Sentinel socket health check', () => {
       db: makeMockDb(),
       configService: configService as any,
       supervisor: stoppedSupervisor,
-      socketPath,
+      socketPath
     });
 
     // 3 sweeps with failed pings
@@ -893,6 +936,7 @@ git commit -m "feat: add socket ping health check to Sentinel sweep loop"
 ### Task 5: Integrate into index.ts
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Remove dead SocketApi code**
@@ -900,16 +944,19 @@ git commit -m "feat: add socket ping health check to Sentinel sweep loop"
 In `src/main/index.ts`:
 
 Remove the import (line 14):
+
 ```typescript
 // DELETE: import { SocketApi } from './socket-api'
 ```
 
 Remove the instantiation (line 55):
+
 ```typescript
 // DELETE: const socketApi = new SocketApi(SOCKET_PATH, commandHandler)
 ```
 
 Remove the stop call in `shutdownAll()` (line 672):
+
 ```typescript
 // DELETE: socketApi.stop()
 ```
@@ -917,17 +964,19 @@ Remove the stop call in `shutdownAll()` (line 672):
 - [ ] **Step 2: Add SocketSupervisor import and variable**
 
 Add import near the existing socket-server import:
+
 ```typescript
-import { SocketSupervisor } from './socket-supervisor'
+import { SocketSupervisor } from './socket-supervisor';
 ```
 
 Change the module-level variable (around line 45):
+
 ```typescript
 // Before:
-let socketServer: SocketServer | null = null
+let socketServer: SocketServer | null = null;
 
 // After:
-let socketSupervisor: SocketSupervisor | null = null
+let socketSupervisor: SocketSupervisor | null = null;
 ```
 
 - [ ] **Step 3: Replace SocketServer creation with SocketSupervisor**
@@ -944,18 +993,18 @@ socketServer = new SocketServer(SOCKET_PATH, {
   cargoService: cargoService!,
   supplyRouteService: supplyRouteService!,
   configService: configService!,
-  shipsLog,
-})
+  shipsLog
+});
 
 socketServer.on('state-change', (event: string, data: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
+    mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data });
   }
-})
+});
 
 socketServer.start().catch((err) => {
-  console.error('[socket-server] Failed to start:', err)
-})
+  console.error('[socket-server] Failed to start:', err);
+});
 
 // After:
 socketSupervisor = new SocketSupervisor(SOCKET_PATH, {
@@ -966,38 +1015,38 @@ socketSupervisor = new SocketSupervisor(SOCKET_PATH, {
   cargoService: cargoService!,
   supplyRouteService: supplyRouteService!,
   configService: configService!,
-  shipsLog,
-})
+  shipsLog
+});
 
 socketSupervisor.on('state-change', (event: string, data: unknown) => {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data })
+    mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data });
   }
-})
+});
 
 socketSupervisor.on('restarted', () => {
-  console.log('[socket-supervisor] Socket server restarted')
+  console.log('[socket-supervisor] Socket server restarted');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
       event: 'socket:restarted',
-      data: {},
-    })
+      data: {}
+    });
   }
-})
+});
 
 socketSupervisor.on('failed', () => {
-  console.error('[socket-supervisor] Socket server permanently failed')
+  console.error('[socket-supervisor] Socket server permanently failed');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
       event: 'socket:failed',
-      data: {},
-    })
+      data: {}
+    });
   }
-})
+});
 
 socketSupervisor.start().catch((err) => {
-  console.error('[socket-supervisor] Failed to start:', err)
-})
+  console.error('[socket-supervisor] Failed to start:', err);
+});
 ```
 
 - [ ] **Step 4: Pass supervisor to Sentinel**
@@ -1006,7 +1055,7 @@ Update the Sentinel creation (around line 342):
 
 ```typescript
 // Before:
-sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus })
+sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus });
 
 // After:
 sentinel = new Sentinel({
@@ -1014,8 +1063,8 @@ sentinel = new Sentinel({
   configService,
   eventBus,
   supervisor: socketSupervisor ?? undefined,
-  socketPath: SOCKET_PATH,
-})
+  socketPath: SOCKET_PATH
+});
 ```
 
 - [ ] **Step 5: Update shutdownAll()**
@@ -1024,15 +1073,16 @@ In `shutdownAll()`:
 
 ```typescript
 // Before:
-socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err))
+socketServer?.stop().catch((err) => console.error('[socket-server] stop error:', err));
 
 // After:
-socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err))
+socketSupervisor?.stop().catch((err) => console.error('[socket-supervisor] stop error:', err));
 ```
 
 - [ ] **Step 6: Remove unused SocketServer import if no longer directly used**
 
 Check if `SocketServer` is still imported anywhere in `index.ts`. If not, remove the import:
+
 ```typescript
 // DELETE if unused: import { SocketServer } from './socket-server'
 ```
@@ -1076,6 +1126,7 @@ Expected: No errors
 - [ ] **Step 4: Commit any fixes**
 
 If any fixes were needed from steps 1-3, commit them:
+
 ```bash
 git add -u
 git commit -m "fix: address lint and build issues in socket robustness implementation"

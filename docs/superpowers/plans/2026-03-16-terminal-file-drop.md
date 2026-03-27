@@ -14,9 +14,9 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/preload/index.ts` | Modify | Add `utils.getFilePath` and `platform` to the preload API |
+| File                                           | Action | Responsibility                                              |
+| ---------------------------------------------- | ------ | ----------------------------------------------------------- |
+| `src/preload/index.ts`                         | Modify | Add `utils.getFilePath` and `platform` to the preload API   |
 | `src/renderer/src/components/TerminalPane.tsx` | Modify | Drag event handlers, overlay UI, path formatting, PTY write |
 
 The `FleetApi` type in `src/preload/index.ts` is auto-derived via `typeof fleetApi`, and `src/renderer/src/env.d.ts` imports it — so types update automatically. No type file changes needed.
@@ -26,15 +26,19 @@ The `FleetApi` type in `src/preload/index.ts` is auto-derived via `typeof fleetA
 ## Task 1: Expose `webUtils.getFilePath` and `platform` in preload
 
 **Files:**
+
 - Modify: `src/preload/index.ts:1-2` (imports), `src/preload/index.ts:74` (after `homeDir`)
 
 - [ ] **Step 1: Add `webUtils` import**
 
 In `src/preload/index.ts`, change line 1 from:
+
 ```typescript
 import { contextBridge, ipcRenderer } from 'electron';
 ```
+
 to:
+
 ```typescript
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 ```
@@ -67,6 +71,7 @@ git commit -m "feat: expose webUtils.getFilePath and platform in preload API"
 ## Task 2: Add drag-and-drop event handlers and overlay to TerminalPane
 
 **Files:**
+
 - Modify: `src/renderer/src/components/TerminalPane.tsx`
 
 - [ ] **Step 1: Add drag state and ref**
@@ -88,7 +93,7 @@ function quotePathForShell(filePath: string, platform: string): string {
     return '"' + filePath.replace(/"/g, '\\"') + '"';
   }
   // POSIX: single-quote, escape internal single quotes as '\''
-  return "'" + filePath.replace(/'/g, "'\\''" ) + "'";
+  return "'" + filePath.replace(/'/g, "'\\''") + "'";
 }
 
 function formatDroppedFiles(files: FileList, platform: string): string {
@@ -188,11 +193,13 @@ On the outer `<div>` in the JSX (line 38), add the four drag handlers:
 Inside the wrapper div, just before the closing `</div>` (before line 67), add the overlay:
 
 ```tsx
-{isDragOver && (
-  <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
-    <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
-  </div>
-)}
+{
+  isDragOver && (
+    <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
+      <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 7: Verify typecheck passes**

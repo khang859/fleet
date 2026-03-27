@@ -28,7 +28,7 @@ export type PaneLeaf = {
   paneType?: 'terminal' | 'file' | 'image';
   filePath?: string;
   isDirty?: boolean;
-  serializedContent?: string;  // terminal scrollback snapshot
+  serializedContent?: string; // terminal scrollback snapshot
 };
 ```
 
@@ -45,10 +45,7 @@ function injectSerializedContent(node: PaneNode): PaneNode {
   }
   return {
     ...node,
-    children: [
-      injectSerializedContent(node.children[0]),
-      injectSerializedContent(node.children[1]),
-    ],
+    children: [injectSerializedContent(node.children[0]), injectSerializedContent(node.children[1])]
   };
 }
 
@@ -58,8 +55,8 @@ const handleBeforeUnload = () => {
     ...state.workspace,
     tabs: state.workspace.tabs.map((tab) => ({
       ...tab,
-      splitRoot: injectSerializedContent(tab.splitRoot),
-    })),
+      splitRoot: injectSerializedContent(tab.splitRoot)
+    }))
   };
   window.fleet.layout.save({ workspace: workspaceWithContent });
 };
@@ -89,17 +86,18 @@ The undo feature's `serializedPanes` Map takes priority when present; the persis
 ## Memory Cleanup
 
 The `serializedContent` field stays on the leaf in memory after load. It is not explicitly stripped because:
+
 - Terminals consume it on mount (write to buffer, then it's just a string in the zustand store)
 - The next save cycle overwrites it with fresh serialized content
 - Complexity of deferred cleanup outweighs the temporary memory cost
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/shared/types.ts` | Add `serializedContent?: string` to `PaneLeaf` |
-| `src/renderer/src/App.tsx` | Add `injectSerializedContent()` helper; use in `beforeunload` handler |
-| `src/renderer/src/components/PaneGrid.tsx` | Fall back to `node.serializedContent` (1 line) |
+| File                                       | Change                                                                |
+| ------------------------------------------ | --------------------------------------------------------------------- |
+| `src/shared/types.ts`                      | Add `serializedContent?: string` to `PaneLeaf`                        |
+| `src/renderer/src/App.tsx`                 | Add `injectSerializedContent()` helper; use in `beforeunload` handler |
+| `src/renderer/src/components/PaneGrid.tsx` | Fall back to `node.serializedContent` (1 line)                        |
 
 ## Scope
 

@@ -49,6 +49,7 @@ Replace the `lsof` call with the `pid-cwd` npm package. It calls `proc_pidinfo` 
 ### Problem
 
 `JsonlWatcher` runs two overlapping polling mechanisms on every JSONL file:
+
 1. `watchFile` with a 1s poll interval per file
 2. A 1s `setInterval` that also calls `readNewLines` on all files
 
@@ -92,12 +93,14 @@ Add a per-pane output buffer in `PtyManager` that coalesces output and flushes o
 ### Design
 
 **Batching:**
+
 - `onData` appends to a per-pane `string` buffer instead of calling the callback immediately
 - A single shared `setInterval` at 16ms (not per-pane) flushes all dirty buffers in one pass
 - If a pane's buffer exceeds 256 KB, flush immediately and call `pty.pause()`
 - Renderer sends `PTY_DRAIN` IPC message after xterm processes a batch; main calls `pty.resume(paneId)`
 
 **Listener cleanup:**
+
 - node-pty's `onData` and `onExit` return `IDisposable` objects; store them on `PtyEntry` and call `.dispose()` inside `kill()`
 
 ### Changes
@@ -118,6 +121,7 @@ IPC message rate drops from hundreds/second to ~60/second per terminal. Eliminat
 ### Problem
 
 **Status polling:** Two unconditional timers push full DB reads to the renderer regardless of whether anything changed:
+
 - `index.ts`: `setInterval` every 5s → full crew/mission/sector query → `webContents.send`
 - `StarCommandTab.tsx`: `setInterval` every 5s → 3 IPC calls for the same data
 
@@ -133,6 +137,7 @@ Remove both polling timers. Emit a `starbase-changed` event from every service w
 
 **Event-driven updates:**
 Add `starbase-changed` to the `EventBus` event map. Instrument write paths in each service — each service receives the shared `EventBus` instance via its existing constructor options object (e.g. `CrewServiceDeps`, `MissionServiceDeps` etc. — add an `eventBus: EventBus` field). Services emit `starbase-changed` after completing writes:
+
 - `CrewService`: after `spawnCrew`, `updateCrewStatus`, `deleteCrew`
 - `MissionService`: after `createMission`, `updateMission`, `completeMission`
 - `SectorService`: after `addSector`, `updateSector`, `removeSector`
@@ -156,7 +161,7 @@ Replace `execSync('du -sk ...')` in `sentinel.ts:getDiskUsage()` with `execFile`
 - `index.ts`: pass `eventBus` when constructing each service; remove 5s `setInterval`; add `eventBus.on('starbase-changed', ...)` handler
 - `starbase/sentinel.ts`: emit `starbase-changed` at `sentinel.ts:144-146` after the `UPDATE crew SET comms_count_minute = 0` run; replace `execSync('du')` with async `execFile` in `getDiskUsage()`
 - `starbase/db.ts`: add WAL pragmas in `open()`
-- `StarCommandTab.tsx`: remove `setInterval`; rely on existing IPC push *(also modified by Pillar 6)*
+- `StarCommandTab.tsx`: remove `setInterval`; rely on existing IPC push _(also modified by Pillar 6)_
 
 ### Expected Gain
 
@@ -188,7 +193,7 @@ DB reads drop from unconditional 3 reads/5s → only on actual state changes. Ma
 - `use-terminal.ts`: `scrollback: 3000` (no change to dispose logic — already correct)
 - `agent-state-tracker.ts`: cap `subAgents` at 100; evict by `lastActivity`
 - `StationHub.tsx`: add `isVisible: boolean` prop; pause RAF when `false`, resume when `true`
-- `StarCommandTab.tsx`: pass `isVisible` prop to `StationHub` *(also modified by Pillar 4 and Pillar 6)*
+- `StarCommandTab.tsx`: pass `isVisible` prop to `StationHub` _(also modified by Pillar 4 and Pillar 6)_
 - `TerminalPane.tsx`: 500ms debounce on git status check
 
 ### Expected Gain
@@ -215,7 +220,7 @@ Renderer memory significantly reduced under load. No wasted GPU cycles when Star
 - `starbase/reconciliation.ts`: replace `execSync` with `await execFile` for all git subprocess calls
 - `index.ts`: remove `startAdmiralAndWire()` from startup; add `ipcMain.handle('admiral:ensure-started', ...)`
 - `preload/index.ts`: expose `admiral.ensureStarted()`
-- `StarCommandTab.tsx`: call `window.fleet.admiral.ensureStarted()` on mount *(also modified by Pillars 4 and 5)*
+- `StarCommandTab.tsx`: call `window.fleet.admiral.ensureStarted()` on mount _(also modified by Pillars 4 and 5)_
 
 ### Expected Gain
 
@@ -225,28 +230,28 @@ App UI is interactive immediately on launch — no blocking on git ops. Admiral 
 
 ## Files Changed Summary
 
-| File | Pillar | Nature of Change |
-|------|--------|-----------------|
-| `package.json` | 1, 2 | Add `pid-cwd`, `chokidar` |
-| `cwd-poller.ts` | 1 | Replace `lsof` with `pid-cwd` |
-| `ipc-handlers.ts` | 1, 3 | Add `stopPolling` on PTY exit; add `PTY_DRAIN` handler |
-| `jsonl-watcher.ts` | 2 | Full rewrite using chokidar |
-| `pty-manager.ts` | 3 | Output buffer, 16ms flush, pause/resume, disposable cleanup |
-| `preload/index.ts` | 3, 6 | Expose `ptyDrain`, `admiral.ensureStarted` |
-| `use-terminal.ts` | 3, 5 | Call `ptyDrain`; scrollback 3000 |
-| `starbase/db.ts` | 4 | WAL pragmas in `open()` |
-| `event-bus.ts` | 4 | Add `starbase-changed` event type |
-| `starbase/crew-service.ts` | 4 | Add `eventBus` to deps; emit `starbase-changed` after writes |
-| `starbase/mission-service.ts` | 4 | Add `eventBus` to deps; emit `starbase-changed` after writes |
-| `starbase/sector-service.ts` | 4 | Add `eventBus` to deps; emit `starbase-changed` after writes |
-| `starbase/comms-service.ts` | 4 | Add `eventBus` to deps; emit `starbase-changed` after writes |
-| `starbase/sentinel.ts` | 4 | Emit `starbase-changed` at sweep line 144; async `du` |
-| `index.ts` | 4, 6 | Pass `eventBus` to services; remove 5s timer; add event handler; lazy Admiral |
-| `StarCommandTab.tsx` | 4, 5, 6 | Remove `setInterval`; pass `isVisible` to StationHub; call `ensureStarted` on mount |
-| `agent-state-tracker.ts` | 5 | Cap sub-agents at 100; evict by `lastActivity` |
-| `StationHub.tsx` | 5 | Add `isVisible` prop; pause/resume RAF |
-| `TerminalPane.tsx` | 5 | 500ms debounce on git status check |
-| `starbase/reconciliation.ts` | 6 | Replace `execSync` with async `execFile` for git ops |
+| File                          | Pillar  | Nature of Change                                                                    |
+| ----------------------------- | ------- | ----------------------------------------------------------------------------------- |
+| `package.json`                | 1, 2    | Add `pid-cwd`, `chokidar`                                                           |
+| `cwd-poller.ts`               | 1       | Replace `lsof` with `pid-cwd`                                                       |
+| `ipc-handlers.ts`             | 1, 3    | Add `stopPolling` on PTY exit; add `PTY_DRAIN` handler                              |
+| `jsonl-watcher.ts`            | 2       | Full rewrite using chokidar                                                         |
+| `pty-manager.ts`              | 3       | Output buffer, 16ms flush, pause/resume, disposable cleanup                         |
+| `preload/index.ts`            | 3, 6    | Expose `ptyDrain`, `admiral.ensureStarted`                                          |
+| `use-terminal.ts`             | 3, 5    | Call `ptyDrain`; scrollback 3000                                                    |
+| `starbase/db.ts`              | 4       | WAL pragmas in `open()`                                                             |
+| `event-bus.ts`                | 4       | Add `starbase-changed` event type                                                   |
+| `starbase/crew-service.ts`    | 4       | Add `eventBus` to deps; emit `starbase-changed` after writes                        |
+| `starbase/mission-service.ts` | 4       | Add `eventBus` to deps; emit `starbase-changed` after writes                        |
+| `starbase/sector-service.ts`  | 4       | Add `eventBus` to deps; emit `starbase-changed` after writes                        |
+| `starbase/comms-service.ts`   | 4       | Add `eventBus` to deps; emit `starbase-changed` after writes                        |
+| `starbase/sentinel.ts`        | 4       | Emit `starbase-changed` at sweep line 144; async `du`                               |
+| `index.ts`                    | 4, 6    | Pass `eventBus` to services; remove 5s timer; add event handler; lazy Admiral       |
+| `StarCommandTab.tsx`          | 4, 5, 6 | Remove `setInterval`; pass `isVisible` to StationHub; call `ensureStarted` on mount |
+| `agent-state-tracker.ts`      | 5       | Cap sub-agents at 100; evict by `lastActivity`                                      |
+| `StationHub.tsx`              | 5       | Add `isVisible` prop; pause/resume RAF                                              |
+| `TerminalPane.tsx`            | 5       | 500ms debounce on git status check                                                  |
+| `starbase/reconciliation.ts`  | 6       | Replace `execSync` with async `execFile` for git ops                                |
 
 ---
 

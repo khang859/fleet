@@ -601,9 +601,8 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.FILE_SEARCH,
-    async (_event, req: FileSearchRequest) => searchFiles(req)
+  ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) =>
+    searchFiles(req)
   );
 
   ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());

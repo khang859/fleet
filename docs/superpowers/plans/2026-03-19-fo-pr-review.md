@@ -14,23 +14,24 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/main/starbase/migrations.ts` | Modify | Add migration 008 with `review_round` and `pr_branch` columns, `review_crew_max_concurrent` config |
-| `src/main/starbase/mission-service.ts` | Modify | Add `review_round`/`pr_branch` to MissionRow, add `setPrBranch()` method |
-| `src/main/starbase/worktree-manager.ts` | Modify | Add `createForExistingBranch()` method |
-| `src/main/starbase/hull.ts` | Modify | Add `prBranch` to HullOpts, review mission cleanup path, store `pr_branch` in `createPR()`, remove `admiral-review` gate |
-| `src/main/starbase/crew-service.ts` | Modify | Accept `prBranch` in deploy opts, conditional worktree creation, skip deps for review |
-| `src/main/starbase/sentinel.ts` | Modify | Add `reviewSweep()`, wire into `runSweep()` before `firstOfficerSweep()` |
-| `src/main/socket-server.ts` | Modify | Add `mission.verdict` handler |
-| `src/main/fleet-cli.ts` | Modify | Add `missions.verdict` CLI mapping and validation |
-| `src/renderer/src/components/star-command/CrewPanel.tsx` | Modify | Add status color mappings for new statuses |
+| File                                                     | Action | Responsibility                                                                                                           |
+| -------------------------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `src/main/starbase/migrations.ts`                        | Modify | Add migration 008 with `review_round` and `pr_branch` columns, `review_crew_max_concurrent` config                       |
+| `src/main/starbase/mission-service.ts`                   | Modify | Add `review_round`/`pr_branch` to MissionRow, add `setPrBranch()` method                                                 |
+| `src/main/starbase/worktree-manager.ts`                  | Modify | Add `createForExistingBranch()` method                                                                                   |
+| `src/main/starbase/hull.ts`                              | Modify | Add `prBranch` to HullOpts, review mission cleanup path, store `pr_branch` in `createPR()`, remove `admiral-review` gate |
+| `src/main/starbase/crew-service.ts`                      | Modify | Accept `prBranch` in deploy opts, conditional worktree creation, skip deps for review                                    |
+| `src/main/starbase/sentinel.ts`                          | Modify | Add `reviewSweep()`, wire into `runSweep()` before `firstOfficerSweep()`                                                 |
+| `src/main/socket-server.ts`                              | Modify | Add `mission.verdict` handler                                                                                            |
+| `src/main/fleet-cli.ts`                                  | Modify | Add `missions.verdict` CLI mapping and validation                                                                        |
+| `src/renderer/src/components/star-command/CrewPanel.tsx` | Modify | Add status color mappings for new statuses                                                                               |
 
 ---
 
 ### Task 1: Database Migration — Add `review_round`, `pr_branch` columns and config
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts:183` (after migration 007)
 
 - [ ] **Step 1: Add migration 008**
@@ -73,6 +74,7 @@ git commit -m "feat(starbase): add migration 008 for PR review columns and confi
 ### Task 2: MissionService — Add `review_round`, `pr_branch` to type and new methods
 
 **Files:**
+
 - Modify: `src/main/starbase/mission-service.ts:4-22` (MissionRow type)
 - Modify: `src/main/starbase/mission-service.ts:151` (after setReviewVerdict)
 
@@ -81,8 +83,8 @@ git commit -m "feat(starbase): add migration 008 for PR review columns and confi
 Add two fields to the `MissionRow` type at line 4:
 
 ```typescript
-review_round: number
-pr_branch: string | null
+review_round: number;
+pr_branch: string | null;
 ```
 
 - [ ] **Step 2: Add `setPrBranch()` method**
@@ -116,6 +118,7 @@ Note: `review_round` is incremented via raw SQL in Hull's review cleanup path (c
 ### Task 3: WorktreeManager — Add `createForExistingBranch()` method
 
 **Files:**
+
 - Modify: `src/main/starbase/worktree-manager.ts:109` (after `create()` method)
 
 - [ ] **Step 1: Add `createForExistingBranch()` method**
@@ -188,6 +191,7 @@ git commit -m "feat(starbase): add createForExistingBranch() to WorktreeManager"
 ### Task 4: Hull — Add review mission cleanup path and store `pr_branch`
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts:32-63` (HullOpts type)
 - Modify: `src/main/starbase/hull.ts:482` (cleanup — review path in `!hasChanges` block)
 - Modify: `src/main/starbase/hull.ts:848-880` (createPR — remove admiral-review gate, always set pending-review, store pr_branch)
@@ -273,11 +277,15 @@ At the top of `cleanup()` after `this.status = status` (line 424), add:
 ```typescript
 // Review crew timeout → escalate instead of entering failure-triage
 if (this.opts.missionType === 'review' && status === 'timeout') {
-  db.prepare("UPDATE missions SET status = 'escalated', result = 'Review crew timed out' WHERE id = ?")
-    .run(missionId)
+  db.prepare(
+    "UPDATE missions SET status = 'escalated', result = 'Review crew timed out' WHERE id = ?"
+  ).run(missionId);
   db.prepare(
     "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'review_verdict', ?)"
-  ).run(crewId, JSON.stringify({ missionId, verdict: 'escalated', notes: 'Review crew timed out' }))
+  ).run(
+    crewId,
+    JSON.stringify({ missionId, verdict: 'escalated', notes: 'Review crew timed out' })
+  );
 }
 ```
 
@@ -298,16 +306,16 @@ try {
   const prViewOutput = execSync(`gh pr view "${worktreeBranch}" --json number,url`, {
     cwd: sectorPath,
     stdio: 'pipe'
-  }).toString()
-  const prData = JSON.parse(prViewOutput) as { number: number; url: string }
+  }).toString();
+  const prData = JSON.parse(prViewOutput) as { number: number; url: string };
 
   // Store pr_branch on mission for review/fix crews
-  db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId)
+  db.prepare('UPDATE missions SET pr_branch = ? WHERE id = ?').run(worktreeBranch, missionId);
 
   // Send pr_review_request comms to Admiral
   const missionRow = db
     .prepare('SELECT acceptance_criteria FROM missions WHERE id = ?')
-    .get(missionId) as { acceptance_criteria: string | null } | undefined
+    .get(missionId) as { acceptance_criteria: string | null } | undefined;
 
   db.prepare(
     "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'pr_review_request', ?)"
@@ -320,10 +328,10 @@ try {
       diffSummary: diffStat.slice(0, 2000),
       acceptanceCriteria: missionRow?.acceptance_criteria ?? ''
     })
-  )
+  );
 
   // Update mission status to pending-review
-  db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId)
+  db.prepare("UPDATE missions SET status = 'pending-review' WHERE id = ?").run(missionId);
 } catch {
   // PR view failed — skip review request, continue normally
 }
@@ -339,11 +347,13 @@ try {
   execSync(`gh pr view "${worktreeBranch}" --json number`, {
     cwd: sectorPath,
     stdio: 'pipe'
-  })
+  });
   // PR exists — store pr_branch and set pending-review, skip creating a new PR
-  db.prepare('UPDATE missions SET pr_branch = ?, status = \'pending-review\' WHERE id = ?')
-    .run(worktreeBranch, missionId)
-  return
+  db.prepare("UPDATE missions SET pr_branch = ?, status = 'pending-review' WHERE id = ?").run(
+    worktreeBranch,
+    missionId
+  );
+  return;
 } catch {
   // No existing PR — continue to create one
 }
@@ -366,6 +376,7 @@ git commit -m "feat(starbase): add review mission cleanup path and universal pen
 ### Task 5: CrewService — Support `prBranch` in deployment
 
 **Files:**
+
 - Modify: `src/main/starbase/crew-service.ts:71-72` (deployCrew opts type)
 - Modify: `src/main/starbase/crew-service.ts:106-135` (worktree creation and dep install)
 - Modify: `src/main/starbase/crew-service.ts:144-168` (Hull construction)
@@ -395,25 +406,28 @@ try {
       crewId,
       sectorPath: sector.root_path,
       baseBranch,
-      existingBranch: opts.prBranch,
+      existingBranch: opts.prBranch
     });
   } else {
     worktreeResult = await worktreeManager.create({
       starbaseId,
       crewId,
       sectorPath: sector.root_path,
-      baseBranch,
+      baseBranch
     });
   }
 } catch (err) {
   if (err instanceof WorktreeLimitError) {
     db.prepare("UPDATE missions SET status = 'queued' WHERE id = ?").run(missionId);
-    db.prepare(
-      "INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)",
-    ).run(JSON.stringify({ missionId, reason: 'worktree limit reached' }));
+    db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('queued', ?)").run(
+      JSON.stringify({ missionId, reason: 'worktree limit reached' })
+    );
     throw err;
   }
-  missionService.failMission(missionId, `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`);
+  missionService.failMission(
+    missionId,
+    `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`
+  );
   throw err;
 }
 ```
@@ -429,7 +443,10 @@ if (missionType !== 'review') {
     await worktreeManager.installDependencies(worktreeResult.worktreePath);
   } catch (err) {
     worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
-    missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    missionService.failMission(
+      missionId,
+      `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`
+    );
     throw err;
   }
 }
@@ -460,6 +477,7 @@ git commit -m "feat(starbase): support prBranch in crew deployment for review/fi
 ### Task 6: Sentinel — Add `reviewSweep()`
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts:72-188` (runSweep method)
 - Modify: `src/main/starbase/sentinel.ts:250-337` (firstOfficerSweep — update `review-rejected` to `changes-requested`)
 
@@ -470,7 +488,7 @@ In `runSweep()`, before the existing firstOfficerSweep call at line 185, add:
 ```typescript
 // 9. PR Review sweep — dispatch review/fix crews for pending-review and changes-requested missions
 if (this.deps.crewService) {
-  await this.reviewSweep()
+  await this.reviewSweep();
 }
 
 // 10. First Officer triage — detect actionable failures and dispatch
@@ -693,6 +711,7 @@ git commit -m "feat(starbase): add reviewSweep() to Sentinel for automated PR re
 ### Task 7: CLI — Add `missions verdict` command
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts` (add `mission.verdict` handler)
 - Modify: `src/main/fleet-cli.ts` (add CLI mapping and validation)
 
@@ -768,6 +787,7 @@ git commit -m "feat(starbase): add fleet missions verdict CLI command"
 ### Task 8: UI — Add status color mappings
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/CrewPanel.tsx:289-293`
 
 - [ ] **Step 1: Add new status colors**
@@ -783,8 +803,8 @@ const statusColor: Record<string, string> = {
   approved: 'text-green-400',
   'changes-requested': 'text-yellow-400',
   escalated: 'text-red-400',
-  'pending-review': 'text-blue-300',
-}
+  'pending-review': 'text-blue-300'
+};
 ```
 
 - [ ] **Step 2: Verify build**
@@ -811,6 +831,7 @@ Expected: Clean build, no TypeScript errors
 - [ ] **Step 2: Verify the review flow conceptually**
 
 Trace the flow manually through the code:
+
 1. Hull `createPR()` now always sets `pending-review` and `pr_branch`
 2. Sentinel `reviewSweep()` picks up `pending-review` missions
 3. Transitions to `reviewing`, deploys review crew with `type: 'review'` and `prBranch`

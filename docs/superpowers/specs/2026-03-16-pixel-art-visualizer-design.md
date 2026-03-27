@@ -73,6 +73,7 @@ A `sprite-atlas.ts` TypeScript file maps sprite names to `{ x, y, w, h, frames, 
 ### Rendered Sizes
 
 At 3× scale on a typical 1200×800 canvas:
+
 - Parent ship: 96×96px on screen
 - Subagent ship: 60×60px on screen
 - Asteroids: 48×48px on screen
@@ -97,16 +98,16 @@ Nebula, aurora, starfield, and space weather render procedurally to a 1/4 resolu
 
 ### Ship Animations by State
 
-| State            | Animation       | Behavior                                      |
-|------------------|-----------------|-----------------------------------------------|
-| idle             | 2-frame breath  | Subtle bob, engine dim                        |
-| working          | 3-frame thrust  | Engine flare cycling, trail particles spawn   |
-| reading          | 2-frame idle    | Blue tint                                     |
-| walking          | 2-frame idle    | Gray tint (same animation as idle)            |
-| needs-permission | 2-frame idle    | Amber tint + pulse opacity                    |
-| waiting          | 2-frame idle    | Teal tint                                     |
-| warp-in          | 4-frame seq     | Plays once, ship materializes                 |
-| warp-out         | 4-frame seq     | Plays once, ship dissolves                    |
+| State            | Animation      | Behavior                                    |
+| ---------------- | -------------- | ------------------------------------------- |
+| idle             | 2-frame breath | Subtle bob, engine dim                      |
+| working          | 3-frame thrust | Engine flare cycling, trail particles spawn |
+| reading          | 2-frame idle   | Blue tint                                   |
+| walking          | 2-frame idle   | Gray tint (same animation as idle)          |
+| needs-permission | 2-frame idle   | Amber tint + pulse opacity                  |
+| waiting          | 2-frame idle   | Teal tint                                   |
+| warp-in          | 4-frame seq    | Plays once, ship materializes               |
+| warp-out         | 4-frame seq    | Plays once, ship dissolves                  |
 
 ### Warp Animation Integration
 
@@ -130,15 +131,15 @@ These stay **procedural** (text/dot rendering). They render on top of ship sprit
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `ships.ts` | Replace procedural drawing with sprite draws + tinting. Add `animFrame`/`animTimer` to ship data. Remove `WarpEffect` stretch logic. Update `HULL_COUNT` to 6, add `SUBAGENT_HULL_COUNT`. Recalibrate layout constants for new rendered sizes. |
-| `asteroids.ts` | Replace polygon draws with asteroid sprites |
-| `celestials.ts` | Replace gradient circles with planet/moon/station sprites |
-| `shooting-stars.ts` | Replace line draws with streak sprite |
-| `particles.ts` | Replace circle particles with particle sprites. Add `animFrame`/`animTimer` to `Particle` type. |
-| `space-renderer.ts` | Add pixelation post-process, load sprite sheet, manage `spriteReady` flag |
-| `bloom.ts` | Replace full-canvas bloom with per-object glow sprite drawn additively behind ships and bright objects |
+| File                | Change                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ships.ts`          | Replace procedural drawing with sprite draws + tinting. Add `animFrame`/`animTimer` to ship data. Remove `WarpEffect` stretch logic. Update `HULL_COUNT` to 6, add `SUBAGENT_HULL_COUNT`. Recalibrate layout constants for new rendered sizes. |
+| `asteroids.ts`      | Replace polygon draws with asteroid sprites                                                                                                                                                                                                    |
+| `celestials.ts`     | Replace gradient circles with planet/moon/station sprites                                                                                                                                                                                      |
+| `shooting-stars.ts` | Replace line draws with streak sprite                                                                                                                                                                                                          |
+| `particles.ts`      | Replace circle particles with particle sprites. Add `animFrame`/`animTimer` to `Particle` type.                                                                                                                                                |
+| `space-renderer.ts` | Add pixelation post-process, load sprite sheet, manage `spriteReady` flag                                                                                                                                                                      |
+| `bloom.ts`          | Replace full-canvas bloom with per-object glow sprite drawn additively behind ships and bright objects                                                                                                                                         |
 
 ## Files Unchanged
 
@@ -152,8 +153,8 @@ These stay **procedural** (text/dot rendering). They render on top of ship sprit
 
 ## New Files
 
-| File | Purpose |
-|------|---------|
-| `sprite-atlas.ts` | Sprite region definitions (name → x, y, w, h, frames, frameDuration) |
-| `sprite-loader.ts` | Image loading, `spriteReady` flag, offscreen tinting canvas, tint cache (`Map<string, CanvasImageSource>`) |
-| `src/renderer/src/assets/sprites.png` | The sprite sheet |
+| File                                  | Purpose                                                                                                    |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `sprite-atlas.ts`                     | Sprite region definitions (name → x, y, w, h, frames, frameDuration)                                       |
+| `sprite-loader.ts`                    | Image loading, `spriteReady` flag, offscreen tinting canvas, tint cache (`Map<string, CanvasImageSource>`) |
+| `src/renderer/src/assets/sprites.png` | The sprite sheet                                                                                           |

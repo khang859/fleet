@@ -14,25 +14,26 @@
 
 ## File Map
 
-| File | What changes |
-|------|-------------|
-| `src/main/starbase/migrations.ts` | Add migration version 9: create junction table + backfill |
-| `src/main/starbase/mission-service.ts` | Update `AddMissionOpts`, `addMission()`, `nextMission()`; add `getDependencies()`, `getDependents()` |
-| `src/main/starbase/crew-service.ts` | Update `nextQueuedMission()` and `autoDeployNext()` SQL to use junction table |
-| `src/main/starbase/hull.ts` | Add `buildCargoHeader()` function; inject into init message `content` field |
-| `src/main/socket-server.ts` | Parse `--depends-on` array, validate IDs, pass to `addMission`, add nudge, update `mission.deploy` dependency guard |
-| `src/main/fleet-cli.ts` | Extend `parseArgs` to accumulate repeated flags; add `--depends-on` validation |
-| `src/main/starbase/workspace-templates.ts` | Update `generateClaudeMd()` and `generateSkillMd()` |
-| `src/main/__tests__/mission-service.test.ts` | New tests for dependencies, `nextMission()` with terminal states, migration backfill |
-| `src/main/__tests__/hull.test.ts` | New tests for `buildCargoHeader()` variants |
-| `src/main/__tests__/fleet-cli.test.ts` | New tests for `parseArgs` multi-value accumulation |
-| `src/main/__tests__/socket-server.test.ts` | New tests for `--depends-on` flag in `mission.create` and updated deploy guard |
+| File                                         | What changes                                                                                                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/migrations.ts`            | Add migration version 9: create junction table + backfill                                                           |
+| `src/main/starbase/mission-service.ts`       | Update `AddMissionOpts`, `addMission()`, `nextMission()`; add `getDependencies()`, `getDependents()`                |
+| `src/main/starbase/crew-service.ts`          | Update `nextQueuedMission()` and `autoDeployNext()` SQL to use junction table                                       |
+| `src/main/starbase/hull.ts`                  | Add `buildCargoHeader()` function; inject into init message `content` field                                         |
+| `src/main/socket-server.ts`                  | Parse `--depends-on` array, validate IDs, pass to `addMission`, add nudge, update `mission.deploy` dependency guard |
+| `src/main/fleet-cli.ts`                      | Extend `parseArgs` to accumulate repeated flags; add `--depends-on` validation                                      |
+| `src/main/starbase/workspace-templates.ts`   | Update `generateClaudeMd()` and `generateSkillMd()`                                                                 |
+| `src/main/__tests__/mission-service.test.ts` | New tests for dependencies, `nextMission()` with terminal states, migration backfill                                |
+| `src/main/__tests__/hull.test.ts`            | New tests for `buildCargoHeader()` variants                                                                         |
+| `src/main/__tests__/fleet-cli.test.ts`       | New tests for `parseArgs` multi-value accumulation                                                                  |
+| `src/main/__tests__/socket-server.test.ts`   | New tests for `--depends-on` flag in `mission.create` and updated deploy guard                                      |
 
 ---
 
 ## Task 1: DB Migration — `mission_dependencies` table
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts`
 
 - [ ] **Step 1: Add migration version 9**
@@ -79,6 +80,7 @@
 ## Task 2: `MissionService` — dependencies API
 
 **Files:**
+
 - Modify: `src/main/starbase/mission-service.ts`
 - Modify: `src/main/__tests__/mission-service.test.ts`
 
@@ -89,82 +91,187 @@
   ```typescript
   describe('MissionService — dependencies', () => {
     it('getDependencies returns [] when no dependencies', () => {
-      const m = missionSvc.addMission({ sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code' })
-      expect(missionSvc.getDependencies(m.id)).toEqual([])
-    })
+      const m = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Code',
+        prompt: 'P',
+        type: 'code'
+      });
+      expect(missionSvc.getDependencies(m.id)).toEqual([]);
+    });
 
     it('getDependents returns [] when no dependents', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'Research', prompt: 'P', type: 'research' })
-      expect(missionSvc.getDependents(r.id)).toEqual([])
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Research',
+        prompt: 'P',
+        type: 'research'
+      });
+      expect(missionSvc.getDependents(r.id)).toEqual([]);
+    });
 
     it('addMission with dependsOnMissionIds links via junction table', () => {
-      const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
-      const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+      const r1 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R1',
+        prompt: 'P',
+        type: 'research'
+      });
+      const r2 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R2',
+        prompt: 'P',
+        type: 'research'
+      });
       const code = missionSvc.addMission({
-        sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code',
+        sectorId: 'api',
+        summary: 'Code',
+        prompt: 'P',
+        type: 'code',
         dependsOnMissionIds: [r1.id, r2.id]
-      })
-      const deps = missionSvc.getDependencies(code.id)
-      expect(deps).toHaveLength(2)
-      expect(deps.map(d => d.id)).toContain(r1.id)
-      expect(deps.map(d => d.id)).toContain(r2.id)
-    })
+      });
+      const deps = missionSvc.getDependencies(code.id);
+      expect(deps).toHaveLength(2);
+      expect(deps.map((d) => d.id)).toContain(r1.id);
+      expect(deps.map((d) => d.id)).toContain(r2.id);
+    });
 
     it('getDependents returns code missions that depend on a research mission', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      const c1 = missionSvc.addMission({ sectorId: 'api', summary: 'C1', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      const c2 = missionSvc.addMission({ sectorId: 'api', summary: 'C2', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      const dependents = missionSvc.getDependents(r.id)
-      expect(dependents).toHaveLength(2)
-      expect(dependents.map(d => d.id)).toContain(c1.id)
-      expect(dependents.map(d => d.id)).toContain(c2.id)
-    })
-  })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      const c1 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C1',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      const c2 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C2',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      const dependents = missionSvc.getDependents(r.id);
+      expect(dependents).toHaveLength(2);
+      expect(dependents.map((d) => d.id)).toContain(c1.id);
+      expect(dependents.map((d) => d.id)).toContain(c2.id);
+    });
+  });
 
   describe('MissionService — nextMission with junction table', () => {
     it('queues code mission until research dependency completes', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
       // Research not complete — code mission should not be next
-      expect(missionSvc.nextMission('api')).toBeUndefined()
-    })
+      expect(missionSvc.nextMission('api')).toBeUndefined();
+    });
 
     it('unblocks code mission when research dependency completes', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      missionSvc.completeMission(r.id, 'done')
-      expect(missionSvc.nextMission('api')?.id).toBe(code.id)
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      missionSvc.completeMission(r.id, 'done');
+      expect(missionSvc.nextMission('api')?.id).toBe(code.id);
+    });
 
     it('unblocks code mission when research dependency fails (terminal state)', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      missionSvc.failMission(r.id, 'error')
-      expect(missionSvc.nextMission('api')?.id).toBe(code.id)
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      missionSvc.failMission(r.id, 'error');
+      expect(missionSvc.nextMission('api')?.id).toBe(code.id);
+    });
 
     it('unblocks code mission when research dependency is aborted', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      missionSvc.abortMission(r.id)
-      expect(missionSvc.nextMission('api')?.id).toBe(code.id)
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      missionSvc.abortMission(r.id);
+      expect(missionSvc.nextMission('api')?.id).toBe(code.id);
+    });
 
     it('stays blocked when one of two dependencies is still queued', () => {
-      const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
-      const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
-      missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r1.id, r2.id] })
-      missionSvc.completeMission(r1.id, 'done')
+      const r1 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R1',
+        prompt: 'P',
+        type: 'research'
+      });
+      const r2 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R2',
+        prompt: 'P',
+        type: 'research'
+      });
+      missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r1.id, r2.id]
+      });
+      missionSvc.completeMission(r1.id, 'done');
       // r2 still queued — code mission blocked
-      expect(missionSvc.nextMission('api')).toBeUndefined()
-    })
+      expect(missionSvc.nextMission('api')).toBeUndefined();
+    });
 
     it('mission with no dependencies is immediately eligible', () => {
-      const m = missionSvc.addMission({ sectorId: 'api', summary: 'Simple', prompt: 'P', type: 'code' })
-      expect(missionSvc.nextMission('api')?.id).toBe(m.id)
-    })
-  })
+      const m = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Simple',
+        prompt: 'P',
+        type: 'code'
+      });
+      expect(missionSvc.nextMission('api')?.id).toBe(m.id);
+    });
+  });
   ```
 
 - [ ] **Step 2: Run tests to confirm they fail**
@@ -181,15 +288,15 @@
 
   ```typescript
   type AddMissionOpts = {
-    sectorId: string
-    summary: string
-    prompt: string
-    acceptanceCriteria?: string
-    priority?: number
-    dependsOnMissionIds?: number[]
-    type?: string
-    prBranch?: string
-  }
+    sectorId: string;
+    summary: string;
+    prompt: string;
+    acceptanceCriteria?: string;
+    priority?: number;
+    dependsOnMissionIds?: number[];
+    type?: string;
+    prBranch?: string;
+  };
   ```
 
 - [ ] **Step 4: Update `addMission()` to insert junction rows**
@@ -202,7 +309,7 @@
       .prepare(
         'INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id) VALUES (?, ?)'
       )
-      .run(result.lastInsertRowid, depId)
+      .run(result.lastInsertRowid, depId);
   }
   ```
 
@@ -280,6 +387,7 @@
 ## Task 3: Update stale dependency guards in `crew-service.ts`
 
 **Files:**
+
 - Modify: `src/main/starbase/crew-service.ts`
 
 The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_id IS NULL OR depends_on_mission_id IN (...)` guard. Both must be updated to mirror the junction table logic.
@@ -317,8 +425,9 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   Replace the `UPDATE missions SET status = 'deploying' WHERE id = (SELECT ...)` SQL inside `autoDeployNext()`:
 
   ```typescript
-  const claim = db.prepare(
-    `UPDATE missions SET status = 'deploying'
+  const claim = db
+    .prepare(
+      `UPDATE missions SET status = 'deploying'
      WHERE id = (
        SELECT id FROM missions
        WHERE status = 'queued'
@@ -336,8 +445,9 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
        ORDER BY priority ASC, created_at ASC
        LIMIT 1
      )
-     RETURNING id, sector_id, prompt, summary`,
-  ).get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined
+     RETURNING id, sector_id, prompt, summary`
+    )
+    .get() as { id: number; sector_id: string; prompt: string; summary: string } | undefined;
   ```
 
 - [ ] **Step 3: Add smoke tests for crew-service dependency unblocking**
@@ -346,24 +456,57 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 
   ```typescript
   it('nextQueuedMission does not return code mission blocked by queued research', () => {
-    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-    missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-    expect(crewService.nextQueuedMission()).toBeUndefined()
-  })
+    const r = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'R',
+      prompt: 'P',
+      type: 'research'
+    });
+    missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'C',
+      prompt: 'P',
+      type: 'code',
+      dependsOnMissionIds: [r.id]
+    });
+    expect(crewService.nextQueuedMission()).toBeUndefined();
+  });
 
   it('nextQueuedMission returns code mission when research dependency is completed', () => {
-    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-    missionSvc.completeMission(r.id, 'done')
-    expect(crewService.nextQueuedMission()?.id).toBe(code.id)
-  })
+    const r = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'R',
+      prompt: 'P',
+      type: 'research'
+    });
+    const code = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'C',
+      prompt: 'P',
+      type: 'code',
+      dependsOnMissionIds: [r.id]
+    });
+    missionSvc.completeMission(r.id, 'done');
+    expect(crewService.nextQueuedMission()?.id).toBe(code.id);
+  });
 
   it('nextQueuedMission returns code mission when research dependency failed', () => {
-    const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-    const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-    missionSvc.failMission(r.id, 'error')
-    expect(crewService.nextQueuedMission()?.id).toBe(code.id)
-  })
+    const r = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'R',
+      prompt: 'P',
+      type: 'research'
+    });
+    const code = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'C',
+      prompt: 'P',
+      type: 'code',
+      dependsOnMissionIds: [r.id]
+    });
+    missionSvc.failMission(r.id, 'error');
+    expect(crewService.nextQueuedMission()?.id).toBe(code.id);
+  });
   ```
 
 - [ ] **Step 4: Run all mission and crew tests**
@@ -386,6 +529,7 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 ## Task 4: Update `socket-server.ts` — `mission.create` and `mission.deploy`
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/__tests__/socket-server.test.ts`
 
@@ -399,77 +543,101 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
       const r = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R', prompt: 'investigate' }
-      })
+      });
       const code = await sendCommand(server, {
         type: 'mission.create',
-        args: { sector: 'api', type: 'code', summary: 'C', prompt: 'implement', 'depends-on': String(r.data.id) }
-      })
-      expect(code.data.dependencies).toEqual([r.data.id])
-    })
+        args: {
+          sector: 'api',
+          type: 'code',
+          summary: 'C',
+          prompt: 'implement',
+          'depends-on': String(r.data.id)
+        }
+      });
+      expect(code.data.dependencies).toEqual([r.data.id]);
+    });
 
     it('links multiple research dependencies', async () => {
       const r1 = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R1', prompt: 'investigate' }
-      })
+      });
       const r2 = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R2', prompt: 'investigate' }
-      })
+      });
       const code = await sendCommand(server, {
         type: 'mission.create',
-        args: { sector: 'api', type: 'code', summary: 'C', prompt: 'implement', 'depends-on': [String(r1.data.id), String(r2.data.id)] }
-      })
-      expect(code.data.dependencies).toHaveLength(2)
-    })
+        args: {
+          sector: 'api',
+          type: 'code',
+          summary: 'C',
+          prompt: 'implement',
+          'depends-on': [String(r1.data.id), String(r2.data.id)]
+        }
+      });
+      expect(code.data.dependencies).toHaveLength(2);
+    });
 
     it('returns BAD_REQUEST for non-existent dependency ID', async () => {
       const result = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'code', summary: 'C', prompt: 'P', 'depends-on': '9999' }
-      })
-      expect(result.ok).toBe(false)
-    })
+      });
+      expect(result.ok).toBe(false);
+    });
 
     it('appends nudge text for code mission without --depends-on', async () => {
       const result = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'code', summary: 'C', prompt: 'P' }
-      })
-      expect(result.ok).toBe(true)
-      expect(result.nudge).toContain('research mission')
-    })
+      });
+      expect(result.ok).toBe(true);
+      expect(result.nudge).toContain('research mission');
+    });
 
     it('does not append nudge for code mission with --depends-on', async () => {
       const r = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R', prompt: 'P' }
-      })
+      });
       const result = await sendCommand(server, {
         type: 'mission.create',
-        args: { sector: 'api', type: 'code', summary: 'C', prompt: 'P', 'depends-on': String(r.data.id) }
-      })
-      expect(result.nudge).toBeUndefined()
-    })
-  })
+        args: {
+          sector: 'api',
+          type: 'code',
+          summary: 'C',
+          prompt: 'P',
+          'depends-on': String(r.data.id)
+        }
+      });
+      expect(result.nudge).toBeUndefined();
+    });
+  });
 
   describe('mission.deploy — junction table dependency guard', () => {
     it('blocks deploy when research dependency is still queued', async () => {
       const r = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R', prompt: 'P' }
-      })
+      });
       const code = await sendCommand(server, {
         type: 'mission.create',
-        args: { sector: 'api', type: 'code', summary: 'C', prompt: 'P', 'depends-on': String(r.data.id) }
-      })
+        args: {
+          sector: 'api',
+          type: 'code',
+          summary: 'C',
+          prompt: 'P',
+          'depends-on': String(r.data.id)
+        }
+      });
       const deploy = await sendCommand(server, {
         type: 'crew.deploy',
         args: { sector: 'api', mission: String(code.data.id) }
-      })
-      expect(deploy.ok).toBe(false)
-      expect(deploy.error).toContain('depends on')
-    })
+      });
+      expect(deploy.ok).toBe(false);
+      expect(deploy.error).toContain('depends on');
+    });
 
     it('allows deploy when research dependency is completed', async () => {
       // (This test only verifies the guard passes — actual crew deploy will fail without git setup,
@@ -477,23 +645,29 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
       const r = await sendCommand(server, {
         type: 'mission.create',
         args: { sector: 'api', type: 'research', summary: 'R', prompt: 'P' }
-      })
+      });
       // Mark research completed directly via DB
-      db.prepare("UPDATE missions SET status = 'completed' WHERE id = ?").run(r.data.id)
+      db.prepare("UPDATE missions SET status = 'completed' WHERE id = ?").run(r.data.id);
       const code = await sendCommand(server, {
         type: 'mission.create',
-        args: { sector: 'api', type: 'code', summary: 'C', prompt: 'P', 'depends-on': String(r.data.id) }
-      })
+        args: {
+          sector: 'api',
+          type: 'code',
+          summary: 'C',
+          prompt: 'P',
+          'depends-on': String(r.data.id)
+        }
+      });
       const deploy = await sendCommand(server, {
         type: 'crew.deploy',
         args: { sector: 'api', mission: String(code.data.id) }
-      })
+      });
       // Either succeeds or fails for non-dependency reasons — but NOT "depends on" error
       if (!deploy.ok) {
-        expect(deploy.error).not.toContain('depends on')
+        expect(deploy.error).not.toContain('depends on');
       }
-    })
-  })
+    });
+  });
   ```
 
 - [ ] **Step 2: Run to confirm they fail**
@@ -510,22 +684,23 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 
   ```typescript
   // Parse --depends-on (may be a single string or array of strings)
-  const rawDeps = args['depends-on']
-  const dependsOnMissionIds: number[] = rawDeps == null
-    ? []
-    : (Array.isArray(rawDeps) ? rawDeps : [rawDeps])
-        .map(Number)
-        .filter(n => !isNaN(n) && n > 0)
+  const rawDeps = args['depends-on'];
+  const dependsOnMissionIds: number[] =
+    rawDeps == null
+      ? []
+      : (Array.isArray(rawDeps) ? rawDeps : [rawDeps])
+          .map(Number)
+          .filter((n) => !isNaN(n) && n > 0);
 
   // Validate each dependency ID exists
   for (const depId of dependsOnMissionIds) {
-    const dep = missionService.getMission(depId)
+    const dep = missionService.getMission(depId);
     if (!dep) {
-      const err = new Error(
-        `Cannot link dependency: mission ${depId} does not exist.`
-      ) as Error & { code: string }
-      err.code = 'BAD_REQUEST'
-      throw err
+      const err = new Error(`Cannot link dependency: mission ${depId} does not exist.`) as Error & {
+        code: string;
+      };
+      err.code = 'BAD_REQUEST';
+      throw err;
     }
   }
   ```
@@ -539,8 +714,8 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
     prompt,
     dependsOnMissionIds,
     type,
-    prBranch,
-  })
+    prBranch
+  });
   ```
 
   **Note:** The return shape now always includes `dependencies: number[]`. Any existing `mission.create` tests that do strict equality on the returned object will need updating to expect this new field.
@@ -548,12 +723,15 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   Then update the return value to include `dependencies` and an optional `nudge`:
 
   ```typescript
-  const nudge = type === 'code' && dependsOnMissionIds.length === 0
-    ? 'Tip: Consider attaching a research mission to provide context before this code mission runs. Use --depends-on <research-mission-id> to link one. Skip this for trivial changes.'
-    : undefined
+  const nudge =
+    type === 'code' && dependsOnMissionIds.length === 0
+      ? 'Tip: Consider attaching a research mission to provide context before this code mission runs. Use --depends-on <research-mission-id> to link one. Skip this for trivial changes.'
+      : undefined;
 
-  this.emit('state-change', 'mission:changed', { mission })
-  return nudge ? { ...mission, dependencies: dependsOnMissionIds, nudge } : { ...mission, dependencies: dependsOnMissionIds }
+  this.emit('state-change', 'mission:changed', { mission });
+  return nudge
+    ? { ...mission, dependencies: dependsOnMissionIds, nudge }
+    : { ...mission, dependencies: dependsOnMissionIds };
   ```
 
 - [ ] **Step 4: Update `mission.deploy` dependency guard in `socket-server.ts` (around line 476)**
@@ -562,14 +740,14 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 
   ```typescript
   // Check all dependencies via junction table
-  const blockedDeps = missionService.getDependencies(missionId).filter(
-    dep => !['completed', 'failed', 'aborted'].includes(dep.status)
-  )
+  const blockedDeps = missionService
+    .getDependencies(missionId)
+    .filter((dep) => !['completed', 'failed', 'aborted'].includes(dep.status));
   if (blockedDeps.length > 0) {
-    const depList = blockedDeps.map(d => `#${d.id} (${d.status})`).join(', ')
+    const depList = blockedDeps.map((d) => `#${d.id} (${d.status})`).join(', ');
     throw new Error(
       `Cannot deploy: mission ${missionId} depends on mission(s) ${depList} which have not reached a terminal state.`
-    )
+    );
   }
   ```
 
@@ -593,6 +771,7 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 ## Task 5: Update `fleet-cli.ts` — `parseArgs` multi-value + validation
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 - Modify: `src/main/__tests__/fleet-cli.test.ts`
 
@@ -602,23 +781,26 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 
   ```typescript
   it('accumulates repeated --depends-on flags into an array', () => {
-    const result = parseArgs(['--depends-on', '12', '--depends-on', '15'])
-    expect(result['depends-on']).toEqual(['12', '15'])
-  })
+    const result = parseArgs(['--depends-on', '12', '--depends-on', '15']);
+    expect(result['depends-on']).toEqual(['12', '15']);
+  });
 
   it('keeps single --depends-on as a plain string (not array)', () => {
-    const result = parseArgs(['--depends-on', '12'])
-    expect(result['depends-on']).toBe('12')
-  })
+    const result = parseArgs(['--depends-on', '12']);
+    expect(result['depends-on']).toBe('12');
+  });
   ```
 
   And add a validation test. `validateCommand` is a private function in `fleet-cli.ts` — it is not currently exported. Before writing this test, **export it**:
 
   In `src/main/fleet-cli.ts`, change:
+
   ```typescript
   function validateCommand(
   ```
+
   to:
+
   ```typescript
   export function validateCommand(
   ```
@@ -626,15 +808,18 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   Then write the test:
 
   ```typescript
-  import { parseArgs, validateCommand } from '../fleet-cli'
+  import { parseArgs, validateCommand } from '../fleet-cli';
 
   it('validateCommand errors on non-numeric --depends-on', () => {
     const error = validateCommand('mission.create', {
-      sector: 'api', type: 'code', summary: 'S', prompt: 'P',
+      sector: 'api',
+      type: 'code',
+      summary: 'S',
+      prompt: 'P',
       'depends-on': 'not-a-number'
-    })
-    expect(error).toContain('--depends-on')
-  })
+    });
+    expect(error).toContain('--depends-on');
+  });
   ```
 
 - [ ] **Step 2: Run to confirm they fail**
@@ -665,19 +850,20 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   if (next !== undefined && !next.startsWith('--')) {
     if (key === 'depends-on') {
       // Accumulate into array for repeated flags
-      const existing = result[key]
-      result[key] = existing === undefined
-        ? next
-        : Array.isArray(existing)
-          ? [...existing, next]
-          : [existing as string, next]
+      const existing = result[key];
+      result[key] =
+        existing === undefined
+          ? next
+          : Array.isArray(existing)
+            ? [...existing, next]
+            : [existing as string, next];
     } else {
-      result[key] = next
+      result[key] = next;
     }
-    i += 2
+    i += 2;
   } else {
-    result[key] = true
-    i += 1
+    result[key] = true;
+    i += 1;
   }
   ```
 
@@ -688,12 +874,12 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   ```typescript
   if (args['depends-on'] !== undefined) {
     const depIds = Array.isArray(args['depends-on'])
-      ? args['depends-on'] as string[]
-      : [args['depends-on'] as string]
+      ? (args['depends-on'] as string[])
+      : [args['depends-on'] as string];
     for (const depId of depIds) {
-      const n = Number(depId)
+      const n = Number(depId);
       if (isNaN(n) || n <= 0) {
-        return `Error: --depends-on must be a numeric mission ID, got: "${depId}".\n\nUsage: fleet missions add ... --depends-on <research-mission-id>`
+        return `Error: --depends-on must be a numeric mission ID, got: "${depId}".\n\nUsage: fleet missions add ... --depends-on <research-mission-id>`;
       }
     }
   }
@@ -719,6 +905,7 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 ## Task 6: Hull — cargo header injection for code missions
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 - Modify: `src/main/__tests__/hull.test.ts`
 
@@ -729,81 +916,160 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   ```typescript
   describe('buildCargoHeader', () => {
     it('returns empty string when mission has no dependencies', () => {
-      const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Code', prompt: 'P', type: 'code' })
-      const header = buildCargoHeader(db.getDb(), mission.id)
-      expect(header).toBe('')
-    })
+      const mission = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Code',
+        prompt: 'P',
+        type: 'code'
+      });
+      const header = buildCargoHeader(db.getDb(), mission.id);
+      expect(header).toBe('');
+    });
 
     it('returns empty string when dependency has no cargo', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      const header = buildCargoHeader(db.getDb(), code.id)
-      expect(header).toBe('')
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      const header = buildCargoHeader(db.getDb(), code.id);
+      expect(header).toBe('');
+    });
 
     it('returns empty string when cargo manifest has {content} but no {path}', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      db.getDb().prepare(
-        "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
-      ).run('crew-1', r.id, 'api', JSON.stringify({ content: 'some findings' }))
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      expect(buildCargoHeader(db.getDb(), code.id)).toBe('')
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      db.getDb()
+        .prepare(
+          "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+        )
+        .run('crew-1', r.id, 'api', JSON.stringify({ content: 'some findings' }));
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      expect(buildCargoHeader(db.getDb(), code.id)).toBe('');
+    });
 
     it('returns empty string when cargo file path does not exist on disk', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'R', prompt: 'P', type: 'research' })
-      db.getDb().prepare(
-        "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
-      ).run('crew-1', r.id, 'api', JSON.stringify({ path: '/nonexistent/path/summary.md' }))
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      expect(buildCargoHeader(db.getDb(), code.id)).toBe('')
-    })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R',
+        prompt: 'P',
+        type: 'research'
+      });
+      db.getDb()
+        .prepare(
+          "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+        )
+        .run('crew-1', r.id, 'api', JSON.stringify({ path: '/nonexistent/path/summary.md' }));
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      expect(buildCargoHeader(db.getDb(), code.id)).toBe('');
+    });
 
     it('returns header with path when cargo file exists on disk', () => {
-      const r = missionSvc.addMission({ sectorId: 'api', summary: 'Investigate auth', prompt: 'P', type: 'research' })
+      const r = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'Investigate auth',
+        prompt: 'P',
+        type: 'research'
+      });
       // Write a real temp file
-      const cargoPath = join(tmpdir(), `fleet-test-cargo-${Date.now()}.md`)
-      writeFileSync(cargoPath, '## Findings\nsome content')
-      db.getDb().prepare(
-        "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
-      ).run('crew-1', r.id, 'api', JSON.stringify({ path: cargoPath }))
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r.id] })
-      const header = buildCargoHeader(db.getDb(), code.id)
-      expect(header).toContain('RESEARCH CONTEXT')
-      expect(header).toContain(`Mission #${r.id}`)
-      expect(header).toContain('Investigate auth')
-      expect(header).toContain(cargoPath)
+      const cargoPath = join(tmpdir(), `fleet-test-cargo-${Date.now()}.md`);
+      writeFileSync(cargoPath, '## Findings\nsome content');
+      db.getDb()
+        .prepare(
+          "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+        )
+        .run('crew-1', r.id, 'api', JSON.stringify({ path: cargoPath }));
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r.id]
+      });
+      const header = buildCargoHeader(db.getDb(), code.id);
+      expect(header).toContain('RESEARCH CONTEXT');
+      expect(header).toContain(`Mission #${r.id}`);
+      expect(header).toContain('Investigate auth');
+      expect(header).toContain(cargoPath);
       // Clean up
-      try { unlinkSync(cargoPath) } catch {}
-    })
+      try {
+        unlinkSync(cargoPath);
+      } catch {}
+    });
 
     it('skips missing-file entries but still produces header for valid ones', () => {
-      const r1 = missionSvc.addMission({ sectorId: 'api', summary: 'R1', prompt: 'P', type: 'research' })
-      const r2 = missionSvc.addMission({ sectorId: 'api', summary: 'R2', prompt: 'P', type: 'research' })
+      const r1 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R1',
+        prompt: 'P',
+        type: 'research'
+      });
+      const r2 = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'R2',
+        prompt: 'P',
+        type: 'research'
+      });
       // r1 has missing file
-      db.getDb().prepare(
-        "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
-      ).run('crew-1', r1.id, 'api', JSON.stringify({ path: '/nonexistent/gone.md' }))
+      db.getDb()
+        .prepare(
+          "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+        )
+        .run('crew-1', r1.id, 'api', JSON.stringify({ path: '/nonexistent/gone.md' }));
       // r2 has real file
-      const cargoPath = join(tmpdir(), `fleet-test-cargo2-${Date.now()}.md`)
-      writeFileSync(cargoPath, 'findings')
-      db.getDb().prepare(
-        "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
-      ).run('crew-2', r2.id, 'api', JSON.stringify({ path: cargoPath }))
-      const code = missionSvc.addMission({ sectorId: 'api', summary: 'C', prompt: 'P', type: 'code', dependsOnMissionIds: [r1.id, r2.id] })
-      const header = buildCargoHeader(db.getDb(), code.id)
-      expect(header).toContain('RESEARCH CONTEXT')
-      expect(header).not.toContain('/nonexistent/gone.md')
-      expect(header).toContain(cargoPath)
-      try { unlinkSync(cargoPath) } catch {}
-    })
-  })
+      const cargoPath = join(tmpdir(), `fleet-test-cargo2-${Date.now()}.md`);
+      writeFileSync(cargoPath, 'findings');
+      db.getDb()
+        .prepare(
+          "INSERT INTO cargo (crew_id, mission_id, sector_id, type, manifest, verified) VALUES (?, ?, ?, 'documentation_summary', ?, 1)"
+        )
+        .run('crew-2', r2.id, 'api', JSON.stringify({ path: cargoPath }));
+      const code = missionSvc.addMission({
+        sectorId: 'api',
+        summary: 'C',
+        prompt: 'P',
+        type: 'code',
+        dependsOnMissionIds: [r1.id, r2.id]
+      });
+      const header = buildCargoHeader(db.getDb(), code.id);
+      expect(header).toContain('RESEARCH CONTEXT');
+      expect(header).not.toContain('/nonexistent/gone.md');
+      expect(header).toContain(cargoPath);
+      try {
+        unlinkSync(cargoPath);
+      } catch {}
+    });
+  });
   ```
 
   Also add `{ unlinkSync }` to the existing `fs` import at the top if not already present, and add `buildCargoHeader` to the Hull import:
 
   ```typescript
-  import { Hull, HullOpts, buildCargoHeader } from '../starbase/hull'
+  import { Hull, HullOpts, buildCargoHeader } from '../starbase/hull';
   ```
 
 - [ ] **Step 2: Run to confirm they fail**
@@ -819,7 +1085,7 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   Add the `existsSync` import at the top of `hull.ts` — it already imports `writeFileSync`, `unlinkSync`, `mkdirSync` from `'fs'`, so add `existsSync` to that import:
 
   ```typescript
-  import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs'
+  import { writeFileSync, unlinkSync, mkdirSync, existsSync } from 'fs';
   ```
 
   Then add `buildCargoHeader` as an **exported** top-level function in `hull.ts`, after the imports and before the `Hull` class:
@@ -833,11 +1099,11 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
          JOIN missions m ON m.id = md.depends_on_mission_id
          WHERE md.mission_id = ?`
       )
-      .all(missionId) as Array<{ depends_on_mission_id: number; summary: string }>
+      .all(missionId) as Array<{ depends_on_mission_id: number; summary: string }>;
 
-    if (deps.length === 0) return ''
+    if (deps.length === 0) return '';
 
-    const lines: string[] = []
+    const lines: string[] = [];
 
     for (const dep of deps) {
       const cargo = db
@@ -846,36 +1112,36 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
            WHERE mission_id = ? AND type = 'documentation_summary' AND verified = 1
            LIMIT 1`
         )
-        .get(dep.depends_on_mission_id) as { manifest: string } | undefined
+        .get(dep.depends_on_mission_id) as { manifest: string } | undefined;
 
-      if (!cargo) continue
+      if (!cargo) continue;
 
-      let path: string | null = null
+      let path: string | null = null;
       try {
-        const manifest = JSON.parse(cargo.manifest) as { path?: string }
+        const manifest = JSON.parse(cargo.manifest) as { path?: string };
         if (manifest.path && existsSync(manifest.path)) {
-          path = manifest.path
+          path = manifest.path;
         }
       } catch {
-        continue
+        continue;
       }
 
-      if (!path) continue
+      if (!path) continue;
 
       lines.push(
         `- Mission #${dep.depends_on_mission_id} "${dep.summary}"\n  Summary cargo: ${path}`
-      )
+      );
     }
 
-    if (lines.length === 0) return ''
+    if (lines.length === 0) return '';
 
     return [
       'RESEARCH CONTEXT: The following research mission(s) completed before this code mission.',
       'Use the Read tool to load their findings if your task requires context.',
       '',
       ...lines,
-      '',
-    ].join('\n')
+      ''
+    ].join('\n');
   }
   ```
 
@@ -884,27 +1150,36 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   In `hull.ts`, inside `start()`, find the `initMsg` construction (around line 233). Replace:
 
   ```typescript
-  const initMsg = JSON.stringify({
-    type: 'user',
-    message: { role: 'user', content: `${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
-    parent_tool_use_id: null,
-    session_id: ''
-  }) + '\n'
+  const initMsg =
+    JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: `${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`
+      },
+      parent_tool_use_id: null,
+      session_id: ''
+    }) + '\n';
   ```
 
   With:
 
   ```typescript
-  const cargoHeader = this.opts.missionType === 'code' || this.opts.missionType == null
-    ? buildCargoHeader(db, missionId)
-    : ''
+  const cargoHeader =
+    this.opts.missionType === 'code' || this.opts.missionType == null
+      ? buildCargoHeader(db, missionId)
+      : '';
 
-  const initMsg = JSON.stringify({
-    type: 'user',
-    message: { role: 'user', content: `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.` },
-    parent_tool_use_id: null,
-    session_id: ''
-  }) + '\n'
+  const initMsg =
+    JSON.stringify({
+      type: 'user',
+      message: {
+        role: 'user',
+        content: `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`
+      },
+      parent_tool_use_id: null,
+      session_id: ''
+    }) + '\n';
   ```
 
 - [ ] **Step 5: Run tests — all should pass**
@@ -927,6 +1202,7 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 ## Task 7: Update workspace templates
 
 **Files:**
+
 - Modify: `src/main/starbase/workspace-templates.ts`
 - Modify: `src/main/__tests__/workspace-templates.test.ts`
 
@@ -936,17 +1212,17 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
 
   ```typescript
   it('generateClaudeMd includes Research-First Workflow section', () => {
-    const md = generateClaudeMd({ starbaseName: 'test', sectors: [] })
-    expect(md).toContain('Research-First Workflow')
-    expect(md).toContain('--depends-on')
-  })
+    const md = generateClaudeMd({ starbaseName: 'test', sectors: [] });
+    expect(md).toContain('Research-First Workflow');
+    expect(md).toContain('--depends-on');
+  });
 
   it('generateSkillMd includes --depends-on in missions add reference', () => {
-    const md = generateSkillMd()
-    expect(md).toContain('--depends-on')
-    expect(md).toContain('Research-First Workflow')
-    expect(md).toContain('summary cargo path is referenced')
-  })
+    const md = generateSkillMd();
+    expect(md).toContain('--depends-on');
+    expect(md).toContain('Research-First Workflow');
+    expect(md).toContain('summary cargo path is referenced');
+  });
   ```
 
 - [ ] **Step 2: Run to confirm they fail**
@@ -965,25 +1241,25 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   // Add after the existing two-step workflow block and before "This ensures mission prompts..."
   `
   ### Research-First Workflow (recommended for non-trivial code missions)
-
+  
   For anything beyond a trivial change, create a research mission first to gather context, then create a code mission that depends on it. The code mission will not be scheduled until the research mission reaches a terminal state.
-
+  
   \`\`\`bash
   # 1. Create the research mission
   fleet missions add --sector <id> --type research --summary "Investigate X" --prompt "Investigate..."
-
+  
   # 2. Create the code mission that depends on the research
   fleet missions add --sector <id> --type code --summary "Implement X" --prompt "..." --depends-on <research-mission-id>
-
+  
   # 3. Deploy the research crew first
   fleet crew deploy --sector <id> --mission <research-mission-id>
-
+  
   # 4. When research completes, deploy the code crew
   fleet crew deploy --sector <id> --mission <code-mission-id>
   \`\`\`
-
+  
   When the code crew starts, it receives a header listing the research cargo file paths and can use the Read tool to load findings if the task requires them.
-  `
+  `;
   ```
 
 - [ ] **Step 4: Update `generateSkillMd()`**
@@ -991,15 +1267,17 @@ The two SQL queries in `crew-service.ts` still use the old `depends_on_mission_i
   In the `generateSkillMd()` function, make four targeted changes:
 
   **a)** In the `### Missions` command reference block, add `--depends-on` line after `missions add`:
+
   ```
   fleet missions add ... --depends-on <research-id>   # Link a research dependency (can repeat for multiple)
   ```
 
-  **b)** In the `**Required fields for \`missions add\`:**` note, add: `Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).`
+  **b)** In the `**Required fields for \`missions add\`:\*\*`note, add:`Use \`--depends-on <research-mission-id>\` to attach research dependencies (optional, encouraged for non-trivial changes).`
 
   **c)** After the `### Mission Scoping & Deployment Workflow` section's existing example, add the same Research-First Workflow section as above.
 
   **d)** In the `## Research Mission Output Format` section, add at the end:
+
   ```
   When a research mission completes, its summary cargo path is referenced in the initial message of any code missions that depend on it. The code crew can Read the file on demand if the task requires the findings.
   ```

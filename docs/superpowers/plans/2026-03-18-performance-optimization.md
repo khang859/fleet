@@ -25,6 +25,7 @@
 ## Task 1: Install Dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install pid-cwd and chokidar**
@@ -53,6 +54,7 @@ git commit -m "chore: add pid-cwd and chokidar dependencies"
 ## Task 2: Pillar 1 — Replace lsof with pid-cwd
 
 **Files:**
+
 - Modify: `src/main/cwd-poller.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
@@ -65,21 +67,21 @@ git commit -m "chore: add pid-cwd and chokidar dependencies"
 Create `src/main/__tests__/cwd-poller.test.ts`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('pid-cwd', () => ({
-  default: vi.fn().mockResolvedValue('/tmp/test-cwd'),
-}))
+  default: vi.fn().mockResolvedValue('/tmp/test-cwd')
+}));
 
 vi.mock('child_process', () => ({
-  execFile: vi.fn(),
-}))
+  execFile: vi.fn()
+}));
 
-import { CwdPoller } from '../cwd-poller'
-import { EventBus } from '../event-bus'
-import type { PtyManager } from '../pty-manager'
-import pidCwd from 'pid-cwd'
-import { execFile } from 'child_process'
+import { CwdPoller } from '../cwd-poller';
+import { EventBus } from '../event-bus';
+import type { PtyManager } from '../pty-manager';
+import pidCwd from 'pid-cwd';
+import { execFile } from 'child_process';
 
 function makeMockPtyManager(cwd = '/old-cwd'): PtyManager {
   return {
@@ -87,61 +89,61 @@ function makeMockPtyManager(cwd = '/old-cwd'): PtyManager {
     updateCwd: vi.fn(),
     getPid: vi.fn().mockReturnValue(999),
     paneIds: vi.fn().mockReturnValue([]),
-    has: vi.fn().mockReturnValue(true),
-  } as unknown as PtyManager
+    has: vi.fn().mockReturnValue(true)
+  } as unknown as PtyManager;
 }
 
 describe('CwdPoller', () => {
-  let eventBus: EventBus
-  let poller: CwdPoller
+  let eventBus: EventBus;
+  let poller: CwdPoller;
 
   beforeEach(() => {
-    vi.useFakeTimers()
-    eventBus = new EventBus()
-  })
+    vi.useFakeTimers();
+    eventBus = new EventBus();
+  });
 
   afterEach(() => {
-    poller?.stopAll()
-    vi.useRealTimers()
-    vi.clearAllMocks()
-  })
+    poller?.stopAll();
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
 
   it('uses pid-cwd instead of lsof on macOS', async () => {
-    const ptyManager = makeMockPtyManager('/old-cwd')
-    poller = new CwdPoller(eventBus, ptyManager)
-    poller.startPolling('pane-1', 999)
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
+    poller.startPolling('pane-1', 999);
 
-    await vi.advanceTimersByTimeAsync(5001)
+    await vi.advanceTimersByTimeAsync(5001);
 
-    expect(pidCwd).toHaveBeenCalledWith(999)
-    expect(execFile).not.toHaveBeenCalled()
-  })
+    expect(pidCwd).toHaveBeenCalledWith(999);
+    expect(execFile).not.toHaveBeenCalled();
+  });
 
   it('emits cwd-changed when cwd differs', async () => {
-    const ptyManager = makeMockPtyManager('/old-cwd')
-    poller = new CwdPoller(eventBus, ptyManager)
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
 
-    const changes: string[] = []
-    eventBus.on('cwd-changed', (e) => changes.push(e.cwd))
+    const changes: string[] = [];
+    eventBus.on('cwd-changed', (e) => changes.push(e.cwd));
 
-    poller.startPolling('pane-1', 999)
-    await vi.advanceTimersByTimeAsync(5001)
+    poller.startPolling('pane-1', 999);
+    await vi.advanceTimersByTimeAsync(5001);
 
-    expect(changes).toContain('/tmp/test-cwd')
-  })
+    expect(changes).toContain('/tmp/test-cwd');
+  });
 
   it('stopPolling clears the timer', async () => {
-    const ptyManager = makeMockPtyManager('/old-cwd')
-    poller = new CwdPoller(eventBus, ptyManager)
+    const ptyManager = makeMockPtyManager('/old-cwd');
+    poller = new CwdPoller(eventBus, ptyManager);
 
-    poller.startPolling('pane-1', 999)
-    poller.stopPolling('pane-1')
+    poller.startPolling('pane-1', 999);
+    poller.stopPolling('pane-1');
 
-    await vi.advanceTimersByTimeAsync(10000)
+    await vi.advanceTimersByTimeAsync(10000);
 
-    expect(pidCwd).not.toHaveBeenCalled()
-  })
-})
+    expect(pidCwd).not.toHaveBeenCalled();
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to confirm it fails**
@@ -157,82 +159,82 @@ Expected: FAIL (pid-cwd not used yet)
 In `src/main/cwd-poller.ts`, replace the `readProcCwd` function:
 
 ```typescript
-import { readlink } from 'fs/promises'
-import pidCwd from 'pid-cwd'
-import { EventBus } from './event-bus'
-import type { PtyManager } from './pty-manager'
+import { readlink } from 'fs/promises';
+import pidCwd from 'pid-cwd';
+import { EventBus } from './event-bus';
+import type { PtyManager } from './pty-manager';
 
-const POLL_INTERVAL_MS = 5000
+const POLL_INTERVAL_MS = 5000;
 
 export class CwdPoller {
-  private timers = new Map<string, ReturnType<typeof setInterval>>()
-  private osc7Seen = new Set<string>()
+  private timers = new Map<string, ReturnType<typeof setInterval>>();
+  private osc7Seen = new Set<string>();
 
   constructor(
     private eventBus: EventBus,
-    private ptyManager: PtyManager,
+    private ptyManager: PtyManager
   ) {}
 
   startPolling(paneId: string, pid: number): void {
-    if (this.timers.has(paneId)) return
+    if (this.timers.has(paneId)) return;
 
     const timer = setInterval(async () => {
       if (this.osc7Seen.has(paneId)) {
-        this.stopPolling(paneId)
-        return
+        this.stopPolling(paneId);
+        return;
       }
-      const cwd = await readProcCwd(pid)
+      const cwd = await readProcCwd(pid);
       if (cwd) {
-        const current = this.ptyManager.getCwd(paneId)
+        const current = this.ptyManager.getCwd(paneId);
         if (cwd !== current) {
-          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd })
+          this.eventBus.emit('cwd-changed', { type: 'cwd-changed', paneId, cwd });
         }
       }
-    }, POLL_INTERVAL_MS)
+    }, POLL_INTERVAL_MS);
 
-    this.timers.set(paneId, timer)
+    this.timers.set(paneId, timer);
   }
 
   markOsc7Seen(paneId: string): void {
-    this.osc7Seen.add(paneId)
+    this.osc7Seen.add(paneId);
   }
 
   stopPolling(paneId: string): void {
-    const timer = this.timers.get(paneId)
+    const timer = this.timers.get(paneId);
     if (timer) {
-      clearInterval(timer)
-      this.timers.delete(paneId)
+      clearInterval(timer);
+      this.timers.delete(paneId);
     }
-    this.osc7Seen.delete(paneId)
+    this.osc7Seen.delete(paneId);
   }
 
   stopAll(): void {
     for (const paneId of this.timers.keys()) {
-      clearInterval(this.timers.get(paneId)!)
+      clearInterval(this.timers.get(paneId)!);
     }
-    this.timers.clear()
-    this.osc7Seen.clear()
+    this.timers.clear();
+    this.osc7Seen.clear();
   }
 }
 
 async function readProcCwd(pid: number): Promise<string | null> {
   if (process.platform === 'linux') {
     try {
-      return await readlink(`/proc/${pid}/cwd`)
+      return await readlink(`/proc/${pid}/cwd`);
     } catch {
-      return null
+      return null;
     }
   }
 
   if (process.platform === 'darwin') {
     try {
-      return await pidCwd(pid)
+      return await pidCwd(pid);
     } catch {
-      return null
+      return null;
     }
   }
 
-  return null
+  return null;
 }
 ```
 
@@ -243,16 +245,16 @@ Find the PTY exit handler in `src/main/ipc-handlers.ts`. It looks something like
 ```typescript
 ptyManager.onExit(paneId, (exitCode) => {
   // ... existing code ...
-})
+});
 ```
 
 Add `cwdPoller.stopPolling(paneId)` inside the exit callback:
 
 ```typescript
 ptyManager.onExit(paneId, (exitCode) => {
-  cwdPoller.stopPolling(paneId)   // ADD THIS LINE
+  cwdPoller.stopPolling(paneId); // ADD THIS LINE
   // ... rest of existing code ...
-})
+});
 ```
 
 - [ ] **Step 5: Run tests**
@@ -283,6 +285,7 @@ git commit -m "perf: replace lsof subprocess with pid-cwd native syscall; fix zo
 ## Task 3: Pillar 2 — Replace JsonlWatcher with chokidar
 
 **Files:**
+
 - Modify: `src/main/jsonl-watcher.ts` (full rewrite)
 - Existing tests: `src/main/__tests__/jsonl-watcher.test.ts` (must still pass — public interface unchanged)
 
@@ -303,119 +306,119 @@ Expected: all PASS (this is our baseline)
 Replace the entire file:
 
 ```typescript
-import chokidar, { type FSWatcher } from 'chokidar'
-import { openSync, readSync, closeSync, statSync, existsSync } from 'fs'
-import { extname, basename } from 'path'
+import chokidar, { type FSWatcher } from 'chokidar';
+import { openSync, readSync, closeSync, statSync, existsSync } from 'fs';
+import { extname, basename } from 'path';
 
 export type JsonlRecord = {
-  type: string
+  type: string;
   message?: {
     content?: Array<{
-      type: string
-      name?: string
-      input?: unknown
-    }>
-  }
+      type: string;
+      name?: string;
+      input?: unknown;
+    }>;
+  };
   data?: {
-    type?: string
-    parentToolUseID?: string
-  }
-  [key: string]: unknown
-}
+    type?: string;
+    parentToolUseID?: string;
+  };
+  [key: string]: unknown;
+};
 
-type RecordCallback = (sessionId: string, record: JsonlRecord) => void
+type RecordCallback = (sessionId: string, record: JsonlRecord) => void;
 
 type WatchedFile = {
-  filePath: string
-  offset: number
-  lineBuffer: string
-}
+  filePath: string;
+  offset: number;
+  lineBuffer: string;
+};
 
 export class JsonlWatcher {
-  private watcher: FSWatcher | null = null
-  private callbacks: RecordCallback[] = []
-  private watchedFiles = new Map<string, WatchedFile>()
-  private isReady = false
+  private watcher: FSWatcher | null = null;
+  private callbacks: RecordCallback[] = [];
+  private watchedFiles = new Map<string, WatchedFile>();
+  private isReady = false;
 
   constructor(private watchDir: string) {}
 
   onRecord(callback: RecordCallback): void {
-    this.callbacks.push(callback)
+    this.callbacks.push(callback);
   }
 
   start(): void {
-    if (!existsSync(this.watchDir)) return
+    if (!existsSync(this.watchDir)) return;
 
     this.watcher = chokidar.watch(this.watchDir, {
       persistent: false,
       ignoreInitial: false,
       depth: 2,
-      awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 },
-    })
+      awaitWriteFinish: { stabilityThreshold: 50, pollInterval: 10 }
+    });
 
     this.watcher.on('add', (filePath: string) => {
-      if (extname(filePath) !== '.jsonl') return
-      if (this.watchedFiles.has(filePath)) return
+      if (extname(filePath) !== '.jsonl') return;
+      if (this.watchedFiles.has(filePath)) return;
       try {
-        const stat = statSync(filePath)
+        const stat = statSync(filePath);
         // Files seen before 'ready' are pre-existing: skip to end (no ghost agents)
         // Files seen after 'ready' are new sessions: read from beginning
-        const offset = this.isReady ? 0 : stat.size
-        this.watchedFiles.set(filePath, { filePath, offset, lineBuffer: '' })
+        const offset = this.isReady ? 0 : stat.size;
+        this.watchedFiles.set(filePath, { filePath, offset, lineBuffer: '' });
         // If new file (after ready), read any content already there
         if (this.isReady) {
-          const watched = this.watchedFiles.get(filePath)!
-          this.readNewLines(watched)
+          const watched = this.watchedFiles.get(filePath)!;
+          this.readNewLines(watched);
         }
       } catch {}
-    })
+    });
 
     this.watcher.on('ready', () => {
-      this.isReady = true
-    })
+      this.isReady = true;
+    });
 
     this.watcher.on('change', (filePath: string) => {
-      if (extname(filePath) !== '.jsonl') return
-      const watched = this.watchedFiles.get(filePath)
-      if (watched) this.readNewLines(watched)
-    })
+      if (extname(filePath) !== '.jsonl') return;
+      const watched = this.watchedFiles.get(filePath);
+      if (watched) this.readNewLines(watched);
+    });
 
     this.watcher.on('unlink', (filePath: string) => {
-      this.watchedFiles.delete(filePath)
-    })
+      this.watchedFiles.delete(filePath);
+    });
   }
 
   stop(): void {
-    this.watcher?.close()
-    this.watcher = null
-    this.watchedFiles.clear()
-    this.isReady = false
+    this.watcher?.close();
+    this.watcher = null;
+    this.watchedFiles.clear();
+    this.isReady = false;
   }
 
   private readNewLines(watched: WatchedFile): void {
     try {
-      const stat = statSync(watched.filePath)
-      if (stat.size <= watched.offset) return
+      const stat = statSync(watched.filePath);
+      if (stat.size <= watched.offset) return;
 
-      const bytesToRead = stat.size - watched.offset
-      const buf = Buffer.alloc(bytesToRead)
-      const fd = openSync(watched.filePath, 'r')
-      readSync(fd, buf, 0, bytesToRead, watched.offset)
-      closeSync(fd)
-      watched.offset = stat.size
+      const bytesToRead = stat.size - watched.offset;
+      const buf = Buffer.alloc(bytesToRead);
+      const fd = openSync(watched.filePath, 'r');
+      readSync(fd, buf, 0, bytesToRead, watched.offset);
+      closeSync(fd);
+      watched.offset = stat.size;
 
-      const text = watched.lineBuffer + buf.toString('utf-8')
-      const lines = text.split('\n')
-      watched.lineBuffer = lines.pop() || ''
+      const text = watched.lineBuffer + buf.toString('utf-8');
+      const lines = text.split('\n');
+      watched.lineBuffer = lines.pop() || '';
 
-      const sessionId = basename(watched.filePath, '.jsonl')
+      const sessionId = basename(watched.filePath, '.jsonl');
 
       for (const line of lines) {
-        if (!line.trim()) continue
+        if (!line.trim()) continue;
         try {
-          const record = JSON.parse(line) as JsonlRecord
+          const record = JSON.parse(line) as JsonlRecord;
           for (const cb of this.callbacks) {
-            cb(sessionId, record)
+            cb(sessionId, record);
           }
         } catch {
           // Skip malformed lines
@@ -441,31 +444,34 @@ Note: if tests time out, chokidar's `awaitWriteFinish` delay (50ms) may need `WA
 Append to `src/main/__tests__/jsonl-watcher.test.ts`:
 
 ```typescript
-import { unlinkSync } from 'fs'
+import { unlinkSync } from 'fs';
 
 it('removes deleted files from watchedFiles (no memory leak)', async () => {
-  const callback = vi.fn()
-  watcher = new JsonlWatcher(dir)
-  watcher.onRecord(callback)
-  watcher.start()
+  const callback = vi.fn();
+  watcher = new JsonlWatcher(dir);
+  watcher.onRecord(callback);
+  watcher.start();
 
-  await new Promise((r) => setTimeout(r, 200))
+  await new Promise((r) => setTimeout(r, 200));
 
-  const filePath = join(projectDir, 'session-gc.jsonl')
-  writeFileSync(filePath, JSON.stringify({ type: 'user' }) + '\n')
-  await new Promise((r) => setTimeout(r, 500))
+  const filePath = join(projectDir, 'session-gc.jsonl');
+  writeFileSync(filePath, JSON.stringify({ type: 'user' }) + '\n');
+  await new Promise((r) => setTimeout(r, 500));
 
   // File is watched — now delete it
-  unlinkSync(filePath)
-  await new Promise((r) => setTimeout(r, 500))
+  unlinkSync(filePath);
+  await new Promise((r) => setTimeout(r, 500));
 
   // Writing a new file with same name should be treated as new (offset = 0)
-  writeFileSync(filePath, JSON.stringify({ type: 'assistant' }) + '\n')
-  await new Promise((r) => setTimeout(r, 500))
+  writeFileSync(filePath, JSON.stringify({ type: 'assistant' }) + '\n');
+  await new Promise((r) => setTimeout(r, 500));
 
   // Should have received the new record
-  expect(callback).toHaveBeenCalledWith('session-gc', expect.objectContaining({ type: 'assistant' }))
-})
+  expect(callback).toHaveBeenCalledWith(
+    'session-gc',
+    expect.objectContaining({ type: 'assistant' })
+  );
+});
 ```
 
 - [ ] **Step 5: Run all jsonl tests**
@@ -496,6 +502,7 @@ git commit -m "perf: replace JsonlWatcher polling with chokidar FSEvents; fix de
 ## Task 4: Pillar 3 — PTY IPC Batching + Backpressure
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts`
 - Modify: `src/main/__tests__/pty-manager.test.ts`
 - Modify: `src/main/ipc-handlers.ts`
@@ -520,9 +527,9 @@ vi.mock('node-pty', () => ({
     resize: vi.fn(),
     kill: vi.fn(),
     pause: vi.fn(),
-    resume: vi.fn(),
-  })),
-}))
+    resume: vi.fn()
+  }))
+}));
 ```
 
 - [ ] **Step 2: Write failing tests for batching and disposable cleanup**
@@ -530,74 +537,74 @@ vi.mock('node-pty', () => ({
 Append to `src/main/__tests__/pty-manager.test.ts`:
 
 ```typescript
-import * as ptyModule from 'node-pty'
+import * as ptyModule from 'node-pty';
 
 describe('PtyManager batching and cleanup', () => {
   beforeEach(() => {
-    vi.useFakeTimers()
-    manager = new PtyManager()
-  })
+    vi.useFakeTimers();
+    manager = new PtyManager();
+  });
 
   afterEach(() => {
-    manager.killAll()
-    vi.useRealTimers()
-  })
+    manager.killAll();
+    vi.useRealTimers();
+  });
 
   it('batches onData output and flushes after 16ms', async () => {
-    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
 
-    const received: string[] = []
-    manager.onData('pane-1', (data) => received.push(data))
+    const received: string[] = [];
+    manager.onData('pane-1', (data) => received.push(data));
 
     // Simulate PTY emitting data — call the onData callback registered on the mock PTY
-    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value
-    const ptyDataCallback = mockPty.onData.mock.calls[0][0]
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
 
-    ptyDataCallback('hello ')
-    ptyDataCallback('world')
+    ptyDataCallback('hello ');
+    ptyDataCallback('world');
 
     // Not flushed yet
-    expect(received).toHaveLength(0)
+    expect(received).toHaveLength(0);
 
     // After 16ms flush
-    vi.advanceTimersByTime(16)
-    expect(received).toHaveLength(1)
-    expect(received[0]).toBe('hello world')
-  })
+    vi.advanceTimersByTime(16);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toBe('hello world');
+  });
 
   it('disposes data listener when pane is killed', () => {
-    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
-    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value
-    const disposable = mockPty.onData.mock.results[0].value
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const disposable = mockPty.onData.mock.results[0].value;
 
-    manager.onData('pane-1', vi.fn())
-    manager.kill('pane-1')
+    manager.onData('pane-1', vi.fn());
+    manager.kill('pane-1');
 
-    expect(disposable.dispose).toHaveBeenCalled()
-  })
+    expect(disposable.dispose).toHaveBeenCalled();
+  });
 
   it('calls pty.pause when buffer exceeds 256KB', () => {
-    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
-    manager.onData('pane-1', vi.fn())
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    manager.onData('pane-1', vi.fn());
 
-    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value
-    const ptyDataCallback = mockPty.onData.mock.calls[0][0]
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const ptyDataCallback = mockPty.onData.mock.calls[0][0];
 
     // Send >256KB of data
-    ptyDataCallback('x'.repeat(257 * 1024))
+    ptyDataCallback('x'.repeat(257 * 1024));
 
-    expect(mockPty.pause).toHaveBeenCalled()
-  })
+    expect(mockPty.pause).toHaveBeenCalled();
+  });
 
   it('resume calls pty.resume', () => {
-    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' })
-    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
 
-    manager.resume('pane-1')
+    manager.resume('pane-1');
 
-    expect(mockPty.resume).toHaveBeenCalled()
-  })
-})
+    expect(mockPty.resume).toHaveBeenCalled();
+  });
+});
 ```
 
 - [ ] **Step 3: Run tests to confirm they fail**
@@ -613,62 +620,64 @@ Expected: new tests FAIL (no batching yet)
 Replace `src/main/pty-manager.ts`:
 
 ```typescript
-import * as pty from 'node-pty'
-import { getDefaultShell } from './shell-detection'
+import * as pty from 'node-pty';
+import { getDefaultShell } from './shell-detection';
 
 export type PtyCreateOptions = {
-  paneId: string
-  cwd: string
-  shell?: string
-  cmd?: string
-  cols?: number
-  rows?: number
-  env?: Record<string, string>
-}
+  paneId: string;
+  cwd: string;
+  shell?: string;
+  cmd?: string;
+  cols?: number;
+  rows?: number;
+  env?: Record<string, string>;
+};
 
 export type PtyCreateResult = {
-  paneId: string
-  pid: number
-}
+  paneId: string;
+  pid: number;
+};
 
 type PtyEntry = {
-  process: pty.IPty
-  paneId: string
-  cwd: string
-  outputBuffer: string
-  dataDisposable: pty.IDisposable | null
-  exitDisposable: pty.IDisposable | null
-}
+  process: pty.IPty;
+  paneId: string;
+  cwd: string;
+  outputBuffer: string;
+  dataDisposable: pty.IDisposable | null;
+  exitDisposable: pty.IDisposable | null;
+};
 
-const FLUSH_INTERVAL_MS = 16
-const BUFFER_OVERFLOW_BYTES = 256 * 1024
+const FLUSH_INTERVAL_MS = 16;
+const BUFFER_OVERFLOW_BYTES = 256 * 1024;
 
 export class PtyManager {
-  private ptys = new Map<string, PtyEntry>()
-  private protectedPtys = new Set<string>()
-  private dataCallbacks = new Map<string, (data: string) => void>()
-  private flushTimer: ReturnType<typeof setInterval> | null = null
+  private ptys = new Map<string, PtyEntry>();
+  private protectedPtys = new Set<string>();
+  private dataCallbacks = new Map<string, (data: string) => void>();
+  private flushTimer: ReturnType<typeof setInterval> | null = null;
 
   create(opts: PtyCreateOptions): PtyCreateResult {
     if (this.ptys.has(opts.paneId)) {
-      throw new Error(`${opts.paneId} already exists`)
+      throw new Error(`${opts.paneId} already exists`);
     }
 
-    const shell = opts.shell ?? getDefaultShell()
-    const args: string[] = []
+    const shell = opts.shell ?? getDefaultShell();
+    const args: string[] = [];
 
     if (opts.cmd) {
-      args.push('-c', `${opts.cmd}; exec ${shell}`)
+      args.push('-c', `${opts.cmd}; exec ${shell}`);
     }
 
-    console.log(`[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`)
+    console.log(
+      `[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`
+    );
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: opts.env ?? (process.env as Record<string, string>),
-    })
+      env: opts.env ?? (process.env as Record<string, string>)
+    });
 
     this.ptys.set(opts.paneId, {
       process: proc,
@@ -676,140 +685,140 @@ export class PtyManager {
       cwd: opts.cwd,
       outputBuffer: '',
       dataDisposable: null,
-      exitDisposable: null,
-    })
+      exitDisposable: null
+    });
 
-    return { paneId: opts.paneId, pid: proc.pid }
+    return { paneId: opts.paneId, pid: proc.pid };
   }
 
   write(paneId: string, data: string): void {
-    const entry = this.ptys.get(paneId)
+    const entry = this.ptys.get(paneId);
     if (entry) {
-      entry.process.write(data)
+      entry.process.write(data);
     }
   }
 
   resize(paneId: string, cols: number, rows: number): void {
-    const entry = this.ptys.get(paneId)
+    const entry = this.ptys.get(paneId);
     if (entry) {
-      entry.process.resize(cols, rows)
+      entry.process.resize(cols, rows);
     }
   }
 
   protect(paneId: string): void {
-    this.protectedPtys.add(paneId)
+    this.protectedPtys.add(paneId);
   }
 
   kill(paneId: string): void {
-    const entry = this.ptys.get(paneId)
+    const entry = this.ptys.get(paneId);
     if (entry) {
-      entry.dataDisposable?.dispose()
-      entry.exitDisposable?.dispose()
-      this.dataCallbacks.delete(paneId)
-      entry.process.kill()
-      this.ptys.delete(paneId)
-      this.protectedPtys.delete(paneId)
+      entry.dataDisposable?.dispose();
+      entry.exitDisposable?.dispose();
+      this.dataCallbacks.delete(paneId);
+      entry.process.kill();
+      this.ptys.delete(paneId);
+      this.protectedPtys.delete(paneId);
     }
   }
 
   killAll(): void {
     for (const [paneId] of this.ptys) {
-      this.kill(paneId)
+      this.kill(paneId);
     }
     if (this.flushTimer) {
-      clearInterval(this.flushTimer)
-      this.flushTimer = null
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
     }
   }
 
   has(paneId: string): boolean {
-    return this.ptys.has(paneId)
+    return this.ptys.has(paneId);
   }
 
   get(paneId: string): PtyEntry | undefined {
-    return this.ptys.get(paneId)
+    return this.ptys.get(paneId);
   }
 
   paneIds(): string[] {
-    return Array.from(this.ptys.keys())
+    return Array.from(this.ptys.keys());
   }
 
   getCwd(paneId: string): string | undefined {
-    return this.ptys.get(paneId)?.cwd
+    return this.ptys.get(paneId)?.cwd;
   }
 
   updateCwd(paneId: string, cwd: string): void {
-    const entry = this.ptys.get(paneId)
-    if (entry) entry.cwd = cwd
+    const entry = this.ptys.get(paneId);
+    if (entry) entry.cwd = cwd;
   }
 
   getPid(paneId: string): number | undefined {
-    return this.ptys.get(paneId)?.process.pid
+    return this.ptys.get(paneId)?.process.pid;
   }
 
   gc(activePaneIds: Set<string>): string[] {
-    const killed: string[] = []
+    const killed: string[] = [];
     for (const paneId of this.ptys.keys()) {
       if (!activePaneIds.has(paneId) && !this.protectedPtys.has(paneId)) {
-        this.kill(paneId)
-        killed.push(paneId)
+        this.kill(paneId);
+        killed.push(paneId);
       }
     }
-    return killed
+    return killed;
   }
 
   /** Register a callback that receives batched PTY output every ~16ms. */
   onData(paneId: string, callback: (data: string) => void): void {
-    const entry = this.ptys.get(paneId)
-    if (!entry) return
+    const entry = this.ptys.get(paneId);
+    if (!entry) return;
 
-    this.dataCallbacks.set(paneId, callback)
+    this.dataCallbacks.set(paneId, callback);
 
     entry.dataDisposable = entry.process.onData((data: string) => {
-      entry.outputBuffer += data
+      entry.outputBuffer += data;
       if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
-        this.flushPane(paneId)
-        entry.process.pause()
+        this.flushPane(paneId);
+        entry.process.pause();
       }
-    })
+    });
 
     // Start shared flush timer if not already running
     if (!this.flushTimer) {
-      this.flushTimer = setInterval(() => this.flushAll(), FLUSH_INTERVAL_MS)
+      this.flushTimer = setInterval(() => this.flushAll(), FLUSH_INTERVAL_MS);
     }
   }
 
   /** Resume a paused PTY (called by renderer after consuming a batch). */
   resume(paneId: string): void {
-    const entry = this.ptys.get(paneId)
-    if (entry) entry.process.resume()
+    const entry = this.ptys.get(paneId);
+    if (entry) entry.process.resume();
   }
 
   onExit(paneId: string, callback: (exitCode: number) => void): void {
-    const entry = this.ptys.get(paneId)
+    const entry = this.ptys.get(paneId);
     if (entry) {
       entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
-        this.dataCallbacks.delete(paneId)
-        this.ptys.delete(paneId)
-        this.protectedPtys.delete(paneId)
-        callback(exitCode)
-      })
+        this.dataCallbacks.delete(paneId);
+        this.ptys.delete(paneId);
+        this.protectedPtys.delete(paneId);
+        callback(exitCode);
+      });
     }
   }
 
   private flushPane(paneId: string): void {
-    const entry = this.ptys.get(paneId)
-    if (!entry || !entry.outputBuffer) return
-    const callback = this.dataCallbacks.get(paneId)
+    const entry = this.ptys.get(paneId);
+    if (!entry || !entry.outputBuffer) return;
+    const callback = this.dataCallbacks.get(paneId);
     if (callback) {
-      callback(entry.outputBuffer)
-      entry.outputBuffer = ''
+      callback(entry.outputBuffer);
+      entry.outputBuffer = '';
     }
   }
 
   private flushAll(): void {
     for (const paneId of this.ptys.keys()) {
-      this.flushPane(paneId)
+      this.flushPane(paneId);
     }
   }
 }
@@ -830,8 +839,8 @@ Find the IPC handler registration in `src/main/ipc-handlers.ts`. Add after the e
 ```typescript
 // PTY drain — renderer signals it has consumed a batch; resume the PTY
 ipcMain.on(IPC_CHANNELS.PTY_DRAIN, (_event, { paneId }: { paneId: string }) => {
-  ptyManager.resume(paneId)
-})
+  ptyManager.resume(paneId);
+});
 ```
 
 Also add `PTY_DRAIN` to `src/shared/constants.ts` IPC_CHANNELS:
@@ -854,17 +863,18 @@ In `src/renderer/src/hooks/use-terminal.ts`, find where PTY_DATA IPC events are 
 
 ```typescript
 // After term.write(data, ...) — signal main process the batch was consumed
-window.fleet.ptyDrain(options.paneId)
+window.fleet.ptyDrain(options.paneId);
 ```
 
 The PTY_DATA handler in `use-terminal.ts` looks something like:
+
 ```typescript
 ipcRenderer.on(IPC_CHANNELS.PTY_DATA, (_event, { paneId, data }) => {
-  if (paneId !== options.paneId) return
+  if (paneId !== options.paneId) return;
   term.write(data, () => {
-    window.fleet.ptyDrain(options.paneId)  // ADD THIS
-  })
-})
+    window.fleet.ptyDrain(options.paneId); // ADD THIS
+  });
+});
 ```
 
 The xterm `write()` callback fires after the data has been rendered to the terminal — this is the right point to signal drain.
@@ -891,6 +901,7 @@ git commit -m "perf: batch PTY output into 16ms frames; add pause/resume backpre
 ## Task 5: Pillar 4 — Event-Driven Status Updates
 
 **Files:**
+
 - Modify: `src/main/event-bus.ts`
 - Modify: `src/main/starbase/crew-service.ts`
 - Modify: `src/main/starbase/mission-service.ts`
@@ -919,69 +930,68 @@ The full union should include all existing types plus the new one.
 Create `src/main/__tests__/starbase-events.test.ts`:
 
 ```typescript
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { MissionService } from '../starbase/mission-service'
-import { SectorService } from '../starbase/sector-service'
-import { StarbaseDB } from '../starbase/db'
-import type { EventBus } from '../event-bus'
-import { rmSync, mkdirSync, writeFileSync } from 'fs'
-import { execSync } from 'child_process'
-import { join } from 'path'
-import { tmpdir } from 'os'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { MissionService } from '../starbase/mission-service';
+import { SectorService } from '../starbase/sector-service';
+import { StarbaseDB } from '../starbase/db';
+import type { EventBus } from '../event-bus';
+import { rmSync, mkdirSync, writeFileSync } from 'fs';
+import { execSync } from 'child_process';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
-const TEST_DIR = join(tmpdir(), 'fleet-test-starbase-events')
+const TEST_DIR = join(tmpdir(), 'fleet-test-starbase-events');
 
-let db: StarbaseDB
-let sectorId: string
+let db: StarbaseDB;
+let sectorId: string;
 
 beforeEach(() => {
-  rmSync(TEST_DIR, { recursive: true, force: true })
-  const wsDir = join(TEST_DIR, 'workspace')
-  const sectorDir = join(wsDir, 'api')
-  mkdirSync(sectorDir, { recursive: true })
-  writeFileSync(join(sectorDir, 'index.ts'), '')
-  execSync('git init && git checkout -b main', { cwd: sectorDir })
-  writeFileSync(join(sectorDir, 'README.md'), '# Test')
-  execSync('git add -A && git commit -m "initial"', { cwd: sectorDir })
+  rmSync(TEST_DIR, { recursive: true, force: true });
+  const wsDir = join(TEST_DIR, 'workspace');
+  const sectorDir = join(wsDir, 'api');
+  mkdirSync(sectorDir, { recursive: true });
+  writeFileSync(join(sectorDir, 'index.ts'), '');
+  execSync('git init && git checkout -b main', { cwd: sectorDir });
+  writeFileSync(join(sectorDir, 'README.md'), '# Test');
+  execSync('git add -A && git commit -m "initial"', { cwd: sectorDir });
 
-  const dbDir = join(TEST_DIR, 'starbases')
-  db = new StarbaseDB(wsDir, dbDir)
-  db.open()
+  const dbDir = join(TEST_DIR, 'starbases');
+  db = new StarbaseDB(wsDir, dbDir);
+  db.open();
 
-  const sectorSvc = new SectorService(db.getDb(), wsDir)
-  const sector = sectorSvc.addSector({ path: 'api' })
-  sectorId = sector.id
-})
+  const sectorSvc = new SectorService(db.getDb(), wsDir);
+  const sector = sectorSvc.addSector({ path: 'api' });
+  sectorId = sector.id;
+});
 
 afterEach(() => {
-  db.close()
-  rmSync(TEST_DIR, { recursive: true, force: true })
-})
+  db.close();
+  rmSync(TEST_DIR, { recursive: true, force: true });
+});
 
 describe('starbase-changed event emission', () => {
   it('MissionService.addMission emits starbase-changed', () => {
-    const mockEventBus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() } as unknown as EventBus
-    const missionSvc = new MissionService(db.getDb(), mockEventBus)
+    const mockEventBus = { emit: vi.fn(), on: vi.fn(), off: vi.fn() } as unknown as EventBus;
+    const missionSvc = new MissionService(db.getDb(), mockEventBus);
 
     missionSvc.addMission({
       sectorId,
       summary: 'test mission',
-      prompt: 'do the thing',
-    })
+      prompt: 'do the thing'
+    });
 
-    expect(mockEventBus.emit).toHaveBeenCalledWith(
-      'starbase-changed',
-      { type: 'starbase-changed' },
-    )
-  })
+    expect(mockEventBus.emit).toHaveBeenCalledWith('starbase-changed', {
+      type: 'starbase-changed'
+    });
+  });
 
   it('MissionService without eventBus does not throw', () => {
-    const missionSvc = new MissionService(db.getDb())
+    const missionSvc = new MissionService(db.getDb());
     expect(() =>
       missionSvc.addMission({ sectorId, summary: 'test', prompt: 'test' })
-    ).not.toThrow()
-  })
-})
+    ).not.toThrow();
+  });
+});
 ```
 
 This test proves the pattern end-to-end. The identical mock pattern (`{ emit: vi.fn(), on: vi.fn(), off: vi.fn() }`) applies to all other services.
@@ -999,24 +1009,24 @@ Expected: FAIL (MissionService doesn't accept eventBus yet)
 **crew-service.ts** — add `eventBus` to `CrewServiceDeps`:
 
 ```typescript
-import type { EventBus } from '../event-bus'
+import type { EventBus } from '../event-bus';
 
 type CrewServiceDeps = {
-  db: Database.Database
-  starbaseId: string
-  sectorService: SectorService
-  missionService: MissionService
-  configService: ConfigService
-  worktreeManager: WorktreeManager
-  eventBus?: EventBus   // ADD
-}
+  db: Database.Database;
+  starbaseId: string;
+  sectorService: SectorService;
+  missionService: MissionService;
+  configService: ConfigService;
+  worktreeManager: WorktreeManager;
+  eventBus?: EventBus; // ADD
+};
 ```
 
 Then emit after write methods. Example for the deploy/spawn method (find the method that creates a crew row):
 
 ```typescript
 // After the DB insert/update:
-this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
 ```
 
 Add `this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })` after writes in: `deployCrew` (or `spawnCrew`), `updateCrewStatus`, `deleteCrew` (or equivalent retire/dismiss methods).
@@ -1069,22 +1079,24 @@ Emit after `send` (the method that inserts a transmission row).
 In `src/main/starbase/sentinel.ts`:
 
 Add to `SentinelDeps`:
+
 ```typescript
-import type { EventBus } from '../event-bus'
+import type { EventBus } from '../event-bus';
 
 type SentinelDeps = {
-  db: Database.Database
-  configService: ConfigService
-  eventBus?: EventBus   // ADD
-}
+  db: Database.Database;
+  configService: ConfigService;
+  eventBus?: EventBus; // ADD
+};
 ```
 
 In `runSweep()`, at line ~144 where the comms rate-limit reset happens:
+
 ```typescript
 // 7. Comms rate limit reset (every 6th sweep = ~60 seconds)
 if (this.sweepCount % 6 === 0) {
-  db.prepare('UPDATE crew SET comms_count_minute = 0').run()
-  this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })  // ADD
+  db.prepare('UPDATE crew SET comms_count_minute = 0').run();
+  this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' }); // ADD
 }
 ```
 
@@ -1134,14 +1146,14 @@ In `src/main/index.ts`:
 
 ```typescript
 // Change:
-missionService = new MissionService(starbaseDb.getDb())
+missionService = new MissionService(starbaseDb.getDb());
 // To:
-missionService = new MissionService(starbaseDb.getDb(), eventBus)
+missionService = new MissionService(starbaseDb.getDb(), eventBus);
 
 // Change:
-sectorService = new SectorService(starbaseDb.getDb(), workspacePath)
+sectorService = new SectorService(starbaseDb.getDb(), workspacePath);
 // To:
-sectorService = new SectorService(starbaseDb.getDb(), workspacePath, eventBus)
+sectorService = new SectorService(starbaseDb.getDb(), workspacePath, eventBus);
 
 // Change (add eventBus to crewService deps):
 crewService = new CrewService({
@@ -1151,11 +1163,11 @@ crewService = new CrewService({
   missionService,
   configService,
   worktreeManager,
-  eventBus,   // ADD
-})
+  eventBus // ADD
+});
 
 // Change (add eventBus to sentinel deps):
-sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus })
+sentinel = new Sentinel({ db: starbaseDb.getDb(), configService, eventBus });
 ```
 
 Note: `CommsService` and `SectorService` constructors need checking — the `SectorService` constructor currently takes `(db, workspacePath)`, so add `eventBus` as a third parameter.
@@ -1175,15 +1187,15 @@ Note: `CommsService` and `SectorService` constructors need checking — the `Sec
 
 // REPLACE with:
 eventBus.on('starbase-changed', () => {
-  const w = mainWindow
-  if (!w || w.isDestroyed()) return
+  const w = mainWindow;
+  if (!w || w.isDestroyed()) return;
   w.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
     crew: crewService!.listCrew(),
     missions: missionService!.listMissions(),
     sectors: sectorService!.listSectors(),
-    unreadCount: commsService!.getUnread('admiral').length,
-  })
-})
+    unreadCount: commsService!.getUnread('admiral').length
+  });
+});
 ```
 
 - [ ] **Step 8: Remove setInterval from StarCommandTab.tsx**
@@ -1193,15 +1205,15 @@ In `src/renderer/src/components/StarCommandTab.tsx`, find lines 107-111:
 ```typescript
 // CHANGE from:
 useEffect(() => {
-  refreshStatus()
-  const interval = setInterval(refreshStatus, 5000)
-  return () => clearInterval(interval)
-}, [refreshStatus])
+  refreshStatus();
+  const interval = setInterval(refreshStatus, 5000);
+  return () => clearInterval(interval);
+}, [refreshStatus]);
 
 // TO (keep initial fetch, remove polling):
 useEffect(() => {
-  refreshStatus()
-}, [refreshStatus])
+  refreshStatus();
+}, [refreshStatus]);
 ```
 
 The `onStatusUpdate` listener (already present at line 83-98) handles ongoing updates.
@@ -1233,6 +1245,7 @@ git commit -m "perf: replace 5s status polling with event-driven push; make sent
 ## Task 6: Pillar 5 — Memory Fixes
 
 **Files:**
+
 - Modify: `src/renderer/src/hooks/use-terminal.ts`
 - Modify: `src/main/agent-state-tracker.ts`
 - Modify: `src/main/__tests__/agent-state-tracker.test.ts`
@@ -1263,10 +1276,10 @@ In `src/main/__tests__/agent-state-tracker.test.ts`, append:
 
 ```typescript
 it('caps sub-agents at 100 per agent, evicting the oldest', () => {
-  const eventBus = new EventBus()
-  const tracker = new AgentStateTracker(eventBus)
+  const eventBus = new EventBus();
+  const tracker = new AgentStateTracker(eventBus);
 
-  eventBus.emit('pane-created', { type: 'pane-created', paneId: 'pane-1' })
+  eventBus.emit('pane-created', { type: 'pane-created', paneId: 'pane-1' });
 
   // Feed 150 sub-agent progress records
   for (let i = 0; i < 150; i++) {
@@ -1274,17 +1287,17 @@ it('caps sub-agents at 100 per agent, evicting the oldest', () => {
       type: 'progress',
       data: {
         type: 'agent_progress',
-        parentToolUseID: `sub-${i}`,
+        parentToolUseID: `sub-${i}`
       },
       message: {
-        content: [{ type: 'tool_use', name: 'Read' }],
-      },
-    })
+        content: [{ type: 'tool_use', name: 'Read' }]
+      }
+    });
   }
 
-  const state = tracker.getState('pane-1')
-  expect(state?.subAgents.length).toBeLessThanOrEqual(100)
-})
+  const state = tracker.getState('pane-1');
+  expect(state?.subAgents.length).toBeLessThanOrEqual(100);
+});
 ```
 
 - [ ] **Step 3: Run test to confirm it fails**
@@ -1304,15 +1317,15 @@ In `src/main/agent-state-tracker.ts`, find the `handleJsonlRecord` method where 
 // Add:
 if (agent.subAgents.size > 100) {
   // Evict the entry with the oldest lastActivity
-  let oldestId = ''
-  let oldestTime = Infinity
+  let oldestId = '';
+  let oldestTime = Infinity;
   for (const [id, sub] of agent.subAgents) {
     if (sub.lastActivity < oldestTime) {
-      oldestTime = sub.lastActivity
-      oldestId = id
+      oldestTime = sub.lastActivity;
+      oldestId = id;
     }
   }
-  if (oldestId) agent.subAgents.delete(oldestId)
+  if (oldestId) agent.subAgents.delete(oldestId);
 }
 ```
 
@@ -1331,6 +1344,7 @@ Note: `StationHub.tsx` is not rendered anywhere — the RAF animation lives enti
 In `src/renderer/src/components/star-command/StarCommandScene.tsx`:
 
 **a)** Change the function signature:
+
 ```typescript
 export function StarCommandScene({ className, isActive = true }: { className?: string; isActive?: boolean }) {
 ```
@@ -1344,7 +1358,7 @@ useEffect(() => {
   // const stoppedRef = useRef(false)
   // Then in the frame function use stoppedRef.current instead of the local `stopped` variable
   // See implementation note below
-}, [isActive])
+}, [isActive]);
 ```
 
 **Implementation note:** The current `stopped` variable is local to the setup `useEffect` closure — it can't be accessed from a separate `useEffect`. The refactor is:
@@ -1356,16 +1370,16 @@ useEffect(() => {
 ```typescript
 useEffect(() => {
   if (!isActive) {
-    stoppedRef.current = true
-    cancelAnimationFrame(rafRef.current)
+    stoppedRef.current = true;
+    cancelAnimationFrame(rafRef.current);
   } else {
     if (stoppedRef.current) {
-      stoppedRef.current = false
-      lastFrameRef.current = 0
-      rafRef.current = requestAnimationFrame(frame)  // frame is not in scope here
+      stoppedRef.current = false;
+      lastFrameRef.current = 0;
+      rafRef.current = requestAnimationFrame(frame); // frame is not in scope here
     }
   }
-}, [isActive])
+}, [isActive]);
 ```
 
 Since `frame` is defined inside the setup `useEffect` closure, the cleanest approach is to store it in a ref:
@@ -1373,26 +1387,27 @@ Since `frame` is defined inside the setup `useEffect` closure, the cleanest appr
 Add `const frameRef = useRef<(now: number) => void>(() => {})` at component top level. Inside the setup `useEffect`, after defining `frame`, add `frameRef.current = frame`. Then the `isActive` effect can call `frameRef.current` to restart.
 
 Full pattern:
+
 ```typescript
-const rafRef = useRef<number>(0)
-const stoppedRef = useRef(false)
-const frameRef = useRef<(now: number) => void>(() => {})
-const lastFrameRef = useRef<number>(0)
+const rafRef = useRef<number>(0);
+const stoppedRef = useRef(false);
+const frameRef = useRef<(now: number) => void>(() => {});
+const lastFrameRef = useRef<number>(0);
 
 // ... in the setup useEffect, after defining frame():
-frameRef.current = frame
+frameRef.current = frame;
 
 // New effect for tab visibility:
 useEffect(() => {
   if (!isActive) {
-    stoppedRef.current = true
-    cancelAnimationFrame(rafRef.current)
+    stoppedRef.current = true;
+    cancelAnimationFrame(rafRef.current);
   } else {
-    stoppedRef.current = false
-    lastFrameRef.current = 0
-    rafRef.current = requestAnimationFrame(frameRef.current)
+    stoppedRef.current = false;
+    lastFrameRef.current = 0;
+    rafRef.current = requestAnimationFrame(frameRef.current);
   }
-}, [isActive])
+}, [isActive]);
 ```
 
 - [ ] **Step 7: Pass isActive from StarCommandTab to StarCommandScene**
@@ -1410,21 +1425,23 @@ If `StarCommandTab` has no such prop (i.e., the tab system unmounts inactive tab
 Find `src/renderer/src/components/TerminalPane.tsx` (or wherever `window.fleet.git.isRepo()` is called on CWD change). Add a 500ms debounce using `useRef` for the timer:
 
 ```typescript
-const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 useEffect(() => {
-  if (!currentCwd) { /* ... existing not-a-repo handling ... */ return }
+  if (!currentCwd) {
+    /* ... existing not-a-repo handling ... */ return;
+  }
 
   // Debounce: only check git status after CWD stops changing for 500ms
-  if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current)
+  if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
   gitCheckTimerRef.current = setTimeout(() => {
-    window.fleet.git.isRepo(currentCwd).then(/* ... existing handler ... */)
-  }, 500)
+    window.fleet.git.isRepo(currentCwd).then(/* ... existing handler ... */);
+  }, 500);
 
   return () => {
-    if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current)
-  }
-}, [currentCwd])
+    if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
+  };
+}, [currentCwd]);
 ```
 
 - [ ] **Step 9: Run full test suite**
@@ -1452,6 +1469,7 @@ git commit -m "perf: reduce scrollback to 3000 lines; cap sub-agents at 100; pau
 ## Task 7: Pillar 6 — Unblock Startup
 
 **Files:**
+
 - Modify: `src/main/starbase/reconciliation.ts`
 - Modify: `src/main/index.ts`
 - Modify: `src/preload/index.ts`
@@ -1466,23 +1484,27 @@ Two startup blockers: (1) `reconciliation.ts` calls `execSync` for each `git wor
 In `src/main/starbase/reconciliation.ts`:
 
 Add imports at top:
-```typescript
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 
-const execFileAsync = promisify(execFile)
+```typescript
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+
+const execFileAsync = promisify(execFile);
 ```
 
 Find the `git worktree prune` block (around line 65-72):
+
 ```typescript
 // CHANGE from:
-execSync('git worktree prune', { cwd: sector.root_path, stdio: 'pipe' })
+execSync('git worktree prune', { cwd: sector.root_path, stdio: 'pipe' });
 
 // TO:
 await execFileAsync('git', ['worktree', 'prune'], {
   cwd: sector.root_path,
-  timeout: 10_000,
-}).catch(() => { /* ignore prune failures */ })
+  timeout: 10_000
+}).catch(() => {
+  /* ignore prune failures */
+});
 ```
 
 Find any `git push` calls in the reconciliation function and replace similarly.
@@ -1506,49 +1528,51 @@ Find the existing `startAdmiralAndWire` function and make it return the paneId:
 ```typescript
 const startAdmiralAndWire = async (): Promise<string | null> => {
   try {
-    const paneId = await admiralProcess!.start()
+    const paneId = await admiralProcess!.start();
     ptyManager.onData(paneId, (data) => {
-      notificationDetector.scan(paneId, data)
-      const w = mainWindow
+      notificationDetector.scan(paneId, data);
+      const w = mainWindow;
       if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data })
+        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data });
       }
-    })
+    });
     ptyManager.onExit(paneId, (exitCode) => {
-      cwdPoller.stopPolling(paneId)
-      const w = mainWindow
+      cwdPoller.stopPolling(paneId);
+      const w = mainWindow;
       if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode })
+        w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode });
       }
-      eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode })
-    })
-    cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0)
-    return paneId
+      eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode });
+    });
+    cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
+    return paneId;
   } catch (err) {
-    console.error('[admiral] Failed to start:', err)
-    return null
+    console.error('[admiral] Failed to start:', err);
+    return null;
   }
-}
+};
 ```
 
 **b)** Remove the auto-start call. Find and remove:
+
 ```typescript
-startAdmiralAndWire()
+startAdmiralAndWire();
 ```
 
 **c)** Add the idempotent IPC handler (place it near other `ipcMain.handle` calls):
+
 ```typescript
 ipcMain.handle('admiral:ensure-started', async () => {
-  if (!admiralProcess) return null
+  if (!admiralProcess) return null;
   // Already running — return existing paneId
-  if (admiralProcess.paneId) return admiralProcess.paneId
+  if (admiralProcess.paneId) return admiralProcess.paneId;
   // Currently starting — don't double-spawn; return null.
   // StarCommandTab listens to onStatusChanged and will receive the paneId
   // when Admiral finishes starting.
-  if (admiralProcess.status === 'starting') return null
+  if (admiralProcess.status === 'starting') return null;
   // Not started — start it
-  return startAdmiralAndWire()
-})
+  return startAdmiralAndWire();
+});
 ```
 
 - [ ] **Step 4: Expose admiral.ensureStarted in preload**
@@ -1567,16 +1591,16 @@ In `src/renderer/src/components/StarCommandTab.tsx`, find the mount `useEffect` 
 // CHANGE from:
 window.fleet.admiral.getPaneId().then((paneId) => {
   if (paneId) {
-    setAdmiralPty(paneId, 'running')
+    setAdmiralPty(paneId, 'running');
   }
-})
+});
 
 // TO (ensure-started starts it if not running, returns paneId):
 window.fleet.admiral.ensureStarted().then((paneId: string | null) => {
   if (paneId) {
-    setAdmiralPty(paneId, 'running')
+    setAdmiralPty(paneId, 'running');
   }
-})
+});
 ```
 
 - [ ] **Step 6: Run full test suite**
@@ -1590,11 +1614,13 @@ Expected: all PASS
 - [ ] **Step 7: Manual smoke test**
 
 Start the app in dev mode:
+
 ```bash
 npm run dev
 ```
 
 Verify:
+
 1. App window appears quickly with no visible delay
 2. Star Command tab does NOT auto-open an Admiral PTY — verify in Activity Monitor / `ps aux | grep claude` that no Claude process starts until you open Star Command
 3. Opening the Star Command tab starts Admiral normally
@@ -1634,6 +1660,7 @@ Expected: no TypeScript errors
 - [ ] **Final commit summary**
 
 All six pillars should now be committed. Run:
+
 ```bash
 git log --oneline -7
 ```

@@ -9,6 +9,7 @@ Display the Navigator as a third character in the Admiral Sidebar, positioned im
 ## Sprites
 
 **Source:** `sprites-staging/personas/` contains 5 Navigator PNGs:
+
 - `navigator-default.png`
 - `navigator-working.png`
 - `navigator-standby.png`
@@ -16,6 +17,7 @@ Display the Navigator as a third character in the Admiral Sidebar, positioned im
 - `navigator-alert.png`
 
 **Destination:** Copy all 5 into:
+
 1. `sprites-raw/star-command/avatars/` — source for the sprite atlas assembler
 2. `src/renderer/src/assets/` — direct imports used by AdmiralSidebar (matches First Officer pattern)
 
@@ -68,6 +70,7 @@ export type NavigatorStatus = {
 ```
 
 Update the `StarCommandStore` **type definition** to include:
+
 - `navigatorStatus: NavigatorStatus`
 - `setNavigatorStatus: (status: NavigatorStatus) => void`
 

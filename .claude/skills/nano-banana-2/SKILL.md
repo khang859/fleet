@@ -1,6 +1,6 @@
 ---
 name: nano-banana-2
-description: "Generate images with Google Gemini 3.1 Flash Image Preview (Nano Banana 2) via inference.sh CLI. Capabilities: text-to-image, image editing, multi-image input (up to 14 images), Google Search grounding. Triggers: nano banana 2, nanobanana 2, gemini 3.1 flash image, gemini 3 1 flash image preview, google image generation"
+description: 'Generate images with Google Gemini 3.1 Flash Image Preview (Nano Banana 2) via inference.sh CLI. Capabilities: text-to-image, image editing, multi-image input (up to 14 images), Google Search grounding. Triggers: nano banana 2, nanobanana 2, gemini 3.1 flash image, gemini 3 1 flash image preview, google image generation'
 allowed-tools: Bash(infsh *)
 ---
 
@@ -17,7 +17,6 @@ infsh login
 
 infsh app run google/gemini-3-1-flash-image-preview --input '{"prompt": "a banana in space, photorealistic"}'
 ```
-
 
 ## Examples
 
@@ -76,23 +75,23 @@ infsh app run google/gemini-3-1-flash-image-preview --input '{
 
 ## Input Options
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `prompt` | string | **Required.** What to generate or change |
-| `images` | array | Input images for editing (up to 14). Supported: JPEG, PNG, WebP |
-| `num_images` | integer | Number of images to generate |
-| `aspect_ratio` | string | Output ratio: "1:1", "16:9", "9:16", "4:3", "3:4", "auto" |
-| `resolution` | string | "1K", "2K", "4K" (default: 1K) |
-| `output_format` | string | Output format for images |
-| `enable_google_search` | boolean | Enable real-time info grounding (weather, news, etc.) |
+| Parameter              | Type    | Description                                                     |
+| ---------------------- | ------- | --------------------------------------------------------------- |
+| `prompt`               | string  | **Required.** What to generate or change                        |
+| `images`               | array   | Input images for editing (up to 14). Supported: JPEG, PNG, WebP |
+| `num_images`           | integer | Number of images to generate                                    |
+| `aspect_ratio`         | string  | Output ratio: "1:1", "16:9", "9:16", "4:3", "3:4", "auto"       |
+| `resolution`           | string  | "1K", "2K", "4K" (default: 1K)                                  |
+| `output_format`        | string  | Output format for images                                        |
+| `enable_google_search` | boolean | Enable real-time info grounding (weather, news, etc.)           |
 
 ## Output
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `images` | array | The generated or edited images |
+| Field         | Type   | Description                                 |
+| ------------- | ------ | ------------------------------------------- |
+| `images`      | array  | The generated or edited images              |
 | `description` | string | Text description or response from the model |
-| `output_meta` | object | Metadata about inputs/outputs for pricing |
+| `output_meta` | object | Metadata about inputs/outputs for pricing   |
 
 ## Prompt Tips
 
@@ -164,4 +163,3 @@ Browse all image apps: `infsh app list --category image`
 - [Running Apps](https://inference.sh/docs/apps/running) - How to run apps via CLI
 - [Streaming Results](https://inference.sh/docs/api/sdk/streaming) - Real-time progress updates
 - [File Handling](https://inference.sh/docs/api/sdk/files) - Working with images
-

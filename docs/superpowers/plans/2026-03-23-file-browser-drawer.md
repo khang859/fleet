@@ -13,32 +13,35 @@
 ## File Map
 
 ### Create
-| File | Responsibility |
-|---|---|
-| `src/renderer/src/lib/shell-utils.ts` | Exported `quotePathForShell` utility (extracted from `use-terminal-drop.ts`) |
-| `src/renderer/src/components/FileBrowserDrawer.tsx` | Full drawer component: tree view, search, multi-select, Done button |
+
+| File                                                | Responsibility                                                               |
+| --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| `src/renderer/src/lib/shell-utils.ts`               | Exported `quotePathForShell` utility (extracted from `use-terminal-drop.ts`) |
+| `src/renderer/src/components/FileBrowserDrawer.tsx` | Full drawer component: tree view, search, multi-select, Done button          |
 
 ### Modify
-| File | What changes |
-|---|---|
-| `src/shared/ipc-channels.ts` | Add `FILE_READDIR: 'file:readdir'` constant |
-| `src/shared/ipc-api.ts` | Add `DirEntry` and `ReaddirResponse` types |
-| `src/main/ipc-handlers.ts` | Add `FILE_READDIR` ipcMain handler (uses already-imported `readdir`) |
-| `src/preload/index.ts` | Expose `window.fleet.file.readdir(dirPath)` |
-| `src/renderer/src/lib/shell-utils.ts` | (created above) |
-| `src/renderer/src/hooks/use-terminal-drop.ts` | Import `quotePathForShell` from `lib/shell-utils` |
-| `src/renderer/src/lib/shortcuts.ts` | Add `file-browser` entry to `ALL_SHORTCUTS` |
-| `src/renderer/src/hooks/use-pane-navigation.ts` | Handle `file-browser` shortcut → dispatch `fleet:toggle-file-browser` |
-| `src/renderer/src/lib/commands.ts` | Add `file-browser` to `createCommandRegistry()` |
-| `src/renderer/src/components/PaneToolbar.tsx` | Add `onFileBrowser?: () => void` prop + FolderOpen button |
-| `src/renderer/src/components/TerminalPane.tsx` | Pass `onFileBrowser` inline lambda to `PaneToolbar` |
-| `src/renderer/src/App.tsx` | Add `fileBrowserOpen` state, event listener, render `<FileBrowserDrawer>` |
+
+| File                                            | What changes                                                              |
+| ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `src/shared/ipc-channels.ts`                    | Add `FILE_READDIR: 'file:readdir'` constant                               |
+| `src/shared/ipc-api.ts`                         | Add `DirEntry` and `ReaddirResponse` types                                |
+| `src/main/ipc-handlers.ts`                      | Add `FILE_READDIR` ipcMain handler (uses already-imported `readdir`)      |
+| `src/preload/index.ts`                          | Expose `window.fleet.file.readdir(dirPath)`                               |
+| `src/renderer/src/lib/shell-utils.ts`           | (created above)                                                           |
+| `src/renderer/src/hooks/use-terminal-drop.ts`   | Import `quotePathForShell` from `lib/shell-utils`                         |
+| `src/renderer/src/lib/shortcuts.ts`             | Add `file-browser` entry to `ALL_SHORTCUTS`                               |
+| `src/renderer/src/hooks/use-pane-navigation.ts` | Handle `file-browser` shortcut → dispatch `fleet:toggle-file-browser`     |
+| `src/renderer/src/lib/commands.ts`              | Add `file-browser` to `createCommandRegistry()`                           |
+| `src/renderer/src/components/PaneToolbar.tsx`   | Add `onFileBrowser?: () => void` prop + FolderOpen button                 |
+| `src/renderer/src/components/TerminalPane.tsx`  | Pass `onFileBrowser` inline lambda to `PaneToolbar`                       |
+| `src/renderer/src/App.tsx`                      | Add `fileBrowserOpen` state, event listener, render `<FileBrowserDrawer>` |
 
 ---
 
 ## Task 1: IPC Plumbing — `FILE_READDIR` channel, types, handler, preload
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/shared/ipc-api.ts`
 - Modify: `src/main/ipc-handlers.ts`
@@ -63,7 +66,7 @@ Append to the end of `src/shared/ipc-api.ts`:
 ```ts
 export type DirEntry = {
   name: string;
-  path: string;       // absolute path
+  path: string; // absolute path
   isDirectory: boolean;
 };
 
@@ -165,9 +168,7 @@ describe('FILE_READDIR handler logic', () => {
 
   it('maps entries to the correct shape', () => {
     type Entry = { name: string; isFile: () => boolean; isDirectory: () => boolean };
-    const entries: Entry[] = [
-      { name: 'src', isFile: () => false, isDirectory: () => true }
-    ];
+    const entries: Entry[] = [{ name: 'src', isFile: () => false, isDirectory: () => true }];
     const dirPath = '/home/user/project';
     const result = entries.map((e) => ({
       name: e.name,
@@ -207,6 +208,7 @@ git commit -m "feat: add FILE_READDIR IPC channel for single-level directory lis
 ## Task 2: Extract `quotePathForShell` to a shared utility
 
 **Files:**
+
 - Create: `src/renderer/src/lib/shell-utils.ts`
 - Modify: `src/renderer/src/hooks/use-terminal-drop.ts`
 
@@ -326,6 +328,7 @@ git commit -m "refactor: extract quotePathForShell to shared shell-utils utility
 ## Task 3: Register `file-browser` shortcut and command palette entry
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts`
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts`
 - Modify: `src/renderer/src/lib/commands.ts`
@@ -401,6 +404,7 @@ git commit -m "feat: register file-browser shortcut (Cmd+Shift+E) and command pa
 ## Task 4: Add "Browse files" button to PaneToolbar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
 - Modify: `src/renderer/src/components/TerminalPane.tsx`
 
@@ -430,18 +434,20 @@ type PaneToolbarProps = {
 4. Add the button **before** the search button (i.e., between git-changes and search):
 
 ```tsx
-{onFileBrowser && (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      onFileBrowser();
-    }}
-    className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-    title={`Browse files (${formatShortcut(getShortcut('file-browser')!)})`}
-  >
-    <FolderOpen size={14} />
-  </button>
-)}
+{
+  onFileBrowser && (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onFileBrowser();
+      }}
+      className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+      title={`Browse files (${formatShortcut(getShortcut('file-browser')!)})`}
+    >
+      <FolderOpen size={14} />
+    </button>
+  );
+}
 ```
 
 - [ ] Add `FolderOpen` to Lucide import in `PaneToolbar.tsx`
@@ -499,6 +505,7 @@ git commit -m "feat: add Browse files button to PaneToolbar"
 ## Task 5: Build `FileBrowserDrawer` component
 
 **Files:**
+
 - Create: `src/renderer/src/components/FileBrowserDrawer.tsx`
 
 This is the main component. Build it in sub-steps.
@@ -563,7 +570,7 @@ function entriesToNodes(entries: DirEntry[]): TreeNode[] {
     name: e.name,
     path: e.path,
     isDirectory: e.isDirectory,
-    children: e.isDirectory ? null : undefined as unknown as null,
+    children: e.isDirectory ? null : (undefined as unknown as null),
     isExpanded: false
   }));
 }
@@ -577,7 +584,10 @@ type FileBrowserDrawerProps = {
 
 // --- Component ---
 
-export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): React.JSX.Element | null {
+export function FileBrowserDrawer({
+  isOpen,
+  onClose
+}: FileBrowserDrawerProps): React.JSX.Element | null {
   const [rootDir, setRootDir] = useState<string>(getInitialRoot);
   const [nodes, setNodes] = useState<TreeNode[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
@@ -627,9 +637,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
       return Promise.all(
         ns.map(async (n) => {
           if (n.path !== nodePath) {
-            return n.children
-              ? { ...n, children: await loadChildren(n.children) }
-              : n;
+            return n.children ? { ...n, children: await loadChildren(n.children) } : n;
           }
           if (!n.isDirectory) return n;
           if (n.isExpanded) return { ...n, isExpanded: false };
@@ -680,9 +688,10 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
   const handleDone = useCallback(() => {
     const activePaneId = useWorkspaceStore.getState().activePaneId;
     if (!activePaneId || selectedPaths.size === 0) return;
-    const quoted = Array.from(selectedPaths)
-      .map((p) => quotePathForShell(p, window.fleet.platform))
-      .join(' ') + ' ';
+    const quoted =
+      Array.from(selectedPaths)
+        .map((p) => quotePathForShell(p, window.fleet.platform))
+        .join(' ') + ' ';
     window.fleet.pty.input({ paneId: activePaneId, data: quoted });
     onClose();
   }, [selectedPaths, onClose]);
@@ -777,9 +786,7 @@ export function FileBrowserDrawer({ isOpen, onClose }: FileBrowserDrawerProps): 
           </button>
         </div>
         {!isTerminalActive && selectedPaths.size > 0 && (
-          <div className="px-3 pb-2 text-xs text-amber-500/80">
-            Focus a terminal to paste
-          </div>
+          <div className="px-3 pb-2 text-xs text-amber-500/80">Focus a terminal to paste</div>
         )}
       </div>
     </div>
@@ -797,7 +804,14 @@ type TreeViewProps = {
   depth: number;
 };
 
-function TreeView({ nodes, isLoading, selectedPaths, onToggle, onExpand, depth }: TreeViewProps): React.JSX.Element {
+function TreeView({
+  nodes,
+  isLoading,
+  selectedPaths,
+  onToggle,
+  onExpand,
+  depth
+}: TreeViewProps): React.JSX.Element {
   if (isLoading) {
     return <div className="px-3 py-2 text-xs text-neutral-500">Loading...</div>;
   }
@@ -828,7 +842,13 @@ type TreeNodeRowProps = {
   depth: number;
 };
 
-function TreeNodeRow({ node, selectedPaths, onToggle, onExpand, depth }: TreeNodeRowProps): React.JSX.Element {
+function TreeNodeRow({
+  node,
+  selectedPaths,
+  onToggle,
+  onExpand,
+  depth
+}: TreeNodeRowProps): React.JSX.Element {
   const isSelected = selectedPaths.has(node.path);
   const indent = depth * 12;
 
@@ -840,8 +860,16 @@ function TreeNodeRow({ node, selectedPaths, onToggle, onExpand, depth }: TreeNod
           className="w-full flex items-center gap-1 px-2 py-0.5 text-sm text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 transition-colors text-left"
           style={{ paddingLeft: `${8 + indent}px` }}
         >
-          {node.isExpanded ? <ChevronDown size={12} className="shrink-0" /> : <ChevronRight size={12} className="shrink-0" />}
-          {node.isExpanded ? <FolderOpen size={13} className="shrink-0 text-yellow-500/80" /> : <FolderClosed size={13} className="shrink-0 text-yellow-500/80" />}
+          {node.isExpanded ? (
+            <ChevronDown size={12} className="shrink-0" />
+          ) : (
+            <ChevronRight size={12} className="shrink-0" />
+          )}
+          {node.isExpanded ? (
+            <FolderOpen size={13} className="shrink-0 text-yellow-500/80" />
+          ) : (
+            <FolderClosed size={13} className="shrink-0 text-yellow-500/80" />
+          )}
           <span className="truncate text-xs">{node.name}</span>
         </button>
         {node.isExpanded && node.children !== null && (
@@ -884,7 +912,13 @@ type SearchResultsProps = {
   onToggle: (path: string) => void;
 };
 
-function SearchResults({ results, isLoading, error, selectedPaths, onToggle }: SearchResultsProps): React.JSX.Element {
+function SearchResults({
+  results,
+  isLoading,
+  error,
+  selectedPaths,
+  onToggle
+}: SearchResultsProps): React.JSX.Element {
   if (isLoading) {
     return <div className="px-3 py-2 text-xs text-neutral-500">Loading...</div>;
   }
@@ -929,30 +963,33 @@ function SearchResults({ results, isLoading, error, selectedPaths, onToggle }: S
 The `handleExpandNode` implementation above has a subtle issue: `setNodes` is called inside a `void` expression. Replace the `handleExpandNode` callback with this corrected version that properly awaits and sets state:
 
 ```ts
-const handleExpandNode = useCallback((nodePath: string) => {
-  async function updateNodes(ns: TreeNode[]): Promise<TreeNode[]> {
-    const result: TreeNode[] = [];
-    for (const n of ns) {
-      if (n.path === nodePath && n.isDirectory) {
-        if (n.isExpanded) {
-          result.push({ ...n, isExpanded: false });
-        } else if (n.children !== null) {
-          result.push({ ...n, isExpanded: true });
+const handleExpandNode = useCallback(
+  (nodePath: string) => {
+    async function updateNodes(ns: TreeNode[]): Promise<TreeNode[]> {
+      const result: TreeNode[] = [];
+      for (const n of ns) {
+        if (n.path === nodePath && n.isDirectory) {
+          if (n.isExpanded) {
+            result.push({ ...n, isExpanded: false });
+          } else if (n.children !== null) {
+            result.push({ ...n, isExpanded: true });
+          } else {
+            const res = await window.fleet.file.readdir(n.path);
+            const children = res.success ? entriesToNodes(res.entries) : [];
+            result.push({ ...n, isExpanded: true, children });
+          }
+        } else if (n.isDirectory && n.children) {
+          result.push({ ...n, children: await updateNodes(n.children) });
         } else {
-          const res = await window.fleet.file.readdir(n.path);
-          const children = res.success ? entriesToNodes(res.entries) : [];
-          result.push({ ...n, isExpanded: true, children });
+          result.push(n);
         }
-      } else if (n.isDirectory && n.children) {
-        result.push({ ...n, children: await updateNodes(n.children) });
-      } else {
-        result.push(n);
       }
+      return result;
     }
-    return result;
-  }
-  void updateNodes(nodes).then(setNodes);
-}, [nodes]);
+    void updateNodes(nodes).then(setNodes);
+  },
+  [nodes]
+);
 ```
 
 Also fix `entriesToNodes` — the `undefined as unknown as null` trick is wrong. Files don't need a `children` field at all since `TreeNode.children` is `TreeNode[] | null`. For files, just set `children: null` and `isExpanded: false` (they'll never be expanded):
@@ -996,6 +1033,7 @@ git commit -m "feat: add FileBrowserDrawer component with tree view, search, and
 ## Task 6: Wire `FileBrowserDrawer` into `App.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 ### Step 6.1: Add the import

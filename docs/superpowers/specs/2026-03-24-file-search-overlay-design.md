@@ -11,6 +11,7 @@ A Spotlight-style overlay (`FileSearchOverlay`) that uses OS-level search to fin
 ## Research Basis
 
 Baymard Institute and Nielsen Norman Group research both recommend:
+
 - Supporting both search and browse (this overlay covers search-dominant users; existing drawer covers browse)
 - Recency/frequency weighting in results
 - Fuzzy matching with highlighted match characters
@@ -27,18 +28,20 @@ Baymard Institute and Nielsen Norman Group research both recommend:
 New IPC channel: `fleet:file-search`
 
 **Request:** `{ query: string, scope?: string, limit?: number }`
+
 - `query` — the search string (filename or fragment)
 - `scope` — optional absolute path to restrict search (e.g. `~/Desktop`)
 - `limit` — max results, default 20
 
 **Response:** Union type matching existing codebase conventions:
+
 ```ts
 type FileSearchResult = {
   path: string;
   name: string;
   parentDir: string;
   modifiedAt: number; // epoch ms
-  size: number;       // bytes
+  size: number; // bytes
 };
 
 type FileSearchResponse =
@@ -91,6 +94,7 @@ New component: `FileSearchOverlay` in `src/renderer/src/components/FileSearchOve
 ### Layout
 
 Centered modal overlay, same visual style as `QuickOpenOverlay`:
+
 - Search input at top with scope indicator pill ("Everywhere" or scoped path)
 - Results list below (max 10 visible, scrollable)
 - Footer with keyboard hints (`↑↓ navigate`, `↵ paste`, `⇥ scope to folder`, `esc dismiss`)
@@ -98,6 +102,7 @@ Centered modal overlay, same visual style as `QuickOpenOverlay`:
 ### Result Row
 
 Each row displays:
+
 - File type icon (reuse `getFileIcon`)
 - Filename (bold, fuzzy-match characters highlighted client-side using the same `HighlightedText` pattern from `QuickOpenOverlay`)
 - Parent directory path (muted, truncated from left if long)
@@ -109,13 +114,13 @@ Shows recently pasted files from LRU history with header "Recent".
 
 ### Interactions
 
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Navigate results |
-| `Enter` | Paste selected file path into active pane, dismiss |
-| `Tab` | Scope search to selected result's parent folder |
-| `Escape` | Dismiss overlay |
-| Click | Same as Enter for clicked row |
+| Key       | Action                                             |
+| --------- | -------------------------------------------------- |
+| `↑` / `↓` | Navigate results                                   |
+| `Enter`   | Paste selected file path into active pane, dismiss |
+| `Tab`     | Scope search to selected result's parent folder    |
+| `Escape`  | Dismiss overlay                                    |
+| Click     | Same as Enter for clicked row                      |
 
 Single-select only. The existing `FileBrowserDrawer` handles multi-select use cases.
 
@@ -152,6 +157,7 @@ On selection, the file's absolute path is shell-quoted via `quotePathForShell()`
 ### Shortcut Registration
 
 Add `file-search` entry to `shortcuts.ts`:
+
 - macOS: `Cmd+Shift+O`
 - Windows/Linux: `Ctrl+Shift+O`
 
@@ -165,11 +171,11 @@ Add a search/magnifying-glass icon button to `PaneToolbar.tsx` next to the exist
 
 ### Coexistence with Existing UI
 
-| Component | Purpose | Stays? |
-|-----------|---------|--------|
+| Component           | Purpose                                  | Stays?         |
+| ------------------- | ---------------------------------------- | -------------- |
 | `FileBrowserDrawer` | Tree browsing, multi-select, paste paths | Yes, unchanged |
-| `QuickOpenOverlay` | Workspace-scoped file opening (editor) | Yes, unchanged |
-| `FileSearchOverlay` | System-wide find-and-paste single file | New |
+| `QuickOpenOverlay`  | Workspace-scoped file opening (editor)   | Yes, unchanged |
+| `FileSearchOverlay` | System-wide find-and-paste single file   | New            |
 
 No changes to existing components beyond wiring the new shortcut and toolbar button.
 
@@ -178,10 +184,12 @@ No changes to existing components beyond wiring the new shortcut and toolbar but
 ## Files to Create/Modify
 
 ### New Files
+
 - `src/renderer/src/components/FileSearchOverlay.tsx` — the overlay component
 - `src/main/file-search.ts` — platform-specific search backend + IPC handler
 
 ### Modified Files
+
 - `src/shared/ipc-channels.ts` — add `fleet:file-search` channel
 - `src/shared/ipc-api.ts` — add type definitions
 - `src/preload/index.ts` — expose `fileSearch` API

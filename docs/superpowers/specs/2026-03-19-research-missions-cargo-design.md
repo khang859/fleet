@@ -25,6 +25,7 @@ Existing rows default to `'code'`. No backfill needed. The column is a free-form
 `MissionService.addMission()` accepts an optional `type` parameter (defaults to `'code'`). The type is stored in the `missions` table.
 
 Changes:
+
 - Add `type?: string` to `AddMissionOpts`
 - Add `type: string` to `MissionRow`
 - Include `type` in the `INSERT` statement (defaulting to `opts.type ?? 'code'`)
@@ -41,12 +42,14 @@ For pre-created missions (when `deployCrew` receives `missionId`), the type is r
 ### 4. Crew Service → Hull Wiring
 
 Pass two new fields to `HullOpts`:
+
 - `missionType: string` — read from the mission row (either just-created or pre-existing)
 - `starbaseId: string` — already available in `CrewServiceDeps` (no changes to deps or `index.ts`)
 
 The crew service reads the mission type after mission creation/lookup:
+
 ```typescript
-const mission = missionService.getMission(missionId)!
+const mission = missionService.getMission(missionId)!;
 // ... pass mission.type to Hull
 ```
 
@@ -71,6 +74,7 @@ In `cleanup()`, after the auto-commit step and the `hasChanges` check (line 470)
    - If output buffer is empty: `result = 'Research completed (no output captured)'`
 
 5. Send `mission_complete` comms to admiral:
+
    ```json
    {
      "missionId": 123,
@@ -99,6 +103,7 @@ The existing `MAX_OUTPUT_LINES = 200` cap applies to research missions too. For 
 ### 8. Cargo File Storage
 
 Directory structure (using absolute paths via `process.env.HOME`):
+
 ```
 $HOME/.fleet/starbases/starbase-{id}/cargo/{sectorId}/{missionId}/
   full-output.md
@@ -106,28 +111,29 @@ $HOME/.fleet/starbases/starbase-{id}/cargo/{sectorId}/{missionId}/
 ```
 
 The `manifest` column in the cargo DB record stores a JSON blob:
+
 ```json
 { "path": "/Users/alice/.fleet/starbases/starbase-abc123/cargo/api/42/full-output.md" }
 ```
 
 ### 9. Error Handling
 
-| Scenario | Behavior |
-|----------|----------|
-| Research crew exits non-zero (crash) | Still marked `error` — crash is a crash regardless of type |
-| Research crew produces commits | Normal code flow (push/PR/verify) |
-| Research crew produces no output text | Mark `completed` with note, create cargo with empty content |
+| Scenario                                  | Behavior                                                                                                        |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Research crew exits non-zero (crash)      | Still marked `error` — crash is a crash regardless of type                                                      |
+| Research crew produces commits            | Normal code flow (push/PR/verify)                                                                               |
+| Research crew produces no output text     | Mark `completed` with note, create cargo with empty content                                                     |
 | Cargo file write fails (disk/permissions) | Non-fatal, log error, mark mission `completed`, store full content directly in DB `manifest` column as fallback |
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/main/starbase/migrations.ts` | New migration adding `type` column to missions |
-| `src/main/starbase/mission-service.ts` | Add `type` to `AddMissionOpts`, `MissionRow`, and INSERT |
-| `src/main/starbase/hull.ts` | Add `missionType` + `starbaseId` to `HullOpts`, capture result text, raise output cap for research, research branch in cleanup |
-| `src/main/starbase/crew-service.ts` | Add `type` to `deployCrew` opts, read mission type, pass to Hull |
-| `src/main/socket-server.ts` | Forward `type` arg in `mission.create` command |
+| File                                   | Change                                                                                                                         |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main/starbase/migrations.ts`      | New migration adding `type` column to missions                                                                                 |
+| `src/main/starbase/mission-service.ts` | Add `type` to `AddMissionOpts`, `MissionRow`, and INSERT                                                                       |
+| `src/main/starbase/hull.ts`            | Add `missionType` + `starbaseId` to `HullOpts`, capture result text, raise output cap for research, research branch in cleanup |
+| `src/main/starbase/crew-service.ts`    | Add `type` to `deployCrew` opts, read mission type, pass to Hull                                                               |
+| `src/main/socket-server.ts`            | Forward `type` arg in `mission.create` command                                                                                 |
 
 ## Not Changed
 

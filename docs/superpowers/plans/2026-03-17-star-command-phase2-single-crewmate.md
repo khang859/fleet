@@ -15,6 +15,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/starbase/worktree-manager.ts` — Git worktree operations: create, remove, install deps, prune
 - `src/main/starbase/mission-service.ts` — Mission CRUD: add, complete, fail, abort, list, next
 - `src/main/starbase/crew-service.ts` — Deploy orchestration: deployCrew, recallCrew, listCrew
@@ -25,6 +26,7 @@
 - `src/main/__tests__/crew-service.test.ts` — CrewService unit tests
 
 **Modified files:**
+
 - `src/shared/constants.ts` — Add deploy/recall/crew/missions IPC channels
 - `src/shared/ipc-api.ts` — Add deploy/recall payload types
 - `src/main/ipc-handlers.ts` — Register deploy/recall/crew/missions IPC handlers
@@ -38,6 +40,7 @@
 ### Task 1: Write WorktreeManager
 
 **Files:**
+
 - Create: `src/main/starbase/worktree-manager.ts`
 - Create: `src/main/__tests__/worktree-manager.test.ts`
 
@@ -77,7 +80,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
 
     expect(result.worktreeBranch).toBe('crew/api-crew-a1b2');
@@ -92,14 +95,14 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     // Create second with same crewId — should get suffix
     const result = mgr.create({
       starbaseId: 'test-sb',
       crewId: 'api-crew-a1b2-2',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     expect(result.worktreeBranch).toBe('crew/api-crew-a1b2-2');
   });
@@ -110,7 +113,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'rm-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     mgr.remove(result.worktreePath, REPO_DIR);
     expect(existsSync(result.worktreePath)).toBe(false);
@@ -122,7 +125,7 @@ describe('WorktreeManager', () => {
       starbaseId: 'test-sb',
       crewId: 'dep-crew',
       sectorPath: REPO_DIR,
-      baseBranch: 'main',
+      baseBranch: 'main'
     });
     // No lockfile — should return null (skip install)
     const cmd = mgr.detectInstallCommand(result.worktreePath);
@@ -246,7 +249,7 @@ export class WorktreeManager {
       execSync(cmd, {
         cwd: worktreePath,
         stdio: 'pipe',
-        timeout: timeoutMs,
+        timeout: timeoutMs
       });
     } catch {
       // Retry once
@@ -254,11 +257,11 @@ export class WorktreeManager {
         execSync(cmd, {
           cwd: worktreePath,
           stdio: 'pipe',
-          timeout: timeoutMs,
+          timeout: timeoutMs
         });
       } catch (retryErr) {
         throw new Error(
-          `Dependency install failed after retry: ${retryErr instanceof Error ? retryErr.message : 'unknown'}`,
+          `Dependency install failed after retry: ${retryErr instanceof Error ? retryErr.message : 'unknown'}`
         );
       }
     }
@@ -313,6 +316,7 @@ git commit -m "feat(starbase): add WorktreeManager for git worktree operations"
 ### Task 2: Write MissionService
 
 **Files:**
+
 - Create: `src/main/starbase/mission-service.ts`
 - Create: `src/main/__tests__/mission-service.test.ts`
 
@@ -358,7 +362,7 @@ describe('MissionService', () => {
     const m = missionSvc.addMission({
       sectorId: 'api',
       summary: 'Add auth endpoint',
-      prompt: 'Create a /auth endpoint that validates JWT tokens',
+      prompt: 'Create a /auth endpoint that validates JWT tokens'
     });
     expect(m.id).toBeDefined();
     expect(m.status).toBe('queued');
@@ -407,7 +411,7 @@ describe('MissionService', () => {
       sectorId: 'api',
       summary: 'M2',
       prompt: 'P2',
-      dependsOnMissionId: m1.id,
+      dependsOnMissionId: m1.id
     });
     // M2 depends on M1 which is still queued — nextMission should return M1
     const next = missionSvc.nextMission('api');
@@ -471,7 +475,7 @@ export class MissionService {
     const result = this.db
       .prepare(
         `INSERT INTO missions (sector_id, summary, prompt, acceptance_criteria, priority, depends_on_mission_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?)`
       )
       .run(
         opts.sectorId,
@@ -479,7 +483,7 @@ export class MissionService {
         opts.prompt,
         opts.acceptanceCriteria ?? null,
         opts.priority ?? 0,
-        opts.dependsOnMissionId ?? null,
+        opts.dependsOnMissionId ?? null
       );
 
     return this.getMission(result.lastInsertRowid as number)!;
@@ -488,7 +492,7 @@ export class MissionService {
   completeMission(missionId: number, result: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'completed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
       .run(result, missionId);
   }
@@ -496,7 +500,7 @@ export class MissionService {
   failMission(missionId: number, reason: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
       )
       .run(reason, missionId);
   }
@@ -510,7 +514,7 @@ export class MissionService {
   activateMission(missionId: number, crewId: string): void {
     this.db
       .prepare(
-        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?",
+        "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
       )
       .run(crewId, missionId);
   }
@@ -550,12 +554,15 @@ export class MissionService {
          AND (depends_on_mission_id IS NULL
               OR depends_on_mission_id IN (SELECT id FROM missions WHERE status = 'completed'))
          ORDER BY priority ASC, created_at ASC
-         LIMIT 1`,
+         LIMIT 1`
       )
       .get(sectorId) as MissionRow | undefined;
   }
 
-  updateMission(missionId: number, fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>): void {
+  updateMission(
+    missionId: number,
+    fields: Partial<Pick<MissionRow, 'summary' | 'prompt' | 'priority' | 'acceptance_criteria'>>
+  ): void {
     const sets: string[] = [];
     const values: unknown[] = [];
 
@@ -596,6 +603,7 @@ git commit -m "feat(starbase): add MissionService with CRUD and priority queue"
 ### Task 3: Write Hull lifecycle wrapper
 
 **Files:**
+
 - Create: `src/main/starbase/hull.ts`
 - Create: `src/main/__tests__/hull.test.ts`
 
@@ -646,7 +654,11 @@ afterEach(() => {
 
 describe('Hull', () => {
   it('should construct with required opts', () => {
-    const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Test', prompt: 'echo hello' });
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'echo hello'
+    });
     const hull = new Hull({
       crewId: 'hull-crew',
       sectorId: 'api',
@@ -656,14 +668,18 @@ describe('Hull', () => {
       worktreeBranch: 'crew/hull-crew',
       baseBranch: 'main',
       sectorPath: SECTOR_DIR,
-      db: db.getDb(),
+      db: db.getDb()
     });
     expect(hull).toBeDefined();
     expect(hull.getStatus()).toBe('pending');
   });
 
   it('should track output in ring buffer', () => {
-    const mission = missionSvc.addMission({ sectorId: 'api', summary: 'Test', prompt: 'echo hello' });
+    const mission = missionSvc.addMission({
+      sectorId: 'api',
+      summary: 'Test',
+      prompt: 'echo hello'
+    });
     const hull = new Hull({
       crewId: 'hull-crew',
       sectorId: 'api',
@@ -673,7 +689,7 @@ describe('Hull', () => {
       worktreeBranch: 'crew/hull-crew',
       baseBranch: 'main',
       sectorPath: SECTOR_DIR,
-      db: db.getDb(),
+      db: db.getDb()
     });
     // Test the ring buffer directly
     hull.appendOutput('line 1\n');
@@ -743,7 +759,7 @@ export class Hull {
     db.prepare(
       `INSERT INTO crew (id, tab_id, sector_id, mission_id, sector_path, worktree_path,
         worktree_branch, status, mission_summary, pid, deadline, last_lifesign)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, NULL, datetime('now', '+${timeoutMin} minutes'), datetime('now'))`
     ).run(
       crewId,
       paneId,
@@ -752,18 +768,19 @@ export class Hull {
       this.opts.sectorPath,
       worktreePath,
       worktreeBranch,
-      prompt.slice(0, 100),
+      prompt.slice(0, 100)
     );
 
     // Activate mission
     db.prepare(
-      "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?",
+      "UPDATE missions SET status = 'active', crew_id = ?, started_at = datetime('now') WHERE id = ?"
     ).run(crewId, missionId);
 
     // Log deployment
-    db.prepare(
-      "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deployed', ?)",
-    ).run(crewId, JSON.stringify({ sectorId, missionId }));
+    db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'deployed', ?)").run(
+      crewId,
+      JSON.stringify({ sectorId, missionId })
+    );
 
     this.status = 'active';
 
@@ -771,20 +788,25 @@ export class Hull {
     this.lifesignTimer = setInterval(() => {
       try {
         db.prepare("UPDATE crew SET last_lifesign = datetime('now') WHERE id = ?").run(crewId);
-      } catch { /* db might be closed */ }
+      } catch {
+        /* db might be closed */
+      }
     }, lifesignSec * 1000);
 
     // Start timeout timer
-    this.timeoutTimer = setTimeout(() => {
-      this.handleTimeout(ptyManager);
-    }, timeoutMin * 60 * 1000);
+    this.timeoutTimer = setTimeout(
+      () => {
+        this.handleTimeout(ptyManager);
+      },
+      timeoutMin * 60 * 1000
+    );
 
     // Spawn agent PTY
     try {
       const result = ptyManager.create({
         paneId,
         cwd: worktreePath,
-        cmd: `claude --yes --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`,
+        cmd: `claude --yes --dangerously-skip-permissions -p "${prompt.replace(/"/g, '\\"')}"`
       });
       this.pid = result.pid;
       db.prepare('UPDATE crew SET pid = ? WHERE id = ?').run(result.pid, crewId);
@@ -848,7 +870,8 @@ export class Hull {
     if (this.status !== 'active' && this.status !== 'pending') return; // Already cleaned up
 
     this.status = status;
-    const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } = this.opts;
+    const { crewId, missionId, worktreePath, worktreeBranch, baseBranch, sectorPath, db } =
+      this.opts;
 
     // Stop timers
     if (this.lifesignTimer) clearInterval(this.lifesignTimer);
@@ -865,13 +888,17 @@ export class Hull {
         // There are staged changes — commit them
         try {
           execSync('git commit -m "auto-commit uncommitted changes"', gitOpts);
-        } catch { /* commit might fail if nothing to commit */ }
+        } catch {
+          /* commit might fail if nothing to commit */
+        }
       }
 
       // Check for empty diff
       let hasChanges = false;
       try {
-        const diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, gitOpts).toString().trim();
+        const diffStat = execSync(`git diff --stat "${baseBranch}"...HEAD`, gitOpts)
+          .toString()
+          .trim();
         hasChanges = diffStat.length > 0;
       } catch {
         hasChanges = false;
@@ -879,10 +906,13 @@ export class Hull {
 
       if (!hasChanges) {
         // No work produced
-        db.prepare("UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?")
-          .run('No work produced', missionId);
-        db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?")
-          .run('error', crewId);
+        db.prepare(
+          "UPDATE missions SET status = 'failed', result = ?, completed_at = datetime('now') WHERE id = ?"
+        ).run('No work produced', missionId);
+        db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?").run(
+          'error',
+          crewId
+        );
         return;
       }
 
@@ -906,35 +936,46 @@ export class Hull {
       // Update mission
       const missionStatus = status === 'complete' ? 'completed' : status;
       if (pushSucceeded) {
-        db.prepare(`UPDATE missions SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ?`)
-          .run(missionStatus, reason, missionId);
+        db.prepare(
+          `UPDATE missions SET status = ?, result = ?, completed_at = datetime('now') WHERE id = ?`
+        ).run(missionStatus, reason, missionId);
       } else {
-        db.prepare("UPDATE missions SET status = 'push-pending', result = ?, completed_at = datetime('now') WHERE id = ?")
-          .run(reason, missionId);
+        db.prepare(
+          "UPDATE missions SET status = 'push-pending', result = ?, completed_at = datetime('now') WHERE id = ?"
+        ).run(reason, missionId);
       }
 
       // Send mission_complete Transmission
       db.prepare(
-        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)",
+        "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
       ).run(crewId, JSON.stringify({ missionId, status, reason }));
 
       // Log exit
-      db.prepare(
-        "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)",
-      ).run(crewId, JSON.stringify({ status, reason }));
-
+      db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'exited', ?)").run(
+        crewId,
+        JSON.stringify({ status, reason })
+      );
     } finally {
       // Update crew status
-      db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?")
-        .run(status, crewId);
+      db.prepare("UPDATE crew SET status = ?, updated_at = datetime('now') WHERE id = ?").run(
+        status,
+        crewId
+      );
 
       // Clean up worktree (skip if push failed — preserve for recovery)
-      if (status !== 'error' || this.opts.db.prepare("SELECT status FROM missions WHERE id = ?").get(missionId)?.status !== 'push-pending') {
+      if (
+        status !== 'error' ||
+        this.opts.db.prepare('SELECT status FROM missions WHERE id = ?').get(missionId)?.status !==
+          'push-pending'
+      ) {
         try {
           execSync(`git worktree remove "${worktreePath}"`, { cwd: sectorPath, stdio: 'pipe' });
         } catch {
           try {
-            execSync(`git worktree remove "${worktreePath}" --force`, { cwd: sectorPath, stdio: 'pipe' });
+            execSync(`git worktree remove "${worktreePath}" --force`, {
+              cwd: sectorPath,
+              stdio: 'pipe'
+            });
           } catch {
             console.error(`[hull] Failed to remove worktree: ${worktreePath}`);
           }
@@ -967,6 +1008,7 @@ git commit -m "feat(starbase): add Hull lifecycle wrapper for Crewmate managemen
 ### Task 4: Write CrewService
 
 **Files:**
+
 - Create: `src/main/starbase/crew-service.ts`
 - Create: `src/main/__tests__/crew-service.test.ts`
 
@@ -1019,7 +1061,7 @@ beforeEach(() => {
     sectorService: sectorSvc,
     missionService: missionSvc,
     configService: configSvc,
-    worktreeManager: wtMgr,
+    worktreeManager: wtMgr
   });
 });
 
@@ -1116,9 +1158,10 @@ export class CrewService {
   async deployCrew(
     opts: { sectorId: string; prompt: string; missionId?: number },
     ptyManager: PtyManager,
-    createTab: (label: string, cwd: string) => string,
+    createTab: (label: string, cwd: string) => string
   ): Promise<DeployResult> {
-    const { db, starbaseId, sectorService, missionService, configService, worktreeManager } = this.deps;
+    const { db, starbaseId, sectorService, missionService, configService, worktreeManager } =
+      this.deps;
 
     // 1. Look up sector
     const sector = sectorService.getSector(opts.sectorId);
@@ -1132,7 +1175,7 @@ export class CrewService {
       const mission = missionService.addMission({
         sectorId: opts.sectorId,
         summary: opts.prompt.slice(0, 100),
-        prompt: opts.prompt,
+        prompt: opts.prompt
       });
       missionId = mission.id;
     }
@@ -1147,10 +1190,13 @@ export class CrewService {
         starbaseId,
         crewId,
         sectorPath: sector.root_path,
-        baseBranch,
+        baseBranch
       });
     } catch (err) {
-      missionService.failMission(missionId, `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      missionService.failMission(
+        missionId,
+        `Worktree creation failed: ${err instanceof Error ? err.message : 'unknown'}`
+      );
       throw err;
     }
 
@@ -1159,7 +1205,10 @@ export class CrewService {
       worktreeManager.installDependencies(worktreeResult.worktreePath);
     } catch (err) {
       worktreeManager.remove(worktreeResult.worktreePath, sector.root_path);
-      missionService.failMission(missionId, `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      missionService.failMission(
+        missionId,
+        `Dependency install failed: ${err instanceof Error ? err.message : 'unknown'}`
+      );
       throw err;
     }
 
@@ -1185,7 +1234,7 @@ export class CrewService {
       sectorPath: sector.root_path,
       db,
       lifesignIntervalSec: lifesignSec,
-      timeoutMin,
+      timeoutMin
     });
 
     // Update crew record with avatar
@@ -1253,6 +1302,7 @@ git commit -m "feat(starbase): add CrewService for deploy orchestration"
 ### Task 5: Add Phase 2 IPC channels and wire to main process
 
 **Files:**
+
 - Modify: `src/shared/constants.ts`
 - Modify: `src/shared/ipc-api.ts`
 - Modify: `src/main/ipc-handlers.ts`

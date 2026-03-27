@@ -12,27 +12,28 @@
 
 ## File Map
 
-| File | Change |
-|------|--------|
-| `sprites-staging/personas/navigator-*.png` (5 files) | Source — copy only, do not modify |
-| `src/renderer/src/assets/navigator-*.png` (5 files) | Create — direct PNG imports for sidebar |
-| `sprites-raw/star-command/avatars/navigator-*.png` (5 files) | Create — source for future sprite atlas rebuilds |
-| `scripts/assemble-star-command-sprites.ts` | Modify — add navigator avatars to Row 1, expand sheet width |
-| `src/renderer/src/assets/star-command-sprites.png` | Regenerated — by running the assembler |
-| `src/renderer/src/components/star-command/sc-sprite-atlas.ts` | Regenerated — by running the assembler |
-| `src/main/starbase/navigator.ts` | Modify — add `getStatus()` and `getStatusText()` |
-| `src/main/__tests__/navigator.test.ts` | Modify — add tests for new methods |
-| `src/shared/ipc-api.ts` | Modify — add `navigator?` field to `StarbaseStatusUpdatePayload` |
-| `src/main/starbase-runtime-core.ts` | Modify — add `navigator` to `buildSnapshot()` |
-| `src/renderer/src/store/star-command-store.ts` | Modify — add `NavigatorStatus` type, store field, and action |
-| `src/renderer/src/components/StarCommandTab.tsx` | Modify — wire `p.navigator` snapshot to store |
-| `src/renderer/src/components/star-command/AdmiralSidebar.tsx` | Modify — add Navigator section after First Officer |
+| File                                                          | Change                                                           |
+| ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `sprites-staging/personas/navigator-*.png` (5 files)          | Source — copy only, do not modify                                |
+| `src/renderer/src/assets/navigator-*.png` (5 files)           | Create — direct PNG imports for sidebar                          |
+| `sprites-raw/star-command/avatars/navigator-*.png` (5 files)  | Create — source for future sprite atlas rebuilds                 |
+| `scripts/assemble-star-command-sprites.ts`                    | Modify — add navigator avatars to Row 1, expand sheet width      |
+| `src/renderer/src/assets/star-command-sprites.png`            | Regenerated — by running the assembler                           |
+| `src/renderer/src/components/star-command/sc-sprite-atlas.ts` | Regenerated — by running the assembler                           |
+| `src/main/starbase/navigator.ts`                              | Modify — add `getStatus()` and `getStatusText()`                 |
+| `src/main/__tests__/navigator.test.ts`                        | Modify — add tests for new methods                               |
+| `src/shared/ipc-api.ts`                                       | Modify — add `navigator?` field to `StarbaseStatusUpdatePayload` |
+| `src/main/starbase-runtime-core.ts`                           | Modify — add `navigator` to `buildSnapshot()`                    |
+| `src/renderer/src/store/star-command-store.ts`                | Modify — add `NavigatorStatus` type, store field, and action     |
+| `src/renderer/src/components/StarCommandTab.tsx`              | Modify — wire `p.navigator` snapshot to store                    |
+| `src/renderer/src/components/star-command/AdmiralSidebar.tsx` | Modify — add Navigator section after First Officer               |
 
 ---
 
 ## Task 1: Copy Navigator Sprites to Assets
 
 **Files:**
+
 - Create: `src/renderer/src/assets/navigator-default.png`
 - Create: `src/renderer/src/assets/navigator-working.png`
 - Create: `src/renderer/src/assets/navigator-standby.png`
@@ -114,6 +115,7 @@ git commit -m "feat: add navigator sprite assets and update sprite atlas"
 ## Task 2: Add Status Methods to Navigator Class
 
 **Files:**
+
 - Modify: `src/main/starbase/navigator.ts`
 - Modify: `src/main/__tests__/navigator.test.ts`
 
@@ -155,8 +157,16 @@ it('getStatusText returns singular when one process running', () => {
 it('getStatusText returns plural when multiple processes running', () => {
   const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
   const running = (nav as unknown as { running: Map<string, unknown> }).running;
-  running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
-  running.set('exec-2', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-2', startedAt: Date.now() });
+  running.set('exec-1', {
+    proc: { killed: false, kill: vi.fn() },
+    executionId: 'exec-1',
+    startedAt: Date.now()
+  });
+  running.set('exec-2', {
+    proc: { killed: false, kill: vi.fn() },
+    executionId: 'exec-2',
+    startedAt: Date.now()
+  });
   expect(nav.getStatusText()).toBe('Running 2 executions');
 });
 ```
@@ -205,6 +215,7 @@ git commit -m "feat: add getStatus and getStatusText to Navigator"
 ## Task 3: Add Navigator to Starbase Snapshot
 
 **Files:**
+
 - Modify: `src/main/starbase-runtime-core.ts`
 - Modify: `src/shared/ipc-api.ts`
 
@@ -269,6 +280,7 @@ git commit -m "feat: include navigator status in starbase snapshot"
 ## Task 4: Add NavigatorStatus to the Zustand Store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/star-command-store.ts`
 
 - [ ] **Step 1: Add the NavigatorStatus type**
@@ -330,6 +342,7 @@ git commit -m "feat: add NavigatorStatus to star-command store"
 ## Task 5: Wire Navigator Snapshot to Store in StarCommandTab
 
 **Files:**
+
 - Modify: `src/renderer/src/components/StarCommandTab.tsx`
 
 - [ ] **Step 1: Destructure setNavigatorStatus from the store**
@@ -368,6 +381,7 @@ git commit -m "feat: wire navigator snapshot to store in StarCommandTab"
 ## Task 6: Add Navigator Section to AdmiralSidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/star-command/AdmiralSidebar.tsx`
 
 - [ ] **Step 1: Add navigator PNG imports**
@@ -408,8 +422,15 @@ const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstO
 Add `navigatorStatus` to the destructure:
 
 ```ts
-const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus, navigatorStatus } =
-  useStarCommandStore();
+const {
+  crewList,
+  sectors,
+  unreadCount,
+  admiralStatus,
+  admiralStatusText,
+  firstOfficerStatus,
+  navigatorStatus
+} = useStarCommandStore();
 ```
 
 - [ ] **Step 4: Resolve the navigator image**
@@ -425,7 +446,9 @@ const navSrc = NAVIGATOR_IMAGES[navigatorStatus.status] ?? NAVIGATOR_IMAGES.defa
 Find the closing `</div>` of the First Officer section (it ends just before `{/* Status sections */}` `<div className="px-4 py-4 space-y-4">`). Insert a new Navigator section between them:
 
 ```tsx
-{/* Navigator */}
+{
+  /* Navigator */
+}
 <div className="flex flex-col items-center pt-4 pb-4 border-b border-neutral-800">
   <img
     src={navSrc}
@@ -435,22 +458,18 @@ Find the closing `</div>` of the First Officer section (it ends just before `{/*
     className="rounded"
     style={{ imageRendering: 'pixelated' as const }}
   />
-  <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">
-    Navigator
-  </span>
+  <span className="text-xs font-mono text-teal-400 uppercase tracking-widest mt-2">Navigator</span>
   <div className="flex items-center gap-1.5 mt-1">
     <span
       className={`w-2 h-2 rounded-full ${
-        navigatorStatus.status === 'working'
-          ? 'bg-teal-400 animate-pulse'
-          : 'bg-green-400'
+        navigatorStatus.status === 'working' ? 'bg-teal-400 animate-pulse' : 'bg-green-400'
       }`}
     />
     <span className="text-[10px] font-mono text-neutral-500 uppercase tracking-wider">
       {navigatorStatus.statusText}
     </span>
   </div>
-</div>
+</div>;
 ```
 
 - [ ] **Step 6: Typecheck**

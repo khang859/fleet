@@ -129,7 +129,13 @@ export type UpdateStatus =
 
 // ── Image Generation ────────────────────────────────────────────────────────
 
-export type ImageGenerationStatus = 'queued' | 'processing' | 'completed' | 'partial' | 'failed' | 'timeout';
+export type ImageGenerationStatus =
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'partial'
+  | 'failed'
+  | 'timeout';
 
 export type ImageGenerationMode = 'generate' | 'edit';
 

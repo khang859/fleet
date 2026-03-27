@@ -26,21 +26,29 @@ Nothing moves except shuttles and signal pulses. The hub rotates in place. Outpo
 **Renderer:** `SectorOutpostRenderer` in `visualizer/sector-outposts.ts`
 
 **Edge cases:**
+
 - If `sectors.length === 0`: `render` is a no-op.
 - If a sector has no entry in `positions`: skip it silently.
 
 **Per sector:**
+
 - `beacon` sprite (2-frame, 500ms) drawn at the sector's `(x, y)` position, centered
 - Sector `name` in `9px monospace`, centered below the beacon, 14px gap
 - Active sector: teal glow circle (`#14b8a6`, radial, ~24px radius, alpha 0.25) drawn under the beacon; beacon at full opacity
 - Inactive sector: no glow; beacon and label at 40% opacity
 
 **Interface:**
+
 ```ts
-export type SectorState = { id: string; name: string; active: boolean }
+export type SectorState = { id: string; name: string; active: boolean };
 
 class SectorOutpostRenderer {
-  render(ctx: CanvasRenderingContext2D, sectors: SectorState[], positions: Map<string, {x: number; y: number}>, elapsed: number): void
+  render(
+    ctx: CanvasRenderingContext2D,
+    sectors: SectorState[],
+    positions: Map<string, { x: number; y: number }>,
+    elapsed: number
+  ): void;
 }
 ```
 
@@ -52,15 +60,16 @@ No internal state — purely driven by `SectorState[]` and the position map. `el
 
 Each crewmate gets one shuttle entry keyed by `crewId`. The shuttle is a small state machine:
 
-| State | Condition | Sprite | Behavior |
-|-------|-----------|--------|----------|
-| `orbiting` | status `active` or `error` | `shuttle-thrust` | Circles sector outpost at 35px radius |
-| `flying-to-hub` | status `hailing` | `shuttle-thrust` | Moves toward live `(hubX, hubY)` at 80px/s; ShuttleRenderer internally transitions to `returning` when distance to hub ≤ 20px |
-| `returning` | was `flying-to-hub`, reached hub | `shuttle-thrust` | Moves toward a snapshot of the outpost position captured at transition time at 80px/s; resumes `orbiting` when distance to snapshot ≤ 20px |
-| `docking` | status transitions to `complete` from another active state | `dock-sparkle` | One-shot 3-frame anim at outpost, then entry removed |
-| `drifting` | status `lost` | `shuttle-idle` | Drifts in the direction from hub toward shuttle at moment of transition, at 15px/s; alpha fades 1→0 over 3s, then entry removed |
+| State           | Condition                                                  | Sprite           | Behavior                                                                                                                                   |
+| --------------- | ---------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `orbiting`      | status `active` or `error`                                 | `shuttle-thrust` | Circles sector outpost at 35px radius                                                                                                      |
+| `flying-to-hub` | status `hailing`                                           | `shuttle-thrust` | Moves toward live `(hubX, hubY)` at 80px/s; ShuttleRenderer internally transitions to `returning` when distance to hub ≤ 20px              |
+| `returning`     | was `flying-to-hub`, reached hub                           | `shuttle-thrust` | Moves toward a snapshot of the outpost position captured at transition time at 80px/s; resumes `orbiting` when distance to snapshot ≤ 20px |
+| `docking`       | status transitions to `complete` from another active state | `dock-sparkle`   | One-shot 3-frame anim at outpost, then entry removed                                                                                       |
+| `drifting`      | status `lost`                                              | `shuttle-idle`   | Drifts in the direction from hub toward shuttle at moment of transition, at 15px/s; alpha fades 1→0 over 3s, then entry removed            |
 
 **Status → shuttle entry rules:**
+
 - `idle`: no shuttle entry created; if entry already exists it is removed immediately (no animation).
 - `active`/`error`: create entry in `orbiting` state if not already present.
 - `hailing`: if already `orbiting`, transition to `flying-to-hub`. If entry doesn't exist, create it in `flying-to-hub` directly.
@@ -70,24 +79,32 @@ Each crewmate gets one shuttle entry keyed by `crewId`. The shuttle is a small s
 - Crew with `sectorId` not found in `positions`: shuttle entry is not created; `getShuttlePosition` returns `null`.
 
 **Orbit details:**
+
 - `orbitPhase`: initial value `(sum of char codes in crewId) % (2 * Math.PI)` — deterministic. Each frame: `orbitPhase += orbitSpeed * (deltaMs / 1000)` (modulo 2π). This is an incrementing accumulator stored per shuttle entry.
 - `orbitSpeed`: `0.6 + 0.4 * ((sum of char codes in crewId) % 100) / 100` rad/s — deterministic range 0.6–1.0
 - `error` status: orbit speed jitters by ±50% each frame (`Math.random() * 0.5 + 0.75` multiplier on top of base speed)
 - The shuttle sprite is rotated to face its direction of travel (velocity angle) in all states including `orbiting` (tangent to the orbit circle, changing every frame) and `flying-to-hub`/`returning` (fixed toward destination). `shuttle-thrust` frames animate at 100ms regardless of shuttle state.
 
 **Interface:**
+
 ```ts
 export type PodState = {
-  crewId: string
-  sectorId: string
-  status: 'active' | 'hailing' | 'error' | 'complete' | 'lost' | 'idle'
-}
+  crewId: string;
+  sectorId: string;
+  status: 'active' | 'hailing' | 'error' | 'complete' | 'lost' | 'idle';
+};
 
 class ShuttleRenderer {
-  update(pods: PodState[], positions: Map<string, {x: number; y: number}>, hubX: number, hubY: number, deltaMs: number): void
-  render(ctx: CanvasRenderingContext2D, elapsed: number): void
-  getShuttlePosition(crewId: string): {x: number; y: number} | null
-  hasActiveShuttles(): boolean
+  update(
+    pods: PodState[],
+    positions: Map<string, { x: number; y: number }>,
+    hubX: number,
+    hubY: number,
+    deltaMs: number
+  ): void;
+  render(ctx: CanvasRenderingContext2D, elapsed: number): void;
+  getShuttlePosition(crewId: string): { x: number; y: number } | null;
+  hasActiveShuttles(): boolean;
 }
 ```
 
@@ -103,6 +120,7 @@ Replaces `CommsBeamRenderer`. Pulses travel as sprites along straight lines betw
 **Spawning:** In the RAF loop, the `elapsed` timer drives pulse spawning via a single shared `lastPulseSpawn` timestamp (not `Date.now()`), so pulses pause naturally when the RAF loop pauses. Every 3 seconds of accumulated `elapsed`, all currently `hailing` crew fire pulses simultaneously on the same tick. For each hailing crew: if `ShuttleRenderer.getShuttlePosition(crewId)` returns a position, call `addPulse(fromX, fromY, hubX, hubY)`. Then update `lastPulseSpawn = elapsed`.
 
 **Pulse lifecycle:**
+
 1. **Outbound** — `orb-teal` travels from `(fromX, fromY)` → `(toX, toY)` over 1200ms
 2. **Arrival** — `spark` sprite plays at hub position for one cycle (2 frames × 300ms)
 3. **Return** — `orb-amber` travels from `(toX, toY)` → `(fromX, fromY)` over 1200ms
@@ -111,12 +129,13 @@ Replaces `CommsBeamRenderer`. Pulses travel as sprites along straight lines betw
 The return pulse always travels back to the original `fromX, fromY` snapshot captured at spawn time — it does not track the shuttle's current position.
 
 **Interface:**
+
 ```ts
 class SignalPulseRenderer {
-  addPulse(fromX: number, fromY: number, toX: number, toY: number): void
-  update(deltaMs: number): void
-  render(ctx: CanvasRenderingContext2D, elapsed: number): void
-  hasActivePulses(): boolean
+  addPulse(fromX: number, fromY: number, toX: number, toY: number): void;
+  update(deltaMs: number): void;
+  render(ctx: CanvasRenderingContext2D, elapsed: number): void;
+  hasActivePulses(): boolean;
 }
 ```
 
@@ -145,10 +164,11 @@ The RAF loop and canvas skeleton are unchanged (resize, starfield, visibility pa
 
 ```ts
 const hasActiveCrew = podStatesRef.current.some(
-  p => p.status === 'active' || p.status === 'hailing' || p.status === 'error'
-)
-const isActive = hasActiveCrew || shuttleRenderer.hasActiveShuttles() || signalPulses.hasActivePulses()
-const frameBudget = isActive ? 33 : 100 // 30fps vs 10fps
+  (p) => p.status === 'active' || p.status === 'hailing' || p.status === 'error'
+);
+const isActive =
+  hasActiveCrew || shuttleRenderer.hasActiveShuttles() || signalPulses.hasActivePulses();
+const frameBudget = isActive ? 33 : 100; // 30fps vs 10fps
 ```
 
 `error` status is included in `hasActiveCrew` because error-state shuttles jitter their orbit speed using `Math.random()` every frame and require 30fps to render correctly.
@@ -158,23 +178,24 @@ const frameBudget = isActive ? 33 : 100 // 30fps vs 10fps
 ```ts
 function computeSectorPositions(
   sectors: SectorState[],
-  cx: number, cy: number,
+  cx: number,
+  cy: number,
   radius: number
-): Map<string, {x: number; y: number}>
+): Map<string, { x: number; y: number }>;
 ```
 
 Pure function in `scene-utils.ts`. Returns empty map if `sectors.length === 0`. Distributes N sectors evenly around the given radius starting at angle `-Math.PI / 2` (top of canvas). Added alongside existing `mapSectors`/`mapCrew`.
 
 ## Files Changed
 
-| File | Action |
-|------|--------|
-| `src/renderer/src/components/visualizer/sector-outposts.ts` | Create — exports `SectorState`, `SectorOutpostRenderer` |
-| `src/renderer/src/components/visualizer/shuttles.ts` | Create — exports `PodState`, `ShuttleRenderer` |
-| `src/renderer/src/components/visualizer/signal-pulses.ts` | Create — exports `SignalPulseRenderer` |
-| `src/renderer/src/components/visualizer/comms-beams.ts` | Delete |
-| `src/renderer/src/components/visualizer/station-ring.ts` | Delete |
-| `src/renderer/src/components/visualizer/crew-pods.ts` | Delete |
-| `src/renderer/src/components/star-command/StarCommandScene.tsx` | Rewrite frame loop; update imports |
-| `src/renderer/src/components/star-command/scene-utils.ts` | Update imports; add `computeSectorPositions` |
-| `src/renderer/src/components/star-command/__tests__/scene-utils.test.ts` | Add tests for `computeSectorPositions` |
+| File                                                                     | Action                                                  |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `src/renderer/src/components/visualizer/sector-outposts.ts`              | Create — exports `SectorState`, `SectorOutpostRenderer` |
+| `src/renderer/src/components/visualizer/shuttles.ts`                     | Create — exports `PodState`, `ShuttleRenderer`          |
+| `src/renderer/src/components/visualizer/signal-pulses.ts`                | Create — exports `SignalPulseRenderer`                  |
+| `src/renderer/src/components/visualizer/comms-beams.ts`                  | Delete                                                  |
+| `src/renderer/src/components/visualizer/station-ring.ts`                 | Delete                                                  |
+| `src/renderer/src/components/visualizer/crew-pods.ts`                    | Delete                                                  |
+| `src/renderer/src/components/star-command/StarCommandScene.tsx`          | Rewrite frame loop; update imports                      |
+| `src/renderer/src/components/star-command/scene-utils.ts`                | Update imports; add `computeSectorPositions`            |
+| `src/renderer/src/components/star-command/__tests__/scene-utils.test.ts` | Add tests for `computeSectorPositions`                  |

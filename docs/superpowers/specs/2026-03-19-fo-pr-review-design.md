@@ -23,12 +23,12 @@ queued → active → [crew completes, PR created] → pending-review
 
 ### New Statuses
 
-| Status | Meaning |
-|---|---|
-| `reviewing` | Review crew actively working (prevents Sentinel re-dispatch) |
-| `approved` | PR passed review, waiting for human merge decision |
-| `changes-requested` | Review crew found issues, fix crew will be deployed |
-| `escalated` | FO couldn't resolve after 2 rounds, Admiral intervenes |
+| Status              | Meaning                                                      |
+| ------------------- | ------------------------------------------------------------ |
+| `reviewing`         | Review crew actively working (prevents Sentinel re-dispatch) |
+| `approved`          | PR passed review, waiting for human merge decision           |
+| `changes-requested` | Review crew found issues, fix crew will be deployed          |
+| `escalated`         | FO couldn't resolve after 2 rounds, Admiral intervenes       |
 
 ### Existing Statuses Reused
 
@@ -50,14 +50,17 @@ The existing `review-rejected` status (referenced in Sentinel's `firstOfficerSwe
 Runs alongside `firstOfficerSweep()` in the Sentinel's sweep loop.
 
 **Watches for:**
+
 - `pending-review` — dispatches a review crew
 - `changes-requested` (when `review_round < 2`) — dispatches a fix crew
 
 **On `pending-review`:**
+
 1. Transition mission status to `reviewing`
 2. Deploy review crew via `crewService.deployCrew()` with `type: 'review'` and `prBranch`
 
 **On `changes-requested`:**
+
 1. Check `review_round < 2` — if at limit, set status to `escalated` and write memo
 2. Deploy fix crew via `crewService.deployCrew()` with `type: 'code'` and `prBranch`
 3. Fix crew prompt includes the review notes from the previous round
@@ -81,10 +84,12 @@ The `reviewing` status transition is the guard. Sentinel only queries `pending-r
 ### WorktreeManager
 
 New method `createForExistingBranch(sectorPath, existingBranch)`:
+
 ```
 git fetch origin <branch>:<branch>
 git worktree add <path> <branch>
 ```
+
 Uses `fetch origin <branch>:<branch>` to create a proper local tracking branch (not detached HEAD), so fix crews can later push commits back to the PR branch.
 
 ### CrewService
@@ -155,6 +160,7 @@ Acceptance Criteria: <mission.acceptance_criteria>
 ### Escalation
 
 If `review_round >= 2` and verdict is still `REQUEST_CHANGES`, Sentinel:
+
 - Sets status to `escalated`
 - Writes memo to Admiral with: original mission, PR URL, review history from both rounds
 
@@ -175,6 +181,7 @@ Hull's review cleanup path calls `missionService.incrementReviewRound()` when se
 ### System Prompt
 
 Core review principles (distilled from existing plugin agents):
+
 - **Confidence-based filtering:** Only report issues with >=80% confidence
 - **Severity stratification:** CRITICAL (blocks approval), IMPORTANT (should fix), MINOR (don't report)
 - **Pragmatic stance:** Strict on modifications to existing code, pragmatic on new isolated code
@@ -182,6 +189,7 @@ Core review principles (distilled from existing plugin agents):
 - **YAGNI check:** Flag unnecessary complexity, over-engineering, unused abstractions
 
 Review checklist:
+
 1. Acceptance criteria met? Compare PR changes against mission's acceptance criteria
 2. Code quality — logic errors, null handling, race conditions, security vulnerabilities
 3. Test coverage — meaningful tests present and passing?
@@ -238,40 +246,42 @@ ALTER TABLE missions ADD COLUMN pr_branch TEXT;
 Both additive with defaults — no data migration needed.
 
 `pr_branch` is set by Hull in `createPR()` immediately after successful PR creation, using the `worktreeBranch` from HullOpts:
+
 ```sql
 UPDATE missions SET pr_branch = ? WHERE id = ?
 ```
+
 Read by Sentinel when deploying review/fix crews.
 
 ## Config Keys
 
-| Key | Default | Description |
-|---|---|---|
-| `review_crew_max_concurrent` | 2 | Max concurrent review crew dispatches (separate from failure-triage) |
+| Key                          | Default | Description                                                          |
+| ---------------------------- | ------- | -------------------------------------------------------------------- |
+| `review_crew_max_concurrent` | 2       | Max concurrent review crew dispatches (separate from failure-triage) |
 
 ## UI Changes
 
 Minimal — new statuses need color mappings in MissionsPanel:
 
-| Status | Color | Meaning |
-|---|---|---|
-| `reviewing` | Blue | In progress |
-| `approved` | Green | Ready for merge |
-| `changes-requested` | Yellow | Fix needed |
-| `escalated` | Red | Needs Admiral attention |
+| Status              | Color  | Meaning                 |
+| ------------------- | ------ | ----------------------- |
+| `reviewing`         | Blue   | In progress             |
+| `approved`          | Green  | Ready for merge         |
+| `changes-requested` | Yellow | Fix needed              |
+| `escalated`         | Red    | Needs Admiral attention |
 
 Escalation memos appear in MemoPanel automatically. Review verdict transmissions appear in CommsPanel. No new panels or components needed.
 
 ## Files to Modify
 
-| File | Changes |
-|---|---|
-| `sentinel.ts` | Add `reviewSweep()`, call from `runSweep()` |
-| `hull.ts` | Add `prBranch` to HullOpts, `'review'` path in `cleanup()`, store `pr_branch` after PR creation |
-| `crew-service.ts` | Accept `prBranch`/`type` in deploy opts, conditional worktree creation, skip deps for review |
-| `worktree-manager.ts` | Add `createForExistingBranch()` method |
-| `mission-service.ts` | Add `incrementReviewRound()`, expose `pr_branch` in queries |
-| `socket-server.ts` | Add `mission.verdict` handler |
-| `fleet-cli.ts` | Add `missions verdict` command mapping |
-| `migrations.ts` | Migration adding `review_round` and `pr_branch` columns |
-| MissionsPanel (UI) | Status color mappings for new statuses |
+| File                  | Changes                                                                                         |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `sentinel.ts`         | Add `reviewSweep()`, call from `runSweep()`                                                     |
+| `hull.ts`             | Add `prBranch` to HullOpts, `'review'` path in `cleanup()`, store `pr_branch` after PR creation |
+| `crew-service.ts`     | Accept `prBranch`/`type` in deploy opts, conditional worktree creation, skip deps for review    |
+| `worktree-manager.ts` | Add `createForExistingBranch()` method                                                          |
+| `mission-service.ts`  | Add `incrementReviewRound()`, expose `pr_branch` in queries                                     |
+| `socket-server.ts`    | Add `mission.verdict` handler                                                                   |
+| `fleet-cli.ts`        | Add `missions verdict` command mapping                                                          |
+| `migrations.ts`       | Migration adding `review_round` and `pr_branch` columns                                         |
+| MissionsPanel (UI)    | Status color mappings for new statuses                                                          |

@@ -32,18 +32,15 @@ export function TerminalPane({
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
-  const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(
-    containerRef,
-    {
-      paneId,
-      cwd,
-      serializedContent,
-      isActive,
-      fontFamily,
-      fontSize,
-      onScrollStateChange: setIsScrolledUp
-    }
-  );
+  const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
+    paneId,
+    cwd,
+    serializedContent,
+    isActive,
+    fontFamily,
+    fontSize,
+    onScrollStateChange: setIsScrolledUp
+  });
   const [searchOpen, setSearchOpen] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [isGitRepo, setIsGitRepo] = useState(false);
@@ -117,7 +114,9 @@ export function TerminalPane({
         onSearch={() => setSearchOpen(true)}
         onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
         onFileSearch={() => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))}
-        onClipboardHistory={() => document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))}
+        onClipboardHistory={() =>
+          document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
+        }
       />
       <SearchBar
         isOpen={searchOpen}

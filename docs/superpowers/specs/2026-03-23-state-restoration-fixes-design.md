@@ -12,18 +12,20 @@ Four bugs in Fleet's state persistence and restoration, fixed with minimal surgi
 ## Fix 1 — Active tab and pane persistence
 
 ### Problem
+
 `activeTabId` and `activePaneId` are transient Zustand state — not part of the `Workspace` type — so they are never persisted. Every launch restores to `tabs[0]` and `panes[0]` regardless of what was active when the app closed.
 
 ### Design
 
 **`shared/types.ts`** — add two optional fields to `Workspace`:
+
 ```ts
 export type Workspace = {
   id: string;
   label: string;
   tabs: Tab[];
-  activeTabId?: string;    // NEW
-  activePaneId?: string;   // NEW
+  activeTabId?: string; // NEW
+  activePaneId?: string; // NEW
 };
 ```
 
@@ -32,6 +34,7 @@ export type Workspace = {
 **Save paths** — three places build a workspace snapshot before calling `layout.save`. All three need `activeTabId` and `activePaneId` from the current store state:
 
 1. **Sidebar.tsx debounced autosave** — reads `useWorkspaceStore.getState()`, already builds `workspaceWithCwds`. Add fields:
+
 ```ts
 const state = useWorkspaceStore.getState();
 const workspaceWithCwds = {
@@ -43,20 +46,23 @@ const workspaceWithCwds = {
 ```
 
 2. **App.tsx `pagehide` / `visibilitychange` flush** — the `flushWorkspace` closure builds `activeWithContent`. Add the two fields:
+
 ```ts
 const activeWithContent = {
   ...state.workspace,
   activeTabId: state.activeTabId ?? undefined,
   activePaneId: state.activePaneId ?? undefined,
-  tabs: state.workspace.tabs.map(tab => ({
+  tabs: state.workspace.tabs.map((tab) => ({
     ...tab,
     splitRoot: injectLiveCwd(tab.splitRoot)
   }))
 };
 ```
+
 Background workspaces in the loop do not need `activeTabId`/`activePaneId` since those are only meaningful for the foreground workspace.
 
 3. **WorkspacePicker.tsx `handleSaveCurrent`** — currently spreads `...workspace` (only the `Workspace` type fields). Must also include the store's transient fields. Note: `WorkspacePicker.commitNewWorkspace` does not call `handleSaveCurrent`; its pre-switch flush is handled by Fix 3 Part A, which includes these fields.
+
 ```ts
 const state = useWorkspaceStore.getState();
 const workspaceWithLiveCwds = {
@@ -70,18 +76,20 @@ const workspaceWithLiveCwds = {
 **Restore paths** — both `loadWorkspace` and `switchWorkspace` in workspace-store need updating.
 
 In `loadWorkspace`, the incoming `workspace` parameter comes directly from disk, so reading `workspace.activeTabId` / `workspace.activePaneId` is correct:
+
 ```ts
-const migratedTabs = workspace.tabs.map(t => ({ ...t, labelIsCustom: t.labelIsCustom ?? false }));
+const migratedTabs = workspace.tabs.map((t) => ({ ...t, labelIsCustom: t.labelIsCustom ?? false }));
 const migrated = { ...workspace, tabs: migratedTabs };
 
-const restoredTab = (migrated.activeTabId
-  ? migrated.tabs.find(t => t.id === migrated.activeTabId)
-  : undefined) ?? migrated.tabs[0];
+const restoredTab =
+  (migrated.activeTabId ? migrated.tabs.find((t) => t.id === migrated.activeTabId) : undefined) ??
+  migrated.tabs[0];
 
 const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
-const restoredPane = (migrated.activePaneId && paneIds.includes(migrated.activePaneId))
-  ? migrated.activePaneId
-  : paneIds[0] ?? null;
+const restoredPane =
+  migrated.activePaneId && paneIds.includes(migrated.activePaneId)
+    ? migrated.activePaneId
+    : (paneIds[0] ?? null);
 
 set({
   workspace: migrated,
@@ -92,19 +100,21 @@ set({
 ```
 
 In `switchWorkspace`, the active workspace is resolved as `target = state.backgroundWorkspaces.get(ws.id) ?? ws` (in-memory takes precedence over the disk argument). Read active tab/pane from `migrated` (the merged result), not from the raw `ws` argument:
+
 ```ts
 const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
-const migratedTabs = target.tabs.map(t => ({ ...t, labelIsCustom: t.labelIsCustom ?? false }));
+const migratedTabs = target.tabs.map((t) => ({ ...t, labelIsCustom: t.labelIsCustom ?? false }));
 const migrated = { ...target, tabs: migratedTabs };
 
-const restoredTab = (migrated.activeTabId
-  ? migrated.tabs.find(t => t.id === migrated.activeTabId)
-  : undefined) ?? migrated.tabs[0];
+const restoredTab =
+  (migrated.activeTabId ? migrated.tabs.find((t) => t.id === migrated.activeTabId) : undefined) ??
+  migrated.tabs[0];
 
 const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
-const restoredPane = (migrated.activePaneId && paneIds.includes(migrated.activePaneId))
-  ? migrated.activePaneId
-  : paneIds[0] ?? null;
+const restoredPane =
+  migrated.activePaneId && paneIds.includes(migrated.activePaneId)
+    ? migrated.activePaneId
+    : (paneIds[0] ?? null);
 ```
 
 (`collectPaneIds` is already defined in workspace-store.ts; no new import needed.)
@@ -116,6 +126,7 @@ const restoredPane = (migrated.activePaneId && paneIds.includes(migrated.activeP
 ## Fix 2 — Split pane inherits live CWD
 
 ### Problem
+
 `splitPane()` creates the new leaf with `tab.cwd` (the tab's original creation-time CWD). If the user has `cd`'d elsewhere in the source pane, the split opens in the wrong directory.
 
 ### Design
@@ -123,6 +134,7 @@ const restoredPane = (migrated.activePaneId && paneIds.includes(migrated.activeP
 In `splitPane()` (workspace-store), look up the live CWD from `cwd-store` before falling back to `tab.cwd`.
 
 **New import required** in workspace-store.ts (`useCwdStore` is not currently imported there):
+
 ```ts
 import { useCwdStore } from './cwd-store';
 ```
@@ -145,9 +157,11 @@ splitPane: (paneId, direction) => {
 ## Fix 3 — Workspace switch saves current workspace first
 
 ### Problem
+
 When switching workspaces, `switchWorkspace()` stashes the current workspace in `backgroundWorkspaces` without injecting live CWDs.
 
 Two distinct failure scenarios:
+
 - **Crash after switch** (fixed by Part A): the old workspace on disk has stale CWDs
 - **Switch-back within the same session** (fixed by Part B): the in-memory stash has stale CWDs, and `switchWorkspace` prefers the in-memory version over disk
 
@@ -175,7 +189,7 @@ const doSwitchWorkspace = useCallback(async (wsId: string) => {
       ...state.workspace,
       activeTabId: state.activeTabId ?? undefined,
       activePaneId: state.activePaneId ?? undefined,
-      tabs: state.workspace.tabs.map(tab => ({
+      tabs: state.workspace.tabs.map((tab) => ({
         ...tab,
         splitRoot: injectLiveCwd(tab.splitRoot)
       }))
@@ -201,8 +215,9 @@ The same flush-first pattern applies to the other three call sites (simpler, no 
 In `switchWorkspace()` (workspace-store), inject live CWDs and active state into the old workspace before storing in `backgroundWorkspaces`.
 
 Two **new imports** required in workspace-store.ts (neither is currently imported):
+
 ```ts
-import { useCwdStore } from './cwd-store';                          // shared with Fix 2
+import { useCwdStore } from './cwd-store'; // shared with Fix 2
 import { injectLiveCwd } from '../lib/workspace-utils';
 ```
 
@@ -211,7 +226,7 @@ const oldWithCwds = {
   ...state.workspace,
   activeTabId: state.activeTabId ?? undefined,
   activePaneId: state.activePaneId ?? undefined,
-  tabs: state.workspace.tabs.map(tab => ({
+  tabs: state.workspace.tabs.map((tab) => ({
     ...tab,
     splitRoot: injectLiveCwd(tab.splitRoot)
   }))
@@ -228,6 +243,7 @@ newBackground.set(state.workspace.id, oldWithCwds);
 ## Fix 4 — Undo-close restores at live CWD
 
 ### Problem
+
 `closeTab()` stores `lastClosedTab.tab` with `splitRoot` CWDs from the last autosave. When undo is triggered, the restored PTY spawns at a stale directory.
 
 ### Design
@@ -260,6 +276,7 @@ This fix applies automatically to all close paths (sidebar button, right-click, 
 ## Import summary for workspace-store.ts
 
 Two new imports are needed (neither currently exists in the file):
+
 ```ts
 import { useCwdStore } from './cwd-store';
 import { injectLiveCwd } from '../lib/workspace-utils';

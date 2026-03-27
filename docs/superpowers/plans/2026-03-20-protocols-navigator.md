@@ -14,27 +14,28 @@
 
 ## File Map
 
-| Action | File | Responsibility |
-|--------|------|----------------|
-| Create | `src/main/starbase/protocol-service.ts` | CRUD for protocols, protocol_steps, protocol_executions |
-| Create | `src/main/starbase/navigator.ts` | Navigator class — spawn, lifecycle, cleanup |
-| Create | `src/main/__tests__/protocol-service.test.ts` | Protocol service tests |
-| Create | `src/main/__tests__/navigator.test.ts` | Navigator spawn/dispatch tests |
-| Modify | `src/main/starbase/migrations.ts` | Migrations 11 + 12, CONFIG_DEFAULTS |
-| Modify | `src/main/starbase/comms-service.ts` | execution_id in SendOpts + INSERT + dedup exclusion |
-| Modify | `src/main/starbase/retention-service.ts` | Add protocol_executions to cleanup + TABLES |
-| Modify | `src/main/starbase/workspace-templates.ts` | Add generateNavigatorClaudeMd() |
-| Modify | `src/main/socket-server.ts` | protocol.* and execution.* command handlers |
-| Modify | `src/main/fleet-cli.ts` | Protocol commands in COMMAND_MAP + formatted output |
-| Modify | `src/main/starbase/sentinel.ts` | navigatorSweep() + gate expiry in _runSweep() |
-| Modify | `src/main/__tests__/comms-service.test.ts` | execution_id tests |
-| Modify | `src/main/__tests__/sentinel.test.ts` | Navigator sweep tests |
+| Action | File                                          | Responsibility                                          |
+| ------ | --------------------------------------------- | ------------------------------------------------------- |
+| Create | `src/main/starbase/protocol-service.ts`       | CRUD for protocols, protocol_steps, protocol_executions |
+| Create | `src/main/starbase/navigator.ts`              | Navigator class — spawn, lifecycle, cleanup             |
+| Create | `src/main/__tests__/protocol-service.test.ts` | Protocol service tests                                  |
+| Create | `src/main/__tests__/navigator.test.ts`        | Navigator spawn/dispatch tests                          |
+| Modify | `src/main/starbase/migrations.ts`             | Migrations 11 + 12, CONFIG_DEFAULTS                     |
+| Modify | `src/main/starbase/comms-service.ts`          | execution_id in SendOpts + INSERT + dedup exclusion     |
+| Modify | `src/main/starbase/retention-service.ts`      | Add protocol_executions to cleanup + TABLES             |
+| Modify | `src/main/starbase/workspace-templates.ts`    | Add generateNavigatorClaudeMd()                         |
+| Modify | `src/main/socket-server.ts`                   | protocol._ and execution._ command handlers             |
+| Modify | `src/main/fleet-cli.ts`                       | Protocol commands in COMMAND_MAP + formatted output     |
+| Modify | `src/main/starbase/sentinel.ts`               | navigatorSweep() + gate expiry in \_runSweep()          |
+| Modify | `src/main/__tests__/comms-service.test.ts`    | execution_id tests                                      |
+| Modify | `src/main/__tests__/sentinel.test.ts`         | Navigator sweep tests                                   |
 
 ---
 
 ## Task 1: Migrations 11 and 12
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts`
 
 - [ ] **Step 1: Add migration 11 — protocol tables + global sector seed**
@@ -143,6 +144,7 @@ git commit -m "feat(db): migration 11+12 — protocols, navigator tables, FK col
 ## Task 2: Protocol Service
 
 **Files:**
+
 - Create: `src/main/starbase/protocol-service.ts`
 - Create: `src/main/__tests__/protocol-service.test.ts`
 
@@ -190,7 +192,7 @@ describe('ProtocolService', () => {
         description: 'Research then build',
         helpText: null,
         triggerExamples: ['build me X'],
-        builtIn: false,
+        builtIn: false
       });
       const p = svc.getProtocolBySlug('research-and-deploy');
       expect(p?.name).toBe('Research and Deploy');
@@ -198,7 +200,15 @@ describe('ProtocolService', () => {
     });
 
     it('enables and disables a protocol', () => {
-      svc.createProtocol({ id: 'proto-2', slug: 'test-proto', name: 'Test', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-2',
+        slug: 'test-proto',
+        name: 'Test',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       svc.setProtocolEnabled('test-proto', false);
       expect(svc.getProtocolBySlug('test-proto')?.enabled).toBe(0);
       svc.setProtocolEnabled('test-proto', true);
@@ -212,8 +222,21 @@ describe('ProtocolService', () => {
 
   describe('protocol_steps', () => {
     it('adds and lists steps for a protocol', () => {
-      svc.createProtocol({ id: 'proto-3', slug: 'with-steps', name: 'With Steps', description: null, helpText: null, triggerExamples: [], builtIn: false });
-      svc.addStep('proto-3', { stepOrder: 1, type: 'deploy-crew', config: { mission: 'research' }, description: 'Deploy research crew' });
+      svc.createProtocol({
+        id: 'proto-3',
+        slug: 'with-steps',
+        name: 'With Steps',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
+      svc.addStep('proto-3', {
+        stepOrder: 1,
+        type: 'deploy-crew',
+        config: { mission: 'research' },
+        description: 'Deploy research crew'
+      });
       svc.addStep('proto-3', { stepOrder: 2, type: 'gate', config: {}, description: 'Gate' });
       const steps = svc.listSteps('proto-3');
       expect(steps).toHaveLength(2);
@@ -224,7 +247,15 @@ describe('ProtocolService', () => {
 
   describe('protocol_executions', () => {
     it('creates and retrieves an execution', () => {
-      svc.createProtocol({ id: 'proto-4', slug: 'exec-proto', name: 'Exec Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-4',
+        slug: 'exec-proto',
+        name: 'Exec Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-4', featureRequest: 'build auth' });
       const exec = svc.getExecution(id);
       expect(exec?.status).toBe('running');
@@ -233,7 +264,15 @@ describe('ProtocolService', () => {
     });
 
     it('advances step and validates guard', () => {
-      svc.createProtocol({ id: 'proto-5', slug: 'step-proto', name: 'Step Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-5',
+        slug: 'step-proto',
+        name: 'Step Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-5', featureRequest: 'test' });
       svc.advanceStep(id, 2); // current is 1, advancing to 2 — ok
       expect(svc.getExecution(id)?.current_step).toBe(2);
@@ -241,20 +280,40 @@ describe('ProtocolService', () => {
     });
 
     it('updates execution status', () => {
-      svc.createProtocol({ id: 'proto-6', slug: 'status-proto', name: 'Status Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-6',
+        slug: 'status-proto',
+        name: 'Status Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-6', featureRequest: 'test' });
       svc.updateExecutionStatus(id, 'gate-pending');
       expect(svc.getExecution(id)?.status).toBe('gate-pending');
     });
 
     it('lists stale gate-pending executions', () => {
-      svc.createProtocol({ id: 'proto-7', slug: 'stale-proto', name: 'Stale Proto', description: null, helpText: null, triggerExamples: [], builtIn: false });
+      svc.createProtocol({
+        id: 'proto-7',
+        slug: 'stale-proto',
+        name: 'Stale Proto',
+        description: null,
+        helpText: null,
+        triggerExamples: [],
+        builtIn: false
+      });
       const id = svc.createExecution({ protocolId: 'proto-7', featureRequest: 'test' });
       svc.updateExecutionStatus(id, 'gate-pending');
       // force updated_at to be old
-      db.getDb().prepare(`UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = ?`).run(id);
+      db.getDb()
+        .prepare(
+          `UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = ?`
+        )
+        .run(id);
       const stale = svc.getStaleGatePendingExecutions(3600); // 1 hour threshold
-      expect(stale.some(e => e.id === id)).toBe(true);
+      expect(stale.some((e) => e.id === id)).toBe(true);
     });
   });
 });
@@ -335,103 +394,131 @@ export class ProtocolService {
   constructor(private db: Database.Database) {}
 
   listProtocols(): ProtocolRow[] {
-    return this.db.prepare('SELECT * FROM protocols ORDER BY built_in DESC, name ASC').all() as ProtocolRow[];
+    return this.db
+      .prepare('SELECT * FROM protocols ORDER BY built_in DESC, name ASC')
+      .all() as ProtocolRow[];
   }
 
   getProtocolBySlug(slug: string): ProtocolRow | undefined {
-    return this.db.prepare('SELECT * FROM protocols WHERE slug = ?').get(slug) as ProtocolRow | undefined;
+    return this.db.prepare('SELECT * FROM protocols WHERE slug = ?').get(slug) as
+      | ProtocolRow
+      | undefined;
   }
 
   createProtocol(opts: CreateProtocolOpts): void {
-    this.db.prepare(
-      `INSERT INTO protocols (id, slug, name, description, help_text, trigger_examples, built_in)
+    this.db
+      .prepare(
+        `INSERT INTO protocols (id, slug, name, description, help_text, trigger_examples, built_in)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
-    ).run(
-      opts.id,
-      opts.slug,
-      opts.name,
-      opts.description,
-      opts.helpText,
-      JSON.stringify(opts.triggerExamples),
-      opts.builtIn ? 1 : 0,
-    );
+      )
+      .run(
+        opts.id,
+        opts.slug,
+        opts.name,
+        opts.description,
+        opts.helpText,
+        JSON.stringify(opts.triggerExamples),
+        opts.builtIn ? 1 : 0
+      );
   }
 
   setProtocolEnabled(slug: string, enabled: boolean): void {
-    const result = this.db.prepare(
-      `UPDATE protocols SET enabled = ?, updated_at = datetime('now') WHERE slug = ?`
-    ).run(enabled ? 1 : 0, slug);
+    const result = this.db
+      .prepare(`UPDATE protocols SET enabled = ?, updated_at = datetime('now') WHERE slug = ?`)
+      .run(enabled ? 1 : 0, slug);
     if (result.changes === 0) throw new Error(`Protocol not found: ${slug}`);
   }
 
   listSteps(protocolId: string): ProtocolStepRow[] {
-    return this.db.prepare(
-      'SELECT * FROM protocol_steps WHERE protocol_id = ? ORDER BY step_order ASC'
-    ).all(protocolId) as ProtocolStepRow[];
+    return this.db
+      .prepare('SELECT * FROM protocol_steps WHERE protocol_id = ? ORDER BY step_order ASC')
+      .all(protocolId) as ProtocolStepRow[];
   }
 
   addStep(protocolId: string, opts: AddStepOpts): void {
-    this.db.prepare(
-      `INSERT INTO protocol_steps (protocol_id, step_order, type, config, description)
+    this.db
+      .prepare(
+        `INSERT INTO protocol_steps (protocol_id, step_order, type, config, description)
        VALUES (?, ?, ?, ?, ?)`
-    ).run(protocolId, opts.stepOrder, opts.type, JSON.stringify(opts.config), opts.description);
+      )
+      .run(protocolId, opts.stepOrder, opts.type, JSON.stringify(opts.config), opts.description);
   }
 
   createExecution(opts: CreateExecutionOpts): string {
     const id = `exec-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    this.db.prepare(
-      `INSERT INTO protocol_executions (id, protocol_id, feature_request)
+    this.db
+      .prepare(
+        `INSERT INTO protocol_executions (id, protocol_id, feature_request)
        VALUES (?, ?, ?)`
-    ).run(id, opts.protocolId, opts.featureRequest);
+      )
+      .run(id, opts.protocolId, opts.featureRequest);
     return id;
   }
 
   getExecution(id: string): ProtocolExecutionRow | undefined {
-    return this.db.prepare('SELECT * FROM protocol_executions WHERE id = ?').get(id) as ProtocolExecutionRow | undefined;
+    return this.db.prepare('SELECT * FROM protocol_executions WHERE id = ?').get(id) as
+      | ProtocolExecutionRow
+      | undefined;
   }
 
   listExecutions(status?: string): ProtocolExecutionRow[] {
     if (status) {
-      return this.db.prepare('SELECT * FROM protocol_executions WHERE status = ? ORDER BY created_at DESC').all(status) as ProtocolExecutionRow[];
+      return this.db
+        .prepare('SELECT * FROM protocol_executions WHERE status = ? ORDER BY created_at DESC')
+        .all(status) as ProtocolExecutionRow[];
     }
-    return this.db.prepare('SELECT * FROM protocol_executions ORDER BY created_at DESC').all() as ProtocolExecutionRow[];
+    return this.db
+      .prepare('SELECT * FROM protocol_executions ORDER BY created_at DESC')
+      .all() as ProtocolExecutionRow[];
   }
 
   advanceStep(executionId: string, toStep: number): void {
     const exec = this.getExecution(executionId);
     if (!exec) throw new Error(`Execution not found: ${executionId}`);
     if (toStep !== exec.current_step + 1) {
-      throw new Error(`Cannot advance from step ${exec.current_step} to step ${toStep} — steps must be sequential`);
+      throw new Error(
+        `Cannot advance from step ${exec.current_step} to step ${toStep} — steps must be sequential`
+      );
     }
-    this.db.prepare(
-      `UPDATE protocol_executions SET current_step = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(toStep, executionId);
+    this.db
+      .prepare(
+        `UPDATE protocol_executions SET current_step = ?, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(toStep, executionId);
   }
 
   updateExecutionStatus(id: string, status: string): void {
-    this.db.prepare(
-      `UPDATE protocol_executions SET status = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(status, id);
+    this.db
+      .prepare(
+        `UPDATE protocol_executions SET status = ?, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(status, id);
   }
 
   updateExecutionContext(id: string, context: string): void {
-    this.db.prepare(
-      `UPDATE protocol_executions SET context = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(context, id);
+    this.db
+      .prepare(
+        `UPDATE protocol_executions SET context = ?, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(context, id);
   }
 
   updateActiveCrewIds(id: string, crewIds: string[]): void {
-    this.db.prepare(
-      `UPDATE protocol_executions SET active_crew_ids = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(JSON.stringify(crewIds), id);
+    this.db
+      .prepare(
+        `UPDATE protocol_executions SET active_crew_ids = ?, updated_at = datetime('now') WHERE id = ?`
+      )
+      .run(JSON.stringify(crewIds), id);
   }
 
   getStaleGatePendingExecutions(olderThanSeconds: number): ProtocolExecutionRow[] {
-    return this.db.prepare(
-      `SELECT * FROM protocol_executions
+    return this.db
+      .prepare(
+        `SELECT * FROM protocol_executions
        WHERE status = 'gate-pending'
          AND updated_at < datetime('now', '-' || ? || ' seconds')`
-    ).all(olderThanSeconds) as ProtocolExecutionRow[];
+      )
+      .all(olderThanSeconds) as ProtocolExecutionRow[];
   }
 }
 ```
@@ -456,6 +543,7 @@ git commit -m "feat(protocol): add ProtocolService with CRUD for protocols, step
 ## Task 3: CommsService Amendments
 
 **Files:**
+
 - Modify: `src/main/starbase/comms-service.ts`
 - Modify: `src/main/__tests__/comms-service.test.ts`
 
@@ -466,14 +554,34 @@ Add to `src/main/__tests__/comms-service.test.ts`:
 ```typescript
 describe('execution_id', () => {
   it('stores execution_id on a transmission', () => {
-    const id = svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'test', executionId: 'exec-123' });
-    const row = db.getDb().prepare('SELECT execution_id FROM comms WHERE id = ?').get(id) as { execution_id: string };
+    const id = svc.send({
+      from: 'navigator',
+      to: 'admiral',
+      type: 'gate-pending',
+      payload: 'test',
+      executionId: 'exec-123'
+    });
+    const row = db.getDb().prepare('SELECT execution_id FROM comms WHERE id = ?').get(id) as {
+      execution_id: string;
+    };
     expect(row.execution_id).toBe('exec-123');
   });
 
   it('filters unread comms by execution_id', () => {
-    svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'a', executionId: 'exec-A' });
-    svc.send({ from: 'navigator', to: 'admiral', type: 'gate-pending', payload: 'b', executionId: 'exec-B' });
+    svc.send({
+      from: 'navigator',
+      to: 'admiral',
+      type: 'gate-pending',
+      payload: 'a',
+      executionId: 'exec-A'
+    });
+    svc.send({
+      from: 'navigator',
+      to: 'admiral',
+      type: 'gate-pending',
+      payload: 'b',
+      executionId: 'exec-B'
+    });
     const rows = svc.getUnreadByExecution('exec-A');
     expect(rows).toHaveLength(1);
     expect(rows[0].payload).toBe('a');
@@ -482,9 +590,23 @@ describe('execution_id', () => {
 
 describe('dedup exclusion for navigator', () => {
   it('does not deduplicate identical messages from navigator', () => {
-    svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-1' });
-    svc.send({ from: 'navigator', to: 'admiral', type: 'protocol-complete', payload: 'done', executionId: 'exec-2' });
-    const rows = db.getDb().prepare("SELECT * FROM comms WHERE from_crew = 'navigator'").all() as { id: number }[];
+    svc.send({
+      from: 'navigator',
+      to: 'admiral',
+      type: 'protocol-complete',
+      payload: 'done',
+      executionId: 'exec-1'
+    });
+    svc.send({
+      from: 'navigator',
+      to: 'admiral',
+      type: 'protocol-complete',
+      payload: 'done',
+      executionId: 'exec-2'
+    });
+    const rows = db.getDb().prepare("SELECT * FROM comms WHERE from_crew = 'navigator'").all() as {
+      id: number;
+    }[];
     expect(rows).toHaveLength(2);
   });
 });
@@ -503,6 +625,7 @@ Expected: new tests FAIL — `executionId` not in SendOpts, `getUnreadByExecutio
 In `src/main/starbase/comms-service.ts`:
 
 Update `SendOpts` type:
+
 ```typescript
 type SendOpts = {
   from: string;
@@ -517,32 +640,43 @@ type SendOpts = {
 ```
 
 Update the dedup check from:
+
 ```typescript
 if (opts.from !== 'admiral') {
 ```
+
 to:
+
 ```typescript
 if (opts.from !== 'admiral' && opts.from !== 'navigator') {
 ```
 
 The current INSERT statement (line ~96) is:
+
 ```typescript
 'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?)',
 ```
+
 Update it to:
+
 ```typescript
 'INSERT INTO comms (from_crew, to_crew, type, payload, thread_id, in_reply_to, mission_id, execution_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 ```
+
 and the corresponding `.run()` call from:
+
 ```typescript
 .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null);
 ```
+
 to:
+
 ```typescript
 .run(opts.from, opts.to, opts.type, opts.payload, opts.threadId ?? null, opts.inReplyTo ?? null, opts.missionId ?? null, opts.executionId ?? null);
 ```
 
 Add `getUnreadByExecution` method:
+
 ```typescript
 getUnreadByExecution(executionId: string): TransmissionRow[] {
   return this.db.prepare(
@@ -552,6 +686,7 @@ getUnreadByExecution(executionId: string): TransmissionRow[] {
 ```
 
 Also update `TransmissionRow` type to include new columns:
+
 ```typescript
 export type TransmissionRow = {
   // ... existing fields ...
@@ -580,6 +715,7 @@ git commit -m "feat(comms): add execution_id to SendOpts, INSERT, dedup exclusio
 ## Task 4: Fleet CLI — Protocol Commands
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/fleet-cli.ts`
 
@@ -588,11 +724,13 @@ git commit -m "feat(comms): add execution_id to SendOpts, INSERT, dedup exclusio
 In `src/main/socket-server.ts`:
 
 1. Add the import:
+
 ```typescript
 import type { ProtocolService } from './starbase/protocol-service';
 ```
 
 2. Add `protocolService` to the `ServiceRegistry` interface:
+
 ```typescript
 export interface ServiceRegistry {
   crewService: CrewService;
@@ -603,11 +741,12 @@ export interface ServiceRegistry {
   supplyRouteService: SupplyRouteService;
   configService: ConfigService;
   shipsLog: ShipsLog;
-  protocolService: ProtocolService;  // add this
+  protocolService: ProtocolService; // add this
 }
 ```
 
 3. Update `comms.list` case to support `--execution` filtering:
+
 ```typescript
 case 'comms.list': {
   const executionId = args.execution as string | undefined;
@@ -703,21 +842,33 @@ case 'execution.update': {
 if (command === 'protocol.list') {
   const protocols = data as { slug: string; name: string; enabled: number; built_in: number }[];
   if (!protocols || protocols.length === 0) return 'No protocols registered.';
-  return protocols.map(p => {
-    const status = p.enabled ? '✓' : '✗';
-    const tag = p.built_in ? ' [built-in]' : '';
-    return `  ${status} ${p.slug.padEnd(30)} ${p.name}${tag}`;
-  }).join('\n');
+  return protocols
+    .map((p) => {
+      const status = p.enabled ? '✓' : '✗';
+      const tag = p.built_in ? ' [built-in]' : '';
+      return `  ${status} ${p.slug.padEnd(30)} ${p.name}${tag}`;
+    })
+    .join('\n');
 }
 
 if (command === 'protocol.show') {
-  const p = data as { name: string; description?: string; help_text?: string; trigger_examples?: string; steps: { step_order: number; type: string; description?: string }[] };
+  const p = data as {
+    name: string;
+    description?: string;
+    help_text?: string;
+    trigger_examples?: string;
+    steps: { step_order: number; type: string; description?: string }[];
+  };
   const lines: string[] = [`\n${p.name}\n`];
   if (p.description) lines.push(p.description + '\n');
   if (p.help_text) lines.push(p.help_text + '\n');
   if (p.trigger_examples) {
     const examples = JSON.parse(p.trigger_examples) as string[];
-    if (examples.length) { lines.push('Examples:'); examples.forEach(e => lines.push(`  • "${e}"`)); lines.push(''); }
+    if (examples.length) {
+      lines.push('Examples:');
+      examples.forEach((e) => lines.push(`  • "${e}"`));
+      lines.push('');
+    }
   }
   lines.push('Steps:');
   for (const s of p.steps) lines.push(`  ${s.step_order}. [${s.type}] ${s.description ?? ''}`);
@@ -725,11 +876,19 @@ if (command === 'protocol.show') {
 }
 
 if (command === 'execution.list') {
-  const execs = data as { id: string; status: string; current_step: number; feature_request: string }[];
+  const execs = data as {
+    id: string;
+    status: string;
+    current_step: number;
+    feature_request: string;
+  }[];
   if (!execs || execs.length === 0) return 'No executions found.';
-  return execs.map(e =>
-    `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
-  ).join('\n');
+  return execs
+    .map(
+      (e) =>
+        `  ${e.id}  ${e.status.padEnd(15)} step ${e.current_step}  ${e.feature_request.slice(0, 50)}`
+    )
+    .join('\n');
 }
 ```
 
@@ -753,6 +912,7 @@ git commit -m "feat(cli): add fleet protocols and executions commands"
 ## Task 5: Navigator Class
 
 **Files:**
+
 - Create: `src/main/starbase/navigator.ts`
 - Create: `src/main/__tests__/navigator.test.ts`
 
@@ -797,33 +957,76 @@ describe('Navigator', () => {
   it('deduplicates: returns false if execution already running', async () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
     // Manually inject a fake running entry
-    ;(nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-1', startedAt: Date.now() });
-    const result = await nav.dispatch({ executionId: 'exec-1', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null });
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-1',
+      startedAt: Date.now()
+    });
+    const result = await nav.dispatch({
+      executionId: 'exec-1',
+      protocolSlug: 'research-and-deploy',
+      featureRequest: 'build X',
+      currentStep: 1,
+      context: null
+    });
     expect(result).toBe(false);
   });
 
   it('respects max concurrent limit', async () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
     const running = (nav as unknown as { running: Map<string, unknown> }).running;
-    running.set('exec-A', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-A', startedAt: Date.now() });
-    running.set('exec-B', { proc: { killed: false, kill: vi.fn() }, executionId: 'exec-B', startedAt: Date.now() });
+    running.set('exec-A', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-A',
+      startedAt: Date.now()
+    });
+    running.set('exec-B', {
+      proc: { killed: false, kill: vi.fn() },
+      executionId: 'exec-B',
+      startedAt: Date.now()
+    });
     // max is 2 by default config
-    const result = await nav.dispatch({ executionId: 'exec-C', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null });
+    const result = await nav.dispatch({
+      executionId: 'exec-C',
+      protocolSlug: 'research-and-deploy',
+      featureRequest: 'build X',
+      currentStep: 1,
+      context: null
+    });
     expect(result).toBe(false);
   });
 
   it('creates workspace CLAUDE.md on first dispatch attempt', async () => {
-    const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123', fleetBinDir: '/usr/local/bin' });
+    const nav = new Navigator({
+      db: db.getDb(),
+      configService,
+      starbaseId: 'test-123',
+      fleetBinDir: '/usr/local/bin'
+    });
     // dispatch will fail (no claude binary in test) but workspace setup happens first
-    await nav.dispatch({ executionId: 'exec-new', protocolSlug: 'research-and-deploy', featureRequest: 'build X', currentStep: 1, context: null }).catch(() => {});
-    const workspace = join(process.env.HOME ?? '~', '.fleet', 'starbases', 'starbase-test-123', 'navigator');
+    await nav
+      .dispatch({
+        executionId: 'exec-new',
+        protocolSlug: 'research-and-deploy',
+        featureRequest: 'build X',
+        currentStep: 1,
+        context: null
+      })
+      .catch(() => {});
+    const workspace = join(
+      process.env.HOME ?? '~',
+      '.fleet',
+      'starbases',
+      'starbase-test-123',
+      'navigator'
+    );
     // CLAUDE.md may or may not exist depending on spawn failure timing — just verify no crash
     expect(nav.activeCount).toBe(0); // process failed, cleaned up
   });
 
   it('clears running map on reconcile', () => {
     const nav = new Navigator({ db: db.getDb(), configService, starbaseId: 'test-123' });
-    ;(nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {});
+    (nav as unknown as { running: Map<string, unknown> }).running.set('exec-1', {});
     nav.reconcile();
     expect(nav.activeCount).toBe(0);
   });
@@ -843,199 +1046,254 @@ Expected: FAIL — `Navigator` not found
 Create `src/main/starbase/navigator.ts` — mirror `first-officer.ts` structure but for execution-driven dispatch:
 
 ```typescript
-import { spawn, ChildProcess } from 'child_process'
-import { writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs'
-import { join } from 'path'
-import { tmpdir } from 'os'
-import type Database from 'better-sqlite3'
-import type { ConfigService } from './config-service'
-import type { EventBus } from '../event-bus'
+import { spawn, ChildProcess } from 'child_process';
+import { writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import type Database from 'better-sqlite3';
+import type { ConfigService } from './config-service';
+import type { EventBus } from '../event-bus';
 
 type NavigatorDeps = {
-  db: Database.Database
-  configService: ConfigService
-  eventBus?: EventBus
-  starbaseId: string
-  crewEnv?: Record<string, string>
-  fleetBinDir?: string
-}
+  db: Database.Database;
+  configService: ConfigService;
+  eventBus?: EventBus;
+  starbaseId: string;
+  crewEnv?: Record<string, string>;
+  fleetBinDir?: string;
+};
 
 export type NavigatorEvent = {
-  executionId: string
-  protocolSlug: string
-  featureRequest: string
-  currentStep: number
-  context: string | null
-  eventType?: string  // 'resume' | 'crew-failed' | 'gate-approved' | 'gate-rejected'
-  gateResponse?: string
-}
+  executionId: string;
+  protocolSlug: string;
+  featureRequest: string;
+  currentStep: number;
+  context: string | null;
+  eventType?: string; // 'resume' | 'crew-failed' | 'gate-approved' | 'gate-rejected'
+  gateResponse?: string;
+};
 
 type RunningProcess = {
-  proc: ChildProcess
-  executionId: string
-  startedAt: number
-}
+  proc: ChildProcess;
+  executionId: string;
+  startedAt: number;
+};
 
 export class Navigator {
-  private running = new Map<string, RunningProcess>()
+  private running = new Map<string, RunningProcess>();
 
   constructor(private deps: NavigatorDeps) {}
 
   get activeCount(): number {
-    return this.running.size
+    return this.running.size;
   }
 
   isRunning(executionId: string): boolean {
-    return this.running.has(executionId)
+    return this.running.has(executionId);
   }
 
   async dispatch(
     event: NavigatorEvent,
-    callbacks?: { onExit?: (code: number | null) => void },
+    callbacks?: { onExit?: (code: number | null) => void }
   ): Promise<boolean> {
-    const { configService } = this.deps
-    const maxConcurrent = configService.get('navigator_max_concurrent') as number
-    const timeout = configService.get('navigator_timeout') as number
-    const model = configService.get('navigator_model') as string
+    const { configService } = this.deps;
+    const maxConcurrent = configService.get('navigator_max_concurrent') as number;
+    const timeout = configService.get('navigator_timeout') as number;
+    const model = configService.get('navigator_model') as string;
 
-    if (this.running.has(event.executionId)) return false
-    if (this.running.size >= maxConcurrent) return false
+    if (this.running.has(event.executionId)) return false;
+    if (this.running.size >= maxConcurrent) return false;
 
-    const workspace = this.getWorkspacePath()
-    mkdirSync(workspace, { recursive: true })
+    const workspace = this.getWorkspacePath();
+    mkdirSync(workspace, { recursive: true });
 
-    const claudeMdPath = join(workspace, 'CLAUDE.md')
+    const claudeMdPath = join(workspace, 'CLAUDE.md');
     if (!existsSync(claudeMdPath)) {
-      const { generateNavigatorClaudeMd } = await import('./workspace-templates')
-      writeFileSync(claudeMdPath, generateNavigatorClaudeMd({ fleetBinDir: this.deps.fleetBinDir }), 'utf-8')
+      const { generateNavigatorClaudeMd } = await import('./workspace-templates');
+      writeFileSync(
+        claudeMdPath,
+        generateNavigatorClaudeMd({ fleetBinDir: this.deps.fleetBinDir }),
+        'utf-8'
+      );
     }
 
-    const promptDir = join(tmpdir(), 'fleet-navigator')
-    mkdirSync(promptDir, { recursive: true })
-    const spFile = join(promptDir, `${event.executionId}-sp.md`)
-    const msgFile = join(promptDir, `${event.executionId}-msg.md`)
+    const promptDir = join(tmpdir(), 'fleet-navigator');
+    mkdirSync(promptDir, { recursive: true });
+    const spFile = join(promptDir, `${event.executionId}-sp.md`);
+    const msgFile = join(promptDir, `${event.executionId}-msg.md`);
 
-    writeFileSync(spFile, this.buildSystemPrompt(event), 'utf-8')
-    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8')
+    writeFileSync(spFile, this.buildSystemPrompt(event), 'utf-8');
+    writeFileSync(msgFile, this.buildInitialMessage(event), 'utf-8');
 
     const cmdArgs = [
-      '--output-format', 'stream-json',
+      '--output-format',
+      'stream-json',
       '--verbose',
-      '--input-format', 'stream-json',
+      '--input-format',
+      'stream-json',
       '--dangerously-skip-permissions',
-      '--model', model,
-      '--append-system-prompt-file', spFile,
-    ]
+      '--model',
+      model,
+      '--append-system-prompt-file',
+      spFile
+    ];
 
     const mergedEnv: Record<string, string> = {
       ...(this.deps.crewEnv ?? (process.env as Record<string, string>)),
       FLEET_NAVIGATOR: '1',
       FLEET_EXECUTION_ID: event.executionId,
       FLEET_STARBASE_ID: this.deps.starbaseId,
-      ...(this.deps.fleetBinDir ? { FLEET_BIN_DIR: this.deps.fleetBinDir } : {}),
-    }
+      ...(this.deps.fleetBinDir ? { FLEET_BIN_DIR: this.deps.fleetBinDir } : {})
+    };
 
     try {
       const proc = spawn('claude', cmdArgs, {
         cwd: workspace,
         env: mergedEnv,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      })
+        stdio: ['pipe', 'pipe', 'pipe']
+      });
 
-      this.running.set(event.executionId, { proc, executionId: event.executionId, startedAt: Date.now() })
+      this.running.set(event.executionId, {
+        proc,
+        executionId: event.executionId,
+        startedAt: Date.now()
+      });
 
-      const initMsg = JSON.stringify({
-        type: 'user',
-        message: { role: 'user', content: `Read and execute the Navigator instructions in ${msgFile}. Delete the file when done.` },
-        parent_tool_use_id: null,
-        session_id: '',
-      }) + '\n'
-      proc.stdin!.write(initMsg)
+      const initMsg =
+        JSON.stringify({
+          type: 'user',
+          message: {
+            role: 'user',
+            content: `Read and execute the Navigator instructions in ${msgFile}. Delete the file when done.`
+          },
+          parent_tool_use_id: null,
+          session_id: ''
+        }) + '\n';
+      proc.stdin!.write(initMsg);
 
-      let stdoutBuffer = ''
+      let stdoutBuffer = '';
       proc.stdout!.on('data', (chunk: Buffer) => {
-        stdoutBuffer += chunk.toString()
-        const lines = stdoutBuffer.split('\n')
-        stdoutBuffer = lines.pop() ?? ''
+        stdoutBuffer += chunk.toString();
+        const lines = stdoutBuffer.split('\n');
+        stdoutBuffer = lines.pop() ?? '';
         for (const line of lines) {
-          if (!line.trim()) continue
+          if (!line.trim()) continue;
           try {
-            const msg = JSON.parse(line)
+            const msg = JSON.parse(line);
             if (msg.type === 'result') {
-              try { proc.stdin?.end() } catch { /* ignore */ }
+              try {
+                proc.stdin?.end();
+              } catch {
+                /* ignore */
+              }
             }
-          } catch { /* non-JSON */ }
+          } catch {
+            /* non-JSON */
+          }
         }
-      })
+      });
 
       proc.stderr!.on('data', (chunk: Buffer) => {
-        console.error(`[navigator:${event.executionId}] stderr:`, chunk.toString().trim())
-      })
+        console.error(`[navigator:${event.executionId}] stderr:`, chunk.toString().trim());
+      });
 
       const timer = setTimeout(() => {
         if (!proc.killed) {
-          console.warn(`[navigator] Timeout for ${event.executionId}, killing`)
-          try { proc.kill('SIGTERM') } catch { /* already dead */ }
-          setTimeout(() => { if (!proc.killed) try { proc.kill('SIGKILL') } catch { /* ignore */ } }, 5000)
+          console.warn(`[navigator] Timeout for ${event.executionId}, killing`);
+          try {
+            proc.kill('SIGTERM');
+          } catch {
+            /* already dead */
+          }
+          setTimeout(() => {
+            if (!proc.killed)
+              try {
+                proc.kill('SIGKILL');
+              } catch {
+                /* ignore */
+              }
+          }, 5000);
         }
-      }, timeout * 1000)
+      }, timeout * 1000);
 
       proc.on('exit', (code) => {
-        clearTimeout(timer)
-        this.running.delete(event.executionId)
-        try { unlinkSync(spFile) } catch { /* ignore */ }
-        try { unlinkSync(msgFile) } catch { /* ignore */ }
-
-        if (code !== 0) {
-          this.writeFailedComm(event, `Navigator process crashed (exit code: ${code})`)
+        clearTimeout(timer);
+        this.running.delete(event.executionId);
+        try {
+          unlinkSync(spFile);
+        } catch {
+          /* ignore */
+        }
+        try {
+          unlinkSync(msgFile);
+        } catch {
+          /* ignore */
         }
 
-        callbacks?.onExit?.(code)
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      })
+        if (code !== 0) {
+          this.writeFailedComm(event, `Navigator process crashed (exit code: ${code})`);
+        }
+
+        callbacks?.onExit?.(code);
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      });
 
       proc.on('error', (err) => {
-        clearTimeout(timer)
-        this.running.delete(event.executionId)
-        this.writeFailedComm(event, `Navigator spawn failed: ${err.message}`)
-        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      })
+        clearTimeout(timer);
+        this.running.delete(event.executionId);
+        this.writeFailedComm(event, `Navigator spawn failed: ${err.message}`);
+        this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      });
 
-      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
-      return true
+      this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
+      return true;
     } catch (err) {
-      this.writeFailedComm(event, `Navigator spawn failed: ${err instanceof Error ? err.message : 'unknown'}`)
-      return false
+      this.writeFailedComm(
+        event,
+        `Navigator spawn failed: ${err instanceof Error ? err.message : 'unknown'}`
+      );
+      return false;
     }
   }
 
   private writeFailedComm(event: NavigatorEvent, reason: string): void {
     try {
-      this.deps.db.prepare(
-        `INSERT INTO comms (from_crew, to_crew, type, execution_id, payload)
+      this.deps.db
+        .prepare(
+          `INSERT INTO comms (from_crew, to_crew, type, execution_id, payload)
          VALUES ('navigator', 'admiral', 'protocol-failed', ?, ?)`
-      ).run(
-        event.executionId,
-        JSON.stringify({ executionId: event.executionId, reason, protocolSlug: event.protocolSlug })
-      )
-      this.deps.db.prepare(
-        `UPDATE protocol_executions SET status = 'failed', updated_at = datetime('now') WHERE id = ?`
-      ).run(event.executionId)
-    } catch { /* ignore if DB not available */ }
-    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' })
+        )
+        .run(
+          event.executionId,
+          JSON.stringify({
+            executionId: event.executionId,
+            reason,
+            protocolSlug: event.protocolSlug
+          })
+        );
+      this.deps.db
+        .prepare(
+          `UPDATE protocol_executions SET status = 'failed', updated_at = datetime('now') WHERE id = ?`
+        )
+        .run(event.executionId);
+    } catch {
+      /* ignore if DB not available */
+    }
+    this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
   }
 
   private getWorkspacePath(): string {
     return join(
       process.env.HOME ?? '~',
-      '.fleet', 'starbases',
+      '.fleet',
+      'starbases',
       `starbase-${this.deps.starbaseId}`,
-      'navigator',
-    )
+      'navigator'
+    );
   }
 
   private buildSystemPrompt(event: NavigatorEvent): string {
-    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet'
+    const fleetBin = this.deps.fleetBinDir ? `${this.deps.fleetBinDir}/fleet` : 'fleet';
     return `You are the Navigator aboard Star Command. You execute Protocols autonomously using the fleet CLI.
 
 Execution ID: ${event.executionId}
@@ -1049,7 +1307,7 @@ Then: ${fleetBin} protocols executions show ${event.executionId}
 
 Always tag crew deploys with --execution ${event.executionId}.
 Poll comms with: ${fleetBin} comms inbox --execution ${event.executionId} --unread
-`
+`;
   }
 
   private buildInitialMessage(event: NavigatorEvent): string {
@@ -1063,17 +1321,21 @@ ${event.context ? `\n## Prior context\n${event.context}` : ''}
 ${event.gateResponse ? `\n## Gate response from Admiral\n${event.gateResponse}` : ''}
 
 Read the protocol steps, check the execution state, and proceed from step ${event.currentStep}.
-`
+`;
   }
 
   reconcile(): void {
-    this.running.clear()
+    this.running.clear();
   }
 
   shutdown(): void {
     for (const [k, entry] of this.running) {
-      try { entry.proc.kill('SIGKILL') } catch { /* already dead */ }
-      this.running.delete(k)
+      try {
+        entry.proc.kill('SIGKILL');
+      } catch {
+        /* already dead */
+      }
+      this.running.delete(k);
     }
   }
 }
@@ -1099,6 +1361,7 @@ git commit -m "feat(navigator): add Navigator class — ephemeral Claude Code ex
 ## Task 6: generateNavigatorClaudeMd
 
 **Files:**
+
 - Modify: `src/main/starbase/workspace-templates.ts`
 
 - [ ] **Step 1: Add generateNavigatorClaudeMd to workspace-templates.ts**
@@ -1107,11 +1370,11 @@ Add after the existing `generateSkillMd()` function:
 
 ```typescript
 type NavigatorClaudeMdOpts = {
-  fleetBinDir?: string
-}
+  fleetBinDir?: string;
+};
 
 export function generateNavigatorClaudeMd(opts: NavigatorClaudeMdOpts = {}): string {
-  const fleetBin = opts.fleetBinDir ? `${opts.fleetBinDir}/fleet` : 'fleet'
+  const fleetBin = opts.fleetBinDir ? `${opts.fleetBinDir}/fleet` : 'fleet';
 
   return `# Navigator
 
@@ -1200,7 +1463,7 @@ ${fleetBin} sectors show <id>                               # Sector details
 - On clarification needed: write clarification-needed comm (same as gate), exit
 - Never create missions yourself — that is the Admiral's role after reviewing the Feature Brief
 - All comms to Admiral must include \`--execution <id>\` so they are scoped correctly
-`
+`;
 }
 ```
 
@@ -1224,6 +1487,7 @@ git commit -m "feat(templates): add generateNavigatorClaudeMd for Navigator work
 ## Task 7: Sentinel — Navigator Sweep and Gate Expiry
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 - Modify: `src/main/__tests__/sentinel.test.ts`
 
@@ -1236,30 +1500,73 @@ describe('Navigator sweep', () => {
   it('triggers Navigator when FO escalation exists for protocol mission', async () => {
     // Set up: sector, mission with protocol_execution_id, crew, FO memo comms row
     const sectorId = 'test-sector';
-    getDb().prepare(`INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES (?, ?, ?)`).run(sectorId, 'Test', join(TEST_DIR, 'workspace', 'api'));
-    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p1', 'test', 'Test')`).run();
-    getDb().prepare(`INSERT OR IGNORE INTO protocol_executions (id, protocol_id, feature_request) VALUES ('exec-1', 'p1', 'build auth')`).run();
-    const missionId = (getDb().prepare(`INSERT INTO missions (sector_id, summary, prompt, protocol_execution_id) VALUES (?, ?, ?, ?) RETURNING id`).get(sectorId, 'test', 'test', 'exec-1') as { id: number }).id;
-    getDb().prepare(`INSERT INTO comms (from_crew, to_crew, type, mission_id, payload) VALUES ('first-officer', 'admiral', 'memo', ?, ?)`).run(missionId, JSON.stringify({ reason: 'escalated' }));
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO sectors (id, name, root_path) VALUES (?, ?, ?)`)
+      .run(sectorId, 'Test', join(TEST_DIR, 'workspace', 'api'));
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p1', 'test', 'Test')`)
+      .run();
+    getDb()
+      .prepare(
+        `INSERT OR IGNORE INTO protocol_executions (id, protocol_id, feature_request) VALUES ('exec-1', 'p1', 'build auth')`
+      )
+      .run();
+    const missionId = (
+      getDb()
+        .prepare(
+          `INSERT INTO missions (sector_id, summary, prompt, protocol_execution_id) VALUES (?, ?, ?, ?) RETURNING id`
+        )
+        .get(sectorId, 'test', 'test', 'exec-1') as { id: number }
+    ).id;
+    getDb()
+      .prepare(
+        `INSERT INTO comms (from_crew, to_crew, type, mission_id, payload) VALUES ('first-officer', 'admiral', 'memo', ?, ?)`
+      )
+      .run(missionId, JSON.stringify({ reason: 'escalated' }));
 
     const dispatchedIds: string[] = [];
-    const nav = { dispatch: vi.fn(async (event: { executionId: string }) => { dispatchedIds.push(event.executionId); return true; }), isRunning: vi.fn(() => false), activeCount: 0, reconcile: vi.fn(), shutdown: vi.fn() };
+    const nav = {
+      dispatch: vi.fn(async (event: { executionId: string }) => {
+        dispatchedIds.push(event.executionId);
+        return true;
+      }),
+      isRunning: vi.fn(() => false),
+      activeCount: 0,
+      reconcile: vi.fn(),
+      shutdown: vi.fn()
+    };
 
-    const sentinel = new Sentinel({ db: getDb(), configService, navigator: nav as unknown as import('../starbase/navigator').Navigator });
+    const sentinel = new Sentinel({
+      db: getDb(),
+      configService,
+      navigator: nav as unknown as import('../starbase/navigator').Navigator
+    });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
 
     expect(dispatchedIds).toContain('exec-1');
   });
 
   it('expires stale gate-pending executions', async () => {
-    getDb().prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p2', 'proto2', 'Proto2')`).run();
-    getDb().prepare(`INSERT INTO protocol_executions (id, protocol_id, feature_request, status) VALUES ('exec-stale', 'p2', 'test', 'gate-pending')`).run();
-    getDb().prepare(`UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = 'exec-stale'`).run();
+    getDb()
+      .prepare(`INSERT OR IGNORE INTO protocols (id, slug, name) VALUES ('p2', 'proto2', 'Proto2')`)
+      .run();
+    getDb()
+      .prepare(
+        `INSERT INTO protocol_executions (id, protocol_id, feature_request, status) VALUES ('exec-stale', 'p2', 'test', 'gate-pending')`
+      )
+      .run();
+    getDb()
+      .prepare(
+        `UPDATE protocol_executions SET updated_at = datetime('now', '-2 days') WHERE id = 'exec-stale'`
+      )
+      .run();
 
     const sentinel = new Sentinel({ db: getDb(), configService });
     await (sentinel as unknown as { navigatorSweep: () => Promise<void> }).navigatorSweep();
 
-    const exec = getDb().prepare(`SELECT status FROM protocol_executions WHERE id = 'exec-stale'`).get() as { status: string };
+    const exec = getDb()
+      .prepare(`SELECT status FROM protocol_executions WHERE id = 'exec-stale'`)
+      .get() as { status: string };
     expect(exec.status).toBe('gate-expired');
   });
 });
@@ -1278,23 +1585,27 @@ Expected: new tests FAIL — Navigator not injected into Sentinel
 In `src/main/starbase/sentinel.ts`:
 
 1. Import `Navigator` and `ProtocolService`:
+
 ```typescript
-import { Navigator, type NavigatorEvent } from './navigator'
-import { ProtocolService } from './protocol-service'
+import { Navigator, type NavigatorEvent } from './navigator';
+import { ProtocolService } from './protocol-service';
 ```
 
 2. Add to Sentinel deps/constructor:
+
 ```typescript
 private navigator?: Navigator
 private protocolService: ProtocolService
 ```
 
 3. In `_runSweep()`, call `navigatorSweep()` after `firstOfficerSweep()`:
+
 ```typescript
-await this.navigatorSweep()
+await this.navigatorSweep();
 ```
 
 4. Implement `navigatorSweep()`:
+
 ```typescript
 private async navigatorSweep(): Promise<void> {
   const gateExpirySeconds = this.configService.get('navigator_gate_expiry') as number
@@ -1370,6 +1681,7 @@ git commit -m "feat(sentinel): add Navigator sweep — crew-failed fan-out and g
 ## Task 8: RetentionService Amendments
 
 **Files:**
+
 - Modify: `src/main/starbase/retention-service.ts`
 
 - [ ] **Step 1: Add protocol_executions cleanup**
@@ -1377,6 +1689,7 @@ git commit -m "feat(sentinel): add Navigator sweep — crew-failed fan-out and g
 In `src/main/starbase/retention-service.ts`:
 
 1. Update the `TABLES` constant (used only by `getStats()` for row counts — adding all three new tables gives stats visibility without affecting deletion logic):
+
 ```typescript
 const TABLES = [
   'sectors',
@@ -1389,20 +1702,25 @@ const TABLES = [
   'starbase_config',
   'protocol_executions',
   'protocols',
-  'protocol_steps',
-] as const
+  'protocol_steps'
+] as const;
 ```
 
 2. Add cleanup for `protocol_executions` in the `cleanup()` method (only terminal-status executions are swept — `protocols` and `protocol_steps` are never deleted):
+
 ```typescript
-const protocolExecutionsRetentionDays = (this.configService.get('protocol_executions_retention_days') as number) ?? 30
+const protocolExecutionsRetentionDays =
+  (this.configService.get('protocol_executions_retention_days') as number) ?? 30;
 
 const protocolExecutionsResult = this.db
-  .prepare(`DELETE FROM protocol_executions WHERE status IN ('complete', 'failed', 'cancelled', 'gate-expired') AND created_at < datetime('now', '-' || ? || ' days')`)
-  .run(protocolExecutionsRetentionDays)
+  .prepare(
+    `DELETE FROM protocol_executions WHERE status IN ('complete', 'failed', 'cancelled', 'gate-expired') AND created_at < datetime('now', '-' || ? || ' days')`
+  )
+  .run(protocolExecutionsRetentionDays);
 ```
 
 3. Include `protocolExecutions` in the return type and return value:
+
 ```typescript
 cleanup(): { comms: number; cargo: number; shipsLog: number; crew: number; protocolExecutions: number }
 // ...
@@ -1429,6 +1747,7 @@ git commit -m "feat(retention): add protocol_executions cleanup + TABLES stats e
 ## Task 9: Admiral Skill Amendments
 
 **Files:**
+
 - Modify: `src/main/starbase/workspace-templates.ts`
 
 - [ ] **Step 1: Update generateSkillMd to include new comms types and protocol commands**
@@ -1440,13 +1759,13 @@ In `generateSkillMd()`, locate the Comms handling / Sentinel Alerts section and 
 
 When you receive any of these comms types, take the indicated action:
 
-| Type | Action |
-|------|--------|
-| \`gate-pending\` | A Protocol execution needs your decision. Read the payload, present the Feature Brief or question to the operator, collect their response, then spawn a new Navigator invocation with the response in context. |
-| \`protocol-complete\` | A Protocol finished. Present the Feature Brief summary to the operator and offer to create missions from it. |
-| \`protocol-failed\` | A Protocol failed. Present the failure reason. Ask if the operator wants to retry. |
-| \`clarification-needed\` | Same as gate-pending — a clarification question needs human input before the execution can continue. |
-| \`gate-expired\` | A gate timed out with no response. The execution is cancelled. Notify the operator. |
+| Type                     | Action                                                                                                                                                                                                         |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| \`gate-pending\`         | A Protocol execution needs your decision. Read the payload, present the Feature Brief or question to the operator, collect their response, then spawn a new Navigator invocation with the response in context. |
+| \`protocol-complete\`    | A Protocol finished. Present the Feature Brief summary to the operator and offer to create missions from it.                                                                                                   |
+| \`protocol-failed\`      | A Protocol failed. Present the failure reason. Ask if the operator wants to retry.                                                                                                                             |
+| \`clarification-needed\` | Same as gate-pending — a clarification question needs human input before the execution can continue.                                                                                                           |
+| \`gate-expired\`         | A gate timed out with no response. The execution is cancelled. Notify the operator.                                                                                                                            |
 ```
 
 And add to the Full Command Reference section:
@@ -1455,13 +1774,13 @@ And add to the Full Command Reference section:
 ### Protocols
 
 \`\`\`
-fleet protocols list                              # List all available protocols
-fleet protocols show <slug>                       # Show protocol details and steps
+fleet protocols list # List all available protocols
+fleet protocols show <slug> # Show protocol details and steps
 fleet protocols enable <slug>
 fleet protocols disable <slug>
-fleet protocols executions list                   # List all active/recent executions
-fleet protocols executions list --status running  # Filter by status
-fleet protocols executions show <id>              # Show execution detail
+fleet protocols executions list # List all active/recent executions
+fleet protocols executions list --status running # Filter by status
+fleet protocols executions show <id> # Show execution detail
 \`\`\`
 ```
 
@@ -1491,6 +1810,7 @@ git commit -m "feat(admiral): add protocol comms types and fleet protocols comma
 ## Task 10: Seed Built-in Research-and-Deploy Protocol
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts`
 
 - [ ] **Step 1: Add protocol seed data to migration 11**

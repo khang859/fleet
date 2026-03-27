@@ -15,6 +15,7 @@ Two related issues:
 ## Fix
 
 Track scroll intent explicitly with a `pinnedToBottom` boolean instead of checking the instantaneous `viewportY >= baseY`. The pinned state is:
+
 - `true` initially
 - Set to `false` when user scrolls up (detected via wheel events)
 - Set to `true` when user scrolls to bottom, types input, or clicks "scroll to bottom"

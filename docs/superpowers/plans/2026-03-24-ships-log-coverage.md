@@ -14,17 +14,17 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/main/starbase/analyst.ts` | Modify | Add `shipsLog` to deps, log 5 events |
-| `src/main/starbase/navigator.ts` | Modify | Add `shipsLog` to deps, log 4 events, add `timedOut` Set |
-| `src/main/starbase/first-officer.ts` | Modify | Add `shipsLog` to deps, migrate 3 raw SQL → ShipsLog, add 2 events |
-| `src/main/starbase/sentinel.ts` | Modify | Add `shipsLog` to deps, migrate 8 raw SQL → ShipsLog, add 5 events |
-| `src/main/starbase-runtime-core.ts` | Modify | Move `shipsLog` creation earlier, wire into all 4 roles |
-| `src/main/__tests__/analyst.test.ts` | Modify | Add assertions for 5 new log events |
-| `src/main/__tests__/navigator.test.ts` | Modify | Add assertions for 4 new log events |
-| `src/main/__tests__/first-officer.test.ts` | Modify | Add ShipsLog to setup, verify migration + 2 new events |
-| `src/main/__tests__/sentinel.test.ts` | Modify | Add ShipsLog to setup, verify migration + 5 new events |
+| File                                       | Action | Responsibility                                                     |
+| ------------------------------------------ | ------ | ------------------------------------------------------------------ |
+| `src/main/starbase/analyst.ts`             | Modify | Add `shipsLog` to deps, log 5 events                               |
+| `src/main/starbase/navigator.ts`           | Modify | Add `shipsLog` to deps, log 4 events, add `timedOut` Set           |
+| `src/main/starbase/first-officer.ts`       | Modify | Add `shipsLog` to deps, migrate 3 raw SQL → ShipsLog, add 2 events |
+| `src/main/starbase/sentinel.ts`            | Modify | Add `shipsLog` to deps, migrate 8 raw SQL → ShipsLog, add 5 events |
+| `src/main/starbase-runtime-core.ts`        | Modify | Move `shipsLog` creation earlier, wire into all 4 roles            |
+| `src/main/__tests__/analyst.test.ts`       | Modify | Add assertions for 5 new log events                                |
+| `src/main/__tests__/navigator.test.ts`     | Modify | Add assertions for 4 new log events                                |
+| `src/main/__tests__/first-officer.test.ts` | Modify | Add ShipsLog to setup, verify migration + 2 new events             |
+| `src/main/__tests__/sentinel.test.ts`      | Modify | Add ShipsLog to setup, verify migration + 5 new events             |
 
 **Task ordering note:** Tasks 1-2 (Analyst, Navigator) add `shipsLog` as optional deps, so they don't break the global typecheck. Tasks 3-4 (First Officer, Sentinel) add it as required, which will cause `npm run typecheck` to fail until Task 5 wires it in the runtime. Run individual test files (not global typecheck) between Tasks 3-4 and 5. Alternatively, execute Task 5 immediately after Task 2 if you prefer a green typecheck at every step.
 
@@ -33,6 +33,7 @@
 ### Task 1: Analyst — add ShipsLog dependency and 5 log events
 
 **Files:**
+
 - Modify: `src/main/starbase/analyst.ts`
 - Modify: `src/main/__tests__/analyst.test.ts`
 
@@ -71,7 +72,14 @@ In `classifyError()`, after the successful `if (c === 'transient' || ...)` block
 
 ```typescript
 if (c === 'transient' || c === 'persistent' || c === 'non-retryable') {
-  try { this.shipsLog?.log({ eventType: 'analyst_classified', detail: { classification: c, method: 'classifyError' } }); } catch { /* fire-and-forget */ }
+  try {
+    this.shipsLog?.log({
+      eventType: 'analyst_classified',
+      detail: { classification: c, method: 'classifyError' }
+    });
+  } catch {
+    /* fire-and-forget */
+  }
   return c;
 }
 ```
@@ -79,21 +87,39 @@ if (c === 'transient' || c === 'persistent' || c === 'non-retryable') {
 In `summarizeCILogs()`, after the successful `if` block (before `return String(summary)`):
 
 ```typescript
-try { this.shipsLog?.log({ eventType: 'analyst_summarized', detail: { method: 'summarizeCILogs' } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog?.log({ eventType: 'analyst_summarized', detail: { method: 'summarizeCILogs' } });
+} catch {
+  /* fire-and-forget */
+}
 return String(summary);
 ```
 
 In `extractPRVerdict()`, after the successful `if (v === 'APPROVE' || ...)` block (before the `return`):
 
 ```typescript
-try { this.shipsLog?.log({ eventType: 'analyst_verdict_extracted', detail: { verdict: v, method: 'extractPRVerdict' } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog?.log({
+    eventType: 'analyst_verdict_extracted',
+    detail: { verdict: v, method: 'extractPRVerdict' }
+  });
+} catch {
+  /* fire-and-forget */
+}
 return { verdict: v, notes: typeof notes === 'string' ? notes : '' };
 ```
 
 In `writeHailingContext()`, after the successful `if` block (before `return String(context)`):
 
 ```typescript
-try { this.shipsLog?.log({ eventType: 'analyst_hailing_context', detail: { method: 'writeHailingContext' } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog?.log({
+    eventType: 'analyst_hailing_context',
+    detail: { method: 'writeHailingContext' }
+  });
+} catch {
+  /* fire-and-forget */
+}
 return String(context);
 ```
 
@@ -218,6 +244,7 @@ git commit -m "feat(analyst): log activities to ships log"
 ### Task 2: Navigator — add ShipsLog dependency, timedOut tracking, and 4 log events
 
 **Files:**
+
 - Modify: `src/main/starbase/navigator.ts`
 - Modify: `src/main/__tests__/navigator.test.ts`
 
@@ -246,9 +273,15 @@ In `dispatch()`, right after `this.running.set(event.executionId, ...)` and befo
 try {
   this.deps.shipsLog?.log({
     eventType: 'navigator_dispatched',
-    detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, step: event.currentStep }
+    detail: {
+      executionId: event.executionId,
+      protocolSlug: event.protocolSlug,
+      step: event.currentStep
+    }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 3: Add timeout tracking and `navigator_timeout` log**
@@ -259,12 +292,19 @@ In the `setTimeout` callback (around line 165-182), after `proc.kill('SIGTERM')`
 const timer = setTimeout(() => {
   if (!proc.killed) {
     console.warn(`[navigator] Timeout for ${event.executionId}, killing`);
-    this.timedOut.add(event.executionId);  // <-- add this
+    this.timedOut.add(event.executionId); // <-- add this
     try {
       proc.kill('SIGTERM');
-    } catch { /* already dead */ }
+    } catch {
+      /* already dead */
+    }
     setTimeout(() => {
-      if (!proc.killed) try { proc.kill('SIGKILL'); } catch { /* ignore */ }
+      if (!proc.killed)
+        try {
+          proc.kill('SIGKILL');
+        } catch {
+          /* ignore */
+        }
     }, 5000);
   }
 }, timeout * 1000);
@@ -278,8 +318,16 @@ In the `proc.on('exit', ...)` callback, after `this.running.delete(event.executi
 proc.on('exit', (code) => {
   clearTimeout(timer);
   this.running.delete(event.executionId);
-  try { unlinkSync(spFile); } catch { /* ignore */ }
-  try { unlinkSync(msgFile); } catch { /* ignore */ }
+  try {
+    unlinkSync(spFile);
+  } catch {
+    /* ignore */
+  }
+  try {
+    unlinkSync(msgFile);
+  } catch {
+    /* ignore */
+  }
 
   // Log the outcome
   const wasTimeout = this.timedOut.delete(event.executionId);
@@ -291,22 +339,32 @@ proc.on('exit', (code) => {
         eventType: 'navigator_timeout',
         detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   } else if (code !== 0) {
     this.writeFailedComm(event, `Navigator process crashed (exit code: ${code})`);
     try {
       this.deps.shipsLog?.log({
         eventType: 'navigator_failed',
-        detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, reason: `exit code ${code}` }
+        detail: {
+          executionId: event.executionId,
+          protocolSlug: event.protocolSlug,
+          reason: `exit code ${code}`
+        }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   } else {
     try {
       this.deps.shipsLog?.log({
         eventType: 'navigator_completed',
         detail: { executionId: event.executionId, protocolSlug: event.protocolSlug }
       });
-    } catch { /* fire-and-forget */ }
+    } catch {
+      /* fire-and-forget */
+    }
   }
 
   callbacks?.onExit?.(code);
@@ -328,9 +386,15 @@ proc.on('error', (err) => {
   try {
     this.deps.shipsLog?.log({
       eventType: 'navigator_failed',
-      detail: { executionId: event.executionId, protocolSlug: event.protocolSlug, reason: err.message }
+      detail: {
+        executionId: event.executionId,
+        protocolSlug: event.protocolSlug,
+        reason: err.message
+      }
     });
-  } catch { /* fire-and-forget */ }
+  } catch {
+    /* fire-and-forget */
+  }
   this.deps.eventBus?.emit('starbase-changed', { type: 'starbase-changed' });
 });
 ```
@@ -423,6 +487,7 @@ git commit -m "feat(navigator): log activities to ships log"
 ### Task 3: First Officer — add ShipsLog dependency, migrate 3 events, add 2 new events
 
 **Files:**
+
 - Modify: `src/main/starbase/first-officer.ts`
 - Modify: `src/main/__tests__/first-officer.test.ts`
 
@@ -447,8 +512,18 @@ Replace the raw SQL at lines 611-623:
 ```typescript
 // BEFORE:
 this.deps.db
-  .prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_retried', ?)")
-  .run(event.crewId, JSON.stringify({ missionId: event.missionId, reason: decision.reason, revisedPrompt, deployResult }));
+  .prepare(
+    "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_retried', ?)"
+  )
+  .run(
+    event.crewId,
+    JSON.stringify({
+      missionId: event.missionId,
+      reason: decision.reason,
+      revisedPrompt,
+      deployResult
+    })
+  );
 
 // AFTER:
 try {
@@ -457,7 +532,9 @@ try {
     eventType: 'first_officer_retried',
     detail: { missionId: event.missionId, reason: decision.reason, revisedPrompt, deployResult }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 3: Migrate `first_officer_recovered` in `resolveRecovery()`**
@@ -478,7 +555,9 @@ try {
       classification: event.classification ?? null
     }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 4: Migrate `first_officer_dismissed` in `resolveEscalation()`**
@@ -499,7 +578,9 @@ try {
       classification: event.classification ?? null
     }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 5: Add `hailing_memo_written` log in `writeHailingMemo()`**
@@ -513,7 +594,9 @@ try {
     eventType: 'hailing_memo_written',
     detail: { missionId: opts.missionId, sectorName: opts.sectorName }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 6: Add `auto_escalation` log in `writeAutoEscalationComm()`**
@@ -525,9 +608,15 @@ try {
   this.deps.shipsLog.log({
     crewId: opts.crewId,
     eventType: 'auto_escalation',
-    detail: { missionId: opts.missionId, classification: opts.classification, fingerprint: opts.fingerprint }
+    detail: {
+      missionId: opts.missionId,
+      classification: opts.classification,
+      fingerprint: opts.fingerprint
+    }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 7: Update test setup to include ShipsLog**
@@ -551,11 +640,11 @@ firstOfficer = new FirstOfficer({
   crewService: {
     recallCrew: () => {},
     deployCrew: () => ({ crewId: 'replacement', missionId }),
-    deleteCrew: () => {},       // <-- new stub needed for escalation paths
-    observeCrew: () => null      // <-- new stub needed for FO context building
+    deleteCrew: () => {}, // <-- new stub needed for escalation paths
+    observeCrew: () => null // <-- new stub needed for FO context building
   } as any,
   starbaseId: db.getStarbaseId(),
-  shipsLog  // <-- add this
+  shipsLog // <-- add this
 });
 ```
 
@@ -615,6 +704,7 @@ git commit -m "feat(first-officer): migrate to ShipsLog class, add hailing and a
 ### Task 4: Sentinel — add ShipsLog dependency, migrate 8 events, add 5 new events
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 - Modify: `src/main/__tests__/sentinel.test.ts`
 
@@ -648,10 +738,20 @@ Replace the raw SQL (around line 229-231):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'lifesign_lost', ?)").run(crew.id, JSON.stringify({ sectorId: crew.sector_id }));
+db.prepare(
+  "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'lifesign_lost', ?)"
+).run(crew.id, JSON.stringify({ sectorId: crew.sector_id }));
 
 // AFTER:
-try { this.shipsLog.log({ crewId: crew.id, eventType: 'lifesign_lost', detail: { sectorId: crew.sector_id } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    crewId: crew.id,
+    eventType: 'lifesign_lost',
+    detail: { sectorId: crew.sector_id }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 3: Migrate `timeout` in `_runSweep()`**
@@ -660,10 +760,21 @@ Replace the raw SQL (around line 259-261):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)").run(crew.id, JSON.stringify({ reason: 'deadline expired' }));
+db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'timeout', ?)").run(
+  crew.id,
+  JSON.stringify({ reason: 'deadline expired' })
+);
 
 // AFTER:
-try { this.shipsLog.log({ crewId: crew.id, eventType: 'timeout', detail: { reason: 'deadline expired' } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    crewId: crew.id,
+    eventType: 'timeout',
+    detail: { reason: 'deadline expired' }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 4: Migrate `sector_path_missing` in `_runSweep()`**
@@ -672,10 +783,19 @@ Replace the raw SQL (around line 283-285):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('sector_path_missing', ?)").run(JSON.stringify({ sectorId: sector.id, path: sector.root_path }));
+db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('sector_path_missing', ?)").run(
+  JSON.stringify({ sectorId: sector.id, path: sector.root_path })
+);
 
 // AFTER:
-try { this.shipsLog.log({ eventType: 'sector_path_missing', detail: { sectorId: sector.id, path: sector.root_path } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    eventType: 'sector_path_missing',
+    detail: { sectorId: sector.id, path: sector.root_path }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 5: Add `disk_warning` new event in `_runSweep()` step 5**
@@ -718,10 +838,19 @@ Replace the raw SQL (around line 410-412):
 
 ```typescript
 // BEFORE:
-this.deps.db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('socket_restart', ?)").run(JSON.stringify({ reason: '3 consecutive ping failures' }));
+this.deps.db
+  .prepare("INSERT INTO ships_log (event_type, detail) VALUES ('socket_restart', ?)")
+  .run(JSON.stringify({ reason: '3 consecutive ping failures' }));
 
 // AFTER:
-try { this.shipsLog.log({ eventType: 'socket_restart', detail: { reason: '3 consecutive ping failures' } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    eventType: 'socket_restart',
+    detail: { reason: '3 consecutive ping failures' }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 8: Migrate `first_officer_dispatched` in `firstOfficerSweep()`**
@@ -730,7 +859,16 @@ Replace the raw SQL inside the `onExit` callback (around line 548-557):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)").run(row.crew_id, JSON.stringify({ missionId: row.mid, retryCount: row.first_officer_retry_count + 1, exitCode: code }));
+db.prepare(
+  "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'first_officer_dispatched', ?)"
+).run(
+  row.crew_id,
+  JSON.stringify({
+    missionId: row.mid,
+    retryCount: row.first_officer_retry_count + 1,
+    exitCode: code
+  })
+);
 
 // AFTER:
 try {
@@ -739,7 +877,9 @@ try {
     eventType: 'first_officer_dispatched',
     detail: { missionId: row.mid, retryCount: row.first_officer_retry_count + 1, exitCode: code }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 9: Add `gate_expired` new event in `navigatorSweep()`**
@@ -752,7 +892,9 @@ try {
     eventType: 'gate_expired',
     detail: { executionId: exec.id, protocolId: exec.protocol_id }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 10: Add `navigator_fan_out_failed` in `navigatorSweep()` crew-failed block**
@@ -773,7 +915,9 @@ try {
     eventType: 'navigator_fan_out_failed',
     detail: { executionId: row.executionId, protocolSlug: proto.slug, step: row.current_step }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 11: Add `navigator_fan_out_completed` in `navigatorSweep()` crew-completed block**
@@ -786,7 +930,9 @@ try {
     eventType: 'navigator_fan_out_completed',
     detail: { executionId: row.executionId, missionId: row.missionId }
   });
-} catch { /* fire-and-forget */ }
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 12: Migrate `review_crew_dispatched` in `reviewSweep()`**
@@ -795,10 +941,19 @@ Replace the raw SQL (around line 827-829):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('review_crew_dispatched', ?)").run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch }));
+db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('review_crew_dispatched', ?)").run(
+  JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch })
+);
 
 // AFTER:
-try { this.shipsLog.log({ eventType: 'review_crew_dispatched', detail: { missionId: mission.id, prBranch: mission.pr_branch } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    eventType: 'review_crew_dispatched',
+    detail: { missionId: mission.id, prBranch: mission.pr_branch }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 13: Migrate `review_escalated` in `reviewSweep()`**
@@ -807,10 +962,19 @@ Replace the raw SQL (around line 870-872):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('review_escalated', ?)").run(JSON.stringify({ missionId: mission.id, reviewRound: mission.review_round }));
+db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('review_escalated', ?)").run(
+  JSON.stringify({ missionId: mission.id, reviewRound: mission.review_round })
+);
 
 // AFTER:
-try { this.shipsLog.log({ eventType: 'review_escalated', detail: { missionId: mission.id, reviewRound: mission.review_round } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    eventType: 'review_escalated',
+    detail: { missionId: mission.id, reviewRound: mission.review_round }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 14: Migrate `fix_crew_dispatched` in `reviewSweep()`**
@@ -819,10 +983,23 @@ Replace the raw SQL (around line 911-918):
 
 ```typescript
 // BEFORE:
-db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('fix_crew_dispatched', ?)").run(JSON.stringify({ missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round }));
+db.prepare("INSERT INTO ships_log (event_type, detail) VALUES ('fix_crew_dispatched', ?)").run(
+  JSON.stringify({
+    missionId: mission.id,
+    prBranch: mission.pr_branch,
+    round: mission.review_round
+  })
+);
 
 // AFTER:
-try { this.shipsLog.log({ eventType: 'fix_crew_dispatched', detail: { missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round } }); } catch { /* fire-and-forget */ }
+try {
+  this.shipsLog.log({
+    eventType: 'fix_crew_dispatched',
+    detail: { missionId: mission.id, prBranch: mission.pr_branch, round: mission.review_round }
+  });
+} catch {
+  /* fire-and-forget */
+}
 ```
 
 - [ ] **Step 15: Verify no raw ships_log SQL remains in sentinel.ts**
@@ -876,6 +1053,7 @@ git commit -m "feat(sentinel): migrate to ShipsLog class, add disk/memory/gate/f
 ### Task 5: Wire ShipsLog into all roles in starbase-runtime-core.ts
 
 **Files:**
+
 - Modify: `src/main/starbase-runtime-core.ts`
 
 - [ ] **Step 1: Move `shipsLog` creation before `analyst`**
@@ -895,7 +1073,7 @@ trace('bootstrap shipsLog ready');
 const analyst = new Analyst({
   db: localStarbaseDb.getDb(),
   model: configService.getOptionalString('analyst_model'),
-  shipsLog  // <-- add
+  shipsLog // <-- add
 });
 trace('bootstrap analyst ready');
 ```
@@ -916,7 +1094,7 @@ const firstOfficer = new FirstOfficer({
   crewEnv: args.env,
   fleetBinDir: args.fleetBinPath,
   analyst,
-  shipsLog  // <-- add
+  shipsLog // <-- add
 });
 ```
 
@@ -930,7 +1108,7 @@ const navigator = new Navigator({
   starbaseId: localStarbaseDb.getStarbaseId(),
   crewEnv: args.env,
   fleetBinDir: args.fleetBinPath,
-  shipsLog  // <-- add
+  shipsLog // <-- add
 });
 ```
 
@@ -946,7 +1124,7 @@ const sentinel = new Sentinel({
   crewService,
   missionService,
   analyst,
-  shipsLog  // <-- add
+  shipsLog // <-- add
 });
 ```
 

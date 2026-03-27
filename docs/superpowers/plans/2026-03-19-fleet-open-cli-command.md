@@ -13,6 +13,7 @@
 ### Task 1: Add IPC constant
 
 **Files:**
+
 - Modify: `src/shared/constants.ts:68` (add before `SYSTEM_CHECK` line)
 
 - [ ] **Step 1: Add the IPC channel constant**
@@ -42,6 +43,7 @@ git commit -m "feat(cli): add FILE_OPEN_IN_TAB IPC channel constant"
 ### Task 2: Add preload listener
 
 **Files:**
+
 - Modify: `src/preload/index.ts:194` (add after `readBinary` in the `file` namespace)
 
 - [ ] **Step 1: Add `onOpenInTab` to the file namespace in preload**
@@ -76,6 +78,7 @@ git commit -m "feat(cli): add onOpenInTab preload listener"
 ### Task 3: Add `openFileInTab` method to workspace store (with dedup)
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add `openFileInTab` to the store interface and implementation**
@@ -83,6 +86,7 @@ git commit -m "feat(cli): add onOpenInTab preload listener"
 Find the `openFile` method in the workspace store. After it, add a new method `openFileInTab` that has dedup logic. This is separate from `openFile` (which always creates a new tab, used by Cmd+O).
 
 The method should:
+
 1. Accept an array of `{ path: string; paneType: 'file' | 'image'; label: string }`
 2. For each file, search existing tabs for a pane with matching `filePath`
 3. If found, set that tab as active
@@ -162,6 +166,7 @@ git commit -m "feat(cli): add openFileInTab with dedup to workspace store"
 ### Task 4: Wire up IPC listener in App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add useEffect for `file:open-in-tab` IPC**
@@ -173,7 +178,9 @@ useEffect(() => {
   const cleanup = window.fleet.file.onOpenInTab((payload) => {
     useWorkspaceStore.getState().openFileInTab(payload.files);
   });
-  return () => { cleanup(); };
+  return () => {
+    cleanup();
+  };
 }, []);
 ```
 
@@ -194,6 +201,7 @@ git commit -m "feat(cli): wire up file:open-in-tab IPC listener in renderer"
 ### Task 5: Add `file.open` command to socket server dispatch
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/index.ts`
 
@@ -227,11 +235,11 @@ In `src/main/socket-server.ts`, add a new case in the `dispatch()` switch before
 In `src/main/index.ts`, after the existing `socketServer.on('state-change', ...)` listener (around line 229), add:
 
 ```typescript
-    socketServer.on('file-open', (payload: unknown) => {
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload)
-      }
-    })
+socketServer.on('file-open', (payload: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
+  }
+});
 ```
 
 Make sure `IPC_CHANNELS` is already imported (it should be — verify at top of file).
@@ -253,6 +261,7 @@ git commit -m "feat(cli): add file.open socket command with IPC forwarding"
 ### Task 6: Add `fleet open` to CLI parser
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 
 - [ ] **Step 1: Add file system imports**
@@ -274,13 +283,54 @@ import { join, resolve, extname, basename } from 'node:path';
 After the imports (before the `CLIResponse` interface), add:
 
 ```typescript
-const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico']);
+const IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.svg',
+  '.bmp',
+  '.ico'
+]);
 
 const BINARY_BLOCKLIST = new Set([
-  '.zip', '.tar', '.gz', '.7z', '.rar', '.exe', '.dmg', '.pkg', '.deb', '.rpm',
-  '.iso', '.bin', '.dll', '.so', '.dylib', '.o', '.a', '.wasm', '.class', '.jar', '.war',
-  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
-  '.mp3', '.mp4', '.mov', '.avi', '.mkv', '.flac', '.wav', '.aac',
+  '.zip',
+  '.tar',
+  '.gz',
+  '.7z',
+  '.rar',
+  '.exe',
+  '.dmg',
+  '.pkg',
+  '.deb',
+  '.rpm',
+  '.iso',
+  '.bin',
+  '.dll',
+  '.so',
+  '.dylib',
+  '.o',
+  '.a',
+  '.wasm',
+  '.class',
+  '.jar',
+  '.war',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.ppt',
+  '.pptx',
+  '.mp3',
+  '.mp4',
+  '.mov',
+  '.avi',
+  '.mkv',
+  '.flac',
+  '.wav',
+  '.aac'
 ]);
 ```
 
@@ -289,61 +339,62 @@ const BINARY_BLOCKLIST = new Set([
 In `runCLI()`, right after `const [group, action, ...rest] = argv;` (line 224) and before the `if (!group || !action)` check (line 226), add the `open` handler:
 
 ```typescript
-  // ── Top-level "open" command ─────────────────────────────────────────────
-  if (group === 'open') {
-    const paths = [action, ...rest].filter(Boolean);
-    if (paths.length === 0) {
-      return 'Usage: fleet open <path> [path2 ...]';
+// ── Top-level "open" command ─────────────────────────────────────────────
+if (group === 'open') {
+  const paths = [action, ...rest].filter(Boolean);
+  if (paths.length === 0) {
+    return 'Usage: fleet open <path> [path2 ...]';
+  }
+
+  const errors: string[] = [];
+  const files: Array<{ path: string; paneType: 'file' | 'image' }> = [];
+
+  for (const p of paths) {
+    const resolved = resolve(p);
+
+    if (!existsSync(resolved)) {
+      errors.push(`Error: file not found: ${p}`);
+      continue;
     }
 
-    const errors: string[] = [];
-    const files: Array<{ path: string; paneType: 'file' | 'image' }> = [];
-
-    for (const p of paths) {
-      const resolved = resolve(p);
-
-      if (!existsSync(resolved)) {
-        errors.push(`Error: file not found: ${p}`);
-        continue;
-      }
-
-      if (statSync(resolved).isDirectory()) {
-        errors.push(`Error: directories not supported, use a file path: ${p}`);
-        continue;
-      }
-
-      const ext = extname(resolved).toLowerCase();
-      if (BINARY_BLOCKLIST.has(ext)) {
-        errors.push(`Error: unsupported binary file: ${p}`);
-        continue;
-      }
-
-      const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image' as const : 'file' as const;
-      files.push({ path: resolved, paneType });
+    if (statSync(resolved).isDirectory()) {
+      errors.push(`Error: directories not supported, use a file path: ${p}`);
+      continue;
     }
 
-    if (files.length === 0) {
-      return errors.join('\n');
+    const ext = extname(resolved).toLowerCase();
+    if (BINARY_BLOCKLIST.has(ext)) {
+      errors.push(`Error: unsupported binary file: ${p}`);
+      continue;
     }
 
-    const cli = new FleetCLI(sockPath);
-    try {
-      const response = await cli.send('file.open', { files });
-      if (!response.ok) {
-        return `Error: ${response.error ?? 'Unknown error'}`;
-      }
-      const output = errors.length > 0
+    const paneType = IMAGE_EXTENSIONS.has(ext) ? ('image' as const) : ('file' as const);
+    files.push({ path: resolved, paneType });
+  }
+
+  if (files.length === 0) {
+    return errors.join('\n');
+  }
+
+  const cli = new FleetCLI(sockPath);
+  try {
+    const response = await cli.send('file.open', { files });
+    if (!response.ok) {
+      return `Error: ${response.error ?? 'Unknown error'}`;
+    }
+    const output =
+      errors.length > 0
         ? errors.join('\n') + '\n' + `Opened ${files.length} file(s) in Fleet`
         : `Opened ${files.length} file(s) in Fleet`;
-      return output;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
-        return 'Fleet is not running';
-      }
-      return `Error: ${msg}`;
+    return output;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+      return 'Fleet is not running';
     }
+    return `Error: ${msg}`;
   }
+}
 ```
 
 - [ ] **Step 4: Verify no TypeScript errors**
@@ -363,6 +414,7 @@ git commit -m "feat(cli): add fleet open command with path validation"
 ### Task 7: Add `fleet open` to skill documentation
 
 **Files:**
+
 - Modify: `src/main/starbase/workspace-templates.ts`
 
 - [ ] **Step 1: Add `fleet open` to the Full Command Reference**

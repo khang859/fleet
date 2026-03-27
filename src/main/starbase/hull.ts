@@ -749,10 +749,9 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
       let hasNewCommits = false;
       try {
         // Check if there are new commits on this branch compared to the base
-        const commitCount = execSync(
-          `git rev-list "${baseBranch}..HEAD" --count`,
-          sigTermGitOpts
-        ).toString().trim();
+        const commitCount = execSync(`git rev-list "${baseBranch}..HEAD" --count`, sigTermGitOpts)
+          .toString()
+          .trim();
         hasNewCommits = parseInt(commitCount, 10) > 0;
       } catch {
         // baseBranch may not exist locally; fall back to checking if HEAD has any commits

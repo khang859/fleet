@@ -14,24 +14,25 @@
 
 ## File Map
 
-| File | Change |
-|---|---|
-| `src/main/starbase/migrations.ts` | Add migration v15: `original_mission_id` column |
-| `src/main/starbase/mission-service.ts` | Add `originalMissionId` to `AddMissionOpts` and `INSERT` |
-| `src/main/starbase/worktree-manager.ts` | Add `git worktree prune` before `git worktree add` in `createForExistingBranch` |
-| `src/main/starbase/hull.ts` | Add `originalMissionId` to `HullOpts`; add `repairPreamble`; add repair paths in `createPR` and `cleanup` |
-| `src/main/starbase/crew-service.ts` | Add repair guard (require `prBranch`); pass `originalMissionId` to Hull |
-| `src/main/starbase/sentinel.ts` | Add `missionService` to `SentinelDeps`; add `prMonitorSweep()` on 5-min timer |
-| `src/main/fleet-cli.ts` | Add `repair` to valid types; add `--pr-branch` and `--original-mission-id` flags |
-| `src/main/__tests__/mission-service.test.ts` | Add `originalMissionId` tests |
-| `src/main/__tests__/crew-service.test.ts` | Add repair guard tests |
-| `src/main/__tests__/sentinel.test.ts` | Add `prMonitorSweep` tests |
+| File                                         | Change                                                                                                    |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/migrations.ts`            | Add migration v15: `original_mission_id` column                                                           |
+| `src/main/starbase/mission-service.ts`       | Add `originalMissionId` to `AddMissionOpts` and `INSERT`                                                  |
+| `src/main/starbase/worktree-manager.ts`      | Add `git worktree prune` before `git worktree add` in `createForExistingBranch`                           |
+| `src/main/starbase/hull.ts`                  | Add `originalMissionId` to `HullOpts`; add `repairPreamble`; add repair paths in `createPR` and `cleanup` |
+| `src/main/starbase/crew-service.ts`          | Add repair guard (require `prBranch`); pass `originalMissionId` to Hull                                   |
+| `src/main/starbase/sentinel.ts`              | Add `missionService` to `SentinelDeps`; add `prMonitorSweep()` on 5-min timer                             |
+| `src/main/fleet-cli.ts`                      | Add `repair` to valid types; add `--pr-branch` and `--original-mission-id` flags                          |
+| `src/main/__tests__/mission-service.test.ts` | Add `originalMissionId` tests                                                                             |
+| `src/main/__tests__/crew-service.test.ts`    | Add repair guard tests                                                                                    |
+| `src/main/__tests__/sentinel.test.ts`        | Add `prMonitorSweep` tests                                                                                |
 
 ---
 
 ## Task 1: DB Migration — `original_mission_id` Column
 
 **Files:**
+
 - Modify: `src/main/starbase/migrations.ts`
 - Test: `src/main/__tests__/mission-service.test.ts`
 
@@ -52,6 +53,7 @@
 ```bash
 npm run typecheck
 ```
+
 Expected: no errors
 
 - [ ] **Write a test confirming the column exists after migration. Add to `src/main/__tests__/mission-service.test.ts`:**
@@ -88,6 +90,7 @@ git commit -m "feat: add original_mission_id column to missions (migration v15)"
 ## Task 2: MissionService — `originalMissionId` Support
 
 **Files:**
+
 - Modify: `src/main/starbase/mission-service.ts`
 - Test: `src/main/__tests__/mission-service.test.ts`
 
@@ -96,7 +99,7 @@ git commit -m "feat: add original_mission_id column to missions (migration v15)"
 ```typescript
 type MissionRow = {
   // ... existing fields ...
-  original_mission_id: number | null;  // ADD
+  original_mission_id: number | null; // ADD
 };
 ```
 
@@ -105,7 +108,7 @@ type MissionRow = {
 ```typescript
 type AddMissionOpts = {
   // ... existing fields ...
-  originalMissionId?: number;  // ADD
+  originalMissionId?: number; // ADD
 };
 ```
 
@@ -138,6 +141,7 @@ addMission(opts: AddMissionOpts): MissionRow {
 ```bash
 npx vitest run src/main/__tests__/mission-service.test.ts
 ```
+
 Expected: all tests pass including the new `original_mission_id` test
 
 - [ ] **Run full typecheck:**
@@ -158,6 +162,7 @@ git commit -m "feat: add originalMissionId to MissionService addMission"
 ## Task 3: WorktreeManager — `git worktree prune` Fix
 
 **Files:**
+
 - Modify: `src/main/starbase/worktree-manager.ts`
 
 This fixes the `fatal: 'branch' is already checked out at '/old/path'` error caused by stale `.git/worktrees/` metadata from silently-failed worktree removals.
@@ -196,6 +201,7 @@ git commit -m "fix: prune stale worktree metadata before createForExistingBranch
 ## Task 4: Hull — `repairPreamble` and `HullOpts.originalMissionId`
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 
 - [ ] **Open `src/main/starbase/hull.ts`. Add `originalMissionId` to `HullOpts` (around line 148, after `prBranch`):**
@@ -237,7 +243,13 @@ The PR already exists. Your commits will be pushed to the existing PR branch aut
 - [ ] **Add `repairPreamble` to the `combinedSystemPrompt` join (find the line joining `researchPreamble`, `reviewPreamble`, `architectPreamble`):**
 
 ```typescript
-const combinedSystemPrompt = [researchPreamble, reviewPreamble, architectPreamble, repairPreamble, this.opts.systemPrompt]
+const combinedSystemPrompt = [
+  researchPreamble,
+  reviewPreamble,
+  architectPreamble,
+  repairPreamble,
+  this.opts.systemPrompt
+]
   .filter(Boolean)
   .join('\n\n');
 ```
@@ -260,6 +272,7 @@ git commit -m "feat: add originalMissionId to HullOpts and repair preamble"
 ## Task 5: CrewService — Repair Guard and `originalMissionId` Propagation
 
 **Files:**
+
 - Modify: `src/main/starbase/crew-service.ts`
 - Test: `src/main/__tests__/crew-service.test.ts`
 
@@ -292,6 +305,7 @@ it('should throw when deploying repair mission without prBranch', async () => {
 ```bash
 npx vitest run src/main/__tests__/crew-service.test.ts -t "repair mission without prBranch"
 ```
+
 Expected: FAIL (no guard exists yet)
 
 - [ ] **Open `src/main/starbase/crew-service.ts`. Find `deployCrew`. Add the repair guard after the existing terminal status and crew_id guards (around line 128):**
@@ -310,7 +324,7 @@ if (missionType === 'repair' && !opts.prBranch) {
 ```typescript
 const hull = new Hull({
   // ... existing fields ...
-  originalMissionId: missionRow.original_mission_id ?? undefined,  // ADD
+  originalMissionId: missionRow.original_mission_id ?? undefined // ADD
 });
 ```
 
@@ -338,9 +352,11 @@ git commit -m "feat: add repair guard and originalMissionId propagation in CrewS
 ## Task 6: Hull — Repair Paths in `createPR` and `cleanup`
 
 **Files:**
+
 - Modify: `src/main/starbase/hull.ts`
 
 There are three repair-specific paths to add:
+
 1. `createPR`: when a repair crew pushes, set the **original** mission to `pending-review` (not the repair mission)
 2. `cleanup` no-changes: treat no-changes as success for repair (CI may have self-healed)
 3. `cleanup` timeout/error: revert original mission from `repairing` to `ci-failed`
@@ -359,9 +375,9 @@ try {
   // PR exists — handle based on mission type
   if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null) {
     // Repair crew: transition ORIGINAL mission to pending-review for fresh review
-    db.prepare(
-      "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
-    ).run(this.opts.originalMissionId);
+    db.prepare("UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?").run(
+      this.opts.originalMissionId
+    );
     // Mark repair mission itself as completed
     db.prepare(
       "UPDATE missions SET status = 'completed', result = 'Repair complete', completed_at = datetime('now') WHERE id = ?"
@@ -390,9 +406,9 @@ if (this.opts.missionType === 'repair') {
     "UPDATE missions SET status = 'completed', result = 'No changes needed — CI may have self-healed', completed_at = datetime('now') WHERE id = ?"
   ).run(missionId);
   if (this.opts.originalMissionId != null) {
-    db.prepare(
-      "UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?"
-    ).run(this.opts.originalMissionId);
+    db.prepare("UPDATE missions SET status = 'pending-review', crew_id = NULL WHERE id = ?").run(
+      this.opts.originalMissionId
+    );
   }
   db.prepare(
     "INSERT INTO comms (from_crew, to_crew, type, payload) VALUES (?, 'admiral', 'mission_complete', ?)"
@@ -407,14 +423,20 @@ if (this.opts.missionType === 'repair') {
 
 ```typescript
 // Repair crew timeout or error: revert original mission so prMonitorSweep can retry
-if (this.opts.missionType === 'repair' && this.opts.originalMissionId != null &&
-    (status === 'timeout' || status === 'error')) {
-  db.prepare(
-    "UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'"
-  ).run(this.opts.originalMissionId);
+if (
+  this.opts.missionType === 'repair' &&
+  this.opts.originalMissionId != null &&
+  (status === 'timeout' || status === 'error')
+) {
+  db.prepare("UPDATE missions SET status = 'ci-failed' WHERE id = ? AND status = 'repairing'").run(
+    this.opts.originalMissionId
+  );
   db.prepare(
     "INSERT INTO ships_log (crew_id, event_type, detail) VALUES (?, 'repair_failed', ?)"
-  ).run(crewId, JSON.stringify({ missionId, originalMissionId: this.opts.originalMissionId, reason: status }));
+  ).run(
+    crewId,
+    JSON.stringify({ missionId, originalMissionId: this.opts.originalMissionId, reason: status })
+  );
 }
 ```
 
@@ -436,6 +458,7 @@ git commit -m "feat: add repair-specific paths in Hull createPR and cleanup"
 ## Task 7: Sentinel — `prMonitorSweep`
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 - Test: `src/main/__tests__/sentinel.test.ts`
 
@@ -452,7 +475,7 @@ import type { MissionService } from './mission-service';
 ```typescript
 type SentinelDeps = {
   // ... existing fields ...
-  missionService?: MissionService;  // ADD
+  missionService?: MissionService; // ADD
 };
 ```
 
@@ -725,7 +748,7 @@ describe('prMonitorSweep — escalation', () => {
       prompt: 'Fix',
       status: 'approved',
       prBranch: 'feat/test',
-      reviewRound: 2  // at max
+      reviewRound: 2 // at max
     });
 
     const mockCrewService = { deployCrew: vi.fn() } as any;
@@ -755,6 +778,7 @@ describe('prMonitorSweep — escalation', () => {
 ```bash
 npx vitest run src/main/__tests__/sentinel.test.ts
 ```
+
 Expected: new tests pass
 
 - [ ] **Run full typecheck:**
@@ -775,6 +799,7 @@ git commit -m "feat: add prMonitorSweep to Sentinel for automated CI failure rep
 ## Task 8: fleet-cli.ts — Repair Type and `--pr-branch` Flag
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 
 - [ ] **Open `src/main/fleet-cli.ts`. Find the `mission.create` case (around line 421). Update the usage string and type validation to include `repair`:**
@@ -823,6 +848,7 @@ if (toStr(args.type) === 'repair' && !prBranch) {
 ```bash
 grep -n "code|research|review|architect" src/main/fleet-cli.ts
 ```
+
 Update each occurrence to include `|repair`.
 
 - [ ] **Run typecheck:**
@@ -836,6 +862,7 @@ npm run typecheck
 ```bash
 npx vitest run
 ```
+
 Expected: all tests pass
 
 - [ ] **Commit:**
@@ -854,6 +881,7 @@ git commit -m "feat: add repair type and --pr-branch flag to fleet-cli missions 
 ```bash
 npm run typecheck
 ```
+
 Expected: zero errors
 
 - [ ] **Run full test suite:**
@@ -861,6 +889,7 @@ Expected: zero errors
 ```bash
 npx vitest run
 ```
+
 Expected: all tests pass
 
 - [ ] **Run lint:**
@@ -868,6 +897,7 @@ Expected: all tests pass
 ```bash
 npm run lint
 ```
+
 Expected: no lint errors
 
 - [ ] **Verify workspace-templates.ts already updated (done in brainstorming):**
@@ -875,6 +905,7 @@ Expected: no lint errors
 ```bash
 grep -c "repair" src/main/starbase/workspace-templates.ts
 ```
+
 Expected: several matches (already committed)
 
 - [ ] **Final commit if any loose files:**
@@ -882,4 +913,5 @@ Expected: several matches (already committed)
 ```bash
 git status
 ```
+
 If clean: done. If not: commit remaining changes.

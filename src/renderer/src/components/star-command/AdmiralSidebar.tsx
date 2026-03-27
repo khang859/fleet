@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import * as Popover from '@radix-ui/react-popover';
 import { useStarCommandStore } from '../../store/star-command-store';
-import type { CrewStatus, SectorInfo, FirstOfficerStatus, NavigatorStatus } from '../../store/star-command-store';
+import type {
+  CrewStatus,
+  SectorInfo,
+  FirstOfficerStatus,
+  NavigatorStatus
+} from '../../store/star-command-store';
 
 import admiralDefault from '../../assets/admiral-default.png';
 import admiralSpeaking from '../../assets/admiral-speaking.png';
@@ -213,7 +218,9 @@ function CrewPopover({
       <div className="px-3 py-2 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <button
-            onClick={() => { void handleObserve(); }}
+            onClick={() => {
+              void handleObserve();
+            }}
             disabled={observing}
             className="text-neutral-400 hover:text-neutral-200 transition-colors disabled:opacity-50"
           >
@@ -224,7 +231,9 @@ function CrewPopover({
             <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/50 rounded px-2 py-1">
               <span className="text-[10px] text-red-300">Recall?</span>
               <button
-                onClick={() => { void handleRecall(); }}
+                onClick={() => {
+                  void handleRecall();
+                }}
                 disabled={recalling}
                 className="text-[10px] px-1.5 py-0.5 bg-red-700 hover:bg-red-600 text-white rounded transition-colors"
               >
@@ -266,8 +275,16 @@ export function AdmiralSidebar({
   avatarVariant: string;
   onMemoClick?: () => void;
 }): React.JSX.Element {
-  const { crewList, sectors, unreadCount, admiralStatus, admiralStatusText, firstOfficerStatus, navigatorStatus, sentinelStatus } =
-    useStarCommandStore();
+  const {
+    crewList,
+    sectors,
+    unreadCount,
+    admiralStatus,
+    admiralStatusText,
+    firstOfficerStatus,
+    navigatorStatus,
+    sentinelStatus
+  } = useStarCommandStore();
 
   const [openCrewId, setOpenCrewId] = useState<string | null>(null);
 
@@ -293,7 +310,11 @@ export function AdmiralSidebar({
         : (ADMIRAL_IMAGES[avatarVariant] ?? ADMIRAL_IMAGES.default);
 
   const commandLabel =
-    activeRole === 'first-officer' ? 'First Officer' : activeRole === 'navigator' ? 'Navigator' : 'Admiral';
+    activeRole === 'first-officer'
+      ? 'First Officer'
+      : activeRole === 'navigator'
+        ? 'Navigator'
+        : 'Admiral';
 
   const commandAlt =
     activeRole === 'first-officer'
@@ -431,7 +452,9 @@ export function AdmiralSidebar({
                     )}
                   </div>
                   <button
-                    onClick={() => { void window.fleet.starbase.markCommsRead(alert.id); }}
+                    onClick={() => {
+                      void window.fleet.starbase.markCommsRead(alert.id);
+                    }}
                     aria-label="Dismiss alert"
                     className="text-neutral-700 hover:text-neutral-400 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0 text-xs leading-none"
                   >
@@ -495,11 +518,7 @@ export function AdmiralSidebar({
                         </span>
                       </Popover.Trigger>
                       <Popover.Portal>
-                        <Popover.Content
-                          side="left"
-                          sideOffset={8}
-                          className="z-50"
-                        >
+                        <Popover.Content side="left" sideOffset={8} className="z-50">
                           <CrewPopover
                             crew={crew}
                             sector={sector}

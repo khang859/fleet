@@ -15,11 +15,13 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/git-service.ts` — Git operations module (`checkIsRepo`, `getFullStatus`)
 - `src/main/__tests__/git-service.test.ts` — Unit tests for git-service
 - `src/renderer/src/components/GitChangesModal.tsx` — Modal component with file sidebar + diff viewer
 
 **Modified files:**
+
 - `src/shared/constants.ts` — Add `GIT_IS_REPO` and `GIT_STATUS` IPC channels
 - `src/shared/ipc-api.ts` — Add `GitStatusPayload` and `GitIsRepoPayload` types
 - `src/preload/index.ts` — Add `git.isRepo` and `git.getStatus` bridge methods
@@ -37,6 +39,7 @@
 ### Task 1: Install dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install simple-git (main process dependency)**
@@ -71,6 +74,7 @@ git commit -m "chore: add simple-git, @git-diff-view/react, @git-diff-view/shiki
 ### Task 2: Add IPC channel constants and types
 
 **Files:**
+
 - Modify: `src/shared/constants.ts:5-23`
 - Modify: `src/shared/ipc-api.ts`
 
@@ -128,6 +132,7 @@ git commit -m "feat: add GIT_IS_REPO and GIT_STATUS IPC channel types"
 ### Task 3: Implement git-service.ts
 
 **Files:**
+
 - Create: `src/main/git-service.ts`
 - Test: `src/main/__tests__/git-service.test.ts`
 
@@ -145,11 +150,11 @@ const mockGit = {
   branch: vi.fn(),
   status: vi.fn(),
   diff: vi.fn(),
-  raw: vi.fn(),
+  raw: vi.fn()
 };
 
 vi.mock('simple-git', () => ({
-  simpleGit: vi.fn(() => mockGit),
+  simpleGit: vi.fn(() => mockGit)
 }));
 
 describe('GitService', () => {
@@ -188,7 +193,7 @@ describe('GitService', () => {
         isRepo: false,
         branch: '',
         files: [],
-        diff: '',
+        diff: ''
       });
     });
 
@@ -198,11 +203,13 @@ describe('GitService', () => {
       mockGit.status.mockResolvedValue({
         files: [
           { path: 'src/app.ts', index: ' ', working_dir: 'M' },
-          { path: 'new-file.ts', index: '?', working_dir: '?' },
+          { path: 'new-file.ts', index: '?', working_dir: '?' }
         ],
-        not_added: ['new-file.ts'],
+        not_added: ['new-file.ts']
       });
-      mockGit.diff.mockResolvedValue('diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n');
+      mockGit.diff.mockResolvedValue(
+        'diff --git a/src/app.ts b/src/app.ts\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-old\n+new\n'
+      );
       // diffSummary for tracked files
       mockGit.raw.mockImplementation((args: string[]) => {
         if (args.includes('--numstat') && !args.includes('--no-index')) {
@@ -210,7 +217,9 @@ describe('GitService', () => {
         }
         // For untracked file diff
         if (args.includes('--no-index')) {
-          return Promise.resolve('diff --git a/new-file.ts b/new-file.ts\nnew file\n--- /dev/null\n+++ b/new-file.ts\n@@ -0,0 +1 @@\n+content\n');
+          return Promise.resolve(
+            'diff --git a/new-file.ts b/new-file.ts\nnew file\n--- /dev/null\n+++ b/new-file.ts\n@@ -0,0 +1 @@\n+content\n'
+          );
         }
         return Promise.resolve('');
       });
@@ -283,19 +292,14 @@ export class GitService {
     }
 
     try {
-      const [branchInfo, statusResult] = await Promise.all([
-        git.branch(),
-        git.status(),
-      ]);
+      const [branchInfo, statusResult] = await Promise.all([git.branch(), git.status()]);
 
       const branch = branchInfo.current;
       const untrackedPaths = new Set(statusResult.not_added);
 
       // Get numstat for tracked file stats
       let numstatRaw = '';
-      const hasTrackedChanges = statusResult.files.some(
-        (f) => !untrackedPaths.has(f.path),
-      );
+      const hasTrackedChanges = statusResult.files.some((f) => !untrackedPaths.has(f.path));
       if (hasTrackedChanges) {
         numstatRaw = await git.raw(['diff', 'HEAD', '--numstat']);
       }
@@ -307,7 +311,7 @@ export class GitService {
         if (parts.length === 3) {
           numstatMap.set(parts[2], {
             insertions: parseInt(parts[0]) || 0,
-            deletions: parseInt(parts[1]) || 0,
+            deletions: parseInt(parts[1]) || 0
           });
         }
       }
@@ -320,7 +324,7 @@ export class GitService {
           path: f.path,
           status: resolveStatus(f, isUntracked),
           insertions: stats.insertions,
-          deletions: stats.deletions,
+          deletions: stats.deletions
         };
       });
 
@@ -333,12 +337,7 @@ export class GitService {
       // Append diffs for untracked files
       for (const path of untrackedPaths) {
         try {
-          const untrackedDiff = await git.raw([
-            'diff',
-            '--no-index',
-            '/dev/null',
-            path,
-          ]);
+          const untrackedDiff = await git.raw(['diff', '--no-index', '/dev/null', path]);
           diff += untrackedDiff;
         } catch (e: unknown) {
           // git diff --no-index exits with code 1 when files differ (which is always
@@ -363,10 +362,7 @@ export class GitService {
   }
 }
 
-function resolveStatus(
-  file: FileStatusResult,
-  isUntracked: boolean,
-): GitFileStatus['status'] {
+function resolveStatus(file: FileStatusResult, isUntracked: boolean): GitFileStatus['status'] {
   if (isUntracked) return 'untracked';
   // Check both index and working_dir status
   const combined = file.index + file.working_dir;
@@ -397,6 +393,7 @@ git commit -m "feat: add git-service module with checkIsRepo and getFullStatus"
 ### Task 4: Register IPC handlers and preload bridge
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/preload/index.ts`
 
@@ -405,11 +402,13 @@ git commit -m "feat: add git-service module with checkIsRepo and getFullStatus"
 In `src/main/ipc-handlers.ts`:
 
 1. Add import at top:
+
 ```typescript
 import { GitService } from './git-service';
 ```
 
 2. Add `gitService: GitService` parameter to the `registerIpcHandlers` function signature (after `cwdPoller`):
+
 ```typescript
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -425,15 +424,16 @@ export function registerIpcHandlers(
 ```
 
 3. Add handlers at the end of the function body (before the closing `}`):
-```typescript
-  // Git handlers
-  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, (_event, cwd: string) => {
-    return gitService.checkIsRepo(cwd);
-  });
 
-  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, (_event, cwd: string) => {
-    return gitService.getFullStatus(cwd);
-  });
+```typescript
+// Git handlers
+ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, (_event, cwd: string) => {
+  return gitService.checkIsRepo(cwd);
+});
+
+ipcMain.handle(IPC_CHANNELS.GIT_STATUS, (_event, cwd: string) => {
+  return gitService.getFullStatus(cwd);
+});
 ```
 
 - [ ] **Step 2: Update the caller in index.ts to pass GitService**
@@ -445,22 +445,46 @@ grep -n 'registerIpcHandlers' src/main/index.ts
 ```
 
 Then add the import and pass the instance. The import:
+
 ```typescript
 import { GitService } from './git-service';
 ```
 
 Create the instance near other service instantiations (before `app.whenReady`):
+
 ```typescript
 const gitService = new GitService();
 ```
 
 Update the call at line 103 from:
+
 ```typescript
-registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, () => mainWindow);
+registerIpcHandlers(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationDetector,
+  notificationState,
+  settingsStore,
+  cwdPoller,
+  () => mainWindow
+);
 ```
+
 to:
+
 ```typescript
-registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, notificationState, settingsStore, cwdPoller, gitService, () => mainWindow);
+registerIpcHandlers(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationDetector,
+  notificationState,
+  settingsStore,
+  cwdPoller,
+  gitService,
+  () => mainWindow
+);
 ```
 
 - [ ] **Step 3: Add preload bridge methods**
@@ -468,15 +492,17 @@ registerIpcHandlers(ptyManager, layoutStore, eventBus, notificationDetector, not
 In `src/preload/index.ts`:
 
 1. Add imports for the new types (add to existing import):
+
 ```typescript
 import type {
   // ... existing imports ...
   GitStatusPayload,
-  GitIsRepoPayload,
+  GitIsRepoPayload
 } from '../shared/ipc-api';
 ```
 
 2. Add `git` namespace to the `fleetApi` object (after `updates`):
+
 ```typescript
   git: {
     isRepo: (cwd: string): Promise<GitIsRepoPayload> =>
@@ -508,6 +534,7 @@ git commit -m "feat: register git IPC handlers and preload bridge"
 ### Task 5: Add keyboard shortcut and command palette entry
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts:21-106`
 - Modify: `src/renderer/src/lib/commands.ts:17-95`
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts:14-122`
@@ -544,11 +571,11 @@ In `src/renderer/src/lib/commands.ts`, add to the array returned by `createComma
 In `src/renderer/src/hooks/use-pane-navigation.ts`, add a handler inside `handleKeyDown` (after the `command-palette` handler, before the `Cmd/Ctrl+1-9` section):
 
 ```typescript
-      if (matchesShortcut(e, sc('git-changes'))) {
-        e.preventDefault();
-        document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'));
-        return;
-      }
+if (matchesShortcut(e, sc('git-changes'))) {
+  e.preventDefault();
+  document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'));
+  return;
+}
 ```
 
 - [ ] **Step 4: Verify types compile**
@@ -571,6 +598,7 @@ git commit -m "feat: add Cmd+Shift+G shortcut and command palette entry for git 
 ### Task 6: Add git icon button to PaneToolbar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
 
 - [ ] **Step 1: Add GitBranch icon import and onGitChanges prop**
@@ -578,11 +606,13 @@ git commit -m "feat: add Cmd+Shift+G shortcut and command palette entry for git 
 In `src/renderer/src/components/PaneToolbar.tsx`:
 
 1. Add `GitBranch` to the lucide-react import:
+
 ```typescript
 import { Columns2, Rows2, Search, X, GitBranch } from 'lucide-react';
 ```
 
 2. Add `isGitRepo` and `onGitChanges` to the props type:
+
 ```typescript
 type PaneToolbarProps = {
   visible: boolean;
@@ -596,11 +626,13 @@ type PaneToolbarProps = {
 ```
 
 3. Update the function signature to destructure the new props:
+
 ```typescript
 export function PaneToolbar({ visible, isGitRepo, onSplitHorizontal, onSplitVertical, onClose, onSearch, onGitChanges }: PaneToolbarProps) {
 ```
 
 4. Add the git button (before the Search button):
+
 ```typescript
       {isGitRepo && (
         <button
@@ -674,9 +706,11 @@ git commit -m "feat: add git branch icon button to pane toolbar"
 ### Task 7: Create GitChangesModal component
 
 **Files:**
+
 - Create: `src/renderer/src/components/GitChangesModal.tsx`
 
 This is the largest task. The component includes:
+
 - Near-full-screen overlay with scrim
 - Header bar (branch, stats, unified/split toggle, close)
 - File list sidebar with filter
@@ -772,7 +806,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
       }
 
       // j/k or ArrowUp/ArrowDown navigate file list (only when not typing)
-      if ((e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') && !isInputFocused) {
+      if (
+        (e.key === 'j' || e.key === 'k' || e.key === 'ArrowDown' || e.key === 'ArrowUp') &&
+        !isInputFocused
+      ) {
         e.preventDefault();
         e.stopPropagation();
         const down = e.key === 'j' || e.key === 'ArrowDown';
@@ -799,9 +836,8 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         e.preventDefault();
         e.stopPropagation();
         setActiveFileIndex((prev) => {
-          const next = e.key === 'n'
-            ? Math.min(prev + 1, filteredFiles.length - 1)
-            : Math.max(prev - 1, 0);
+          const next =
+            e.key === 'n' ? Math.min(prev + 1, filteredFiles.length - 1) : Math.max(prev - 1, 0);
           scrollToFile(filteredFiles[next]?.path);
           return next;
         });
@@ -815,7 +851,7 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         return;
       }
     },
-    [onClose, filteredFiles, activeFileIndex],
+    [onClose, filteredFiles, activeFileIndex]
   );
 
   if (!isOpen) return null;
@@ -824,7 +860,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (!cwd) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<AlertCircle size={32} />} message="Working directory not available" onClose={onClose} />
+        <StateMessage
+          icon={<AlertCircle size={32} />}
+          message="Working directory not available"
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
@@ -833,7 +873,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (loading) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<Loader2 size={32} className="animate-spin" />} message="Loading changes..." />
+        <StateMessage
+          icon={<Loader2 size={32} className="animate-spin" />}
+          message="Loading changes..."
+        />
       </ModalShell>
     );
   }
@@ -842,7 +885,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (data?.error) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<AlertCircle size={32} className="text-red-400" />} message={data.error} onClose={onClose} />
+        <StateMessage
+          icon={<AlertCircle size={32} className="text-red-400" />}
+          message={data.error}
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
@@ -851,7 +898,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
   if (data && !data.isRepo) {
     return (
       <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
-        <StateMessage icon={<GitBranch size={32} />} message="Not a git repository" onClose={onClose} />
+        <StateMessage
+          icon={<GitBranch size={32} />}
+          message="Not a git repository"
+          onClose={onClose}
+        />
       </ModalShell>
     );
   }
@@ -875,7 +926,9 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
       <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-800 shrink-0">
         <div className="flex items-center gap-3">
           <GitBranch size={16} className="text-neutral-400" />
-          <span className="text-sm font-medium text-white">{data?.branch || 'Working Changes'}</span>
+          <span className="text-sm font-medium text-white">
+            {data?.branch || 'Working Changes'}
+          </span>
           <span className="text-xs text-neutral-500">
             {data?.files.length} file{data?.files.length !== 1 ? 's' : ''} changed
             {totalInsertions > 0 && <span className="text-green-400 ml-2">+{totalInsertions}</span>}
@@ -884,7 +937,11 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setDiffMode(diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified)}
+            onClick={() =>
+              setDiffMode(
+                diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified
+              )
+            }
             className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
           >
             {diffMode === DiffModeEnum.Unified ? 'Split' : 'Unified'}
@@ -906,7 +963,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
               type="text"
               placeholder="Filter files..."
               value={filterText}
-              onChange={(e) => { setFilterText(e.target.value); setActiveFileIndex(0); }}
+              onChange={(e) => {
+                setFilterText(e.target.value);
+                setActiveFileIndex(0);
+              }}
               className="w-full px-2 py-1 text-xs bg-neutral-800 border border-neutral-700 rounded text-white placeholder-neutral-500 outline-none focus:border-neutral-600"
             />
             {filterText && (
@@ -922,7 +982,10 @@ export function GitChangesModal({ isOpen, onClose, cwd }: GitChangesModalProps) 
                 key={file.path}
                 file={file}
                 active={i === activeFileIndex}
-                onClick={() => { setActiveFileIndex(i); scrollToFile(file.path); }}
+                onClick={() => {
+                  setActiveFileIndex(i);
+                  scrollToFile(file.path);
+                }}
               />
             ))}
           </div>
@@ -949,7 +1012,7 @@ function ModalShell({
   children,
   onClose,
   onKeyDown,
-  modalRef,
+  modalRef
 }: {
   children: React.ReactNode;
   onClose: () => void;
@@ -962,7 +1025,10 @@ function ModalShell({
   }, [modalRef]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      onClick={onClose}
+    >
       <div
         ref={modalRef}
         tabIndex={-1}
@@ -980,7 +1046,7 @@ function ModalShell({
 function StateMessage({
   icon,
   message,
-  onClose,
+  onClose
 }: {
   icon: React.ReactNode;
   message: string;
@@ -1004,7 +1070,7 @@ const STATUS_COLORS: Record<GitFileStatus['status'], string> = {
   untracked: 'text-green-400',
   modified: 'text-yellow-400',
   deleted: 'text-red-400',
-  renamed: 'text-blue-400',
+  renamed: 'text-blue-400'
 };
 
 const STATUS_LABELS: Record<GitFileStatus['status'], string> = {
@@ -1012,13 +1078,13 @@ const STATUS_LABELS: Record<GitFileStatus['status'], string> = {
   untracked: 'U',
   modified: 'M',
   deleted: 'D',
-  renamed: 'R',
+  renamed: 'R'
 };
 
 function FileEntry({
   file,
   active,
-  onClick,
+  onClick
 }: {
   file: GitFileStatus;
   active: boolean;
@@ -1162,6 +1228,7 @@ npm run typecheck:web
 ```
 
 If there are type errors related to `@git-diff-view/react` API, read the library's type definitions and adjust:
+
 ```bash
 cat node_modules/@git-diff-view/react/dist/index.d.ts | head -100
 ```
@@ -1178,6 +1245,7 @@ git commit -m "feat: create GitChangesModal component with file sidebar and diff
 ### Task 8: Mount modal in App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add imports, state, event listener, and render**
@@ -1185,35 +1253,42 @@ git commit -m "feat: create GitChangesModal component with file sidebar and diff
 In `src/renderer/src/App.tsx`:
 
 1. Add import for the modal (new line):
+
 ```typescript
 import { GitChangesModal } from './components/GitChangesModal';
 ```
+
 And add `useCwdStore` to the existing `cwd-store` import (line 9 already imports `initCwdListener`):
+
 ```typescript
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 ```
 
 2. Add state (alongside other modal states, near line 49-51):
+
 ```typescript
 const [gitChangesOpen, setGitChangesOpen] = useState(false);
 ```
 
 3. Add CWD lookup for the focused pane (after `settings` const):
+
 ```typescript
-const focusedPaneCwd = useCwdStore((s) => activePaneId ? s.cwds.get(activePaneId) : undefined);
+const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
 ```
 
 4. Add event listener (alongside other toggle listeners, after the command palette one ~line 83):
+
 ```typescript
-  // Git changes modal toggle
-  useEffect(() => {
-    const handler = () => setGitChangesOpen((prev) => !prev);
-    document.addEventListener('fleet:toggle-git-changes', handler);
-    return () => document.removeEventListener('fleet:toggle-git-changes', handler);
-  }, []);
+// Git changes modal toggle
+useEffect(() => {
+  const handler = () => setGitChangesOpen((prev) => !prev);
+  document.addEventListener('fleet:toggle-git-changes', handler);
+  return () => document.removeEventListener('fleet:toggle-git-changes', handler);
+}, []);
 ```
 
 5. Render the modal (after `<CommandPalette ... />`, near line 286):
+
 ```typescript
       <GitChangesModal isOpen={gitChangesOpen} onClose={() => setGitChangesOpen(false)} cwd={focusedPaneCwd} />
 ```

@@ -228,9 +228,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const rawTab = state.workspace.tabs[tabIndex];
       // Inject live CWDs so undo-close restores the PTY at the correct directory
-      const closedTab = rawTab
-        ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) }
-        : rawTab;
+      const closedTab = rawTab ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) } : rawTab;
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
       const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
       return {
@@ -404,15 +402,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
     const migrated = { ...workspace, tabs: migratedTabs };
 
-    const restoredTab = (migrated.activeTabId
-      ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-      : undefined) ?? migrated.tabs[0];
+    const restoredTab =
+      (migrated.activeTabId
+        ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
+        : undefined) ?? migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
     const restoredPane =
       migrated.activePaneId && paneIds.includes(migrated.activePaneId)
         ? migrated.activePaneId
-        : paneIds[0] ?? null;
+        : (paneIds[0] ?? null);
 
     set({
       workspace: migrated,
@@ -431,15 +430,16 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       }));
       const migrated = { ...target, tabs: migratedTabs };
 
-      const restoredTab = (migrated.activeTabId
-        ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-        : undefined) ?? migrated.tabs[0];
+      const restoredTab =
+        (migrated.activeTabId
+          ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
+          : undefined) ?? migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
       const restoredPane =
         migrated.activePaneId && paneIds.includes(migrated.activePaneId)
           ? migrated.activePaneId
-          : paneIds[0] ?? null;
+          : (paneIds[0] ?? null);
 
       // Stash old workspace with current active tab/pane into background
       const newBackground = new Map(state.backgroundWorkspaces);

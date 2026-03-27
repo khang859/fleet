@@ -29,7 +29,7 @@ The wrapper that manages a single Crewmate's lifecycle. Each deployed Crewmate g
    - Stop Lifesign interval and timeout timer
    - Auto-commit any uncommitted/untracked files in the worktree (`git add -A && git commit -m "auto-commit uncommitted changes"`)
    - Check for empty diff against base branch (`git diff --stat {baseBranch}...HEAD`). If empty → mark "failed" with reason "no work produced", skip push
-   - *Note: verify_command execution is deferred to Phase 5 (Quality Gate 2). Leave a placeholder comment in the code.*
+   - _Note: verify_command execution is deferred to Phase 5 (Quality Gate 2). Leave a placeholder comment in the code._
    - Push branch to origin: `git push -u origin {worktreeBranch}` with retry (3 attempts, exponential backoff: 2s, 8s, 30s). Uses the actual `worktreeBranch` value (may include numeric suffix from collision handling).
    - Update `missions` table: status, completed_at, result (commit summary)
    - Send a Transmission to the `comms` table (from: crewId, to: "admiral", type: "mission_complete")
@@ -39,6 +39,7 @@ The wrapper that manages a single Crewmate's lifecycle. Each deployed Crewmate g
 **Output buffer:** The Hull keeps a ring buffer of the last 200 lines of agent output for debugging and debrief purposes.
 
 **Public API:**
+
 - `start()` — Begin the lifecycle
 - `kill()` — Force terminate the agent (for recall)
 - `getStatus()` — Current crew status
@@ -49,6 +50,7 @@ The wrapper that manages a single Crewmate's lifecycle. Each deployed Crewmate g
 Handles git worktree operations.
 
 **Public API:**
+
 - `create({ starbaseId, crewId, sectorPath, baseBranch })` — Pre-flight checks (verify git repo via `git rev-parse --git-dir` with `cwd: sectorPath`, branch name available locally + remotely via `git branch --list` and `git ls-remote --heads origin`, disk headroom > 500MB), then `git worktree add ~/.fleet/worktrees/{starbaseId}/{crewId} -b crew/{crewId}` (run with `cwd: sectorPath`). If branch name taken, append numeric suffix (`crew/{crewId}-2`). Returns `{ worktreePath, worktreeBranch }`.
 - `remove(worktreePath)` — `git worktree remove {path}`. Retry after 2s on failure. Force remove as fallback.
 - `installDependencies(worktreePath)` — Detect lockfile type, run the appropriate install command with 120s timeout. On failure, retry once. On persistent failure, try symlink fallback if configured.
@@ -56,6 +58,7 @@ Handles git worktree operations.
 - `listActive(starbaseId)` — List worktree directories under `~/.fleet/worktrees/{starbaseId}/`.
 
 **Lockfile detection:**
+
 - `package-lock.json` → `npm install`
 - `pnpm-lock.yaml` → `pnpm install`
 - `yarn.lock` → `yarn install`
@@ -67,6 +70,7 @@ Handles git worktree operations.
 CRUD for the Mission queue.
 
 **Public API:**
+
 - `addMission({ sectorId, summary, prompt, acceptanceCriteria?, priority?, dependsOnMissionId? })` — Insert into `missions` table. Summary and prompt are required.
 - `completeMission(missionId, result)` — Set status "completed", completed_at, result JSON.
 - `failMission(missionId, reason)` — Set status "failed" with reason in result.
@@ -81,6 +85,7 @@ CRUD for the Mission queue.
 Orchestrates the full deploy flow.
 
 **Public API:**
+
 - `deployCrew({ sectorId, prompt, missionId? })` — The main entry point:
   1. Look up Sector from the registry (read `base_branch` from Sector record, defaults to "main")
   2. Create a Mission (if missionId not provided) via `missionService.addMission()`
@@ -100,6 +105,7 @@ Orchestrates the full deploy flow.
 ### IPC + Socket Wiring
 
 New IPC handlers:
+
 - `starbase:deploy` → `crewService.deployCrew()`
 - `starbase:recall` → `crewService.recallCrew()`
 - `starbase:crew` → `crewService.listCrew()`
@@ -108,6 +114,7 @@ New IPC handlers:
 - `starbase:observe` → `crewService.observeCrew()`
 
 Socket commands:
+
 - `{ type: "deploy", sectorId, prompt }` → deploy
 - `{ type: "recall", crewId }` → recall
 - `{ type: "crew", sectorId? }` → list Crew
@@ -120,6 +127,7 @@ The Hull creates PTYs through PtyManager (reusing the existing infrastructure). 
 ### Tab Integration
 
 When `deployCrew()` runs, it creates a new tab in the layout with:
+
 - `label`: Mission summary (e.g. "Add rate limiting")
 - `cwd`: worktree path
 - `cmd`: The claude command (spawned via PtyManager with the `cmd` option)

@@ -12,16 +12,16 @@ Extend the existing `notificationDetector` to parse Claude Code's TUI output fro
 
 ## State Detection Patterns (Claude Code TUI)
 
-| State | Detection Signal | Avatar State | Avatar Image | Status Text |
-|---|---|---|---|---|
-| Idle | No output for ~2s | `standby` | `admiral-standby` | "Standing by" |
-| Thinking | Spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`) | `thinking` | `admiral-thinking` | "Thinking..." |
-| Speaking | Streaming text output (non-spinner, non-tool) | `speaking` | `admiral-speaking` (oscillating with `admiral-default`) | "Speaking" |
-| Tool execution | Tool use block headers (e.g. `⏺ Bash`, `⏺ Read`) | `thinking` | `admiral-thinking` | "Executing: \<tool name\>" |
-| Permission prompt | `(y/n)`, "Allow", permission patterns | `alert` | `admiral-alert` | "Awaiting permission" |
-| Error | "Error:", connection failures, crash output | `alert` | `admiral-alert` | "Error" |
-| Starting | Admiral status is `'starting'` | `standby` | `admiral-standby` | "Starting..." |
-| Stopped | Admiral status is `'stopped'` | `standby` | `admiral-standby` | "Standing by" |
+| State             | Detection Signal                                 | Avatar State | Avatar Image                                            | Status Text                |
+| ----------------- | ------------------------------------------------ | ------------ | ------------------------------------------------------- | -------------------------- |
+| Idle              | No output for ~2s                                | `standby`    | `admiral-standby`                                       | "Standing by"              |
+| Thinking          | Spinner characters (`⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏`)                | `thinking`   | `admiral-thinking`                                      | "Thinking..."              |
+| Speaking          | Streaming text output (non-spinner, non-tool)    | `speaking`   | `admiral-speaking` (oscillating with `admiral-default`) | "Speaking"                 |
+| Tool execution    | Tool use block headers (e.g. `⏺ Bash`, `⏺ Read`) | `thinking`   | `admiral-thinking`                                      | "Executing: \<tool name\>" |
+| Permission prompt | `(y/n)`, "Allow", permission patterns            | `alert`      | `admiral-alert`                                         | "Awaiting permission"      |
+| Error             | "Error:", connection failures, crash output      | `alert`      | `admiral-alert`                                         | "Error"                    |
+| Starting          | Admiral status is `'starting'`                   | `standby`    | `admiral-standby`                                       | "Starting..."              |
+| Stopped           | Admiral status is `'stopped'`                    | `standby`    | `admiral-standby`                                       | "Standing by"              |
 
 Note: Tool execution maps to `thinking` avatar state (not a new state) with a distinct status text. This keeps the `AdmiralAvatarState` type unchanged.
 
@@ -52,6 +52,7 @@ Note: `admiralStateDetector.scan()` is called directly in both `wireAdmiralPty()
 Stateful scanner that tracks the Admiral's PTY output and determines the current state.
 
 **Responsibilities:**
+
 - Accept the Admiral's paneId so it only processes Admiral output
 - Strip ANSI escape sequences from incoming data before pattern matching
 - Maintain a rolling buffer (~1KB) of stripped output for multi-flush pattern matching
@@ -61,15 +62,17 @@ Stateful scanner that tracks the Admiral's PTY output and determines the current
 - Emit `admiral-state-change` events on the eventBus
 
 **ANSI stripping:**
+
 ```typescript
 // Strip all ANSI escape sequences before pattern matching
-const ANSI_PATTERN = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g
+const ANSI_PATTERN = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g;
 function stripAnsi(data: string): string {
-  return data.replace(ANSI_PATTERN, '')
+  return data.replace(ANSI_PATTERN, '');
 }
 ```
 
 **State priority (highest wins when ambiguous):**
+
 1. Permission prompt / Error → `alert`
 2. Tool execution → `thinking` (with tool-specific status text)
 3. Speaking (streaming text fallback) → `speaking`
@@ -77,51 +80,50 @@ function stripAnsi(data: string): string {
 5. Idle (silence timeout) → `standby`
 
 **Detection patterns:**
+
 ```typescript
 // Thinking — braille spinner characters used by Claude Code
-const THINKING_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/
+const THINKING_PATTERN = /[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/;
 
 // Tool execution — Claude Code tool use headers
-const TOOL_PATTERN = /⏺\s+(Bash|Read|Edit|Write|Glob|Grep|MultiEdit|TodoWrite|WebFetch|WebSearch|Agent|Skill|NotebookEdit)/
+const TOOL_PATTERN =
+  /⏺\s+(Bash|Read|Edit|Write|Glob|Grep|MultiEdit|TodoWrite|WebFetch|WebSearch|Agent|Skill|NotebookEdit)/;
 
 // Permission prompt — reuse existing patterns + additions
 const PERMISSION_PATTERNS = [
   /Do you want to (?:allow|proceed|continue)/i,
   /\(y\/n\)\s*$/,
   /Allow this action\?/i,
-  /Press Enter to confirm/i,
-]
+  /Press Enter to confirm/i
+];
 
 // Error patterns
-const ERROR_PATTERNS = [
-  /^Error:/m,
-  /connection failed/i,
-  /fatal:/i,
-  /SIGTERM|SIGKILL/,
-]
+const ERROR_PATTERNS = [/^Error:/m, /connection failed/i, /fatal:/i, /SIGTERM|SIGKILL/];
 
 // Speaking — fallback: any non-empty output that doesn't match above patterns
 ```
 
 **Interface:**
+
 ```typescript
 interface AdmiralStateEvent {
-  state: 'standby' | 'thinking' | 'speaking' | 'alert'
-  statusText: string  // e.g. "Executing: Bash", "Thinking...", "Standing by"
+  state: 'standby' | 'thinking' | 'speaking' | 'alert';
+  statusText: string; // e.g. "Executing: Bash", "Thinking...", "Standing by"
 }
 
 class AdmiralStateDetector {
-  constructor(eventBus: EventBus)
-  setAdmiralPaneId(paneId: string | null): void
-  scan(paneId: string, data: string): void
-  reset(): void   // Reset to standby — called on Admiral stop
-  dispose(): void // Clean up timers and listeners
+  constructor(eventBus: EventBus);
+  setAdmiralPaneId(paneId: string | null): void;
+  scan(paneId: string, data: string): void;
+  reset(): void; // Reset to standby — called on Admiral stop
+  dispose(): void; // Clean up timers and listeners
 }
 ```
 
 ### 2. `src/main/event-bus.ts` (MODIFIED)
 
 Add `admiral-state-change` to the `FleetEvent` union:
+
 ```typescript
 | { type: 'admiral-state-change'; state: AdmiralAvatarState; statusText: string }
 ```

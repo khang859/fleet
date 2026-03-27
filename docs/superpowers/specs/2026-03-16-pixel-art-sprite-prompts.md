@@ -86,6 +86,7 @@ infsh app run google/gemini-3-1-flash-image-preview --input '{
 > **Note:** Pass the idle-1 image as a JPEG (not PNG) to avoid infsh service errors — convert with `sharp('file.png').jpeg({quality:95}).toFile('file.jpg')` first.
 
 > **Reuse uploaded files:** Once infsh uploads a file, the output JSON contains the uploaded URL (e.g. `https://cloud.inference.sh/app/files/u/.../file.png`). You can pass this URL directly in `images` for all subsequent frames instead of re-uploading the local file every time:
+>
 > ```bash
 > # Upload once — note the URL from the output
 > infsh app run google/gemini-3-1-flash-image-preview --input '{
@@ -100,9 +101,11 @@ infsh app run google/gemini-3-1-flash-image-preview --input '{
 >   "images": ["https://cloud.inference.sh/app/files/u/abc123/idle-1.png"]
 > }'
 > ```
+>
 > The uploaded URL stays valid for the session — no need to re-upload for every request.
 
 For each animation frame below:
+
 1. Use the corresponding hull's `idle-1.png` (converted to `.jpg`) as the input image — upload once and reuse the URL
 2. Use the animation prompt as the edit instruction
 3. Always include "Keep the exact same ship design, colors, and shape" in the prompt
@@ -506,6 +509,7 @@ npx tsx scripts/assemble-sprites.ts
 ```
 
 This will:
+
 1. Validate all files exist
 2. Resize to exact pixel dimensions (nearest-neighbor)
 3. Check for transparency issues
@@ -513,5 +517,6 @@ This will:
 5. Generate the TypeScript atlas config
 
 **Output:**
+
 - `src/renderer/src/assets/sprites.png`
 - `src/renderer/src/components/visualizer/sprite-atlas.ts`

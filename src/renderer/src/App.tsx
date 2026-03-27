@@ -36,7 +36,6 @@ function killClosedTabPtys(paneIds: string[]): void {
   }
 }
 
-
 export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
@@ -57,27 +56,26 @@ export function App(): React.JSX.Element {
     addTab,
     lastClosedTab,
     undoCloseTab
-  } = useWorkspaceStore(useShallow((s) => ({
-    workspace: s.workspace,
-    backgroundWorkspaces: s.backgroundWorkspaces,
-    activeTabId: s.activeTabId,
-    activePaneId: s.activePaneId,
-    setActiveTab: s.setActiveTab,
-    setActivePane: s.setActivePane,
-    addTab: s.addTab,
-    lastClosedTab: s.lastClosedTab,
-    undoCloseTab: s.undoCloseTab
-  })));
+  } = useWorkspaceStore(
+    useShallow((s) => ({
+      workspace: s.workspace,
+      backgroundWorkspaces: s.backgroundWorkspaces,
+      activeTabId: s.activeTabId,
+      activePaneId: s.activePaneId,
+      setActiveTab: s.setActiveTab,
+      setActivePane: s.setActivePane,
+      addTab: s.addTab,
+      lastClosedTab: s.lastClosedTab,
+      undoCloseTab: s.undoCloseTab
+    }))
+  );
   const settings = useSettingsStore((s) => s.settings);
   const focusedPaneCwd = useCwdStore((s) => (activePaneId ? s.cwds.get(activePaneId) : undefined));
 
-  const isFullScreenTab = useMemo(
-    () => {
-      const tab = workspace.tabs.find((t) => t.id === activeTabId);
-      return tab?.type === 'star-command' || tab?.type === 'images';
-    },
-    [workspace.tabs, activeTabId]
-  );
+  const isFullScreenTab = useMemo(() => {
+    const tab = workspace.tabs.find((t) => t.id === activeTabId);
+    return tab?.type === 'star-command' || tab?.type === 'images';
+  }, [workspace.tabs, activeTabId]);
   const showSidebar = !isFullScreenTab || sidebarManualOpen;
 
   // Reset manual override when leaving full-screen tab
@@ -550,7 +548,11 @@ export function App(): React.JSX.Element {
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
-                <span className="text-neutral-300">Closed {'"'}{lastClosedTab.tab.label}{'"'}</span>
+                <span className="text-neutral-300">
+                  Closed {'"'}
+                  {lastClosedTab.tab.label}
+                  {'"'}
+                </span>
                 <button
                   className="text-blue-400 hover:text-blue-300 font-medium"
                   onClick={handleUndo}

@@ -1,11 +1,5 @@
 import { fal } from '@fal-ai/client';
-import type {
-  ImageProvider,
-  GenerateOpts,
-  EditOpts,
-  PollResult,
-  GenerationResult
-} from './types';
+import type { ImageProvider, GenerateOpts, EditOpts, PollResult, GenerationResult } from './types';
 
 function isEditOpts(opts: GenerateOpts | EditOpts): opts is EditOpts {
   return 'imageUrls' in opts && Array.isArray(opts.imageUrls);
@@ -55,7 +49,10 @@ export class FalAiProvider implements ImageProvider {
       case 'COMPLETED':
         return { status: 'completed' };
       default:
-        return { status: 'failed', error: `Unknown status: ${String((status as { status: string }).status)}` };
+        return {
+          status: 'failed',
+          error: `Unknown status: ${String((status as { status: string }).status)}`
+        };
     }
   }
 
@@ -63,9 +60,7 @@ export class FalAiProvider implements ImageProvider {
     const result = await fal.queue.result(this.currentModel, { requestId });
     const raw: unknown = result.data;
     const data: Record<string, unknown> =
-      raw != null && typeof raw === 'object' && !Array.isArray(raw)
-        ? { ...raw }
-        : {};
+      raw != null && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
     const rawImages = Array.isArray(data.images) ? data.images : [];
 
     const images = rawImages

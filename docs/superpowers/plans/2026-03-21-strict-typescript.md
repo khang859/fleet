@@ -13,6 +13,7 @@
 ### Task 1: ESLint Configuration
 
 **Files:**
+
 - Modify: `eslint.config.mjs`
 
 - [ ] **Step 1: Enable type-checked linting and add `no-unsafe-type-assertion` rule**
@@ -20,12 +21,12 @@
 The `no-unsafe-type-assertion` rule requires type-checked linting. Switch from `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked`, add `parserOptions.project`, add `reference/` to ignores, and add the rule for source files:
 
 ```typescript
-import { defineConfig } from 'eslint/config'
-import tseslint from '@electron-toolkit/eslint-config-ts'
-import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier'
-import eslintPluginReact from 'eslint-plugin-react'
-import eslintPluginReactHooks from 'eslint-plugin-react-hooks'
-import eslintPluginReactRefresh from 'eslint-plugin-react-refresh'
+import { defineConfig } from 'eslint/config';
+import tseslint from '@electron-toolkit/eslint-config-ts';
+import eslintConfigPrettier from '@electron-toolkit/eslint-config-prettier';
+import eslintPluginReact from 'eslint-plugin-react';
+import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
+import eslintPluginReactRefresh from 'eslint-plugin-react-refresh';
 
 export default defineConfig(
   { ignores: ['**/node_modules', '**/dist', '**/out', 'reference/**'] },
@@ -34,7 +35,7 @@ export default defineConfig(
     languageOptions: {
       parserOptions: {
         project: ['./tsconfig.node.json', './tsconfig.web.json'],
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir: import.meta.dirname
       }
     }
   },
@@ -63,14 +64,15 @@ export default defineConfig(
     files: ['src/**/*.{ts,tsx}', 'scripts/**/*.ts'],
     ignores: ['**/__tests__/**'],
     rules: {
-      '@typescript-eslint/no-unsafe-type-assertion': 'error',
+      '@typescript-eslint/no-unsafe-type-assertion': 'error'
     }
   },
   eslintConfigPrettier
-)
+);
 ```
 
 Key changes:
+
 - `tseslint.configs.recommended` → `tseslint.configs.recommendedTypeChecked` (enables type-aware rules)
 - Added `languageOptions.parserOptions.project` pointing to both tsconfig files
 - Added `reference/**` to ignores (not our code)
@@ -97,6 +99,7 @@ git commit -m "chore: enable type-checked linting and add no-unsafe-type-asserti
 ### Task 2: Typed Database Query Helper
 
 **Files:**
+
 - Modify: `src/main/starbase/comms-service.ts`
 - Modify: `src/main/starbase/protocol-service.ts`
 - Modify: `src/main/starbase/ships-log.ts`
@@ -120,7 +123,8 @@ In `db.ts`, replace casts with generic prepare calls or runtime checks:
 // Line 32: pragma() returns `any` in @types/better-sqlite3.
 // Rewrite to avoid the cast entirely by checking the result at runtime:
 const result: unknown = testDb.pragma('integrity_check');
-const ok = Array.isArray(result) &&
+const ok =
+  Array.isArray(result) &&
   result.length > 0 &&
   typeof result[0] === 'object' &&
   result[0] !== null &&
@@ -212,6 +216,7 @@ git commit -m "refactor: use typed prepare<> for all database queries, remove as
 ### Task 3: CodedError Helper
 
 **Files:**
+
 - Create: `src/main/errors.ts`
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/starbase-runtime-core.ts`
@@ -225,7 +230,7 @@ git commit -m "refactor: use typed prepare<> for all database queries, remove as
 export class CodedError extends Error {
   constructor(
     message: string,
-    public readonly code: string,
+    public readonly code: string
   ) {
     super(message);
     this.name = 'CodedError';
@@ -353,6 +358,7 @@ git commit -m "refactor: replace error type casts with CodedError class and toEr
 ### Task 4: Typed Runtime Command Dispatch
 
 **Files:**
+
 - Modify: `src/main/starbase-runtime-core.ts`
 - Modify: `src/main/starbase-runtime-socket-services.ts`
 
@@ -381,6 +387,7 @@ private dispatch<K extends keyof CommandMap>(
 However, since the public API is `invoke(method: string, args?: unknown)` (called from socket protocol), keep that signature but validate args at the boundary using the map types. The simplest approach: keep the switch but add type guards for each case instead of casts.
 
 For simple primitives:
+
 ```typescript
 case 'sector.get': {
   if (typeof args !== 'string') throw new CodedError('sector ID must be a string', 'BAD_REQUEST');
@@ -400,6 +407,7 @@ async invoke(method: string, rawArgs?: unknown): Promise<unknown> {
 ```
 
 Then for primitives use `rawArgs` with typeof narrowing:
+
 ```typescript
 case 'sector.get': {
   if (typeof rawArgs !== 'string') throw new CodedError('...', 'BAD_REQUEST');
@@ -408,6 +416,7 @@ case 'sector.get': {
 ```
 
 For object params, construct the parameter explicitly from validated fields:
+
 ```typescript
 case 'sector.add': {
   if (!args || typeof args.path !== 'string') throw new CodedError('path required', 'BAD_REQUEST');
@@ -459,6 +468,7 @@ git commit -m "refactor: type-safe command dispatch, remove parameter and proxy 
 ### Task 5: Remaining Main Process Source Casts
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 - Modify: `src/main/pty-manager.ts`
 - Modify: `src/main/jsonl-watcher.ts`
@@ -484,14 +494,14 @@ git commit -m "refactor: type-safe command dispatch, remove parameter and proxy 
 
 ```typescript
 // Before:
-env: process.env as Record<string, string>
+env: process.env as Record<string, string>;
 
 // After — process.env already satisfies node-pty's env type (Record<string, string>):
 // Check what the consumer actually needs. If it accepts string | undefined, remove cast.
 // If it requires Record<string, string>, use:
 env: Object.fromEntries(
   Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] != null)
-)
+);
 ```
 
 Files: `pty-manager.ts:69`, `hull.ts:284`, `admiral-process.ts:170`, `navigator.ts:86`, `first-officer.ts:151`
@@ -583,6 +593,7 @@ git commit -m "refactor: remove remaining as casts from main process source file
 ### Task 6: Renderer + Preload Casts
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
@@ -681,12 +692,15 @@ const status = isValidStatus(c.status) ? c.status : 'idle';
 `Object.keys(NOTIFICATION_LABELS) as NotificationKey[]` — `Object.keys` returns `string[]`. Use a typed keys helper:
 
 ```typescript
-const notificationKeys = Object.keys(NOTIFICATION_LABELS) as Array<keyof typeof NOTIFICATION_LABELS>;
+const notificationKeys = Object.keys(NOTIFICATION_LABELS) as Array<
+  keyof typeof NOTIFICATION_LABELS
+>;
 // Or define a const array of keys separately
 const NOTIFICATION_KEYS: NotificationKey[] = ['permission', 'error', 'info', 'subtle'];
 ```
 
 Wait — this is still `as`. Better:
+
 ```typescript
 // Define the keys array as the source of truth:
 const NOTIFICATION_KEYS = ['permission', 'error', 'info', 'subtle'] as const;
@@ -731,6 +745,7 @@ git commit -m "refactor: remove all as casts from renderer and preload source fi
 ### Task 7: Scripts
 
 **Files:**
+
 - Modify: `scripts/generate-image.ts`
 - Modify: `scripts/assemble-sprites.ts`
 - Modify: `scripts/assemble-star-command-sprites.ts`
@@ -765,6 +780,7 @@ git commit -m "refactor: remove as casts from build scripts"
 ### Task 8: Test File `any` Cleanup
 
 **Files:**
+
 - Modify: `src/main/__tests__/hull.test.ts`
 - Modify: `src/main/__tests__/sentinel-socket.test.ts`
 - Modify: `src/main/__tests__/first-officer.test.ts`

@@ -88,15 +88,15 @@ The old `depends_on_mission_id IS NULL OR depends_on_mission_id IN (SELECT id FR
 
 ```typescript
 type AddMissionOpts = {
-  sectorId: string
-  summary: string
-  prompt: string
-  acceptanceCriteria?: string
-  priority?: number
-  dependsOnMissionIds?: number[]   // replaces dependsOnMissionId (singular)
-  type?: string
-  prBranch?: string
-}
+  sectorId: string;
+  summary: string;
+  prompt: string;
+  acceptanceCriteria?: string;
+  priority?: number;
+  dependsOnMissionIds?: number[]; // replaces dependsOnMissionId (singular)
+  type?: string;
+  prBranch?: string;
+};
 ```
 
 After inserting the mission row, insert one row per dependency ID into `mission_dependencies`:
@@ -105,7 +105,7 @@ After inserting the mission row, insert one row per dependency ID into `mission_
 for (const depId of opts.dependsOnMissionIds ?? []) {
   db.prepare(
     'INSERT OR IGNORE INTO mission_dependencies (mission_id, depends_on_mission_id) VALUES (?, ?)'
-  ).run(result.lastInsertRowid, depId)
+  ).run(result.lastInsertRowid, depId);
 }
 ```
 
@@ -135,10 +135,10 @@ Updated to use the junction table query from §1.
 
 ```typescript
 // Before (scalar):
-result['depends-on'] = '15'   // second occurrence silently drops '12'
+result['depends-on'] = '15'; // second occurrence silently drops '12'
 
 // After (array accumulation for --depends-on):
-result['depends-on'] = ['12', '15']
+result['depends-on'] = ['12', '15'];
 ```
 
 ### Usage
@@ -185,15 +185,17 @@ The fleet-cli prints whatever the server returns, so the nudge lives in the serv
 `args['depends-on']` may arrive as a string (single value) or an array of strings (multiple values, after `parseArgs` update). Normalise explicitly:
 
 ```typescript
-const rawDeps = args['depends-on']
-const dependsOnMissionIds: number[] = rawDeps == null
-  ? []
-  : (Array.isArray(rawDeps) ? rawDeps : [rawDeps]).map(Number).filter(n => !isNaN(n) && n > 0)
+const rawDeps = args['depends-on'];
+const dependsOnMissionIds: number[] =
+  rawDeps == null
+    ? []
+    : (Array.isArray(rawDeps) ? rawDeps : [rawDeps]).map(Number).filter((n) => !isNaN(n) && n > 0);
 ```
 
 ### Validation
 
 For each ID in `dependsOnMissionIds`:
+
 - Verify the mission exists; if not, throw `BAD_REQUEST` with a clear message
 - Warn (not error) if the mission is not `research` type — the dependency model is flexible
 
@@ -222,16 +224,17 @@ Only for `missionType === 'code'` missions that have one or more rows in `missio
 A lightweight header prepended to the **`content` string of the initial user message** (before the worktree warning). It is not prepended to the serialised JSON `initMsg` string — it modifies the `content` field before serialisation:
 
 ```typescript
-const cargoHeader = buildCargoHeader(db, missionId)   // returns '' if nothing to inject
+const cargoHeader = buildCargoHeader(db, missionId); // returns '' if nothing to inject
 
-const content = `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`
+const content = `${cargoHeader}${worktreeWarning}${researchGuidance}Read and execute the mission prompt in ${promptFile}. Delete the file when done.`;
 
-const initMsg = JSON.stringify({
-  type: 'user',
-  message: { role: 'user', content },
-  parent_tool_use_id: null,
-  session_id: ''
-}) + '\n'
+const initMsg =
+  JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content },
+    parent_tool_use_id: null,
+    session_id: ''
+  }) + '\n';
 ```
 
 ### Header format
@@ -255,50 +258,56 @@ If no entries are valid, the entire header is omitted silently.
 
 ```typescript
 function buildCargoHeader(db: Database.Database, missionId: number): string {
-  const deps = db.prepare(
-    `SELECT md.depends_on_mission_id, m.summary, m.type
+  const deps = db
+    .prepare(
+      `SELECT md.depends_on_mission_id, m.summary, m.type
      FROM mission_dependencies md
      JOIN missions m ON m.id = md.depends_on_mission_id
      WHERE md.mission_id = ?`
-  ).all(missionId) as Array<{ depends_on_mission_id: number; summary: string; type: string }>
+    )
+    .all(missionId) as Array<{ depends_on_mission_id: number; summary: string; type: string }>;
 
-  if (deps.length === 0) return ''
+  if (deps.length === 0) return '';
 
-  const lines: string[] = []
+  const lines: string[] = [];
 
   for (const dep of deps) {
-    const cargo = db.prepare(
-      `SELECT manifest FROM cargo
+    const cargo = db
+      .prepare(
+        `SELECT manifest FROM cargo
        WHERE mission_id = ? AND type = 'documentation_summary' AND verified = 1
        LIMIT 1`
-    ).get(dep.depends_on_mission_id) as { manifest: string } | undefined
+      )
+      .get(dep.depends_on_mission_id) as { manifest: string } | undefined;
 
-    if (!cargo) continue
+    if (!cargo) continue;
 
-    let path: string | null = null
+    let path: string | null = null;
     try {
-      const manifest = JSON.parse(cargo.manifest) as { path?: string }
+      const manifest = JSON.parse(cargo.manifest) as { path?: string };
       if (manifest.path && fs.existsSync(manifest.path)) {
-        path = manifest.path
+        path = manifest.path;
       }
     } catch {
-      continue
+      continue;
     }
 
-    if (!path) continue   // { content } manifests or missing files: skip
+    if (!path) continue; // { content } manifests or missing files: skip
 
-    lines.push(`- Mission #${dep.depends_on_mission_id} "${dep.summary}"\n  Summary cargo: ${path}`)
+    lines.push(
+      `- Mission #${dep.depends_on_mission_id} "${dep.summary}"\n  Summary cargo: ${path}`
+    );
   }
 
-  if (lines.length === 0) return ''
+  if (lines.length === 0) return '';
 
   return [
     'RESEARCH CONTEXT: The following research mission(s) completed before this code mission.',
     'Use the Read tool to load their findings if your task requires context.',
     '',
     ...lines,
-    '',
-  ].join('\n')
+    ''
+  ].join('\n');
 }
 ```
 
@@ -320,21 +329,26 @@ context, then create a code mission that depends on it. The code mission will no
 be scheduled until the research mission reaches a terminal state.
 
 \`\`\`bash
+
 # 1. Create the research mission
+
 fleet missions add --sector <id> --type research \\
-  --summary "Investigate X" \\
-  --prompt "Investigate..."
+--summary "Investigate X" \\
+--prompt "Investigate..."
 
 # 2. Create the code mission that depends on the research
+
 fleet missions add --sector <id> --type code \\
-  --summary "Implement X" \\
-  --prompt "..." \\
-  --depends-on <research-mission-id>
+--summary "Implement X" \\
+--prompt "..." \\
+--depends-on <research-mission-id>
 
 # 3. Deploy the research crew first
+
 fleet crew deploy --sector <id> --mission <research-mission-id>
 
 # 4. When research completes, deploy the code crew
+
 fleet crew deploy --sector <id> --mission <code-mission-id>
 \`\`\`
 
@@ -368,15 +382,15 @@ the file on demand if the task requires the findings.
 
 ## Affected Files
 
-| File | Change |
-|------|--------|
-| `src/main/starbase/migrations.ts` | Add single migration version: create `mission_dependencies` table + backfill existing `depends_on_mission_id` values |
-| `src/main/starbase/mission-service.ts` | Update `AddMissionOpts`, `addMission()`, `nextMission()`; add `getDependencies()`, `getDependents()` |
-| `src/main/starbase/crew-service.ts` | Update `nextQueuedMission()` and `autoDeployNext()` to use junction table instead of old `depends_on_mission_id` guard |
-| `src/main/starbase/hull.ts` | Add `buildCargoHeader()` and inject header into `content` field of initial user message for code missions |
-| `src/main/socket-server.ts` | Parse `--depends-on` as array, validate IDs, pass `dependsOnMissionIds` to `addMission`, add soft nudge to response, update `mission.deploy` dependency check |
-| `src/main/fleet-cli.ts` | Extend `parseArgs` to accumulate array values for `--depends-on`; add validation in `mission.create` case |
-| `src/main/starbase/workspace-templates.ts` | Update `generateClaudeMd()` and `generateSkillMd()` |
+| File                                         | Change                                                                                                                                                                                          |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/starbase/migrations.ts`            | Add single migration version: create `mission_dependencies` table + backfill existing `depends_on_mission_id` values                                                                            |
+| `src/main/starbase/mission-service.ts`       | Update `AddMissionOpts`, `addMission()`, `nextMission()`; add `getDependencies()`, `getDependents()`                                                                                            |
+| `src/main/starbase/crew-service.ts`          | Update `nextQueuedMission()` and `autoDeployNext()` to use junction table instead of old `depends_on_mission_id` guard                                                                          |
+| `src/main/starbase/hull.ts`                  | Add `buildCargoHeader()` and inject header into `content` field of initial user message for code missions                                                                                       |
+| `src/main/socket-server.ts`                  | Parse `--depends-on` as array, validate IDs, pass `dependsOnMissionIds` to `addMission`, add soft nudge to response, update `mission.deploy` dependency check                                   |
+| `src/main/fleet-cli.ts`                      | Extend `parseArgs` to accumulate array values for `--depends-on`; add validation in `mission.create` case                                                                                       |
+| `src/main/starbase/workspace-templates.ts`   | Update `generateClaudeMd()` and `generateSkillMd()`                                                                                                                                             |
 | `src/main/__tests__/mission-service.test.ts` | Tests for `getDependencies()`, `getDependents()`, updated `nextMission()` including: all completed, one failed, one aborted, mix of terminal states, zero-row return values, backfill migration |
-| `src/main/__tests__/hull.test.ts` | Tests for cargo header injection: valid cargo path, missing file (skip), `{content}` manifest (skip), no dependencies (empty string), partial valid entries |
-| `src/main/__tests__/socket-api.test.ts` | Tests for `--depends-on` single value, multiple values, invalid ID, non-existent ID, nudge text on code mission without deps |
+| `src/main/__tests__/hull.test.ts`            | Tests for cargo header injection: valid cargo path, missing file (skip), `{content}` manifest (skip), no dependencies (empty string), partial valid entries                                     |
+| `src/main/__tests__/socket-api.test.ts`      | Tests for `--depends-on` single value, multiple values, invalid ID, non-existent ID, nudge text on code mission without deps                                                                    |

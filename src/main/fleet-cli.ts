@@ -443,7 +443,13 @@ export function validateCommand(command: string, args: Record<string, unknown>):
           usage
         );
       }
-      if (args.type !== 'code' && args.type !== 'research' && args.type !== 'review' && args.type !== 'architect' && args.type !== 'repair') {
+      if (
+        args.type !== 'code' &&
+        args.type !== 'research' &&
+        args.type !== 'review' &&
+        args.type !== 'architect' &&
+        args.type !== 'repair'
+      ) {
         return (
           `Error: invalid mission type "${toStr(args.type)}". Must be "code", "research", "review", "architect", or "repair".\n\n` +
           'Mission types:\n' +
@@ -462,7 +468,7 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       if (toStr(args.type) === 'repair' && !args['original-mission-id']) {
         process.stderr.write(
           'Warning: --type repair without --original-mission-id means the automated review dispatch will not trigger after repair completes.\n' +
-          'Provide --original-mission-id <code-mission-id> to link this repair to its original mission.\n'
+            'Provide --original-mission-id <code-mission-id> to link this repair to its original mission.\n'
         );
       }
       if (!args.prompt) return `Error: missions add requires --prompt "...".\n\n${usage}`;
@@ -1225,7 +1231,14 @@ export async function runCLI(
   if (group === 'images' && action === 'config') {
     const configArgs = parseArgs(rest.filter((t) => t !== '--quiet'));
     const hasSetFlags = Object.keys(configArgs).some((k) =>
-      ['api-key', 'default-model', 'default-resolution', 'default-output-format', 'default-aspect-ratio', 'provider'].includes(k)
+      [
+        'api-key',
+        'default-model',
+        'default-resolution',
+        'default-output-format',
+        'default-aspect-ratio',
+        'provider'
+      ].includes(k)
     );
     const configCommand = hasSetFlags ? 'image.config.set' : 'image.config.get';
     const cli = new FleetCLI(sockPath);
@@ -1338,7 +1351,11 @@ export async function runCLI(
   }
 
   // ── image.generate / image.edit formatting ──────────────────────────────
-  if ((command === 'image.generate' || command === 'image.edit') && isRecord(data) && typeof data.id === 'string') {
+  if (
+    (command === 'image.generate' || command === 'image.edit') &&
+    isRecord(data) &&
+    typeof data.id === 'string'
+  ) {
     return `Submitted: ${data.id}`;
   }
 
@@ -1350,7 +1367,10 @@ export async function runCLI(
       lines.push(`path: ~/.fleet/images/generations/${toStr(data.id)}`);
       if (Array.isArray(data.images)) {
         const filenames = data.images
-          .filter((img): img is Record<string, unknown> => isRecord(img) && typeof img.filename === 'string')
+          .filter(
+            (img): img is Record<string, unknown> =>
+              isRecord(img) && typeof img.filename === 'string'
+          )
           .map((img) => img.filename);
         if (filenames.length > 0) lines.push(`images: ${filenames.join(', ')}`);
       }
