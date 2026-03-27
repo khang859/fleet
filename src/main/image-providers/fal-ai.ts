@@ -1,19 +1,35 @@
 import { fal } from '@fal-ai/client';
 import type { ImageProvider, GenerateOpts, EditOpts, PollResult, GenerationResult } from './types';
 import type { ImageActionConfig } from './action-types';
+import type { ImageActionSettings } from '../../shared/types';
 
 function isEditOpts(opts: GenerateOpts | EditOpts): opts is EditOpts {
   return 'imageUrls' in opts && Array.isArray(opts.imageUrls);
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
+function parseActionSettings(raw: unknown): Record<string, ImageActionSettings> {
+  if (!isRecord(raw)) return {};
+  const result: Record<string, ImageActionSettings> = {};
+  for (const [key, val] of Object.entries(raw)) {
+    if (isRecord(val) && typeof val.model === 'string') {
+      result[key] = { model: val.model };
+    }
+  }
+  return result;
 }
 
 export class FalAiProvider implements ImageProvider {
   id = 'fal-ai';
   name = 'fal.ai';
   private currentModel = 'fal-ai/nano-banana-2';
-  private storedSettings: Record<string, unknown> = {};
+  private actionOverrides: Record<string, ImageActionSettings> = {};
 
   configure(settings: Record<string, unknown>): void {
-    this.storedSettings = settings;
+    this.actionOverrides = parseActionSettings(settings.actions);
     const apiKey = typeof settings.apiKey === 'string' ? settings.apiKey : '';
     if (apiKey) {
       fal.config({ credentials: apiKey });
@@ -84,15 +100,13 @@ export class FalAiProvider implements ImageProvider {
     await fal.queue.cancel(this.currentModel, { requestId });
   }
 
+  private getActionModel(actionType: string): string | null {
+    if (!(actionType in this.actionOverrides)) return null;
+    return this.actionOverrides[actionType].model ?? null;
+  }
+
   getActions(): ImageActionConfig[] {
-    const actionSettings =
-      this.storedSettings.actions != null && typeof this.storedSettings.actions === 'object'
-        ? (this.storedSettings.actions as Record<string, Record<string, unknown>>)
-        : {};
-    const rbModel =
-      typeof actionSettings['remove-background']?.model === 'string'
-        ? actionSettings['remove-background'].model
-        : null;
+    const rbModel = this.getActionModel('remove-background');
     const rbEndpoint = rbModel
       ? `https://fal.run/${rbModel}`
       : 'https://fal.run/fal-ai/bria/background/remove';

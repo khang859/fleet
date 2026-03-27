@@ -1201,7 +1201,7 @@ export class SocketServer extends EventEmitter {
         if (typeof args.action === 'string' && typeof args.model === 'string') {
           const currentSettings = this.imageService.getSettings();
           const currentProvider = currentSettings.providers[providerKey];
-          const existingActions = currentProvider?.actions ?? {};
+          const existingActions = currentProvider.actions ?? {};
           providerUpdate.actions = {
             ...existingActions,
             [args.action]: { model: args.model }
