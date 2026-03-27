@@ -1,5 +1,8 @@
 import * as pty from 'node-pty';
 import { getDefaultShell } from './shell-detection';
+import { createLogger } from './logger';
+
+const log = createLogger('pty');
 
 export type PtyCreateOptions = {
   paneId: string;
@@ -45,10 +48,10 @@ export class PtyManager {
       // renderer-side createdPtys Set is reset but the main process map persists)
       const existing = this.ptys.get(opts.paneId);
       if (!existing) return { paneId: opts.paneId, pid: 0 };
-      // eslint-disable-next-line no-console
-      console.log(
-        `[pty] ${opts.paneId} already exists, returning existing pid ${existing.process.pid}`
-      );
+      log.debug('PTY already exists, returning existing pid', {
+        paneId: opts.paneId,
+        pid: existing.process.pid
+      });
       return { paneId: opts.paneId, pid: existing.process.pid };
     }
 
@@ -65,10 +68,11 @@ export class PtyManager {
       }
     }
 
-    // eslint-disable-next-line no-console
-    console.log(
-      `[pty] shell="${shell}" cwd="${opts.cwd}" PATH="${process.env.PATH?.substring(0, 80)}"`
-    );
+    log.debug('spawning PTY', {
+      shell,
+      cwd: opts.cwd,
+      pathPrefix: process.env.PATH?.substring(0, 80)
+    });
     const proc = pty.spawn(shell, args, {
       name: 'xterm-256color',
       cols: opts.cols ?? 80,
@@ -191,10 +195,9 @@ export class PtyManager {
     if (!entry) return;
 
     if (this.dataCallbacks.has(paneId)) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[pty] onData for ${paneId} already registered — skipping to prevent silent overwrite`
-      );
+      log.warn('onData already registered for pane, skipping to prevent silent overwrite', {
+        paneId
+      });
       return;
     }
 
