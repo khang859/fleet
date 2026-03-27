@@ -282,7 +282,7 @@ export function Sidebar({
   onCollapse
 }: {
   updateReady?: boolean;
-  onCollapse?: () => void;
+  onCollapse: () => void;
 }): React.JSX.Element {
   const {
     workspace,
@@ -684,8 +684,7 @@ export function Sidebar({
           >
             +
           </button>
-          {onCollapse && (
-            <button
+          <button
               className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
               onClick={onCollapse}
               title="Collapse sidebar"
@@ -703,7 +702,6 @@ export function Sidebar({
                 <line x1="5.5" y1="2" x2="5.5" y2="14" />
               </svg>
             </button>
-          )}
         </div>
       </div>
 
