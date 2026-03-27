@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.13.0
+
+- Added cargo send system: `fleet cargo send` CLI command with env auto-detection, socket dispatch, and explicit file/content support
+- Added cargo evaluation sweep with First Officer recovery and safety net
+- Added `awaiting-cargo-check` status with all completion points transitioned to use it
+- Added cargo raw output streaming to disk via WriteStream
+- Added migration 017 for `cargo_checked` column on missions
+- Updated all crew prompts and workspace templates with cargo send instructions
+- Fixed Cmd+F search box overlap with toolbar (#164)
+- Fixed Shift+Click to open links in default browser (#165)
+- Fixed `fleet images edit` command for local file paths (#163)
+- Fixed test mocks to prevent real API calls
+
 ## v2.12.1
 
 - Fixed TUI redraw after hard refresh via SIGWINCH resize trick
