@@ -210,6 +210,13 @@ function createWindow(): void {
 
   mainWindow.on('close', () => {
     ptyManager.killAll();
+    // killAll() disposes exit handlers before killing processes, so the
+    // AdmiralProcess onExit callback never fires and paneId is never cleared.
+    // Reset admiral state so ensureStarted() creates a fresh PTY on reopen.
+    if (admiralProcess) {
+      admiralProcess.paneId = null;
+      admiralProcess.status = 'stopped';
+    }
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
