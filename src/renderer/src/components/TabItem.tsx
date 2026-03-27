@@ -161,6 +161,7 @@ export function TabItem({
           }}
           onDrop={(e) => {
             e.preventDefault();
+            e.stopPropagation();
             logDnd.debug('tabItem drop', { tabId: id, index, label });
             onDrop(index);
           }}

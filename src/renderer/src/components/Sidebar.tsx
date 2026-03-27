@@ -325,6 +325,12 @@ export function Sidebar({
     position: 'above' | 'below';
   } | null>(null);
 
+  // Map tab ID to its real index in workspace.tabs (not the filtered subset index)
+  const realIndex = useCallback(
+    (tabId: string) => workspace.tabs.findIndex((t) => t.id === tabId),
+    [workspace.tabs]
+  );
+
   const handleDragStart = useCallback((index: number) => {
     logDnd.debug('dragStart', { index, tabId: workspace.tabs[index]?.id });
     setDragIndex(index);
@@ -764,8 +770,9 @@ export function Sidebar({
           {/* Crew tabs (with sprite avatars) */}
           {workspace.tabs
             .filter((tab) => tab.type === 'crew')
-            .map((tab, index) => {
+            .map((tab) => {
               const paneIds = collectPaneIds(tab.splitRoot);
+              const idx = realIndex(tab.id);
               return (
                 <TabItem
                   key={tab.id}
@@ -778,11 +785,11 @@ export function Sidebar({
                   icon={<Avatar type="crew" variant={tab.avatarVariant} size={24} />}
                   activeBorderColor="border-cyan-500"
                   disableReset
-                  index={index}
+                  index={idx}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
-                  isDragOver={dropTarget?.index === index ? dropTarget.position : null}
+                  isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
                   onClick={() => {
                     setActiveTab(tab.id);
                     for (const paneId of paneIds) {
@@ -807,9 +814,10 @@ export function Sidebar({
                 t.type !== 'images' &&
                 t.type !== 'settings'
             )
-            .map((tab, index) => {
+            .map((tab) => {
               const paneIds = collectPaneIds(tab.splitRoot);
               const isFile = tab.type === 'file' || tab.type === 'image';
+              const idx = realIndex(tab.id);
 
               // Derive CWD to display in TabItem
               let displayCwd: string;
@@ -854,11 +862,11 @@ export function Sidebar({
                   badge={getTabBadge(paneIds)}
                   icon={icon}
                   disableReset={isFile}
-                  index={index}
+                  index={idx}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
-                  isDragOver={dropTarget?.index === index ? dropTarget.position : null}
+                  isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
                   onClick={() => {
                     setActiveTab(tab.id);
                     if (!isFile) {
