@@ -3,6 +3,7 @@ import { createLogger } from '../copilot-logger';
 import type {
   CopilotSession,
   CopilotSettings,
+  CopilotChatMessage,
 } from '../../../../shared/types';
 
 const log = createLogger('store');
@@ -24,6 +25,9 @@ type CopilotStoreState = {
   settings: CopilotSettings | null;
   hookInstalled: boolean;
 
+  chatMessages: CopilotChatMessage[];
+  chatLoading: boolean;
+
   setExpanded: (expanded: boolean) => void;
   toggleExpanded: () => void;
   setView: (view: CopilotView) => void;
@@ -37,6 +41,10 @@ type CopilotStoreState = {
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
   uninstallHooks: () => Promise<void>;
+
+  loadChatHistory: (sessionId: string, cwd: string) => Promise<void>;
+  setChatMessages: (sessionId: string, messages: CopilotChatMessage[]) => void;
+  sendMessage: (sessionId: string, message: string) => Promise<boolean>;
 };
 
 export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
@@ -47,6 +55,9 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   sessions: [],
   settings: null,
   hookInstalled: false,
+
+  chatMessages: [],
+  chatLoading: false,
 
   setExpanded: (expanded) => {
     log.info('setExpanded (from main)', { expanded });
@@ -65,7 +76,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
     set({ selectedSessionId: sessionId, view: 'detail' });
   },
 
-  backToList: () => set({ view: 'sessions', selectedSessionId: null }),
+  backToList: () => set({ view: 'sessions', selectedSessionId: null, chatMessages: [] }),
 
   setSessions: (sessions) => set({ sessions }),
 
@@ -101,5 +112,25 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   uninstallHooks: async () => {
     await window.copilot.uninstallHooks();
     set({ hookInstalled: false });
+  },
+
+  loadChatHistory: async (sessionId, cwd) => {
+    set({ chatLoading: true });
+    const messages = await window.copilot.getChatHistory(sessionId, cwd);
+    if (get().selectedSessionId === sessionId) {
+      set({ chatMessages: messages, chatLoading: false });
+    } else {
+      set({ chatLoading: false });
+    }
+  },
+
+  setChatMessages: (sessionId, messages) => {
+    if (get().selectedSessionId === sessionId) {
+      set({ chatMessages: messages });
+    }
+  },
+
+  sendMessage: async (sessionId, message) => {
+    return window.copilot.sendMessage(sessionId, message);
   },
 }));
