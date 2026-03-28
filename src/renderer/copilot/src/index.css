@@ -1,5 +1,16 @@
 @import 'tailwindcss';
 
+/* Pixel art rendering */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Focus ring base - applied via shadcn components */
+*:focus-visible {
+  outline: none;
+}
+
 @keyframes bob {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
