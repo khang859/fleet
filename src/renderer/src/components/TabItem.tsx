@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
+import { GitBranch } from 'lucide-react';
 import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
@@ -46,8 +47,8 @@ type TabItemProps = {
   activeBorderColor?: string;
   /** Called when user selects "Create Worktree" from context menu */
   onCreateWorktree?: () => void;
-  /** True if this tab is a worktree child (hides "Create Worktree" option) */
-  isWorktreeChild?: boolean;
+  /** null = enabled, string = disabled with this reason shown as subtitle. undefined = don't show item at all (non-terminal tabs). */
+  worktreeDisabledReason?: string | null;
   /** Branch name to show as subtitle for worktree tabs */
   worktreeBranch?: string;
   /** Indentation level (0 = normal, 1 = inside a group) */
@@ -101,7 +102,7 @@ export function TabItem({
   isDragOver,
   activeBorderColor = 'border-blue-500',
   onCreateWorktree,
-  isWorktreeChild,
+  worktreeDisabledReason,
   worktreeBranch,
   indentLevel = 0
 }: TabItemProps): React.JSX.Element {
@@ -301,14 +302,29 @@ export function TabItem({
               Reset to directory name
             </ContextMenu.Item>
           )}
-          {onCreateWorktree && !isWorktreeChild && (
+          {worktreeDisabledReason !== undefined && (
             <>
               <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
               <ContextMenu.Item
-                className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
-                onSelect={onCreateWorktree}
+                className={`px-2 py-1.5 rounded outline-none ${
+                  worktreeDisabledReason === null
+                    ? 'cursor-pointer focus:bg-neutral-700 hover:bg-neutral-700'
+                    : 'cursor-default text-neutral-500'
+                }`}
+                disabled={worktreeDisabledReason !== null}
+                onSelect={() => {
+                  if (worktreeDisabledReason === null) onCreateWorktree?.();
+                }}
               >
-                Create Worktree
+                <div className="flex items-center gap-2">
+                  <GitBranch size={14} />
+                  <span>Create Worktree</span>
+                </div>
+                {worktreeDisabledReason && (
+                  <div className="text-xs text-neutral-500 mt-0.5 ml-6">
+                    {worktreeDisabledReason}
+                  </div>
+                )}
               </ContextMenu.Item>
             </>
           )}
