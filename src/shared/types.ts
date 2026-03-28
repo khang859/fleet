@@ -4,6 +4,7 @@ export type Workspace = {
   tabs: Tab[];
   activeTabId?: string;
   activePaneId?: string;
+  collapsedGroups?: string[];
 };
 
 export type Tab = {

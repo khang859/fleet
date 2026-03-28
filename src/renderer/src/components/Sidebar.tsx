@@ -509,6 +509,7 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
+        collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
           .map((tab) => ({
@@ -556,6 +557,7 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
+        collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
           .map((tab) => ({
@@ -604,6 +606,7 @@ export function Sidebar({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
+        collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
           .map((tab) => ({

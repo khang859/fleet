@@ -592,10 +592,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ? migrated.activePaneId
         : (paneIds[0] ?? null);
 
+    const restoredCollapsed = new Set(migrated.collapsedGroups ?? []);
+
     set({
       workspace: migrated,
       activeTabId: restoredTab?.id ?? null,
       activePaneId: restoredPane,
+      collapsedGroups: restoredCollapsed,
       isDirty: false
     });
   },
@@ -621,6 +624,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ? migrated.activePaneId
           : (paneIds[0] ?? null);
 
+      const restoredCollapsed = new Set(migrated.collapsedGroups ?? []);
+
       // Stash old workspace with current active tab/pane into background
       const newBackground = new Map(state.backgroundWorkspaces);
       newBackground.set(state.workspace.id, {
@@ -639,6 +644,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         backgroundWorkspaces: newBackground,
         activeTabId: restoredTab?.id ?? null,
         activePaneId: restoredPane,
+        collapsedGroups: restoredCollapsed,
         isDirty: false
       };
     });
