@@ -62,7 +62,7 @@ function GroupHeader({
   onDragStart,
   onDragOver,
   onDrop,
-  isDragOver,
+  isDragOver
 }: {
   label: string;
   tabCount: number;
@@ -98,7 +98,7 @@ function GroupHeader({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
-          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 transition-colors relative select-none uppercase tracking-wider"
+          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800/50 transition-colors relative select-none uppercase tracking-wider"
           onClick={onToggle}
           draggable
           onDragStart={(e) => {
@@ -153,9 +153,7 @@ function GroupHeader({
             </span>
           )}
           <span className="ml-auto flex items-center gap-1">
-            {isCollapsed && (
-              <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
-            )}
+            {isCollapsed && <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>}
             <button
               className="opacity-60 group-hover/header:opacity-100 text-neutral-400 hover:text-white w-5 h-5 flex items-center justify-center text-sm rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all cursor-pointer"
               onClick={(e) => {
@@ -414,7 +412,7 @@ function ImagesTabCard({
 function OffScreenBadgeSummary({
   direction,
   count,
-  label,
+  label
 }: {
   direction: 'above' | 'below';
   count: number;
@@ -446,6 +444,7 @@ export function Sidebar({
     resetTabLabel,
     addTab,
     reorderTab,
+    reorderGroup,
     renameWorkspace,
     isDirty,
     markClean,
@@ -453,7 +452,7 @@ export function Sidebar({
     toggleGroupCollapsed,
     createWorktreeGroup,
     closeWorktreeTab,
-    renameWorktreeGroup,
+    renameWorktreeGroup
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -465,6 +464,7 @@ export function Sidebar({
       resetTabLabel: s.resetTabLabel,
       addTab: s.addTab,
       reorderTab: s.reorderTab,
+      reorderGroup: s.reorderGroup,
       renameWorkspace: s.renameWorkspace,
       isDirty: s.isDirty,
       markClean: s.markClean,
@@ -472,13 +472,14 @@ export function Sidebar({
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
-      renameWorktreeGroup: s.renameWorktreeGroup,
+      renameWorktreeGroup: s.renameWorktreeGroup
     }))
   );
   const { getTabBadge } = useNotificationStore();
 
   // --- Drag-and-drop state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragType, setDragType] = useState<'tab' | 'group'>('tab');
   const [dropTarget, setDropTarget] = useState<{
     index: number;
     position: 'above' | 'below';
@@ -490,13 +491,17 @@ export function Sidebar({
     [workspace.tabs]
   );
 
-  const handleDragStart = useCallback((index: number) => {
-    logDnd.debug('dragStart', { index, tabId: workspace.tabs[index]?.id });
-    setDragIndex(index);
-  }, [workspace.tabs]);
+  const handleDragStart = useCallback(
+    (index: number, type: 'tab' | 'group' = 'tab') => {
+      logDnd.debug('dragStart', { index, type, tabId: workspace.tabs[index]?.id });
+      setDragIndex(index);
+      setDragType(type);
+    },
+    [workspace.tabs]
+  );
 
   const handleDragOver = useCallback(
-    (e: React.DragEvent, index: number) => {
+    (e: React.DragEvent, index: number, isGroupHeader = false) => {
       if (dragIndex === null) return;
       const target = e.currentTarget;
       if (!(target instanceof HTMLElement)) return;
@@ -505,18 +510,36 @@ export function Sidebar({
       const targetTab = workspace.tabs[index];
       if (!draggedTab || !targetTab) return;
 
-      // Enforce group boundaries: skip update for cross-group drops
-      // (don't clear dropTarget — just ignore the invalid hover so the last valid target persists)
       const dragGroup = draggedTab.groupId;
       const targetGroup = targetTab.groupId;
-      if (dragGroup !== targetGroup) return;
+
+      if (dragType === 'group') {
+        // Group drag: only allow targeting group headers or ungrouped tabs (between-group positions)
+        if (!isGroupHeader && targetGroup) {
+          setDropTarget(null);
+          return;
+        }
+      } else {
+        // Tab drag
+        if (isGroupHeader) {
+          // Ungrouped tabs can target group headers to jump over groups
+          if (dragGroup) {
+            setDropTarget(null);
+            return;
+          }
+        } else if (dragGroup !== targetGroup) {
+          // Block cross-group tab moves (handles grouped↔ungrouped and groupA↔groupB)
+          setDropTarget(null);
+          return;
+        }
+      }
 
       const rect = target.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const position = e.clientY < midY ? 'above' : 'below';
       setDropTarget({ index, position });
     },
-    [dragIndex, workspace.tabs]
+    [dragIndex, dragType, workspace.tabs]
   );
 
   const handleDrop = useCallback(() => {
@@ -526,25 +549,54 @@ export function Sidebar({
     }
 
     const draggedTab = workspace.tabs[dragIndex];
-    const targetTab = workspace.tabs[dropTarget.index];
 
-    // Block cross-group drops
-    if (draggedTab?.groupId !== targetTab?.groupId) {
-      logDnd.debug('drop blocked: cross-group', { dragGroup: draggedTab?.groupId, targetGroup: targetTab?.groupId });
-      setDragIndex(null);
-      setDropTarget(null);
-      return;
+    if (dragType === 'group' && draggedTab?.groupId) {
+      // Group drag: move the entire group as a unit
+      const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+      logDnd.debug('drop group', { groupId: draggedTab.groupId, toIndex });
+      reorderGroup(draggedTab.groupId, toIndex);
+    } else {
+      // Tab drag
+      const targetTab = workspace.tabs[dropTarget.index];
+      if (draggedTab?.groupId && draggedTab.groupId !== targetTab?.groupId) {
+        logDnd.debug('drop blocked: cross-group', {
+          dragGroup: draggedTab?.groupId,
+          targetGroup: targetTab?.groupId
+        });
+        setDragIndex(null);
+        setDropTarget(null);
+        return;
+      }
+
+      // When an ungrouped tab targets a group header, "below" means after the entire group
+      let toIndex: number;
+      const targetIsGroupHeader = !draggedTab?.groupId && targetTab?.groupId;
+      if (targetIsGroupHeader && dropTarget.position === 'below') {
+        // Find the last tab in this group
+        const lastGroupIdx = workspace.tabs.reduce(
+          (last, t, i) => (t.groupId === targetTab.groupId ? i : last),
+          dropTarget.index
+        );
+        toIndex = lastGroupIdx + 1;
+      } else {
+        toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
+      }
+      const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
+      logDnd.debug('drop tab', {
+        dragIndex,
+        dropTarget,
+        rawToIndex: toIndex,
+        adjustedTo,
+        willReorder: dragIndex !== adjustedTo
+      });
+      if (dragIndex !== adjustedTo) {
+        reorderTab(dragIndex, adjustedTo);
+      }
     }
 
-    const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
-    const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
-    logDnd.debug('drop', { dragIndex, dropTarget, rawToIndex: toIndex, adjustedTo, willReorder: dragIndex !== adjustedTo });
-    if (dragIndex !== adjustedTo) {
-      reorderTab(dragIndex, adjustedTo);
-    }
     setDragIndex(null);
     setDropTarget(null);
-  }, [dragIndex, dropTarget, reorderTab, workspace.tabs]);
+  }, [dragIndex, dragType, dropTarget, reorderTab, reorderGroup, workspace.tabs]);
 
   // --- Worktree creation ---
   const handleCreateWorktree = useCallback(
@@ -619,7 +671,7 @@ export function Sidebar({
             return {
               ...tab,
               cwd: liveCwd ?? tab.cwd,
-              splitRoot: injectLiveCwd(tab.splitRoot),
+              splitRoot: injectLiveCwd(tab.splitRoot)
             };
           })
       }
@@ -671,7 +723,7 @@ export function Sidebar({
             return {
               ...tab,
               cwd: liveCwd ?? tab.cwd,
-              splitRoot: injectLiveCwd(tab.splitRoot),
+              splitRoot: injectLiveCwd(tab.splitRoot)
             };
           })
       };
@@ -724,7 +776,7 @@ export function Sidebar({
             return {
               ...tab,
               cwd: liveCwd ?? tab.cwd,
-              splitRoot: injectLiveCwd(tab.splitRoot),
+              splitRoot: injectLiveCwd(tab.splitRoot)
             };
           })
       }
@@ -860,7 +912,7 @@ export function Sidebar({
 
     const observer = new IntersectionObserver(countOffScreen, {
       root: container,
-      threshold: 0,
+      threshold: 0
     });
 
     const tabElements = container.querySelectorAll('[data-tab-id]');
@@ -1009,29 +1061,33 @@ export function Sidebar({
             +
           </button>
           <button
-              className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
-              onClick={onCollapse}
-              title="Collapse sidebar"
+            className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
+            onClick={onCollapse}
+            title="Collapse sidebar"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
             >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              >
-                <rect x="1" y="2" width="14" height="12" rx="2" />
-                <line x1="5.5" y1="2" x2="5.5" y2="14" />
-              </svg>
-            </button>
+              <rect x="1" y="2" width="14" height="12" rx="2" />
+              <line x1="5.5" y1="2" x2="5.5" y2="14" />
+            </svg>
+          </button>
         </div>
       </div>
 
       {/* Tab list */}
       <div className="flex-1 min-h-0 relative flex flex-col">
-        <OffScreenBadgeSummary direction="above" count={offScreenCounts.above} label="need attention" />
+        <OffScreenBadgeSummary
+          direction="above"
+          count={offScreenCounts.above}
+          label="need attention"
+        />
         <div
           ref={tabListRef}
           className="flex-1 min-h-0 overflow-y-auto px-2 space-y-0.5 pb-2"
@@ -1146,14 +1202,10 @@ export function Sidebar({
                       const cwd = (firstPane ? liveCwds.get(firstPane) : undefined) ?? anyTab.cwd;
                       void handleCreateWorktree(anyTab.id, cwd);
                     }}
-                    onDragStart={() => handleDragStart(firstTabIdx)}
-                    onDragOver={(e) => handleDragOver(e, firstTabIdx)}
+                    onDragStart={() => handleDragStart(firstTabIdx, 'group')}
+                    onDragOver={(e) => handleDragOver(e, firstTabIdx, true)}
                     onDrop={() => handleDrop()}
-                    isDragOver={
-                      dropTarget?.index === firstTabIdx
-                        ? dropTarget.position
-                        : null
-                    }
+                    isDragOver={dropTarget?.index === firstTabIdx ? dropTarget.position : null}
                   />
                 );
               }
@@ -1245,7 +1297,11 @@ export function Sidebar({
         {hasScrollOverflow && (
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
         )}
-        <OffScreenBadgeSummary direction="below" count={offScreenCounts.below} label="need attention" />
+        <OffScreenBadgeSummary
+          direction="below"
+          count={offScreenCounts.below}
+          label="need attention"
+        />
       </div>
 
       {/* Bottom section: workspaces */}
@@ -1471,7 +1527,8 @@ export function Sidebar({
               Remove worktree &ldquo;{worktreeCloseConfirm?.label}&rdquo;?
             </Dialog.Title>
             <Dialog.Description className="text-neutral-400 mb-5 text-xs">
-              This will destroy the worktree and its directory. Any work not committed and pushed will be lost.
+              This will destroy the worktree and its directory. Any work not committed and pushed
+              will be lost.
             </Dialog.Description>
             <div className="flex justify-end gap-2">
               <button
@@ -1490,7 +1547,6 @@ export function Sidebar({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
-
     </div>
   );
 }

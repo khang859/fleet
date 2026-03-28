@@ -184,11 +184,11 @@ export function TabItem({
           data-tab-id={id}
           className={`
             group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
-            ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/30' : ''}
+            ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/50' : ''}
             ${
               isActive
                 ? `bg-neutral-700 text-white ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`}`
-                : `text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
+                : `text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
             }
           `}
           onClick={onClick}
@@ -235,7 +235,7 @@ export function TabItem({
           )}
 
           {icon && (
-            <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-600'}`}>
+            <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-500'}`}>
               {icon}
             </span>
           )}
@@ -255,7 +255,7 @@ export function TabItem({
               <div className="truncate text-sm leading-tight">
                 {labelIsCustom ? label : cwdBasename(cwd)}
               </div>
-              <div className="truncate text-xs leading-tight text-neutral-500">
+              <div className="truncate text-xs leading-tight text-neutral-400">
                 {worktreeBranch ? (
                   <span className="text-teal-400/60">{worktreeBranch}</span>
                 ) : freshness ? (
@@ -271,7 +271,7 @@ export function TabItem({
 
           {/* Always-visible close button (dimmed when not hovered) */}
           <button
-            className="opacity-40 group-hover:opacity-100 px-1 text-neutral-500 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
+            className="opacity-40 group-hover:opacity-100 px-1 text-neutral-400 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
