@@ -29,7 +29,16 @@ export default defineConfig({
   renderer: {
     resolve: {
       alias: {
-        '@renderer': resolve('src/renderer/src')
+        '@renderer': resolve('src/renderer/src'),
+        '@copilot': resolve('src/renderer/copilot/src'),
+      }
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          index: 'src/renderer/index.html',
+          copilot: 'src/renderer/copilot/index.html',
+        }
       }
     },
     plugins: [react(), tailwindcss()]

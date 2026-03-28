@@ -24,6 +24,7 @@ import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
 import { createLogger } from './logger';
+import { initCopilot, stopCopilot } from './copilot/index';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -174,7 +175,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } }
 ]);
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   protocol.handle('fleet-image', async (request) => {
     const filePath = decodeURIComponent(new URL(request.url).pathname);
     return net.fetch(`file://${filePath}`);
@@ -244,6 +245,9 @@ void app.whenReady().then(() => {
       error: err instanceof Error ? err.message : String(err)
     });
   });
+
+  // Start copilot (macOS only, gated internally)
+  await initCopilot(settingsStore);
 
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
@@ -516,6 +520,7 @@ void app.whenReady().then(() => {
 });
 
 function shutdownAll(): void {
+  void stopCopilot();
   ptyManager.killAll();
   cwdPoller.stopAll();
   socketSupervisor?.stop().catch((err: unknown) =>
