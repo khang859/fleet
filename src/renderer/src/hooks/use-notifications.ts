@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNotificationStore } from '../store/notification-store';
 
 export function useNotifications(): void {
-  const { setNotification } = useNotificationStore();
+  const { setNotification, setActivity } = useNotificationStore();
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -39,6 +39,7 @@ export function useNotifications(): void {
     audioRef.current = audio;
   }, []);
 
+  // Subscribe to notification events (existing)
   useEffect(() => {
     const cleanup = window.fleet.notifications.onNotification((payload) => {
       setNotification({
@@ -58,4 +59,26 @@ export function useNotifications(): void {
       cleanup();
     };
   }, [setNotification]);
+
+  // Subscribe to activity state changes (new)
+  useEffect(() => {
+    const cleanup = window.fleet.activity.onStateChange((payload) => {
+      setActivity({
+        paneId: payload.paneId,
+        state: payload.state,
+        lastOutputAt: payload.lastOutputAt,
+        timestamp: payload.timestamp,
+      });
+
+      // Play sound for needs_me state (agent blocked on permission)
+      if (payload.state === 'needs_me' && audioRef.current) {
+        audioRef.current.play().catch(() => {
+          // Audio play may be blocked by browser autoplay policy — ignore
+        });
+      }
+    });
+    return () => {
+      cleanup();
+    };
+  }, [setActivity]);
 }
