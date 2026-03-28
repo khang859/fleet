@@ -28,13 +28,17 @@ export class WorktreeService {
     // Check both existing worktree names AND branch names to avoid conflicts
     const existing = await this.list(repoPath);
     const existingWorktreeNames = new Set(existing.map((w) => w.branch));
+    log.info('existing worktrees', { names: [...existingWorktreeNames] });
+
     const branchListRaw = await git.raw(['branch', '--list', '--format=%(refname:short)']);
     const existingBranches = new Set(branchListRaw.split('\n').filter(Boolean));
+    log.info('existing branches', { branches: [...existingBranches] });
 
     let n = 1;
     let branchName: string;
     do {
       branchName = `${repoName}-worktree-${n}`;
+      log.debug('checking branch name', { branchName, inWorktrees: existingWorktreeNames.has(branchName), inBranches: existingBranches.has(branchName) });
       n++;
     } while (existingWorktreeNames.has(branchName) || existingBranches.has(branchName));
 
