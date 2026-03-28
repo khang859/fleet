@@ -530,7 +530,7 @@ export function Sidebar({
     async (tabId: string, cwd: string) => {
       try {
         const result = await window.fleet.worktree.create({ repoPath: cwd });
-        createWorktreeGroup(tabId, result.worktreePath, result.branchName);
+        createWorktreeGroup(tabId, result.worktreePath, result.branchName, cwd);
       } catch (err) {
         console.error('Failed to create worktree:', err);
       }

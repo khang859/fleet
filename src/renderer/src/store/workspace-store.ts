@@ -89,7 +89,7 @@ type WorkspaceStore = {
 
   // Worktree group actions
   collapsedGroups: Set<string>;
-  createWorktreeGroup: (tabId: string, worktreePath: string, branchName: string) => void;
+  createWorktreeGroup: (tabId: string, worktreePath: string, branchName: string, repoPath: string) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
   toggleGroupCollapsed: (groupId: string) => void;
@@ -333,7 +333,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
-  createWorktreeGroup: (tabId, worktreePath, branchName) => {
+  createWorktreeGroup: (tabId, worktreePath, branchName, repoPath) => {
     const leaf = createLeaf(worktreePath);
     const newGroupId = generateId();
 
@@ -344,8 +344,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Reuse existing groupId if tab is already a parent, otherwise assign new one
       const effectiveGroupId = sourceTab.groupId ?? newGroupId;
 
-      // Derive group label from the source tab's folder name
-      const groupLabel = sourceTab.groupLabel ?? cwdBasename(sourceTab.cwd);
+      // Derive group label from the repo path (live CWD), not the stale tab cwd
+      const groupLabel = sourceTab.groupLabel ?? cwdBasename(repoPath);
 
       const tabs = state.workspace.tabs.map((t) => {
         if (t.id !== tabId) return t;
