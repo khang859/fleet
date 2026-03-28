@@ -78,6 +78,7 @@ def main():
     session_id = data.get("session_id", "unknown")
     event = data.get("hook_event_name", "")
     cwd = data.get("cwd", "")
+
     tool_input = data.get("tool_input", {})
 
     claude_pid = os.getppid()
@@ -114,6 +115,9 @@ def main():
         state["status"] = "waiting_for_approval"
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
+        tool_use_id = data.get("tool_use_id")
+        if tool_use_id:
+            state["tool_use_id"] = tool_use_id
 
         # AskUserQuestion is a user prompt, not a permission — just notify Fleet
         # and let the user respond in the terminal.

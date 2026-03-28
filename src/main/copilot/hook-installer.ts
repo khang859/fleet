@@ -78,6 +78,24 @@ export function getHookScriptSourcePath(): string {
   return devPath; // fallback
 }
 
+export function syncScript(): void {
+  if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
+
+  const source = getHookScriptSourcePath();
+  if (!existsSync(source)) return;
+
+  // Skip if already up to date
+  if (existsSync(HOOK_DEST)) {
+    const srcContent = readFileSync(source);
+    const destContent = readFileSync(HOOK_DEST);
+    if (srcContent.equals(destContent)) return;
+  }
+
+  copyFileSync(source, HOOK_DEST);
+  chmodSync(HOOK_DEST, 0o755);
+  log.info('hook script synced', { dest: HOOK_DEST });
+}
+
 export function isInstalled(): boolean {
   if (!existsSync(HOOK_DEST)) return false;
   if (!existsSync(SETTINGS_PATH)) return false;

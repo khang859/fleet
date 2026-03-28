@@ -32,7 +32,9 @@ export class CopilotSocketServer {
     }
 
     return new Promise((resolve, reject) => {
-      this.server = createServer((client) => this.handleConnection(client));
+      this.server = createServer({ allowHalfOpen: true }, (client) =>
+        this.handleConnection(client)
+      );
 
       this.server.on('error', (err) => {
         log.error('socket server error', { error: String(err) });
@@ -142,6 +144,22 @@ export class CopilotSocketServer {
             toolUseId: lastPermission.toolUseId,
           });
           return;
+        }
+      }
+    });
+
+    client.on('close', () => {
+      // When the hook process exits (e.g. user approved permission in terminal,
+      // or hook timed out), clean up any pending permission tied to this socket.
+      for (const [id, pending] of this.pendingSockets) {
+        if (pending.socket === client) {
+          log.info('socket closed, clearing stale permission', {
+            toolUseId: id,
+            sessionId: pending.sessionId,
+          });
+          this.pendingSockets.delete(id);
+          this.sessionStore.removePermission(pending.sessionId, id);
+          break;
         }
       }
     });

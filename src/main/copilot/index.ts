@@ -104,7 +104,8 @@ async function startCopilotServices(): Promise<void> {
       log.error('failed to install hooks', { error: String(err) });
     }
   } else {
-    log.info('hooks already installed');
+    // Always sync the script file so updates are picked up
+    hookInstaller.syncScript();
   }
 
   try {
