@@ -8,6 +8,7 @@ import { CopilotSettings } from './components/CopilotSettings';
 
 export function App(): React.JSX.Element {
   const expanded = useCopilotStore((s) => s.expanded);
+  const panelDirection = useCopilotStore((s) => s.panelDirection);
   const view = useCopilotStore((s) => s.view);
   const setSessions = useCopilotStore((s) => s.setSessions);
   const loadSettings = useCopilotStore((s) => s.loadSettings);
@@ -48,12 +49,16 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative w-full h-full">
-      <div className="flex justify-end">
+      <div className={`flex justify-end ${
+        expanded && panelDirection?.vertical === 'up' ? 'absolute bottom-0 right-0 left-0' : ''
+      }`}>
         <SpaceshipSprite />
       </div>
       {expanded && (
         <div
-          className="absolute top-[52px] right-0 left-0 h-[450px]"
+          className={`absolute right-0 left-0 h-[450px] ${
+            panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
+          }`}
           style={{ zIndex: 10 }}
         >
           {view === 'sessions' && <SessionList />}
