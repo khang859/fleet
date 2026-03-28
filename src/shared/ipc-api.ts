@@ -56,6 +56,13 @@ export type StarbaseRuntimeStatus = {
 
 export type NotificationPayload = NotificationEvent;
 
+export type ActivityStatePayload = {
+  paneId: string;
+  state: import('./types').ActivityState;
+  lastOutputAt: number;
+  timestamp: number;
+};
+
 export type PaneFocusedPayload = {
   paneId: string;
 };

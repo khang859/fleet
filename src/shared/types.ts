@@ -39,6 +39,8 @@ export type PaneLeaf = {
 
 export type NotificationLevel = 'permission' | 'error' | 'info' | 'subtle';
 
+export type ActivityState = 'working' | 'idle' | 'done' | 'needs_me' | 'error';
+
 // Called NotificationEvent (not NotificationState as in spec) to distinguish
 // the IPC transport event from any persistent state. Maps 1:1 to spec's NotificationState.
 export type NotificationEvent = {
