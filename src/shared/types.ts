@@ -18,6 +18,7 @@ export type Tab = {
   // Worktree group fields
   groupId?: string;
   groupRole?: 'parent' | 'worktree';
+  groupLabel?: string;
   worktreeBranch?: string;
   worktreePath?: string;
 };

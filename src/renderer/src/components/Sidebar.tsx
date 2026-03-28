@@ -58,6 +58,7 @@ function GroupHeader({
   isCollapsed,
   onToggle,
   onAddWorktree,
+  onRename,
   onDragStart,
   onDragOver,
   onDrop,
@@ -68,59 +69,120 @@ function GroupHeader({
   isCollapsed: boolean;
   onToggle: () => void;
   onAddWorktree: () => void;
+  onRename: (newLabel: string) => void;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
   isDragOver: 'above' | 'below' | null;
 }): React.JSX.Element {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(label);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const commitRename = useCallback(() => {
+    const trimmed = editValue.trim();
+    if (trimmed && trimmed !== label) {
+      onRename(trimmed);
+    }
+    setIsEditing(false);
+  }, [editValue, label, onRename]);
+
   return (
-    <div
-      className="group/header flex items-center gap-1.5 px-2 py-2 cursor-pointer rounded-md text-sm text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
-      onClick={onToggle}
-      draggable
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', 'group');
-        onDragStart();
-      }}
-      onDragOver={(e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = 'move';
-        onDragOver(e);
-      }}
-      onDrop={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onDrop();
-      }}
-    >
-      {isDragOver === 'above' && (
-        <div className="absolute top-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full -translate-y-0.5" />
-      )}
-      {isDragOver === 'below' && (
-        <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
-      )}
-      <ChevronRight
-        size={12}
-        className={`transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-90'}`}
-      />
-      <span className="truncate font-medium">{label}</span>
-      <span className="ml-auto flex items-center gap-1">
-        {isCollapsed && (
-          <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
-        )}
-        <button
-          className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
-          onClick={(e) => {
-            e.stopPropagation();
-            onAddWorktree();
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          className="group/header flex items-center gap-1.5 px-2 py-2 cursor-pointer rounded-md text-sm text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
+          onClick={onToggle}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', 'group');
+            onDragStart();
           }}
-          title="Add worktree"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            onDragOver(e);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onDrop();
+          }}
         >
-          +
-        </button>
-      </span>
-    </div>
+          {isDragOver === 'above' && (
+            <div className="absolute top-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full -translate-y-0.5" />
+          )}
+          {isDragOver === 'below' && (
+            <div className="absolute bottom-0 left-1 right-1 h-0.5 bg-blue-500 rounded-full translate-y-0.5" />
+          )}
+          <ChevronRight
+            size={12}
+            className={`transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-90'}`}
+          />
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              className="flex-1 bg-neutral-600 text-white text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') commitRename();
+                if (e.key === 'Escape') setIsEditing(false);
+              }}
+              onBlur={commitRename}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <span
+              className="truncate font-medium"
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                setEditValue(label);
+                setIsEditing(true);
+              }}
+            >
+              {label}
+            </span>
+          )}
+          <span className="ml-auto flex items-center gap-1">
+            {isCollapsed && (
+              <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
+            )}
+            <button
+              className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddWorktree();
+              }}
+              title="Add worktree"
+            >
+              +
+            </button>
+          </span>
+        </div>
+      </ContextMenu.Trigger>
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+          <ContextMenu.Item
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+            onSelect={() => {
+              setEditValue(label);
+              setTimeout(() => setIsEditing(true), 0);
+            }}
+          >
+            Rename
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   );
 }
 
@@ -391,6 +453,7 @@ export function Sidebar({
     toggleGroupCollapsed,
     createWorktreeGroup,
     closeWorktreeTab,
+    renameWorktreeGroup,
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -409,6 +472,7 @@ export function Sidebar({
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
+      renameWorktreeGroup: s.renameWorktreeGroup,
     }))
   );
   const { getTabBadge } = useNotificationStore();
@@ -1018,10 +1082,11 @@ export function Sidebar({
                 rendered.push(
                   <GroupHeader
                     key={`group-${groupId}`}
-                    label={parentTab?.label ?? 'Worktree Group'}
+                    label={groupTabs[0].groupLabel ?? parentTab?.label ?? 'Worktree Group'}
                     tabCount={groupTabs.length}
                     isCollapsed={isCollapsed}
                     onToggle={() => toggleGroupCollapsed(groupId)}
+                    onRename={(newLabel) => renameWorktreeGroup(groupId, newLabel)}
                     onAddWorktree={() => {
                       // Use any tab in the group to find the repo
                       const anyTab = groupTabs[0];

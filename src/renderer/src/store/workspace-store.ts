@@ -95,6 +95,7 @@ type WorkspaceStore = {
   toggleGroupCollapsed: (groupId: string) => void;
   reorderWithinGroup: (groupId: string, fromIndex: number, toIndex: number) => void;
   reorderGroup: (groupId: string, targetIndex: number) => void;
+  renameWorktreeGroup: (groupId: string, label: string) => void;
 
   // Pane actions
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => string;
@@ -482,6 +483,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
       return { workspace: { ...state.workspace, tabs: newTabs }, isDirty: true };
     });
+  },
+
+  renameWorktreeGroup: (groupId, label) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((t) =>
+          t.groupId === groupId ? { ...t, groupLabel: label } : t
+        ),
+      },
+      isDirty: true,
+    }));
   },
 
   splitPane: (paneId, direction) => {
