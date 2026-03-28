@@ -48,8 +48,6 @@ type TabItemProps = {
   onCreateWorktree?: () => void;
   /** True if this tab is a worktree child (hides "Create Worktree" option) */
   isWorktreeChild?: boolean;
-  /** True if this tab is a parent with worktree children */
-  isWorktreeParent?: boolean;
   /** Branch name to show as subtitle for worktree tabs */
   worktreeBranch?: string;
   /** Indentation level (0 = normal, 1 = inside a group) */
@@ -104,7 +102,6 @@ export function TabItem({
   activeBorderColor = 'border-blue-500',
   onCreateWorktree,
   isWorktreeChild,
-  isWorktreeParent: _isWorktreeParent,
   worktreeBranch,
   indentLevel = 0
 }: TabItemProps): React.JSX.Element {

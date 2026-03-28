@@ -1084,7 +1084,6 @@ export function Sidebar({
                   indentLevel={tab.groupId ? 1 : 0}
                   worktreeBranch={tab.worktreeBranch}
                   isWorktreeChild={tab.groupRole === 'worktree'}
-                  isWorktreeParent={tab.groupRole === 'parent'}
                   onCreateWorktree={
                     !isFile && gitRepoTabs.has(tab.id) && tab.groupRole !== 'worktree'
                       ? () => void handleCreateWorktree(tab.id, tab.cwd)

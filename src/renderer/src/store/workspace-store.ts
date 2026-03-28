@@ -388,7 +388,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeWorktreeTab: (tabId) => {
     set((state) => {
       const tab = state.workspace.tabs.find((t) => t.id === tabId);
-      if (!tab || tab.groupRole !== 'worktree') return state;
+      if (tab?.groupRole !== 'worktree') return state;
 
       const groupId = tab.groupId;
       let tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
