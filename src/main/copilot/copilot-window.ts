@@ -1,6 +1,7 @@
 import { app, BrowserWindow, screen } from 'electron';
-import { existsSync } from 'fs';
+import { existsSync, writeFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
+import { join } from 'path';
 import Store from 'electron-store';
 import { createLogger } from '../logger';
 import type { CopilotPosition } from '../../shared/types';
@@ -14,6 +15,34 @@ const EXPANDED_HEIGHT = 500;
 type CopilotWindowStore = {
   position: CopilotPosition | null;
 };
+
+/**
+ * In dev mode, electron-vite's dev server doesn't properly serve secondary
+ * HTML entry points (returns empty page). Workaround: write a bootstrap HTML
+ * file to disk that loads the copilot React app from the Vite dev server.
+ */
+function getDevBootstrapPath(viteUrl: string): string {
+  const outDir = join(process.cwd(), 'out');
+  if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+
+  const bootstrapPath = join(outDir, 'copilot-dev.html');
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleet Copilot</title>
+  <style>html, body, #root { margin: 0; padding: 0; background: transparent; overflow: hidden; }</style>
+  <script type="module" src="${viteUrl}/@vite/client"></script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="${viteUrl}/src/renderer/copilot/src/main.tsx"></script>
+</body>
+</html>`;
+  writeFileSync(bootstrapPath, html, 'utf-8');
+  return bootstrapPath;
+}
 
 export class CopilotWindow {
   private win: BrowserWindow | null = null;
@@ -42,7 +71,9 @@ export class CopilotWindow {
     const preloadPathJs = fileURLToPath(new URL('../preload/copilot.js', import.meta.url));
     const preloadPathMjs = fileURLToPath(new URL('../preload/copilot.mjs', import.meta.url));
     const preloadPath = existsSync(preloadPathJs) ? preloadPathJs : preloadPathMjs;
-    log.info('preload resolution', { preloadPathJs, preloadPathMjs, preloadPath, exists: existsSync(preloadPath) });
+    log.info('preload resolution', { preloadPath, exists: existsSync(preloadPath) });
+
+    const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
     this.win = new BrowserWindow({
       width: EXPANDED_WIDTH,
@@ -61,6 +92,8 @@ export class CopilotWindow {
         contextIsolation: true,
         sandbox: false,
         nodeIntegration: false,
+        // In dev, the bootstrap HTML loads scripts from localhost via file:// origin
+        webSecurity: !isDev,
       },
     });
 
@@ -68,11 +101,12 @@ export class CopilotWindow {
     this.win.setContentSize(SPRITE_SIZE, SPRITE_SIZE);
     this.win.setIgnoreMouseEvents(false);
 
-    if (process.env.ELECTRON_RENDERER_URL) {
-      // electron-vite serves multi-page apps under /src/renderer/<page>/index.html
-      const url = `${process.env.ELECTRON_RENDERER_URL}/src/renderer/copilot/index.html`;
-      log.info('loading copilot renderer (dev)', { url });
-      void this.win.loadURL(url);
+    if (isDev) {
+      // electron-vite doesn't serve secondary HTML entries in dev.
+      // Write a bootstrap HTML file that loads the copilot app from the Vite dev server.
+      const bootstrapPath = getDevBootstrapPath(process.env.ELECTRON_RENDERER_URL!);
+      log.info('loading copilot renderer (dev bootstrap)', { bootstrapPath });
+      void this.win.loadFile(bootstrapPath);
     } else {
       const filePath = fileURLToPath(new URL('../renderer/copilot/index.html', import.meta.url));
       log.info('loading copilot renderer (prod)', { filePath, exists: existsSync(filePath) });
@@ -84,17 +118,22 @@ export class CopilotWindow {
     });
 
     this.win.webContents.on('did-finish-load', () => {
-      log.info('copilot renderer loaded successfully');
-      // In dev, dump the HTML for debugging
+      log.info('copilot renderer loaded');
       if (!app.isPackaged) {
         this.win?.webContents
-          .executeJavaScript(`document.documentElement.outerHTML.substring(0, 500)`)
+          .executeJavaScript(`document.documentElement.outerHTML.substring(0, 1000)`)
           .then((html: unknown) => log.info('copilot DOM', { html: String(html) }))
           .catch(() => {});
       }
     });
 
-    // Open devtools in dev mode for debugging
+    this.win.webContents.on('console-message', (_event) => {
+      // Forward copilot renderer console to main process for debugging
+      if (_event.message && !_event.message.startsWith('%c')) {
+        log.debug('copilot console', { message: _event.message.substring(0, 200) });
+      }
+    });
+
     if (!app.isPackaged) {
       this.win.webContents.openDevTools({ mode: 'detach' });
     }
