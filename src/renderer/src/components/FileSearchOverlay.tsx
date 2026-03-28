@@ -381,7 +381,7 @@ export function FileSearchOverlay({
 
   // Scroll selected into view
   useEffect(() => {
-    const child = listRef.current?.children[selectedIndex];
+    const child = listRef.current?.querySelector(`[data-result-index="${selectedIndex}"]`);
     if (child instanceof HTMLElement) child.scrollIntoView({ block: 'nearest' });
   }, [selectedIndex]);
 
@@ -552,6 +552,7 @@ export function FileSearchOverlay({
         {sortedResults.slice(0, 10).map((file, i) => (
           <button
             key={file.path}
+            data-result-index={i}
             className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
               i === selectedIndex
                 ? 'bg-neutral-700 text-white'
