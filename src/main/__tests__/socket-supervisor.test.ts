@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createConnection } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -37,32 +37,13 @@ async function sendPing(socketPath: string): Promise<Record<string, unknown>> {
   });
 }
 
-function makeMockServices() {
-  return {
-    crewService: { listCrew: vi.fn().mockReturnValue([]) },
-    missionService: { listMissions: vi.fn().mockReturnValue([]) },
-    commsService: {
-      getRecent: vi.fn().mockReturnValue([]),
-      getUnread: vi.fn().mockReturnValue([]),
-      send: vi.fn().mockReturnValue(1)
-    },
-    sectorService: { listSectors: vi.fn().mockReturnValue([]) },
-    cargoService: { listCargo: vi.fn().mockReturnValue([]) },
-    supplyRouteService: { listRoutes: vi.fn().mockReturnValue([]) },
-    configService: { get: vi.fn().mockReturnValue('val'), set: vi.fn() },
-    shipsLog: { query: vi.fn().mockReturnValue([]) }
-  } as any;
-}
-
 describe('SocketSupervisor', () => {
   let socketPath: string;
   let supervisor: InstanceType<typeof SocketSupervisor>;
-  let services: ReturnType<typeof makeMockServices>;
 
   beforeEach(async () => {
     ({ SocketSupervisor } = await import('../socket-supervisor'));
     socketPath = tmpSocket();
-    services = makeMockServices();
   });
 
   afterEach(async () => {
@@ -75,7 +56,7 @@ describe('SocketSupervisor', () => {
   });
 
   it('starts and accepts ping', async () => {
-    supervisor = new SocketSupervisor(socketPath, services);
+    supervisor = new SocketSupervisor(socketPath);
     await supervisor.start();
 
     const response = await sendPing(socketPath);
@@ -83,37 +64,8 @@ describe('SocketSupervisor', () => {
     expect((response.data as any).pong).toBe(true);
   });
 
-  it('proxies state-change events from inner SocketServer', async () => {
-    supervisor = new SocketSupervisor(socketPath, services);
-    await supervisor.start();
-
-    const events: string[] = [];
-    supervisor.on('state-change', (event: string) => {
-      events.push(event);
-    });
-
-    const client = createConnection(socketPath, () => {
-      client.write(
-        JSON.stringify({ id: 'x', command: 'comms.send', args: { to: 'crew-1', message: 'hi' } }) +
-          '\n'
-      );
-    });
-    await new Promise<void>((resolve) => {
-      client.on('data', () => {
-        client.end();
-        resolve();
-      });
-      setTimeout(() => {
-        client.destroy();
-        resolve();
-      }, 2000);
-    });
-
-    expect(events).toContain('comms:changed');
-  });
-
   it('exposes restart() method that restarts the server', async () => {
-    supervisor = new SocketSupervisor(socketPath, services);
+    supervisor = new SocketSupervisor(socketPath);
     await supervisor.start();
 
     const restartedPromise = new Promise<void>((resolve) => {
@@ -128,7 +80,7 @@ describe('SocketSupervisor', () => {
   });
 
   it('concurrent restart calls are deduplicated', async () => {
-    supervisor = new SocketSupervisor(socketPath, services);
+    supervisor = new SocketSupervisor(socketPath);
     await supervisor.start();
 
     let restartCount = 0;
@@ -141,7 +93,7 @@ describe('SocketSupervisor', () => {
   });
 
   it('stops cleanly', async () => {
-    supervisor = new SocketSupervisor(socketPath, services);
+    supervisor = new SocketSupervisor(socketPath);
     await supervisor.start();
     await supervisor.stop();
     expect(existsSync(socketPath)).toBe(false);

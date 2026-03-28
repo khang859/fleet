@@ -3,7 +3,7 @@ import { mkdirSync, chmodSync } from 'fs';
 import { dirname } from 'path';
 
 export interface SocketCommandHandler {
-  handleCommand(cmd: SocketCommand): Promise<SocketResponse>;
+  handleCommand(cmd: SocketCommand): SocketResponse | Promise<SocketResponse>;
 }
 
 export type SocketCommand = {

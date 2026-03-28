@@ -26,7 +26,7 @@ export class SettingsStore {
       visualizer: {
         ...DEFAULT_SETTINGS.visualizer,
         ...saved.visualizer,
-        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer.effects }
+        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer?.effects }
       }
     };
   }
@@ -39,7 +39,11 @@ export class SettingsStore {
       general: { ...current.general, ...(partial.general ?? {}) },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
-      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) }
+      visualizer: {
+        ...current.visualizer,
+        ...(partial.visualizer ?? {}),
+        effects: { ...current.visualizer.effects, ...(partial.visualizer?.effects ?? {}) }
+      }
     };
     this.store.set('settings', merged);
   }

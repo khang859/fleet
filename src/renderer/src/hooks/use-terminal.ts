@@ -128,7 +128,7 @@ function createTerminal(
   // Cursor suppression for TUI apps that render their own cursor glyphs.
   // Two modes:
   // - Static (cursorHidden: true): always hide xterm's cursor. Used for terminals
-  //   that always run a TUI (e.g. Star Command Admiral terminal).
+  //   that always run a TUI.
   // - Dynamic (default): auto-activate suppression when an app enters the alternate
   //   screen (\x1b[?1049h) and deactivate on exit (\x1b[?1049l). Prevents double
   //   cursors (xterm's native cursor + TUI-drawn cursor glyph) in regular panes
@@ -231,8 +231,7 @@ function createTerminal(
   });
 
   if (options.attachOnly) {
-    // attachOnly mode (e.g. Admiral PTY pre-created by main process):
-    // Always call attach to drain any buffered output and resume a paused PTY.
+    // attachOnly mode: always call attach to drain any buffered output and resume a paused PTY.
     // This is critical after hard refresh where the PTY may have accumulated
     // output (and been paused due to buffer overflow) while the renderer was reloading.
     void window.fleet.pty.attach(options.paneId).then(({ data }) => {

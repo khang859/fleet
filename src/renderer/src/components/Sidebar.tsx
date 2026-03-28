@@ -12,17 +12,10 @@ import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/wo
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 
-import { useStarCommandStore } from '../store/star-command-store';
 import { useImageStore } from '../store/image-store';
-import admiralDefault from '../assets/admiral-default.png';
-import admiralSpeaking from '../assets/admiral-speaking.png';
-import admiralThinking from '../assets/admiral-thinking.png';
-import admiralAlert from '../assets/admiral-alert.png';
-import admiralStandby from '../assets/admiral-standby.png';
 import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
-import { Avatar } from './star-command/Avatar';
 import { getFileSave } from '../lib/file-save-registry';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 
@@ -43,14 +36,6 @@ function getFirstLeaf(tab: Tab): PaneLeaf | null {
 }
 
 const AUTO_SAVE_DEBOUNCE_MS = 500;
-
-const ADMIRAL_IMAGES: Record<string, string> = {
-  default: admiralDefault,
-  speaking: admiralSpeaking,
-  thinking: admiralThinking,
-  alert: admiralAlert,
-  standby: admiralStandby
-};
 
 function GroupHeader({
   label,
@@ -181,105 +166,6 @@ function GroupHeader({
         </ContextMenu.Content>
       </ContextMenu.Portal>
     </ContextMenu.Root>
-  );
-}
-
-function StarCommandTabCard({
-  isActive,
-  onClick
-}: {
-  isActive: boolean;
-  onClick: () => void;
-}): React.JSX.Element {
-  const { admiralAvatarState, admiralStatus, crewList, unreadCount } = useStarCommandStore();
-
-  const activeCrew = crewList.filter((c) => c.status === 'active').length;
-  const errorCrew = crewList.filter((c) => c.status === 'error' || c.status === 'lost').length;
-  const admiralSrc = ADMIRAL_IMAGES[admiralAvatarState] ?? ADMIRAL_IMAGES.default;
-
-  const statusDotClass =
-    admiralStatus === 'running'
-      ? 'bg-green-400'
-      : admiralStatus === 'starting'
-        ? 'bg-yellow-400 animate-pulse'
-        : 'bg-neutral-600';
-
-  return (
-    <div
-      onClick={onClick}
-      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
-      style={{
-        background: isActive ? '#0a0a1a' : 'rgba(10,10,26,0.4)',
-        border: isActive ? '1px solid rgba(20,184,166,0.35)' : '1px solid rgba(255,255,255,0.05)',
-        boxShadow: isActive
-          ? '0 0 10px rgba(20,184,166,0.15), inset 0 0 20px rgba(20,184,166,0.03)'
-          : 'none'
-      }}
-    >
-      {/* Scanline overlay */}
-      <div
-        className="absolute inset-0 pointer-events-none z-10"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(0,0,0,0.12) 1px, rgba(0,0,0,0.12) 2px)',
-          backgroundSize: '100% 2px'
-        }}
-      />
-
-      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
-        {/* Admiral avatar */}
-        <div className="flex-shrink-0 relative">
-          <img
-            src={admiralSrc}
-            alt="Admiral"
-            width={32}
-            height={32}
-            className="rounded-sm"
-            style={{ imageRendering: 'pixelated' }}
-          />
-          {/* Status dot */}
-          <span
-            className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border border-neutral-900 ${statusDotClass}`}
-          />
-        </div>
-
-        {/* Text content */}
-        <div className="flex-1 min-w-0">
-          <div
-            className="font-mono uppercase tracking-widest leading-none mb-1"
-            style={{
-              fontSize: '9px',
-              color: isActive ? 'rgb(45,212,191)' : 'rgba(45,212,191,0.5)'
-            }}
-          >
-            Star Command
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-neutral-500">
-              {activeCrew > 0 ? (
-                <span className="text-green-400/70">{activeCrew} active</span>
-              ) : (
-                <span>no crew</span>
-              )}
-            </span>
-            {errorCrew > 0 && (
-              <span className="text-[9px] font-mono text-red-400/80">{errorCrew} err</span>
-            )}
-            {unreadCount > 0 && (
-              <span
-                className="text-[9px] font-mono font-semibold px-1 rounded-sm animate-pulse"
-                style={{
-                  background: 'rgba(20,184,166,0.2)',
-                  color: 'rgb(45,212,191)'
-                }}
-              >
-                {unreadCount}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1101,19 +987,6 @@ export function Sidebar({
             handleDrop();
           }}
         >
-          {/* Star Command tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'star-command')
-            .map((tab) => (
-              <StarCommandTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {workspace.tabs.filter((t) => t.type === 'star-command').length > 0 && (
-            <div className="h-px bg-neutral-800 mx-1 my-1" />
-          )}
           {/* Images tab (pinned, not closeable) */}
           {workspace.tabs
             .filter((tab) => tab.type === 'images')
@@ -1127,54 +1000,9 @@ export function Sidebar({
           {workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
             <div className="h-px bg-neutral-800 mx-1 my-1" />
           )}
-          {/* Crew tabs (with sprite avatars) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'crew')
-            .map((tab) => {
-              const paneIds = collectPaneIds(tab.splitRoot);
-              const idx = realIndex(tab.id);
-              return (
-                <TabItem
-                  key={tab.id}
-                  id={tab.id}
-                  label={tab.label}
-                  labelIsCustom={tab.labelIsCustom ?? false}
-                  cwd={tab.cwd}
-                  isActive={tab.id === activeTabId}
-                  badge={getTabBadge(paneIds)}
-                  icon={<Avatar type="crew" variant={tab.avatarVariant} size={24} />}
-                  activeBorderColor="border-cyan-500"
-                  disableReset
-                  index={idx}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                  isDragOver={
-                    dropTarget?.index === idx && !dropTarget.isGroupHeader
-                      ? dropTarget.position
-                      : null
-                  }
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    for (const paneId of paneIds) {
-                      useNotificationStore.getState().clearPane(paneId);
-                      window.fleet.notifications.paneFocused({ paneId });
-                    }
-                  }}
-                  onClose={() => handleCloseTab(tab.id)}
-                  onRename={(newLabel) => renameTab(tab.id, newLabel)}
-                  onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
-                />
-              );
-            })}
-          {workspace.tabs.filter((t) => t.type === 'crew').length > 0 && (
-            <div className="h-px bg-neutral-800 mx-1 my-1" />
-          )}
           {(() => {
             const regularTabs = workspace.tabs.filter(
               (t) =>
-                t.type !== 'star-command' &&
-                t.type !== 'crew' &&
                 t.type !== 'images' &&
                 t.type !== 'settings'
             );

@@ -12,7 +12,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images' | 'settings';
+  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -114,8 +114,6 @@ export type FleetSettings = {
     needsPermission: { badge: boolean; sound: boolean; os: boolean };
     processExitError: { badge: boolean; sound: boolean; os: boolean };
     processExitClean: { badge: boolean; sound: boolean; os: boolean };
-    comms: { badge: boolean; sound: boolean; os: boolean };
-    memos: { badge: boolean; sound: boolean; os: boolean };
   };
   socketApi: {
     enabled: boolean;

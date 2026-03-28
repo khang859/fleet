@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Clipboard } from 'lucide-react';
 import { useWorkspaceStore } from '../store/workspace-store';
-import { useStarCommandStore } from '../store/star-command-store';
 import { bracketedPaste } from '../lib/shell-utils';
 import type { ClipboardEntry } from '../../../shared/ipc-api';
 
@@ -37,13 +36,7 @@ export function ClipboardHistoryOverlay({
   const listRef = useRef<HTMLDivElement>(null);
 
   const activePaneId = useWorkspaceStore((s) => s.activePaneId);
-  const activeTab = useWorkspaceStore((s) => {
-    const tabId = s.activeTabId;
-    return tabId ? s.workspace.tabs.find((t) => t.id === tabId) : undefined;
-  });
-  const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
-  const targetPaneId =
-    activeTab?.type === 'star-command' ? (admiralPaneId ?? activePaneId) : (activePaneId ?? admiralPaneId);
+  const targetPaneId = activePaneId;
 
   // Load history and subscribe to changes
   useEffect(() => {

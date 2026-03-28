@@ -5,13 +5,12 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
-import admiralDefault from './assets/admiral-default.png';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
-import { clearCreatedPty, markPtyCreated, serializePane } from './hooks/use-terminal';
+import { clearCreatedPty, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { injectLiveCwd } from './lib/workspace-utils';
@@ -24,10 +23,7 @@ import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
-import { StarCommandTab } from './components/StarCommandTab';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
-import { Avatar } from './components/star-command/Avatar';
-import { AppPreChecks } from './components/AppPreChecks';
 
 function MiniSidebarTooltip({
   label,
@@ -122,7 +118,6 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
-  const [showPreChecks, setShowPreChecks] = useState(true);
 
   // Load settings on startup
   useEffect(() => {
@@ -218,19 +213,6 @@ export function App(): React.JSX.Element {
     document.addEventListener('fleet:open-file-dialog', handler);
     return () => document.removeEventListener('fleet:open-file-dialog', handler);
   }, [focusedPaneCwd]);
-
-  // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
-  // This listener remains for backwards compatibility but will not fire for new deployments.
-  // Remove when crew tab UI is fully deprecated.
-  useEffect(() => {
-    const cleanup = window.fleet.onCreateTab(({ tabId, label, cwd, avatarVariant }) => {
-      markPtyCreated(tabId);
-      useWorkspaceStore.getState().addCrewTab(tabId, label, cwd, avatarVariant);
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
 
   // Open file in tab via IPC (fleet file:open-in-tab, with dedup)
   useEffect(() => {
@@ -432,12 +414,6 @@ export function App(): React.JSX.Element {
       }
       if (!tab) return;
 
-      // Crew tabs: close silently (no undo toast — automated agent, PTY is dead)
-      if (tab.type === 'crew') {
-        state.closeTab(tab.id);
-        return;
-      }
-
       // Background workspace tabs: close without undo toast (user isn't looking at them)
       if (isBackground) {
         state.closeTab(tab.id);
@@ -503,33 +479,6 @@ export function App(): React.JSX.Element {
               </button>
             </MiniSidebarTooltip>
             <div className="w-6 h-px bg-neutral-800 my-0.5" />
-            {/* Star Command icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'star-command')
-              .map((tab) => {
-                const isScActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Star Command" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
-                        isScActive
-                          ? 'bg-teal-900/40 ring-1 ring-teal-500/30'
-                          : 'hover:bg-neutral-800'
-                      }`}
-                    >
-                      <img
-                        src={admiralDefault}
-                        alt="Star Command"
-                        width={16}
-                        height={16}
-                        style={{ imageRendering: 'pixelated' }}
-                        className="rounded-sm"
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
             {/* Images pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'images')
@@ -564,34 +513,11 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'images') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* Crew tab icons */}
-            {workspace.tabs
-              .filter((t) => t.type === 'crew')
-              .map((tab) => {
-                const isActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label={tab.label} key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1 rounded transition-colors ${
-                        isActive ? 'bg-neutral-700 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800'
-                      }`}
-                    >
-                      <Avatar type="crew" variant={tab.avatarVariant} size={20} />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {workspace.tabs.some((t) => t.type === 'crew') && (
-              <div className="w-6 h-px bg-neutral-800 my-0.5" />
-            )}
-            {/* File/terminal/image tab icons (excluding star-command, images, crew, settings) */}
+            {/* File/terminal/image tab icons (excluding images, settings) */}
             {workspace.tabs
               .filter(
                 (t) =>
-                  t.type !== 'star-command' &&
                   t.type !== 'images' &&
-                  t.type !== 'crew' &&
                   t.type !== 'settings'
               )
               .map((tab) => {
@@ -716,9 +642,7 @@ export function App(): React.JSX.Element {
                       className="h-full w-full"
                       style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
                     >
-                      {tab.type === 'star-command' ? (
-                        <StarCommandTab />
-                      ) : tab.type === 'images' ? (
+                      {tab.type === 'images' ? (
                         <ImageGallery />
                       ) : tab.type === 'settings' ? (
                         <SettingsTab />
@@ -742,16 +666,14 @@ export function App(): React.JSX.Element {
                 {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
                   bgWs.tabs.map((tab) => (
                     <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
-                      {tab.type !== 'star-command' && (
-                        <PaneGrid
-                          root={tab.splitRoot}
-                          activePaneId={null}
-                          onPaneFocus={() => {}}
-                          serializedPanes={undefined}
-                          fontFamily={settings?.general.fontFamily}
-                          fontSize={settings?.general.fontSize}
-                        />
-                      )}
+                      <PaneGrid
+                        root={tab.splitRoot}
+                        activePaneId={null}
+                        onPaneFocus={() => {}}
+                        serializedPanes={undefined}
+                        fontFamily={settings?.general.fontFamily}
+                        fontSize={settings?.general.fontSize}
+                      />
                     </div>
                   ))
                 )}
@@ -832,7 +754,6 @@ export function App(): React.JSX.Element {
         isOpen={clipboardHistoryOpen}
         onClose={() => setClipboardHistoryOpen(false)}
       />
-      {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>
   );
 }

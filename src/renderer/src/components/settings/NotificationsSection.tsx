@@ -7,9 +7,7 @@ const NOTIFICATION_KEYS = [
   'taskComplete',
   'needsPermission',
   'processExitError',
-  'processExitClean',
-  'comms',
-  'memos'
+  'processExitClean'
 ] as const satisfies readonly NotificationKey[];
 
 const NOTIFICATION_CHANNELS = ['badge', 'sound', 'os'] as const;
@@ -18,9 +16,7 @@ const NOTIFICATION_LABELS: Record<NotificationKey, string> = {
   taskComplete: 'Task Complete',
   needsPermission: 'Needs Permission',
   processExitError: 'Process Exit (Error)',
-  processExitClean: 'Process Exit (Clean)',
-  comms: 'Comms',
-  memos: 'Memos'
+  processExitClean: 'Process Exit (Clean)'
 };
 
 export function NotificationsSection(): React.JSX.Element | null {

@@ -51,27 +51,6 @@ export class LayoutStore {
     this.store.set('workspaces', workspaces);
   }
 
-  ensureStarCommandTab(workspaceId: string, cwd: string): void {
-    const workspace = this.load(workspaceId);
-    if (!workspace) return;
-
-    const hasStarCommand = workspace.tabs.some((t) => t.type === 'star-command');
-    if (hasStarCommand) return;
-
-    const paneId = randomUUID();
-    const starTab: Tab = {
-      id: randomUUID(),
-      label: 'Star Command',
-      labelIsCustom: true,
-      cwd,
-      type: 'star-command',
-      splitRoot: { type: 'leaf', id: paneId, cwd }
-    };
-
-    workspace.tabs.unshift(starTab);
-    this.save(workspace);
-  }
-
   ensureImagesTab(workspaceId: string, cwd: string): void {
     const workspace = this.load(workspaceId);
     if (!workspace) return;
@@ -89,14 +68,7 @@ export class LayoutStore {
       splitRoot: { type: 'leaf', id: paneId, cwd }
     };
 
-    // Insert after star-command tab if it exists, otherwise at the start
-    const starIdx = workspace.tabs.findIndex((t) => t.type === 'star-command');
-    if (starIdx !== -1) {
-      workspace.tabs.splice(starIdx + 1, 0, imagesTab);
-    } else {
-      workspace.tabs.unshift(imagesTab);
-    }
-
+    workspace.tabs.unshift(imagesTab);
     this.save(workspace);
   }
 }

@@ -9,8 +9,6 @@
 - **Activity Detection**: Real-time tracking of terminal activity with visual badges, silence timers, and foreground process detection to identify when agents are working
 - **Activity Indicators**: Tabs now show activity status with reduced-motion support and off-screen summary badges in the sidebar
 - **Image Protocol**: Improved image loading performance with `fleet-image://` protocol replacing base64 IPC
-- **Crew Improvements**: Enhanced code and repair crew prompts with conflict checking
-
 ### Fixes
 
 - Fixed file search overlay scroll jumping when opening
@@ -20,8 +18,13 @@
 - Fixed tab restoration with proper CWD persistence across workspace saves
 - Improved git worktree detection to use live working directory
 - Enhanced worktree removal resilience and branch conflict avoidance
-- Fixed window close handling on macOS for proper admiral restart
-- Removed dead JSONL agent state tracking pipeline
+
+### Removed
+
+- Removed Star Command system (starbase, crews, missions, sectors, comms, cargo, protocols, admiral, navigator, first officer)
+- Removed fleet CLI commands: sectors, missions, crew, comms, cargo, log, protocols, config
+- Removed system dependency check screen (AppPreChecks)
+- Kept fleet CLI commands: images, open
 
 ## v2.13.0
 

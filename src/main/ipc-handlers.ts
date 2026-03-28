@@ -20,7 +20,6 @@ import type {
   LayoutSaveRequest,
   LayoutListResponse,
   PaneFocusedPayload,
-  StarbaseRuntimeStatus,
   DirEntry,
   FileSearchRequest,
   LogEntry,
@@ -40,28 +39,10 @@ import { toError } from './errors';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { FleetSettings } from '../shared/types';
-import type { AdmiralProcess } from './starbase/admiral-process';
-import { checkDependencies } from './starbase/admiral-process';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
-import type { AdmiralStateDetector } from './starbase/admiral-state-detector';
-import type { StarbaseRuntimeClient } from './starbase-runtime-client';
-
-type BootstrapState = {
-  envReady: Promise<void>;
-  cliReady: Promise<string>;
-  starbaseReady: Promise<void>;
-  getRuntimeStatus: () => StarbaseRuntimeStatus;
-  retryStarbaseBootstrap: () => Promise<StarbaseRuntimeStatus>;
-};
-
-type StarbaseServices = {
-  runtime: StarbaseRuntimeClient;
-  admiralProcess?: AdmiralProcess | null;
-  admiralStateDetector?: AdmiralStateDetector | null;
-};
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -73,8 +54,6 @@ export function registerIpcHandlers(
   cwdPoller: CwdPoller,
   gitService: GitService,
   getWindow: () => BrowserWindow | null,
-  getBootstrapState: () => BootstrapState,
-  getStarbaseServices: () => StarbaseServices,
   workspacePath: string,
   activityTracker: ActivityTracker,
   worktreeService: WorktreeService
@@ -89,9 +68,8 @@ export function registerIpcHandlers(
   });
 
   // PTY handlers
-  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
     log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
-    await getBootstrapState().envReady;
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);
 
@@ -186,7 +164,6 @@ export function registerIpcHandlers(
     });
     try {
       layoutStore.save(req.workspace);
-      layoutStore.ensureStarCommandTab(req.workspace.id, workspacePath);
       layoutStore.ensureImagesTab(req.workspace.id, workspacePath);
     } catch (err) {
       log.error('failed to save workspace', {
@@ -233,243 +210,9 @@ export function registerIpcHandlers(
     return gitService.getFullStatus(cwd);
   });
 
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_GET, () => {
-    return getBootstrapState().getRuntimeStatus();
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY, async () => {
-    return getBootstrapState().retryStarbaseBootstrap();
-  });
-
-  // Starbase handlers
-  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SECTORS, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('sector.listVisible');
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SECTOR, async (_e, req) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('sector.add', req);
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, async (_e, { sectorId }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('sector.remove', sectorId);
-  });
-  ipcMain.handle(
-    IPC_CHANNELS.STARBASE_UPDATE_SECTOR,
-    async (_e, { sectorId, fields }: { sectorId: string; fields: Record<string, unknown> }) => {
-      await getBootstrapState().starbaseReady;
-      return getStarbaseServices().runtime.invoke('sector.update', { sectorId, fields });
-    }
-  );
-  ipcMain.handle(IPC_CHANNELS.STARBASE_GET_CONFIG, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('config.getAll');
-  });
-  ipcMain.handle(
-    IPC_CHANNELS.STARBASE_SET_CONFIG,
-    async (_e, { key, value }: { key: string; value: unknown }) => {
-      await getBootstrapState().starbaseReady;
-      return getStarbaseServices().runtime.invoke('config.set', { key, value });
-    }
-  );
-
-  // Phase 2: Deploy/Recall/Crew/Missions handlers
-  ipcMain.handle(IPC_CHANNELS.STARBASE_DEPLOY, async (_e, req) => {
-    const bootstrap = getBootstrapState();
-    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady]);
-    return getStarbaseServices().runtime.invoke('crew.deploy', req);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RECALL, async (_e, { crewId }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('crew.recall', crewId);
-  });
-
-  ipcMain.handle(
-    IPC_CHANNELS.STARBASE_MESSAGE_CREW,
-    async (_e, { crewId, message }: { crewId: string; message: string }) => {
-      await getBootstrapState().starbaseReady;
-      return getStarbaseServices().runtime.invoke('crew.message', { crewId, message });
-    }
-  );
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_CREW, async (_e, filter?) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('crew.list', filter);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_MISSIONS, async (_e, filter?) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('mission.list', filter);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_MISSION, async (_e, req) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('mission.add', req);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_OBSERVE, async (_e, { crewId }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('crew.observe', crewId);
-  });
-
   // System-level dependency check (app-wide pre-checks screen)
-  // Must await envReady so the shell PATH is enriched before checking for node/claude/etc.
   ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, async () => {
-    await getBootstrapState().envReady;
     return checkSystemDeps();
-  });
-
-  // Phase 3: Admiral + Comms handlers
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES, async () => checkDependencies());
-
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_PANE_ID, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().admiralProcess?.paneId ?? null;
-  });
-
-  // Wire PTY data forwarding for a newly started Admiral pane
-  const wireAdmiralPty = (paneId: string): void => {
-    ptyManager.onData(paneId, (data, paused) => {
-      notificationDetector.scan(paneId, data);
-      getStarbaseServices().admiralStateDetector?.scan(paneId, data);
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
-      }
-    });
-    ptyManager.onExit(paneId, (exitCode) => {
-      const w = getWindow();
-      if (w && !w.isDestroyed()) {
-        w.webContents.send(IPC_CHANNELS.PTY_EXIT, { paneId, exitCode });
-      }
-      eventBus.emit('pty-exit', { type: 'pty-exit', paneId, exitCode });
-    });
-    cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
-  };
-
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESTART, async () => {
-    const bootstrap = getBootstrapState();
-    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady]);
-    const admiralProcess = getStarbaseServices().admiralProcess;
-    if (!admiralProcess) {
-      throw new Error('Star Command not ready: missing admiralProcess');
-    }
-    const paneId = await admiralProcess.restart();
-    getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId);
-    wireAdmiralPty(paneId);
-    return paneId;
-  });
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_RESET, async () => {
-    const bootstrap = getBootstrapState();
-    await Promise.all([bootstrap.envReady, bootstrap.cliReady, bootstrap.starbaseReady]);
-    const admiralProcess = getStarbaseServices().admiralProcess;
-    if (!admiralProcess) {
-      throw new Error('Star Command not ready: missing admiralProcess');
-    }
-    const paneId = await admiralProcess.reset();
-    getStarbaseServices().admiralStateDetector?.setAdmiralPaneId(paneId);
-    wireAdmiralPty(paneId);
-    return paneId;
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_COMMS_UNREAD, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.getUnread', 'admiral');
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_COMMS, async (_e, opts?) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.getRecent', opts);
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, async (_e, { id }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.markRead', id);
-  });
-  ipcMain.handle(
-    IPC_CHANNELS.STARBASE_RESOLVE_COMMS,
-    async (_e, { id, response }: { id: number; response: string }) => {
-      await getBootstrapState().starbaseReady;
-      return getStarbaseServices().runtime.invoke('comms.resolve', { id, response });
-    }
-  );
-  ipcMain.handle(IPC_CHANNELS.STARBASE_DELETE_COMMS, async (_e, { id }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.delete', id);
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.markAllRead');
-  });
-  ipcMain.handle(IPC_CHANNELS.STARBASE_CLEAR_COMMS, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('comms.clear');
-  });
-
-  // Phase 5: Supply routes, cargo, retention handlers
-  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, async (_e, opts?) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('supplyRoute.list', opts);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, async (_e, opts) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('supplyRoute.add', opts);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, async (_e, { routeId }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('supplyRoute.remove', routeId);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('supplyRoute.graph');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_LIST_CARGO, async (_e, filter?) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('cargo.list', filter);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_STATS, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('retention.stats');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('retention.cleanup');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.STARBASE_RETENTION_VACUUM, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('retention.vacuum');
-  });
-
-  // Logs: ships_log + comms UNION query
-  ipcMain.handle(IPC_CHANNELS.STARBASE_SHIPS_LOG, async (_e, opts?: { limit?: number }) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('shipsLog.combined', opts);
-  });
-
-  // First Officer: Memo handlers (backed by comms table)
-  ipcMain.handle(IPC_CHANNELS.MEMO_LIST, async () => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('memo.list');
-  });
-
-  ipcMain.handle(IPC_CHANNELS.MEMO_READ, async (_e, id: number) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('memo.read', id);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.MEMO_DISMISS, async (_e, id: number) => {
-    await getBootstrapState().starbaseReady;
-    return getStarbaseServices().runtime.invoke('memo.dismiss', id);
-  });
-
-  ipcMain.handle(IPC_CHANNELS.MEMO_CONTENT, async (_e, filePath: string) => {
-    return getStarbaseServices().runtime.invoke('memo.content', filePath);
   });
 
   // Open URLs in the default browser (scheme-validated)

@@ -51,9 +51,9 @@ describe('Sidebar.tsx Zustand subscription pattern', () => {
     expect(source).not.toMatch(bareCallPattern);
   });
 
-  it('does not subscribe to useCwdStore at all (pushed down to TabItem)', () => {
-    // Sidebar should NOT import or use useCwdStore — CWD subscriptions belong in TabItem
-    expect(source).not.toMatch(/useCwdStore/);
+  it('subscribes to useCwdStore with a selector (for git repo detection)', () => {
+    // Sidebar uses useCwdStore to check live CWDs for worktree context menu
+    expect(source).toMatch(/useCwdStore\(\s*\(s\)\s*=>/);
   });
 });
 

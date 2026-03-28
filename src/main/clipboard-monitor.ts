@@ -62,9 +62,7 @@ export function startClipboardMonitor(): void {
   });
 
   app.on('browser-window-focus', () => {
-    if (!pollTimer) {
-      pollTimer = setInterval(poll, POLL_INTERVAL_MS);
-    }
+    pollTimer ??= setInterval(poll, POLL_INTERVAL_MS);
   });
 }
 
