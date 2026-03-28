@@ -36,6 +36,16 @@ export function App(): React.JSX.Element {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [expanded]);
 
+  // Subscribe to real-time chat updates
+  useEffect(() => {
+    if (!window.copilot) return;
+    const setChatMessages = useCopilotStore.getState().setChatMessages;
+    const unsub = window.copilot.onChatUpdated(({ sessionId, messages }) => {
+      setChatMessages(sessionId, messages);
+    });
+    return unsub;
+  }, []);
+
   return (
     <div className="relative w-full h-full">
       <div className="flex justify-end">
