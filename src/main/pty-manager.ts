@@ -78,7 +78,7 @@ export class PtyManager {
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: opts.env ?? process.env
+      env: { ...(opts.env ?? process.env), FLEET_SESSION: '1' }
     });
 
     const entry: PtyEntry = {
