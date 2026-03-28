@@ -22,12 +22,7 @@ export class SettingsStore {
       ...saved,
       general: { ...DEFAULT_SETTINGS.general, ...saved.general },
       notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications },
-      socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi },
-      visualizer: {
-        ...DEFAULT_SETTINGS.visualizer,
-        ...saved.visualizer,
-        effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer.effects }
-      }
+      socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi }
     };
   }
 
@@ -38,8 +33,7 @@ export class SettingsStore {
       ...partial,
       general: { ...current.general, ...(partial.general ?? {}) },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
-      socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
-      visualizer: { ...current.visualizer, ...(partial.visualizer ?? {}) }
+      socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) }
     };
     this.store.set('settings', merged);
   }

@@ -23,38 +23,10 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     taskComplete: { badge: true, sound: false, os: false },
     needsPermission: { badge: true, sound: true, os: true },
     processExitError: { badge: true, sound: false, os: false },
-    processExitClean: { badge: false, sound: false, os: false },
-    comms: { badge: true, sound: false, os: true },
-    memos: { badge: true, sound: false, os: true }
+    processExitClean: { badge: false, sound: false, os: false }
   },
   socketApi: {
     enabled: true,
     socketPath: ''
-  },
-  visualizer: {
-    panelMode: 'drawer',
-    effects: {
-      nebulaClouds: true,
-      shootingStars: true,
-      twinklingStars: true,
-      distantPlanets: true,
-      auroraBands: true,
-      constellationLines: true,
-      coloredTrails: true,
-      formationFlying: true,
-      shipBadges: true,
-      enhancedIdle: true,
-      dayNightCycle: true,
-      spaceWeather: true,
-      asteroidField: true,
-      spaceStation: true,
-      ambientSound: false,
-      followCamera: true,
-      zoomEnabled: true,
-      bloomGlow: true,
-      starColorVariety: true,
-      depthOfField: true
-    },
-    soundVolume: 0.3
   }
 };

@@ -37,7 +37,7 @@ const BUFFER_OVERFLOW_BYTES = 256 * 1024;
 
 export class PtyManager {
   private ptys = new Map<string, PtyEntry>();
-  /** PTYs that must not be killed by the renderer-driven GC (e.g. Star Command crews). */
+  /** PTYs that must not be killed by the renderer-driven GC. */
   private protectedPtys = new Set<string>();
   private dataCallbacks = new Map<string, (data: string, paused: boolean) => void>();
   private flushTimer: ReturnType<typeof setInterval> | null = null;
