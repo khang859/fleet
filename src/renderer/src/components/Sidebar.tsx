@@ -276,6 +276,24 @@ function ImagesTabCard({
   );
 }
 
+function OffScreenBadgeSummary({
+  direction,
+  count,
+  label,
+}: {
+  direction: 'above' | 'below';
+  count: number;
+  label: string;
+}): React.JSX.Element | null {
+  if (count === 0) return null;
+  const arrow = direction === 'above' ? '\u2191' : '\u2193';
+  return (
+    <div className="px-3 py-0.5 text-[10px] text-neutral-500 text-center">
+      {arrow} {count} {label}
+    </div>
+  );
+}
+
 export function Sidebar({
   updateReady,
   onCollapse
@@ -598,6 +616,47 @@ export function Sidebar({
     };
   }, []);
 
+  // Track off-screen tabs with badges
+  const [offScreenCounts, setOffScreenCounts] = useState({ above: 0, below: 0 });
+
+  useEffect(() => {
+    const container = tabListRef.current;
+    if (!container) return;
+
+    const countOffScreen = (): void => {
+      const tabElements = container.querySelectorAll('[data-tab-id]');
+      let above = 0;
+      let below = 0;
+      const containerRect = container.getBoundingClientRect();
+
+      tabElements.forEach((el) => {
+        const hasBadge = el.querySelector('[aria-label*="notification"]');
+        if (!hasBadge) return;
+        const rect = el.getBoundingClientRect();
+        if (rect.bottom < containerRect.top) above++;
+        else if (rect.top > containerRect.bottom) below++;
+      });
+
+      setOffScreenCounts({ above, below });
+    };
+
+    const observer = new IntersectionObserver(countOffScreen, {
+      root: container,
+      threshold: 0,
+    });
+
+    const tabElements = container.querySelectorAll('[data-tab-id]');
+    tabElements.forEach((el) => observer.observe(el));
+
+    // Also recount on scroll
+    container.addEventListener('scroll', countOffScreen);
+
+    return () => {
+      observer.disconnect();
+      container.removeEventListener('scroll', countOffScreen);
+    };
+  }, [workspace.tabs.length]);
+
   const handleDeleteWorkspace = useCallback(async (wsId: string) => {
     await window.fleet.layout.delete(wsId);
     useWorkspaceStore.getState().removeBackgroundWorkspace(wsId);
@@ -724,10 +783,11 @@ export function Sidebar({
       </div>
 
       {/* Tab list */}
-      <div className="flex-1 min-h-0 relative">
+      <div className="flex-1 min-h-0 relative flex flex-col">
+        <OffScreenBadgeSummary direction="above" count={offScreenCounts.above} label="need attention" />
         <div
           ref={tabListRef}
-          className="absolute inset-0 overflow-y-auto px-2 space-y-0.5 pb-2"
+          className="flex-1 min-h-0 overflow-y-auto px-2 space-y-0.5 pb-2"
           onDragOver={(e) => {
             e.preventDefault();
             e.dataTransfer.dropEffect = 'move';
@@ -883,6 +943,7 @@ export function Sidebar({
         {hasScrollOverflow && (
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
         )}
+        <OffScreenBadgeSummary direction="below" count={offScreenCounts.below} label="need attention" />
       </div>
 
       {/* Bottom section: workspaces */}
