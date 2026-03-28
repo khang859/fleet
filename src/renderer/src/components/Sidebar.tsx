@@ -883,16 +883,25 @@ export function Sidebar({
     [workspace.tabs, closeTab]
   );
 
+  // --- Worktree close confirmation ---
+  const [worktreeCloseConfirm, setWorktreeCloseConfirm] = useState<{
+    tabId: string;
+    label: string;
+  } | null>(null);
+
   const handleCloseTab = useCallback(
     (tabId: string) => {
       const tab = workspace.tabs.find((t) => t.id === tabId);
       if (!tab) return;
 
-      // Any tab in a worktree group: clean up worktree if it has one, then remove from group
+      // Worktree tab: show confirmation before closing
+      if (tab.worktreePath) {
+        setWorktreeCloseConfirm({ tabId, label: tab.label });
+        return;
+      }
+
+      // Non-worktree tab in a group (the original/parent): close normally via group logic
       if (tab.groupId) {
-        if (tab.worktreePath) {
-          void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
-        }
         closeWorktreeTab(tabId);
         return;
       }
@@ -911,6 +920,16 @@ export function Sidebar({
     },
     [workspace.tabs, doCloseTab, closeWorktreeTab]
   );
+
+  const confirmWorktreeClose = useCallback(() => {
+    if (!worktreeCloseConfirm) return;
+    const tab = workspace.tabs.find((t) => t.id === worktreeCloseConfirm.tabId);
+    if (!tab) return;
+    // Close via group logic (handles group dissolution) — undo toast will appear in App.tsx
+    // Worktree cleanup happens in App.tsx when undo window expires
+    closeWorktreeTab(worktreeCloseConfirm.tabId);
+    setWorktreeCloseConfirm(null);
+  }, [worktreeCloseConfirm, workspace.tabs, closeWorktreeTab]);
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
@@ -1411,6 +1430,40 @@ export function Sidebar({
                 }}
               >
                 {fileSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
+
+      {/* Worktree close confirmation dialog */}
+      <Dialog.Root
+        open={!!worktreeCloseConfirm}
+        onOpenChange={(open) => {
+          if (!open) setWorktreeCloseConfirm(null);
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
+            <Dialog.Title className="text-base font-semibold text-white mb-1">
+              Remove worktree &ldquo;{worktreeCloseConfirm?.label}&rdquo;?
+            </Dialog.Title>
+            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
+              This will destroy the worktree and its directory. Any work not committed and pushed will be lost.
+            </Dialog.Description>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                onClick={() => setWorktreeCloseConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
+                onClick={confirmWorktreeClose}
+              >
+                Remove
               </button>
             </div>
           </Dialog.Content>

@@ -400,6 +400,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const tab = state.workspace.tabs.find((t) => t.id === tabId);
       if (!tab?.groupId) return state;
 
+      const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
+      // Inject live CWDs so undo-close restores the PTY at the correct directory
+      const closedTab = { ...tab, splitRoot: injectLiveCwd(tab.splitRoot) };
+
       const groupId = tab.groupId;
       let tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
 
@@ -415,13 +419,18 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         }
       }
 
-      const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
 
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
         activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
+        lastClosedTab: {
+          tab: closedTab,
+          index: tabIndex,
+          closedAt: Date.now(),
+          serializedPanes: new Map<string, string>(),
+        },
         isDirty: true,
       };
     });

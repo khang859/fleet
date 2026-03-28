@@ -336,10 +336,16 @@ export function App(): React.JSX.Element {
       if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
       const paneIds = collectPaneIds(lastClosedTab.tab.splitRoot);
       pendingKillRef.current = paneIds;
+      // Capture worktree path for delayed cleanup
+      const worktreePath = lastClosedTab.tab.worktreePath;
       undoTimerRef.current = setTimeout(() => {
         setShowUndoToast(false);
         killClosedTabPtys(paneIds);
         pendingKillRef.current = [];
+        // Clean up worktree after undo window expires
+        if (worktreePath) {
+          void window.fleet.worktree.remove({ worktreePath });
+        }
       }, UNDO_TOAST_DURATION);
     }
   }, [lastClosedTab]);
@@ -759,7 +765,7 @@ export function App(): React.JSX.Element {
             {showUndoToast && lastClosedTab && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
                 <span className="text-neutral-300">
-                  Closed {'"'}
+                  {lastClosedTab.tab.worktreePath ? 'Removing worktree' : 'Closed'} {'"'}
                   {lastClosedTab.tab.label}
                   {'"'}
                 </span>
@@ -777,6 +783,9 @@ export function App(): React.JSX.Element {
                     if (lastClosedTab) {
                       killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
                       pendingKillRef.current = [];
+                      if (lastClosedTab.tab.worktreePath) {
+                        void window.fleet.worktree.remove({ worktreePath: lastClosedTab.tab.worktreePath });
+                      }
                     }
                   }}
                 >
