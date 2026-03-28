@@ -54,6 +54,21 @@ function createLeaf(cwd: string): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd };
 }
 
+/** Ensure workspace has a pinned Images tab; mutates and returns the workspace */
+function ensureImagesTab(workspace: Workspace): Workspace {
+  if (workspace.tabs.some((t) => t.type === 'images')) return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  const imagesTab: Tab = {
+    id: generateId(),
+    label: 'Images',
+    labelIsCustom: true,
+    cwd,
+    type: 'images',
+    splitRoot: createLeaf(cwd)
+  };
+  return { ...workspace, tabs: [imagesTab, ...workspace.tabs] };
+}
+
 /** Extract basename from a path for auto-labeling tabs */
 export function cwdBasename(cwd: string): string {
   const parts = cwd.replace(/\/+$/, '').split('/');
@@ -597,7 +612,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cwd: firstLeafCwd ?? t.cwd,
       };
     });
-    const migrated = { ...workspace, tabs: migratedTabs };
+    const migrated = ensureImagesTab({ ...workspace, tabs: migratedTabs });
 
     const restoredTab =
       (migrated.activeTabId
@@ -633,7 +648,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           cwd: firstLeafCwd ?? t.cwd,
         };
       });
-      const migrated = { ...target, tabs: migratedTabs };
+      const migrated = ensureImagesTab({ ...target, tabs: migratedTabs });
 
       const restoredTab =
         (migrated.activeTabId
