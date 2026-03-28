@@ -57,9 +57,14 @@ const copilotApi = {
   toggleExpanded: (): void =>
     ipcRenderer.send('copilot:toggle-expanded'),
 
-  onExpandedChanged: (cb: (expanded: boolean) => void): (() => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, expanded: boolean): void => {
-      cb(expanded);
+  onExpandedChanged: (
+    cb: (expanded: boolean, direction: { horizontal: 'left' | 'right'; vertical: 'up' | 'down' } | null) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { expanded: boolean; direction: { horizontal: 'left' | 'right'; vertical: 'up' | 'down' } | null }
+    ): void => {
+      cb(data.expanded, data.direction);
     };
     ipcRenderer.on('copilot:expanded-changed', handler);
     return () => ipcRenderer.removeListener('copilot:expanded-changed', handler);
