@@ -16,7 +16,7 @@ import { SettingsStore } from './settings-store';
 import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
 import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
-import { installFleetCLI } from './install-fleet-cli';
+import { installFleetCLI, installSkillFile } from './install-fleet-cli';
 import { ImageService } from './image-service';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
@@ -198,6 +198,9 @@ void app.whenReady().then(() => {
     isPackaged: app.isPackaged
   });
   void enrichProcessEnv();
+  void installSkillFile().catch((err) => {
+    log.warn('failed to install skill file', { error: err instanceof Error ? err.message : String(err) });
+  });
   void installFleetCLI()
     .catch((err: unknown) => {
       log.error('failed to install CLI binary', {

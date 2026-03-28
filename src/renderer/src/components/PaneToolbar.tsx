@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen } from 'lucide-react';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
 type PaneToolbarProps = {
@@ -11,6 +11,7 @@ type PaneToolbarProps = {
   onGitChanges: () => void;
   onFileSearch?: () => void;
   onClipboardHistory?: () => void;
+  onInjectSkills?: () => void;
 };
 
 export function PaneToolbar({
@@ -22,7 +23,8 @@ export function PaneToolbar({
   onSearch,
   onGitChanges,
   onFileSearch,
-  onClipboardHistory
+  onClipboardHistory,
+  onInjectSkills
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <div
@@ -83,6 +85,18 @@ export function PaneToolbar({
           title={`Clipboard history (${formatShortcut(getShortcut('clipboard-history')!)})`}
         >
           <Clipboard size={14} />
+        </button>
+      )}
+      {onInjectSkills && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onInjectSkills();
+          }}
+          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          title={`Inject Fleet Skills (${formatShortcut(getShortcut('inject-skills')!)})`}
+        >
+          <BookOpen size={14} />
         </button>
       )}
       <button

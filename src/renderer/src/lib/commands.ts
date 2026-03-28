@@ -127,6 +127,21 @@ export function createCommandRegistry(): Command[] {
       shortcut: sc('clipboard-history'),
       category: 'Edit',
       execute: () => document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
+    },
+    {
+      id: 'inject-skills',
+      label: 'Inject Fleet Skills',
+      shortcut: sc('inject-skills'),
+      category: 'Agent',
+      execute: () => {
+        const { activePaneId } = useWorkspaceStore.getState();
+        if (activePaneId) {
+          window.fleet.pty.input({
+            paneId: activePaneId,
+            data: 'Read ~/.fleet/skills/fleet.md to learn the Fleet terminal commands available to you.\n'
+          });
+        }
+      }
     }
   ];
 }
