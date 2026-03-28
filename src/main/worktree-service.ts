@@ -51,19 +51,28 @@ export class WorktreeService {
   }
 
   async remove(worktreePath: string): Promise<void> {
-    let mainGit;
+    let mainRepoPath: string;
     try {
-      // Try to resolve the main repo from the worktree path
+      // --git-common-dir returns the main repo's .git dir (not the worktree's)
       const git = simpleGit({ baseDir: worktreePath });
-      const topLevel = (await git.raw(['rev-parse', '--show-toplevel'])).trim();
-      mainGit = simpleGit({ baseDir: topLevel });
+      const gitCommonDir = (await git.raw(['rev-parse', '--git-common-dir'])).trim();
+      // gitCommonDir is like "/path/to/repo/.git" — parent is the repo root
+      mainRepoPath = join(gitCommonDir, '..');
+      log.info('resolved main repo', { worktreePath, mainRepoPath });
     } catch {
-      // Worktree dir may already be gone — try to find the main repo
-      // by deriving it from the worktree path convention:
-      // ~/.fleet/worktrees/{repoName}/{branchName}
-      log.warn('worktree dir not accessible, will prune', { worktreePath });
+      log.warn('worktree dir not accessible, cleaning up directory', { worktreePath });
+      // Try to remove the directory directly if git can't resolve
+      try {
+        const { rm } = await import('fs/promises');
+        await rm(worktreePath, { recursive: true, force: true });
+        log.info('removed worktree directory', { worktreePath });
+      } catch {
+        log.warn('failed to remove worktree directory', { worktreePath });
+      }
       return;
     }
+
+    const mainGit = simpleGit({ baseDir: mainRepoPath });
 
     try {
       log.info('removing worktree', { worktreePath });
@@ -76,9 +85,15 @@ export class WorktreeService {
       try {
         await mainGit.raw(['worktree', 'remove', '--force', worktreePath]);
       } catch {
-        // If force also fails, prune stale entries
-        log.warn('force remove failed, pruning', { worktreePath });
+        log.warn('force remove failed, pruning and cleaning up manually', { worktreePath });
         await mainGit.raw(['worktree', 'prune']);
+        // Remove the directory manually
+        try {
+          const { rm } = await import('fs/promises');
+          await rm(worktreePath, { recursive: true, force: true });
+        } catch {
+          // ignore
+        }
       }
     }
 
@@ -86,6 +101,7 @@ export class WorktreeService {
     try {
       const branchName = worktreePath.split('/').pop();
       if (branchName) {
+        log.info('deleting branch', { branchName });
         await mainGit.raw(['branch', '-D', branchName]);
       }
     } catch {
