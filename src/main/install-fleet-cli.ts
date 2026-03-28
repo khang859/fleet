@@ -159,6 +159,48 @@ exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
   return binDir;
 }
 
+// ── installSkillFile ─────────────────────────────────────────────────────────
+//
+// Copies the Fleet skill file to ~/.fleet/skills/fleet.md so AI agents
+// running in Fleet terminals can read it and learn available commands.
+// Overwrites on every launch to stay in sync with the app version.
+
+export async function installSkillFile(): Promise<void> {
+  const fleetHome = join(homedir(), '.fleet');
+  const skillsDir = join(fleetHome, 'skills');
+
+  await mkdir(skillsDir, { recursive: true });
+
+  // Locate the source skill file
+  const mainDir = dirname(fileURLToPath(import.meta.url));
+
+  const candidatePaths = [
+    // Dev mode: project root / resources / skills / fleet.md
+    join(mainDir, '..', '..', 'resources', 'skills', 'fleet.md'),
+    // Packaged mode (asar unpacked): process.resourcesPath
+    join(process.resourcesPath ?? '', 'app.asar.unpacked', 'resources', 'skills', 'fleet.md')
+  ];
+
+  let sourceContent: string | null = null;
+  for (const candidate of candidatePaths) {
+    if (existsSync(candidate)) {
+      sourceContent = await readFile(candidate, 'utf8');
+      break;
+    }
+  }
+
+  if (!sourceContent) {
+    log.warn('skill file source not found, skipping install', {
+      candidates: candidatePaths
+    });
+    return;
+  }
+
+  const destPath = join(skillsDir, 'fleet.md');
+  await writeFile(destPath, sourceContent, 'utf8');
+  log.info('installed fleet skill file', { path: destPath });
+}
+
 // ── addFleetBinToShellProfile ─────────────────────────────────────────────────
 //
 // Appends `export PATH="$HOME/.fleet/bin:$PATH"` to every common shell profile
