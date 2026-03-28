@@ -19,20 +19,6 @@ function phaseIcon(session: CopilotSession): string {
   }
 }
 
-function phaseColor(session: CopilotSession): string {
-  if (session.pendingPermissions.length > 0) return 'text-amber-400';
-  switch (session.phase) {
-    case 'processing':
-    case 'compacting':
-      return 'text-blue-400';
-    case 'waitingForInput':
-      return 'text-green-400';
-    case 'ended':
-      return 'text-neutral-500';
-    default:
-      return 'text-neutral-400';
-  }
-}
 
 function elapsed(timestamp: number): string {
   const seconds = Math.floor((Date.now() - timestamp) / 1000);

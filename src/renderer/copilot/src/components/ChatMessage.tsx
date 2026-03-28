@@ -78,8 +78,8 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
             >
               <span className="text-[10px] text-amber-400 font-medium mr-1.5">{i + 1}.</span>
               <span className="text-[11px] text-neutral-200">{(opt['label'] as string) ?? ''}</span>
-              {opt['description'] && (
-                <span className="text-[10px] text-neutral-500 ml-1">{opt['description'] as string}</span>
+              {typeof opt['description'] === 'string' && (
+                <span className="text-[10px] text-neutral-500 ml-1">{opt['description']}</span>
               )}
             </button>
           ))}
