@@ -65,3 +65,9 @@ body,
 .scrollbar-sc::-webkit-scrollbar-thumb:hover {
   background: #2dd4bf66;
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none !important;
+  }
+}

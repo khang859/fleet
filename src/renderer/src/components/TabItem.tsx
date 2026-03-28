@@ -6,6 +6,7 @@ const logDnd = createLogger('sidebar:dnd');
 import type { NotificationLevel } from '../../../shared/types';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
+import { useNotificationStore } from '../store/notification-store';
 
 const HOME = window.fleet.homeDir;
 
@@ -57,6 +58,20 @@ const BADGE_CONFIG: Record<
   subtle: { color: 'bg-neutral-500', size: 'w-1.5 h-1.5', animate: '', label: '' }
 };
 
+function formatFreshness(lastOutputAt: number, state: string): string | null {
+  if (state === 'working' || !lastOutputAt) return null;
+  const elapsed = Date.now() - lastOutputAt;
+  if (elapsed < 10_000) return null; // Don't show for <10s
+  const minutes = Math.floor(elapsed / 60_000);
+  const seconds = Math.floor((elapsed % 60_000) / 1000);
+  if (minutes > 0) {
+    const timeStr = `${minutes}m ago`;
+    return state === 'needs_me' ? `${minutes}m waiting` : timeStr;
+  }
+  const timeStr = `${seconds}s ago`;
+  return state === 'needs_me' ? `${seconds}s waiting` : timeStr;
+}
+
 export function TabItem({
   id,
   label,
@@ -81,6 +96,24 @@ export function TabItem({
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
   const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
   const cwd = liveCwd ?? fallbackCwd;
+  const activity = useNotificationStore((s) =>
+    drivingPaneId ? s.getActivity(drivingPaneId) : undefined
+  );
+
+  const [freshness, setFreshness] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!activity || activity.state === 'working') {
+      setFreshness(null);
+      return;
+    }
+    // Update freshness every 10s
+    const update = (): void => setFreshness(formatFreshness(activity.lastOutputAt, activity.state));
+    update();
+    const interval = setInterval(update, 10_000);
+    return () => clearInterval(interval);
+  }, [activity]);
+
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(label);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -210,7 +243,13 @@ export function TabItem({
                 {labelIsCustom ? label : cwdBasename(cwd)}
               </div>
               <div className="truncate text-xs leading-tight text-neutral-500">
-                {shortenPath(cwd)}
+                {freshness ? (
+                  <span className={activity?.state === 'needs_me' ? 'text-amber-400' : ''}>
+                    {freshness}
+                  </span>
+                ) : (
+                  shortenPath(cwd)
+                )}
               </div>
             </div>
           )}
