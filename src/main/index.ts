@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { appendFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -13,35 +13,23 @@ import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
-import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
-import { SocketSupervisor } from './socket-supervisor';
-import { FleetCommandHandler } from './socket-command-handler';
+import { IPC_CHANNELS } from '../shared/constants';
 import { CwdPoller } from './cwd-poller';
-import { AdmiralProcess } from './starbase/admiral-process';
-import { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import { installFleetCLI } from './install-fleet-cli';
 import { ImageService } from './image-service';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
-import { normalizeRuntimeEnv } from './runtime-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
-import type { HostContextPayload, StarbaseRuntimeStatus } from '../shared/ipc-api';
+import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
-import { StarbaseRuntimeClient } from './starbase-runtime-client';
-import { createSocketRuntimeServices } from './starbase-runtime-socket-services';
 import { createLogger } from './logger';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
 const log = createLogger('fleet-main');
-const starbaseLog = createLogger('starbase');
 const updaterLog = createLogger('auto-updater');
 
 let mainWindow: BrowserWindow | null = null;
-let lastUnreadCommsCount = 0;
-let lastUnreadMemosCount = 0;
-let socketSupervisor: SocketSupervisor | null = null;
-let admiralProcess: AdmiralProcess | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -53,17 +41,7 @@ const activityTracker = new ActivityTracker(eventBus, {
   processPollingIntervalMs: 2000,
   getProcessName: (paneId) => ptyManager.getProcessName(paneId),
 });
-const commandHandler = new FleetCommandHandler(
-  ptyManager,
-  layoutStore,
-  eventBus,
-  notificationState
-);
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
-const admiralStateDetector = new AdmiralStateDetector(eventBus);
-const runtimeClient = new StarbaseRuntimeClient(
-  new URL('./starbase-runtime-process.mjs', import.meta.url)
-);
 const imageService = new ImageService();
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
@@ -71,33 +49,7 @@ imageService.on('changed', (id: string) => {
     windowRef.webContents.send(IPC_CHANNELS.IMAGES_CHANGED, { id });
   }
 });
-const STARBASE_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log';
-
 log.info('startup marker', { runtime: 'spawn-ipc', preload: 'out/preload/index.js' });
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v != null && typeof v === 'object' && !Array.isArray(v);
-}
-
-function traceStarbase(message: string, extra?: unknown): void {
-  const suffix = extra === undefined ? '' : ` ${JSON.stringify(extra)}`;
-  try {
-    appendFileSync(
-      STARBASE_PARENT_TRACE_FILE,
-      `[${new Date().toISOString()} pid=${process.pid}] main ${message}${suffix}\n`,
-      'utf8'
-    );
-  } catch {
-    // Ignore trace write failures.
-  }
-}
-
-traceStarbase('startup marker', {
-  runtime: 'spawn-ipc',
-  preload: 'out/preload/index.js'
-});
-
-let runtimeStatus: StarbaseRuntimeStatus = { state: 'starting' };
 
 function getHostPlatform(): HostContextPayload['platform'] {
   const p = process.platform;
@@ -112,72 +64,6 @@ ipcMain.handle(
     platform: getHostPlatform()
   })
 );
-
-function setRuntimeStatus(status: StarbaseRuntimeStatus): void {
-  runtimeStatus = status;
-  traceStarbase('runtime status updated', status);
-  const windowRef = mainWindow;
-  if (windowRef && !windowRef.isDestroyed()) {
-    windowRef.webContents.send(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, status);
-  }
-}
-
-async function handleStarbaseSnapshot(snapshot: Record<string, unknown>): Promise<void> {
-  const windowRef = mainWindow;
-  if (!windowRef || windowRef.isDestroyed()) {
-    return;
-  }
-
-  windowRef.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, snapshot);
-
-  const unreadCount = Number(snapshot.unreadCount ?? 0);
-  const foRaw = snapshot.firstOfficer;
-  const unreadMemosCount = Number(
-    (foRaw != null && typeof foRaw === 'object' && 'unreadMemos' in foRaw
-      ? foRaw.unreadMemos
-      : 0) ?? 0
-  );
-
-  if (unreadCount > lastUnreadCommsCount && Notification.isSupported()) {
-    const settings = settingsStore.get();
-    if (settings.notifications.comms.os) {
-      const allUnread = await runtimeClient.invoke<Array<{ from_crew?: string }>>(
-        'comms.getUnread',
-        'admiral'
-      );
-      const newComms = (Array.isArray(allUnread) ? allUnread : []).slice(lastUnreadCommsCount);
-      const body =
-        newComms.length === 1
-          ? `New transmission from ${newComms[0]?.from_crew ?? 'crew'}`
-          : `${newComms.length} new transmissions`;
-      const notif = new Notification({ title: 'Fleet', body });
-      notif.on('click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-        mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_COMMS);
-      });
-      notif.show();
-    }
-  }
-  lastUnreadCommsCount = unreadCount;
-
-  if (unreadMemosCount > lastUnreadMemosCount && Notification.isSupported()) {
-    const settings = settingsStore.get();
-    if (settings.notifications.memos.os) {
-      const notif = new Notification({
-        title: 'Fleet — First Officer',
-        body: 'New memo requires review'
-      });
-      notif.on('click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-        mainWindow?.webContents.send(IPC_CHANNELS.FOCUS_FIRST_OFFICER);
-      });
-      notif.show();
-    }
-  }
-  lastUnreadMemosCount = unreadMemosCount;
-}
 
 function createWindow(): void {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -212,13 +98,6 @@ function createWindow(): void {
 
   mainWindow.on('close', () => {
     ptyManager.killAll();
-    // killAll() disposes exit handlers before killing processes, so the
-    // AdmiralProcess onExit callback never fires and paneId is never cleared.
-    // Reset admiral state so ensureStarted() creates a fresh PTY on reopen.
-    if (admiralProcess) {
-      admiralProcess.paneId = null;
-      admiralProcess.status = 'stopped';
-    }
   });
 
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -265,33 +144,6 @@ function createWindow(): void {
     });
   }
 
-  // After any page load (including hard refresh), push a fresh starbase snapshot
-  // so the renderer immediately restores sentinel/navigator/first-officer status
-  // instead of waiting for the next periodic snapshot event.
-  mainWindow.webContents.on('did-finish-load', () => {
-    if (runtimeStatus.state === 'ready') {
-      // Push admiral status to renderer immediately so it doesn't flash "stopped"
-      if (admiralProcess?.paneId && admiralProcess.status === 'running') {
-        mainWindow?.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
-          status: 'running',
-          paneId: admiralProcess.paneId,
-          error: undefined,
-          exitCode: undefined
-        });
-      }
-      runtimeClient
-        .invoke<Record<string, unknown>>('starbase.snapshot')
-        .then((snapshot) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, snapshot);
-          }
-        })
-        .catch(() => {
-          // Snapshot fetch may fail if runtime is shutting down; ignore.
-        });
-    }
-  });
-
   if (process.env.ELECTRON_RENDERER_URL) {
     void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
   } else {
@@ -314,12 +166,6 @@ if (!gotTheLock) {
     }
   });
 }
-
-app.on('child-process-gone', (_event, details) => {
-  if (details.type === 'Utility' || details.serviceName === 'Fleet Starbase Runtime') {
-    log.error('child-process-gone', { details });
-  }
-});
 
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
@@ -349,8 +195,8 @@ void app.whenReady().then(() => {
     pwd: process.env.PWD,
     isPackaged: app.isPackaged
   });
-  const envReady = enrichProcessEnv();
-  const cliReady = installFleetCLI()
+  void enrichProcessEnv();
+  void installFleetCLI()
     .catch((err: unknown) => {
       log.error('failed to install CLI binary', {
         error: err instanceof Error ? err.message : String(err)
@@ -362,177 +208,7 @@ void app.whenReady().then(() => {
       if (!pathDirs.includes(fleetBinPath)) {
         process.env.PATH = fleetBinPath + ':' + (process.env.PATH ?? '');
       }
-      return fleetBinPath;
     });
-
-  let starbaseReadyPromise: Promise<void> = Promise.resolve();
-  let starbaseBootstrapInFlight: Promise<void> | null = null;
-
-  const bootstrapStarbase = async (): Promise<void> => {
-    if (runtimeStatus.state === 'ready') return;
-    if (starbaseBootstrapInFlight) return starbaseBootstrapInFlight;
-
-    setRuntimeStatus({ state: 'starting' });
-    traceStarbase('bootstrap started');
-    starbaseBootstrapInFlight = (async () => {
-      try {
-        await Promise.all([envReady, cliReady]);
-        const fleetBinPath = await cliReady;
-        traceStarbase('bootstrap prerequisites ready', { fleetBinPath, workspacePath });
-        await runtimeClient.start({
-          workspacePath,
-          fleetBinPath,
-          env: normalizeRuntimeEnv(process.env)
-        });
-        traceStarbase('runtime client started');
-
-        const { starbaseId, starbaseName, sectors } = await runtimeClient.invoke<{
-          starbaseId: string;
-          starbaseName: string;
-          sectors: Array<{ name: string; root_path: string; stack?: string; base_branch?: string }>;
-        }>('runtime.getAdmiralBootstrapData');
-        traceStarbase('got admiral bootstrap data', {
-          starbaseId,
-          starbaseName,
-          sectorCount: sectors.length
-        });
-        const admiralWorkspace = join(
-          homedir(),
-          '.fleet',
-          'starbases',
-          `starbase-${starbaseId}`,
-          'admiral'
-        );
-        starbaseLog.info('bootstrap: got admiral bootstrap data', {
-          starbaseId,
-          sectorCount: sectors.length,
-          admiralWorkspace
-        });
-
-        admiralProcess = new AdmiralProcess({
-          workspace: admiralWorkspace,
-          starbaseName,
-          sectors,
-          ptyManager,
-          fleetBinPath
-        });
-        starbaseLog.info('bootstrap: admiral process created');
-        traceStarbase('admiral process created');
-
-        admiralProcess.setOnStatusChange((status, error, exitCode) => {
-          if (status === 'stopped') {
-            admiralStateDetector.reset();
-            admiralStateDetector.setAdmiralPaneId(null);
-          }
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, {
-              status,
-              paneId: admiralProcess?.paneId,
-              error,
-              exitCode
-            });
-          }
-        });
-
-        socketSupervisor = new SocketSupervisor(
-          SOCKET_PATH,
-          createSocketRuntimeServices(runtimeClient),
-          imageService
-        );
-        starbaseLog.info('bootstrap: socket supervisor created', { socketPath: SOCKET_PATH });
-        traceStarbase('socket supervisor created', { socketPath: SOCKET_PATH });
-        socketSupervisor.on('state-change', (event: string, data: unknown) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, { event, data });
-          }
-        });
-        socketSupervisor.on('restarted', () => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-              event: 'socket:restarted',
-              data: {}
-            });
-          }
-        });
-        socketSupervisor.on('failed', () => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.STARBASE_STATUS_UPDATE, {
-              event: 'socket:failed',
-              data: {}
-            });
-          }
-        });
-        socketSupervisor.on('file-open', (payload: unknown) => {
-          if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
-          }
-        });
-        socketSupervisor.start().catch((err: unknown) => {
-          log.error('socket-supervisor failed to start', {
-            error: err instanceof Error ? err.message : String(err)
-          });
-          traceStarbase('socket supervisor start failed', {
-            message: err instanceof Error ? err.message : String(err)
-          });
-        });
-        starbaseLog.info('bootstrap: socket supervisor start requested');
-        traceStarbase('socket supervisor start requested');
-
-        commandHandler.setRuntimeClient(runtimeClient);
-        starbaseLog.info('bootstrap: runtime client bound to command handler');
-        traceStarbase('runtime client bound to command handler');
-
-        const initialUnread = await runtimeClient.invoke<unknown[]>('comms.getUnread', 'admiral');
-        lastUnreadCommsCount = Array.isArray(initialUnread) ? initialUnread.length : 0;
-        starbaseLog.info('bootstrap: unread comms fetched', { lastUnreadCommsCount });
-        traceStarbase('unread comms fetched', { lastUnreadCommsCount });
-        const initSnapshot =
-          await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot');
-        const initFo =
-          typeof initSnapshot === 'object' && 'firstOfficer' in initSnapshot
-            ? initSnapshot.firstOfficer
-            : null;
-        lastUnreadMemosCount = Number(
-          (initFo != null && typeof initFo === 'object' && 'unreadMemos' in initFo
-            ? initFo.unreadMemos
-            : 0) ?? 0
-        );
-        starbaseLog.info('bootstrap: unread memos fetched', { lastUnreadMemosCount });
-        traceStarbase('unread memos fetched', { lastUnreadMemosCount });
-        for (const ws of layoutStore.list()) {
-          layoutStore.ensureStarCommandTab(ws.id, workspacePath);
-          layoutStore.ensureImagesTab(ws.id, workspacePath);
-        }
-        starbaseLog.info('bootstrap: ensured star command tab');
-        traceStarbase('ensured star command tab');
-        const snapshotData =
-          await runtimeClient.invoke<Record<string, unknown>>('starbase.snapshot');
-        await handleStarbaseSnapshot(snapshotData);
-        starbaseLog.info('bootstrap: initial snapshot handled');
-        traceStarbase('initial snapshot handled');
-        setRuntimeStatus({ state: 'ready' });
-        starbaseLog.info('bootstrap: ready');
-        traceStarbase('bootstrap ready');
-      } catch (err) {
-        socketSupervisor?.stop().catch(() => {});
-        admiralProcess?.stop();
-        const message = err instanceof Error ? err.message : String(err);
-        starbaseLog.error('failed to initialize Star Command database', { error: message });
-        traceStarbase('bootstrap failed', {
-          message,
-          stack: err instanceof Error ? err.stack : undefined
-        });
-        setRuntimeStatus({ state: 'error', error: message });
-        throw err;
-      } finally {
-        starbaseBootstrapInFlight = null;
-        traceStarbase('bootstrap finished');
-      }
-    })();
-
-    starbaseReadyPromise = starbaseBootstrapInFlight;
-    return starbaseReadyPromise;
-  };
 
   registerIpcHandlers(
     ptyManager,
@@ -544,104 +220,12 @@ void app.whenReady().then(() => {
     cwdPoller,
     gitService,
     () => mainWindow,
-    () => ({
-      envReady,
-      cliReady,
-      starbaseReady: starbaseReadyPromise,
-      getRuntimeStatus: () => runtimeStatus,
-      retryStarbaseBootstrap: async () => {
-        try {
-          await bootstrapStarbase();
-        } catch {
-          // status is already updated for renderer consumption
-        }
-        return runtimeStatus;
-      }
-    }),
-    () => ({
-      runtime: runtimeClient,
-      admiralProcess,
-      admiralStateDetector
-    }),
     workspacePath,
     activityTracker,
     new WorktreeService()
   );
 
-  // Allow the renderer to explicitly request a fresh snapshot (e.g. after hard
-  // refresh when the initial did-finish-load push arrives before listeners mount).
-  ipcMain.handle(IPC_CHANNELS.STARBASE_SNAPSHOT_REQUEST, async () => {
-    if (runtimeStatus.state !== 'ready') return null;
-    return runtimeClient.invoke('starbase.snapshot');
-  });
-
-  // Wire socket command handler to the window
-  commandHandler.setWindowGetter(() => mainWindow);
-  runtimeClient.on('starbase.snapshot', (snapshot) => {
-    if (isRecord(snapshot)) {
-      void handleStarbaseSnapshot(snapshot);
-    }
-  });
-  runtimeClient.on('starbase.log-entry', (entry) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.STARBASE_LOG_ENTRY, entry);
-    }
-  });
-  runtimeClient.on('runtime.status', (status) => {
-    setRuntimeStatus(status);
-  });
-
-  const startAdmiralAndWire = async (): Promise<string | null> => {
-    const admiralProcessRef = admiralProcess;
-    if (!admiralProcessRef) return null;
-    try {
-      const paneId = await admiralProcessRef.start();
-      admiralStateDetector.setAdmiralPaneId(paneId);
-      activityTracker.trackPane(paneId);
-      ptyManager.onData(paneId, (data, paused) => {
-        notificationDetector.scan(paneId, data);
-        admiralStateDetector.scan(paneId, data);
-        activityTracker.onData(paneId);
-        const w = mainWindow;
-        if (w && !w.isDestroyed()) {
-          w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
-        }
-      });
-      cwdPoller.startPolling(paneId, ptyManager.getPid(paneId) ?? 0);
-      return paneId;
-    } catch (err) {
-      log.error('admiral failed to start', {
-        error: err instanceof Error ? err.message : String(err)
-      });
-      return null;
-    }
-  };
-
-  ipcMain.handle(IPC_CHANNELS.ADMIRAL_ENSURE_STARTED, async () => {
-    await Promise.all([envReady, cliReady]);
-    await bootstrapStarbase();
-    const admiralProcessRef = admiralProcess;
-    if (!admiralProcessRef) return null;
-    if (admiralProcessRef.paneId) return admiralProcessRef.paneId;
-    if (admiralProcessRef.status === 'starting') return null;
-    return startAdmiralAndWire();
-  });
-
-  void bootstrapStarbase().catch(() => {
-    // Initial bootstrap failures are surfaced through runtime status for the renderer.
-  });
-
   imageService.resumeInterrupted();
-
-  // Forward admiral state detail changes to renderer
-  eventBus.on('admiral-state-change', (event) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, {
-        state: event.state,
-        statusText: event.statusText
-      });
-    }
-  });
 
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
@@ -916,14 +500,6 @@ void app.whenReady().then(() => {
 function shutdownAll(): void {
   ptyManager.killAll();
   cwdPoller.stopAll();
-  socketSupervisor?.stop().catch((err: unknown) =>
-    log.error('socket-supervisor stop error', {
-      error: err instanceof Error ? err.message : String(err)
-    })
-  );
-  admiralProcess?.stop();
-  admiralStateDetector.dispose();
-  runtimeClient.stop();
   imageService.shutdown();
 }
 
