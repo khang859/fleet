@@ -11,3 +11,4 @@ reference/*
 sprites-raw
 sprites-staging
 .worktrees/
+hooks/bin/

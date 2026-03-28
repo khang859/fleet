@@ -1,7 +1,14 @@
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, chmodSync, unlinkSync } from 'fs';
+import {
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  chmodSync,
+  unlinkSync,
+} from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { execFileSync } from 'child_process';
 import { createLogger } from '../logger';
 
 const log = createLogger('copilot:hooks');
@@ -9,24 +16,28 @@ const log = createLogger('copilot:hooks');
 const CLAUDE_DIR = join(homedir(), '.claude');
 const HOOKS_DIR = join(CLAUDE_DIR, 'hooks');
 const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json');
-const HOOK_SCRIPT_NAME = 'fleet-copilot.py';
-const HOOK_DEST = join(HOOKS_DIR, HOOK_SCRIPT_NAME);
 
-function detectPython(): string {
-  for (const bin of ['python3', 'python']) {
-    try {
-      execFileSync('which', [bin], { encoding: 'utf-8' });
-      return bin;
-    } catch {
-      // not found
-    }
+// Old Python script name — used for cleanup during migration
+const LEGACY_SCRIPT_NAME = 'fleet-copilot.py';
+
+function getHookBinaryName(): string {
+  const platform = process.platform === 'win32' ? 'windows' : process.platform;
+  let arch: string;
+  switch (process.arch) {
+    case 'arm64':
+      arch = 'arm64';
+      break;
+    case 'x64':
+    default:
+      arch = 'amd64';
+      break;
   }
-  return 'python3';
+  const name = `fleet-copilot-${platform}-${arch}`;
+  return platform === 'windows' ? `${name}.exe` : name;
 }
 
-function makeHookCommand(python: string): string {
-  return `${python} ${HOOK_DEST}`;
-}
+const HOOK_BINARY_NAME = getHookBinaryName();
+const HOOK_DEST = join(HOOKS_DIR, HOOK_BINARY_NAME);
 
 type HookEntry = {
   matcher?: string;
@@ -64,27 +75,70 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
 
 function hasFleetHook(entries: HookEntry[]): boolean {
   return entries.some((entry) =>
-    entry.hooks.some((h) => h.command.includes(HOOK_SCRIPT_NAME))
+    entry.hooks.some(
+      (h) => h.command.includes(HOOK_BINARY_NAME) || h.command.includes(LEGACY_SCRIPT_NAME)
+    )
   );
 }
 
-export function getHookScriptSourcePath(): string {
-  const devPath = join(process.cwd(), 'hooks', HOOK_SCRIPT_NAME);
+export function getHookBinarySourcePath(): string {
+  // Dev: hooks/bin/<binary>
+  const devPath = join(process.cwd(), 'hooks', 'bin', HOOK_BINARY_NAME);
   if (existsSync(devPath)) return devPath;
 
-  const resourcesPath = join(process.resourcesPath ?? '', 'hooks', HOOK_SCRIPT_NAME);
+  // Production: resources/hooks/<binary>
+  const resourcesPath = join(process.resourcesPath ?? '', 'hooks', HOOK_BINARY_NAME);
   if (existsSync(resourcesPath)) return resourcesPath;
 
   return devPath; // fallback
 }
 
+function removeLegacyHooks(): void {
+  // Remove old Python script
+  const legacyDest = join(HOOKS_DIR, LEGACY_SCRIPT_NAME);
+  if (existsSync(legacyDest)) {
+    try {
+      unlinkSync(legacyDest);
+      log.info('removed legacy Python hook script');
+    } catch {
+      log.warn('failed to remove legacy hook script');
+    }
+  }
+
+  // Remove old Python hook entries from settings.json
+  if (!existsSync(SETTINGS_PATH)) return;
+  try {
+    const settings: ClaudeSettings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    const hooks = settings.hooks ?? {};
+    let changed = false;
+
+    for (const eventName of Object.keys(hooks)) {
+      const before = hooks[eventName]?.length ?? 0;
+      hooks[eventName] = (hooks[eventName] ?? []).filter(
+        (entry) => !entry.hooks.some((h) => h.command.includes(LEGACY_SCRIPT_NAME))
+      );
+      if ((hooks[eventName]?.length ?? 0) < before) changed = true;
+      if (hooks[eventName]?.length === 0) {
+        delete hooks[eventName];
+      }
+    }
+
+    if (changed) {
+      settings.hooks = hooks;
+      writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+      log.info('removed legacy Python hook entries from settings.json');
+    }
+  } catch {
+    log.warn('failed to clean legacy hook entries');
+  }
+}
+
 export function syncScript(): void {
   if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
 
-  const source = getHookScriptSourcePath();
+  const source = getHookBinarySourcePath();
   if (!existsSync(source)) return;
 
-  // Skip if already up to date
   if (existsSync(HOOK_DEST)) {
     const srcContent = readFileSync(source);
     const destContent = readFileSync(HOOK_DEST);
@@ -93,7 +147,7 @@ export function syncScript(): void {
 
   copyFileSync(source, HOOK_DEST);
   chmodSync(HOOK_DEST, 0o755);
-  log.info('hook script synced', { dest: HOOK_DEST });
+  log.info('hook binary synced', { dest: HOOK_DEST });
 }
 
 export function isInstalled(): boolean {
@@ -112,16 +166,19 @@ export function isInstalled(): boolean {
 export function install(): void {
   log.info('installing hooks');
 
+  // Clean up legacy Python hooks first
+  removeLegacyHooks();
+
   if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
 
-  const source = getHookScriptSourcePath();
+  const source = getHookBinarySourcePath();
   if (!existsSync(source)) {
-    log.error('hook script source not found', { source });
-    throw new Error(`Hook script not found: ${source}`);
+    log.error('hook binary source not found', { source });
+    throw new Error(`Hook binary not found: ${source}`);
   }
   copyFileSync(source, HOOK_DEST);
   chmodSync(HOOK_DEST, 0o755);
-  log.info('hook script installed', { dest: HOOK_DEST });
+  log.info('hook binary installed', { dest: HOOK_DEST });
 
   let settings: ClaudeSettings = {};
   if (existsSync(SETTINGS_PATH)) {
@@ -132,8 +189,7 @@ export function install(): void {
     }
   }
 
-  const python = detectPython();
-  const command = makeHookCommand(python);
+  const command = HOOK_DEST;
   const newEntries = buildHookEntries(command);
 
   const existingHooks = settings.hooks ?? {};
@@ -157,7 +213,17 @@ export function uninstall(): void {
     try {
       unlinkSync(HOOK_DEST);
     } catch {
-      log.warn('failed to remove hook script');
+      log.warn('failed to remove hook binary');
+    }
+  }
+
+  // Also clean up legacy Python script if present
+  const legacyDest = join(HOOKS_DIR, LEGACY_SCRIPT_NAME);
+  if (existsSync(legacyDest)) {
+    try {
+      unlinkSync(legacyDest);
+    } catch {
+      // ignore
     }
   }
 
@@ -169,7 +235,10 @@ export function uninstall(): void {
 
     for (const eventName of Object.keys(hooks)) {
       hooks[eventName] = (hooks[eventName] ?? []).filter(
-        (entry) => !entry.hooks.some((h) => h.command.includes(HOOK_SCRIPT_NAME))
+        (entry) =>
+          !entry.hooks.some(
+            (h) => h.command.includes(HOOK_BINARY_NAME) || h.command.includes(LEGACY_SCRIPT_NAME)
+          )
       );
       if (hooks[eventName].length === 0) {
         delete hooks[eventName];

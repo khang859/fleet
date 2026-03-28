@@ -13,7 +13,7 @@ files:
   - '!reference/**'
   - '!docs/**'
 extraResources:
-  - from: hooks/
+  - from: hooks/bin/
     to: hooks/
 asarUnpack:
   - resources/**
