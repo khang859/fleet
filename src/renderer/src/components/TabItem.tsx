@@ -55,7 +55,7 @@ const BADGE_CONFIG: Record<
   permission: { color: 'bg-amber-400', size: 'w-2.5 h-2.5', animate: 'animate-pulse', label: '?' },
   error: { color: 'bg-red-400', size: 'w-2.5 h-2.5', animate: '', label: '!' },
   info: { color: 'bg-blue-400', size: 'w-2 h-2', animate: '', label: '' },
-  subtle: { color: 'bg-neutral-500', size: 'w-1.5 h-1.5', animate: '', label: '' }
+  subtle: { color: 'bg-green-500', size: 'w-1.5 h-1.5', animate: '', label: '' }
 };
 
 function formatFreshness(lastOutputAt: number, state: string): string | null {
