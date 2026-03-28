@@ -20,7 +20,7 @@ import admiralThinking from '../assets/admiral-thinking.png';
 import admiralAlert from '../assets/admiral-alert.png';
 import admiralStandby from '../assets/admiral-standby.png';
 import { serializePane } from '../hooks/use-terminal';
-import { injectLiveCwd } from '../lib/workspace-utils';
+import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { Avatar } from './star-command/Avatar';
 import { getFileSave } from '../lib/file-save-registry';
@@ -593,10 +593,14 @@ export function Sidebar({
         collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
-          .map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
+          .map((tab) => {
+            const liveCwd = getFirstPaneLiveCwd(tab.splitRoot);
+            return {
+              ...tab,
+              cwd: liveCwd ?? tab.cwd,
+              splitRoot: injectLiveCwd(tab.splitRoot),
+            };
+          })
       }
     });
 
@@ -641,10 +645,14 @@ export function Sidebar({
         collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
-          .map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
+          .map((tab) => {
+            const liveCwd = getFirstPaneLiveCwd(tab.splitRoot);
+            return {
+              ...tab,
+              cwd: liveCwd ?? tab.cwd,
+              splitRoot: injectLiveCwd(tab.splitRoot),
+            };
+          })
       };
       void window.fleet.layout
         .save({
@@ -690,10 +698,14 @@ export function Sidebar({
         collapsedGroups: Array.from(state.collapsedGroups),
         tabs: state.workspace.tabs
           .filter((tab) => tab.type !== 'settings')
-          .map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
+          .map((tab) => {
+            const liveCwd = getFirstPaneLiveCwd(tab.splitRoot);
+            return {
+              ...tab,
+              cwd: liveCwd ?? tab.cwd,
+              splitRoot: injectLiveCwd(tab.splitRoot),
+            };
+          })
       }
     });
 

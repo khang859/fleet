@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
 import { useCwdStore } from './cwd-store';
-import { injectLiveCwd } from '../lib/workspace-utils';
+import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 
 const logTabs = createLogger('sidebar:tabs');
@@ -647,10 +647,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         activeTabId: state.activeTabId ?? undefined,
         activePaneId: state.activePaneId ?? undefined,
-        tabs: state.workspace.tabs.map((tab) => ({
-          ...tab,
-          splitRoot: injectLiveCwd(tab.splitRoot)
-        }))
+        tabs: state.workspace.tabs.map((tab) => {
+          const liveCwd = getFirstPaneLiveCwd(tab.splitRoot);
+          return {
+            ...tab,
+            cwd: liveCwd ?? tab.cwd,
+            splitRoot: injectLiveCwd(tab.splitRoot),
+          };
+        })
       });
       newBackground.delete(migrated.id);
 
