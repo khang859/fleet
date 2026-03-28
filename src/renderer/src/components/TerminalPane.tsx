@@ -117,6 +117,12 @@ export function TerminalPane({
         onClipboardHistory={() =>
           document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
         }
+        onInjectSkills={() => {
+          window.fleet.pty.input({
+            paneId,
+            data: 'Read ~/.fleet/skills/fleet.md to learn the Fleet terminal commands available to you.\n'
+          });
+        }}
       />
       <SearchBar
         isOpen={searchOpen}
