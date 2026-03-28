@@ -175,6 +175,21 @@ export type CopilotPosition = {
   displayId: number;
 };
 
+// ── Copilot Chat Messages ────────────────────────────────────────────────────
+
+export type CopilotMessageBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; inputPreview: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'interrupted' };
+
+export type CopilotChatMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  timestamp: string;
+  blocks: CopilotMessageBlock[];
+};
+
 export type UpdateStatus =
   | { state: 'idle' }
   | { state: 'checking' }

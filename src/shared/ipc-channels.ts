@@ -66,4 +66,7 @@ export const IPC_CHANNELS = {
   COPILOT_POSITION_SET: 'copilot:position:set',
   COPILOT_TOGGLE_EXPANDED: 'copilot:toggle-expanded',
   COPILOT_EXPANDED_CHANGED: 'copilot:expanded-changed',
+  COPILOT_CHAT_HISTORY: 'copilot:chat-history',
+  COPILOT_CHAT_UPDATED: 'copilot:chat-updated',
+  COPILOT_SEND_MESSAGE: 'copilot:send-message',
 } as const;
