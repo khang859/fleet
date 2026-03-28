@@ -10,6 +10,7 @@ import { createLogger } from '../logger';
 const logDnd = createLogger('sidebar:dnd');
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
+import { useCwdStore } from '../store/cwd-store';
 
 import { useStarCommandStore } from '../store/star-command-store';
 import { useImageStore } from '../store/image-store';
@@ -462,6 +463,8 @@ export function Sidebar({
   );
 
   // Track which tabs are in git repos (for showing "Create Worktree" in context menu)
+  // Uses live CWD so the option appears even if the user cd'd into a repo after opening the tab
+  const liveCwds = useCwdStore((s) => s.cwds);
   const [gitRepoTabs, setGitRepoTabs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -469,8 +472,10 @@ export function Sidebar({
       const newSet = new Set<string>();
       for (const tab of workspace.tabs) {
         if (tab.type && tab.type !== 'terminal') continue;
+        const firstPaneId = collectPaneIds(tab.splitRoot)[0];
+        const cwd = (firstPaneId ? liveCwds.get(firstPaneId) : undefined) ?? tab.cwd;
         try {
-          const result = await window.fleet.git.isRepo(tab.cwd);
+          const result = await window.fleet.git.isRepo(cwd);
           if (result.isRepo) newSet.add(tab.id);
         } catch {
           // ignore
@@ -479,7 +484,7 @@ export function Sidebar({
       setGitRepoTabs(newSet);
     };
     void checkGitRepos();
-  }, [workspace.tabs.length]);
+  }, [workspace.tabs.length, liveCwds]);
 
   // Clear drag state on drag end (even if drop didn't fire)
   useEffect(() => {
@@ -1086,7 +1091,11 @@ export function Sidebar({
                   isWorktreeChild={tab.groupRole === 'worktree'}
                   onCreateWorktree={
                     !isFile && gitRepoTabs.has(tab.id) && tab.groupRole !== 'worktree'
-                      ? () => void handleCreateWorktree(tab.id, tab.cwd)
+                      ? () => {
+                          const firstPane = collectPaneIds(tab.splitRoot)[0];
+                          const liveCwd = firstPane ? liveCwds.get(firstPane) : undefined;
+                          void handleCreateWorktree(tab.id, liveCwd ?? tab.cwd);
+                        }
                       : undefined
                   }
                   onClick={() => {
