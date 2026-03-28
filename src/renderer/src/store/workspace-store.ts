@@ -344,11 +344,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Reuse existing groupId if tab is already a parent, otherwise assign new one
       const effectiveGroupId = sourceTab.groupId ?? newGroupId;
 
+      // Derive group label from the source tab's folder name
+      const groupLabel = sourceTab.groupLabel ?? cwdBasename(sourceTab.cwd);
+
       const tabs = state.workspace.tabs.map((t) => {
         if (t.id !== tabId) return t;
         return t.groupId
           ? t
-          : { ...t, groupId: effectiveGroupId, groupRole: 'parent' as const };
+          : { ...t, groupId: effectiveGroupId, groupRole: 'parent' as const, groupLabel };
       });
 
       const worktreeTab: Tab = {
@@ -359,6 +362,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         splitRoot: leaf,
         groupId: effectiveGroupId,
         groupRole: 'worktree',
+        groupLabel,
         worktreeBranch: branchName,
         worktreePath,
       };
