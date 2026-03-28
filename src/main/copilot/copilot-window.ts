@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen } from 'electron';
+import { BrowserWindow, screen } from 'electron';
 import { existsSync, writeFileSync, mkdirSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { join } from 'path';
@@ -11,6 +11,7 @@ const log = createLogger('copilot:window');
 const SPRITE_SIZE = 48;
 const EXPANDED_WIDTH = 350;
 const EXPANDED_HEIGHT = 500;
+const TOGGLE_DEBOUNCE_MS = 800;
 
 type CopilotWindowStore = {
   position: CopilotPosition | null;
@@ -35,7 +36,7 @@ function getDevBootstrapPath(viteUrl: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fleet Copilot</title>
   <style>
-    html, body, #root { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+    html, body, #root { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
   </style>
   <script type="module" src="${viteUrl}/@vite/client"></script>
   <script type="module">
@@ -58,6 +59,8 @@ function getDevBootstrapPath(viteUrl: string): string {
 export class CopilotWindow {
   private win: BrowserWindow | null = null;
   private positionStore: Store<CopilotWindowStore>;
+  private expanded = false;
+  private lastToggleTime = 0;
 
   constructor() {
     this.positionStore = new Store<CopilotWindowStore>({
@@ -128,22 +131,7 @@ export class CopilotWindow {
 
     this.win.webContents.on('did-finish-load', () => {
       log.info('copilot renderer loaded');
-      if (!app.isPackaged) {
-        this.win?.webContents
-          .executeJavaScript(`document.documentElement.outerHTML.substring(0, 1000)`)
-          .then((html: unknown) => log.info('copilot DOM', { html: String(html) }))
-          .catch(() => {});
-      }
     });
-
-    this.win.webContents.on('console-message', (_event) => {
-      // Forward copilot renderer console to main process for debugging
-      if (_event.message && !_event.message.startsWith('%c')) {
-        log.debug('copilot console', { message: _event.message.substring(0, 200) });
-      }
-    });
-
-    if (!app.isPackaged) this.win.webContents.openDevTools({ mode: 'detach' });
 
     this.win.on('closed', () => {
       this.win = null;
@@ -171,19 +159,70 @@ export class CopilotWindow {
     return this.positionStore.get('position');
   }
 
+  /**
+   * Toggle expanded state. Main process owns this state and debounces
+   * to prevent phantom click events caused by setBounds() from
+   * triggering rapid re-toggles in the renderer.
+   * Returns the new expanded state, or null if debounced.
+   */
+  toggleExpanded(): boolean | null {
+    const now = Date.now();
+    if (now - this.lastToggleTime < TOGGLE_DEBOUNCE_MS) {
+      log.info('toggleExpanded DEBOUNCED', { elapsed: now - this.lastToggleTime });
+      return null;
+    }
+    this.lastToggleTime = now;
+    this.expanded = !this.expanded;
+    log.info('toggleExpanded', { expanded: this.expanded });
+    this.applyExpanded();
+    return this.expanded;
+  }
+
   setExpanded(expanded: boolean): void {
+    if (this.expanded === expanded) return;
+    const now = Date.now();
+    if (now - this.lastToggleTime < TOGGLE_DEBOUNCE_MS) {
+      log.info('setExpanded DEBOUNCED', { expanded, elapsed: now - this.lastToggleTime });
+      return;
+    }
+    this.lastToggleTime = now;
+    this.expanded = expanded;
+    log.info('setExpanded', { expanded });
+    this.applyExpanded();
+  }
+
+  isExpanded(): boolean {
+    return this.expanded;
+  }
+
+  private applyExpanded(): void {
     if (!this.win || this.win.isDestroyed()) return;
-    const [curX, curY] = this.win.getPosition();
-    if (expanded) {
-      this.win.setPosition(curX - (EXPANDED_WIDTH - SPRITE_SIZE), curY);
-      this.win.setContentSize(EXPANDED_WIDTH, EXPANDED_HEIGHT);
+    const bounds = this.win.getBounds();
+
+    if (this.expanded) {
+      const newBounds = {
+        x: bounds.x - (EXPANDED_WIDTH - bounds.width),
+        y: bounds.y,
+        width: EXPANDED_WIDTH,
+        height: EXPANDED_HEIGHT,
+      };
+      log.info('expanding to', newBounds);
+      this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'pop-up-menu');
-      this.win.focus();
     } else {
-      this.win.setPosition(curX + (EXPANDED_WIDTH - SPRITE_SIZE), curY);
-      this.win.setContentSize(SPRITE_SIZE, SPRITE_SIZE);
+      const newBounds = {
+        x: bounds.x + (bounds.width - SPRITE_SIZE),
+        y: bounds.y,
+        width: SPRITE_SIZE,
+        height: SPRITE_SIZE,
+      };
+      log.info('collapsing to', newBounds);
+      this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'floating');
     }
+
+    // Notify renderer of authoritative state
+    this.win.webContents.send('copilot:expanded-changed', this.expanded);
   }
 
   send(channel: string, ...args: unknown[]): void {

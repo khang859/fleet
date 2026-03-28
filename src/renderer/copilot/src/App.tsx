@@ -14,39 +14,30 @@ export function App(): React.JSX.Element {
   const setExpanded = useCopilotStore((s) => s.setExpanded);
 
   useEffect(() => {
-    if (!window.copilot) {
-      console.error('[copilot] window.copilot is undefined — preload failed');
-      return;
-    }
-    console.log('[copilot] initializing, fetching sessions...');
-    window.copilot.getSessions().then((sessions) => {
-      console.log('[copilot] got sessions:', sessions.length);
-      setSessions(sessions);
-    }).catch((err) => {
-      console.error('[copilot] getSessions failed:', err);
-    });
-    loadSettings().catch((err) => {
-      console.error('[copilot] loadSettings failed:', err);
-    });
-    const cleanup = window.copilot.onSessions((sessions) => {
-      console.log('[copilot] sessions update:', sessions.length);
-      setSessions(sessions);
-    });
-    return cleanup;
-  }, [setSessions, loadSettings]);
+    if (!window.copilot) return;
+    window.copilot.getSessions().then(setSessions).catch(() => {});
+    loadSettings().catch(() => {});
+    const cleanupSessions = window.copilot.onSessions(setSessions);
+    const cleanupExpanded = window.copilot.onExpandedChanged(setExpanded);
+    return () => {
+      cleanupSessions();
+      cleanupExpanded();
+    };
+  }, [setSessions, loadSettings, setExpanded]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
       if (e.key === 'Escape' && expanded) {
-        setExpanded(false);
+        // Escape is an explicit user action, send directly to main
+        window.copilot.setExpanded(false);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [expanded, setExpanded]);
+  }, [expanded]);
 
   return (
-    <div className="relative">
+    <div className="relative w-full h-full">
       <div className="flex justify-end">
         <SpaceshipSprite />
       </div>

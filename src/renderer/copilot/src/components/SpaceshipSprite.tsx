@@ -20,14 +20,12 @@ export function SpaceshipSprite(): React.JSX.Element {
   const spriteState = useSpriteState();
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
 
-  const isDragging = useRef(false);
+  const wasDragged = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
   const windowStartPos = useRef({ x: 0, y: 0 });
-  const hasMoved = useRef(false);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    hasMoved.current = false;
+    wasDragged.current = false;
     dragStartPos.current = { x: e.screenX, y: e.screenY };
 
     window.copilot.getPosition().then((pos) => {
@@ -37,11 +35,10 @@ export function SpaceshipSprite(): React.JSX.Element {
     });
 
     const handleMouseMove = (ev: MouseEvent): void => {
-      if (!isDragging.current) return;
       const dx = ev.screenX - dragStartPos.current.x;
       const dy = ev.screenY - dragStartPos.current.y;
       if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-        hasMoved.current = true;
+        wasDragged.current = true;
         window.copilot.setPosition(
           windowStartPos.current.x + dx,
           windowStartPos.current.y + dy
@@ -50,16 +47,17 @@ export function SpaceshipSprite(): React.JSX.Element {
     };
 
     const handleMouseUp = (): void => {
-      isDragging.current = false;
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      if (!hasMoved.current) {
-        toggleExpanded();
-      }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
+  }, []);
+
+  const handleClick = useCallback(() => {
+    if (wasDragged.current) return;
+    toggleExpanded();
   }, [toggleExpanded]);
 
   const animationClass = {
@@ -73,6 +71,7 @@ export function SpaceshipSprite(): React.JSX.Element {
     <div
       className={`cursor-pointer select-none ${animationClass}`}
       onMouseDown={handleMouseDown}
+      onClick={handleClick}
       style={{
         width: SPRITE_SIZE,
         height: SPRITE_SIZE,

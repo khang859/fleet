@@ -52,6 +52,17 @@ const copilotApi = {
 
   setExpanded: (expanded: boolean): void =>
     ipcRenderer.send('copilot:set-expanded', expanded),
+
+  toggleExpanded: (): void =>
+    ipcRenderer.send('copilot:toggle-expanded'),
+
+  onExpandedChanged: (cb: (expanded: boolean) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, expanded: boolean): void => {
+      cb(expanded);
+    };
+    ipcRenderer.on('copilot:expanded-changed', handler);
+    return () => ipcRenderer.removeListener('copilot:expanded-changed', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);

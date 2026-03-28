@@ -68,6 +68,10 @@ export function registerCopilotIpcHandlers(
     }
   );
 
+  ipcMain.on('copilot:toggle-expanded', () => {
+    copilotWindow.toggleExpanded();
+  });
+
   ipcMain.on('copilot:set-expanded', (_event, expanded: boolean) => {
     copilotWindow.setExpanded(expanded);
   });

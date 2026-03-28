@@ -49,16 +49,13 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   hookInstalled: false,
 
   setExpanded: (expanded) => {
-    log.debug('setExpanded', { expanded });
-    set({ expanded });
-    window.copilot.setExpanded(expanded);
+    log.info('setExpanded (from main)', { expanded });
+    set({ expanded, view: expanded ? get().view : 'sessions' });
   },
 
   toggleExpanded: () => {
-    const next = !get().expanded;
-    log.debug('toggleExpanded', { next });
-    set({ expanded: next, view: next ? get().view : 'sessions' });
-    window.copilot.setExpanded(next);
+    log.info('toggleExpanded → sending IPC to main');
+    window.copilot.toggleExpanded();
   },
 
   setView: (view) => set({ view }),
