@@ -4,6 +4,7 @@ import type {
   CopilotSession,
   CopilotSettings,
   CopilotPosition,
+  CopilotChatMessage,
 } from '../shared/types';
 
 const copilotApi = {
@@ -63,6 +64,25 @@ const copilotApi = {
     ipcRenderer.on('copilot:expanded-changed', handler);
     return () => ipcRenderer.removeListener('copilot:expanded-changed', handler);
   },
+
+  getChatHistory: (sessionId: string, cwd: string): Promise<CopilotChatMessage[]> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_CHAT_HISTORY, { sessionId, cwd }),
+
+  onChatUpdated: (
+    cb: (data: { sessionId: string; messages: CopilotChatMessage[] }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: { sessionId: string; messages: CopilotChatMessage[] }
+    ): void => {
+      cb(data);
+    };
+    ipcRenderer.on(IPC_CHANNELS.COPILOT_CHAT_UPDATED, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_CHAT_UPDATED, handler);
+  },
+
+  sendMessage: (sessionId: string, message: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);
