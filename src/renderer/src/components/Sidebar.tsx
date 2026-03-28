@@ -483,6 +483,7 @@ export function Sidebar({
   const [dropTarget, setDropTarget] = useState<{
     index: number;
     position: 'above' | 'below';
+    isGroupHeader: boolean;
   } | null>(null);
 
   // Map tab ID to its real index in workspace.tabs (not the filtered subset index)
@@ -537,7 +538,7 @@ export function Sidebar({
       const rect = target.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const position = e.clientY < midY ? 'above' : 'below';
-      setDropTarget({ index, position });
+      setDropTarget({ index, position, isGroupHeader });
     },
     [dragIndex, dragType, workspace.tabs]
   );
@@ -1148,7 +1149,11 @@ export function Sidebar({
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
-                  isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
+                  isDragOver={
+                    dropTarget?.index === idx && !dropTarget.isGroupHeader
+                      ? dropTarget.position
+                      : null
+                  }
                   onClick={() => {
                     setActiveTab(tab.id);
                     for (const paneId of paneIds) {
@@ -1205,7 +1210,11 @@ export function Sidebar({
                     onDragStart={() => handleDragStart(firstTabIdx, 'group')}
                     onDragOver={(e) => handleDragOver(e, firstTabIdx, true)}
                     onDrop={() => handleDrop()}
-                    isDragOver={dropTarget?.index === firstTabIdx ? dropTarget.position : null}
+                    isDragOver={
+                      dropTarget?.index === firstTabIdx && dropTarget.isGroupHeader
+                        ? dropTarget.position
+                        : null
+                    }
                   />
                 );
               }
@@ -1261,7 +1270,11 @@ export function Sidebar({
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDrop={handleDrop}
-                  isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
+                  isDragOver={
+                    dropTarget?.index === idx && !dropTarget.isGroupHeader
+                      ? dropTarget.position
+                      : null
+                  }
                   indentLevel={tab.groupId ? 1 : 0}
                   worktreeBranch={tab.worktreeBranch}
                   isWorktreeChild={tab.groupRole === 'worktree'}
