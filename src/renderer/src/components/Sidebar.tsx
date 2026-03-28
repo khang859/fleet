@@ -75,7 +75,7 @@ function GroupHeader({
 }): React.JSX.Element {
   return (
     <div
-      className="group/header flex items-center gap-1.5 px-2 py-1 cursor-pointer rounded-md text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
+      className="group/header flex items-center gap-1.5 px-2 py-2 cursor-pointer rounded-md text-sm text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
       onClick={onToggle}
       draggable
       onDragStart={(e) => {
@@ -110,7 +110,7 @@ function GroupHeader({
           <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
         )}
         <button
-          className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded hover:bg-neutral-700 transition-all"
+          className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
           onClick={(e) => {
             e.stopPropagation();
             onAddWorktree();
