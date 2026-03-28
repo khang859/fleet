@@ -18,6 +18,10 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
+        input: {
+          index: 'src/preload/index.ts',
+          copilot: 'src/preload/copilot.ts',
+        },
         output: { format: 'cjs' }
       }
     }
