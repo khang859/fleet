@@ -157,7 +157,7 @@ function GroupHeader({
               <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
             )}
             <button
-              className="opacity-60 group-hover/header:opacity-100 text-neutral-400 hover:text-white w-5 h-5 flex items-center justify-center text-sm rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
+              className="opacity-60 group-hover/header:opacity-100 text-neutral-400 hover:text-white w-5 h-5 flex items-center justify-center text-sm rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWorktree();
