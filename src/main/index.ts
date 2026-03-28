@@ -8,6 +8,7 @@ import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
+import { ActivityTracker } from './activity-tracker';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
@@ -46,6 +47,11 @@ const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
 const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
+const activityTracker = new ActivityTracker(eventBus, {
+  silenceThresholdMs: 5000,
+  processPollingIntervalMs: 2000,
+  getProcessName: (paneId) => ptyManager.getProcessName(paneId),
+});
 const commandHandler = new FleetCommandHandler(
   ptyManager,
   layoutStore,
@@ -588,9 +594,11 @@ void app.whenReady().then(() => {
     try {
       const paneId = await admiralProcessRef.start();
       admiralStateDetector.setAdmiralPaneId(paneId);
+      activityTracker.trackPane(paneId);
       ptyManager.onData(paneId, (data, paused) => {
         notificationDetector.scan(paneId, data);
         admiralStateDetector.scan(paneId, data);
+        activityTracker.onData(paneId);
         const w = mainWindow;
         if (w && !w.isDestroyed()) {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, { paneId, data, paused });
@@ -632,9 +640,10 @@ void app.whenReady().then(() => {
     }
   });
 
-  // Clean up CWD polling when panes close
+  // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
     cwdPoller.stopPolling(event.paneId);
+    activityTracker.untrackPane(event.paneId);
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync
@@ -660,6 +669,10 @@ void app.whenReady().then(() => {
         timestamp: event.timestamp
       });
     }
+    // Bridge permission notifications to activity tracker
+    if (event.level === 'permission') {
+      activityTracker.onNeedsMe(event.paneId);
+    }
   });
 
   // Emit notification on PTY exit
@@ -671,6 +684,20 @@ void app.whenReady().then(() => {
       level,
       timestamp: Date.now()
     });
+    activityTracker.onExit(event.paneId, event.exitCode);
+  });
+
+  // Forward activity state changes to renderer via IPC
+  eventBus.on('activity-state-change', (event) => {
+    const w = mainWindow;
+    if (w && !w.isDestroyed()) {
+      w.webContents.send(IPC_CHANNELS.ACTIVITY_STATE, {
+        paneId: event.paneId,
+        state: event.state,
+        lastOutputAt: event.lastOutputAt,
+        timestamp: event.timestamp,
+      });
+    }
   });
 
   // OS notifications — coalesced to prevent burst fatigue (Baymard/NNG)
