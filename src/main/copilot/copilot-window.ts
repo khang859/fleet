@@ -1,4 +1,4 @@
-import { BrowserWindow, screen } from 'electron';
+import { app, BrowserWindow, screen } from 'electron';
 import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
@@ -85,7 +85,19 @@ export class CopilotWindow {
 
     this.win.webContents.on('did-finish-load', () => {
       log.info('copilot renderer loaded successfully');
+      // In dev, dump the HTML for debugging
+      if (!app.isPackaged) {
+        this.win?.webContents
+          .executeJavaScript(`document.documentElement.outerHTML.substring(0, 500)`)
+          .then((html: unknown) => log.info('copilot DOM', { html: String(html) }))
+          .catch(() => {});
+      }
     });
+
+    // Open devtools in dev mode for debugging
+    if (!app.isPackaged) {
+      this.win.webContents.openDevTools({ mode: 'detach' });
+    }
 
     this.win.on('closed', () => {
       this.win = null;

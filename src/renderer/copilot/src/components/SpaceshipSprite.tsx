@@ -79,9 +79,12 @@ export function SpaceshipSprite(): React.JSX.Element {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        background: 'rgba(23, 23, 23, 0.9)',
+        borderRadius: '12px',
+        border: '1px solid rgba(64, 64, 64, 0.8)',
       }}
     >
-      <span style={{ fontSize: 32, lineHeight: 1 }}>🚀</span>
+      <span style={{ fontSize: 28, lineHeight: 1 }}>🚀</span>
     </div>
   );
 }
