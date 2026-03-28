@@ -37,7 +37,8 @@ import type {
   FileSearchResponse,
   RecentImagesResponse,
   ClipboardHistoryResponse,
-  LogEntry
+  LogEntry,
+  ActivityStatePayload
 } from '../shared/ipc-api';
 import type {
   Workspace,
@@ -133,6 +134,10 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.NOTIFICATION, callback),
     paneFocused: (payload: PaneFocusedPayload): void =>
       ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload)
+  },
+  activity: {
+    onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback),
   },
   homeDir: getHomeDir(),
   platform: ((): HostPlatform => {
