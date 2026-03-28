@@ -1,10 +1,20 @@
-import { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
+import spriteSheet from '../assets/copilot-sprites';
 
-const SPRITE_SIZE = 48;
+const SPRITE_SIZE = 128;
 const DRAG_THRESHOLD = 4;
 
 type SpriteState = 'idle' | 'processing' | 'permission' | 'complete';
+
+// Frame indices in the sprite sheet (each frame is 48px wide)
+// Layout: idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)
+const SPRITE_ANIMATIONS: Record<SpriteState, { frames: number[]; fps: number }> = {
+  idle: { frames: [0, 1], fps: 2 },
+  processing: { frames: [2, 3, 4], fps: 4 },
+  permission: { frames: [5, 6], fps: 3 },
+  complete: { frames: [7, 8], fps: 2 },
+};
 
 function useSpriteState(): SpriteState {
   const sessions = useCopilotStore((s) => s.sessions);
@@ -16,8 +26,34 @@ function useSpriteState(): SpriteState {
   return 'idle';
 }
 
+function useSpriteAnimation(state: SpriteState): number {
+  const frameRef = useRef(0);
+  const timerRef = useRef(0);
+  const [, forceRender] = useState(0);
+  const prevState = useRef(state);
+
+  if (prevState.current !== state) {
+    prevState.current = state;
+    frameRef.current = 0;
+  }
+
+  useEffect(() => {
+    const anim = SPRITE_ANIMATIONS[state];
+    const interval = 1000 / anim.fps;
+    timerRef.current = window.setInterval(() => {
+      frameRef.current = (frameRef.current + 1) % anim.frames.length;
+      forceRender((n) => n + 1);
+    }, interval);
+    return () => window.clearInterval(timerRef.current);
+  }, [state]);
+
+  const anim = SPRITE_ANIMATIONS[state];
+  return anim.frames[frameRef.current % anim.frames.length];
+}
+
 export function SpaceshipSprite(): React.JSX.Element {
   const spriteState = useSpriteState();
+  const frameIndex = useSpriteAnimation(spriteState);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
 
   const wasDragged = useRef(false);
@@ -75,15 +111,12 @@ export function SpaceshipSprite(): React.JSX.Element {
       style={{
         width: SPRITE_SIZE,
         height: SPRITE_SIZE,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(23, 23, 23, 0.9)',
-        borderRadius: '12px',
-        border: '1px solid rgba(64, 64, 64, 0.8)',
+        backgroundImage: `url(${spriteSheet})`,
+        backgroundPosition: `-${frameIndex * SPRITE_SIZE}px 0`,
+        backgroundSize: `${SPRITE_SIZE * 9}px ${SPRITE_SIZE}px`,
+        backgroundRepeat: 'no-repeat',
+        imageRendering: 'pixelated',
       }}
-    >
-      <span style={{ fontSize: 28, lineHeight: 1 }}>🚀</span>
-    </div>
+    />
   );
 }

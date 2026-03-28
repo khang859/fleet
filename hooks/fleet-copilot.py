@@ -44,7 +44,7 @@ def get_tty():
     return None
 
 
-def send_event(state):
+def send_event(state, wait_for_response=False):
     """Send event to Fleet, return response if any"""
     try:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -52,7 +52,11 @@ def send_event(state):
         sock.connect(SOCKET_PATH)
         sock.sendall(json.dumps(state).encode())
 
-        if state.get("status") == "waiting_for_approval":
+        if wait_for_response:
+            # Half-close the write side so the server sees 'end' and can
+            # process the event, while we keep the read side open for the
+            # response.
+            sock.shutdown(socket.SHUT_WR)
             response = sock.recv(4096)
             sock.close()
             if response:
@@ -111,7 +115,13 @@ def main():
         state["tool"] = data.get("tool_name")
         state["tool_input"] = tool_input
 
-        response = send_event(state)
+        # AskUserQuestion is a user prompt, not a permission — just notify Fleet
+        # and let the user respond in the terminal.
+        if state["tool"] == "AskUserQuestion":
+            send_event(state)
+            sys.exit(0)
+
+        response = send_event(state, wait_for_response=True)
 
         if response:
             decision = response.get("decision", "ask")
