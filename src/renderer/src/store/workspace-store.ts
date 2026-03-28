@@ -87,6 +87,8 @@ type WorkspaceStore = {
 
   // Worktree group actions
   collapsedGroups: Set<string>;
+  worktreeCloseConfirm: { tabId: string; label: string } | null;
+  setWorktreeCloseConfirm: (confirm: { tabId: string; label: string } | null) => void;
   createWorktreeGroup: (tabId: string, worktreePath: string, branchName: string, repoPath: string) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
@@ -198,6 +200,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   lastClosedTab: null,
   isDirty: false,
   collapsedGroups: new Set(),
+  worktreeCloseConfirm: null,
+  setWorktreeCloseConfirm: (confirm) => {
+    set({ worktreeCloseConfirm: confirm });
+  },
 
   addTab: (label, cwd) => {
     const resolvedLabel = label || cwdBasename(cwd);
