@@ -168,7 +168,7 @@ export class SocketServer extends EventEmitter {
     }
   }
 
-  private async dispatch(command: string, args: Record<string, unknown>): Promise<unknown> {
+  private dispatch(command: string, args: Record<string, unknown>): unknown {
     switch (command) {
       case 'ping':
         return { pong: true, uptime: this.startTime ? (Date.now() - this.startTime) / 1000 : 0 };

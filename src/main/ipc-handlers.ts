@@ -68,7 +68,7 @@ export function registerIpcHandlers(
   });
 
   // PTY handlers
-  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
     log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create(req);

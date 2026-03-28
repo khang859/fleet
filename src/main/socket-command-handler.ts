@@ -24,7 +24,7 @@ export class FleetCommandHandler implements SocketCommandHandler {
     this.getWindow = getter;
   }
 
-  async handleCommand(cmd: SocketCommand): Promise<SocketResponse> {
+  handleCommand(cmd: SocketCommand): SocketResponse {
     switch (cmd.type) {
       case 'list-workspaces':
         return { ok: true, workspaces: this.layoutStore.list() };

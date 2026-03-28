@@ -28,5 +28,31 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   socketApi: {
     enabled: true,
     socketPath: ''
+  },
+  visualizer: {
+    panelMode: 'drawer' as const,
+    effects: {
+      nebulaClouds: true,
+      shootingStars: true,
+      twinklingStars: true,
+      distantPlanets: false,
+      auroraBands: false,
+      constellationLines: false,
+      coloredTrails: true,
+      formationFlying: false,
+      shipBadges: true,
+      enhancedIdle: true,
+      dayNightCycle: false,
+      spaceWeather: false,
+      asteroidField: false,
+      spaceStation: false,
+      ambientSound: false,
+      followCamera: false,
+      zoomEnabled: true,
+      bloomGlow: false,
+      starColorVariety: true,
+      depthOfField: false
+    },
+    soundVolume: 0.3
   }
 };

@@ -24,7 +24,6 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
-import { AppPreChecks } from './components/AppPreChecks';
 
 function MiniSidebarTooltip({
   label,
@@ -119,7 +118,6 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
-  const [showPreChecks, setShowPreChecks] = useState(true);
 
   // Load settings on startup
   useEffect(() => {
@@ -756,7 +754,6 @@ export function App(): React.JSX.Element {
         isOpen={clipboardHistoryOpen}
         onClose={() => setClipboardHistoryOpen(false)}
       />
-      {showPreChecks && <AppPreChecks onDismiss={() => setShowPreChecks(false)} />}
     </div>
   );
 }
