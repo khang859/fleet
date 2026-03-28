@@ -2,6 +2,7 @@ import { createLogger } from '../logger';
 import { CopilotSessionStore } from './session-store';
 import { CopilotSocketServer } from './socket-server';
 import { CopilotWindow } from './copilot-window';
+import { ConversationReader } from './conversation-reader';
 import { registerCopilotIpcHandlers } from './ipc-handlers';
 import * as hookInstaller from './hook-installer';
 import type { SettingsStore } from '../settings-store';
@@ -12,6 +13,7 @@ const log = createLogger('copilot');
 let sessionStore: CopilotSessionStore | null = null;
 let socketServer: CopilotSocketServer | null = null;
 let copilotWindow: CopilotWindow | null = null;
+let conversationReader: ConversationReader | null = null;
 let servicesRunning = false;
 let cachedSettingsStore: SettingsStore | null = null;
 
@@ -27,7 +29,8 @@ export async function initCopilot(settingsStore: SettingsStore): Promise<void> {
   sessionStore = new CopilotSessionStore();
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, onCopilotSettingsChanged);
+  conversationReader = new ConversationReader();
+  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, onCopilotSettingsChanged);
 
   const settings = settingsStore.get();
   log.info('copilot settings', { enabled: settings.copilot.enabled, autoStart: settings.copilot.autoStart });
@@ -65,8 +68,22 @@ async function startCopilotServices(): Promise<void> {
 
   log.info('starting copilot services');
 
+  conversationReader?.setOnChange((sessionId, messages) => {
+    copilotWindow?.send(IPC_CHANNELS.COPILOT_CHAT_UPDATED, { sessionId, messages });
+  });
+
   sessionStore.setOnChange(() => {
     copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore!.getSessions());
+
+    // Clean up watchers for ended sessions
+    if (conversationReader) {
+      const activeIds = new Set(sessionStore!.getSessions().map(s => s.sessionId));
+      for (const watchedId of conversationReader.getWatchedSessionIds()) {
+        if (!activeIds.has(watchedId)) {
+          conversationReader.unwatch(watchedId);
+        }
+      }
+    }
   });
 
   if (!hookInstaller.isInstalled()) {
@@ -101,6 +118,9 @@ async function stopCopilotServices(): Promise<void> {
   }
   if (copilotWindow) {
     copilotWindow.destroy();
+  }
+  if (conversationReader) {
+    conversationReader.dispose();
   }
   servicesRunning = false;
   log.info('copilot services stopped');

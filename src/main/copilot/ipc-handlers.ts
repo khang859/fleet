@@ -1,10 +1,12 @@
 import { ipcMain } from 'electron';
+import { openSync, writeSync, closeSync } from 'fs';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
 import type { CopilotSessionStore } from './session-store';
 import type { CopilotSocketServer } from './socket-server';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
+import type { ConversationReader } from './conversation-reader';
 import * as hookInstaller from './hook-installer';
 
 const log = createLogger('copilot:ipc');
@@ -14,6 +16,7 @@ export function registerCopilotIpcHandlers(
   socketServer: CopilotSocketServer,
   copilotWindow: CopilotWindow,
   settingsStore: SettingsStore,
+  conversationReader: ConversationReader,
   onSettingsChanged?: () => Promise<void>
 ): void {
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
@@ -75,6 +78,39 @@ export function registerCopilotIpcHandlers(
   ipcMain.on('copilot:set-expanded', (_event, expanded: boolean) => {
     copilotWindow.setExpanded(expanded);
   });
+
+  ipcMain.handle(
+    IPC_CHANNELS.COPILOT_CHAT_HISTORY,
+    (_event, args: { sessionId: string; cwd: string }) => {
+      const messages = conversationReader.getMessages(args.sessionId, args.cwd);
+      conversationReader.watch(args.sessionId, args.cwd);
+      return messages;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.COPILOT_SEND_MESSAGE,
+    (_event, args: { sessionId: string; message: string }) => {
+      const session = sessionStore.getSession(args.sessionId);
+      if (!session?.tty) {
+        log.warn('no TTY for session, cannot send message', { sessionId: args.sessionId });
+        return false;
+      }
+      try {
+        const fd = openSync(session.tty, 'w');
+        try {
+          writeSync(fd, args.message + '\n');
+        } finally {
+          closeSync(fd);
+        }
+        log.info('message sent to TTY', { sessionId: args.sessionId, tty: session.tty });
+        return true;
+      } catch (err) {
+        log.error('failed to send message', { error: String(err) });
+        return false;
+      }
+    }
+  );
 
   log.info('IPC handlers registered');
 }
