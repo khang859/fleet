@@ -49,7 +49,9 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative w-full h-full">
-      <div className={`flex justify-end ${
+      <div className={`flex ${
+        expanded && panelDirection?.horizontal === 'right' ? 'justify-start' : 'justify-end'
+      } ${
         expanded && panelDirection?.vertical === 'up' ? 'absolute bottom-0 right-0 left-0' : ''
       }`}>
         <SpaceshipSprite />
