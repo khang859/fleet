@@ -98,7 +98,7 @@ function GroupHeader({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
-          className="group/header flex items-center gap-1.5 px-2 py-2 cursor-pointer rounded-md text-sm text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
+          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 transition-colors relative select-none uppercase tracking-wider"
           onClick={onToggle}
           draggable
           onDragStart={(e) => {
@@ -130,7 +130,7 @@ function GroupHeader({
           {isEditing ? (
             <input
               ref={inputRef}
-              className="flex-1 bg-neutral-600 text-white text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
+              className="flex-1 bg-neutral-600 text-white text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0 uppercase tracking-wider"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={(e) => {
@@ -142,7 +142,7 @@ function GroupHeader({
             />
           ) : (
             <span
-              className="truncate font-medium"
+              className="truncate font-semibold"
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 setEditValue(label);
@@ -157,7 +157,7 @@ function GroupHeader({
               <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
             )}
             <button
-              className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
+              className="opacity-50 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-xs leading-none px-1 rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWorktree();
