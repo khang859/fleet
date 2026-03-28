@@ -64,7 +64,7 @@ export class CopilotSessionStore {
 
   processHookEvent(event: HookEvent): void {
     const { session_id, cwd, status, pid, tty, tool, tool_input, tool_use_id } = event;
-    const phase = statusToPhase(status);
+    let phase = statusToPhase(status);
     const now = Date.now();
 
     let session = this.sessions.get(session_id);
@@ -97,21 +97,27 @@ export class CopilotSessionStore {
       this.toolUseIdCache.set(cacheKey, queue);
     }
 
-    // Handle permission requests
+    // Handle permission requests (AskUserQuestion is a user question, not a permission)
     if (status === 'waiting_for_approval' && tool) {
-      const toolInfo: CopilotToolInfo = {
-        toolName: tool,
-        toolInput: tool_input ?? {},
-        toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input),
-      };
-      const pending: CopilotPendingPermission = {
-        sessionId: session_id,
-        toolUseId: toolInfo.toolUseId ?? `unknown-${now}`,
-        tool: toolInfo,
-        receivedAt: now,
-      };
-      session.pendingPermissions.push(pending);
-      log.info('permission requested', { sessionId: session_id, tool });
+      if (tool === 'AskUserQuestion') {
+        // AskUserQuestion is rendered in the chat view with clickable options —
+        // treat it as waiting for user input, not a permission request
+        phase = 'waitingForInput';
+      } else {
+        const toolInfo: CopilotToolInfo = {
+          toolName: tool,
+          toolInput: tool_input ?? {},
+          toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input),
+        };
+        const pending: CopilotPendingPermission = {
+          sessionId: session_id,
+          toolUseId: toolInfo.toolUseId ?? `unknown-${now}`,
+          tool: toolInfo,
+          receivedAt: now,
+        };
+        session.pendingPermissions.push(pending);
+        log.info('permission requested', { sessionId: session_id, tool });
+      }
     }
 
     // Clear completed permissions on PostToolUse

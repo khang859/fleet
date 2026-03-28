@@ -5,6 +5,8 @@ function TextBlock({ text }: { text: string }): React.JSX.Element {
   return <div className="text-[11px] text-neutral-200 whitespace-pre-wrap break-words">{text}</div>;
 }
 
+const MODE_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'EnterWorktree', 'ExitWorktree']);
+
 function ToolUseBlock({
   name,
   inputPreview,
@@ -12,9 +14,24 @@ function ToolUseBlock({
   name: string;
   inputPreview: string;
 }): React.JSX.Element {
+  // Render mode/status tools as subtle inline indicators
+  if (MODE_TOOLS.has(name)) {
+    return (
+      <div className="flex items-center gap-1 text-[10px] text-neutral-500 italic px-1">
+        <span className="text-purple-400">⟡</span>
+        <span>{inputPreview || name}</span>
+      </div>
+    );
+  }
+
+  // Strip MCP prefix for display: mcp__server__tool → server/tool
+  const displayName = name.startsWith('mcp__')
+    ? name.replace(/^mcp__/, '').replace(/__/g, '/')
+    : name;
+
   return (
     <div className="flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-800/50 rounded px-1.5 py-0.5">
-      <span className="text-blue-400 font-medium">{name}</span>
+      <span className="text-blue-400 font-medium">{displayName}</span>
       {inputPreview && (
         <span className="truncate opacity-70">{inputPreview}</span>
       )}

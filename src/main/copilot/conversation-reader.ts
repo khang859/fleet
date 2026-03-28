@@ -62,7 +62,66 @@ function formatToolInputPreview(
       const query = input['query'];
       return typeof query === 'string' ? query : '';
     }
+    case 'Skill': {
+      const skill = input['skill'];
+      return typeof skill === 'string' ? skill : '';
+    }
+    case 'ToolSearch': {
+      const q = input['query'];
+      return typeof q === 'string' ? q.slice(0, 60) : '';
+    }
+    case 'SendMessage': {
+      const to = input['to'];
+      return typeof to === 'string' ? `→ ${to}` : '';
+    }
+    case 'EnterPlanMode':
+      return 'Planning…';
+    case 'ExitPlanMode':
+      return 'Done planning';
+    case 'TaskCreate': {
+      const subject = input['subject'];
+      return typeof subject === 'string' ? subject.slice(0, 60) : '';
+    }
+    case 'TaskUpdate': {
+      const status = input['status'];
+      const id = input['id'];
+      const parts: string[] = [];
+      if (typeof id === 'string') parts.push(id.slice(0, 8));
+      if (typeof status === 'string') parts.push(status);
+      return parts.join(' → ');
+    }
+    case 'TaskList':
+    case 'TaskGet':
+    case 'TaskStop':
+    case 'TaskOutput': {
+      const id = input['id'];
+      return typeof id === 'string' ? id.slice(0, 8) : '';
+    }
+    case 'NotebookEdit': {
+      const fp = input['notebook_path'] ?? input['file_path'];
+      if (typeof fp === 'string') return fp.split('/').pop() ?? fp;
+      return '';
+    }
+    case 'LSP': {
+      const cmd = input['command'];
+      return typeof cmd === 'string' ? cmd : '';
+    }
+    case 'EnterWorktree': {
+      const branch = input['branch'];
+      return typeof branch === 'string' ? branch : '';
+    }
+    case 'ExitWorktree':
+      return '';
     default: {
+      // Strip MCP prefix for cleaner display: mcp__server__tool → tool
+      if (toolName.startsWith('mcp__')) {
+        const parts = toolName.split('__');
+        const mcpTool = parts.length >= 3 ? parts.slice(2).join('__') : parts[parts.length - 1];
+        for (const val of Object.values(input)) {
+          if (typeof val === 'string' && val.length > 0) return `${mcpTool}: ${val.slice(0, 50)}`;
+        }
+        return mcpTool ?? '';
+      }
       for (const val of Object.values(input)) {
         if (typeof val === 'string' && val.length > 0) return val.slice(0, 60);
       }
