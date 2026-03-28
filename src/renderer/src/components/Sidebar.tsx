@@ -673,10 +673,20 @@ export function Sidebar({
       }
     });
 
+    const imagesPaneId = crypto.randomUUID();
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
-      tabs: []
+      tabs: [
+        {
+          id: crypto.randomUUID(),
+          label: 'Images',
+          labelIsCustom: true,
+          cwd: window.fleet.homeDir,
+          type: 'images',
+          splitRoot: { type: 'leaf', id: imagesPaneId, cwd: window.fleet.homeDir }
+        }
+      ]
     };
     useWorkspaceStore.getState().switchWorkspace(newWs);
 

@@ -3,10 +3,38 @@ import { useWorkspaceStore, collectPaneLeafs } from '../workspace-store';
 import { useCwdStore } from '../cwd-store';
 import type { Workspace } from '../../../../shared/types';
 
+const IMAGES_TAB_A = {
+  id: 'tab-img-a',
+  label: 'Images',
+  labelIsCustom: true,
+  cwd: '/tmp',
+  type: 'images' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-img-a', cwd: '/tmp' }
+};
+
+const IMAGES_TAB_B = {
+  id: 'tab-img-b',
+  label: 'Images',
+  labelIsCustom: true,
+  cwd: '/home',
+  type: 'images' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-img-b', cwd: '/home' }
+};
+
+const IMAGES_TAB_C = {
+  id: 'tab-img-c',
+  label: 'Images',
+  labelIsCustom: true,
+  cwd: '/',
+  type: 'images' as const,
+  splitRoot: { type: 'leaf' as const, id: 'pane-img-c', cwd: '/' }
+};
+
 const WS_A: Workspace = {
   id: 'ws-a',
   label: 'Alpha',
   tabs: [
+    IMAGES_TAB_A,
     {
       id: 'tab-a1',
       label: 'Shell',
@@ -21,6 +49,7 @@ const WS_B: Workspace = {
   id: 'ws-b',
   label: 'Beta',
   tabs: [
+    IMAGES_TAB_B,
     {
       id: 'tab-b1',
       label: 'Shell',
@@ -35,6 +64,7 @@ const WS_C: Workspace = {
   id: 'ws-c',
   label: 'Gamma',
   tabs: [
+    IMAGES_TAB_C,
     {
       id: 'tab-c1',
       label: 'Shell',
@@ -107,11 +137,14 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('sets activeTabId to null for an empty workspace', () => {
+  it('ensures images tab for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
-    expect(useWorkspaceStore.getState().activeTabId).toBeNull();
-    expect(useWorkspaceStore.getState().activePaneId).toBeNull();
+    const state = useWorkspaceStore.getState();
+    // Empty workspaces get a pinned images tab automatically
+    expect(state.workspace.tabs).toHaveLength(1);
+    expect(state.workspace.tabs[0].type).toBe('images');
+    expect(state.activeTabId).toBe(state.workspace.tabs[0].id);
   });
 });
 
@@ -148,7 +181,9 @@ describe('loadBackgroundWorkspaces', () => {
 describe('getAllPaneIds', () => {
   it('returns only active pane IDs when no background workspaces', () => {
     const ids = useWorkspaceStore.getState().getAllPaneIds();
-    expect(ids).toEqual(['pane-a1']);
+    expect(ids).toContain('pane-a1');
+    expect(ids).toContain('pane-img-a');
+    expect(ids).toHaveLength(2);
   });
 
   it('includes background workspace pane IDs', () => {
@@ -309,7 +344,8 @@ describe('switchWorkspace — stashes live CWDs', () => {
     useWorkspaceStore.getState().switchWorkspace(WS_B);
 
     const stashed = useWorkspaceStore.getState().backgroundWorkspaces.get('ws-a');
-    const leaf = stashed?.tabs[0].splitRoot;
+    const shellTab = stashed?.tabs.find((t) => t.id === 'tab-a1');
+    const leaf = shellTab?.splitRoot;
     expect(leaf?.type === 'leaf' ? leaf.cwd : null).toBe('/live/a1');
   });
 });
@@ -345,7 +381,7 @@ describe('splitPane — live CWD', () => {
     const newPaneId = useWorkspaceStore.getState().splitPane('pane-a1', 'horizontal');
 
     // Find the new leaf's CWD via collectPaneLeafs
-    const tab = useWorkspaceStore.getState().workspace.tabs[0];
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-a1')!;
     const leaves = collectPaneLeafs(tab.splitRoot);
     const newLeaf = leaves.find((l) => l.id === newPaneId);
     expect(newLeaf?.cwd).toBe('/live/path');
@@ -356,7 +392,7 @@ describe('splitPane — live CWD', () => {
 
     const newPaneId = useWorkspaceStore.getState().splitPane('pane-a1', 'horizontal');
 
-    const tab = useWorkspaceStore.getState().workspace.tabs[0];
+    const tab = useWorkspaceStore.getState().workspace.tabs.find((t) => t.id === 'tab-a1')!;
     const leaves = collectPaneLeafs(tab.splitRoot);
     const newLeaf = leaves.find((l) => l.id === newPaneId);
     expect(newLeaf?.cwd).toBe('/tmp'); // WS_A's tab cwd
