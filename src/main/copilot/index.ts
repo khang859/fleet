@@ -6,6 +6,7 @@ import { ConversationReader } from './conversation-reader';
 import { registerCopilotIpcHandlers } from './ipc-handlers';
 import * as hookInstaller from './hook-installer';
 import type { SettingsStore } from '../settings-store';
+import type { PtyManager } from '../pty-manager';
 import { IPC_CHANNELS } from '../../shared/constants';
 
 const log = createLogger('copilot');
@@ -16,8 +17,7 @@ let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
 let servicesRunning = false;
 let cachedSettingsStore: SettingsStore | null = null;
-
-export async function initCopilot(settingsStore: SettingsStore): Promise<void> {
+export async function initCopilot(settingsStore: SettingsStore, ptyManager: PtyManager): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
 
   if (process.platform !== 'darwin') {
@@ -30,7 +30,7 @@ export async function initCopilot(settingsStore: SettingsStore): Promise<void> {
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, onCopilotSettingsChanged);
+  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, onCopilotSettingsChanged);
 
   const settings = settingsStore.get();
   log.info('copilot settings', { enabled: settings.copilot.enabled, autoStart: settings.copilot.autoStart });
@@ -75,11 +75,16 @@ async function startCopilotServices(): Promise<void> {
   sessionStore.setOnChange(() => {
     copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore!.getSessions());
 
-    // Clean up watchers for ended sessions
     if (conversationReader) {
-      const activeIds = new Set(sessionStore!.getSessions().map(s => s.sessionId));
+      // Re-parse chat for watched sessions on every state change (hooks are reliable, fs.watch is not)
+      const activeSessions = sessionStore!.getSessions();
+      const activeIds = new Set(activeSessions.map(s => s.sessionId));
+
       for (const watchedId of conversationReader.getWatchedSessionIds()) {
-        if (!activeIds.has(watchedId)) {
+        if (activeIds.has(watchedId)) {
+          conversationReader.refresh(watchedId);
+        } else {
+          // Clean up watchers for ended sessions
           conversationReader.unwatch(watchedId);
         }
       }

@@ -182,12 +182,14 @@ export class ConversationReader {
     const filePath = sessionFilePath(sessionId, cwd);
     if (!existsSync(filePath)) return;
 
-    const watcher = watch(filePath, { persistent: false }, () => {
+    const watcher = watch(filePath, { persistent: false }, (eventType) => {
+      log.debug('fs.watch fired', { sessionId, eventType });
       const state = this.states.get(sessionId);
       if (!state) return;
       const prevCount = state.messages.length;
       this.parseNewLines(state);
       if (state.messages.length !== prevCount) {
+        log.debug('new messages detected via watcher', { sessionId, count: state.messages.length - prevCount });
         this.onChange?.(sessionId, state.messages);
       }
     });
@@ -203,6 +205,18 @@ export class ConversationReader {
       this.watchers.delete(sessionId);
     }
     this.states.delete(sessionId);
+  }
+
+  /** Re-parse a watched session's JSONL and emit onChange if new messages found */
+  refresh(sessionId: string): void {
+    const state = this.states.get(sessionId);
+    if (!state) return;
+    const prevCount = state.messages.length;
+    this.parseNewLines(state);
+    if (state.messages.length !== prevCount) {
+      log.debug('new messages detected via refresh', { sessionId, count: state.messages.length - prevCount });
+      this.onChange?.(sessionId, state.messages);
+    }
   }
 
   getWatchedSessionIds(): string[] {
@@ -252,7 +266,10 @@ export class ConversationReader {
         continue;
       }
 
-      if (!line.includes('"type":"user"') && !line.includes('"type":"assistant"')) {
+      if (
+        !line.includes('"type":"user"') && !line.includes('"type": "user"') &&
+        !line.includes('"type":"assistant"') && !line.includes('"type": "assistant"')
+      ) {
         continue;
       }
 

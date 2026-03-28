@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron';
-import { openSync, writeSync, closeSync } from 'fs';
+import { execSync } from 'child_process';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
 import type { CopilotSessionStore } from './session-store';
@@ -7,9 +7,35 @@ import type { CopilotSocketServer } from './socket-server';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
 import type { ConversationReader } from './conversation-reader';
+import type { PtyManager } from '../pty-manager';
 import * as hookInstaller from './hook-installer';
 
 const log = createLogger('copilot:ipc');
+
+/**
+ * Find the Fleet pane whose shell is the parent of the given PID.
+ * Returns the paneId or null if no match found.
+ */
+function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
+  try {
+    const ppid = parseInt(execSync(`ps -o ppid= -p ${pid}`, { timeout: 2000 }).toString().trim(), 10);
+    for (const paneId of ptyManager.paneIds()) {
+      if (ptyManager.getPid(paneId) === ppid) {
+        return paneId;
+      }
+    }
+    // Walk one more level up (e.g. zsh → bash → claude)
+    const gppid = parseInt(execSync(`ps -o ppid= -p ${ppid}`, { timeout: 2000 }).toString().trim(), 10);
+    for (const paneId of ptyManager.paneIds()) {
+      if (ptyManager.getPid(paneId) === gppid) {
+        return paneId;
+      }
+    }
+  } catch {
+    // Process lookup failed
+  }
+  return null;
+}
 
 export function registerCopilotIpcHandlers(
   sessionStore: CopilotSessionStore,
@@ -17,6 +43,7 @@ export function registerCopilotIpcHandlers(
   copilotWindow: CopilotWindow,
   settingsStore: SettingsStore,
   conversationReader: ConversationReader,
+  ptyManager: PtyManager,
   onSettingsChanged?: () => Promise<void>
 ): void {
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
@@ -92,23 +119,18 @@ export function registerCopilotIpcHandlers(
     IPC_CHANNELS.COPILOT_SEND_MESSAGE,
     (_event, args: { sessionId: string; message: string }) => {
       const session = sessionStore.getSession(args.sessionId);
-      if (!session?.tty) {
-        log.warn('no TTY for session, cannot send message', { sessionId: args.sessionId });
+      if (!session?.pid) {
+        log.warn('no PID for session, cannot send message', { sessionId: args.sessionId });
         return false;
       }
-      try {
-        const fd = openSync(session.tty, 'w');
-        try {
-          writeSync(fd, args.message + '\n');
-        } finally {
-          closeSync(fd);
-        }
-        log.info('message sent to TTY', { sessionId: args.sessionId, tty: session.tty });
-        return true;
-      } catch (err) {
-        log.error('failed to send message', { error: String(err) });
+      const paneId = findPaneForPid(ptyManager, session.pid);
+      if (!paneId) {
+        log.warn('no Fleet pane found for session PID', { sessionId: args.sessionId, pid: session.pid });
         return false;
       }
+      ptyManager.write(paneId, args.message + '\n');
+      log.info('message sent via PTY master', { sessionId: args.sessionId, paneId, pid: session.pid });
+      return true;
     }
   );
 
