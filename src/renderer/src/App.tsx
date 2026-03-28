@@ -129,6 +129,20 @@ export function App(): React.JSX.Element {
     return initCwdListener();
   }, []);
 
+  // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)
+  useEffect(() => {
+    return window.fleet.notifications.onFocusPane(({ paneId }) => {
+      const state = useWorkspaceStore.getState();
+      // Find which tab contains this pane
+      const tab = state.workspace.tabs.find((t) =>
+        collectPaneIds(t.splitRoot).includes(paneId)
+      );
+      if (tab) {
+        useWorkspaceStore.setState({ activeTabId: tab.id, activePaneId: paneId });
+      }
+    });
+  }, []);
+
   // Settings tab toggle — create singleton or focus existing
   useEffect(() => {
     const handler = (): void => {

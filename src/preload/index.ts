@@ -120,7 +120,9 @@ const fleetApi = {
     onNotification: (callback: (payload: NotificationPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.NOTIFICATION, callback),
     paneFocused: (payload: PaneFocusedPayload): void =>
-      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload)
+      ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload),
+    onFocusPane: (callback: (payload: { paneId: string }) => void): Unsubscribe =>
+      onChannel('fleet:focus-pane', callback),
   },
   activity: {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
