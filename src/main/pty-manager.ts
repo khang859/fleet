@@ -179,6 +179,11 @@ export class PtyManager {
     return this.ptys.get(paneId)?.process.pid;
   }
 
+  /** Returns the current foreground process name for a PTY (e.g. "zsh", "node", "claude"). */
+  getProcessName(paneId: string): string | undefined {
+    return this.ptys.get(paneId)?.process.process;
+  }
+
   /** Kill any PTY whose paneId is not in the given set of active IDs (and not protected). */
   gc(activePaneIds: Set<string>): string[] {
     const killed: string[] = [];
