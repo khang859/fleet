@@ -176,6 +176,11 @@ function removePaneFromTree(node: PaneNode, paneId: string): PaneNode | null {
   return { ...node, children: [newLeft, newRight] };
 }
 
+function getFirstLeafCwd(node: PaneNode): string | undefined {
+  if (node.type === 'leaf') return node.cwd;
+  return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
+}
+
 export function collectPaneIds(node: PaneNode): string[] {
   if (node.type === 'leaf') return [node.id];
   return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
@@ -590,10 +595,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   loadWorkspace: (workspace) => {
     logLayout.debug('loadWorkspace', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
     // Backward compat: old saved workspaces may lack labelIsCustom
-    const migratedTabs = workspace.tabs.map((t) => ({
-      ...t,
-      labelIsCustom: t.labelIsCustom ?? false
-    }));
+    // Also sync tab cwd from first pane leaf (pane CWDs are always up-to-date)
+    const migratedTabs = workspace.tabs.map((t) => {
+      const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+      return {
+        ...t,
+        labelIsCustom: t.labelIsCustom ?? false,
+        cwd: firstLeafCwd ?? t.cwd,
+      };
+    });
     const migrated = { ...workspace, tabs: migratedTabs };
 
     const restoredTab =
@@ -622,10 +632,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
-      const migratedTabs = target.tabs.map((t) => ({
-        ...t,
-        labelIsCustom: t.labelIsCustom ?? false
-      }));
+      const migratedTabs = target.tabs.map((t) => {
+        const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+        return {
+          ...t,
+          labelIsCustom: t.labelIsCustom ?? false,
+          cwd: firstLeafCwd ?? t.cwd,
+        };
+      });
       const migrated = { ...target, tabs: migratedTabs };
 
       const restoredTab =
@@ -675,10 +689,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       for (const ws of workspaces) {
         // Don't overwrite already-loaded background workspaces or the active workspace
         if (!newBackground.has(ws.id) && ws.id !== state.workspace.id) {
-          const migratedTabs = ws.tabs.map((t) => ({
-            ...t,
-            labelIsCustom: t.labelIsCustom ?? false
-          }));
+          const migratedTabs = ws.tabs.map((t) => {
+            const firstLeafCwd = getFirstLeafCwd(t.splitRoot);
+            return {
+              ...t,
+              labelIsCustom: t.labelIsCustom ?? false,
+              cwd: firstLeafCwd ?? t.cwd,
+            };
+          });
           newBackground.set(ws.id, { ...ws, tabs: migratedTabs });
         }
       }
