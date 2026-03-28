@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.14.1
+
+### Changes
+
+- Removed Star Command system
+
 ## v2.14.0
 
 ### Features
