@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.15.0
+
+### Features
+
+- **Fleet Skills**: AI agent integration via toolbar button — inject Fleet-specific skills into Claude Code and other agents
+- **Toolbar Tooltips**: Added Radix tooltips to pane toolbar with inject-skills shortcut hint
+
+### Fixes
+
+- Fixed OS-appropriate path separators for fleet skills path
+- Fixed images tab existence check across all workspaces
+- Fixed worktree removal confirmation when shell exits in worktree tab
+
+### Docs
+
+- Updated fleet skills with image prompt best practices and missing CLI options
+
 ## v2.14.1
 
 ### Changes
