@@ -338,7 +338,9 @@ export function Sidebar({
     toggleGroupCollapsed,
     createWorktreeGroup,
     closeWorktreeTab,
-    renameWorktreeGroup
+    renameWorktreeGroup,
+    worktreeCloseConfirm,
+    setWorktreeCloseConfirm
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -358,7 +360,9 @@ export function Sidebar({
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
-      renameWorktreeGroup: s.renameWorktreeGroup
+      renameWorktreeGroup: s.renameWorktreeGroup,
+      worktreeCloseConfirm: s.worktreeCloseConfirm,
+      setWorktreeCloseConfirm: s.setWorktreeCloseConfirm
     }))
   );
   const { getTabBadge } = useNotificationStore();
@@ -843,12 +847,7 @@ export function Sidebar({
     [workspace.tabs, closeTab]
   );
 
-  // --- Worktree close confirmation ---
-  const [worktreeCloseConfirm, setWorktreeCloseConfirm] = useState<{
-    tabId: string;
-    label: string;
-  } | null>(null);
-
+  // --- Worktree close confirmation (state lives in workspace store) ---
   const handleCloseTab = useCallback(
     (tabId: string) => {
       const tab = workspace.tabs.find((t) => t.id === tabId);
@@ -878,7 +877,7 @@ export function Sidebar({
       }
       doCloseTab(tabId);
     },
-    [workspace.tabs, doCloseTab, closeWorktreeTab]
+    [workspace.tabs, doCloseTab, closeWorktreeTab, setWorktreeCloseConfirm]
   );
 
   const confirmWorktreeClose = useCallback(() => {
@@ -889,7 +888,7 @@ export function Sidebar({
     // Worktree cleanup happens in App.tsx when undo window expires
     closeWorktreeTab(worktreeCloseConfirm.tabId);
     setWorktreeCloseConfirm(null);
-  }, [worktreeCloseConfirm, workspace.tabs, closeWorktreeTab]);
+  }, [worktreeCloseConfirm, workspace.tabs, closeWorktreeTab, setWorktreeCloseConfirm]);
 
   return (
     <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">

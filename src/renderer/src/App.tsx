@@ -420,6 +420,12 @@ export function App(): React.JSX.Element {
         return;
       }
 
+      // Worktree tab: show confirmation dialog instead of closing immediately
+      if (tab.worktreePath) {
+        state.setWorktreeCloseConfirm({ tabId: tab.id, label: tab.label });
+        return;
+      }
+
       const paneIds = collectPaneIds(tab.splitRoot);
       if (paneIds.length === 1) {
         // Serialize all panes before closing tab
