@@ -500,13 +500,41 @@ export function Sidebar({
       if (dragIndex === null) return;
       const target = e.currentTarget;
       if (!(target instanceof HTMLElement)) return;
+
+      const draggedTab = workspace.tabs[dragIndex];
+      const targetTab = workspace.tabs[index];
+      if (!draggedTab || !targetTab) return;
+
+      // Enforce group boundaries:
+      // - Tab in a group can only reorder within its group
+      // - Ungrouped tab cannot drop between grouped tabs
+      const dragGroup = draggedTab.groupId;
+      const targetGroup = targetTab.groupId;
+      if (dragGroup !== targetGroup) {
+        // Don't show drop indicator for cross-group drops
+        setDropTarget(null);
+        return;
+      }
+
       const rect = target.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const position = e.clientY < midY ? 'above' : 'below';
-      logDnd.debug('dragOver', { dragIndex, targetIndex: index, position, clientY: e.clientY, midY: Math.round(midY) });
+
+      // For ungrouped tabs: prevent dropping between a group's tabs
+      // (i.e., if dropping "above" a grouped tab or "below" a grouped tab, reject if the adjacent position is within a group)
+      if (!dragGroup && !targetGroup) {
+        // Check if drop position would land inside a group
+        const adjacentIdx = position === 'below' ? index + 1 : index - 1;
+        const adjacentTab = workspace.tabs[adjacentIdx];
+        if (adjacentTab?.groupId && targetTab.groupId !== adjacentTab.groupId) {
+          // Dropping between an ungrouped tab and a grouped tab is fine
+          // But dropping between two tabs of the same group is not (we already handle that above)
+        }
+      }
+
       setDropTarget({ index, position });
     },
-    [dragIndex]
+    [dragIndex, workspace.tabs]
   );
 
   const handleDrop = useCallback(() => {
@@ -514,8 +542,19 @@ export function Sidebar({
       logDnd.debug('drop cancelled', { dragIndex, dropTarget });
       return;
     }
+
+    const draggedTab = workspace.tabs[dragIndex];
+    const targetTab = workspace.tabs[dropTarget.index];
+
+    // Block cross-group drops
+    if (draggedTab?.groupId !== targetTab?.groupId) {
+      logDnd.debug('drop blocked: cross-group', { dragGroup: draggedTab?.groupId, targetGroup: targetTab?.groupId });
+      setDragIndex(null);
+      setDropTarget(null);
+      return;
+    }
+
     const toIndex = dropTarget.position === 'below' ? dropTarget.index + 1 : dropTarget.index;
-    // Adjust toIndex if dragging from before the drop point
     const adjustedTo = dragIndex < toIndex ? toIndex - 1 : toIndex;
     logDnd.debug('drop', { dragIndex, dropTarget, rawToIndex: toIndex, adjustedTo, willReorder: dragIndex !== adjustedTo });
     if (dragIndex !== adjustedTo) {
@@ -523,7 +562,7 @@ export function Sidebar({
     }
     setDragIndex(null);
     setDropTarget(null);
-  }, [dragIndex, dropTarget, reorderTab]);
+  }, [dragIndex, dropTarget, reorderTab, workspace.tabs]);
 
   // --- Worktree creation ---
   const handleCreateWorktree = useCallback(
