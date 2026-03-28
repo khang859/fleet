@@ -17,22 +17,31 @@ const log = createLogger('copilot:ipc');
  * Returns the paneId or null if no match found.
  */
 function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
+  const paneIds = ptyManager.paneIds();
+  const ptyPids = paneIds.map(id => ({ paneId: id, pid: ptyManager.getPid(id) }));
+  log.debug('findPaneForPid', { claudePid: pid, ptyPids });
+
   try {
-    const ppid = parseInt(execSync(`ps -o ppid= -p ${pid}`, { timeout: 2000 }).toString().trim(), 10);
-    for (const paneId of ptyManager.paneIds()) {
-      if (ptyManager.getPid(paneId) === ppid) {
-        return paneId;
+    // Walk up the process tree to find which PTY shell is an ancestor
+    let currentPid = pid;
+    for (let depth = 0; depth < 5; depth++) {
+      const ppid = parseInt(
+        execSync(`ps -o ppid= -p ${currentPid}`, { timeout: 2000 }).toString().trim(),
+        10
+      );
+      log.debug('ppid lookup', { currentPid, ppid, depth });
+      if (isNaN(ppid) || ppid <= 1) break;
+
+      for (const paneId of paneIds) {
+        if (ptyManager.getPid(paneId) === ppid) {
+          log.debug('found matching pane', { paneId, ppid, depth });
+          return paneId;
+        }
       }
+      currentPid = ppid;
     }
-    // Walk one more level up (e.g. zsh → bash → claude)
-    const gppid = parseInt(execSync(`ps -o ppid= -p ${ppid}`, { timeout: 2000 }).toString().trim(), 10);
-    for (const paneId of ptyManager.paneIds()) {
-      if (ptyManager.getPid(paneId) === gppid) {
-        return paneId;
-      }
-    }
-  } catch {
-    // Process lookup failed
+  } catch (err) {
+    log.error('findPaneForPid failed', { error: String(err) });
   }
   return null;
 }
@@ -128,7 +137,8 @@ export function registerCopilotIpcHandlers(
         log.warn('no Fleet pane found for session PID', { sessionId: args.sessionId, pid: session.pid });
         return false;
       }
-      ptyManager.write(paneId, args.message + '\n');
+      // Send text then carriage return (Enter), matching what terminal emulators send
+      ptyManager.write(paneId, args.message + '\r');
       log.info('message sent via PTY master', { sessionId: args.sessionId, paneId, pid: session.pid });
       return true;
     }
