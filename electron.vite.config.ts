@@ -33,6 +33,9 @@ export default defineConfig({
         '@copilot': resolve('src/renderer/copilot/src'),
       }
     },
+    // MPA mode: don't rewrite all HTML requests to /index.html
+    // This is needed so /src/renderer/copilot/index.html serves the copilot page
+    appType: 'mpa',
     build: {
       rollupOptions: {
         input: {
