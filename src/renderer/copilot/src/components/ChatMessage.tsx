@@ -25,7 +25,6 @@ function ToolUseBlock({
 function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): React.JSX.Element {
   const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
   const sendMessage = useCopilotStore((s) => s.sendMessage);
-
   const question = (input['question'] as string) ?? 'Claude needs your input';
   const options = (input['options'] as Array<Record<string, unknown>>) ?? [];
 
@@ -34,9 +33,21 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
     sendMessage(selectedSessionId, String(index + 1));
   };
 
+  const handleGoToTerminal = (): void => {
+    window.copilot.setExpanded(false);
+  };
+
   return (
     <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg space-y-1.5">
-      <div className="text-[10px] font-medium text-amber-400">Question</div>
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-medium text-amber-400">Question</div>
+        <button
+          onClick={handleGoToTerminal}
+          className="flex items-center gap-1 px-1.5 py-0.5 text-[9px] text-neutral-300 bg-neutral-700/50 hover:bg-neutral-600/50 rounded transition-colors"
+        >
+          Terminal →
+        </button>
+      </div>
       <div className="text-[11px] text-neutral-200">{question}</div>
       {options.length > 0 && (
         <div className="space-y-1 mt-1">
