@@ -8,10 +8,16 @@ import type { CopilotPosition } from '../../shared/types';
 
 const log = createLogger('copilot:window');
 
-const SPRITE_SIZE = 48;
+const SPRITE_SIZE = 128;
+const COLLAPSED_SIZE = SPRITE_SIZE;
 const EXPANDED_WIDTH = 350;
 const EXPANDED_HEIGHT = 500;
 const TOGGLE_DEBOUNCE_MS = 800;
+
+export type PanelDirection = {
+  horizontal: 'left' | 'right';
+  vertical: 'up' | 'down';
+};
 
 type CopilotWindowStore = {
   position: CopilotPosition | null;
@@ -61,6 +67,7 @@ export class CopilotWindow {
   private positionStore: Store<CopilotWindowStore>;
   private expanded = false;
   private lastToggleTime = 0;
+  private collapsedPos: { x: number; y: number } | null = null;
 
   constructor() {
     this.positionStore = new Store<CopilotWindowStore>({
@@ -90,8 +97,8 @@ export class CopilotWindow {
     const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
     this.win = new BrowserWindow({
-      width: SPRITE_SIZE,
-      height: SPRITE_SIZE,
+      width: COLLAPSED_SIZE,
+      height: COLLAPSED_SIZE,
       x,
       y,
       frame: false,
@@ -195,34 +202,69 @@ export class CopilotWindow {
     return this.expanded;
   }
 
+  private calculateDirection(): PanelDirection {
+    if (!this.win || this.win.isDestroyed()) {
+      return { horizontal: 'left', vertical: 'down' };
+    }
+    const bounds = this.win.getBounds();
+    const cx = bounds.x + COLLAPSED_SIZE / 2;
+    const cy = bounds.y + COLLAPSED_SIZE / 2;
+    const display = screen.getDisplayNearestPoint({ x: cx, y: cy });
+    const dx = display.bounds.x + display.bounds.width / 2;
+    const dy = display.bounds.y + display.bounds.height / 2;
+    return {
+      horizontal: cx < dx ? 'right' : 'left',
+      vertical: cy < dy ? 'down' : 'up',
+    };
+  }
+
   private applyExpanded(): void {
     if (!this.win || this.win.isDestroyed()) return;
     const bounds = this.win.getBounds();
 
     if (this.expanded) {
+      this.collapsedPos = { x: bounds.x, y: bounds.y };
+      const dir = this.calculateDirection();
+
+      const x = dir.horizontal === 'left'
+        ? bounds.x - (EXPANDED_WIDTH - COLLAPSED_SIZE)
+        : bounds.x;
+      const y = dir.vertical === 'up'
+        ? bounds.y - EXPANDED_HEIGHT
+        : bounds.y;
+
       const newBounds = {
-        x: bounds.x - (EXPANDED_WIDTH - bounds.width),
-        y: bounds.y,
+        x,
+        y,
         width: EXPANDED_WIDTH,
-        height: EXPANDED_HEIGHT,
+        height: COLLAPSED_SIZE + EXPANDED_HEIGHT,
       };
-      log.info('expanding to', newBounds);
+      log.info('expanding to', { ...newBounds, direction: dir });
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'pop-up-menu');
+
+      this.win.webContents.send('copilot:expanded-changed', {
+        expanded: true,
+        direction: dir,
+      });
     } else {
+      const x = this.collapsedPos?.x ?? bounds.x + (bounds.width - COLLAPSED_SIZE);
+      const y = this.collapsedPos?.y ?? bounds.y;
       const newBounds = {
-        x: bounds.x + (bounds.width - SPRITE_SIZE),
-        y: bounds.y,
-        width: SPRITE_SIZE,
-        height: SPRITE_SIZE,
+        x,
+        y,
+        width: COLLAPSED_SIZE,
+        height: COLLAPSED_SIZE,
       };
       log.info('collapsing to', newBounds);
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'floating');
-    }
 
-    // Notify renderer of authoritative state
-    this.win.webContents.send('copilot:expanded-changed', this.expanded);
+      this.win.webContents.send('copilot:expanded-changed', {
+        expanded: false,
+        direction: null,
+      });
+    }
   }
 
   send(channel: string, ...args: unknown[]): void {
@@ -245,7 +287,7 @@ export class CopilotWindow {
 
     const primary = screen.getPrimaryDisplay();
     return {
-      x: primary.bounds.x + primary.bounds.width - SPRITE_SIZE - 20,
+      x: primary.bounds.x + primary.bounds.width - COLLAPSED_SIZE - 20,
       y: primary.bounds.y + 60,
     };
   }
