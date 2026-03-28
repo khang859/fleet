@@ -14,6 +14,26 @@ function getRepoName(repoPath: string): string {
   return parts[parts.length - 1] || 'repo';
 }
 
+const ADJECTIVES = [
+  'bold', 'calm', 'cool', 'dark', 'deep', 'fast', 'free', 'glad', 'gold', 'keen',
+  'kind', 'late', 'lean', 'live', 'loud', 'mild', 'neat', 'pale', 'pure', 'rare',
+  'rich', 'safe', 'slim', 'soft', 'tall', 'tidy', 'true', 'warm', 'wide', 'wild',
+  'blue', 'gray', 'iron', 'jade', 'mint', 'ruby', 'sage', 'teal', 'zinc', 'onyx',
+];
+
+const NOUNS = [
+  'arch', 'bark', 'bolt', 'cape', 'cask', 'clay', 'cove', 'dawn', 'dune', 'edge',
+  'fern', 'flax', 'ford', 'gate', 'glen', 'gust', 'haze', 'helm', 'isle', 'jade',
+  'keel', 'knot', 'lake', 'lark', 'loom', 'mast', 'mesa', 'mist', 'moss', 'node',
+  'opal', 'palm', 'peak', 'pine', 'pond', 'reef', 'root', 'sage', 'sand', 'silo',
+  'star', 'stem', 'surf', 'tide', 'vale', 'vine', 'warp', 'wave', 'wick', 'yard',
+];
+
+function generateWorktreeName(): string {
+  const pick = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+  return `${pick(ADJECTIVES)}-${pick(NOUNS)}-${pick(NOUNS)}`;
+}
+
 export class WorktreeService {
   private getWorktreeBase(repoName: string): string {
     return join(getHomeDir(), '.fleet', 'worktrees', repoName);
@@ -34,13 +54,15 @@ export class WorktreeService {
     const existingBranches = new Set(branchListRaw.split('\n').filter(Boolean));
     log.info('existing branches', { branches: [...existingBranches] });
 
-    let n = 1;
     let branchName: string;
+    let attempts = 0;
     do {
-      branchName = `${repoName}-worktree-${n}`;
-      log.debug('checking branch name', { branchName, inWorktrees: existingWorktreeNames.has(branchName), inBranches: existingBranches.has(branchName) });
-      n++;
-    } while (existingWorktreeNames.has(branchName) || existingBranches.has(branchName));
+      branchName = `${repoName}-${generateWorktreeName()}`;
+      attempts++;
+    } while (
+      (existingWorktreeNames.has(branchName) || existingBranches.has(branchName)) &&
+      attempts < 100
+    );
 
     const worktreePath = join(base, branchName);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
