@@ -1,5 +1,28 @@
 # Changelog
 
+## v2.14.0
+
+### Features
+
+- **Worktree Management**: Create, manage, and organize git worktrees directly from Fleet with visual group headers, collapsible groups, and persistent layout
+- **Worktree Lifecycle**: Automated worktree creation with conflict detection, safe removal with undo, and support for renaming worktrees and group headers
+- **Activity Detection**: Real-time tracking of terminal activity with visual badges, silence timers, and foreground process detection to identify when agents are working
+- **Activity Indicators**: Tabs now show activity status with reduced-motion support and off-screen summary badges in the sidebar
+- **Image Protocol**: Improved image loading performance with `fleet-image://` protocol replacing base64 IPC
+- **Crew Improvements**: Enhanced code and repair crew prompts with conflict checking
+
+### Fixes
+
+- Fixed file search overlay scroll jumping when opening
+- Improved drag and drop behavior to prevent cross-group reordering and duplicate drop indicators
+- Fixed sidebar tab contrast and group header styling
+- Corrected activity state persistence to prevent clearing on tab focus
+- Fixed tab restoration with proper CWD persistence across workspace saves
+- Improved git worktree detection to use live working directory
+- Enhanced worktree removal resilience and branch conflict avoidance
+- Fixed window close handling on macOS for proper admiral restart
+- Removed dead JSONL agent state tracking pipeline
+
 ## v2.13.0
 
 - Added cargo send system: `fleet cargo send` CLI command with env auto-detection, socket dispatch, and explicit file/content support
