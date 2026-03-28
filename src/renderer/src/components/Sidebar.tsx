@@ -1097,7 +1097,7 @@ export function Sidebar({
                   worktreeBranch={tab.worktreeBranch}
                   isWorktreeChild={tab.groupRole === 'worktree'}
                   onCreateWorktree={
-                    !isFile && gitRepoTabs.has(tab.id) && !tab.worktreePath
+                    !isFile && gitRepoTabs.has(tab.id) && !tab.worktreePath && !tab.groupId
                       ? () => {
                           const firstPane = collectPaneIds(tab.splitRoot)[0];
                           const liveCwd = firstPane ? liveCwds.get(firstPane) : undefined;
