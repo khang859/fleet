@@ -57,6 +57,7 @@ function GroupHeader({
   tabCount,
   isCollapsed,
   onToggle,
+  onAddWorktree,
   onDragStart,
   onDragOver,
   onDrop,
@@ -66,6 +67,7 @@ function GroupHeader({
   tabCount: number;
   isCollapsed: boolean;
   onToggle: () => void;
+  onAddWorktree: () => void;
   onDragStart: () => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: () => void;
@@ -73,7 +75,7 @@ function GroupHeader({
 }): React.JSX.Element {
   return (
     <div
-      className="flex items-center gap-1.5 px-2 py-1 cursor-pointer rounded-md text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
+      className="group/header flex items-center gap-1.5 px-2 py-1 cursor-pointer rounded-md text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800/50 transition-colors relative select-none"
       onClick={onToggle}
       draggable
       onDragStart={(e) => {
@@ -103,9 +105,21 @@ function GroupHeader({
         className={`transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-90'}`}
       />
       <span className="truncate font-medium">{label}</span>
-      {isCollapsed && (
-        <span className="ml-auto text-[10px] text-neutral-600">{tabCount} tabs</span>
-      )}
+      <span className="ml-auto flex items-center gap-1">
+        {isCollapsed && (
+          <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>
+        )}
+        <button
+          className="opacity-0 group-hover/header:opacity-100 text-neutral-500 hover:text-white text-sm leading-none px-1 rounded hover:bg-neutral-700 transition-all"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddWorktree();
+          }}
+          title="Add worktree"
+        >
+          +
+        </button>
+      </span>
     </div>
   );
 }
@@ -377,7 +391,6 @@ export function Sidebar({
     toggleGroupCollapsed,
     createWorktreeGroup,
     closeWorktreeTab,
-    closeWorktreeGroup
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -396,7 +409,6 @@ export function Sidebar({
       toggleGroupCollapsed: s.toggleGroupCollapsed,
       createWorktreeGroup: s.createWorktreeGroup,
       closeWorktreeTab: s.closeWorktreeTab,
-      closeWorktreeGroup: s.closeWorktreeGroup
     }))
   );
   const { getTabBadge } = useNotificationStore();
@@ -781,11 +793,6 @@ export function Sidebar({
   } | null>(null);
   const [fileSaving, setFileSaving] = useState(false);
 
-  const [worktreeGroupCloseConfirm, setWorktreeGroupCloseConfirm] = useState<{
-    groupId: string;
-    tabCount: number;
-  } | null>(null);
-
   const doCloseTab = useCallback(
     (tabId: string) => {
       const tab = workspace.tabs.find((t) => t.id === tabId);
@@ -805,18 +812,11 @@ export function Sidebar({
       const tab = workspace.tabs.find((t) => t.id === tabId);
       if (!tab) return;
 
-      // Parent tab with worktree children: confirm before closing entire group
-      if (tab.groupRole === 'parent' && tab.groupId) {
-        const groupTabs = workspace.tabs.filter((t) => t.groupId === tab.groupId);
-        if (groupTabs.length > 1) {
-          setWorktreeGroupCloseConfirm({ groupId: tab.groupId, tabCount: groupTabs.length });
-          return;
+      // Any tab in a worktree group: clean up worktree if it has one, then remove from group
+      if (tab.groupId) {
+        if (tab.worktreePath) {
+          void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
         }
-      }
-
-      // Worktree child tab: clean up worktree on disk
-      if (tab.groupRole === 'worktree' && tab.worktreePath) {
-        void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
         closeWorktreeTab(tabId);
         return;
       }
@@ -1022,6 +1022,13 @@ export function Sidebar({
                     tabCount={groupTabs.length}
                     isCollapsed={isCollapsed}
                     onToggle={() => toggleGroupCollapsed(groupId)}
+                    onAddWorktree={() => {
+                      // Use any tab in the group to find the repo
+                      const anyTab = groupTabs[0];
+                      const firstPane = collectPaneIds(anyTab.splitRoot)[0];
+                      const cwd = (firstPane ? liveCwds.get(firstPane) : undefined) ?? anyTab.cwd;
+                      void handleCreateWorktree(anyTab.id, cwd);
+                    }}
                     onDragStart={() => handleDragStart(firstTabIdx)}
                     onDragOver={(e) => handleDragOver(e, firstTabIdx)}
                     onDrop={() => handleDrop()}
@@ -1333,51 +1340,6 @@ export function Sidebar({
         </Dialog.Portal>
       </Dialog.Root>
 
-      {/* Worktree group close confirmation dialog */}
-      <Dialog.Root
-        open={!!worktreeGroupCloseConfirm}
-        onOpenChange={(open) => {
-          if (!open) setWorktreeGroupCloseConfirm(null);
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
-            <Dialog.Title className="text-base font-semibold text-white mb-1">
-              Close worktree group?
-            </Dialog.Title>
-            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
-              This will close all {worktreeGroupCloseConfirm?.tabCount ?? 0} tabs in this group and
-              remove their worktrees from disk.
-            </Dialog.Description>
-            <div className="flex justify-end gap-2">
-              <button
-                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-                onClick={() => setWorktreeGroupCloseConfirm(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
-                onClick={() => {
-                  if (!worktreeGroupCloseConfirm) return;
-                  const { groupId } = worktreeGroupCloseConfirm;
-                  const groupTabs = workspace.tabs.filter((t) => t.groupId === groupId);
-                  for (const tab of groupTabs) {
-                    if (tab.worktreePath) {
-                      void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
-                    }
-                  }
-                  closeWorktreeGroup(groupId);
-                  setWorktreeGroupCloseConfirm(null);
-                }}
-              >
-                Close All
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
     </div>
   );
 }

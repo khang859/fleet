@@ -388,17 +388,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeWorktreeTab: (tabId) => {
     set((state) => {
       const tab = state.workspace.tabs.find((t) => t.id === tabId);
-      if (tab?.groupRole !== 'worktree') return state;
+      if (!tab?.groupId) return state;
 
       const groupId = tab.groupId;
       let tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
 
-      // Check if this was the last worktree in the group — dissolve if so
+      // Check if only one tab remains in the group — dissolve if so
       if (groupId) {
-        const remainingWorktrees = tabs.filter(
-          (t) => t.groupId === groupId && t.groupRole === 'worktree'
-        );
-        if (remainingWorktrees.length === 0) {
+        const remainingGroupTabs = tabs.filter((t) => t.groupId === groupId);
+        if (remainingGroupTabs.length <= 1) {
           tabs = tabs.map((t) =>
             t.groupId === groupId
               ? { ...t, groupId: undefined, groupRole: undefined }
