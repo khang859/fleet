@@ -10,7 +10,7 @@ export function SessionDetail(): React.JSX.Element | null {
 
   if (!session) {
     return (
-      <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700">
+      <div className="flex flex-col h-full bg-neutral-900 rounded-lg border border-neutral-700">
         <div className="flex items-center px-3 py-2 border-b border-neutral-700">
           <button onClick={backToList} className="text-xs text-neutral-400 hover:text-neutral-200">
             ← Back
@@ -24,7 +24,7 @@ export function SessionDetail(): React.JSX.Element | null {
   }
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700 overflow-hidden">
+    <div className="flex flex-col h-full bg-neutral-900 rounded-lg border border-neutral-700 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
         <button onClick={backToList} className="text-xs text-neutral-400 hover:text-neutral-200">
           ←

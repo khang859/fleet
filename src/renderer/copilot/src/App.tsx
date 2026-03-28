@@ -14,9 +14,24 @@ export function App(): React.JSX.Element {
   const setExpanded = useCopilotStore((s) => s.setExpanded);
 
   useEffect(() => {
-    window.copilot.getSessions().then(setSessions);
-    loadSettings();
-    const cleanup = window.copilot.onSessions(setSessions);
+    if (!window.copilot) {
+      console.error('[copilot] window.copilot is undefined — preload failed');
+      return;
+    }
+    console.log('[copilot] initializing, fetching sessions...');
+    window.copilot.getSessions().then((sessions) => {
+      console.log('[copilot] got sessions:', sessions.length);
+      setSessions(sessions);
+    }).catch((err) => {
+      console.error('[copilot] getSessions failed:', err);
+    });
+    loadSettings().catch((err) => {
+      console.error('[copilot] loadSettings failed:', err);
+    });
+    const cleanup = window.copilot.onSessions((sessions) => {
+      console.log('[copilot] sessions update:', sessions.length);
+      setSessions(sessions);
+    });
     return cleanup;
   }, [setSessions, loadSettings]);
 
@@ -32,10 +47,12 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative">
-      <SpaceshipSprite />
+      <div className="flex justify-end">
+        <SpaceshipSprite />
+      </div>
       {expanded && (
         <div
-          className="absolute top-[52px] right-0 w-[350px] h-[450px]"
+          className="absolute top-[52px] right-0 left-0 h-[450px]"
           style={{ zIndex: 10 }}
         >
           {view === 'sessions' && <SessionList />}

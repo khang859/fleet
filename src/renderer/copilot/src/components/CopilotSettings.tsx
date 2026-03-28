@@ -20,7 +20,7 @@ export function CopilotSettings(): React.JSX.Element {
   }, [loadSettings]);
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700 overflow-hidden">
+    <div className="flex flex-col h-full bg-neutral-900 rounded-lg border border-neutral-700 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
         <button
           onClick={() => setView('sessions')}

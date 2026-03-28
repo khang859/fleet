@@ -62,9 +62,12 @@ export function SessionList(): React.JSX.Element {
   const sorted = [...sessions].sort(sortSessions);
 
   return (
-    <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700 overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
-        <span className="text-xs font-medium text-neutral-300">
+    <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700 overflow-hidden"
+      style={{ background: '#171717', border: '1px solid #404040', borderRadius: 8, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700"
+        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 12px', borderBottom: '1px solid #404040' }}>
+        <span className="text-xs font-medium text-neutral-300"
+          style={{ color: '#d4d4d4', fontSize: 12, fontWeight: 500 }}>
           Claude Sessions ({sessions.length})
         </span>
         <button
@@ -77,7 +80,7 @@ export function SessionList(): React.JSX.Element {
 
       <div className="flex-1 overflow-y-auto">
         {sorted.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-neutral-500 text-xs px-4 text-center">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#737373', fontSize: 12, padding: '0 16px', textAlign: 'center' }}>
             No active Claude Code sessions.
             <br />
             Start a session to see it here.
@@ -86,19 +89,19 @@ export function SessionList(): React.JSX.Element {
           sorted.map((session) => (
             <div
               key={session.sessionId}
-              className="px-3 py-2 border-b border-neutral-800 hover:bg-neutral-800/50 cursor-pointer"
+              style={{ padding: '8px 12px', borderBottom: '1px solid #262626', cursor: 'pointer' }}
               onClick={() => selectSession(session.sessionId)}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-sm ${phaseColor(session)}`}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: 14, color: session.pendingPermissions.length > 0 ? '#fbbf24' : session.phase === 'processing' ? '#60a5fa' : '#a3a3a3' }}>
                     {phaseIcon(session)}
                   </span>
-                  <span className="text-xs text-neutral-200 truncate">
+                  <span style={{ fontSize: 12, color: '#e5e5e5', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {session.projectName}
                   </span>
                 </div>
-                <span className="text-[10px] text-neutral-500 ml-2 shrink-0">
+                <span style={{ fontSize: 10, color: '#737373', marginLeft: 8, flexShrink: 0 }}>
                   {elapsed(session.createdAt)}
                 </span>
               </div>

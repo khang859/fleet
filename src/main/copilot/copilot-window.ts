@@ -145,8 +145,7 @@ export class CopilotWindow {
       }
     });
 
-    // Uncomment to debug copilot renderer:
-    // if (!app.isPackaged) this.win.webContents.openDevTools({ mode: 'detach' });
+    if (!app.isPackaged) this.win.webContents.openDevTools({ mode: 'detach' });
 
     this.win.on('closed', () => {
       this.win = null;
@@ -176,10 +175,15 @@ export class CopilotWindow {
 
   setExpanded(expanded: boolean): void {
     if (!this.win || this.win.isDestroyed()) return;
+    const [curX, curY] = this.win.getPosition();
     if (expanded) {
+      // Shift window left so the sprite (top-right corner) stays in place
+      this.win.setPosition(curX - (EXPANDED_WIDTH - SPRITE_SIZE), curY);
       this.win.setContentSize(EXPANDED_WIDTH, EXPANDED_HEIGHT);
       this.win.setFocusable(true);
     } else {
+      // Shift window right to collapse back to sprite position
+      this.win.setPosition(curX + (EXPANDED_WIDTH - SPRITE_SIZE), curY);
       this.win.setContentSize(SPRITE_SIZE, SPRITE_SIZE);
       this.win.setFocusable(false);
     }
