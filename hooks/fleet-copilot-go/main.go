@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -80,16 +81,15 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 	if err != nil {
 		return nil
 	}
+	defer conn.Close()
 
 	data, err := json.Marshal(state)
 	if err != nil {
-		conn.Close()
 		return nil
 	}
 
 	_, err = conn.Write(data)
 	if err != nil {
-		conn.Close()
 		return nil
 	}
 
@@ -99,20 +99,18 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 			uc.CloseWrite()
 		}
 		conn.SetReadDeadline(time.Now().Add(time.Duration(timeoutSeconds) * time.Second))
-		buf := make([]byte, 4096)
-		n, err := conn.Read(buf)
+		data, err := io.ReadAll(conn)
 		conn.Close()
-		if err != nil || n == 0 {
+		if err != nil || len(data) == 0 {
 			return nil
 		}
 		var resp SocketResponse
-		if json.Unmarshal(buf[:n], &resp) != nil {
+		if json.Unmarshal(data, &resp) != nil {
 			return nil
 		}
 		return &resp
 	}
 
-	conn.Close()
 	return nil
 }
 
@@ -181,8 +179,10 @@ func main() {
 				os.Exit(0)
 			}
 
-			result, _ := json.Marshal(output)
-			fmt.Println(string(result))
+			result, err := json.Marshal(output)
+			if err == nil {
+				fmt.Println(string(result))
+			}
 		}
 		os.Exit(0)
 
