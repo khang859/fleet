@@ -617,7 +617,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const restoredTab =
       (migrated.activeTabId
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-        : undefined) ?? migrated.tabs[0];
+        : undefined) ?? migrated.tabs.find((t) => t.type !== 'images') ?? migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
     const restoredPane =
@@ -653,7 +653,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const restoredTab =
         (migrated.activeTabId
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-          : undefined) ?? migrated.tabs[0];
+          : undefined) ?? migrated.tabs.find((t) => t.type !== 'images') ?? migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
       const restoredPane =
