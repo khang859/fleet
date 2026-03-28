@@ -1,7 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import type {
-  AdmiralStatusPayload,
   PtyCreateRequest,
   PtyCreateResponse,
   PtyDataPayload,
@@ -16,22 +15,7 @@ import type {
   GitStatusPayload,
   GitIsRepoPayload,
   HostPlatform,
-  AdmiralStateDetailPayload,
-  StarbaseRuntimeStatus,
-  SystemDepResult,
-  CreateTabPayload,
   FileOpenInTabPayload,
-  StarbaseSectorRow,
-  StarbaseCrewRow,
-  StarbaseMissionRow,
-  StarbaseCommRow,
-  StarbaseMemoRow,
-  StarbaseSupplyRoute,
-  StarbaseRetentionStats,
-  StarbaseCleanupResult,
-  StarbaseLogEntry,
-  StarbaseStatusUpdatePayload,
-  DeployResponse,
   ReaddirResponse,
   FileSearchRequest,
   FileSearchResponse,
@@ -168,113 +152,6 @@ const fleetApi = {
     remove: async (req: WorktreeRemoveRequest): Promise<void> =>
       typedInvoke(IPC_CHANNELS.WORKTREE_REMOVE, req),
   },
-  admiral: {
-    checkDependencies: async (): Promise<SystemDepResult[]> =>
-      typedInvoke(IPC_CHANNELS.ADMIRAL_CHECK_DEPENDENCIES),
-    getPaneId: async (): Promise<string | null> => typedInvoke(IPC_CHANNELS.ADMIRAL_PANE_ID),
-    ensureStarted: async (): Promise<string | null> =>
-      typedInvoke(IPC_CHANNELS.ADMIRAL_ENSURE_STARTED),
-    restart: async (): Promise<string> => typedInvoke(IPC_CHANNELS.ADMIRAL_RESTART),
-    reset: async (): Promise<string> => typedInvoke(IPC_CHANNELS.ADMIRAL_RESET),
-    onStatusChanged: (callback: (payload: AdmiralStatusPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.ADMIRAL_STATUS_CHANGED, callback),
-    onStateDetail: (callback: (payload: AdmiralStateDetailPayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.ADMIRAL_STATE_DETAIL, callback)
-  },
-  starbase: {
-    getRuntimeStatus: async (): Promise<StarbaseRuntimeStatus> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_GET),
-    retryRuntimeBootstrap: async (): Promise<StarbaseRuntimeStatus> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_RETRY),
-    onRuntimeStatus: (callback: (payload: StarbaseRuntimeStatus) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.STARBASE_RUNTIME_STATUS_CHANGED, callback),
-    listSectors: async (): Promise<StarbaseSectorRow[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_LIST_SECTORS),
-    listCrew: async (filter?: { sectorId?: string; status?: string }): Promise<StarbaseCrewRow[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_CREW, filter),
-    listMissions: async (filter?: {
-      sectorId?: string;
-      status?: string;
-    }): Promise<StarbaseMissionRow[]> => typedInvoke(IPC_CHANNELS.STARBASE_MISSIONS, filter),
-    getUnreadComms: async (): Promise<StarbaseCommRow[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_COMMS_UNREAD),
-    listComms: async (opts?: { limit?: number }): Promise<StarbaseCommRow[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_LIST_COMMS, opts),
-    markCommsRead: async (id: number): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_MARK_COMMS_READ, { id }),
-    resolveComms: async (id: number, response: string): Promise<number> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RESOLVE_COMMS, { id, response }),
-    deleteComms: async (id: number): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_DELETE_COMMS, { id }),
-    markAllCommsRead: async (): Promise<number> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_MARK_ALL_COMMS_READ),
-    clearComms: async (): Promise<number> => typedInvoke(IPC_CHANNELS.STARBASE_CLEAR_COMMS),
-    deployCrew: async (opts: {
-      sectorId: string;
-      prompt: string;
-      summary?: string;
-      missionId?: number;
-    }): Promise<DeployResponse> => typedInvoke(IPC_CHANNELS.STARBASE_DEPLOY, opts),
-    recallCrew: async (crewId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RECALL, { crewId }),
-    observeCrew: async (crewId: string): Promise<string> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_OBSERVE, { crewId }),
-    messageCrew: async (crewId: string, message: string): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_MESSAGE_CREW, { crewId, message }),
-    addMission: async (req: {
-      sectorId: string;
-      summary: string;
-      prompt: string;
-      priority?: number;
-      dependsOnMissionId?: number;
-    }): Promise<{ missionId: number }> => typedInvoke(IPC_CHANNELS.STARBASE_ADD_MISSION, req),
-    onStatusUpdate: (callback: (payload: StarbaseStatusUpdatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.STARBASE_STATUS_UPDATE, callback),
-    requestSnapshot: async (): Promise<StarbaseStatusUpdatePayload | null> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_SNAPSHOT_REQUEST),
-    listSupplyRoutes: async (opts?: { sectorId?: string }): Promise<StarbaseSupplyRoute[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_LIST_SUPPLY_ROUTES, opts),
-    addSupplyRoute: async (opts: {
-      upstreamSectorId: string;
-      downstreamSectorId: string;
-    }): Promise<{ routeId: number }> => typedInvoke(IPC_CHANNELS.STARBASE_ADD_SUPPLY_ROUTE, opts),
-    removeSupplyRoute: async (routeId: number): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_REMOVE_SUPPLY_ROUTE, { routeId }),
-    getSupplyRouteGraph: async (): Promise<Record<string, string[]>> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_SUPPLY_ROUTE_GRAPH),
-    listCargo: async (filter?: { sectorId?: string }): Promise<Array<Record<string, unknown>>> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_LIST_CARGO, filter),
-    getRetentionStats: async (): Promise<StarbaseRetentionStats> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RETENTION_STATS),
-    retentionCleanup: async (): Promise<StarbaseCleanupResult> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_RETENTION_CLEANUP),
-    retentionVacuum: async (): Promise<void> => typedInvoke(IPC_CHANNELS.STARBASE_RETENTION_VACUUM),
-    getConfig: async (): Promise<Record<string, unknown>> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_GET_CONFIG),
-    setConfig: async (key: string, value: unknown): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_SET_CONFIG, { key, value }),
-    addSector: async (opts: {
-      path: string;
-      name?: string;
-      description?: string;
-    }): Promise<StarbaseSectorRow> => typedInvoke(IPC_CHANNELS.STARBASE_ADD_SECTOR, opts),
-    removeSector: async (sectorId: string): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_REMOVE_SECTOR, { sectorId }),
-    updateSector: async (sectorId: string, fields: Record<string, unknown>): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_UPDATE_SECTOR, { sectorId, fields }),
-    memoList: async (): Promise<StarbaseMemoRow[]> => typedInvoke(IPC_CHANNELS.MEMO_LIST),
-    memoRead: async (id: number): Promise<void> => typedInvoke(IPC_CHANNELS.MEMO_READ, id),
-    memoDismiss: async (id: number): Promise<void> => typedInvoke(IPC_CHANNELS.MEMO_DISMISS, id),
-    memoContent: async (filePath: string): Promise<string | null> =>
-      typedInvoke(IPC_CHANNELS.MEMO_CONTENT, filePath),
-    getShipsLog: async (opts?: { limit?: number }): Promise<StarbaseLogEntry[]> =>
-      typedInvoke(IPC_CHANNELS.STARBASE_SHIPS_LOG, opts),
-    onLogEntry: (callback: (entry: StarbaseLogEntry) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.STARBASE_LOG_ENTRY, callback)
-  },
-  system: {
-    check: async (): Promise<SystemDepResult[]> => typedInvoke(IPC_CHANNELS.SYSTEM_CHECK)
-  },
   showFolderPicker: async (): Promise<string | null> =>
     typedInvoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
   ptyDrain: (paneId: string) => {
@@ -282,14 +159,6 @@ const fleetApi = {
       pausedPanes.delete(paneId);
       ipcRenderer.send(IPC_CHANNELS.PTY_DRAIN, { paneId });
     }
-  },
-  // TODO(#30): Crew tabs are no longer created — crews are now headless (stream-json).
-  // This bridge remains for backwards compatibility but will not fire for new deployments.
-  onCreateTab: (callback: (payload: CreateTabPayload) => void): Unsubscribe => {
-    const cleanup = onChannel('fleet:create-tab', callback);
-    // Signal to main that the renderer is ready to receive create-tab messages
-    ipcRenderer.send('fleet:create-tab-ready');
-    return cleanup;
   },
   file: {
     read: async (
