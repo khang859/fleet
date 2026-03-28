@@ -87,30 +87,28 @@ export class CopilotWindow {
     const isDev = !!process.env.ELECTRON_RENDERER_URL;
 
     this.win = new BrowserWindow({
-      width: EXPANDED_WIDTH,
-      height: EXPANDED_HEIGHT,
+      width: SPRITE_SIZE,
+      height: SPRITE_SIZE,
       x,
       y,
       frame: false,
       transparent: true,
       hasShadow: false,
-      alwaysOnTop: true,
-      focusable: false,
       skipTaskbar: true,
       resizable: false,
+      // Keep focusable so clicks work; alwaysOnTop keeps it visible
+      focusable: true,
       webPreferences: {
         preload: preloadPath,
         contextIsolation: true,
         sandbox: false,
         nodeIntegration: false,
-        // In dev, the bootstrap HTML loads scripts from localhost via file:// origin
         webSecurity: !isDev,
       },
     });
 
     this.win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    this.win.setContentSize(SPRITE_SIZE, SPRITE_SIZE);
-    this.win.setIgnoreMouseEvents(false);
+    this.win.setAlwaysOnTop(true, 'floating');
 
     if (isDev) {
       // electron-vite doesn't serve secondary HTML entries in dev.
@@ -177,15 +175,14 @@ export class CopilotWindow {
     if (!this.win || this.win.isDestroyed()) return;
     const [curX, curY] = this.win.getPosition();
     if (expanded) {
-      // Shift window left so the sprite (top-right corner) stays in place
       this.win.setPosition(curX - (EXPANDED_WIDTH - SPRITE_SIZE), curY);
       this.win.setContentSize(EXPANDED_WIDTH, EXPANDED_HEIGHT);
-      this.win.setFocusable(true);
+      this.win.setAlwaysOnTop(true, 'pop-up-menu');
+      this.win.focus();
     } else {
-      // Shift window right to collapse back to sprite position
       this.win.setPosition(curX + (EXPANDED_WIDTH - SPRITE_SIZE), curY);
       this.win.setContentSize(SPRITE_SIZE, SPRITE_SIZE);
-      this.win.setFocusable(false);
+      this.win.setAlwaysOnTop(true, 'floating');
     }
   }
 
