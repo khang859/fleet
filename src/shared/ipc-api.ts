@@ -1,4 +1,4 @@
-import type { Workspace, NotificationEvent } from './types';
+import type { Workspace, NotificationEvent, ActivityState } from './types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -58,7 +58,7 @@ export type NotificationPayload = NotificationEvent;
 
 export type ActivityStatePayload = {
   paneId: string;
-  state: import('./types').ActivityState;
+  state: ActivityState;
   lastOutputAt: number;
   timestamp: number;
 };

@@ -15,16 +15,12 @@ const PERMISSION_PATTERNS = [
   /Approve\?\s*$/i,
   /Press Enter to continue/i,
   /Are you sure\?/i,
-  /\(yes\/no\)\s*$/i,
+  /\(yes\/no\)\s*$/i
 ];
 
 // OSC 7 format: ESC ] 7 ; file://[host]/path BEL  or  ESC ] 7 ; file://[host]/path ST
 // eslint-disable-next-line no-control-regex
 const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
-
-// OSC 133;C — command execution started (FinalTerm/shell integration)
-// eslint-disable-next-line no-control-regex
-const OSC133C_RE = /\x1b\]133;C\x1b\\/;
 
 // OSC 133;D[;exitcode] — command finished (FinalTerm/shell integration)
 // eslint-disable-next-line no-control-regex
@@ -96,7 +92,7 @@ export class NotificationDetector {
   }
 
   private checkOSC133(paneId: string, data: string): void {
-    if (OSC133C_RE.test(data)) {
+    if (data.includes('\x1b]133;C\x1b\\')) {
       this.eventBus.emit('command-started', {
         type: 'command-started',
         paneId,
