@@ -1277,7 +1277,13 @@ export function Sidebar({
                   }
                   indentLevel={tab.groupId ? 1 : 0}
                   worktreeBranch={tab.worktreeBranch}
-                  isWorktreeChild={tab.groupRole === 'worktree'}
+                  worktreeDisabledReason={
+                    isFile ? undefined
+                      : tab.groupRole === 'worktree' ? 'Already a worktree'
+                      : tab.groupId ? 'Worktrees already created'
+                      : !gitRepoTabs.has(tab.id) ? 'Not a git repository'
+                      : null
+                  }
                   onCreateWorktree={
                     !isFile && gitRepoTabs.has(tab.id) && !tab.worktreePath && !tab.groupId
                       ? () => {
