@@ -379,3 +379,16 @@ export interface LogEntry {
   meta?: Record<string, unknown>;
   timestamp: string;
 }
+
+export type WorktreeCreateRequest = {
+  repoPath: string;
+};
+
+export type WorktreeCreateResponse = {
+  worktreePath: string;
+  branchName: string;
+};
+
+export type WorktreeRemoveRequest = {
+  worktreePath: string;
+};

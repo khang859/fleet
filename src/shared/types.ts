@@ -14,6 +14,11 @@ export type Tab = {
   type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images' | 'settings';
   avatarVariant?: string;
   splitRoot: PaneNode;
+  // Worktree group fields
+  groupId?: string;
+  groupRole?: 'parent' | 'worktree';
+  worktreeBranch?: string;
+  worktreePath?: string;
 };
 
 export type PaneNode = PaneSplit | PaneLeaf;

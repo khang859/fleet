@@ -99,5 +99,7 @@ export const IPC_CHANNELS = {
   IMAGES_RUN_ACTION: 'images:run-action',
   IMAGES_LIST_ACTIONS: 'images:list-actions',
   LOG_BATCH: 'log:batch',
-  ACTIVITY_STATE: 'activity:state'
+  ACTIVITY_STATE: 'activity:state',
+  WORKTREE_CREATE: 'worktree:create',
+  WORKTREE_REMOVE: 'worktree:remove',
 } as const;
