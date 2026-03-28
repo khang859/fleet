@@ -44,6 +44,16 @@ type TabItemProps = {
   isDragOver: 'above' | 'below' | null;
   /** Tailwind border color class for active state. Defaults to 'border-blue-500'. */
   activeBorderColor?: string;
+  /** Called when user selects "Create Worktree" from context menu */
+  onCreateWorktree?: () => void;
+  /** True if this tab is a worktree child (hides "Create Worktree" option) */
+  isWorktreeChild?: boolean;
+  /** True if this tab is a parent with worktree children */
+  isWorktreeParent?: boolean;
+  /** Branch name to show as subtitle for worktree tabs */
+  worktreeBranch?: string;
+  /** Indentation level (0 = normal, 1 = inside a group) */
+  indentLevel?: number;
 };
 
 // Multi-signal badge config: color + size + shape + animation per severity level
@@ -91,7 +101,12 @@ export function TabItem({
   onDragOver,
   onDrop,
   isDragOver,
-  activeBorderColor = 'border-blue-500'
+  activeBorderColor = 'border-blue-500',
+  onCreateWorktree,
+  isWorktreeChild,
+  isWorktreeParent: _isWorktreeParent,
+  worktreeBranch,
+  indentLevel = 0
 }: TabItemProps): React.JSX.Element {
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
   const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
@@ -172,10 +187,11 @@ export function TabItem({
           data-tab-id={id}
           className={`
             group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm relative min-h-[44px] transition-colors
+            ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/30' : ''}
             ${
               isActive
-                ? `bg-neutral-700 text-white border-l-2 ${activeBorderColor}`
-                : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+                ? `bg-neutral-700 text-white ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`}`
+                : `text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
             }
           `}
           onClick={onClick}
@@ -243,7 +259,9 @@ export function TabItem({
                 {labelIsCustom ? label : cwdBasename(cwd)}
               </div>
               <div className="truncate text-xs leading-tight text-neutral-500">
-                {freshness ? (
+                {worktreeBranch ? (
+                  <span className="text-teal-400/60">{worktreeBranch}</span>
+                ) : freshness ? (
                   <span className={activity?.state === 'needs_me' ? 'text-amber-400' : ''}>
                     {freshness}
                   </span>
@@ -285,6 +303,17 @@ export function TabItem({
             >
               Reset to directory name
             </ContextMenu.Item>
+          )}
+          {onCreateWorktree && !isWorktreeChild && (
+            <>
+              <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+              <ContextMenu.Item
+                className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+                onSelect={onCreateWorktree}
+              >
+                Create Worktree
+              </ContextMenu.Item>
+            </>
           )}
           <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
           <ContextMenu.Item
