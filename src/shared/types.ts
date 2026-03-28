@@ -179,7 +179,7 @@ export type CopilotPosition = {
 
 export type CopilotMessageBlock =
   | { type: 'text'; text: string }
-  | { type: 'tool_use'; id: string; name: string; inputPreview: string }
+  | { type: 'tool_use'; id: string; name: string; inputPreview: string; input?: Record<string, unknown> }
   | { type: 'thinking'; text: string }
   | { type: 'interrupted' };
 

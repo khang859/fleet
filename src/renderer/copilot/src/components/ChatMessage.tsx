@@ -1,4 +1,5 @@
-import type { CopilotChatMessage } from '../../../../shared/types';
+import type { CopilotChatMessage, CopilotMessageBlock } from '../../../../shared/types';
+import { useCopilotStore } from '../store/copilot-store';
 
 function TextBlock({ text }: { text: string }): React.JSX.Element {
   return <div className="text-[11px] text-neutral-200 whitespace-pre-wrap break-words">{text}</div>;
@@ -21,6 +22,43 @@ function ToolUseBlock({
   );
 }
 
+function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): React.JSX.Element {
+  const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
+  const sendMessage = useCopilotStore((s) => s.sendMessage);
+
+  const question = (input['question'] as string) ?? 'Claude needs your input';
+  const options = (input['options'] as Array<Record<string, unknown>>) ?? [];
+
+  const handleSelect = (index: number): void => {
+    if (!selectedSessionId) return;
+    sendMessage(selectedSessionId, String(index + 1));
+  };
+
+  return (
+    <div className="p-2 bg-amber-500/10 border border-amber-500/20 rounded-lg space-y-1.5">
+      <div className="text-[10px] font-medium text-amber-400">Question</div>
+      <div className="text-[11px] text-neutral-200">{question}</div>
+      {options.length > 0 && (
+        <div className="space-y-1 mt-1">
+          {options.map((opt, i) => (
+            <button
+              key={i}
+              onClick={() => handleSelect(i)}
+              className="w-full text-left px-2 py-1 rounded bg-neutral-800/50 hover:bg-neutral-700/50 border border-neutral-700 hover:border-amber-500/30 transition-colors"
+            >
+              <span className="text-[10px] text-amber-400 font-medium mr-1.5">{i + 1}.</span>
+              <span className="text-[11px] text-neutral-200">{(opt['label'] as string) ?? ''}</span>
+              {opt['description'] && (
+                <span className="text-[10px] text-neutral-500 ml-1">{opt['description'] as string}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
     <details className="text-[10px] text-neutral-500">
@@ -29,6 +67,21 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
         {text.slice(0, 500)}{text.length > 500 ? '...' : ''}
       </div>
     </details>
+  );
+}
+
+function renderToolUse(block: Extract<CopilotMessageBlock, { type: 'tool_use' }>, key: string): React.JSX.Element {
+  if (block.name === 'AskUserQuestion' && block.input) {
+    return (
+      <div key={key} className="max-w-[95%]">
+        <AskUserQuestionBlock input={block.input} />
+      </div>
+    );
+  }
+  return (
+    <div key={key} className="max-w-[90%]">
+      <ToolUseBlock name={block.name} inputPreview={block.inputPreview} />
+    </div>
   );
 }
 
@@ -54,11 +107,7 @@ export function ChatMessageItem({ message }: { message: CopilotChatMessage }): R
               </div>
             );
           case 'tool_use':
-            return (
-              <div key={key} className="max-w-[90%]">
-                <ToolUseBlock name={block.name} inputPreview={block.inputPreview} />
-              </div>
-            );
+            return renderToolUse(block, key);
           case 'thinking':
             return (
               <div key={key} className="max-w-[90%]">

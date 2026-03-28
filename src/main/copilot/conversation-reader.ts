@@ -121,12 +121,17 @@ function parseMessageLine(
           if (toolId) seenToolIds.add(toolId);
           const name = (block['name'] as string) ?? 'Unknown';
           const input = (block['input'] as Record<string, unknown>) ?? {};
-          blocks.push({
+          const toolBlock: CopilotMessageBlock = {
             type: 'tool_use',
             id: toolId ?? '',
             name,
             inputPreview: formatToolInputPreview(name, input),
-          });
+          };
+          // Include full input for interactive tools so the UI can render options
+          if (name === 'AskUserQuestion') {
+            toolBlock.input = input;
+          }
+          blocks.push(toolBlock);
           break;
         }
         case 'thinking': {
