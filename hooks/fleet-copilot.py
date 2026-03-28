@@ -70,6 +70,10 @@ def send_event(state, wait_for_response=False):
 
 
 def main():
+    # Only respond to Claude Code sessions spawned inside Fleet terminals.
+    if not os.environ.get("FLEET_SESSION"):
+        sys.exit(0)
+
     try:
         data = json.load(sys.stdin)
     except json.JSONDecodeError:
