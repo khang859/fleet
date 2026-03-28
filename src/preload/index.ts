@@ -38,7 +38,10 @@ import type {
   RecentImagesResponse,
   ClipboardHistoryResponse,
   LogEntry,
-  ActivityStatePayload
+  ActivityStatePayload,
+  WorktreeCreateRequest,
+  WorktreeCreateResponse,
+  WorktreeRemoveRequest
 } from '../shared/ipc-api';
 import type {
   Workspace,
@@ -158,6 +161,12 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
     getStatus: async (cwd: string): Promise<GitStatusPayload> =>
       typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd)
+  },
+  worktree: {
+    create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
+      typedInvoke(IPC_CHANNELS.WORKTREE_CREATE, req),
+    remove: async (req: WorktreeRemoveRequest): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.WORKTREE_REMOVE, req),
   },
   admiral: {
     checkDependencies: async (): Promise<SystemDepResult[]> =>

@@ -21,6 +21,7 @@ import { AdmiralProcess } from './starbase/admiral-process';
 import { AdmiralStateDetector } from './starbase/admiral-state-detector';
 import { installFleetCLI } from './install-fleet-cli';
 import { ImageService } from './image-service';
+import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { normalizeRuntimeEnv } from './runtime-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
@@ -563,7 +564,8 @@ void app.whenReady().then(() => {
       admiralStateDetector
     }),
     workspacePath,
-    activityTracker
+    activityTracker,
+    new WorktreeService()
   );
 
   // Allow the renderer to explicitly request a fresh snapshot (e.g. after hard

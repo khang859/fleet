@@ -23,7 +23,9 @@ import type {
   StarbaseRuntimeStatus,
   DirEntry,
   FileSearchRequest,
-  LogEntry
+  LogEntry,
+  WorktreeCreateRequest,
+  WorktreeRemoveRequest
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -36,6 +38,7 @@ import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import type { GitService } from './git-service';
+import type { WorktreeService } from './worktree-service';
 import type { FleetSettings } from '../shared/types';
 import type { AdmiralProcess } from './starbase/admiral-process';
 import { checkDependencies } from './starbase/admiral-process';
@@ -73,7 +76,8 @@ export function registerIpcHandlers(
   getBootstrapState: () => BootstrapState,
   getStarbaseServices: () => StarbaseServices,
   workspacePath: string,
-  activityTracker: ActivityTracker
+  activityTracker: ActivityTracker,
+  worktreeService: WorktreeService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -645,6 +649,21 @@ export function registerIpcHandlers(
   }));
 
   startClipboardMonitor();
+
+  // Worktree handlers
+  ipcMain.handle(
+    IPC_CHANNELS.WORKTREE_CREATE,
+    async (_event, req: WorktreeCreateRequest) => {
+      return worktreeService.create(req.repoPath);
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WORKTREE_REMOVE,
+    async (_event, req: WorktreeRemoveRequest) => {
+      return worktreeService.remove(req.worktreePath);
+    }
+  );
 }
 
 // Exported for testing
