@@ -12,6 +12,9 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!reference/**'
   - '!docs/**'
+extraResources:
+  - from: hooks/
+    to: hooks/
 asarUnpack:
   - resources/**
 mac:
