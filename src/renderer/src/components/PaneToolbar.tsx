@@ -1,5 +1,30 @@
 import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen } from 'lucide-react';
+import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
+
+function ToolbarTooltip({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <Tooltip.Root>
+      <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
+      <Tooltip.Portal>
+        <Tooltip.Content
+          side="bottom"
+          sideOffset={6}
+          className="px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50"
+        >
+          {label}
+          <Tooltip.Arrow className="fill-neutral-800" />
+        </Tooltip.Content>
+      </Tooltip.Portal>
+    </Tooltip.Root>
+  );
+}
 
 type PaneToolbarProps = {
   visible: boolean;
@@ -27,98 +52,108 @@ export function PaneToolbar({
   onInjectSkills
 }: PaneToolbarProps): React.JSX.Element {
   return (
-    <div
-      className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-      style={{ WebkitAppRegion: 'no-drag' }}
-    >
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onSplitHorizontal();
-        }}
-        className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-        title={`Split Right (${formatShortcut(getShortcut('split-right')!)})`}
+    <Tooltip.Provider delayDuration={300}>
+      <div
+        className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        style={{ WebkitAppRegion: 'no-drag' }}
       >
-        <Columns2 size={14} />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onSplitVertical();
-        }}
-        className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-        title={`Split Down (${formatShortcut(getShortcut('split-down')!)})`}
-      >
-        <Rows2 size={14} />
-      </button>
-      {isGitRepo && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onGitChanges();
-          }}
-          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          title={`Git Changes (${formatShortcut(getShortcut('git-changes')!)})`}
-        >
-          <GitBranch size={14} />
-        </button>
-      )}
-      {onFileSearch && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onFileSearch();
-          }}
-          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          title={`Search files on disk (${formatShortcut(getShortcut('file-search')!)})`}
-        >
-          <FileSearch size={14} />
-        </button>
-      )}
-      {onClipboardHistory && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClipboardHistory();
-          }}
-          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          title={`Clipboard history (${formatShortcut(getShortcut('clipboard-history')!)})`}
-        >
-          <Clipboard size={14} />
-        </button>
-      )}
-      {onInjectSkills && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onInjectSkills();
-          }}
-          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          title={`Inject Fleet Skills (${formatShortcut(getShortcut('inject-skills')!)})`}
-        >
-          <BookOpen size={14} />
-        </button>
-      )}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onSearch();
-        }}
-        className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-        title={`Search (${formatShortcut(getShortcut('search')!)})`}
-      >
-        <Search size={14} />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onClose();
-        }}
-        className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-        title={`Close Pane (${formatShortcut(getShortcut('close-pane')!)})`}
-      >
-        <X size={14} />
-      </button>
-    </div>
+        <ToolbarTooltip label={`Split Right (${formatShortcut(getShortcut('split-right')!)})`}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSplitHorizontal();
+            }}
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          >
+            <Columns2 size={14} />
+          </button>
+        </ToolbarTooltip>
+        <ToolbarTooltip label={`Split Down (${formatShortcut(getShortcut('split-down')!)})`}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSplitVertical();
+            }}
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          >
+            <Rows2 size={14} />
+          </button>
+        </ToolbarTooltip>
+        {isGitRepo && (
+          <ToolbarTooltip label={`Git Changes (${formatShortcut(getShortcut('git-changes')!)})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onGitChanges();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <GitBranch size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onFileSearch && (
+          <ToolbarTooltip label={`Search Files (${formatShortcut(getShortcut('file-search')!)})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onFileSearch();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <FileSearch size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onClipboardHistory && (
+          <ToolbarTooltip label={`Clipboard History (${formatShortcut(getShortcut('clipboard-history')!)})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onClipboardHistory();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Clipboard size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onInjectSkills && (
+          <ToolbarTooltip label={`Inject Fleet Skills (${formatShortcut(getShortcut('inject-skills')!)})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onInjectSkills();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <BookOpen size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        <ToolbarTooltip label={`Search in Pane (${formatShortcut(getShortcut('search')!)})`}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onSearch();
+            }}
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          >
+            <Search size={14} />
+          </button>
+        </ToolbarTooltip>
+        <ToolbarTooltip label={`Close Pane (${formatShortcut(getShortcut('close-pane')!)})`}>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </ToolbarTooltip>
+      </div>
+    </Tooltip.Provider>
   );
 }
