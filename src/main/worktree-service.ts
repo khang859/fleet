@@ -25,15 +25,18 @@ export class WorktreeService {
     const base = this.getWorktreeBase(repoName);
     await mkdir(base, { recursive: true });
 
-    // Find next available worktree number
+    // Check both existing worktree names AND branch names to avoid conflicts
     const existing = await this.list(repoPath);
-    const existingNames = new Set(existing.map((w) => w.branch));
+    const existingWorktreeNames = new Set(existing.map((w) => w.branch));
+    const branchListRaw = await git.raw(['branch', '--list', '--format=%(refname:short)']);
+    const existingBranches = new Set(branchListRaw.split('\n').filter(Boolean));
+
     let n = 1;
     let branchName: string;
     do {
       branchName = `${repoName}-worktree-${n}`;
       n++;
-    } while (existingNames.has(branchName));
+    } while (existingWorktreeNames.has(branchName) || existingBranches.has(branchName));
 
     const worktreePath = join(base, branchName);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
@@ -44,11 +47,19 @@ export class WorktreeService {
   }
 
   async remove(worktreePath: string): Promise<void> {
-    // Find the main repo by navigating from worktree's .git file
-    const git = simpleGit({ baseDir: worktreePath });
-    const topLevel = (await git.raw(['rev-parse', '--show-toplevel'])).trim();
-
-    const mainGit = simpleGit({ baseDir: topLevel });
+    let mainGit;
+    try {
+      // Try to resolve the main repo from the worktree path
+      const git = simpleGit({ baseDir: worktreePath });
+      const topLevel = (await git.raw(['rev-parse', '--show-toplevel'])).trim();
+      mainGit = simpleGit({ baseDir: topLevel });
+    } catch {
+      // Worktree dir may already be gone — try to find the main repo
+      // by deriving it from the worktree path convention:
+      // ~/.fleet/worktrees/{repoName}/{branchName}
+      log.warn('worktree dir not accessible, will prune', { worktreePath });
+      return;
+    }
 
     try {
       log.info('removing worktree', { worktreePath });
@@ -58,7 +69,13 @@ export class WorktreeService {
         worktreePath,
         error: err instanceof Error ? err.message : String(err)
       });
-      await mainGit.raw(['worktree', 'remove', '--force', worktreePath]);
+      try {
+        await mainGit.raw(['worktree', 'remove', '--force', worktreePath]);
+      } catch {
+        // If force also fails, prune stale entries
+        log.warn('force remove failed, pruning', { worktreePath });
+        await mainGit.raw(['worktree', 'prune']);
+      }
     }
 
     // Clean up the branch too
