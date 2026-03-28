@@ -26,18 +26,29 @@ function getDevBootstrapPath(viteUrl: string): string {
   if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
 
   const bootstrapPath = join(outDir, 'copilot-dev.html');
+  // Use an absolute file path so Vite can resolve and transform the module
+  const mainTsxPath = join(process.cwd(), 'src', 'renderer', 'copilot', 'src', 'main.tsx');
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Fleet Copilot</title>
-  <style>html, body, #root { margin: 0; padding: 0; background: transparent; overflow: hidden; }</style>
+  <style>
+    html, body, #root { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+  </style>
   <script type="module" src="${viteUrl}/@vite/client"></script>
+  <script type="module">
+    import RefreshRuntime from "${viteUrl}/@react-refresh";
+    RefreshRuntime.injectIntoGlobalHook(window);
+    window.$RefreshReg$ = () => {};
+    window.$RefreshSig$ = () => (type) => type;
+    window.__vite_plugin_react_preamble_installed__ = true;
+  </script>
 </head>
 <body>
   <div id="root"></div>
-  <script type="module" src="${viteUrl}/src/renderer/copilot/src/main.tsx"></script>
+  <script type="module" src="${viteUrl}/@fs${mainTsxPath}"></script>
 </body>
 </html>`;
   writeFileSync(bootstrapPath, html, 'utf-8');
@@ -134,9 +145,8 @@ export class CopilotWindow {
       }
     });
 
-    if (!app.isPackaged) {
-      this.win.webContents.openDevTools({ mode: 'detach' });
-    }
+    // Uncomment to debug copilot renderer:
+    // if (!app.isPackaged) this.win.webContents.openDevTools({ mode: 'detach' });
 
     this.win.on('closed', () => {
       this.win = null;
@@ -196,7 +206,7 @@ export class CopilotWindow {
     const primary = screen.getPrimaryDisplay();
     return {
       x: primary.bounds.x + primary.bounds.width - SPRITE_SIZE - 20,
-      y: primary.bounds.y + 40,
+      y: primary.bounds.y + 60,
     };
   }
 }
