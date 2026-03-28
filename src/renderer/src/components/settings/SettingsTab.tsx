@@ -6,13 +6,15 @@ import { NotificationsSection } from './NotificationsSection';
 import { SocketSection } from './SocketSection';
 import { VisualizerSection } from './VisualizerSection';
 import { UpdatesSection } from './UpdatesSection';
+import { CopilotSection } from './CopilotSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
   notifications: NotificationsSection,
   socket: SocketSection,
   visualizer: VisualizerSection,
-  updates: UpdatesSection
+  updates: UpdatesSection,
+  copilot: CopilotSection
 };
 
 export function SettingsTab(): React.JSX.Element {

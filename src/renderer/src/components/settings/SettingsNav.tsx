@@ -1,12 +1,17 @@
-export type SettingsSection = 'general' | 'notifications' | 'socket' | 'visualizer' | 'updates';
+export type SettingsSection = 'general' | 'notifications' | 'socket' | 'visualizer' | 'updates' | 'copilot';
 
-const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
+const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boolean }> = [
   { id: 'general', label: 'General' },
   { id: 'notifications', label: 'Notifications' },
   { id: 'socket', label: 'Socket API' },
   { id: 'visualizer', label: 'Visualizer' },
-  { id: 'updates', label: 'Updates' }
+  { id: 'updates', label: 'Updates' },
+  { id: 'copilot', label: 'Copilot', darwinOnly: true }
 ];
+
+const SECTIONS = ALL_SECTIONS.filter(
+  (s) => !s.darwinOnly || window.fleet.platform === 'darwin'
+);
 
 export function SettingsNav({
   active,
