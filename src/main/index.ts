@@ -13,7 +13,8 @@ import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
-import { IPC_CHANNELS } from '../shared/constants';
+import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
+import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI } from './install-fleet-cli';
 import { ImageService } from './image-service';
@@ -30,6 +31,7 @@ const log = createLogger('fleet-main');
 const updaterLog = createLogger('auto-updater');
 
 let mainWindow: BrowserWindow | null = null;
+let socketSupervisor: SocketSupervisor | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -226,6 +228,19 @@ void app.whenReady().then(() => {
   );
 
   imageService.resumeInterrupted();
+
+  // Start socket server for fleet CLI (images + open commands)
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService);
+  socketSupervisor.on('file-open', (payload: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
+    }
+  });
+  socketSupervisor.start().catch((err: unknown) => {
+    log.error('socket-supervisor failed to start', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  });
 
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
@@ -500,6 +515,11 @@ void app.whenReady().then(() => {
 function shutdownAll(): void {
   ptyManager.killAll();
   cwdPoller.stopAll();
+  socketSupervisor?.stop().catch((err: unknown) =>
+    log.error('socket-supervisor stop error', {
+      error: err instanceof Error ? err.message : String(err)
+    })
+  );
   imageService.shutdown();
 }
 
