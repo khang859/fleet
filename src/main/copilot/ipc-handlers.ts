@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron';
+import { ipcMain, type BrowserWindow } from 'electron';
 import { execSync } from 'child_process';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { createLogger } from '../logger';
@@ -53,6 +53,7 @@ export function registerCopilotIpcHandlers(
   settingsStore: SettingsStore,
   conversationReader: ConversationReader,
   ptyManager: PtyManager,
+  getMainWindow: () => BrowserWindow | null,
   onSettingsChanged?: () => Promise<void>
 ): void {
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
@@ -140,6 +141,31 @@ export function registerCopilotIpcHandlers(
       // Send text then carriage return (Enter), matching what terminal emulators send
       ptyManager.write(paneId, args.message + '\r');
       log.info('message sent via PTY master', { sessionId: args.sessionId, paneId, pid: session.pid });
+      return true;
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.COPILOT_FOCUS_TERMINAL,
+    (_event, args: { sessionId: string }) => {
+      const session = sessionStore.getSession(args.sessionId);
+      if (!session?.pid) {
+        log.warn('no PID for session, cannot focus terminal', { sessionId: args.sessionId });
+        return false;
+      }
+      const paneId = findPaneForPid(ptyManager, session.pid);
+      if (!paneId) {
+        log.warn('no Fleet pane found for session', { sessionId: args.sessionId, pid: session.pid });
+        return false;
+      }
+      const win = getMainWindow();
+      if (win) {
+        win.show();
+        win.focus();
+        win.webContents.send('fleet:focus-pane', { paneId });
+        log.info('focused terminal pane', { sessionId: args.sessionId, paneId });
+      }
+      copilotWindow.setExpanded(false);
       return true;
     }
   );

@@ -247,7 +247,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start copilot (macOS only, gated internally)
-  await initCopilot(settingsStore, ptyManager);
+  await initCopilot(settingsStore, ptyManager, () => mainWindow);
 
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {

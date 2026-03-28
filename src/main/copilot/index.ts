@@ -6,6 +6,7 @@ import { ConversationReader } from './conversation-reader';
 import { registerCopilotIpcHandlers } from './ipc-handlers';
 import * as hookInstaller from './hook-installer';
 import type { SettingsStore } from '../settings-store';
+import type { BrowserWindow } from 'electron';
 import type { PtyManager } from '../pty-manager';
 import { IPC_CHANNELS } from '../../shared/constants';
 
@@ -17,7 +18,11 @@ let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
 let servicesRunning = false;
 let cachedSettingsStore: SettingsStore | null = null;
-export async function initCopilot(settingsStore: SettingsStore, ptyManager: PtyManager): Promise<void> {
+export async function initCopilot(
+  settingsStore: SettingsStore,
+  ptyManager: PtyManager,
+  getMainWindow: () => BrowserWindow | null
+): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
 
   if (process.platform !== 'darwin') {
@@ -30,7 +35,7 @@ export async function initCopilot(settingsStore: SettingsStore, ptyManager: PtyM
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, onCopilotSettingsChanged);
+  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, getMainWindow, onCopilotSettingsChanged);
 
   const settings = settingsStore.get();
   log.info('copilot settings', { enabled: settings.copilot.enabled, autoStart: settings.copilot.autoStart });

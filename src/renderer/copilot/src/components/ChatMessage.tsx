@@ -34,7 +34,9 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
   };
 
   const handleGoToTerminal = (): void => {
-    window.copilot.setExpanded(false);
+    if (selectedSessionId) {
+      window.copilot.focusTerminal(selectedSessionId);
+    }
   };
 
   return (

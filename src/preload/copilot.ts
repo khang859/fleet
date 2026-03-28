@@ -83,6 +83,9 @@ const copilotApi = {
 
   sendMessage: (sessionId: string, message: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SEND_MESSAGE, { sessionId, message }),
+
+  focusTerminal: (sessionId: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, { sessionId }),
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);

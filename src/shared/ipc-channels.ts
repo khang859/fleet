@@ -69,4 +69,5 @@ export const IPC_CHANNELS = {
   COPILOT_CHAT_HISTORY: 'copilot:chat-history',
   COPILOT_CHAT_UPDATED: 'copilot:chat-updated',
   COPILOT_SEND_MESSAGE: 'copilot:send-message',
+  COPILOT_FOCUS_TERMINAL: 'copilot:focus-terminal',
 } as const;
