@@ -1,17 +1,34 @@
 import type { EventBus } from './event-bus';
 import type { NotificationLevel } from '../shared/types';
 
-// Permission prompt patterns from Claude Code and similar tools
+// Permission prompt patterns for CLI tools (generic, not CLI-specific)
 const PERMISSION_PATTERNS = [
+  // Claude Code patterns
   /Do you want to (?:allow|proceed|continue)/i,
   /\(y\/n\)\s*$/,
   /Allow this action\?/i,
-  /Press Enter to confirm/i
+  /Press Enter to confirm/i,
+  // Generic CLI patterns
+  /\[Y\/n\]\s*$/,
+  /\[yes\/no\]\s*$/i,
+  /Continue\?\s*$/i,
+  /Approve\?\s*$/i,
+  /Press Enter to continue/i,
+  /Are you sure\?/i,
+  /\(yes\/no\)\s*$/i,
 ];
 
 // OSC 7 format: ESC ] 7 ; file://[host]/path BEL  or  ESC ] 7 ; file://[host]/path ST
 // eslint-disable-next-line no-control-regex
 const OSC7_RE = /\x1b\]7;(file:\/\/[^\x07\x1b]+?)(?:\x07|\x1b\\)/g; // used via matchAll (no shared lastIndex)
+
+// OSC 133;C — command execution started (FinalTerm/shell integration)
+// eslint-disable-next-line no-control-regex
+const OSC133C_RE = /\x1b\]133;C\x1b\\/;
+
+// OSC 133;D[;exitcode] — command finished (FinalTerm/shell integration)
+// eslint-disable-next-line no-control-regex
+const OSC133D_RE = /\x1b\]133;D(?:;(\d+))?\x1b\\/;
 
 const CARRY_BUFFER_SIZE = 200;
 
@@ -30,6 +47,7 @@ export class NotificationDetector {
     this.checkOSC7(paneId, data);
     this.checkOSC9(paneId, data);
     this.checkOSC777(paneId, data);
+    this.checkOSC133(paneId, data);
     this.checkPermissionPrompt(paneId, data);
   }
 
@@ -74,6 +92,22 @@ export class NotificationDetector {
   private checkOSC777(paneId: string, data: string): void {
     if (data.includes('\x1b]777;')) {
       this.emitNotification(paneId, 'info');
+    }
+  }
+
+  private checkOSC133(paneId: string, data: string): void {
+    if (OSC133C_RE.test(data)) {
+      this.eventBus.emit('command-started', {
+        type: 'command-started',
+        paneId,
+        timestamp: Date.now(),
+      });
+    }
+
+    const dMatch = OSC133D_RE.exec(data);
+    if (dMatch) {
+      const exitCode = dMatch[1] ? parseInt(dMatch[1], 10) : 0;
+      this.emitNotification(paneId, exitCode === 0 ? 'subtle' : 'error');
     }
   }
 

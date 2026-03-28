@@ -65,6 +65,72 @@ describe('NotificationDetector', () => {
     expect(callback).not.toHaveBeenCalled();
   });
 
+  it('detects generic [Y/n] permission prompt', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', 'Overwrite file? [Y/n] ');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+    );
+  });
+
+  it('detects "Are you sure?" prompt', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', 'Are you sure? ');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+    );
+  });
+
+  it('detects "Continue?" prompt', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', 'Continue? ');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+    );
+  });
+
+  it('detects OSC 133;D command completion with exit code 0', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', '\x1b]133;D;0\x1b\\');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', level: 'subtle' })
+    );
+  });
+
+  it('detects OSC 133;D command completion with non-zero exit code', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', '\x1b]133;D;1\x1b\\');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', level: 'error' })
+    );
+  });
+
+  it('detects OSC 133;C command execution start', () => {
+    const callback = vi.fn();
+    eventBus.on('command-started', callback);
+
+    detector.scan('pane-1', '\x1b]133;C\x1b\\');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1' })
+    );
+  });
+
   it('does not emit notification for tmux DCS sequences', () => {
     const callback = vi.fn();
     eventBus.on('notification', callback);
