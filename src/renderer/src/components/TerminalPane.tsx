@@ -4,6 +4,7 @@ import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { useCwdStore } from '../store/cwd-store';
+import { joinPath } from '../lib/shell-utils';
 
 type TerminalPaneProps = {
   paneId: string;
@@ -120,7 +121,7 @@ export function TerminalPane({
         onInjectSkills={() => {
           window.fleet.pty.input({
             paneId,
-            data: 'Read ~/.fleet/skills/fleet.md to learn the Fleet terminal commands available to you.\n'
+            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
           });
         }}
       />

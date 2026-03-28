@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useWorkspaceStore, collectPaneIds } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
 import { ALL_SHORTCUTS, matchesShortcut, type ShortcutDef } from '../lib/shortcuts';
+import { joinPath } from '../lib/shell-utils';
 
 function sc(id: string): ShortcutDef {
   return ALL_SHORTCUTS.find((s) => s.id === id)!;
@@ -142,7 +143,7 @@ export function usePaneNavigation(): void {
         if (activePaneId) {
           window.fleet.pty.input({
             paneId: activePaneId,
-            data: 'Read ~/.fleet/skills/fleet.md to learn the Fleet terminal commands available to you.\n'
+            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
           });
         }
         return;

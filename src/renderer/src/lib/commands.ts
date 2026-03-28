@@ -1,4 +1,5 @@
 import { ALL_SHORTCUTS, formatShortcut, type ShortcutDef } from './shortcuts';
+import { joinPath } from './shell-utils';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useVisualizerStore } from '../store/visualizer-store';
 
@@ -138,7 +139,7 @@ export function createCommandRegistry(): Command[] {
         if (activePaneId) {
           window.fleet.pty.input({
             paneId: activePaneId,
-            data: 'Read ~/.fleet/skills/fleet.md to learn the Fleet terminal commands available to you.\n'
+            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
           });
         }
       }

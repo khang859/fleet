@@ -16,6 +16,14 @@ export function quotePathForShell(filePath: string, platform: string): string {
  * as pasted content rather than raw keystrokes. This prevents interactive
  * programs (vim, agents, shells) from interpreting the characters as commands.
  */
+/**
+ * Joins path segments using the OS-appropriate separator.
+ */
+export function joinPath(...segments: string[]): string {
+  const sep = window.fleet.platform === 'win32' ? '\\' : '/';
+  return segments.join(sep);
+}
+
 export function bracketedPaste(text: string): string {
   return `\x1b[200~${text}\x1b[201~`;
 }
