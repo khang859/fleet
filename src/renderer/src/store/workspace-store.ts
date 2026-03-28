@@ -87,6 +87,15 @@ type WorkspaceStore = {
   setActiveTab: (tabId: string) => void;
   reorderTab: (fromIndex: number, toIndex: number) => void;
 
+  // Worktree group actions
+  collapsedGroups: Set<string>;
+  createWorktreeGroup: (tabId: string, worktreePath: string, branchName: string) => void;
+  closeWorktreeTab: (tabId: string) => void;
+  closeWorktreeGroup: (groupId: string) => void;
+  toggleGroupCollapsed: (groupId: string) => void;
+  reorderWithinGroup: (groupId: string, fromIndex: number, toIndex: number) => void;
+  reorderGroup: (groupId: string, targetIndex: number) => void;
+
   // Pane actions
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical') => string;
   closePane: (paneId: string) => void;
@@ -184,6 +193,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   recentFiles: loadRecentFiles(),
   lastClosedTab: null,
   isDirty: false,
+  collapsedGroups: new Set(),
 
   addTab: (label, cwd) => {
     const resolvedLabel = label || cwdBasename(cwd);
@@ -319,6 +329,160 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         workspace: { ...state.workspace, tabs },
         isDirty: true
       };
+    });
+  },
+
+  createWorktreeGroup: (tabId, worktreePath, branchName) => {
+    const leaf = createLeaf(worktreePath);
+    const newGroupId = generateId();
+
+    set((state) => {
+      const sourceTab = state.workspace.tabs.find((t) => t.id === tabId);
+      if (!sourceTab) return state;
+
+      // Reuse existing groupId if tab is already a parent, otherwise assign new one
+      const effectiveGroupId = sourceTab.groupId ?? newGroupId;
+
+      const tabs = state.workspace.tabs.map((t) => {
+        if (t.id !== tabId) return t;
+        return t.groupId
+          ? t
+          : { ...t, groupId: effectiveGroupId, groupRole: 'parent' as const };
+      });
+
+      const worktreeTab: Tab = {
+        id: generateId(),
+        label: branchName,
+        labelIsCustom: true,
+        cwd: worktreePath,
+        splitRoot: leaf,
+        groupId: effectiveGroupId,
+        groupRole: 'worktree',
+        worktreeBranch: branchName,
+        worktreePath,
+      };
+
+      // Insert worktree tab right after the last tab in this group
+      const parentIdx = tabs.findIndex((t) => t.id === tabId);
+      let insertIdx = parentIdx + 1;
+      while (insertIdx < tabs.length && tabs[insertIdx].groupId === effectiveGroupId) {
+        insertIdx++;
+      }
+      const newTabs = [...tabs];
+      newTabs.splice(insertIdx, 0, worktreeTab);
+
+      // Expand the group if it was collapsed
+      const newCollapsed = new Set(state.collapsedGroups);
+      newCollapsed.delete(effectiveGroupId);
+
+      return {
+        workspace: { ...state.workspace, tabs: newTabs },
+        activeTabId: worktreeTab.id,
+        activePaneId: leaf.id,
+        collapsedGroups: newCollapsed,
+        isDirty: true,
+      };
+    });
+  },
+
+  closeWorktreeTab: (tabId) => {
+    set((state) => {
+      const tab = state.workspace.tabs.find((t) => t.id === tabId);
+      if (!tab || tab.groupRole !== 'worktree') return state;
+
+      const groupId = tab.groupId;
+      let tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
+
+      // Check if this was the last worktree in the group — dissolve if so
+      if (groupId) {
+        const remainingWorktrees = tabs.filter(
+          (t) => t.groupId === groupId && t.groupRole === 'worktree'
+        );
+        if (remainingWorktrees.length === 0) {
+          tabs = tabs.map((t) =>
+            t.groupId === groupId
+              ? { ...t, groupId: undefined, groupRole: undefined }
+              : t
+          );
+        }
+      }
+
+      const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
+      const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
+
+      return {
+        workspace: { ...state.workspace, tabs },
+        activeTabId: nextTab?.id ?? null,
+        activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
+        isDirty: true,
+      };
+    });
+  },
+
+  closeWorktreeGroup: (groupId) => {
+    set((state) => {
+      const tabs = state.workspace.tabs.filter((t) => t.groupId !== groupId);
+      const nextTab = tabs.length > 0 ? tabs[0] : null;
+
+      const newCollapsed = new Set(state.collapsedGroups);
+      newCollapsed.delete(groupId);
+
+      return {
+        workspace: { ...state.workspace, tabs },
+        activeTabId: nextTab?.id ?? null,
+        activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
+        collapsedGroups: newCollapsed,
+        isDirty: true,
+      };
+    });
+  },
+
+  toggleGroupCollapsed: (groupId) => {
+    set((state) => {
+      const newCollapsed = new Set(state.collapsedGroups);
+      if (newCollapsed.has(groupId)) {
+        newCollapsed.delete(groupId);
+      } else {
+        newCollapsed.add(groupId);
+      }
+      return { collapsedGroups: newCollapsed, isDirty: true };
+    });
+  },
+
+  reorderWithinGroup: (groupId, fromIndex, toIndex) => {
+    set((state) => {
+      const tabs = [...state.workspace.tabs];
+      const groupIndices = tabs
+        .map((t, i) => (t.groupId === groupId ? i : -1))
+        .filter((i) => i !== -1);
+
+      if (fromIndex < 0 || fromIndex >= groupIndices.length) return state;
+      if (toIndex < 0 || toIndex >= groupIndices.length) return state;
+      if (fromIndex === toIndex) return state;
+
+      const realFrom = groupIndices[fromIndex];
+      const realTo = groupIndices[toIndex];
+      const [moved] = tabs.splice(realFrom, 1);
+      const adjustedTo = realFrom < realTo ? realTo - 1 : realTo;
+      tabs.splice(adjustedTo, 0, moved);
+
+      return { workspace: { ...state.workspace, tabs }, isDirty: true };
+    });
+  },
+
+  reorderGroup: (groupId, targetIndex) => {
+    set((state) => {
+      const tabs = [...state.workspace.tabs];
+      const groupTabs = tabs.filter((t) => t.groupId === groupId);
+      const otherTabs = tabs.filter((t) => t.groupId !== groupId);
+
+      if (groupTabs.length === 0) return state;
+
+      const clampedTarget = Math.max(0, Math.min(targetIndex, otherTabs.length));
+      const newTabs = [...otherTabs];
+      newTabs.splice(clampedTarget, 0, ...groupTabs);
+
+      return { workspace: { ...state.workspace, tabs: newTabs }, isDirty: true };
     });
   },
 
