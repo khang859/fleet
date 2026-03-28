@@ -562,7 +562,8 @@ void app.whenReady().then(() => {
       admiralProcess,
       admiralStateDetector
     }),
-    workspacePath
+    workspacePath,
+    activityTracker
   );
 
   // Allow the renderer to explicitly request a fresh snapshot (e.g. after hard

@@ -33,6 +33,7 @@ import type { NotificationDetector } from './notification-detector';
 import type { NotificationStateManager } from './notification-state';
 import type { SettingsStore } from './settings-store';
 import type { CwdPoller } from './cwd-poller';
+import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import type { GitService } from './git-service';
 import type { FleetSettings } from '../shared/types';
@@ -71,7 +72,8 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   getBootstrapState: () => BootstrapState,
   getStarbaseServices: () => StarbaseServices,
-  workspacePath: string
+  workspacePath: string,
+  activityTracker: ActivityTracker
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -92,8 +94,10 @@ export function registerIpcHandlers(
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
     // duplicate onExit/onData callbacks stacking up
     if (!alreadyExisted) {
+      activityTracker.trackPane(req.paneId);
       ptyManager.onData(req.paneId, (data, paused) => {
         notificationDetector.scan(req.paneId, data);
+        activityTracker.onData(req.paneId);
         const w = getWindow();
         if (w && !w.isDestroyed()) {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, {
