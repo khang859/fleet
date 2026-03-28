@@ -75,10 +75,10 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
     log.debug('clearPane', { paneId });
     set((state) => {
       const nextNotif = new Map(state.notifications);
-      const nextActivity = new Map(state.activities);
       nextNotif.delete(paneId);
-      nextActivity.delete(paneId);
-      return { notifications: nextNotif, activities: nextActivity };
+      // Don't clear activity — it's live state from ActivityTracker,
+      // not a dismissable notification
+      return { notifications: nextNotif };
     });
   },
 
