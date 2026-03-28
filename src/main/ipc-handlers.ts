@@ -43,6 +43,7 @@ import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
+import { onCopilotSettingsChanged } from './copilot/index';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -197,8 +198,11 @@ export function registerIpcHandlers(
     return settingsStore.get();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, (_event, settings: Partial<FleetSettings>) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (_event, settings: Partial<FleetSettings>) => {
     settingsStore.set(settings);
+    if (settings.copilot) {
+      await onCopilotSettingsChanged();
+    }
   });
 
   // Git handlers

@@ -42,6 +42,7 @@ export class CopilotWindow {
     const preloadPathJs = fileURLToPath(new URL('../preload/copilot.js', import.meta.url));
     const preloadPathMjs = fileURLToPath(new URL('../preload/copilot.mjs', import.meta.url));
     const preloadPath = existsSync(preloadPathJs) ? preloadPathJs : preloadPathMjs;
+    log.info('preload resolution', { preloadPathJs, preloadPathMjs, preloadPath, exists: existsSync(preloadPath) });
 
     this.win = new BrowserWindow({
       width: EXPANDED_WIDTH,
@@ -68,12 +69,23 @@ export class CopilotWindow {
     this.win.setIgnoreMouseEvents(false);
 
     if (process.env.ELECTRON_RENDERER_URL) {
-      void this.win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/copilot/`);
+      // electron-vite serves multi-page apps under /src/renderer/<page>/index.html
+      const url = `${process.env.ELECTRON_RENDERER_URL}/src/renderer/copilot/index.html`;
+      log.info('loading copilot renderer (dev)', { url });
+      void this.win.loadURL(url);
     } else {
-      void this.win.loadFile(
-        fileURLToPath(new URL('../renderer/copilot/index.html', import.meta.url))
-      );
+      const filePath = fileURLToPath(new URL('../renderer/copilot/index.html', import.meta.url));
+      log.info('loading copilot renderer (prod)', { filePath, exists: existsSync(filePath) });
+      void this.win.loadFile(filePath);
     }
+
+    this.win.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+      log.error('copilot renderer failed to load', { errorCode, errorDescription });
+    });
+
+    this.win.webContents.on('did-finish-load', () => {
+      log.info('copilot renderer loaded successfully');
+    });
 
     this.win.on('closed', () => {
       this.win = null;

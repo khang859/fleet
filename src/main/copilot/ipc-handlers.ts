@@ -13,7 +13,8 @@ export function registerCopilotIpcHandlers(
   sessionStore: CopilotSessionStore,
   socketServer: CopilotSocketServer,
   copilotWindow: CopilotWindow,
-  settingsStore: SettingsStore
+  settingsStore: SettingsStore,
+  onSettingsChanged?: () => Promise<void>
 ): void {
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
     return sessionStore.getSessions();
@@ -33,8 +34,12 @@ export function registerCopilotIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.COPILOT_SET_SETTINGS,
-    (_event, partial: Record<string, unknown>) => {
+    async (_event, partial: Record<string, unknown>) => {
+      log.info('COPILOT_SET_SETTINGS', { partial });
       settingsStore.set({ copilot: { ...settingsStore.get().copilot, ...partial } });
+      if ('enabled' in partial && onSettingsChanged) {
+        await onSettingsChanged();
+      }
     }
   );
 
