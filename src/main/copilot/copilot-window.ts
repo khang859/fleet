@@ -117,7 +117,9 @@ export class CopilotWindow {
       },
     });
 
-    this.win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    // NOTE: Do NOT pass { visibleOnFullScreen: true } here — it triggers
+    // Electron bug electron/electron#26350 (TransformProcessType hides dock icon).
+    this.win.setVisibleOnAllWorkspaces(true);
     this.win.setAlwaysOnTop(true, 'floating');
 
     if (isDev) {

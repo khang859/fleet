@@ -183,15 +183,6 @@ void app.whenReady().then(async () => {
 
   createWindow();
 
-  // Set dock icon on macOS
-  if (process.platform === 'darwin') {
-    const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png');
-    const dockIcon = nativeImage.createFromPath(dockIconPath);
-    if (!dockIcon.isEmpty()) {
-      app.dock?.setIcon(dockIcon);
-    }
-  }
-
   const gitService = new GitService();
   const workspacePath = resolveBootstrapWorkspacePath({
     cwd: process.cwd(),
@@ -248,6 +239,18 @@ void app.whenReady().then(async () => {
 
   // Start copilot (macOS only, gated internally)
   await initCopilot(settingsStore, ptyManager, () => mainWindow);
+
+  // Set dock icon on macOS — must happen AFTER copilot init because the copilot
+  // window's setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)
+  // that resets the dock entry.
+  if (process.platform === 'darwin') {
+    const dockIconPath = join(dirname(fileURLToPath(import.meta.url)), '../../build/icon.png');
+    const dockIcon = nativeImage.createFromPath(dockIconPath);
+    if (!dockIcon.isEmpty()) {
+      app.dock?.setIcon(dockIcon);
+      log.info('dock icon set');
+    }
+  }
 
   // Clean up CWD polling and activity tracking when panes close
   eventBus.on('pane-closed', (event) => {
