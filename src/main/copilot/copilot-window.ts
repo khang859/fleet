@@ -157,11 +157,15 @@ export class CopilotWindow {
   }
 
   setPosition(x: number, y: number): void {
-    if (this.win && !this.win.isDestroyed()) {
-      this.win.setPosition(Math.round(x), Math.round(y));
-    }
     const display = screen.getDisplayNearestPoint({ x, y });
-    this.positionStore.set('position', { x, y, displayId: display.id });
+    const { x: dx, y: dy, width, height } = display.workArea;
+    const clampedX = Math.max(dx, Math.min(x, dx + width - COLLAPSED_SIZE));
+    const clampedY = Math.max(dy, Math.min(y, dy + height - COLLAPSED_SIZE));
+
+    if (this.win && !this.win.isDestroyed()) {
+      this.win.setPosition(Math.round(clampedX), Math.round(clampedY));
+    }
+    this.positionStore.set('position', { x: clampedX, y: clampedY, displayId: display.id });
   }
 
   getPosition(): CopilotPosition | null {
