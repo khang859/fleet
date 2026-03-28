@@ -130,6 +130,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     label: 'Clipboard history',
     mac: { key: 'H', meta: true, shift: true },
     other: { key: 'H', ctrl: true, shift: true }
+  },
+  {
+    id: 'inject-skills',
+    label: 'Inject Fleet Skills',
+    mac: { key: '.', meta: true, shift: true },
+    other: { key: '.', ctrl: true, shift: true }
   }
 ];
 
