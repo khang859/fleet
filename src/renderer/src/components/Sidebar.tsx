@@ -505,33 +505,15 @@ export function Sidebar({
       const targetTab = workspace.tabs[index];
       if (!draggedTab || !targetTab) return;
 
-      // Enforce group boundaries:
-      // - Tab in a group can only reorder within its group
-      // - Ungrouped tab cannot drop between grouped tabs
+      // Enforce group boundaries: skip update for cross-group drops
+      // (don't clear dropTarget — just ignore the invalid hover so the last valid target persists)
       const dragGroup = draggedTab.groupId;
       const targetGroup = targetTab.groupId;
-      if (dragGroup !== targetGroup) {
-        // Don't show drop indicator for cross-group drops
-        setDropTarget(null);
-        return;
-      }
+      if (dragGroup !== targetGroup) return;
 
       const rect = target.getBoundingClientRect();
       const midY = rect.top + rect.height / 2;
       const position = e.clientY < midY ? 'above' : 'below';
-
-      // For ungrouped tabs: prevent dropping between a group's tabs
-      // (i.e., if dropping "above" a grouped tab or "below" a grouped tab, reject if the adjacent position is within a group)
-      if (!dragGroup && !targetGroup) {
-        // Check if drop position would land inside a group
-        const adjacentIdx = position === 'below' ? index + 1 : index - 1;
-        const adjacentTab = workspace.tabs[adjacentIdx];
-        if (adjacentTab?.groupId && targetTab.groupId !== adjacentTab.groupId) {
-          // Dropping between an ungrouped tab and a grouped tab is fine
-          // But dropping between two tabs of the same group is not (we already handle that above)
-        }
-      }
-
       setDropTarget({ index, position });
     },
     [dragIndex, workspace.tabs]
