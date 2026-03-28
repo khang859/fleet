@@ -8,14 +8,8 @@ export type FleetEvent =
   | { type: 'pty-exit'; paneId: string; exitCode: number }
   | { type: 'activity-state-change'; paneId: string; state: ActivityState; lastOutputAt: number; timestamp: number }
   | { type: 'command-started'; paneId: string; timestamp: number }
-  | {
-      type: 'admiral-state-change';
-      state: 'standby' | 'thinking' | 'speaking' | 'alert';
-      statusText: string;
-    }
   | { type: 'workspace-loaded'; workspaceId: string }
-  | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' }
-  | { type: 'starbase-changed' };
+  | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' };
 
 type EventMap = {
   [K in FleetEvent['type']]: Extract<FleetEvent, { type: K }>;
