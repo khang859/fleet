@@ -54,5 +54,11 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       depthOfField: false
     },
     soundVolume: 0.3
-  }
+  },
+  copilot: {
+    enabled: false,
+    spriteSheet: 'spaceship-default.png',
+    notificationSound: 'Pop',
+    autoStart: false,
+  },
 };

@@ -54,4 +54,14 @@ export const IPC_CHANNELS = {
   ACTIVITY_STATE: 'activity:state',
   WORKTREE_CREATE: 'worktree:create',
   WORKTREE_REMOVE: 'worktree:remove',
+  // Copilot
+  COPILOT_SESSIONS: 'copilot:sessions',
+  COPILOT_RESPOND_PERMISSION: 'copilot:respond-permission',
+  COPILOT_GET_SETTINGS: 'copilot:get-settings',
+  COPILOT_SET_SETTINGS: 'copilot:set-settings',
+  COPILOT_INSTALL_HOOKS: 'copilot:install-hooks',
+  COPILOT_UNINSTALL_HOOKS: 'copilot:uninstall-hooks',
+  COPILOT_HOOK_STATUS: 'copilot:hook-status',
+  COPILOT_POSITION_GET: 'copilot:position:get',
+  COPILOT_POSITION_SET: 'copilot:position:set',
 } as const;

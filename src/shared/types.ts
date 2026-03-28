@@ -124,6 +124,55 @@ export type FleetSettings = {
     effects: VisualizerEffects;
     soundVolume: number;
   };
+  copilot: CopilotSettings;
+};
+
+// ── Copilot (Claude Code Session Monitor) ──────────────────────────────────
+
+export type CopilotSessionPhase =
+  | 'idle'
+  | 'processing'
+  | 'waitingForInput'
+  | 'waitingForApproval'
+  | 'compacting'
+  | 'ended';
+
+export type CopilotToolInfo = {
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolUseId?: string;
+};
+
+export type CopilotPendingPermission = {
+  sessionId: string;
+  toolUseId: string;
+  tool: CopilotToolInfo;
+  receivedAt: number;
+};
+
+export type CopilotSession = {
+  sessionId: string;
+  cwd: string;
+  projectName: string;
+  phase: CopilotSessionPhase;
+  pid?: number;
+  tty?: string;
+  pendingPermissions: CopilotPendingPermission[];
+  lastActivity: number;
+  createdAt: number;
+};
+
+export type CopilotSettings = {
+  enabled: boolean;
+  spriteSheet: string;
+  notificationSound: string;
+  autoStart: boolean;
+};
+
+export type CopilotPosition = {
+  x: number;
+  y: number;
+  displayId: number;
 };
 
 export type UpdateStatus =
