@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.19.1
+
+### Fixes
+
+- **Mascots**: Fix fleet-asset:// protocol not loading sprites in packaged builds by adding full scheme privileges (standard, secure, corsEnabled)
+
 ## v2.19.0
 
 ### Features
