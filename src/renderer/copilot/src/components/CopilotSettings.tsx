@@ -1,5 +1,15 @@
 import { useEffect } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { ScrollArea } from './ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu';
 
 const SYSTEM_SOUNDS = [
   'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
@@ -19,61 +29,94 @@ export function CopilotSettings(): React.JSX.Element {
     loadSettings();
   }, [loadSettings]);
 
+  const currentSound = settings?.notificationSound ?? 'Pop';
+
   return (
-    <div className="flex flex-col h-full bg-neutral-900 rounded-lg border border-neutral-700 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
-        <button
-          onClick={() => setView('sessions')}
-          className="text-xs text-neutral-400 hover:text-neutral-200"
-        >
-          ←
-        </button>
-        <span className="text-xs font-medium text-neutral-200">Settings</span>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
-        <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Notification Sound
-          </label>
-          <select
-            value={settings?.notificationSound ?? 'Pop'}
-            onChange={(e) => updateSettings({ notificationSound: e.target.value })}
-            className="w-full text-xs bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-neutral-200"
-          >
-            <option value="">None</option>
-            {SYSTEM_SOUNDS.map((sound) => (
-              <option key={sound} value={sound}>{sound}</option>
-            ))}
-          </select>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
+          <Button variant="ghost" size="sm" onClick={() => setView('sessions')}>
+            ←
+          </Button>
+          <span className="text-xs font-medium text-neutral-200">Settings</span>
         </div>
 
-        <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Sprite
-          </label>
-          <div className="text-[10px] text-neutral-500">
-            Default spaceship (more sprites coming soon)
+        <ScrollArea className="flex-1">
+          <div className="px-3 py-2 space-y-3">
+            {/* Notification Sound */}
+            <div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
+                    Notification Sound
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Sound played when an agent needs attention
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start text-xs">
+                    {currentSound || 'None'}
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent className="max-h-48 overflow-y-auto">
+                  <DropdownMenuItem onClick={() => updateSettings({ notificationSound: '' })}>
+                    None
+                  </DropdownMenuItem>
+                  {SYSTEM_SOUNDS.map((sound) => (
+                    <DropdownMenuItem
+                      key={sound}
+                      onClick={() => updateSettings({ notificationSound: sound })}
+                    >
+                      {sound}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+
+            {/* Sprite */}
+            <div>
+              <label className="text-[10px] text-neutral-400 block mb-1">
+                Sprite
+              </label>
+              <div className="text-[10px] text-neutral-500">
+                Default spaceship (more sprites coming soon)
+              </div>
+            </div>
+
+            {/* Claude Code Hooks */}
+            <div>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
+                    Claude Code Hooks
+                  </label>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Hooks let Fleet monitor Claude Code sessions for permissions and status changes
+                </TooltipContent>
+              </Tooltip>
+              <div className="flex items-center gap-2">
+                <Badge status={hookInstalled ? 'complete' : 'error'} />
+                <span className="text-xs text-neutral-300">
+                  {hookInstalled ? 'Installed' : 'Not installed'}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={hookInstalled ? uninstallHooks : installHooks}
+                >
+                  {hookInstalled ? 'Uninstall' : 'Install'}
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-
-        <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Claude Code Hooks
-          </label>
-          <div className="flex items-center gap-2">
-            <span className={`text-xs ${hookInstalled ? 'text-green-400' : 'text-red-400'}`}>
-              {hookInstalled ? '● Installed' : '● Not installed'}
-            </span>
-            <button
-              onClick={hookInstalled ? uninstallHooks : installHooks}
-              className="px-2 py-0.5 text-[10px] bg-neutral-800 border border-neutral-700 rounded hover:bg-neutral-700 text-neutral-300"
-            >
-              {hookInstalled ? 'Uninstall' : 'Install'}
-            </button>
-          </div>
-        </div>
+        </ScrollArea>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
