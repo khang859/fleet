@@ -28,7 +28,7 @@ export function MascotPicker(): React.JSX.Element {
 
       <ScrollArea className="flex-1">
         <div className="px-3 py-2">
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {MASCOT_REGISTRY.map((mascot) => {
               const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
               const sheet = getSpriteSheet(mascot.id);
@@ -36,7 +36,7 @@ export function MascotPicker(): React.JSX.Element {
                 <button
                   key={mascot.id}
                   onClick={() => void updateSettings({ spriteSheet: mascot.id })}
-                  className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-colors ${
+                  className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-colors shrink-0 ${
                     isSelected
                       ? 'border-blue-500 bg-blue-500/10'
                       : 'border-neutral-700 hover:border-neutral-500'
