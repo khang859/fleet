@@ -176,7 +176,7 @@ if (!IS_FLEET_DEV) {
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
-  { scheme: 'fleet-asset', privileges: { supportFetchAPI: true, stream: true } }
+  { scheme: 'fleet-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
 ]);
 
 void app.whenReady().then(async () => {
