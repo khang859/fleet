@@ -5,4 +5,5 @@ export const MASCOT_REGISTRY: MascotDefinition[] = [
   { id: 'robot', name: 'Robot', description: 'A friendly automaton', thumbnailFrame: 0 },
   { id: 'cat', name: 'Cat', description: 'A curious space cat', thumbnailFrame: 0 },
   { id: 'bear', name: 'Bear', description: 'An armored polar bear warrior', thumbnailFrame: 0 },
+  { id: 'kraken', name: 'Kraken', description: 'An astral space kraken', thumbnailFrame: 0 },
 ];
