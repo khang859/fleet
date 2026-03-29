@@ -123,6 +123,7 @@ export function TerminalPane({
             paneId,
             data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
           });
+          focus();
         }}
       />
       <SearchBar
