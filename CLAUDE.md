@@ -59,6 +59,8 @@ npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/
 
 This outputs `sprites-<mascot-id>.ts` (base64 data URI) in the copilot assets folder. Then register the mascot in `src/shared/mascots.ts` and `src/renderer/copilot/src/assets/sprite-loader.ts`.
 
+**Generating mascot frames:** Use `fleet images generate` (not PixelLab) to create each frame individually. Use a solid blue/green screen background in the prompt so the background is easy to remove in post-processing.
+
 ## Development Notes
 
 - **ESM output:** The main and preload processes output ESM (`.mjs`). Use `import.meta.url` instead of `__dirname`.
