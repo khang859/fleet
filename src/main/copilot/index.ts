@@ -12,12 +12,16 @@ import { IPC_CHANNELS } from '../../shared/constants';
 
 const log = createLogger('copilot');
 
+type CopilotServiceState = 'idle' | 'starting' | 'running' | 'stopping';
+
 let sessionStore: CopilotSessionStore | null = null;
 let socketServer: CopilotSocketServer | null = null;
 let copilotWindow: CopilotWindow | null = null;
 let conversationReader: ConversationReader | null = null;
-let servicesRunning = false;
+let serviceState: CopilotServiceState = 'idle';
 let cachedSettingsStore: SettingsStore | null = null;
+/** Queued toggle to run after current transition completes */
+let pendingToggle: boolean | null = null;
 export async function initCopilot(
   settingsStore: SettingsStore,
   ptyManager: PtyManager,
@@ -52,11 +56,32 @@ export async function initCopilot(
 export async function onCopilotSettingsChanged(): Promise<void> {
   if (!cachedSettingsStore) return;
   const settings = cachedSettingsStore.get();
-  log.info('copilot settings changed', { enabled: settings.copilot.enabled, servicesRunning });
+  const wantEnabled = settings.copilot.enabled;
+  log.info('copilot settings changed', { enabled: wantEnabled, serviceState });
 
-  if (settings.copilot.enabled && !servicesRunning) {
+  // If currently transitioning, queue the desired state
+  if (serviceState === 'starting' || serviceState === 'stopping') {
+    pendingToggle = wantEnabled;
+    log.info('queued toggle (transition in progress)', { pendingToggle });
+    return;
+  }
+
+  if (wantEnabled && serviceState === 'idle') {
     await startCopilotServices();
-  } else if (!settings.copilot.enabled && servicesRunning) {
+  } else if (!wantEnabled && serviceState === 'running') {
+    await stopCopilotServices();
+  }
+}
+
+async function drainPendingToggle(): Promise<void> {
+  if (pendingToggle === null) return;
+  const wantEnabled = pendingToggle;
+  pendingToggle = null;
+  log.info('draining pending toggle', { wantEnabled, serviceState });
+
+  if (wantEnabled && serviceState === 'idle') {
+    await startCopilotServices();
+  } else if (!wantEnabled && serviceState === 'running') {
     await stopCopilotServices();
   }
 }
@@ -71,6 +96,7 @@ async function startCopilotServices(): Promise<void> {
     return;
   }
 
+  serviceState = 'starting';
   log.info('starting copilot services');
 
   conversationReader?.setOnChange((sessionId, messages) => {
@@ -81,7 +107,6 @@ async function startCopilotServices(): Promise<void> {
     copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore!.getSessions());
 
     if (conversationReader) {
-      // Re-parse chat for watched sessions on every state change (hooks are reliable, fs.watch is not)
       const activeSessions = sessionStore!.getSessions();
       const activeIds = new Set(activeSessions.map(s => s.sessionId));
 
@@ -89,13 +114,14 @@ async function startCopilotServices(): Promise<void> {
         if (activeIds.has(watchedId)) {
           conversationReader.refresh(watchedId);
         } else {
-          // Clean up watchers for ended sessions
           conversationReader.unwatch(watchedId);
         }
       }
     }
   });
 
+  // Hook installation failure should not prevent copilot from starting —
+  // the socket server and window are still useful for manual hook install later
   if (!hookInstaller.isInstalled()) {
     try {
       log.info('installing hooks');
@@ -104,8 +130,11 @@ async function startCopilotServices(): Promise<void> {
       log.error('failed to install hooks', { error: String(err) });
     }
   } else {
-    // Always sync the script file so updates are picked up
-    hookInstaller.syncScript();
+    try {
+      hookInstaller.syncScript();
+    } catch (err) {
+      log.error('failed to sync hook script', { error: String(err) });
+    }
   }
 
   try {
@@ -113,28 +142,60 @@ async function startCopilotServices(): Promise<void> {
     await socketServer.start();
   } catch (err) {
     log.error('failed to start socket server', { error: String(err) });
+    serviceState = 'idle';
+    await drainPendingToggle();
     return;
   }
 
-  log.info('creating copilot window');
-  copilotWindow.create();
-  servicesRunning = true;
+  try {
+    log.info('creating copilot window');
+    copilotWindow.create();
+  } catch (err) {
+    log.error('failed to create copilot window', { error: String(err) });
+    // Socket is running but window failed — stop socket too
+    await socketServer.stop();
+    serviceState = 'idle';
+    await drainPendingToggle();
+    return;
+  }
+
+  serviceState = 'running';
   log.info('copilot started successfully');
+  await drainPendingToggle();
 }
 
 async function stopCopilotServices(): Promise<void> {
+  serviceState = 'stopping';
   log.info('stopping copilot services');
+
   if (socketServer) {
-    await socketServer.stop();
+    try {
+      await socketServer.stop();
+    } catch (err) {
+      log.error('error stopping socket server', { error: String(err) });
+    }
   }
   if (copilotWindow) {
-    copilotWindow.destroy();
+    try {
+      copilotWindow.destroy();
+    } catch (err) {
+      log.error('error destroying copilot window', { error: String(err) });
+    }
   }
   if (conversationReader) {
-    conversationReader.dispose();
+    try {
+      conversationReader.dispose();
+    } catch (err) {
+      log.error('error disposing conversation reader', { error: String(err) });
+    }
   }
-  servicesRunning = false;
+  if (sessionStore) {
+    sessionStore.clear();
+  }
+
+  serviceState = 'idle';
   log.info('copilot services stopped');
+  await drainPendingToggle();
 }
 
 export async function stopCopilot(): Promise<void> {
