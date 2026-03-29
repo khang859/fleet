@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.17.0
+
+### Features
+
+- **Dev mode**: Allow dev and production Fleet instances to run simultaneously via `FLEET_DEV` env var, using separate socket paths and skipping single-instance lock
+
+### Fixes
+
+- **Images**: Enable scrolling in image gallery grid
+- **Copilot**: Move copilot socket from `/tmp` to `~/.fleet/` for consistency with main socket
+
 ## v2.16.1
 
 ### Fixes
