@@ -12,6 +12,15 @@ import * as hookInstaller from './hook-installer';
 
 const log = createLogger('copilot:ipc');
 
+function isClaudeInstalled(): boolean {
+  try {
+    execSync('claude --version', { timeout: 3000, stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Find the Fleet pane whose shell is the parent of the given PID.
  * Returns the paneId or null if no match found.
@@ -95,6 +104,13 @@ export function registerCopilotIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS, () => {
     return hookInstaller.isInstalled();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.COPILOT_SERVICE_STATUS, () => {
+    return {
+      hookInstalled: hookInstaller.isInstalled(),
+      claudeDetected: isClaudeInstalled(),
+    };
   });
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_POSITION_GET, () => {
