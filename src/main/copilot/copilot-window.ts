@@ -159,16 +159,40 @@ export class CopilotWindow {
   setPosition(x: number, y: number): void {
     const display = screen.getDisplayNearestPoint({ x, y });
     const { x: dx, y: dy, width, height } = display.workArea;
-    const clampedX = Math.max(dx, Math.min(x, dx + width - COLLAPSED_SIZE));
-    const clampedY = Math.max(dy, Math.min(y, dy + height - COLLAPSED_SIZE));
+
+    // Clamp using actual window dimensions
+    const winW = this.expanded ? EXPANDED_WIDTH : COLLAPSED_SIZE;
+    const winH = this.expanded ? COLLAPSED_SIZE + EXPANDED_HEIGHT : COLLAPSED_SIZE;
+    const clampedX = Math.max(dx, Math.min(x, dx + width - winW));
+    const clampedY = Math.max(dy, Math.min(y, dy + height - winH));
 
     if (this.win && !this.win.isDestroyed()) {
       this.win.setPosition(Math.round(clampedX), Math.round(clampedY));
     }
-    this.positionStore.set('position', { x: clampedX, y: clampedY, displayId: display.id });
+
+    if (this.expanded) {
+      // Compute where the avatar would be when collapsed based on panel direction
+      const dir = this.calculateDirection();
+      const collapsedX = dir.horizontal === 'left'
+        ? clampedX + (EXPANDED_WIDTH - COLLAPSED_SIZE)
+        : clampedX;
+      const collapsedY = dir.vertical === 'up'
+        ? clampedY + EXPANDED_HEIGHT
+        : clampedY;
+      this.collapsedPos = { x: collapsedX, y: collapsedY };
+      this.positionStore.set('position', { x: collapsedX, y: collapsedY, displayId: display.id });
+    } else {
+      this.positionStore.set('position', { x: clampedX, y: clampedY, displayId: display.id });
+    }
   }
 
   getPosition(): CopilotPosition | null {
+    // Return actual window position (not stored) so drag starts from where the window really is
+    if (this.win && !this.win.isDestroyed()) {
+      const bounds = this.win.getBounds();
+      const display = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
+      return { x: bounds.x, y: bounds.y, displayId: display.id };
+    }
     return this.positionStore.get('position');
   }
 
