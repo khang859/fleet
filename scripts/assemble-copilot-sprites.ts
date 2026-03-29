@@ -31,7 +31,9 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    console.error('Usage: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <img1> ... <img9>');
+    console.error(
+      'Usage: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <img1> ... <img9>'
+    );
     console.error('   or: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <directory>');
     process.exit(1);
   }
@@ -72,7 +74,10 @@ async function main(): Promise<void> {
   const resizedBuffers: Buffer[] = [];
   for (let i = 0; i < imagePaths.length; i++) {
     const buf = await sharp(imagePaths[i])
-      .resize(FRAME_SIZE, FRAME_SIZE, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .resize(FRAME_SIZE, FRAME_SIZE, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      })
       .png()
       .toBuffer();
     resizedBuffers.push(buf);
@@ -83,7 +88,7 @@ async function main(): Promise<void> {
   const composites = resizedBuffers.map((buf, i) => ({
     input: buf,
     left: i * FRAME_SIZE,
-    top: 0,
+    top: 0
   }));
 
   const sheet = await sharp({
@@ -91,8 +96,8 @@ async function main(): Promise<void> {
       width: FRAME_SIZE * TOTAL_FRAMES,
       height: FRAME_SIZE,
       channels: 4 as const,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
   })
     .composite(composites)
     .webp({ lossless: true })
@@ -102,8 +107,10 @@ async function main(): Promise<void> {
   await mkdir(MASCOTS_DIR, { recursive: true });
   const webpPath = join(MASCOTS_DIR, `${mascotId}.webp`);
   await writeFile(webpPath, sheet);
-  console.log(`\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`);
+  console.log(
+    `\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`
+  );
   console.log('\nDone! Remember to add an entry to MASCOT_REGISTRY in src/shared/mascots.ts');
 }
 
-main();
+void main();
