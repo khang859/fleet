@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Settings } from 'lucide-react';
+import { Settings, PawPrint } from 'lucide-react';
 
 type BadgeStatus = 'idle' | 'running' | 'permission' | 'error' | 'complete';
 
@@ -72,14 +72,24 @@ export function SessionList(): React.JSX.Element {
           <span className="text-xs font-medium text-neutral-300">
             Claude Sessions ({sessions.length})
           </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
-                <Settings size={14} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Settings</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
+                  <PawPrint size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Mascots</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
+                  <Settings size={14} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Settings</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
 
         {/* Session list */}
