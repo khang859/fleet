@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.19.2
+
+### Fixes
+
+- **Mascots**: Fix fleet-asset:// sprites not rendering in packaged builds by using direct readFile instead of net.fetch file:// proxy
+
 ## v2.19.1
 
 ### Fixes
