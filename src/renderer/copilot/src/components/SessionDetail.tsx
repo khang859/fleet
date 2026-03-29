@@ -54,7 +54,7 @@ export function SessionDetail(): React.JSX.Element | null {
         <div className="flex flex-col h-full overflow-hidden">
           <div className="flex items-center px-3 py-2 border-b border-neutral-700">
             <Button variant="ghost" size="sm" onClick={backToList}>
-              <ChevronLeft size={14} />
+              <ChevronLeft size={14} /> Back
             </Button>
           </div>
           <div className="flex-1 flex items-center justify-center text-neutral-500 text-xs">

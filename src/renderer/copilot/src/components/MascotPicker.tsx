@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
