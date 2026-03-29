@@ -175,12 +175,31 @@ if (!IS_FLEET_DEV) {
 
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
-  { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } }
+  { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
+  { scheme: 'fleet-asset', privileges: { supportFetchAPI: true, stream: true } }
 ]);
 
 void app.whenReady().then(async () => {
   protocol.handle('fleet-image', async (request) => {
     const filePath = decodeURIComponent(new URL(request.url).pathname);
+    return net.fetch(`file://${filePath}`);
+  });
+
+  // Serve static assets from resources/ directory (mascot sprites, etc.)
+  protocol.handle('fleet-asset', async (request) => {
+    const url = new URL(request.url);
+    const relativePath = decodeURIComponent(url.hostname + url.pathname);
+
+    // Prevent path traversal
+    if (relativePath.includes('..')) {
+      return new Response('Forbidden', { status: 403 });
+    }
+
+    const resourcesDir = app.isPackaged
+      ? join(process.resourcesPath, 'resources')
+      : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
+
+    const filePath = join(resourcesDir, relativePath);
     return net.fetch(`file://${filePath}`);
   });
 
