@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.16.0
+
+### Features
+
+- **Copilot**: AI mascot companion — a draggable spaceship sprite that floats over your desktop, shows live agent session status, and expands into an interactive panel
+- **Copilot Chat**: View conversation history and send messages to Claude Code sessions directly from the copilot panel
+- **Copilot Permissions**: Approve or deny tool permission requests from the copilot UI without switching to the terminal
+- **Copilot Settings**: Configure copilot behavior, toggle visibility, and manage session preferences
+- **CRT Styling**: Retro CRT bezel frame for the copilot expanded panel with shadcn/ui components
+- **Direction-Aware Panel**: Copilot panel expands toward screen center based on sprite position
+
+### Fixes
+
+- Fixed copilot hook to only trigger for Fleet-managed sessions
+- Fixed mascot position clamping to screen bounds during drag
+- Fixed permission prompts not showing in copilot panel
+- Restored dock icon with updated pixel art spaceship
+- Fixed copilot panel phantom click double-toggle
+- Fixed CRT frame proportions and position clamping
+
 ## v2.15.0
 
 ### Features
