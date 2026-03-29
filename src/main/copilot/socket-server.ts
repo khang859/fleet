@@ -54,28 +54,55 @@ export class CopilotSocketServer {
   }
 
   async stop(): Promise<void> {
+    // Send graceful end to pending sockets before destroying
     for (const [, pending] of this.pendingSockets) {
-      pending.socket.destroy();
+      try {
+        pending.socket.end();
+      } catch {
+        // socket may already be closed
+      }
+    }
+    // Give clients 500ms to receive the FIN, then force-destroy
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    for (const [, pending] of this.pendingSockets) {
+      try {
+        pending.socket.destroy();
+      } catch {
+        // ignore
+      }
     }
     this.pendingSockets.clear();
 
-    return new Promise((resolve) => {
-      if (!this.server) {
-        resolve();
-        return;
+    if (!this.server) return;
+
+    const STOP_TIMEOUT_MS = 5000;
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        this.server!.close(() => {
+          this.cleanupSocket();
+          log.info('socket server stopped');
+          resolve();
+        });
+      }),
+      new Promise<void>((resolve) => {
+        setTimeout(() => {
+          log.warn('socket server stop timed out, forcing cleanup');
+          this.cleanupSocket();
+          resolve();
+        }, STOP_TIMEOUT_MS);
+      }),
+    ]);
+    this.server = null;
+  }
+
+  private cleanupSocket(): void {
+    if (existsSync(SOCKET_PATH)) {
+      try {
+        unlinkSync(SOCKET_PATH);
+      } catch {
+        // ignore
       }
-      this.server.close(() => {
-        if (existsSync(SOCKET_PATH)) {
-          try {
-            unlinkSync(SOCKET_PATH);
-          } catch {
-            // ignore
-          }
-        }
-        log.info('socket server stopped');
-        resolve();
-      });
-    });
+    }
   }
 
   respondToPermission(
