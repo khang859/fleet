@@ -25,6 +25,7 @@ type CopilotStoreState = {
   sessions: CopilotSession[];
   settings: CopilotSettings | null;
   hookInstalled: boolean;
+  claudeDetected: boolean;
 
   chatMessages: CopilotChatMessage[];
   chatLoading: boolean;
@@ -57,6 +58,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   sessions: [],
   settings: null,
   hookInstalled: false,
+  claudeDetected: true, // optimistic default
 
   chatMessages: [],
   chatLoading: false,
@@ -85,8 +87,15 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   loadSettings: async () => {
     const settings = await window.copilot.getSettings();
     const hookInstalled = await window.copilot.hookStatus();
-    log.debug('loadSettings', { settings, hookInstalled });
-    set({ settings, hookInstalled });
+    let claudeDetected = true;
+    try {
+      const status = await window.copilot.serviceStatus();
+      claudeDetected = status.claudeDetected;
+    } catch {
+      // serviceStatus not available (older preload), assume true
+    }
+    log.debug('loadSettings', { settings, hookInstalled, claudeDetected });
+    set({ settings, hookInstalled, claudeDetected });
   },
 
   updateSettings: async (partial) => {
