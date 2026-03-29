@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { writeFile, readdir, access } from 'node:fs/promises';
+import { writeFile, readdir, access, mkdir } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,29 +8,24 @@ import { fileURLToPath } from 'node:url';
 // ---------------------------------------------------------------------------
 //
 // Takes 9 input images (any size, transparent or not) and assembles them into
-// a single horizontal sprite strip at 128x128px per frame. Also generates the
-// base64 data URI TypeScript file for the copilot renderer.
+// a single horizontal sprite strip at 128x128px per frame. Outputs a lossless
+// WebP file to resources/mascots/.
 //
 // Usage:
 //   npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <image1> <image2> ... <image9>
+//   npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <directory>
 //
 // The 9 images must be in sprite sheet order:
 //   idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)
 //
-// Example:
-//   npx tsx scripts/assemble-copilot-sprites.ts bear \
-//     idle1.png idle2.png proc1.png proc2.png proc3.png \
-//     perm1.png perm2.png comp1.png comp2.png
-//
 // Output:
-//   src/renderer/copilot/src/assets/copilot-sprites.png  (assembled sheet)
-//   src/renderer/copilot/src/assets/sprites-<mascot-id>.ts  (base64 data URI)
+//   resources/mascots/<mascot-id>.webp
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const FRAME_SIZE = 128;
 const TOTAL_FRAMES = 9;
-const ASSETS_DIR = join(__dirname, '..', 'src', 'renderer', 'copilot', 'src', 'assets');
+const MASCOTS_DIR = join(__dirname, '..', 'resources', 'mascots');
 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
@@ -47,9 +42,9 @@ async function main(): Promise<void> {
   if (args.length === 2) {
     // Single arg after mascot-id: treat as directory, read PNGs sorted by name
     const dir = args[1];
-    const files = (await readdir(dir)).filter((f) => f.endsWith('.png')).sort();
+    const files = (await readdir(dir)).filter((f) => /\.(png|webp|jpg|jpeg)$/i.test(f)).sort();
     if (files.length < TOTAL_FRAMES) {
-      console.error(`Directory ${dir} has ${files.length} PNGs, need ${TOTAL_FRAMES}`);
+      console.error(`Directory ${dir} has ${files.length} images, need ${TOTAL_FRAMES}`);
       process.exit(1);
     }
     imagePaths = files.slice(0, TOTAL_FRAMES).map((f) => join(dir, f));
@@ -95,27 +90,20 @@ async function main(): Promise<void> {
     create: {
       width: FRAME_SIZE * TOTAL_FRAMES,
       height: FRAME_SIZE,
-      channels: 4,
+      channels: 4 as const,
       background: { r: 0, g: 0, b: 0, alpha: 0 },
     },
   })
     .composite(composites)
-    .png()
+    .webp({ lossless: true })
     .toBuffer();
 
-  // Write PNG
-  const pngPath = join(ASSETS_DIR, 'copilot-sprites.png');
-  await writeFile(pngPath, sheet);
-  console.log(`\nSprite sheet: ${pngPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px)`);
-
-  // Write base64 TS file
-  const b64 = sheet.toString('base64');
-  const tsContent = `export default 'data:image/png;base64,${b64}';\n`;
-  const tsPath = join(ASSETS_DIR, `sprites-${mascotId}.ts`);
-  await writeFile(tsPath, tsContent);
-  console.log(`TypeScript:   ${tsPath} (${Math.round(tsContent.length / 1024)}KB)`);
-
-  console.log('\nDone!');
+  // Write WebP
+  await mkdir(MASCOTS_DIR, { recursive: true });
+  const webpPath = join(MASCOTS_DIR, `${mascotId}.webp`);
+  await writeFile(webpPath, sheet);
+  console.log(`\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`);
+  console.log('\nDone! Remember to add an entry to MASCOT_REGISTRY in src/shared/mascots.ts');
 }
 
 main();
