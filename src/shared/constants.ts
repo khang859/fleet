@@ -1,7 +1,8 @@
 import { join } from 'path';
 import { homedir } from 'os';
-import type { FleetSettings, MascotDefinition } from './types';
+import type { FleetSettings } from './types';
 export { IPC_CHANNELS } from './ipc-channels';
+export { MASCOT_REGISTRY } from './mascots';
 
 export const DEFAULT_SCROLLBACK = 10_000;
 
@@ -21,12 +22,6 @@ export const COPILOT_SOCKET_PATH =
   process.platform === 'win32'
     ? `\\\\.\\pipe\\fleet-copilot${suffix}`
     : join(homedir(), '.fleet', `fleet-copilot${suffix}.sock`);
-
-export const MASCOT_REGISTRY: MascotDefinition[] = [
-  { id: 'spaceship', name: 'Spaceship', description: 'The classic Fleet vessel', thumbnailFrame: 0 },
-  { id: 'robot', name: 'Robot', description: 'A friendly automaton', thumbnailFrame: 0 },
-  { id: 'cat', name: 'Cat', description: 'A curious space cat', thumbnailFrame: 0 },
-];
 
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {

@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
-import { MASCOT_REGISTRY } from '../../../../shared/constants';
+import { MASCOT_REGISTRY } from '../../../../shared/mascots';
 import { getSpriteSheet } from '../assets/sprite-loader';
 
 const SYSTEM_SOUNDS = [
