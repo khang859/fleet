@@ -1,11 +1,13 @@
 import type { ReactNode } from 'react';
-import cornerTL from '../assets/crt/crt-corner-tl.png';
-import cornerTR from '../assets/crt/crt-corner-tr.png';
-import cornerBL from '../assets/crt/crt-corner-bl.png';
-import cornerBR from '../assets/crt/crt-corner-br.png';
-import edgeH from '../assets/crt/crt-edge-h.png';
-import edgeV from '../assets/crt/crt-edge-v.png';
-import scanline from '../assets/crt/crt-scanline.png';
+import {
+  crtCornerTl as cornerTL,
+  crtCornerTr as cornerTR,
+  crtCornerBl as cornerBL,
+  crtCornerBr as cornerBR,
+  crtEdgeH as edgeH,
+  crtEdgeV as edgeV,
+  crtScanline as scanline,
+} from '../assets/crt-sprites';
 
 const CORNER = 32; // px - matches cropped corner size
 const EDGE = 16;   // px - matches cropped edge thickness

@@ -11,7 +11,7 @@ const badgeVariants = cva(
         running: 'text-blue-400 animate-pulse',
         permission: 'text-amber-400 animate-pulse-amber',
         error: 'text-red-400',
-        complete: 'text-green-400',
+        complete: 'text-green-400 animate-flash-green',
       },
     },
     defaultVariants: {
