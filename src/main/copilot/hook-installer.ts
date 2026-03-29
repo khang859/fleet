@@ -137,17 +137,24 @@ export function syncScript(): void {
   if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
 
   const source = getHookBinarySourcePath();
-  if (!existsSync(source)) return;
-
-  if (existsSync(HOOK_DEST)) {
-    const srcContent = readFileSync(source);
-    const destContent = readFileSync(HOOK_DEST);
-    if (srcContent.equals(destContent)) return;
+  if (!existsSync(source)) {
+    log.warn('hook binary source not found, skipping sync', { source });
+    return;
   }
 
-  copyFileSync(source, HOOK_DEST);
-  chmodSync(HOOK_DEST, 0o755);
-  log.info('hook binary synced', { dest: HOOK_DEST });
+  try {
+    if (existsSync(HOOK_DEST)) {
+      const srcContent = readFileSync(source);
+      const destContent = readFileSync(HOOK_DEST);
+      if (srcContent.equals(destContent)) return;
+    }
+
+    copyFileSync(source, HOOK_DEST);
+    chmodSync(HOOK_DEST, 0o755);
+    log.info('hook binary synced', { dest: HOOK_DEST });
+  } catch (err) {
+    log.error('failed to sync hook binary', { error: String(err) });
+  }
 }
 
 export function isInstalled(): boolean {
@@ -176,9 +183,14 @@ export function install(): void {
     log.error('hook binary source not found', { source });
     throw new Error(`Hook binary not found: ${source}`);
   }
-  copyFileSync(source, HOOK_DEST);
-  chmodSync(HOOK_DEST, 0o755);
-  log.info('hook binary installed', { dest: HOOK_DEST });
+  try {
+    copyFileSync(source, HOOK_DEST);
+    chmodSync(HOOK_DEST, 0o755);
+    log.info('hook binary installed', { dest: HOOK_DEST });
+  } catch (err) {
+    log.error('failed to copy/chmod hook binary', { error: String(err) });
+    throw new Error(`Failed to install hook binary: ${String(err)}`);
+  }
 
   let settings: ClaudeSettings = {};
   if (existsSync(SETTINGS_PATH)) {
@@ -202,8 +214,13 @@ export function install(): void {
   }
 
   settings.hooks = existingHooks;
-  writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
-  log.info('settings.json updated');
+  try {
+    writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    log.info('settings.json updated');
+  } catch (err) {
+    log.error('failed to write settings.json', { error: String(err) });
+    throw new Error(`Failed to update settings.json: ${String(err)}`);
+  }
 }
 
 export function uninstall(): void {
