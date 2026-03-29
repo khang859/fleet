@@ -58,6 +58,8 @@ export function SessionList(): React.JSX.Element {
   const selectSession = useCopilotStore((s) => s.selectSession);
   const respondPermission = useCopilotStore((s) => s.respondPermission);
   const setView = useCopilotStore((s) => s.setView);
+  const hookInstalled = useCopilotStore((s) => s.hookInstalled);
+  const claudeDetected = useCopilotStore((s) => s.claudeDetected);
 
   const sorted = [...sessions].sort(sortSessions);
 
@@ -82,10 +84,29 @@ export function SessionList(): React.JSX.Element {
         {/* Session list */}
         <ScrollArea className="flex-1">
           {sorted.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-neutral-500 text-xs px-4 text-center py-8">
-              No active Claude Code sessions.
-              <br />
-              Start a session to see it here.
+            <div className="flex flex-col items-center justify-center h-full text-neutral-500 text-xs px-4 text-center py-8 gap-2">
+              {!claudeDetected ? (
+                <>
+                  <span>Claude Code is not installed.</span>
+                  <span className="text-[10px] text-neutral-600">
+                    npm install -g @anthropic-ai/claude-code
+                  </span>
+                </>
+              ) : !hookInstalled ? (
+                <>
+                  <span>Hooks not installed.</span>
+                  <span className="text-[10px] text-neutral-600">
+                    Go to Settings to install Claude Code hooks.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span>No active Claude Code sessions.</span>
+                  <span className="text-[10px] text-neutral-600">
+                    Start a session to see it here.
+                  </span>
+                </>
+              )}
             </div>
           ) : (
             sorted.map((session) => {
