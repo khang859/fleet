@@ -10,6 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from './ui/dropdown-menu';
+import { MASCOT_REGISTRY } from '../../../../shared/mascots';
+import { getSpriteSheet } from '../assets/sprite-loader';
 
 const SYSTEM_SOUNDS = [
   'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
@@ -79,13 +81,40 @@ export function CopilotSettings(): React.JSX.Element {
               </DropdownMenu>
             </div>
 
-            {/* Sprite */}
+            {/* Mascot */}
             <div>
               <label className="text-[10px] text-neutral-400 block mb-1">
-                Sprite
+                Mascot
               </label>
-              <div className="text-[10px] text-neutral-500">
-                Default spaceship (more sprites coming soon)
+              <div className="flex gap-2">
+                {MASCOT_REGISTRY.map((mascot) => {
+                  const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
+                  const sheet = getSpriteSheet(mascot.id);
+                  return (
+                    <button
+                      key={mascot.id}
+                      onClick={() => void updateSettings({ spriteSheet: mascot.id })}
+                      className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-colors ${
+                        isSelected
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-neutral-700 hover:border-neutral-500'
+                      }`}
+                    >
+                      <div
+                        style={{
+                          width: 48,
+                          height: 48,
+                          backgroundImage: `url(${sheet})`,
+                          backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
+                          backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
+                          backgroundRepeat: 'no-repeat',
+                          imageRendering: 'pixelated',
+                        }}
+                      />
+                      <span className="text-[10px] text-neutral-300">{mascot.name}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 

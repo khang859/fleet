@@ -2,6 +2,7 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { FleetSettings } from './types';
 export { IPC_CHANNELS } from './ipc-channels';
+export { MASCOT_REGISTRY } from './mascots';
 
 export const DEFAULT_SCROLLBACK = 10_000;
 
@@ -68,7 +69,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   },
   copilot: {
     enabled: false,
-    spriteSheet: 'spaceship-default.png',
+    spriteSheet: 'officer',
     notificationSound: 'Pop',
     autoStart: false,
   },

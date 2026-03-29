@@ -1,6 +1,6 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
-import spriteSheet from '../assets/copilot-sprites';
+import { getSpriteSheet } from '../assets/sprite-loader';
 
 const SPRITE_SIZE = 128;
 const DRAG_THRESHOLD = 4;
@@ -55,6 +55,8 @@ export function SpaceshipSprite(): React.JSX.Element {
   const spriteState = useSpriteState();
   const frameIndex = useSpriteAnimation(spriteState);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
+  const settings = useCopilotStore((s) => s.settings);
+  const spriteSheet = getSpriteSheet(settings?.spriteSheet ?? 'officer');
 
   const wasDragged = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
