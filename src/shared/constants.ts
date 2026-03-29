@@ -8,8 +8,19 @@ export const DEFAULT_SCROLLBACK = 10_000;
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.
 
+export const IS_FLEET_DEV = !!process.env.FLEET_DEV;
+
+const suffix = IS_FLEET_DEV ? '-dev' : '';
+
 export const SOCKET_PATH =
-  process.platform === 'win32' ? '\\\\.\\pipe\\fleet' : join(homedir(), '.fleet', 'fleet.sock');
+  process.platform === 'win32'
+    ? `\\\\.\\pipe\\fleet${suffix}`
+    : join(homedir(), '.fleet', `fleet${suffix}.sock`);
+
+export const COPILOT_SOCKET_PATH =
+  process.platform === 'win32'
+    ? `\\\\.\\pipe\\fleet-copilot${suffix}`
+    : join(homedir(), '.fleet', `fleet-copilot${suffix}.sock`);
 
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {

@@ -1,11 +1,10 @@
 import { createServer, type Server, type Socket } from 'net';
 import { unlinkSync, existsSync, chmodSync } from 'fs';
 import { createLogger } from '../logger';
+import { COPILOT_SOCKET_PATH } from '../../shared/constants';
 import type { CopilotSessionStore, HookEvent } from './session-store';
 
 const log = createLogger('copilot:socket');
-
-const SOCKET_PATH = '/tmp/fleet-copilot.sock';
 
 type PendingSocket = {
   sessionId: string;
@@ -23,11 +22,11 @@ export class CopilotSocketServer {
   }
 
   async start(): Promise<void> {
-    if (existsSync(SOCKET_PATH)) {
+    if (existsSync(COPILOT_SOCKET_PATH)) {
       try {
-        unlinkSync(SOCKET_PATH);
+        unlinkSync(COPILOT_SOCKET_PATH);
       } catch {
-        log.warn('failed to remove stale socket', { path: SOCKET_PATH });
+        log.warn('failed to remove stale socket', { path: COPILOT_SOCKET_PATH });
       }
     }
 
@@ -41,13 +40,13 @@ export class CopilotSocketServer {
         reject(err);
       });
 
-      this.server.listen(SOCKET_PATH, () => {
+      this.server.listen(COPILOT_SOCKET_PATH, () => {
         try {
-          chmodSync(SOCKET_PATH, 0o777);
+          chmodSync(COPILOT_SOCKET_PATH, 0o777);
         } catch {
           log.warn('failed to chmod socket');
         }
-        log.info('socket server listening', { path: SOCKET_PATH });
+        log.info('socket server listening', { path: COPILOT_SOCKET_PATH });
         resolve();
       });
     });
@@ -96,9 +95,9 @@ export class CopilotSocketServer {
   }
 
   private cleanupSocket(): void {
-    if (existsSync(SOCKET_PATH)) {
+    if (existsSync(COPILOT_SOCKET_PATH)) {
       try {
-        unlinkSync(SOCKET_PATH);
+        unlinkSync(COPILOT_SOCKET_PATH);
       } catch {
         // ignore
       }

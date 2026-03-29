@@ -13,7 +13,7 @@ import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
 import { SettingsStore } from './settings-store';
-import { IPC_CHANNELS, SOCKET_PATH } from '../shared/constants';
+import { IPC_CHANNELS, IS_FLEET_DEV, SOCKET_PATH } from '../shared/constants';
 import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile } from './install-fleet-cli';
@@ -157,17 +157,20 @@ function createWindow(): void {
 app.setName('Fleet');
 
 // Single instance lock — prevent multiple Fleet instances from fighting over fleet.sock
-const gotTheLock = app.requestSingleInstanceLock();
+// In dev mode (FLEET_DEV=1), skip the lock so dev and production can coexist.
+if (!IS_FLEET_DEV) {
+  const gotTheLock = app.requestSingleInstanceLock();
 
-if (!gotTheLock) {
-  app.quit();
-} else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
+  if (!gotTheLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      if (mainWindow) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+  }
 }
 
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead

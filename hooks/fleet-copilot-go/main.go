@@ -7,15 +7,30 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 )
 
 const (
-	socketPath     = "/tmp/fleet-copilot.sock"
 	timeoutSeconds = 300
 )
+
+var socketPath = func() string {
+	name := "fleet-copilot.sock"
+	if os.Getenv("FLEET_DEV") != "" {
+		name = "fleet-copilot-dev.sock"
+	}
+	return filepath.Join(homeDir(), ".fleet", name)
+}()
+
+func homeDir() string {
+	if h, err := os.UserHomeDir(); err == nil {
+		return h
+	}
+	return os.Getenv("HOME")
+}
 
 type HookInput struct {
 	SessionID        string                 `json:"session_id"`
