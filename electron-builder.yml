@@ -15,6 +15,8 @@ files:
 extraResources:
   - from: hooks/bin/
     to: hooks/
+  - from: resources/mascots/
+    to: resources/mascots/
 asarUnpack:
   - resources/**
 mac:
