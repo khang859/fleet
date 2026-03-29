@@ -45,6 +45,9 @@ const copilotApi = {
   hookStatus: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
 
+  serviceStatus: (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
+
   getPosition: (): Promise<CopilotPosition | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_GET),
 
