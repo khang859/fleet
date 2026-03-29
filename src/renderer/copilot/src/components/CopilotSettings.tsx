@@ -24,6 +24,7 @@ export function CopilotSettings(): React.JSX.Element {
   const updateSettings = useCopilotStore((s) => s.updateSettings);
   const installHooks = useCopilotStore((s) => s.installHooks);
   const uninstallHooks = useCopilotStore((s) => s.uninstallHooks);
+  const claudeDetected = useCopilotStore((s) => s.claudeDetected);
 
   useEffect(() => {
     loadSettings();
@@ -88,6 +89,18 @@ export function CopilotSettings(): React.JSX.Element {
               </div>
             </div>
 
+            {/* Claude Code Status */}
+            {!claudeDetected && (
+              <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5">
+                <span className="text-[10px] text-amber-400 block font-medium mb-0.5">
+                  Claude Code not found
+                </span>
+                <span className="text-[10px] text-amber-400/70 block">
+                  Install it with: npm install -g @anthropic-ai/claude-code
+                </span>
+              </div>
+            )}
+
             {/* Claude Code Hooks */}
             <div>
               <Tooltip>
@@ -113,6 +126,11 @@ export function CopilotSettings(): React.JSX.Element {
                   {hookInstalled ? 'Uninstall' : 'Install'}
                 </Button>
               </div>
+              {!hookInstalled && (
+                <span className="text-[10px] text-neutral-500 block mt-1">
+                  Hooks are required for Fleet to monitor your Claude Code sessions.
+                </span>
+              )}
             </div>
           </div>
         </ScrollArea>
