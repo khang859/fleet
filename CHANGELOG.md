@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.18.0
+
+### Features
+
+- **Copilot**: Add mascot selection to settings with multiple selectable mascots
+- **Copilot**: Add armored polar bear mascot option
+- **Copilot**: Add mascot sprite assembly script for building sprite sheets from source frames
+
 ## v2.17.0
 
 ### Features
