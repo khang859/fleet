@@ -7,6 +7,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Card, CardContent } from './ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Badge } from './ui/badge';
+import { ChevronLeft, ArrowUp } from 'lucide-react';
 
 export function SessionDetail(): React.JSX.Element | null {
   const selectedSessionId = useCopilotStore((s) => s.selectedSessionId);
@@ -53,7 +54,7 @@ export function SessionDetail(): React.JSX.Element | null {
         <div className="flex flex-col h-full overflow-hidden">
           <div className="flex items-center px-3 py-2 border-b border-neutral-700">
             <Button variant="ghost" size="sm" onClick={backToList}>
-              ← Back
+              <ChevronLeft size={14} />
             </Button>
           </div>
           <div className="flex-1 flex items-center justify-center text-neutral-500 text-xs">
@@ -79,7 +80,7 @@ export function SessionDetail(): React.JSX.Element | null {
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
           <Button variant="ghost" size="sm" onClick={backToList}>
-            ←
+            <ChevronLeft size={14} />
           </Button>
           <Badge status={status} />
           <Tooltip>
@@ -175,7 +176,7 @@ export function SessionDetail(): React.JSX.Element | null {
               onClick={handleSend}
               disabled={!canSendMessage || !inputText.trim()}
             >
-              ↑
+              <ArrowUp size={14} />
             </Button>
           </div>
         </div>

@@ -4,6 +4,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { ChevronLeft } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -40,7 +41,7 @@ export function CopilotSettings(): React.JSX.Element {
         {/* Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
           <Button variant="ghost" size="sm" onClick={() => setView('sessions')}>
-            ←
+            <ChevronLeft size={14} />
           </Button>
           <span className="text-xs font-medium text-neutral-200">Settings</span>
         </div>

@@ -5,6 +5,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { Settings } from 'lucide-react';
 
 type BadgeStatus = 'idle' | 'running' | 'permission' | 'error' | 'complete';
 
@@ -74,7 +75,7 @@ export function SessionList(): React.JSX.Element {
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
-                ⚙
+                <Settings size={14} />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Settings</TooltipContent>
