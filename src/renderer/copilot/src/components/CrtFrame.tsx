@@ -9,8 +9,9 @@ import {
   crtScanline as scanline,
 } from '../assets/crt-sprites';
 
-const CORNER = 32; // px - matches cropped corner size
-const EDGE = 16;   // px - matches cropped edge thickness
+const FRAME = 24; // px - uniform frame thickness for corners and edges
+const CORNER = FRAME;
+const EDGE = FRAME;
 
 export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Element {
   return (
