@@ -76,21 +76,23 @@ export function ImageGrid({ generations, onSelect }: ImageGridProps): React.JSX.
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-4 overflow-y-auto">
-      {sorted.map((gen) => (
-        <button
-          key={gen.id}
-          className="relative bg-neutral-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all aspect-square group"
-          onClick={() => onSelect(gen.id)}
-        >
-          <Thumbnail generation={gen} />
-          <StatusBadge status={gen.status} />
-          <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <p className="text-xs text-white truncate">{gen.prompt}</p>
-            <p className="text-xs text-neutral-400">{gen.model.split('/').pop()}</p>
-          </div>
-        </button>
-      ))}
+    <div className="h-full overflow-y-auto">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 p-4">
+        {sorted.map((gen) => (
+          <button
+            key={gen.id}
+            className="relative bg-neutral-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all aspect-square group"
+            onClick={() => onSelect(gen.id)}
+          >
+            <Thumbnail generation={gen} />
+            <StatusBadge status={gen.status} />
+            <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+              <p className="text-xs text-white truncate">{gen.prompt}</p>
+              <p className="text-xs text-neutral-400">{gen.model.split('/').pop()}</p>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
