@@ -88,7 +88,7 @@ export function CopilotSettings(): React.JSX.Element {
               </label>
               <div className="flex gap-2">
                 {MASCOT_REGISTRY.map((mascot) => {
-                  const isSelected = (settings?.spriteSheet ?? 'spaceship') === mascot.id;
+                  const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
                   const sheet = getSpriteSheet(mascot.id);
                   return (
                     <button

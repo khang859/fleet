@@ -56,7 +56,7 @@ export function SpaceshipSprite(): React.JSX.Element {
   const frameIndex = useSpriteAnimation(spriteState);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
   const settings = useCopilotStore((s) => s.settings);
-  const spriteSheet = getSpriteSheet(settings?.spriteSheet ?? 'spaceship');
+  const spriteSheet = getSpriteSheet(settings?.spriteSheet ?? 'officer');
 
   const wasDragged = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
