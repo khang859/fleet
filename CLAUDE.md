@@ -29,17 +29,17 @@ git tag vX.Y.Z && git push origin vX.Y.Z
 
 ## Copilot Mascot Sprites
 
-The copilot supports multiple selectable mascots. Each mascot is a 9-frame horizontal sprite sheet (1152×128px) with this frame layout: `idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)`.
+The copilot supports multiple selectable mascots. Each mascot is a 9-frame horizontal WebP sprite sheet (1152×128px) stored in `resources/mascots/`. Frame layout: `idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)`.
 
 To add or update a mascot sprite sheet from 9 source images:
 
 ```bash
 npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> img0.png img1.png ... img8.png
-# or from a directory of 9+ PNGs (sorted by name):
+# or from a directory of 9+ images (sorted by name):
 npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/
 ```
 
-This outputs `sprites-<mascot-id>.ts` (base64 data URI) in the copilot assets folder. Then register the mascot in `src/shared/mascots.ts` and `src/renderer/copilot/src/assets/sprite-loader.ts`.
+This outputs `resources/mascots/<mascot-id>.webp`. Then register the mascot in `src/shared/mascots.ts`.
 
 **Generating mascot frames workflow:**
 
