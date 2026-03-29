@@ -169,6 +169,13 @@ export type CopilotSettings = {
   autoStart: boolean;
 };
 
+export type MascotDefinition = {
+  id: string;
+  name: string;
+  description: string;
+  thumbnailFrame: number;
+};
+
 export type CopilotPosition = {
   x: number;
   y: number;
