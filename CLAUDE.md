@@ -59,7 +59,16 @@ npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/
 
 This outputs `sprites-<mascot-id>.ts` (base64 data URI) in the copilot assets folder. Then register the mascot in `src/shared/mascots.ts` and `src/renderer/copilot/src/assets/sprite-loader.ts`.
 
-**Generating mascot frames:** Use `fleet images generate` (not PixelLab) to create each frame individually. Use a solid blue/green screen background in the prompt so the background is easy to remove in post-processing.
+**Generating mascot frames workflow:**
+
+1. **Generate frame 0** with `fleet images generate` — establish the character style. Include "solid bright blue #0000FF chroma key background" in the prompt. Keep the mascot Fleet-themed (naval/officer aesthetic, teal/navy colors).
+2. **Generate frames 1-8** with `fleet images edit --images <frame-0-path>` — use the first frame as a style reference to maintain consistency. Describe the pose for each frame's state.
+3. **Remove backgrounds** on all 9 frames: `fleet images action remove-background <path>` (uses BRIA RMBG 2.0).
+4. **Assemble** into sprite sheet: `npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/`
+
+Do NOT use PixelLab MCP tools (`create_character`, etc.) — the results are poor for this use case. Stick to `fleet images` for generation and editing.
+
+All `fleet images` commands are async — use `fleet images status <id>` to poll. Don't sleep-wait; just check status when needed.
 
 ## Development Notes
 
