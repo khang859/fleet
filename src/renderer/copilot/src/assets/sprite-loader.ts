@@ -1,4 +1,4 @@
-import officer from './sprites-spaceship';
+import officer from './sprites-officer';
 import robot from './sprites-robot';
 import cat from './sprites-cat';
 
