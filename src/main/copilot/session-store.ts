@@ -152,6 +152,12 @@ export class CopilotSessionStore {
     this.onChange?.();
   }
 
+  clear(): void {
+    this.sessions.clear();
+    this.toolUseIdCache.clear();
+    log.info('session store cleared');
+  }
+
   private popCachedToolUseId(
     sessionId: string,
     tool: string,
