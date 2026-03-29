@@ -21,7 +21,7 @@ Research-backed improvements from Baymard Institute and Nielsen Norman Group (NN
 ## Sidebar Navigation
 
 - [x] **6. Tab label truncation with tooltip**: Truncate long tab labels with ellipsis, show full name on hover via tooltip. Never cut mid-word.
-- [ ] **7. Running/idle state indicator per tab**: Each tab shows a compact state indicator (running spinner, idle dash, error icon) that updates in real-time alongside the notification badge.
+- [x] **7. Running/idle state indicator per tab**: Each tab shows a compact state indicator (running spinner, idle dash, error icon) that updates in real-time alongside the notification badge.
 
 ## Keyboard UX
 
