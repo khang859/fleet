@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.19.3
+
+### Fixes
+
+- **Build**: Fix CI releases missing extraResources (mascots, hooks) — `--config` was replacing electron-builder.yml instead of merging with it
+
 ## v2.19.2
 
 ### Fixes
