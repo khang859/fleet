@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { existsSync } from 'fs';
+import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
@@ -176,7 +177,7 @@ if (!IS_FLEET_DEV) {
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
-  { scheme: 'fleet-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } }
+  { scheme: 'fleet-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
 ]);
 
 void app.whenReady().then(async () => {
@@ -200,7 +201,17 @@ void app.whenReady().then(async () => {
       : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
 
     const filePath = join(resourcesDir, relativePath);
-    return net.fetch(`file://${filePath}`);
+
+    try {
+      const data = await readFile(filePath);
+      const ext = relativePath.split('.').pop()?.toLowerCase() ?? '';
+      const mime: Record<string, string> = { webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' };
+      return new Response(data, {
+        headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream' },
+      });
+    } catch {
+      return new Response('Not Found', { status: 404 });
+    }
   });
 
   createWindow();
