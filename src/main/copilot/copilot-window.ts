@@ -12,7 +12,6 @@ const SPRITE_SIZE = 128;
 const COLLAPSED_SIZE = SPRITE_SIZE;
 const EXPANDED_WIDTH = 350;
 const EXPANDED_HEIGHT = 500;
-const TOGGLE_DEBOUNCE_MS = 800;
 
 export type PanelDirection = {
   horizontal: 'left' | 'right';
@@ -66,7 +65,6 @@ export class CopilotWindow {
   private win: BrowserWindow | null = null;
   private positionStore: Store<CopilotWindowStore>;
   private expanded = false;
-  private lastToggleTime = 0;
   private collapsedPos: { x: number; y: number } | null = null;
 
   constructor() {
@@ -196,19 +194,7 @@ export class CopilotWindow {
     return this.positionStore.get('position');
   }
 
-  /**
-   * Toggle expanded state. Main process owns this state and debounces
-   * to prevent phantom click events caused by setBounds() from
-   * triggering rapid re-toggles in the renderer.
-   * Returns the new expanded state, or null if debounced.
-   */
-  toggleExpanded(): boolean | null {
-    const now = Date.now();
-    if (now - this.lastToggleTime < TOGGLE_DEBOUNCE_MS) {
-      log.info('toggleExpanded DEBOUNCED', { elapsed: now - this.lastToggleTime });
-      return null;
-    }
-    this.lastToggleTime = now;
+  toggleExpanded(): boolean {
     this.expanded = !this.expanded;
     log.info('toggleExpanded', { expanded: this.expanded });
     this.applyExpanded();
@@ -217,12 +203,6 @@ export class CopilotWindow {
 
   setExpanded(expanded: boolean): void {
     if (this.expanded === expanded) return;
-    const now = Date.now();
-    if (now - this.lastToggleTime < TOGGLE_DEBOUNCE_MS) {
-      log.info('setExpanded DEBOUNCED', { expanded, elapsed: now - this.lastToggleTime });
-      return;
-    }
-    this.lastToggleTime = now;
     this.expanded = expanded;
     log.info('setExpanded', { expanded });
     this.applyExpanded();
