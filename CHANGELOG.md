@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.19.0
+
+### Features
+
+- **Copilot**: Add robot and kraken mascot sprite sheets
+- **Copilot**: Extract mascot selection into dedicated view with improved navigation
+- **UI**: Replace emoji icons with Lucide React icons in copilot views
+
+### Fixes
+
+- **Toolbar**: Refocus terminal after inject fleet skills button click
+- **Copilot**: Fix mascot grid responsiveness and CSS layout
+- **Copilot**: Remove debounce from toggle expanded to improve responsiveness
+
+### Refactors
+
+- **Mascots**: Replace base64 embedded sprites with static WebP files via fleet-asset:// protocol
+
 ## v2.18.0
 
 ### Features
