@@ -1,30 +1,12 @@
 # Fleet
 
+Fleet as in Space Fleet.
+
 A lightweight, cross-platform terminal multiplexer desktop app for developers running multiple AI coding agents simultaneously.
 
 ## Stack
 
 Electron + electron-vite + React + TypeScript, xterm.js for terminal emulation, node-pty for PTY processes, shadcn/ui + Tailwind for UI chrome.
-
-## Reference Repos
-
-Three reference codebases live in `reference/` for inspiration and pattern reference:
-
-### `reference/cmux`
-
-**cmux** — The primary inspiration for Fleet. A Ghostty-based macOS terminal app with vertical tabs and notification rings for AI coding agents. Written in Swift as a native macOS app. Key concepts to borrow: vertical tab sidebar, split panes, notification rings (OSC 9/777 escape detection), and the overall UX for managing multiple agent sessions. Mac-only, which is why Fleet exists — to bring this experience cross-platform via Electron.
-
-### `reference/gastown`
-
-**Gas Town** — A multi-agent orchestration system for Claude Code with persistent work tracking. Written in Go. Provides a workspace manager that coordinates multiple Claude Code agents with persistent state via git-backed hooks. Relevant for understanding agent coordination patterns, mailbox/identity systems, and how to scale to many concurrent agents. Its architecture (Mayor coordinator, Rigs, Crews, Polecats) is a useful reference for the Socket API and automation layer.
-
-### `reference/pixel-agents`
-
-**Pixel Agents** — A VS Code extension that visualizes AI agents as pixel art characters in an office. Written in TypeScript (Node.js extension + React webview). Most relevant reference for Fleet's TypeScript patterns, terminal lifecycle management, and JSONL-based agent activity tracking. Key patterns to study: terminal creation/adoption, file watching for agent transcripts, and the message protocol between backend and frontend.
-
-## Project Docs
-
-The full product spec lives in `docs/idea.md` — covers features, architecture, data model, notification detection, socket API, distribution, and platform-specific notes.
 
 ## Learnings
 
