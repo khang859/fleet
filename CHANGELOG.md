@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.16.1
+
+### Fixes
+
+- **Copilot**: Replace boolean service flag with state machine to prevent race conditions on rapid enable/disable toggle
+- **Copilot**: Add 5-second timeout to socket server shutdown to prevent hanging on disable
+- **Copilot**: Graceful pending socket shutdown (FIN before destroy) when disabling copilot
+- **Copilot**: Wrap hook installer filesystem operations in try/catch to prevent unhandled errors
+- **Copilot**: Clear session store on disable to prevent stale sessions on re-enable
+- **Copilot**: Wrap all lifecycle operations (syncScript, dispose, window create) in try/catch
+- **Copilot**: Detect missing Claude Code installation and show actionable guidance in settings and session list
+- **Copilot**: Show explanatory text when hooks are not installed instead of just a red badge
+
 ## v2.16.0
 
 ### Features
