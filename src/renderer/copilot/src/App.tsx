@@ -133,7 +133,7 @@ export function App(): React.JSX.Element {
 
             {/* Pane body */}
             <div
-              style={{ width: 600, height: 500 }}
+              style={{ width: 650, height: 500 }}
               onClick={(e) => e.stopPropagation()}
             >
               <CrtFrame>
