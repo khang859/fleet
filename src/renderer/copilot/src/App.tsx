@@ -110,11 +110,11 @@ export function App(): React.JSX.Element {
 
       {/* Centered pane with backdrop — visible when pane IS shown */}
       {showPane && (
-        <div
-          className="fixed inset-0 flex items-center justify-center"
-          style={{ background: 'rgba(0, 0, 0, 0.6)' }}
-          onClick={handleClose}
-        >
+        <div className="fixed inset-0" onClick={handleClose}>
+          {/* Backdrop layer — separate div for future sci-fi assets */}
+          <div className="absolute inset-0 bg-black/60" />
+          {/* Pane centering layer */}
+          <div className="absolute inset-0 flex items-center justify-center">
           <div
             className="flex flex-col"
             style={{ width: 600, height: 500 }}
@@ -140,6 +140,7 @@ export function App(): React.JSX.Element {
                 {view === 'mascots' && <MascotPicker />}
               </CrtFrame>
             </div>
+          </div>
           </div>
         </div>
       )}
