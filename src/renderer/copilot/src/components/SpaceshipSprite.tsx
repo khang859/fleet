@@ -3,7 +3,7 @@ import { useCopilotStore } from '../store/copilot-store';
 import { getSpriteSheet } from '../assets/sprite-loader';
 
 const SPRITE_SIZE = 128;
-const HEADER_SPRITE_SIZE = 48;
+const HEADER_SPRITE_SIZE = 96;
 const DRAG_THRESHOLD = 4;
 
 type SpaceshipSpriteProps = {

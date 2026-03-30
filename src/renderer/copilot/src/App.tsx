@@ -121,26 +121,21 @@ export function App(): React.JSX.Element {
           {/* Backdrop layer — separate div for future sci-fi assets */}
           <div className="absolute inset-0 bg-black/60" />
           {/* Pane centering layer */}
-          <div className="absolute inset-0 flex items-center justify-center">
-          <div
-            className="flex flex-col"
-            style={{ width: 600, height: 500 }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Pane header with mascot */}
-            <div className="flex items-center gap-3 px-4 py-2 shrink-0">
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            {/* Mascot — sized to its own content, not the pane width */}
+            <div className="shrink-0 mb-2" onClick={(e) => e.stopPropagation()}>
               <SpaceshipSprite
                 mode="header"
                 teleportState={spriteTeleportState}
                 onToggle={handleToggle}
               />
-              <span className="text-white text-sm font-medium tracking-wide opacity-70">
-                Fleet Copilot
-              </span>
             </div>
 
             {/* Pane body */}
-            <div className="flex-1 min-h-0">
+            <div
+              style={{ width: 600, height: 500 }}
+              onClick={(e) => e.stopPropagation()}
+            >
               <CrtFrame>
                 {view === 'sessions' && <SessionList />}
                 {view === 'detail' && <SessionDetail />}
@@ -148,7 +143,6 @@ export function App(): React.JSX.Element {
                 {view === 'mascots' && <MascotPicker />}
               </CrtFrame>
             </div>
-          </div>
           </div>
         </div>
       )}
