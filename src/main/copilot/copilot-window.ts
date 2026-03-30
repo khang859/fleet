@@ -10,13 +10,6 @@ const log = createLogger('copilot:window');
 
 const SPRITE_SIZE = 128;
 const COLLAPSED_SIZE = SPRITE_SIZE;
-const EXPANDED_WIDTH = 350;
-const EXPANDED_HEIGHT = 500;
-
-export type PanelDirection = {
-  horizontal: 'left' | 'right';
-  vertical: 'up' | 'down';
-};
 
 type CopilotWindowStore = {
   position: CopilotPosition | null;
@@ -158,30 +151,17 @@ export class CopilotWindow {
     const display = screen.getDisplayNearestPoint({ x, y });
     const { x: dx, y: dy, width, height } = display.workArea;
 
-    // Clamp using actual window dimensions
-    const winW = this.expanded ? EXPANDED_WIDTH : COLLAPSED_SIZE;
-    const winH = this.expanded ? COLLAPSED_SIZE + EXPANDED_HEIGHT : COLLAPSED_SIZE;
-    const clampedX = Math.max(dx, Math.min(x, dx + width - winW));
-    const clampedY = Math.max(dy, Math.min(y, dy + height - winH));
+    // When expanded, window covers full display — don't allow drag repositioning
+    if (this.expanded) return;
+
+    const clampedX = Math.max(dx, Math.min(x, dx + width - COLLAPSED_SIZE));
+    const clampedY = Math.max(dy, Math.min(y, dy + height - COLLAPSED_SIZE));
 
     if (this.win && !this.win.isDestroyed()) {
       this.win.setPosition(Math.round(clampedX), Math.round(clampedY));
     }
 
-    if (this.expanded) {
-      // Compute where the avatar would be when collapsed based on panel direction
-      const dir = this.calculateDirection();
-      const collapsedX = dir.horizontal === 'left'
-        ? clampedX + (EXPANDED_WIDTH - COLLAPSED_SIZE)
-        : clampedX;
-      const collapsedY = dir.vertical === 'up'
-        ? clampedY + EXPANDED_HEIGHT
-        : clampedY;
-      this.collapsedPos = { x: collapsedX, y: collapsedY };
-      this.positionStore.set('position', { x: collapsedX, y: collapsedY, displayId: display.id });
-    } else {
-      this.positionStore.set('position', { x: clampedX, y: clampedY, displayId: display.id });
-    }
+    this.positionStore.set('position', { x: clampedX, y: clampedY, displayId: display.id });
   }
 
   getPosition(): CopilotPosition | null {
@@ -212,53 +192,31 @@ export class CopilotWindow {
     return this.expanded;
   }
 
-  private calculateDirection(): PanelDirection {
-    if (!this.win || this.win.isDestroyed()) {
-      return { horizontal: 'left', vertical: 'down' };
-    }
-    const bounds = this.win.getBounds();
-    const cx = bounds.x + COLLAPSED_SIZE / 2;
-    const cy = bounds.y + COLLAPSED_SIZE / 2;
-    const display = screen.getDisplayNearestPoint({ x: cx, y: cy });
-    const dx = display.bounds.x + display.bounds.width / 2;
-    const dy = display.bounds.y + display.bounds.height / 2;
-    return {
-      horizontal: cx < dx ? 'right' : 'left',
-      vertical: cy < dy ? 'down' : 'up',
-    };
-  }
-
   private applyExpanded(): void {
     if (!this.win || this.win.isDestroyed()) return;
     const bounds = this.win.getBounds();
 
     if (this.expanded) {
       this.collapsedPos = { x: bounds.x, y: bounds.y };
-      const dir = this.calculateDirection();
-
-      const x = dir.horizontal === 'left'
-        ? bounds.x - (EXPANDED_WIDTH - COLLAPSED_SIZE)
-        : bounds.x;
-      const y = dir.vertical === 'up'
-        ? bounds.y - EXPANDED_HEIGHT
-        : bounds.y;
+      const display = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
+      const workArea = display.workArea;
 
       const newBounds = {
-        x,
-        y,
-        width: EXPANDED_WIDTH,
-        height: COLLAPSED_SIZE + EXPANDED_HEIGHT,
+        x: workArea.x,
+        y: workArea.y,
+        width: workArea.width,
+        height: workArea.height,
       };
-      log.info('expanding to', { ...newBounds, direction: dir });
+      log.info('expanding to full display', newBounds);
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'pop-up-menu');
+      this.win.setIgnoreMouseEvents(false);
 
       this.win.webContents.send('copilot:expanded-changed', {
         expanded: true,
-        direction: dir,
       });
     } else {
-      const x = this.collapsedPos?.x ?? bounds.x + (bounds.width - COLLAPSED_SIZE);
+      const x = this.collapsedPos?.x ?? bounds.x;
       const y = this.collapsedPos?.y ?? bounds.y;
       const newBounds = {
         x,
@@ -269,10 +227,10 @@ export class CopilotWindow {
       log.info('collapsing to', newBounds);
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'floating');
+      this.win.setIgnoreMouseEvents(true, { forward: true });
 
       this.win.webContents.send('copilot:expanded-changed', {
         expanded: false,
-        direction: null,
       });
     }
   }

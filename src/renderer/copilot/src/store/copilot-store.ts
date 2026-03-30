@@ -18,7 +18,6 @@ type CopilotView = 'sessions' | 'detail' | 'settings' | 'mascots';
 
 type CopilotStoreState = {
   expanded: boolean;
-  panelDirection: { horizontal: 'left' | 'right'; vertical: 'up' | 'down' } | null;
   view: CopilotView;
   selectedSessionId: string | null;
 
@@ -30,7 +29,7 @@ type CopilotStoreState = {
   chatMessages: CopilotChatMessage[];
   chatLoading: boolean;
 
-  setExpanded: (expanded: boolean, direction: { horizontal: 'left' | 'right'; vertical: 'up' | 'down' } | null) => void;
+  setExpanded: (expanded: boolean) => void;
   toggleExpanded: () => void;
   setView: (view: CopilotView) => void;
   selectSession: (sessionId: string) => void;
@@ -51,7 +50,6 @@ type CopilotStoreState = {
 
 export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   expanded: false,
-  panelDirection: null,
   view: 'sessions',
   selectedSessionId: null,
 
@@ -63,9 +61,9 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   chatMessages: [],
   chatLoading: false,
 
-  setExpanded: (expanded, direction) => {
-    log.info('setExpanded (from main)', { expanded, direction });
-    set({ expanded, panelDirection: direction, view: expanded ? get().view : 'sessions' });
+  setExpanded: (expanded) => {
+    log.info('setExpanded (from main)', { expanded });
+    set({ expanded, view: expanded ? get().view : 'sessions' });
   },
 
   toggleExpanded: () => {
