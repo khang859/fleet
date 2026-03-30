@@ -8,7 +8,7 @@ import type { RecentImageResult, RecentImagesResponse } from '../shared/ipc-api'
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB — skip large files for thumbnail safety
 const RESULT_LIMIT = 5;
-const STAT_LIMIT = 50; // stat at most this many candidates before sorting
+const STAT_LIMIT = 200; // stat at most this many candidates before sorting
 
 type FileCandidate = {
   path: string;
@@ -46,33 +46,48 @@ async function statCandidate(filePath: string): Promise<FileCandidate | null> {
   }
 }
 
+async function spawnMdfind(home: string): Promise<string[]> {
+  return new Promise((resolve) => {
+    const proc = spawn('mdfind', ['-onlyin', home, 'kMDItemContentTypeTree == "public.image"']);
+
+    let stdout = '';
+    const timer = setTimeout(() => {
+      proc.kill('SIGTERM');
+    }, 3000);
+
+    proc.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+
+    proc.on('close', () => {
+      clearTimeout(timer);
+      resolve(stdout.split('\n').filter(Boolean));
+    });
+
+    proc.on('error', () => {
+      clearTimeout(timer);
+      resolve([]);
+    });
+  });
+}
+
 async function spawnSearch(): Promise<string[]> {
   const home = homedir();
 
   if (process.platform === 'darwin') {
-    return new Promise((resolve) => {
-      const proc = spawn('mdfind', ['-onlyin', home, 'kMDItemContentTypeTree == "public.image"']);
+    // Scan known directories directly first so new files appear immediately
+    // (mdfind depends on Spotlight indexing which can lag minutes behind)
+    const [dirPaths, mdfindPaths] = await Promise.all([scanKnownDirs(), spawnMdfind(home)]);
 
-      let stdout = '';
-      const timer = setTimeout(() => {
-        proc.kill('SIGTERM');
-      }, 3000);
-
-      proc.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-
-      proc.on('close', () => {
-        clearTimeout(timer);
-        const paths = stdout.split('\n').filter(Boolean);
-        resolve(paths);
-      });
-
-      proc.on('error', () => {
-        clearTimeout(timer);
-        resolve([]);
-      });
-    });
+    // Deduplicate: direct-scan results first (guaranteed fresh), then mdfind
+    const seen = new Set(dirPaths);
+    for (const p of mdfindPaths) {
+      if (!seen.has(p)) {
+        seen.add(p);
+        dirPaths.push(p);
+      }
+    }
+    return dirPaths;
   }
 
   // Linux/Windows: scan known directories
