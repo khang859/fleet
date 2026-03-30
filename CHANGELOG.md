@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.21.0
+
+### Features
+
+- **Copilot**: Add armored cybernetic dragon mascot with gold/black theme
+- **Copilot**: Flexible animation system — mascots can now define custom frame counts and per-state animations
+- **Copilot**: Animation preview in mascot picker with idle/processing/permission/complete state buttons
+- **Copilot**: Hover-to-preview in mascot grid (Baymard UX research-informed)
+
+### Improvements
+
+- **Copilot**: Assembly script now supports variable frame counts (not just 9)
+
 ## v2.20.0
 
 ### Features
