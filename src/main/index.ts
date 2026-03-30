@@ -25,7 +25,7 @@ import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
 import { createLogger } from './logger';
-import { initCopilot, stopCopilot } from './copilot/index';
+import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -289,6 +289,8 @@ void app.whenReady().then(async () => {
   eventBus.on('pane-closed', (event) => {
     cwdPoller.stopPolling(event.paneId);
     activityTracker.untrackPane(event.paneId);
+    // Give child processes time to die after PTY shell is killed, then prune
+    setTimeout(() => pruneDeadCopilotSessions(), 500);
   });
 
   // Forward CWD changes to renderer and keep ptyManager in sync

@@ -152,6 +152,30 @@ export class CopilotSessionStore {
     this.onChange?.();
   }
 
+  /**
+   * Remove sessions whose PID is no longer alive.
+   * Called after a Fleet pane is closed so that sessions whose Claude Code
+   * process was killed along with the shell don't linger in the panel.
+   */
+  pruneDeadSessions(): void {
+    for (const [id, session] of this.sessions) {
+      if (!session.pid || session.phase === 'ended') continue;
+      try {
+        process.kill(session.pid, 0); // just checks existence, no signal sent
+      } catch {
+        // ESRCH — process doesn't exist
+        log.info('pruning dead session', { sessionId: id, pid: session.pid });
+        session.phase = 'ended';
+        this.cleanupToolUseCache(id);
+        setTimeout(() => {
+          this.sessions.delete(id);
+          this.onChange?.();
+        }, 30_000);
+      }
+    }
+    this.onChange?.();
+  }
+
   clear(): void {
     this.sessions.clear();
     this.toolUseIdCache.clear();

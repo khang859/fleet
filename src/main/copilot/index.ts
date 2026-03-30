@@ -201,3 +201,8 @@ async function stopCopilotServices(): Promise<void> {
 export async function stopCopilot(): Promise<void> {
   await stopCopilotServices();
 }
+
+/** Remove copilot sessions whose PID is no longer alive. */
+export function pruneDeadCopilotSessions(): void {
+  sessionStore?.pruneDeadSessions();
+}
