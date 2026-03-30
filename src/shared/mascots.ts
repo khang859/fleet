@@ -17,9 +17,9 @@ export const MASCOT_REGISTRY: MascotDefinition[] = [
     id: 'dragon', name: 'Dragon', description: 'An armored cybernetic dragon', thumbnailFrame: 0,
     animations: {
       idle: { frames: [0, 1, 2, 3], fps: 3 },
-      processing: { frames: [4, 5, 6, 7, 8, 9], fps: 8 },
-      permission: { frames: [10, 11], fps: 3 },
-      complete: { frames: [12, 13, 14, 15], fps: 4 },
+      processing: { frames: [4, 5, 6, 5], fps: 4 },
+      permission: { frames: [7, 8], fps: 3 },
+      complete: { frames: [9, 10], fps: 2 },
     },
   },
 ];
