@@ -1,5 +1,25 @@
 # Changelog
 
+## v2.20.0
+
+### Features
+
+- **Copilot**: Replace side panel with centered rich pane overlay
+- **Copilot**: Sci-fi CSS frame with glowing teal border, corner accents, and scanline overlay
+- **Copilot**: Teleport animation when mascot transitions between floating and pane header
+
+### Fixes
+
+- **Copilot**: Fix mascot becoming unclickable after closing panel (setIgnoreMouseEvents bug)
+- **Copilot**: Fix teleport animation not playing (renderer now drives animation timing before window resize)
+- **Copilot**: Remove invisible hit area spanning full pane width around mascot
+
+### Improvements
+
+- **Copilot**: Increase font sizes across all copilot UI components for better readability
+- **Copilot**: Enlarge header mascot to 96px, centered above pane
+- **Copilot**: Remove "Fleet Copilot" label from pane header
+
 ## v2.19.3
 
 ### Fixes
