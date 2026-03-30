@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.22.0
+
+### Features
+
+- **Copilot**: Show permission details inline in session list
+- **Copilot**: Add formatPermissionSummary utility
+- **Copilot**: Add bioluminescent clockwork owl mascot
+
+### Bug Fixes
+
+- **CI**: Regenerate latest-mac.yml from actual artifacts to prevent sha512 mismatch
+- **Images**: Recent images now appear immediately by bypassing Spotlight indexing delay
+
 ## v2.21.1
 
 ### Bug Fixes
