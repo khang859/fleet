@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.21.1
+
+### Bug Fixes
+
+- **Copilot**: Prune stale sessions when Fleet tabs are closed
+
 ## v2.21.0
 
 ### Features
