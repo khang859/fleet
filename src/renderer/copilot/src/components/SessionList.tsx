@@ -6,6 +6,7 @@ import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
 import { Settings, PawPrint } from 'lucide-react';
+import { formatPermissionSummary } from '../lib/format-permission';
 
 type BadgeStatus = 'idle' | 'running' | 'permission' | 'error' | 'complete';
 
@@ -173,10 +174,10 @@ export function SessionList(): React.JSX.Element {
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="text-xs text-amber-400 truncate flex-1">
-                            {perm.tool.toolName}
+                            {formatPermissionSummary(perm.tool).label}
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent>{perm.tool.toolName}</TooltipContent>
+                        <TooltipContent>{formatPermissionSummary(perm.tool).detail}</TooltipContent>
                       </Tooltip>
                       <Button
                         variant="success"
