@@ -21,7 +21,7 @@ const TOOL_MAPPINGS: ToolMapping[] = [
   { names: ['glob'], prefix: 'glob', fields: ['pattern'] },
   { names: ['grep'], prefix: 'grep', fields: ['pattern'] },
   { names: ['websearch'], prefix: 'search', fields: ['query'] },
-  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] },
+  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] }
 ];
 
 function truncate(value: string, max: number): string {
