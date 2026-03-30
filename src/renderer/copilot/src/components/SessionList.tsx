@@ -69,7 +69,7 @@ export function SessionList(): React.JSX.Element {
       <div className="flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
-          <span className="text-xs font-medium text-neutral-300">
+          <span className="text-sm font-medium text-neutral-300">
             Claude Sessions ({sessions.length})
           </span>
           <div className="flex items-center gap-1">
@@ -95,25 +95,25 @@ export function SessionList(): React.JSX.Element {
         {/* Session list */}
         <ScrollArea className="flex-1">
           {sorted.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-neutral-500 text-xs px-4 text-center py-8 gap-2">
+            <div className="flex flex-col items-center justify-center h-full text-neutral-500 text-sm px-4 text-center py-8 gap-2">
               {!claudeDetected ? (
                 <>
                   <span>Claude Code is not installed.</span>
-                  <span className="text-[10px] text-neutral-600">
+                  <span className="text-xs text-neutral-600">
                     npm install -g @anthropic-ai/claude-code
                   </span>
                 </>
               ) : !hookInstalled ? (
                 <>
                   <span>Hooks not installed.</span>
-                  <span className="text-[10px] text-neutral-600">
+                  <span className="text-xs text-neutral-600">
                     Go to Settings to install Claude Code hooks.
                   </span>
                 </>
               ) : (
                 <>
                   <span>No active Claude Code sessions.</span>
-                  <span className="text-[10px] text-neutral-600">
+                  <span className="text-xs text-neutral-600">
                     Start a session to see it here.
                   </span>
                 </>
@@ -150,14 +150,14 @@ export function SessionList(): React.JSX.Element {
                       {/* Project name with truncation + tooltip (Baymard) */}
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="text-xs text-neutral-200 truncate">
+                          <span className="text-sm text-neutral-200 truncate">
                             {session.projectName}
                           </span>
                         </TooltipTrigger>
                         <TooltipContent>{session.projectName}</TooltipContent>
                       </Tooltip>
                     </div>
-                    <span className="text-[10px] text-neutral-500 ml-2 shrink-0">
+                    <span className="text-xs text-neutral-500 ml-2 shrink-0">
                       {elapsed(session.createdAt)}
                     </span>
                   </div>
@@ -172,7 +172,7 @@ export function SessionList(): React.JSX.Element {
                     >
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <span className="text-[10px] text-amber-400 truncate flex-1">
+                          <span className="text-xs text-amber-400 truncate flex-1">
                             {perm.tool.toolName}
                           </span>
                         </TooltipTrigger>

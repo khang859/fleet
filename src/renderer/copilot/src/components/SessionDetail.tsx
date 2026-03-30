@@ -57,7 +57,7 @@ export function SessionDetail(): React.JSX.Element | null {
               <ChevronLeft size={14} /> Back
             </Button>
           </div>
-          <div className="flex-1 flex items-center justify-center text-neutral-500 text-xs">
+          <div className="flex-1 flex items-center justify-center text-neutral-500 text-sm">
             Session not found
           </div>
         </div>
@@ -85,7 +85,7 @@ export function SessionDetail(): React.JSX.Element | null {
           <Badge status={status} />
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-xs font-medium text-neutral-200 truncate">
+              <span className="text-sm font-medium text-neutral-200 truncate">
                 {session.projectName}
               </span>
             </TooltipTrigger>
@@ -93,7 +93,7 @@ export function SessionDetail(): React.JSX.Element | null {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-[9px] text-neutral-500 ml-auto">{session.phase}</span>
+              <span className="text-xs text-neutral-500 ml-auto">{session.phase}</span>
             </TooltipTrigger>
             <TooltipContent>Current phase: {session.phase}</TooltipContent>
           </Tooltip>
@@ -102,17 +102,17 @@ export function SessionDetail(): React.JSX.Element | null {
         {/* Pending permissions */}
         {session.pendingPermissions.length > 0 && (
           <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-[10px] font-medium text-amber-400 mb-1">
+            <div className="text-xs font-medium text-amber-400 mb-1">
               Pending Permissions
             </div>
             {session.pendingPermissions.map((perm) => (
               <Card key={perm.toolUseId} className="mb-2 border-amber-500/20">
                 <CardContent>
-                  <div className="text-xs text-neutral-200 font-medium">
+                  <div className="text-sm text-neutral-200 font-medium">
                     {perm.tool.toolName}
                   </div>
                   {Object.keys(perm.tool.toolInput).length > 0 && (
-                    <pre className="mt-1 text-[10px] text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
+                    <pre className="mt-1 text-xs text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
                       {JSON.stringify(perm.tool.toolInput, null, 2)}
                     </pre>
                   )}
@@ -142,10 +142,10 @@ export function SessionDetail(): React.JSX.Element | null {
         <ScrollArea className="flex-1">
           <div className="px-3 py-2 space-y-2">
             {chatLoading && chatMessages.length === 0 && (
-              <div className="text-[10px] text-neutral-500 text-center mt-4">Loading...</div>
+              <div className="text-xs text-neutral-500 text-center mt-4">Loading...</div>
             )}
             {!chatLoading && chatMessages.length === 0 && (
-              <div className="text-[10px] text-neutral-500 text-center mt-4">No messages yet</div>
+              <div className="text-xs text-neutral-500 text-center mt-4">No messages yet</div>
             )}
             {chatMessages.map((msg) => (
               <ChatMessageItem key={msg.id} message={msg} />

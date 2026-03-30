@@ -41,7 +41,7 @@ export function CopilotSettings(): React.JSX.Element {
           <Button variant="ghost" size="sm" onClick={() => setView('sessions')}>
             <ChevronLeft size={14} />
           </Button>
-          <span className="text-xs font-medium text-neutral-200">Settings</span>
+          <span className="text-sm font-medium text-neutral-200">Settings</span>
         </div>
 
         <ScrollArea className="flex-1">
@@ -50,7 +50,7 @@ export function CopilotSettings(): React.JSX.Element {
             <div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
+                  <label className="text-xs text-neutral-400 block mb-1 cursor-help">
                     Notification Sound
                   </label>
                 </TooltipTrigger>
@@ -60,7 +60,7 @@ export function CopilotSettings(): React.JSX.Element {
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="w-full justify-start text-xs">
+                  <Button variant="outline" className="w-full justify-start text-sm">
                     {currentSound || 'None'}
                   </Button>
                 </DropdownMenuTrigger>
@@ -83,10 +83,10 @@ export function CopilotSettings(): React.JSX.Element {
             {/* Claude Code Status */}
             {!claudeDetected && (
               <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5">
-                <span className="text-[10px] text-amber-400 block font-medium mb-0.5">
+                <span className="text-xs text-amber-400 block font-medium mb-0.5">
                   Claude Code not found
                 </span>
-                <span className="text-[10px] text-amber-400/70 block">
+                <span className="text-xs text-amber-400/70 block">
                   Install it with: npm install -g @anthropic-ai/claude-code
                 </span>
               </div>
@@ -96,7 +96,7 @@ export function CopilotSettings(): React.JSX.Element {
             <div>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
+                  <label className="text-xs text-neutral-400 block mb-1 cursor-help">
                     Claude Code Hooks
                   </label>
                 </TooltipTrigger>
@@ -106,7 +106,7 @@ export function CopilotSettings(): React.JSX.Element {
               </Tooltip>
               <div className="flex items-center gap-2">
                 <Badge status={hookInstalled ? 'complete' : 'error'} />
-                <span className="text-xs text-neutral-300">
+                <span className="text-sm text-neutral-300">
                   {hookInstalled ? 'Installed' : 'Not installed'}
                 </span>
                 <Button
@@ -118,7 +118,7 @@ export function CopilotSettings(): React.JSX.Element {
                 </Button>
               </div>
               {!hookInstalled && (
-                <span className="text-[10px] text-neutral-500 block mt-1">
+                <span className="text-xs text-neutral-500 block mt-1">
                   Hooks are required for Fleet to monitor your Claude Code sessions.
                 </span>
               )}

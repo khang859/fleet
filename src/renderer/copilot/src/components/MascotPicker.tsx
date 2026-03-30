@@ -23,7 +23,7 @@ export function MascotPicker(): React.JSX.Element {
         <Button variant="ghost" size="sm" onClick={() => setView('sessions')}>
           <ChevronLeft size={14} />
         </Button>
-        <span className="text-xs font-medium text-neutral-200">Mascots</span>
+        <span className="text-sm font-medium text-neutral-200">Mascots</span>
       </div>
 
       <ScrollArea className="flex-1">
@@ -53,7 +53,7 @@ export function MascotPicker(): React.JSX.Element {
                       imageRendering: 'pixelated',
                     }}
                   />
-                  <span className="text-[10px] text-neutral-300">{mascot.name}</span>
+                  <span className="text-xs text-neutral-300">{mascot.name}</span>
                 </button>
               );
             })}

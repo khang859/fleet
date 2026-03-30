@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 function TextBlock({ text }: { text: string }): React.JSX.Element {
-  return <div className="text-[11px] text-neutral-200 whitespace-pre-wrap break-words">{text}</div>;
+  return <div className="text-sm text-neutral-200 whitespace-pre-wrap break-words">{text}</div>;
 }
 
 const MODE_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'EnterWorktree', 'ExitWorktree']);
@@ -19,7 +19,7 @@ function ToolUseBlock({
 }): React.JSX.Element {
   if (MODE_TOOLS.has(name)) {
     return (
-      <div className="flex items-center gap-1 text-[10px] text-neutral-500 italic px-1">
+      <div className="flex items-center gap-1 text-xs text-neutral-500 italic px-1">
         <span className="text-purple-400">⟡</span>
         <span>{inputPreview || name}</span>
       </div>
@@ -31,7 +31,7 @@ function ToolUseBlock({
     : name;
 
   return (
-    <div className="flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-800/50 rounded px-1.5 py-0.5">
+    <div className="flex items-center gap-1 text-xs text-neutral-400 bg-neutral-800/50 rounded px-1.5 py-0.5">
       <Tooltip>
         <TooltipTrigger asChild>
           <span className="text-blue-400 font-medium truncate max-w-[120px]">{displayName}</span>
@@ -71,12 +71,12 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
     <Card className="border-amber-500/20 bg-amber-500/10">
       <CardContent className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <div className="text-[10px] font-medium text-amber-400">Question</div>
+          <div className="text-xs font-medium text-amber-400">Question</div>
           <Button variant="outline" size="sm" onClick={handleGoToTerminal}>
             Terminal →
           </Button>
         </div>
-        <div className="text-[11px] text-neutral-200">{question}</div>
+        <div className="text-sm text-neutral-200">{question}</div>
         {options.length > 0 && (
           <div className="space-y-1 mt-1">
             {options.map((opt, i) => (
@@ -86,10 +86,10 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
                 className="w-full justify-start text-left hover:border-amber-500/30"
                 onClick={() => handleSelect(i)}
               >
-                <span className="text-[10px] text-amber-400 font-medium mr-1.5">{i + 1}.</span>
-                <span className="text-[11px] text-neutral-200">{(opt['label'] as string) ?? ''}</span>
+                <span className="text-xs text-amber-400 font-medium mr-1.5">{i + 1}.</span>
+                <span className="text-sm text-neutral-200">{(opt['label'] as string) ?? ''}</span>
                 {typeof opt['description'] === 'string' && (
-                  <span className="text-[10px] text-neutral-500 ml-1">{opt['description']}</span>
+                  <span className="text-xs text-neutral-500 ml-1">{opt['description']}</span>
                 )}
               </Button>
             ))}
@@ -102,7 +102,7 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
 
 function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
   return (
-    <details className="text-[10px] text-neutral-500">
+    <details className="text-xs text-neutral-500">
       <summary className="cursor-pointer hover:text-neutral-400">Thinking...</summary>
       <div className="mt-1 whitespace-pre-wrap break-words pl-2 border-l border-neutral-700">
         {text.slice(0, 500)}{text.length > 500 ? '...' : ''}
@@ -159,7 +159,7 @@ export function ChatMessageItem({ message }: { message: CopilotChatMessage }): R
             );
           case 'interrupted':
             return (
-              <div key={key} className="text-[10px] text-amber-500 italic">
+              <div key={key} className="text-xs text-amber-500 italic">
                 Interrupted by user
               </div>
             );
