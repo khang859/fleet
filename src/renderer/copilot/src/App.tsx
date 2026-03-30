@@ -10,7 +10,6 @@ import { CrtFrame } from './components/CrtFrame';
 
 export function App(): React.JSX.Element {
   const expanded = useCopilotStore((s) => s.expanded);
-  const panelDirection = useCopilotStore((s) => s.panelDirection);
   const view = useCopilotStore((s) => s.view);
   const setSessions = useCopilotStore((s) => s.setSessions);
   const loadSettings = useCopilotStore((s) => s.loadSettings);
@@ -51,18 +50,12 @@ export function App(): React.JSX.Element {
 
   return (
     <div className="relative w-full h-full">
-      <div className={`flex ${
-        expanded && panelDirection?.horizontal === 'right' ? 'justify-start' : 'justify-end'
-      } ${
-        expanded && panelDirection?.vertical === 'up' ? 'absolute bottom-0 right-0 left-0' : ''
-      }`}>
+      <div className="flex justify-end">
         <SpaceshipSprite />
       </div>
       {expanded && (
         <div
-          className={`absolute right-0 left-0 h-[450px] ${
-            panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
-          }`}
+          className="absolute right-0 left-0 h-[450px] top-[132px]"
           style={{ zIndex: 10 }}
         >
           <CrtFrame>
