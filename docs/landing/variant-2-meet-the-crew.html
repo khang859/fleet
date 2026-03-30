@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fleet — Terminal Multiplexing, But Make It Fun</title>
+  <meta name="description" content="A playful, cross-platform terminal multiplexer for developers running multiple AI coding agents simultaneously.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0a0a1a;
+      --bg-card: #111128;
+      --bg-placeholder: #1a1a2e;
+      --accent: #00E5E5;
+      --accent-secondary: #00D4AA;
+      --amber: #F59E0B;
+      --green: #22C55E;
+      --blue: #3B82F6;
+      --red: #EF4444;
+      --text: #E0E0E0;
+      --text-secondary: #A0A0A0;
+      --max-layout: 1200px;
+      --max-text: 700px;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif;
+      font-weight: 500;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .container {
+      max-width: var(--max-layout);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .text-container {
+      max-width: var(--max-text);
+      margin: 0 auto;
+    }
+
+    /* ---- Buttons ---- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+      border: none;
+      text-decoration: none;
+      min-height: 44px;
+    }
+
+    .btn:hover {
+      text-decoration: none;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--bg);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 20px rgba(0, 229, 229, 0.35);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border: 2px solid var(--text-secondary);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      transform: translateY(-2px);
+    }
+
+    .cta-group {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    /* ---- Placeholder images ---- */
+    .placeholder {
+      border: 2px dashed var(--text-secondary);
+      background: var(--bg-placeholder);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      border-radius: 12px;
+      flex-shrink: 0;
+    }
+
+    /* ---- Section spacing ---- */
+    section {
+      padding: 80px 0;
+    }
+
+    .section-title {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      text-align: center;
+      margin-bottom: 12px;
+      color: var(--text);
+    }
+
+    .section-subtitle {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 48px;
+      max-width: var(--max-text);
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .accent-text {
+      color: var(--accent);
+    }
+
+    .teal-text {
+      color: var(--accent-secondary);
+    }
+
+    /* =============================
+       1. HERO
+       ============================= */
+    .hero {
+      padding: 100px 0 60px;
+      text-align: center;
+    }
+
+    .hero-tagline {
+      font-size: clamp(0.85rem, 2vw, 1rem);
+      text-transform: uppercase;
+      letter-spacing: 3px;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      margin-bottom: 20px;
+    }
+
+    .hero h1 span {
+      color: var(--accent);
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1rem, 2vw, 1.2rem);
+      color: var(--text-secondary);
+      max-width: var(--max-text);
+      margin: 0 auto 40px;
+    }
+
+    /* Mascot row — character select */
+    .mascot-row {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin-bottom: 48px;
+      flex-wrap: wrap;
+    }
+
+    .mascot-hero-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .mascot-hero-item .placeholder {
+      width: 128px;
+      height: 128px;
+      border-radius: 16px;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .mascot-hero-item .placeholder:hover {
+      transform: scale(1.08);
+      box-shadow: 0 0 20px rgba(0, 229, 229, 0.3);
+    }
+
+    .mascot-hero-item .mascot-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Bounce animation */
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-12px); }
+    }
+
+    .mascot-hero-item:nth-child(1) .placeholder { animation: bounce 2s ease-in-out infinite 0s; }
+    .mascot-hero-item:nth-child(2) .placeholder { animation: bounce 2s ease-in-out infinite 0.2s; }
+    .mascot-hero-item:nth-child(3) .placeholder { animation: bounce 2s ease-in-out infinite 0.4s; }
+    .mascot-hero-item:nth-child(4) .placeholder { animation: bounce 2s ease-in-out infinite 0.6s; }
+    .mascot-hero-item:nth-child(5) .placeholder { animation: bounce 2s ease-in-out infinite 0.8s; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mascot-hero-item .placeholder {
+        animation: none !important;
+      }
+    }
+
+    /* Select screen border */
+    .character-select {
+      background: var(--bg-card);
+      border: 2px solid rgba(0, 229, 229, 0.15);
+      border-radius: 20px;
+      padding: 32px;
+      max-width: 800px;
+      margin: 0 auto 48px;
+    }
+
+    .character-select-header {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent);
+      margin-bottom: 24px;
+    }
+
+    /* =============================
+       2. SOCIAL PROOF BAR
+       ============================= */
+    .social-proof {
+      padding: 24px 0;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .social-proof-inner {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+    }
+
+    .social-proof-inner span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .proof-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-secondary);
+      display: inline-block;
+    }
+
+    /* =============================
+       3. FEATURES
+       ============================= */
+    .features {
+      padding: 80px 0;
+    }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 32px;
+      max-width: var(--max-layout);
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 28px;
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      transition: border-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(0, 229, 229, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .feature-mascot {
+      width: 64px;
+      height: 64px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      font-size: 0.55rem;
+    }
+
+    .feature-content h3 {
+      font-size: 1.05rem;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .feature-content p {
+      font-size: 0.9rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* =============================
+       4. VISUALIZER
+       ============================= */
+    .visualizer {
+      padding: 80px 0;
+    }
+
+    .visualizer-placeholder {
+      width: 100%;
+      max-width: var(--max-layout);
+      aspect-ratio: 2 / 1;
+      margin: 0 auto 24px;
+      font-size: 0.9rem;
+    }
+
+    .visualizer-desc {
+      text-align: center;
+      color: var(--text-secondary);
+      max-width: var(--max-text);
+      margin: 0 auto;
+    }
+
+    /* =============================
+       5. MASCOT GALLERY
+       ============================= */
+    .mascot-gallery {
+      padding: 80px 0;
+    }
+
+    .mascot-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 24px;
+      max-width: var(--max-layout);
+      margin: 0 auto;
+    }
+
+    .mascot-card {
+      background: var(--bg-card);
+      border: 2px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 24px;
+      text-align: center;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.15s ease;
+      cursor: default;
+    }
+
+    .mascot-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 30px rgba(0, 229, 229, 0.15);
+      transform: translateY(-4px);
+    }
+
+    .mascot-card .placeholder {
+      width: 128px;
+      height: 128px;
+      margin: 0 auto 16px;
+      border-radius: 16px;
+    }
+
+    .mascot-card h3 {
+      font-size: 1rem;
+      margin-bottom: 4px;
+      color: var(--accent);
+    }
+
+    .mascot-card .mascot-role {
+      font-size: 0.75rem;
+      color: var(--accent-secondary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .mascot-card p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    /* =============================
+       6. SCREENSHOTS
+       ============================= */
+    .screenshots {
+      padding: 80px 0;
+    }
+
+    .screenshots-grid {
+      display: grid;
+      gap: 24px;
+      max-width: var(--max-layout);
+      margin: 0 auto;
+    }
+
+    .screenshot-placeholder {
+      width: 100%;
+      aspect-ratio: 1200 / 750;
+      font-size: 0.9rem;
+    }
+
+    .screenshots-grid .screenshot-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    /* =============================
+       7. FINAL CTA
+       ============================= */
+    .final-cta {
+      padding: 80px 0;
+      text-align: center;
+    }
+
+    .final-cta h2 {
+      font-size: clamp(1.5rem, 3.5vw, 2.2rem);
+      margin-bottom: 16px;
+    }
+
+    .final-cta p {
+      color: var(--text-secondary);
+      margin-bottom: 32px;
+      max-width: var(--max-text);
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    /* =============================
+       8. FOOTER
+       ============================= */
+    footer {
+      border-top: 1px solid rgba(255,255,255,0.06);
+      padding: 40px 0;
+      text-align: center;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      transition: color 0.15s ease;
+    }
+
+    .footer-links a:hover {
+      color: var(--accent);
+    }
+
+    .footer-heart {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .footer-heart span {
+      color: var(--red);
+    }
+
+    /* =============================
+       RESPONSIVE
+       ============================= */
+    @media (max-width: 768px) {
+      section {
+        padding: 56px 0;
+      }
+
+      .hero {
+        padding: 72px 0 48px;
+      }
+
+      .mascot-row {
+        gap: 16px;
+      }
+
+      .mascot-hero-item .placeholder {
+        width: 80px;
+        height: 80px;
+        font-size: 0.6rem;
+      }
+
+      .character-select {
+        padding: 20px;
+      }
+
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .mascot-cards {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 16px;
+      }
+
+      .screenshots-grid .screenshot-row {
+        grid-template-columns: 1fr;
+      }
+
+      .cta-group {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .btn {
+        width: 100%;
+        max-width: 300px;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ===================== 1. HERO ===================== -->
+  <section class="hero">
+    <div class="container">
+      <p class="hero-tagline">Terminal multiplexing, but make it fun</p>
+      <h1>Meet the <span>Fleet</span> Crew</h1>
+      <p class="hero-subtitle">A playful, cross-platform terminal multiplexer for developers running multiple AI coding agents simultaneously.</p>
+
+      <div class="character-select">
+        <p class="character-select-header">// Choose your copilot</p>
+        <div class="mascot-row">
+          <div class="mascot-hero-item">
+            <div class="placeholder">Officer</div>
+            <span class="mascot-label">Officer</span>
+          </div>
+          <div class="mascot-hero-item">
+            <div class="placeholder">Robot</div>
+            <span class="mascot-label">Robot</span>
+          </div>
+          <div class="mascot-hero-item">
+            <div class="placeholder">Cat</div>
+            <span class="mascot-label">Cat</span>
+          </div>
+          <div class="mascot-hero-item">
+            <div class="placeholder">Bear</div>
+            <span class="mascot-label">Bear</span>
+          </div>
+          <div class="mascot-hero-item">
+            <div class="placeholder">Kraken</div>
+            <span class="mascot-label">Kraken</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="cta-group">
+        <a href="#" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.82.487 3.53 1.338 5L2 22l5-1.338A9.956 9.956 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
+          Download for macOS
+        </a>
+        <a href="#" class="btn btn-ghost">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 2. SOCIAL PROOF BAR ===================== -->
+  <div class="social-proof">
+    <div class="container">
+      <div class="social-proof-inner">
+        <span><span class="proof-dot"></span> Open Source</span>
+        <span><span class="proof-dot"></span> Cross-Platform</span>
+        <span><span class="proof-dot"></span> Built for Claude Code</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== 3. FEATURES ===================== -->
+  <section class="features">
+    <div class="container">
+      <h2 class="section-title">Your Crew Has <span class="accent-text">Superpowers</span></h2>
+      <p class="section-subtitle">Each member of the Fleet crew brings a feature to the table. Here's what they can do.</p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Officer</div>
+          <div class="feature-content">
+            <h3>Tabs &amp; Workspaces</h3>
+            <p>Organize agent sessions with draggable tabs and persistent workspaces.</p>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Robot</div>
+          <div class="feature-content">
+            <h3>Split Panes</h3>
+            <p>Divide your terminal into any layout with recursive splits.</p>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Cat</div>
+          <div class="feature-content">
+            <h3>Activity Badges</h3>
+            <p>Amber for permission, green for coding, blue for reading -- know what every agent is doing.</p>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Bear</div>
+          <div class="feature-content">
+            <h3>Git Integration</h3>
+            <p>Branch labels, file diffs, worktree management built right in.</p>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Kraken</div>
+          <div class="feature-content">
+            <h3>Command Palette</h3>
+            <p>Quick access to any action with <kbd style="background:var(--bg-placeholder);padding:2px 6px;border-radius:4px;font-size:0.8rem;">Cmd+Shift+P</kbd></p>
+          </div>
+        </div>
+
+        <div class="feature-card">
+          <div class="placeholder feature-mascot">Officer</div>
+          <div class="feature-content">
+            <h3>Clipboard History</h3>
+            <p>Never lose copied text with <kbd style="background:var(--bg-placeholder);padding:2px 6px;border-radius:4px;font-size:0.8rem;">Cmd+Shift+H</kbd></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 4. VISUALIZER ===================== -->
+  <section class="visualizer">
+    <div class="container">
+      <h2 class="section-title">Where the Crew <span class="teal-text">Works</span></h2>
+      <p class="section-subtitle">Watch your AI agents navigate the codebase as animated ships in a living space visualization.</p>
+
+      <div class="placeholder visualizer-placeholder">Agent Visualizer &mdash; 1200 x 600</div>
+      <p class="visualizer-desc">Each agent is a ship with a colored trail. See them read, write, and explore your project in real time.</p>
+    </div>
+  </section>
+
+  <!-- ===================== 5. MASCOT GALLERY ===================== -->
+  <section class="mascot-gallery">
+    <div class="container">
+      <h2 class="section-title">Choose Your <span class="accent-text">Copilot</span></h2>
+      <p class="section-subtitle">Five mascots, five personalities. Pick the one that fits your vibe.</p>
+
+      <div class="mascot-cards">
+        <div class="mascot-card">
+          <div class="placeholder">Officer<br>128x128</div>
+          <h3>Officer</h3>
+          <p class="mascot-role">Disciplined</p>
+          <p>The classic Fleet officer -- disciplined and dependable.</p>
+        </div>
+
+        <div class="mascot-card">
+          <div class="placeholder">Robot<br>128x128</div>
+          <h3>Robot</h3>
+          <p class="mascot-role">Efficient</p>
+          <p>A friendly automaton -- efficient and tireless.</p>
+        </div>
+
+        <div class="mascot-card">
+          <div class="placeholder">Cat<br>128x128</div>
+          <h3>Cat</h3>
+          <p class="mascot-role">Curious</p>
+          <p>A curious space cat -- always exploring.</p>
+        </div>
+
+        <div class="mascot-card">
+          <div class="placeholder">Bear<br>128x128</div>
+          <h3>Bear</h3>
+          <p class="mascot-role">Protective</p>
+          <p>An armored polar bear warrior -- strong and protective.</p>
+        </div>
+
+        <div class="mascot-card">
+          <div class="placeholder">Kraken<br>128x128</div>
+          <h3>Kraken</h3>
+          <p class="mascot-role">Mysterious</p>
+          <p>An astral space kraken -- mysterious and powerful.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 6. SCREENSHOTS ===================== -->
+  <section class="screenshots">
+    <div class="container">
+      <h2 class="section-title">Fleet in <span class="teal-text">Action</span></h2>
+      <p class="section-subtitle">See what it looks like to run a whole crew of AI agents at once.</p>
+
+      <div class="screenshots-grid">
+        <div class="placeholder screenshot-placeholder">App Screenshot &mdash; Split Panes &mdash; 1200 x 750</div>
+        <div class="screenshot-row">
+          <div class="placeholder screenshot-placeholder">App Screenshot &mdash; Copilot Overlay &mdash; 1200 x 750</div>
+          <div class="placeholder screenshot-placeholder">App Screenshot &mdash; Activity Badges &mdash; 1200 x 750</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 7. FINAL CTA ===================== -->
+  <section class="final-cta">
+    <div class="container">
+      <h2>Ready to <span class="accent-text">Assemble Your Crew</span>?</h2>
+      <p>Download Fleet and start running AI coding agents the fun way.</p>
+      <div class="cta-group">
+        <a href="#" class="btn btn-primary">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2C6.477 2 2 6.477 2 12c0 1.82.487 3.53 1.338 5L2 22l5-1.338A9.956 9.956 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg>
+          Download for macOS
+        </a>
+        <a href="#" class="btn btn-ghost">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== 8. FOOTER ===================== -->
+  <footer>
+    <div class="container">
+      <div class="footer-links">
+        <a href="#">GitHub</a>
+        <a href="#">Releases</a>
+        <a href="#">Changelog</a>
+      </div>
+      <p class="footer-heart">Built with <span>&hearts;</span> for the AI agent era</p>
+    </div>
+  </footer>
+
+  <!--
+  ============================================
+  IMAGE GENERATION PROMPTS
+  ============================================
+
+  1. Officer mascot: "Pixel art naval officer character, teal uniform with gold epaulettes, standing at attention, transparent background, 128x128, retro game sprite style"
+  2. Robot mascot: "Pixel art friendly robot character, silver and cyan body, glowing blue eyes, waving, transparent background, 128x128, retro game sprite style"
+  3. Cat mascot: "Pixel art space cat character, wearing a small astronaut helmet, curious pose, teal accents, transparent background, 128x128, retro game sprite style"
+  4. Bear mascot: "Pixel art armored polar bear warrior character, silver armor with teal trim, standing heroically, transparent background, 128x128, retro game sprite style"
+  5. Kraken mascot: "Pixel art astral space kraken character, cosmic purple and teal tentacles, glowing eyes, floating in space, transparent background, 128x128, retro game sprite style"
+  6. Agent Visualizer: "Pixel art space scene on dark navy background, 5 small spaceships in formation with glowing colored trails, stars in background, retro game aesthetic"
+  7. App screenshot - split panes: "Screenshot of dark-themed terminal multiplexer with 3 split panes, vertical tab sidebar, colored activity badges, dark navy UI with cyan accents"
+  8. Copilot overlay: "Floating translucent overlay panel on dark terminal, pixel art mascot with speech bubble, dark navy with cyan accents"
+  -->
+
+</body>
+</html>

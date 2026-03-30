@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fleet - Built for developers running AI agents</title>
+  <meta name="description" content="A lightweight, cross-platform terminal multiplexer that helps you manage multiple AI coding agents in one window.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html {
+        scroll-behavior: auto;
+      }
+      .hero-screenshot,
+      .feature-card,
+      .mascot-card,
+      .cta-primary,
+      .cta-ghost,
+      .nav-link {
+        transition: none !important;
+      }
+    }
+
+    body {
+      background: #0a0a1a;
+      color: #E0E0E0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 500;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Typography */
+    h1, h2, h3, h4 {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    /* Layout */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .text-container {
+      max-width: 700px;
+      margin: 0 auto;
+    }
+
+    /* ---- NAV ---- */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: rgba(10, 10, 26, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0, 229, 229, 0.1);
+    }
+
+    .nav-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: #00E5E5;
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+
+    .nav-link {
+      color: #A0A0A0;
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s ease;
+    }
+
+    .nav-link:hover {
+      color: #E0E0E0;
+    }
+
+    /* ---- HERO ---- */
+    .hero {
+      padding: 120px 0 64px;
+      text-align: center;
+    }
+
+    .hero-tagline {
+      font-size: clamp(2rem, 5vw, 3.25rem);
+      color: #E0E0E0;
+      margin-bottom: 16px;
+      letter-spacing: -0.03em;
+    }
+
+    .hero-tagline .accent {
+      color: #00E5E5;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1rem, 2.5vw, 1.25rem);
+      color: #A0A0A0;
+      max-width: 600px;
+      margin: 0 auto 48px;
+      font-weight: 400;
+    }
+
+    .hero-screenshot {
+      max-width: 1200px;
+      width: 100%;
+      aspect-ratio: 1200 / 750;
+      background: #1a1a2e;
+      border: 2px dashed rgba(0, 229, 229, 0.3);
+      border-radius: 12px;
+      margin: 0 auto 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #A0A0A0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      position: relative;
+      overflow: hidden;
+      transition: box-shadow 0.3s ease;
+    }
+
+    .hero-screenshot::before {
+      content: '';
+      position: absolute;
+      inset: -2px;
+      border-radius: 14px;
+      padding: 2px;
+      background: linear-gradient(135deg, rgba(0, 229, 229, 0.4), rgba(0, 212, 170, 0.2), transparent);
+      -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+    }
+
+    .hero-screenshot:hover {
+      box-shadow: 0 0 60px rgba(0, 229, 229, 0.15), 0 0 120px rgba(0, 229, 229, 0.05);
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* ---- BUTTONS ---- */
+    .cta-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      background: #00E5E5;
+      color: #0a0a1a;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.9rem;
+      border: none;
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: background 0.2s ease, transform 0.15s ease;
+    }
+
+    .cta-primary:hover {
+      background: #33ECEC;
+      transform: translateY(-1px);
+    }
+
+    .cta-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      background: transparent;
+      color: #E0E0E0;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.9rem;
+      border: 1px solid rgba(224, 224, 224, 0.2);
+      border-radius: 8px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .cta-ghost:hover {
+      border-color: rgba(224, 224, 224, 0.5);
+      transform: translateY(-1px);
+    }
+
+    /* ---- SOCIAL PROOF ---- */
+    .social-proof {
+      padding: 48px 0;
+      text-align: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .social-proof-text {
+      font-size: 0.9rem;
+      color: #A0A0A0;
+      letter-spacing: 0.05em;
+    }
+
+    .social-proof-text .dot {
+      display: inline-block;
+      margin: 0 12px;
+      color: rgba(0, 229, 229, 0.4);
+    }
+
+    /* ---- SECTIONS ---- */
+    .section {
+      padding: 96px 0;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 56px;
+    }
+
+    .section-title {
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      color: #E0E0E0;
+      margin-bottom: 12px;
+    }
+
+    .section-desc {
+      font-size: 1rem;
+      color: #A0A0A0;
+      max-width: 550px;
+      margin: 0 auto;
+      font-weight: 400;
+    }
+
+    /* ---- FEATURE GRID ---- */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+
+    .feature-card {
+      background: rgba(26, 26, 46, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 28px;
+      transition: border-color 0.2s ease, transform 0.15s ease;
+    }
+
+    .feature-card:hover {
+      border-color: rgba(0, 229, 229, 0.2);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      font-size: 1.5rem;
+      margin-bottom: 14px;
+      display: block;
+    }
+
+    .feature-heading {
+      font-size: 1rem;
+      color: #E0E0E0;
+      margin-bottom: 8px;
+    }
+
+    .feature-text {
+      font-size: 0.875rem;
+      color: #A0A0A0;
+      font-weight: 400;
+      line-height: 1.5;
+    }
+
+    /* ---- VISUALIZER ---- */
+    .visualizer-placeholder {
+      max-width: 1000px;
+      width: 100%;
+      aspect-ratio: 1000 / 500;
+      background: #1a1a2e;
+      border: 2px dashed rgba(0, 229, 229, 0.2);
+      border-radius: 12px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #A0A0A0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+    }
+
+    /* ---- MASCOTS ---- */
+    .mascot-row {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .mascot-card {
+      text-align: center;
+      transition: transform 0.15s ease;
+    }
+
+    .mascot-card:hover {
+      transform: translateY(-3px);
+    }
+
+    .mascot-img {
+      width: 128px;
+      height: 128px;
+      background: #1a1a2e;
+      border: 2px dashed rgba(0, 229, 229, 0.15);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #A0A0A0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      margin-bottom: 10px;
+    }
+
+    .mascot-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #A0A0A0;
+      font-weight: 500;
+    }
+
+    /* ---- SCREENSHOTS GRID ---- */
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .screenshot-placeholder {
+      width: 100%;
+      aspect-ratio: 580 / 400;
+      background: #1a1a2e;
+      border: 2px dashed rgba(0, 229, 229, 0.15);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #A0A0A0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      gap: 8px;
+    }
+
+    .screenshot-label {
+      font-size: 0.7rem;
+      color: rgba(160, 160, 160, 0.6);
+    }
+
+    /* ---- FINAL CTA ---- */
+    .final-cta {
+      padding: 96px 0;
+      text-align: center;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .final-cta-title {
+      font-size: clamp(1.75rem, 4vw, 2.5rem);
+      color: #E0E0E0;
+      margin-bottom: 12px;
+    }
+
+    .final-cta-subtitle {
+      color: #A0A0A0;
+      margin-bottom: 36px;
+      font-weight: 400;
+    }
+
+    /* ---- FOOTER ---- */
+    .footer {
+      padding: 40px 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      text-align: center;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      list-style: none;
+      margin-bottom: 20px;
+    }
+
+    .footer-link {
+      color: #A0A0A0;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: color 0.2s ease;
+    }
+
+    .footer-link:hover {
+      color: #E0E0E0;
+    }
+
+    .footer-copy {
+      font-size: 0.8rem;
+      color: rgba(160, 160, 160, 0.5);
+    }
+
+    /* ---- PIXEL ACCENT (stars) ---- */
+    .pixel-star {
+      position: fixed;
+      width: 2px;
+      height: 2px;
+      background: rgba(0, 229, 229, 0.3);
+      pointer-events: none;
+      z-index: -1;
+    }
+
+    /* ---- RESPONSIVE ---- */
+    @media (max-width: 768px) {
+      .nav-links {
+        gap: 20px;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
+
+      .screenshots-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-ctas {
+        flex-direction: column;
+        align-items: center;
+      }
+
+      .cta-primary,
+      .cta-ghost {
+        width: 100%;
+        max-width: 320px;
+        justify-content: center;
+      }
+
+      .mascot-row {
+        gap: 16px;
+      }
+
+      .mascot-img {
+        width: 96px;
+        height: 96px;
+      }
+
+      .section {
+        padding: 64px 0;
+      }
+
+      .social-proof-text .dot {
+        display: none;
+      }
+
+      .social-proof-text span {
+        display: block;
+        margin: 4px 0;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .nav-links {
+        gap: 16px;
+      }
+
+      .nav-link {
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Pixel star accents -->
+  <div class="pixel-star" style="top: 12%; left: 8%;"></div>
+  <div class="pixel-star" style="top: 25%; left: 85%;"></div>
+  <div class="pixel-star" style="top: 40%; left: 15%;"></div>
+  <div class="pixel-star" style="top: 55%; left: 92%;"></div>
+  <div class="pixel-star" style="top: 70%; left: 5%;"></div>
+  <div class="pixel-star" style="top: 82%; left: 78%;"></div>
+
+  <!-- Nav -->
+  <nav class="nav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="#" class="nav-logo">Fleet</a>
+      <ul class="nav-links">
+        <li><a href="#features" class="nav-link">Features</a></li>
+        <li><a href="https://github.com/khang859/fleet" class="nav-link" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="#download" class="nav-link">Download</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="text-container">
+        <h1 class="hero-tagline">Built for developers running <span class="accent">AI agents</span></h1>
+        <p class="hero-subtitle">A lightweight, cross-platform terminal multiplexer that helps you manage multiple AI coding agents in one window.</p>
+      </div>
+
+      <div class="hero-screenshot" role="img" aria-label="Fleet app screenshot placeholder">
+        1200 &times; 750 &mdash; App Screenshot
+      </div>
+
+      <div class="hero-ctas" id="download">
+        <a href="#" class="cta-primary">&#9662; Download for macOS</a>
+        <a href="https://github.com/khang859/fleet" class="cta-ghost" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Social Proof -->
+  <section class="social-proof">
+    <div class="container">
+      <p class="social-proof-text">
+        <span>Open source</span><span class="dot">&middot;</span>
+        <span>Cross-platform</span><span class="dot">&middot;</span>
+        <span>macOS &amp; Windows</span><span class="dot">&middot;</span>
+        <span>Built for Claude Code</span>
+      </p>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Everything you need to manage AI agents</h2>
+        <p class="section-desc">Purpose-built features for developers who run multiple coding agents at once.</p>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#128196;</span>
+          <h3 class="feature-heading">Tabs &amp; Workspaces</h3>
+          <p class="feature-text">Organize agents by project with tabs. Switch contexts instantly without losing state.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#9638;</span>
+          <h3 class="feature-heading">Split Panes</h3>
+          <p class="feature-text">Tile your terminal any way you want. Monitor multiple agents side-by-side in real time.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#128308;</span>
+          <h3 class="feature-heading">Activity Badges</h3>
+          <p class="feature-text">Color-coded status indicators show which agents are idle, working, waiting, or done.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#128268;</span>
+          <h3 class="feature-heading">Git Integration</h3>
+          <p class="feature-text">See branch names, diffs, and file changes right in the tab bar. Stay in flow.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#9000;</span>
+          <h3 class="feature-heading">Command Palette</h3>
+          <p class="feature-text">Fuzzy-search any action. Navigate tabs, split panes, and manage agents from the keyboard.</p>
+        </div>
+
+        <div class="feature-card">
+          <span class="feature-icon" aria-hidden="true">&#128203;</span>
+          <h3 class="feature-heading">Clipboard History</h3>
+          <p class="feature-text">Never lose a copied snippet. Browse and reuse your recent clipboard entries instantly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Visualizer -->
+  <section class="section" style="padding-top: 0;">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">See your agents in action</h2>
+        <p class="section-desc">A real-time pixel-art visualizer maps each running agent to a spaceship, so you always know what your fleet is doing.</p>
+      </div>
+
+      <div class="visualizer-placeholder" role="img" aria-label="Agent visualizer placeholder">
+        1000 &times; 500 &mdash; Agent Visualizer
+      </div>
+    </div>
+  </section>
+
+  <!-- Mascots -->
+  <section class="section" style="padding-top: 0;">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">Choose your copilot companion</h2>
+        <p class="section-desc">Pick a pixel-art mascot to ride along in your terminal. Purely cosmetic, entirely delightful.</p>
+      </div>
+
+      <div class="mascot-row">
+        <div class="mascot-card">
+          <div class="mascot-img" role="img" aria-label="Officer mascot placeholder">128&times;128</div>
+          <span class="mascot-name">Officer</span>
+        </div>
+        <div class="mascot-card">
+          <div class="mascot-img" role="img" aria-label="Robot mascot placeholder">128&times;128</div>
+          <span class="mascot-name">Robot</span>
+        </div>
+        <div class="mascot-card">
+          <div class="mascot-img" role="img" aria-label="Cat mascot placeholder">128&times;128</div>
+          <span class="mascot-name">Cat</span>
+        </div>
+        <div class="mascot-card">
+          <div class="mascot-img" role="img" aria-label="Bear mascot placeholder">128&times;128</div>
+          <span class="mascot-name">Bear</span>
+        </div>
+        <div class="mascot-card">
+          <div class="mascot-img" role="img" aria-label="Kraken mascot placeholder">128&times;128</div>
+          <span class="mascot-name">Kraken</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Additional Screenshots -->
+  <section class="section" style="padding-top: 0;">
+    <div class="container">
+      <div class="section-header">
+        <h2 class="section-title">More to explore</h2>
+      </div>
+
+      <div class="screenshots-grid">
+        <div class="screenshot-placeholder" role="img" aria-label="Copilot overlay screenshot placeholder">
+          <span>580 &times; 400</span>
+          <span class="screenshot-label">Copilot Overlay</span>
+        </div>
+        <div class="screenshot-placeholder" role="img" aria-label="Git integration screenshot placeholder">
+          <span>580 &times; 400</span>
+          <span class="screenshot-label">Git Integration</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA -->
+  <section class="final-cta">
+    <div class="container">
+      <h2 class="final-cta-title">Ready to launch?</h2>
+      <p class="final-cta-subtitle">Download Fleet and run your AI agents like a fleet commander.</p>
+      <div class="hero-ctas">
+        <a href="#" class="cta-primary">&#9662; Download for macOS</a>
+        <a href="https://github.com/khang859/fleet" class="cta-ghost" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <ul class="footer-links">
+        <li><a href="https://github.com/khang859/fleet" class="footer-link" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="https://github.com/khang859/fleet/releases" class="footer-link" target="_blank" rel="noopener">Releases</a></li>
+        <li><a href="https://github.com/khang859/fleet/blob/main/CHANGELOG.md" class="footer-link" target="_blank" rel="noopener">Changelog</a></li>
+      </ul>
+      <p class="footer-copy">&copy; 2026 Fleet. Open source under MIT License.</p>
+    </div>
+  </footer>
+
+<!--
+IMAGE GENERATION PROMPTS:
+
+1. App Screenshot (1200x750):
+   "Screenshot of dark-themed terminal multiplexer with vertical tab sidebar, 3 split panes running Claude Code, activity badges (amber, green, blue), dark navy UI, cyan accents, clean modern design"
+
+2. Agent Visualizer (1000x500):
+   "Pixel art space scene, 5 spaceships with colored trails, dark navy background, stars, retro aesthetic"
+
+3. Copilot Overlay (580x400):
+   "Floating overlay panel on dark terminal, pixel art mascot, dark navy with cyan"
+
+4. Git Integration (580x400):
+   "Dark file diff viewer, syntax highlighting, green/red lines, branch label, dark navy"
+
+5. Officer Mascot (128x128):
+   "Pixel art space officer character, teal uniform, small helmet, standing pose, transparent background, 128x128"
+
+6. Robot Mascot (128x128):
+   "Pixel art cute robot character, teal and silver, antenna, standing pose, transparent background, 128x128"
+
+7. Cat Mascot (128x128):
+   "Pixel art space cat character, teal collar, astronaut style, standing pose, transparent background, 128x128"
+
+8. Bear Mascot (128x128):
+   "Pixel art space bear character, teal vest, friendly face, standing pose, transparent background, 128x128"
+
+9. Kraken Mascot (128x128):
+   "Pixel art kraken character, teal tentacles, space helmet, cute style, transparent background, 128x128"
+-->
+
+</body>
+</html>

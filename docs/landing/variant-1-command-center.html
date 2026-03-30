@@ -1,0 +1,1214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fleet — Your AI Agents, One Fleet</title>
+  <meta name="description" content="A lightweight terminal multiplexer built for developers running multiple AI coding agents simultaneously.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg: #0a0a1a;
+      --bg-card: #1a1a2e;
+      --bg-card-hover: #22223a;
+      --primary: #00E5E5;
+      --primary-glow: rgba(0, 229, 229, 0.15);
+      --secondary: #00D4AA;
+      --amber: #F59E0B;
+      --green: #22C55E;
+      --blue: #3B82F6;
+      --red: #EF4444;
+      --gray: #6B7280;
+      --text-primary: #E0E0E0;
+      --text-secondary: #A0A0A0;
+      --border: rgba(0, 229, 229, 0.2);
+      --border-dim: rgba(255, 255, 255, 0.06);
+      --max-width: 1200px;
+      --max-text: 700px;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      font-weight: 500;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4, h5, h6 {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    a:hover {
+      color: var(--secondary);
+    }
+
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* ========== Star field ========== */
+    .starfield {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      overflow: hidden;
+    }
+
+    .starfield .layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-repeat: repeat;
+    }
+
+    .starfield .layer-1 {
+      background-image:
+        radial-gradient(1px 1px at 50px 80px, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1px 1px at 180px 150px, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1px 1px at 320px 60px, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 470px 200px, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1px 1px at 600px 120px, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 750px 250px, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1px 1px at 100px 300px, rgba(255,255,255,0.4), transparent),
+        radial-gradient(1px 1px at 400px 350px, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1px 1px at 550px 400px, rgba(255,255,255,0.3), transparent),
+        radial-gradient(1px 1px at 200px 450px, rgba(255,255,255,0.5), transparent);
+      background-size: 800px 500px;
+      animation: drift 120s linear infinite;
+    }
+
+    .starfield .layer-2 {
+      background-image:
+        radial-gradient(1.5px 1.5px at 120px 40px, rgba(255,255,255,0.7), transparent),
+        radial-gradient(1.5px 1.5px at 350px 180px, rgba(0,229,229,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 500px 90px, rgba(255,255,255,0.6), transparent),
+        radial-gradient(1.5px 1.5px at 680px 300px, rgba(255,255,255,0.5), transparent),
+        radial-gradient(1.5px 1.5px at 250px 380px, rgba(0,212,170,0.4), transparent),
+        radial-gradient(1.5px 1.5px at 450px 270px, rgba(255,255,255,0.6), transparent);
+      background-size: 750px 450px;
+      animation: drift 80s linear infinite reverse;
+    }
+
+    .starfield .layer-3 {
+      background-image:
+        radial-gradient(2px 2px at 200px 100px, rgba(0,229,229,0.6), transparent),
+        radial-gradient(2px 2px at 450px 250px, rgba(255,255,255,0.8), transparent),
+        radial-gradient(2px 2px at 650px 180px, rgba(0,212,170,0.5), transparent),
+        radial-gradient(2px 2px at 100px 350px, rgba(255,255,255,0.7), transparent);
+      background-size: 700px 400px;
+      animation: twinkle 4s ease-in-out infinite alternate, drift 60s linear infinite;
+    }
+
+    @keyframes drift {
+      from { transform: translateY(0); }
+      to { transform: translateY(-500px); }
+    }
+
+    @keyframes twinkle {
+      0% { opacity: 0.4; }
+      100% { opacity: 1; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .starfield .layer {
+        animation: none !important;
+      }
+      .reveal {
+        opacity: 1 !important;
+        transform: none !important;
+        transition: none !important;
+      }
+    }
+
+    /* ========== Layout ========== */
+    .container {
+      position: relative;
+      z-index: 1;
+    }
+
+    .section {
+      padding: 80px 24px;
+    }
+
+    .section-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
+
+    .section-heading {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      color: var(--text-primary);
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .section-heading .accent {
+      color: var(--primary);
+    }
+
+    .section-subheading {
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: var(--max-text);
+      margin: 0 auto 48px;
+      font-size: 1rem;
+    }
+
+    /* ========== Scroll reveal ========== */
+    .reveal {
+      opacity: 0;
+      transform: translateY(16px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ========== Nav ========== */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(10, 10, 26, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-dim);
+    }
+
+    .nav-logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--primary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .nav-logo .logo-icon {
+      width: 28px;
+      height: 28px;
+      border: 2px solid var(--primary);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .nav-cta {
+      background: var(--primary);
+      color: var(--bg) !important;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: background 0.2s;
+    }
+
+    .nav-cta:hover {
+      background: var(--secondary) !important;
+      color: var(--bg) !important;
+    }
+
+    @media (max-width: 640px) {
+      .nav-links a:not(.nav-cta) {
+        display: none;
+      }
+    }
+
+    /* ========== Hero ========== */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 120px 24px 80px;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-inner {
+      max-width: var(--max-width);
+      width: 100%;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 229, 229, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 16px;
+      font-size: 0.8rem;
+      color: var(--primary);
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 32px;
+    }
+
+    .hero-badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .hero h1 {
+      font-size: clamp(2.5rem, 7vw, 4rem);
+      margin-bottom: 20px;
+      letter-spacing: -0.02em;
+    }
+
+    .hero h1 .gradient {
+      background: linear-gradient(135deg, var(--primary), var(--secondary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-subtitle {
+      color: var(--text-secondary);
+      font-size: clamp(1rem, 2.5vw, 1.2rem);
+      max-width: var(--max-text);
+      margin: 0 auto 40px;
+      line-height: 1.6;
+    }
+
+    .hero-ctas {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 64px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      text-decoration: none;
+      min-height: 48px;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--bg);
+      box-shadow: 0 0 24px rgba(0, 229, 229, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: #00FFFF;
+      color: var(--bg);
+      box-shadow: 0 0 32px rgba(0, 229, 229, 0.4);
+      transform: translateY(-1px);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    .hero-visualizer {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* ========== Image placeholders ========== */
+    .placeholder {
+      background: var(--bg-card);
+      border: 2px dashed rgba(0, 229, 229, 0.2);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .placeholder::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,229,0.03), transparent 60%);
+    }
+
+    .placeholder-hero {
+      width: 100%;
+      aspect-ratio: 2 / 1;
+      max-height: 600px;
+    }
+
+    .placeholder-screenshot {
+      width: 100%;
+      aspect-ratio: 1200 / 750;
+    }
+
+    .placeholder-mascot {
+      width: 128px;
+      height: 128px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .placeholder-copilot {
+      width: 100%;
+      max-width: 800px;
+      aspect-ratio: 800 / 500;
+      margin: 0 auto;
+    }
+
+    /* Corner brackets on hero placeholder */
+    .placeholder-hero::after {
+      content: '';
+      position: absolute;
+      inset: 12px;
+      border: 1px solid rgba(0, 229, 229, 0.1);
+      border-radius: 8px;
+      pointer-events: none;
+    }
+
+    /* ========== Social proof bar ========== */
+    .social-proof {
+      border-top: 1px solid var(--border-dim);
+      border-bottom: 1px solid var(--border-dim);
+      padding: 24px;
+      text-align: center;
+    }
+
+    .social-proof-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .social-proof-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .social-proof-item .icon {
+      font-size: 1.1rem;
+    }
+
+    .social-proof-item.stars {
+      color: var(--primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+    }
+
+    .dot-separator {
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--gray);
+    }
+
+    /* ========== Feature grid ========== */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 900px) {
+      .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 600px) {
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-dim);
+      border-radius: 12px;
+      padding: 28px 24px;
+      position: relative;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .feature-card:hover {
+      border-color: var(--border);
+      background: var(--bg-card-hover);
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 24px;
+      right: 24px;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .feature-card:hover::before {
+      opacity: 0.5;
+    }
+
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 16px;
+      background: rgba(0, 229, 229, 0.08);
+      border: 1px solid rgba(0, 229, 229, 0.15);
+    }
+
+    .feature-card h3 {
+      font-size: 1rem;
+      margin-bottom: 8px;
+      color: var(--text-primary);
+    }
+
+    .feature-card p {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    /* Status dot colors on feature cards */
+    .feature-card .status-dots {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .status-dot.amber { background: var(--amber); }
+    .status-dot.green { background: var(--green); }
+    .status-dot.blue { background: var(--blue); }
+    .status-dot.red { background: var(--red); }
+
+    /* ========== Visualizer showcase ========== */
+    .visualizer-section {
+      background: linear-gradient(180deg, transparent, rgba(0, 229, 229, 0.02) 50%, transparent);
+    }
+
+    .visualizer-content {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .visualizer-content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .visualizer-text h2 {
+      font-size: clamp(1.5rem, 4vw, 2rem);
+      margin-bottom: 16px;
+      text-align: left;
+    }
+
+    .visualizer-text p {
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      max-width: var(--max-text);
+    }
+
+    .visualizer-features {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .visualizer-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+
+    .visualizer-features li .check {
+      color: var(--primary);
+      font-size: 1rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* ========== Mascot showcase ========== */
+    .mascots-row {
+      display: flex;
+      gap: 24px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    @media (max-width: 768px) {
+      .mascots-row {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        padding-bottom: 16px;
+        -webkit-overflow-scrolling: touch;
+        scroll-snap-type: x mandatory;
+      }
+    }
+
+    .mascot-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 12px;
+      min-width: 160px;
+      scroll-snap-align: center;
+    }
+
+    .mascot-card .placeholder-mascot {
+      border: 2px solid var(--border-dim);
+      transition: border-color 0.3s;
+    }
+
+    .mascot-card:hover .placeholder-mascot {
+      border-color: var(--primary);
+    }
+
+    .mascot-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: var(--text-primary);
+    }
+
+    .mascot-desc {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      max-width: 160px;
+    }
+
+    /* ========== Screenshots ========== */
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    .screenshots-grid .placeholder:first-child {
+      grid-column: 1 / -1;
+    }
+
+    @media (max-width: 768px) {
+      .screenshots-grid {
+        grid-template-columns: 1fr;
+      }
+      .screenshots-grid .placeholder:first-child {
+        grid-column: 1;
+      }
+    }
+
+    /* ========== Final CTA ========== */
+    .final-cta {
+      text-align: center;
+      background: linear-gradient(180deg, transparent, rgba(0, 229, 229, 0.03));
+      border-top: 1px solid var(--border-dim);
+    }
+
+    .final-cta h2 {
+      font-size: clamp(1.5rem, 4vw, 2.25rem);
+      margin-bottom: 16px;
+    }
+
+    .final-cta p {
+      color: var(--text-secondary);
+      max-width: var(--max-text);
+      margin: 0 auto 32px;
+    }
+
+    .final-cta .hero-ctas {
+      margin-bottom: 0;
+    }
+
+    /* ========== Footer ========== */
+    .footer {
+      border-top: 1px solid var(--border-dim);
+      padding: 40px 24px;
+      text-align: center;
+    }
+
+    .footer-inner {
+      max-width: var(--max-width);
+      margin: 0 auto;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .footer-links a {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover {
+      color: var(--primary);
+    }
+
+    .footer-heart {
+      color: var(--text-secondary);
+      font-size: 0.85rem;
+    }
+
+    .footer-heart .heart {
+      color: var(--red);
+    }
+
+    /* ========== Scroll hint ========== */
+    .scroll-hint {
+      position: absolute;
+      bottom: 32px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      animation: bob 2s ease-in-out infinite;
+    }
+
+    .scroll-hint .chevron {
+      width: 20px;
+      height: 20px;
+      border-right: 2px solid var(--text-secondary);
+      border-bottom: 2px solid var(--text-secondary);
+      transform: rotate(45deg);
+      opacity: 0.5;
+    }
+
+    @keyframes bob {
+      0%, 100% { transform: translateX(-50%) translateY(0); }
+      50% { transform: translateX(-50%) translateY(8px); }
+    }
+
+    /* ========== HUD decorations ========== */
+    .hud-corner {
+      position: absolute;
+      width: 20px;
+      height: 20px;
+    }
+
+    .hud-corner::before,
+    .hud-corner::after {
+      content: '';
+      position: absolute;
+      background: var(--primary);
+      opacity: 0.3;
+    }
+
+    .hud-corner.tl { top: 0; left: 0; }
+    .hud-corner.tl::before { top: 0; left: 0; width: 20px; height: 2px; }
+    .hud-corner.tl::after { top: 0; left: 0; width: 2px; height: 20px; }
+
+    .hud-corner.tr { top: 0; right: 0; }
+    .hud-corner.tr::before { top: 0; right: 0; width: 20px; height: 2px; }
+    .hud-corner.tr::after { top: 0; right: 0; width: 2px; height: 20px; }
+
+    .hud-corner.bl { bottom: 0; left: 0; }
+    .hud-corner.bl::before { bottom: 0; left: 0; width: 20px; height: 2px; }
+    .hud-corner.bl::after { bottom: 0; left: 0; width: 2px; height: 20px; }
+
+    .hud-corner.br { bottom: 0; right: 0; }
+    .hud-corner.br::before { bottom: 0; right: 0; width: 20px; height: 2px; }
+    .hud-corner.br::after { bottom: 0; right: 0; width: 2px; height: 20px; }
+
+    /* ========== Scan line effect on feature section ========== */
+    .features-section {
+      position: relative;
+    }
+
+    .features-section::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--primary), transparent);
+      opacity: 0.15;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Star field -->
+  <div class="starfield" aria-hidden="true">
+    <div class="layer layer-1"></div>
+    <div class="layer layer-2"></div>
+    <div class="layer layer-3"></div>
+  </div>
+
+  <div class="container">
+
+    <!-- Navigation -->
+    <nav class="nav" role="navigation" aria-label="Main navigation">
+      <a href="#" class="nav-logo">
+        <span class="logo-icon">F</span>
+        Fleet
+      </a>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#visualizer">Visualizer</a>
+        <a href="#crew">Crew</a>
+        <a href="https://github.com/fleetapp/fleet" class="nav-cta" target="_blank" rel="noopener">Download</a>
+      </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="reveal">
+          <div class="hero-badge">
+            <span class="dot"></span>
+            v2.19 — Open Source
+          </div>
+        </div>
+
+        <h1 class="reveal">Your AI agents, <span class="gradient">one fleet</span></h1>
+
+        <p class="hero-subtitle reveal">
+          A lightweight terminal multiplexer built for developers running
+          multiple AI coding agents simultaneously.
+        </p>
+
+        <div class="hero-ctas reveal">
+          <a href="#download" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download for macOS
+          </a>
+          <a href="https://github.com/fleetapp/fleet" class="btn btn-ghost" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            View on GitHub
+          </a>
+        </div>
+
+        <div class="hero-visualizer reveal">
+          <div class="placeholder placeholder-hero" style="position:relative;">
+            <span class="hud-corner tl"></span>
+            <span class="hud-corner tr"></span>
+            <span class="hud-corner bl"></span>
+            <span class="hud-corner br"></span>
+            Agent Visualizer — 1200 x 600
+          </div>
+        </div>
+
+        <div class="scroll-hint" aria-hidden="true">
+          <span>scroll</span>
+          <span class="chevron"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Social proof bar -->
+    <div class="social-proof reveal">
+      <div class="social-proof-inner">
+        <span class="social-proof-item">
+          <span class="icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+          </span>
+          Open Source
+        </span>
+        <span class="dot-separator"></span>
+        <span class="social-proof-item">
+          <span class="icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          </span>
+          Cross-platform
+        </span>
+        <span class="dot-separator"></span>
+        <span class="social-proof-item">
+          <span class="icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </span>
+          Built for Claude Code
+        </span>
+        <span class="dot-separator"></span>
+        <span class="social-proof-item stars">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          GitHub Stars
+        </span>
+      </div>
+    </div>
+
+    <!-- Feature highlights -->
+    <section class="section features-section" id="features">
+      <div class="section-inner">
+        <h2 class="section-heading reveal">Command <span class="accent">HUD</span></h2>
+        <p class="section-subheading reveal">Everything you need to manage a fleet of AI agents, at a glance.</p>
+
+        <div class="features-grid">
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+            </div>
+            <h3>Tabs &amp; Workspaces</h3>
+            <p>Organize agent sessions with draggable tabs and persistent workspaces.</p>
+          </div>
+
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/></svg>
+            </div>
+            <h3>Split Panes</h3>
+            <p>Divide your terminal into any layout with recursive horizontal and vertical splits.</p>
+          </div>
+
+          <div class="feature-card reveal">
+            <div class="feature-icon" style="position: relative;">
+              <span style="display:flex;gap:4px;">
+                <span class="status-dot amber"></span>
+                <span class="status-dot green"></span>
+                <span class="status-dot blue"></span>
+                <span class="status-dot red"></span>
+              </span>
+            </div>
+            <h3>Activity Badges</h3>
+            <p>Amber for permission, green for coding, blue for reading, red for errors — at a glance.</p>
+          </div>
+
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M6 3v3"/><path d="M18 3v3"/><path d="M6 18v3"/><path d="M18 18v3"/><path d="M3 6h3"/><path d="M18 6h3"/><path d="M3 18h3"/><path d="M18 18h3"/></svg>
+            </div>
+            <h3>Git Integration</h3>
+            <p>Real-time branch labels, file diffs with syntax highlighting, worktree management.</p>
+          </div>
+
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <h3>Command Palette</h3>
+            <p>Quick access to any action with <kbd style="background:rgba(0,229,229,0.1);padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.8rem;border:1px solid var(--border);">Cmd+Shift+P</kbd></p>
+          </div>
+
+          <div class="feature-card reveal">
+            <div class="feature-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            </div>
+            <h3>Clipboard History</h3>
+            <p>Never lose copied text — access previous entries with <kbd style="background:rgba(0,229,229,0.1);padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace;font-size:0.8rem;border:1px solid var(--border);">Cmd+Shift+H</kbd></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Agent Visualizer showcase -->
+    <section class="section visualizer-section" id="visualizer">
+      <div class="section-inner">
+        <div class="visualizer-content">
+          <div class="visualizer-text reveal">
+            <h2>Mission Control for <span class="accent">Your Agents</span></h2>
+            <p>
+              A space-themed canvas that transforms your running agents into an animated fleet.
+              Each agent becomes a ship with activity-based colors, trails, and real-time status indicators.
+            </p>
+            <ul class="visualizer-features">
+              <li>
+                <span class="check">&#10003;</span>
+                Agents rendered as animated ships with colored trails
+              </li>
+              <li>
+                <span class="check">&#10003;</span>
+                Activity state shown through ship color and movement
+              </li>
+              <li>
+                <span class="check">&#10003;</span>
+                Click any ship to jump to that agent's terminal
+              </li>
+              <li>
+                <span class="check">&#10003;</span>
+                Pixel-art aesthetic with smooth 60fps animation
+              </li>
+            </ul>
+          </div>
+          <div class="reveal">
+            <div class="placeholder placeholder-copilot" style="position:relative;">
+              <span class="hud-corner tl"></span>
+              <span class="hud-corner tr"></span>
+              <span class="hud-corner bl"></span>
+              <span class="hud-corner br"></span>
+              Copilot Overlay — 800 x 500
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mascot showcase -->
+    <section class="section" id="crew">
+      <div class="section-inner">
+        <h2 class="section-heading reveal">Meet the <span class="accent">Crew</span></h2>
+        <p class="section-subheading reveal">Choose your copilot. Each mascot has unique idle, processing, and alert animations.</p>
+
+        <div class="mascots-row reveal">
+          <div class="mascot-card">
+            <div class="placeholder placeholder-mascot">Officer</div>
+            <span class="mascot-name">The Admiral</span>
+            <span class="mascot-desc">Naval officer. Calm under pressure, always saluting.</span>
+          </div>
+          <div class="mascot-card">
+            <div class="placeholder placeholder-mascot">Robot</div>
+            <span class="mascot-name">Bolt</span>
+            <span class="mascot-desc">Friendly bot. Eager to help, never tires.</span>
+          </div>
+          <div class="mascot-card">
+            <div class="placeholder placeholder-mascot">Cat</div>
+            <span class="mascot-name">Nebula</span>
+            <span class="mascot-desc">Space cat. Curious about every file you open.</span>
+          </div>
+          <div class="mascot-card">
+            <div class="placeholder placeholder-mascot">Bear</div>
+            <span class="mascot-name">Glacier</span>
+            <span class="mascot-desc">Armored bear. Protects your codebase fiercely.</span>
+          </div>
+          <div class="mascot-card">
+            <div class="placeholder placeholder-mascot">Kraken</div>
+            <span class="mascot-name">Cosmos</span>
+            <span class="mascot-desc">Astral kraken. Wraps around bugs and crushes them.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Screenshots -->
+    <section class="section">
+      <div class="section-inner">
+        <h2 class="section-heading reveal">See It in <span class="accent">Action</span></h2>
+        <p class="section-subheading reveal">Split panes, copilot overlays, and git integration working together.</p>
+
+        <div class="screenshots-grid reveal">
+          <div class="placeholder placeholder-screenshot">
+            Split Panes — 1200 x 750
+          </div>
+          <div class="placeholder placeholder-screenshot">
+            Git Integration — 1200 x 750
+          </div>
+          <div class="placeholder placeholder-screenshot">
+            Command Palette — 1200 x 750
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Final CTA -->
+    <section class="section final-cta" id="download">
+      <div class="section-inner">
+        <h2 class="reveal">Ready to launch <span class="gradient">your fleet</span>?</h2>
+        <p class="reveal">Free, open source, and built for the way you work with AI agents.</p>
+        <div class="hero-ctas reveal">
+          <a href="#" class="btn btn-primary">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download for macOS
+          </a>
+          <a href="https://github.com/fleetapp/fleet" class="btn btn-ghost" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+            View on GitHub
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="footer-inner">
+        <div class="footer-links">
+          <a href="https://github.com/fleetapp/fleet" target="_blank" rel="noopener">GitHub</a>
+          <a href="https://github.com/fleetapp/fleet/releases" target="_blank" rel="noopener">Releases</a>
+          <a href="https://github.com/fleetapp/fleet/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+        </div>
+        <p class="footer-heart">
+          Built with <span class="heart">&hearts;</span> for the AI agent era
+        </p>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Minimal vanilla JS for scroll reveal -->
+  <script>
+    (function () {
+      // Scroll reveal
+      const reveals = document.querySelectorAll('.reveal');
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      if (prefersReducedMotion) {
+        reveals.forEach(function (el) { el.classList.add('visible'); });
+        return;
+      }
+
+      const observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('visible');
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+
+      reveals.forEach(function (el) { observer.observe(el); });
+
+      // Stagger reveals that are siblings
+      document.querySelectorAll('.features-grid .reveal, .mascots-row .reveal').forEach(function (el, i) {
+        el.style.transitionDelay = (i * 80) + 'ms';
+      });
+    })();
+  </script>
+
+  <!--
+  =============================================================
+  IMAGE GENERATION PROMPTS
+  =============================================================
+
+  1. Agent Visualizer (hero placeholder — 1200x600):
+     "Pixel art space scene on dark navy background, 5 small spaceships in formation with glowing colored trails (green, blue, amber, cyan, white), stars in background, retro game aesthetic, top-down view"
+
+  2. App screenshot — split panes (1200x750):
+     "Screenshot of a dark-themed terminal multiplexer app with 3 split panes showing different Claude Code sessions, vertical tab sidebar on left with colored activity badges, dark navy UI with cyan accents"
+
+  3. Copilot overlay (800x500):
+     "Screenshot of a floating translucent overlay panel on a dark terminal app, showing a pixel art mascot character with speech bubble, amber pulsing notification, dark navy with cyan accents"
+
+  4. Officer mascot (128x128):
+     "Pixel art naval officer character, teal uniform with gold epaulettes, standing at attention, transparent background, 128x128, retro game sprite style"
+
+  5. Robot mascot (128x128):
+     "Pixel art friendly robot character, silver and cyan body, glowing blue eyes, waving, transparent background, 128x128, retro game sprite style"
+
+  6. Cat mascot (128x128):
+     "Pixel art space cat character, wearing a small astronaut helmet, curious pose, teal accents, transparent background, 128x128, retro game sprite style"
+
+  7. Bear mascot (128x128):
+     "Pixel art armored polar bear warrior character, silver armor with teal trim, standing heroically, transparent background, 128x128, retro game sprite style"
+
+  8. Kraken mascot (128x128):
+     "Pixel art astral space kraken character, cosmic purple and teal tentacles, glowing eyes, floating in space, transparent background, 128x128, retro game sprite style"
+
+  9. Git integration screenshot (1200x750):
+     "Screenshot of a dark-themed file diff viewer with syntax highlighting, green added lines and red removed lines, branch label in top bar, dark navy UI"
+
+  10. Command palette screenshot (1200x750):
+      "Screenshot of a dark-themed command palette overlay, search bar at top, list of commands with keyboard shortcuts, dark navy with cyan highlight"
+
+  =============================================================
+  -->
+
+</body>
+</html>
