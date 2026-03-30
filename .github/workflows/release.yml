@@ -147,48 +147,106 @@ jobs:
     needs: [release-mac-arm64, release-mac-x64, release-win, release-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts and compute arm64 metadata
+      - name: Regenerate latest-mac.yml from actual artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
           REPO="${{ github.repository }}"
           VERSION="${TAG#v}"
-          ARM64_ZIP="Fleet-${VERSION}-arm64-mac.zip"
 
-          gh release download "$TAG" --repo "$REPO" --pattern "$ARM64_ZIP" -D /tmp/
-          ARM64_SHA512=$(openssl dgst -sha512 -binary "/tmp/${ARM64_ZIP}" | base64 -w 0)
-          ARM64_SIZE=$(wc -c < "/tmp/${ARM64_ZIP}" | tr -d ' ')
-
+          # Download the existing manifest to preserve releaseNotes and releaseDate
           gh release download "$TAG" --repo "$REPO" --pattern "latest-mac.yml" -D /tmp/ --clobber
 
-          echo "ARM64_ZIP=${ARM64_ZIP}" >> $GITHUB_ENV
-          echo "ARM64_SHA512=${ARM64_SHA512}" >> $GITHUB_ENV
-          echo "ARM64_SIZE=${ARM64_SIZE}" >> $GITHUB_ENV
+          # Download all mac ZIP and DMG artifacts
+          gh release download "$TAG" --repo "$REPO" --pattern "Fleet-*-mac.zip" -D /tmp/
+          gh release download "$TAG" --repo "$REPO" --pattern "fleet-*-arm64.dmg" -D /tmp/
+          gh release download "$TAG" --repo "$REPO" --pattern "fleet-*-x64.dmg" -D /tmp/
 
-      - name: Merge arm64 entry into latest-mac.yml
+          # Compute sha512 and size for each artifact
+          compute_meta() {
+            local file="$1"
+            local sha512 size
+            sha512=$(openssl dgst -sha512 -binary "$file" | base64 -w 0)
+            size=$(wc -c < "$file" | tr -d ' ')
+            echo "$sha512 $size"
+          }
+
+          ARM64_ZIP="Fleet-${VERSION}-arm64-mac.zip"
+          X64_ZIP="Fleet-${VERSION}-mac.zip"
+          ARM64_DMG="fleet-${VERSION}-arm64.dmg"
+          X64_DMG="fleet-${VERSION}-x64.dmg"
+
+          read ARM64_ZIP_SHA ARM64_ZIP_SIZE <<< "$(compute_meta "/tmp/${ARM64_ZIP}")"
+          read X64_ZIP_SHA X64_ZIP_SIZE <<< "$(compute_meta "/tmp/${X64_ZIP}")"
+          read ARM64_DMG_SHA ARM64_DMG_SIZE <<< "$(compute_meta "/tmp/${ARM64_DMG}")"
+          read X64_DMG_SHA X64_DMG_SIZE <<< "$(compute_meta "/tmp/${X64_DMG}")"
+
+          echo "ARM64_ZIP=${ARM64_ZIP}" >> $GITHUB_ENV
+          echo "ARM64_ZIP_SHA=${ARM64_ZIP_SHA}" >> $GITHUB_ENV
+          echo "ARM64_ZIP_SIZE=${ARM64_ZIP_SIZE}" >> $GITHUB_ENV
+          echo "X64_ZIP=${X64_ZIP}" >> $GITHUB_ENV
+          echo "X64_ZIP_SHA=${X64_ZIP_SHA}" >> $GITHUB_ENV
+          echo "X64_ZIP_SIZE=${X64_ZIP_SIZE}" >> $GITHUB_ENV
+          echo "ARM64_DMG=${ARM64_DMG}" >> $GITHUB_ENV
+          echo "ARM64_DMG_SHA=${ARM64_DMG_SHA}" >> $GITHUB_ENV
+          echo "ARM64_DMG_SIZE=${ARM64_DMG_SIZE}" >> $GITHUB_ENV
+          echo "X64_DMG=${X64_DMG}" >> $GITHUB_ENV
+          echo "X64_DMG_SHA=${X64_DMG_SHA}" >> $GITHUB_ENV
+          echo "X64_DMG_SIZE=${X64_DMG_SIZE}" >> $GITHUB_ENV
+
+      - name: Build latest-mac.yml from scratch with correct hashes
         shell: python3 {0}
         run: |
           import yaml, os
 
-          arm64_zip = os.environ['ARM64_ZIP']
-          arm64_sha512 = os.environ['ARM64_SHA512']
-          arm64_size = int(os.environ['ARM64_SIZE'])
-
+          # Read existing manifest only for releaseNotes and releaseDate
           with open('/tmp/latest-mac.yml') as f:
-              data = yaml.safe_load(f)
+              old = yaml.safe_load(f)
 
-          arm64_entry = {'url': arm64_zip, 'sha512': arm64_sha512, 'size': arm64_size}
-          urls = [entry.get('url', '') for entry in data.get('files', [])]
-          if arm64_zip not in urls:
-              data['files'].insert(0, arm64_entry)
+          version = os.environ.get('GITHUB_REF_NAME', '').lstrip('v') or old.get('version', '')
+          release_notes = old.get('releaseNotes', '')
+          release_date = old.get('releaseDate', '')
+
+          # Build files list from freshly computed hashes
+          files = [
+              {
+                  'url': os.environ['ARM64_ZIP'],
+                  'sha512': os.environ['ARM64_ZIP_SHA'],
+                  'size': int(os.environ['ARM64_ZIP_SIZE']),
+              },
+              {
+                  'url': os.environ['X64_ZIP'],
+                  'sha512': os.environ['X64_ZIP_SHA'],
+                  'size': int(os.environ['X64_ZIP_SIZE']),
+              },
+              {
+                  'url': os.environ['ARM64_DMG'],
+                  'sha512': os.environ['ARM64_DMG_SHA'],
+                  'size': int(os.environ['ARM64_DMG_SIZE']),
+              },
+              {
+                  'url': os.environ['X64_DMG'],
+                  'sha512': os.environ['X64_DMG_SHA'],
+                  'size': int(os.environ['X64_DMG_SIZE']),
+              },
+          ]
+
+          data = {
+              'version': version,
+              'files': files,
+              'path': os.environ['ARM64_ZIP'],
+              'sha512': os.environ['ARM64_ZIP_SHA'],
+              'releaseNotes': release_notes,
+              'releaseDate': release_date,
+          }
 
           with open('/tmp/latest-mac.yml', 'w') as f:
               yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
-          print('Merged arm64 entry into latest-mac.yml')
+          print('Regenerated latest-mac.yml with verified hashes')
 
-      - name: Upload patched latest-mac.yml and publish release
+      - name: Upload latest-mac.yml and publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
