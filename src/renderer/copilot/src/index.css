@@ -36,3 +36,23 @@
 .animate-thrust { animation: thrust 0.6s ease-in-out infinite; }
 .animate-pulse-amber { animation: pulse-amber 1.5s ease-in-out infinite; }
 .animate-flash-green { animation: flash-green 1s ease-in-out; }
+
+@keyframes teleport-out {
+  0% { opacity: 1; filter: brightness(1); }
+  40% { opacity: 1; filter: brightness(3); }
+  100% { opacity: 0; filter: brightness(3); }
+}
+
+@keyframes teleport-in {
+  0% { opacity: 0; filter: brightness(3); }
+  40% { opacity: 1; filter: brightness(3); }
+  100% { opacity: 1; filter: brightness(1); }
+}
+
+.animate-teleport-out {
+  animation: teleport-out 200ms ease-out forwards;
+}
+
+.animate-teleport-in {
+  animation: teleport-in 200ms ease-in forwards;
+}
