@@ -7,16 +7,15 @@ import { fileURLToPath } from 'node:url';
 // Assemble Copilot Mascot Sprite Sheet
 // ---------------------------------------------------------------------------
 //
-// Takes 9 input images (any size, transparent or not) and assembles them into
+// Takes input images (any size, transparent or not) and assembles them into
 // a single horizontal sprite strip at 128x128px per frame. Outputs a lossless
 // WebP file to resources/mascots/.
 //
 // Usage:
-//   npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <image1> <image2> ... <image9>
+//   npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <image1> <image2> ...
 //   npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <directory>
 //
-// The 9 images must be in sprite sheet order:
-//   idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)
+// Images must be in sprite sheet order matching the mascot's animation config.
 //
 // Output:
 //   resources/mascots/<mascot-id>.webp
@@ -24,7 +23,6 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const FRAME_SIZE = 128;
-const TOTAL_FRAMES = 9;
 const MASCOTS_DIR = join(__dirname, '..', 'resources', 'mascots');
 
 async function main(): Promise<void> {
@@ -45,16 +43,16 @@ async function main(): Promise<void> {
     // Single arg after mascot-id: treat as directory, read PNGs sorted by name
     const dir = args[1];
     const files = (await readdir(dir)).filter((f) => /\.(png|webp|jpg|jpeg)$/i.test(f)).sort();
-    if (files.length < TOTAL_FRAMES) {
-      console.error(`Directory ${dir} has ${files.length} images, need ${TOTAL_FRAMES}`);
+    if (files.length === 0) {
+      console.error(`Directory ${dir} has no images`);
       process.exit(1);
     }
-    imagePaths = files.slice(0, TOTAL_FRAMES).map((f) => join(dir, f));
-  } else if (args.length === TOTAL_FRAMES + 1) {
-    // 9 explicit image paths
+    imagePaths = files.map((f) => join(dir, f));
+  } else if (args.length > 2) {
+    // Explicit image paths
     imagePaths = args.slice(1);
   } else {
-    console.error(`Expected ${TOTAL_FRAMES} images, got ${args.length - 1}`);
+    console.error('Provide image paths or a directory of images');
     process.exit(1);
   }
 
@@ -68,7 +66,8 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`Assembling ${TOTAL_FRAMES} frames for mascot "${mascotId}"...`);
+  const totalFrames = imagePaths.length;
+  console.log(`Assembling ${totalFrames} frames for mascot "${mascotId}"...`);
 
   // Resize each frame to FRAME_SIZE x FRAME_SIZE
   const resizedBuffers: Buffer[] = [];
@@ -93,7 +92,7 @@ async function main(): Promise<void> {
 
   const sheet = await sharp({
     create: {
-      width: FRAME_SIZE * TOTAL_FRAMES,
+      width: FRAME_SIZE * totalFrames,
       height: FRAME_SIZE,
       channels: 4 as const,
       background: { r: 0, g: 0, b: 0, alpha: 0 }
@@ -108,7 +107,7 @@ async function main(): Promise<void> {
   const webpPath = join(MASCOTS_DIR, `${mascotId}.webp`);
   await writeFile(webpPath, sheet);
   console.log(
-    `\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`
+    `\nSprite sheet: ${webpPath} (${FRAME_SIZE * totalFrames}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`
   );
   console.log('\nDone! Remember to add an entry to MASCOT_REGISTRY in src/shared/mascots.ts');
 }

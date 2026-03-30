@@ -1,6 +1,8 @@
-import React, { useRef, useCallback, useState, useEffect } from 'react';
+import React, { useRef, useCallback, useState, useEffect, useMemo } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
 import { getSpriteSheet } from '../assets/sprite-loader';
+import { MASCOT_REGISTRY, DEFAULT_ANIMATIONS } from '../../../../shared/mascots';
+import type { SpriteAnimations } from '../../../../shared/types';
 
 const SPRITE_SIZE = 128;
 const HEADER_SPRITE_SIZE = 96;
@@ -14,15 +16,6 @@ type SpaceshipSpriteProps = {
 
 type SpriteState = 'idle' | 'processing' | 'permission' | 'complete';
 
-// Frame indices in the sprite sheet (each frame is 48px wide)
-// Layout: idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)
-const SPRITE_ANIMATIONS: Record<SpriteState, { frames: number[]; fps: number }> = {
-  idle: { frames: [0, 1], fps: 2 },
-  processing: { frames: [2, 3, 4], fps: 4 },
-  permission: { frames: [5, 6], fps: 3 },
-  complete: { frames: [7, 8], fps: 2 },
-};
-
 function useSpriteState(): SpriteState {
   const sessions = useCopilotStore((s) => s.sessions);
   if (sessions.length === 0) return 'idle';
@@ -33,7 +26,7 @@ function useSpriteState(): SpriteState {
   return 'idle';
 }
 
-function useSpriteAnimation(state: SpriteState): number {
+function useSpriteAnimation(state: SpriteState, animations: SpriteAnimations): number {
   const frameRef = useRef(0);
   const timerRef = useRef(0);
   const [, forceRender] = useState(0);
@@ -45,16 +38,16 @@ function useSpriteAnimation(state: SpriteState): number {
   }
 
   useEffect(() => {
-    const anim = SPRITE_ANIMATIONS[state];
+    const anim = animations[state];
     const interval = 1000 / anim.fps;
     timerRef.current = window.setInterval(() => {
       frameRef.current = (frameRef.current + 1) % anim.frames.length;
       forceRender((n) => n + 1);
     }, interval);
     return () => window.clearInterval(timerRef.current);
-  }, [state]);
+  }, [state, animations]);
 
-  const anim = SPRITE_ANIMATIONS[state];
+  const anim = animations[state];
   return anim.frames[frameRef.current % anim.frames.length];
 }
 
@@ -64,10 +57,17 @@ export function SpaceshipSprite({
   onToggle,
 }: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
-  const frameIndex = useSpriteAnimation(spriteState);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
   const settings = useCopilotStore((s) => s.settings);
-  const spriteSheet = getSpriteSheet(settings?.spriteSheet ?? 'officer');
+  const mascotId = settings?.spriteSheet ?? 'officer';
+  const mascot = MASCOT_REGISTRY.find((m) => m.id === mascotId);
+  const animations = mascot?.animations ?? DEFAULT_ANIMATIONS;
+  const totalFrames = useMemo(
+    () => Math.max(...Object.values(animations).flatMap((a) => a.frames)) + 1,
+    [animations],
+  );
+  const frameIndex = useSpriteAnimation(spriteState, animations);
+  const spriteSheet = getSpriteSheet(mascotId);
 
   const wasDragged = useRef(false);
   const dragStartPos = useRef({ x: 0, y: 0 });
@@ -139,7 +139,7 @@ export function SpaceshipSprite({
         height: size,
         backgroundImage: `url(${spriteSheet})`,
         backgroundPosition: `-${frameIndex * size}px 0`,
-        backgroundSize: `${size * 9}px ${size}px`,
+        backgroundSize: `${size * totalFrames}px ${size}px`,
         backgroundRepeat: 'no-repeat',
         imageRendering: 'pixelated',
       }}

@@ -169,11 +169,19 @@ export type CopilotSettings = {
   autoStart: boolean;
 };
 
+export type SpriteAnimation = {
+  frames: number[];
+  fps: number;
+};
+
+export type SpriteAnimations = Record<'idle' | 'processing' | 'permission' | 'complete', SpriteAnimation>;
+
 export type MascotDefinition = {
   id: string;
   name: string;
   description: string;
   thumbnailFrame: number;
+  animations?: SpriteAnimations;
 };
 
 export type CopilotPosition = {

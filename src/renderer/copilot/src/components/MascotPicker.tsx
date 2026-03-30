@@ -3,7 +3,7 @@ import { useCopilotStore } from '../store/copilot-store';
 import { Button } from './ui/button';
 import { ScrollArea } from './ui/scroll-area';
 import { ChevronLeft } from 'lucide-react';
-import { MASCOT_REGISTRY } from '../../../../shared/mascots';
+import { MASCOT_REGISTRY, DEFAULT_ANIMATIONS } from '../../../../shared/mascots';
 import { getSpriteSheet } from '../assets/sprite-loader';
 
 export function MascotPicker(): React.JSX.Element {
@@ -32,6 +32,8 @@ export function MascotPicker(): React.JSX.Element {
             {MASCOT_REGISTRY.map((mascot) => {
               const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
               const sheet = getSpriteSheet(mascot.id);
+              const anims = mascot.animations ?? DEFAULT_ANIMATIONS;
+              const totalFrames = Math.max(...Object.values(anims).flatMap((a) => a.frames)) + 1;
               return (
                 <button
                   key={mascot.id}
@@ -48,7 +50,7 @@ export function MascotPicker(): React.JSX.Element {
                       height: 48,
                       backgroundImage: `url(${sheet})`,
                       backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
-                      backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
+                      backgroundSize: `${128 * totalFrames * (48 / 128)}px ${48}px`,
                       backgroundRepeat: 'no-repeat',
                       imageRendering: 'pixelated',
                     }}
