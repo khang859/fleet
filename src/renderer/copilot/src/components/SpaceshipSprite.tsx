@@ -3,7 +3,13 @@ import { useCopilotStore } from '../store/copilot-store';
 import { getSpriteSheet } from '../assets/sprite-loader';
 
 const SPRITE_SIZE = 128;
+const HEADER_SPRITE_SIZE = 48;
 const DRAG_THRESHOLD = 4;
+
+type SpaceshipSpriteProps = {
+  mode?: 'floating' | 'header';
+  teleportState?: 'idle' | 'out' | 'in';
+};
 
 type SpriteState = 'idle' | 'processing' | 'permission' | 'complete';
 
@@ -51,7 +57,10 @@ function useSpriteAnimation(state: SpriteState): number {
   return anim.frames[frameRef.current % anim.frames.length];
 }
 
-export function SpaceshipSprite(): React.JSX.Element {
+export function SpaceshipSprite({
+  mode = 'floating',
+  teleportState = 'idle',
+}: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
   const frameIndex = useSpriteAnimation(spriteState);
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
@@ -63,6 +72,7 @@ export function SpaceshipSprite(): React.JSX.Element {
   const windowStartPos = useRef({ x: 0, y: 0 });
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (mode === 'header') return; // No dragging in header mode
     wasDragged.current = false;
     dragStartPos.current = { x: e.screenX, y: e.screenY };
 
@@ -91,31 +101,39 @@ export function SpaceshipSprite(): React.JSX.Element {
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, []);
+  }, [mode]);
 
   const handleClick = useCallback(() => {
-    if (wasDragged.current) return;
+    if (mode === 'floating' && wasDragged.current) return;
     toggleExpanded();
-  }, [toggleExpanded]);
+  }, [toggleExpanded, mode]);
 
-  const animationClass = {
+  const size = mode === 'header' ? HEADER_SPRITE_SIZE : SPRITE_SIZE;
+
+  const animationClass = mode === 'floating' ? {
     idle: 'animate-bob',
     processing: 'animate-thrust',
     permission: 'animate-pulse-amber',
     complete: 'animate-flash-green',
-  }[spriteState];
+  }[spriteState] : '';
+
+  const teleportClass = teleportState === 'out'
+    ? 'animate-teleport-out'
+    : teleportState === 'in'
+      ? 'animate-teleport-in'
+      : '';
 
   return (
     <div
-      className={`cursor-pointer select-none ${animationClass}`}
+      className={`cursor-pointer select-none ${animationClass} ${teleportClass}`}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       style={{
-        width: SPRITE_SIZE,
-        height: SPRITE_SIZE,
+        width: size,
+        height: size,
         backgroundImage: `url(${spriteSheet})`,
-        backgroundPosition: `-${frameIndex * SPRITE_SIZE}px 0`,
-        backgroundSize: `${SPRITE_SIZE * 9}px ${SPRITE_SIZE}px`,
+        backgroundPosition: `-${frameIndex * size}px 0`,
+        backgroundSize: `${size * 9}px ${size}px`,
         backgroundRepeat: 'no-repeat',
         imageRendering: 'pixelated',
       }}
