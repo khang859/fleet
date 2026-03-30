@@ -9,6 +9,7 @@ const DRAG_THRESHOLD = 4;
 type SpaceshipSpriteProps = {
   mode?: 'floating' | 'header';
   teleportState?: 'idle' | 'out' | 'in';
+  onToggle?: () => void;
 };
 
 type SpriteState = 'idle' | 'processing' | 'permission' | 'complete';
@@ -60,6 +61,7 @@ function useSpriteAnimation(state: SpriteState): number {
 export function SpaceshipSprite({
   mode = 'floating',
   teleportState = 'idle',
+  onToggle,
 }: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
   const frameIndex = useSpriteAnimation(spriteState);
@@ -105,8 +107,12 @@ export function SpaceshipSprite({
 
   const handleClick = useCallback(() => {
     if (mode === 'floating' && wasDragged.current) return;
-    toggleExpanded();
-  }, [toggleExpanded, mode]);
+    if (onToggle) {
+      onToggle();
+    } else {
+      toggleExpanded();
+    }
+  }, [toggleExpanded, mode, onToggle]);
 
   const size = mode === 'header' ? HEADER_SPRITE_SIZE : SPRITE_SIZE;
 

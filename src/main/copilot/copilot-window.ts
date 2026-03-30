@@ -227,7 +227,6 @@ export class CopilotWindow {
       log.info('collapsing to', newBounds);
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'floating');
-      this.win.setIgnoreMouseEvents(true, { forward: true });
 
       this.win.webContents.send('copilot:expanded-changed', {
         expanded: false,

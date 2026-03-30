@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import './index.css';
 import { useCopilotStore } from './store/copilot-store';
 import { SpaceshipSprite } from './components/SpaceshipSprite';
@@ -8,54 +8,51 @@ import { CopilotSettings } from './components/CopilotSettings';
 import { MascotPicker } from './components/MascotPicker';
 import { CrtFrame } from './components/CrtFrame';
 
-type TeleportPhase = 'idle' | 'flash-out' | 'transitioning' | 'flash-in';
+type TeleportPhase = 'idle' | 'flash-out' | 'flash-in';
 
 const TELEPORT_FLASH_MS = 200;
 
 export function App(): React.JSX.Element {
-  const expanded = useCopilotStore((s) => s.expanded);
   const view = useCopilotStore((s) => s.view);
   const setSessions = useCopilotStore((s) => s.setSessions);
   const loadSettings = useCopilotStore((s) => s.loadSettings);
   const setExpanded = useCopilotStore((s) => s.setExpanded);
 
-  // Teleport animation state machine
   const [teleportPhase, setTeleportPhase] = useState<TeleportPhase>('idle');
   const [showPane, setShowPane] = useState(false);
+  const teleportingRef = useRef(false);
 
-  // Track the previous expanded state to detect transitions
-  const [prevExpanded, setPrevExpanded] = useState(false);
+  // Animate transition: flash-out → resize window + swap view → flash-in
+  const animateTransition = useCallback((willExpand: boolean) => {
+    if (teleportingRef.current) return;
+    teleportingRef.current = true;
 
-  useEffect(() => {
-    if (expanded === prevExpanded) return;
-    setPrevExpanded(expanded);
+    // Phase 1: flash-out the current sprite
+    setTeleportPhase('flash-out');
 
-    if (expanded) {
-      // Expanding: flash out floating mascot → show pane → flash in header mascot
-      setTeleportPhase('flash-out');
+    setTimeout(() => {
+      // Phase 2: tell main to resize, swap the visible view
+      window.copilot.setExpanded(willExpand);
+      setExpanded(willExpand);
+      setShowPane(willExpand);
+
+      // Phase 3: flash-in the new sprite
+      setTeleportPhase('flash-in');
+
       setTimeout(() => {
-        setShowPane(true);
-        setTeleportPhase('flash-in');
-        setTimeout(() => {
-          setTeleportPhase('idle');
-        }, TELEPORT_FLASH_MS);
+        setTeleportPhase('idle');
+        teleportingRef.current = false;
       }, TELEPORT_FLASH_MS);
-    } else {
-      // Collapsing: flash out header mascot → hide pane → flash in floating mascot
-      setTeleportPhase('flash-out');
-      setTimeout(() => {
-        setShowPane(false);
-        setTeleportPhase('flash-in');
-        setTimeout(() => {
-          setTeleportPhase('idle');
-        }, TELEPORT_FLASH_MS);
-      }, TELEPORT_FLASH_MS);
-    }
-  }, [expanded, prevExpanded]);
+    }, TELEPORT_FLASH_MS);
+  }, [setExpanded]);
+
+  const handleToggle = useCallback(() => {
+    animateTransition(!showPane);
+  }, [showPane, animateTransition]);
 
   const handleClose = useCallback(() => {
-    window.copilot.setExpanded(false);
-  }, []);
+    animateTransition(false);
+  }, [animateTransition]);
 
   // IPC subscriptions
   useEffect(() => {
@@ -63,7 +60,14 @@ export function App(): React.JSX.Element {
     window.copilot.getSessions().then(setSessions).catch(() => {});
     loadSettings().catch(() => {});
     const cleanupSessions = window.copilot.onSessions(setSessions);
-    const cleanupExpanded = window.copilot.onExpandedChanged(setExpanded);
+    const cleanupExpanded = window.copilot.onExpandedChanged((expanded) => {
+      // Sync store state (resets view on collapse)
+      setExpanded(expanded);
+      // If not mid-animation, sync pane visibility for external triggers
+      if (!teleportingRef.current) {
+        setShowPane(expanded);
+      }
+    });
     return () => {
       cleanupSessions();
       cleanupExpanded();
@@ -73,13 +77,13 @@ export function App(): React.JSX.Element {
   // Escape key to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && expanded) {
-        window.copilot.setExpanded(false);
+      if (e.key === 'Escape' && showPane) {
+        animateTransition(false);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [expanded]);
+  }, [showPane, animateTransition]);
 
   // Subscribe to real-time chat updates
   useEffect(() => {
@@ -92,9 +96,11 @@ export function App(): React.JSX.Element {
   }, []);
 
   // Determine teleport visual state for the sprite
-  const spriteTeleportState = teleportPhase === 'flash-out' || teleportPhase === 'flash-in'
-    ? (teleportPhase === 'flash-out' ? 'out' : 'in')
-    : 'idle';
+  const spriteTeleportState = teleportPhase === 'flash-out'
+    ? 'out'
+    : teleportPhase === 'flash-in'
+      ? 'in'
+      : 'idle';
 
   return (
     <div className="relative w-full h-full">
@@ -104,6 +110,7 @@ export function App(): React.JSX.Element {
           <SpaceshipSprite
             mode="floating"
             teleportState={spriteTeleportState}
+            onToggle={handleToggle}
           />
         </div>
       )}
@@ -125,6 +132,7 @@ export function App(): React.JSX.Element {
               <SpaceshipSprite
                 mode="header"
                 teleportState={spriteTeleportState}
+                onToggle={handleToggle}
               />
               <span className="text-white text-sm font-medium tracking-wide opacity-70">
                 Fleet Copilot
