@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.23.1
+
+### Bug Fixes
+
+- **Images**: Increase fal.ai poll timeout from 5 to 15 minutes to handle longer queue wait times
+- **Images**: Fix endpoint mismatch in fal.ai provider where poll/result/cancel used hardcoded model instead of submitted endpoint
+
 ## v2.23.0
 
 ### Features
