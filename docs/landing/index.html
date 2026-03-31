@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fleet — Terminal Multiplexer for AI Agents</title>
+<meta name="description" content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side. Free and open source.">
+<link rel="icon" type="image/png" href="images/favicon.png">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="Fleet — Terminal Multiplexer for AI Agents">
+<meta property="og:description" content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side. Free and open source.">
+<meta property="og:image" content="images/hero-ship.png">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fleet — Terminal Multiplexer for AI Agents">
+<meta name="twitter:description" content="A lightweight terminal multiplexer for macOS built for running multiple AI coding agents side by side.">
+<meta name="twitter:image" content="images/hero-ship.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!--
+  IMAGE PROMPTS FOR DESIGNERS / AI GENERATION:
+
+  1. Hero ship (1200x400):
+     "Pixel art spaceship approaching from distance in deep space, single cyan-glowing vessel against star field, cinematic wide aspect ratio, dark navy background, retro game aesthetic with modern lighting"
+
+  2. Visualizer / Mission Control (1200x600):
+     "Pixel art space scene, 5 spaceships in formation with colored trails, dark navy, stars, retro game aesthetic"
+
+  3. App screenshot 1 (1200x750):
+     "Dark terminal multiplexer, 3 split panes, vertical tabs, activity badges, dark navy, cyan accents"
+
+  4. Mascot — Admiral Byte (128x128):
+     "Pixel art portrait of a small robot admiral with a captain hat, teal and navy colors, dark background, retro game style, 128x128"
+
+  5. Mascot — Navigator Nova (128x128):
+     "Pixel art portrait of a glowing star navigator character, cyan energy aura, dark background, retro game style, 128x128"
+
+  6. Mascot — Engineer Sprocket (128x128):
+     "Pixel art portrait of a mechanical engineer robot with gears and wrench, amber accents, dark background, retro game style, 128x128"
+
+  7. Mascot — Comms Officer Signal (128x128):
+     "Pixel art portrait of a communications officer with headset and radio waves, green accents, dark background, retro game style, 128x128"
+
+  8. Mascot — Cadet Pixel (128x128):
+     "Pixel art portrait of a young space cadet character, bright blue uniform, dark background, retro game style, 128x128"
+
+  9. Copilot overlay (1200x750):
+     "Floating overlay on dark terminal, pixel art mascot, dark navy cyan"
+
+  10. Git view (1200x750):
+      "Dark file diff viewer, syntax highlighting, dark navy"
+-->
+
+<style>
+  *, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  :root {
+    --bg: #0a0a1a;
+    --primary: #00E5E5;
+    --secondary: #00D4AA;
+    --amber: #F59E0B;
+    --green: #22C55E;
+    --blue: #3B82F6;
+    --red: #EF4444;
+    --text-primary: #E0E0E0;
+    --text-secondary: #A0A0A0;
+    --card-bg: rgba(255, 255, 255, 0.03);
+    --card-border: rgba(0, 229, 229, 0.12);
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text-primary);
+    font-family: 'Inter', sans-serif;
+    font-weight: 500;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  /* ── Star Field ── */
+  .star-field {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .star-layer {
+    position: absolute;
+    inset: 0;
+    background-repeat: repeat;
+    will-change: transform;
+  }
+
+  .star-layer--1 {
+    background-image:
+      radial-gradient(1px 1px at 50px 80px, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1px 1px at 180px 200px, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 320px 60px, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1px 1px at 450px 300px, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1px 1px at 600px 150px, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 750px 350px, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 100px 400px, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1px 1px at 900px 100px, rgba(255,255,255,0.6), transparent);
+    background-size: 1000px 500px;
+    animation: drift-slow 120s linear infinite;
+  }
+
+  .star-layer--2 {
+    background-image:
+      radial-gradient(1.5px 1.5px at 120px 180px, rgba(0,229,229,0.4), transparent),
+      radial-gradient(1px 1px at 400px 90px, rgba(255,255,255,0.7), transparent),
+      radial-gradient(1px 1px at 550px 280px, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 700px 50px, rgba(0,212,170,0.3), transparent),
+      radial-gradient(1px 1px at 250px 350px, rgba(255,255,255,0.6), transparent),
+      radial-gradient(1px 1px at 850px 250px, rgba(255,255,255,0.4), transparent);
+    background-size: 900px 450px;
+    animation: drift-med 80s linear infinite;
+  }
+
+  .star-layer--3 {
+    background-image:
+      radial-gradient(2px 2px at 200px 120px, rgba(0,229,229,0.5), transparent),
+      radial-gradient(1.5px 1.5px at 500px 200px, rgba(255,255,255,0.8), transparent),
+      radial-gradient(2px 2px at 800px 320px, rgba(0,212,170,0.4), transparent),
+      radial-gradient(1.5px 1.5px at 350px 400px, rgba(255,255,255,0.6), transparent);
+    background-size: 1100px 500px;
+    animation: drift-fast 60s linear infinite;
+  }
+
+  @keyframes drift-slow {
+    from { transform: translateY(0); }
+    to { transform: translateY(-500px); }
+  }
+  @keyframes drift-med {
+    from { transform: translateY(0); }
+    to { transform: translateY(-450px); }
+  }
+  @keyframes drift-fast {
+    from { transform: translateY(0); }
+    to { transform: translateY(-500px); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .star-layer { animation: none !important; }
+    .hero__arrow { animation: none !important; }
+  }
+
+  /* ── Content wrapper ── */
+  .content {
+    position: relative;
+    z-index: 1;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ── Section styling ── */
+  .section {
+    padding: 100px 0;
+  }
+
+  .section__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--primary);
+    margin-bottom: 8px;
+    opacity: 0.8;
+  }
+
+  .section__title {
+    font-size: clamp(24px, 4vw, 36px);
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 16px;
+  }
+
+  .section__subtitle {
+    color: var(--text-secondary);
+    font-size: 16px;
+    max-width: 600px;
+  }
+
+  .classified-header {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--primary);
+    border: 1px solid var(--card-border);
+    padding: 6px 16px;
+    margin-bottom: 32px;
+    position: relative;
+  }
+
+  .classified-header::before {
+    content: '▸';
+    margin-right: 8px;
+    color: var(--secondary);
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 80px 24px 40px;
+    position: relative;
+  }
+
+  .hero__badge {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    margin-bottom: 24px;
+    opacity: 0.7;
+  }
+
+  .hero__title {
+    font-size: clamp(48px, 8vw, 80px);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 20px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero__subtitle {
+    font-size: clamp(16px, 2.5vw, 20px);
+    color: var(--text-secondary);
+    max-width: 560px;
+    margin: 0 auto 40px;
+    line-height: 1.6;
+  }
+
+  .hero__ship {
+    width: 100%;
+    max-width: 900px;
+    margin-bottom: 40px;
+  }
+
+  .hero__ship img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    image-rendering: pixelated;
+  }
+
+  .hero__ctas {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 60px;
+  }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 14px 32px;
+    border-radius: 6px;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    letter-spacing: 0.5px;
+  }
+
+  .btn--primary {
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    color: var(--bg);
+    border: none;
+  }
+
+  .btn--primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0, 229, 229, 0.25);
+  }
+
+  .btn--ghost {
+    background: transparent;
+    color: var(--primary);
+    border: 1px solid var(--card-border);
+  }
+
+  .btn--ghost:hover {
+    border-color: var(--primary);
+    background: rgba(0, 229, 229, 0.05);
+  }
+
+  .hero__arrow {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--text-secondary);
+    font-size: 24px;
+    animation: bounce 2s ease-in-out infinite;
+    opacity: 0.5;
+    text-decoration: none;
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(10px); }
+  }
+
+  /* ── Mission Overview (social proof) ── */
+  .overview {
+    padding: 60px 0;
+    border-top: 1px solid var(--card-border);
+    border-bottom: 1px solid var(--card-border);
+  }
+
+  .overview__grid {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 40px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .overview__item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .overview__label {
+    color: var(--text-secondary);
+    font-size: 10px;
+    letter-spacing: 3px;
+  }
+
+  .overview__value {
+    color: var(--primary);
+    font-weight: 700;
+    font-size: 13px;
+  }
+
+  /* ── Objectives (features) ── */
+  .objectives__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 24px;
+    margin-top: 48px;
+  }
+
+  .objective-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 32px;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+
+  .objective-card:hover {
+    border-color: rgba(0, 229, 229, 0.3);
+    transform: translateY(-2px);
+  }
+
+  .objective-card__number {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary);
+    opacity: 0.3;
+    margin-bottom: 12px;
+    line-height: 1;
+  }
+
+  .objective-card__title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+  }
+
+  .objective-card__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--secondary);
+    margin-bottom: 10px;
+    opacity: 0.6;
+  }
+
+  .objective-card__desc {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Mid CTA ── */
+  .mid-cta {
+    text-align: center;
+    padding: 80px 0;
+  }
+
+  .mid-cta .btn {
+    margin-top: 24px;
+  }
+
+  /* ── Crew Roster (mascots) ── */
+  .crew__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 24px;
+    margin-top: 48px;
+  }
+
+  .crew-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    transition: border-color 0.2s ease;
+  }
+
+  .crew-card:hover {
+    border-color: rgba(0, 229, 229, 0.3);
+  }
+
+  .crew-card__portrait {
+    width: 128px;
+    height: 128px;
+    background: rgba(0, 229, 229, 0.05);
+    border: 1px solid var(--card-border);
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .crew-card__portrait img {
+    width: 1152px;
+    height: 128px;
+    max-width: none;
+    object-fit: none;
+    object-position: 0 0;
+    image-rendering: pixelated;
+  }
+
+  .crew-card__name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+  }
+
+  .crew-card__role {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+  }
+
+  /* ── Final CTA ── */
+  .launch {
+    text-align: center;
+    padding: 120px 0;
+  }
+
+  .launch__title {
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 700;
+    margin-bottom: 16px;
+    background: linear-gradient(135deg, var(--primary), var(--secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .launch__subtitle {
+    color: var(--text-secondary);
+    font-size: 16px;
+    margin-bottom: 32px;
+  }
+
+  .launch__buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    border-top: 1px solid var(--card-border);
+    padding: 40px 0;
+    text-align: center;
+  }
+
+  .footer__brand {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+  }
+
+  .footer__links {
+    display: flex;
+    gap: 24px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .footer__links a {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    letter-spacing: 1px;
+    transition: color 0.2s ease;
+  }
+
+  .footer__links a:hover {
+    color: var(--primary);
+  }
+
+  /* ── Progress Indicator ── */
+  .progress-nav {
+    position: fixed;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .progress-nav__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    transition: background 0.3s ease, transform 0.3s ease;
+    cursor: pointer;
+    border: none;
+    padding: 0;
+  }
+
+  .progress-nav__dot--active {
+    background: var(--primary);
+    transform: scale(1.4);
+    box-shadow: 0 0 8px rgba(0, 229, 229, 0.4);
+  }
+
+  .progress-nav__dot:hover {
+    background: rgba(0, 229, 229, 0.5);
+  }
+
+  .progress-nav__line {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .progress-nav {
+      display: none;
+    }
+
+    .hero {
+      padding: 60px 16px 40px;
+    }
+
+    .hero__ship {
+      max-width: 100%;
+    }
+
+    .hero__ctas {
+      flex-direction: column;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .objectives__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .crew__grid {
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+    }
+
+    .overview__grid {
+      gap: 24px;
+    }
+
+    .section {
+      padding: 64px 0;
+    }
+
+    .launch__buttons {
+      flex-direction: column;
+      align-items: center;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Star Field Background -->
+<div class="star-field" aria-hidden="true">
+  <div class="star-layer star-layer--1"></div>
+  <div class="star-layer star-layer--2"></div>
+  <div class="star-layer star-layer--3"></div>
+</div>
+
+<!-- Progress Indicator -->
+<nav class="progress-nav" aria-label="Page sections">
+  <button class="progress-nav__dot progress-nav__dot--active" data-section="hero" aria-label="Hero"></button>
+  <div class="progress-nav__line"></div>
+  <button class="progress-nav__dot" data-section="overview" aria-label="Mission Overview"></button>
+  <div class="progress-nav__line"></div>
+  <button class="progress-nav__dot" data-section="objectives" aria-label="Mission Objectives"></button>
+  <div class="progress-nav__line"></div>
+  <button class="progress-nav__dot" data-section="copilot" aria-label="Copilot"></button>
+  <div class="progress-nav__line"></div>
+  <button class="progress-nav__dot" data-section="crew" aria-label="Crew Roster"></button>
+  <div class="progress-nav__line"></div>
+  <button class="progress-nav__dot" data-section="launch" aria-label="Mission Launch"></button>
+</nav>
+
+<div class="content">
+
+  <!-- ════════════════ HERO ════════════════ -->
+  <section class="hero" id="hero" data-section>
+    <div class="hero__badge">// Mission Briefing</div>
+    <h1 class="hero__title">Command your AI fleet</h1>
+    <p class="hero__subtitle">A lightweight terminal multiplexer built for running multiple AI coding agents side by side. See what each agent is doing, approve permissions, and stay in control — all from one window.</p>
+    <div class="hero__ship">
+      <img src="images/hero-ship.png" alt="Fleet spaceship flying through deep space">
+    </div>
+    <div class="hero__ctas">
+      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
+      <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
+    </div>
+    <a href="#overview" class="hero__arrow" aria-label="Scroll to continue">&#8595;</a>
+  </section>
+
+  <!-- ════════════════ MISSION OVERVIEW ════════════════ -->
+  <section class="overview" id="overview" data-section>
+    <div class="container">
+      <div class="overview__grid">
+        <div class="overview__item">
+          <span class="overview__label">License</span>
+          <span class="overview__value">Open Source</span>
+        </div>
+        <div class="overview__item">
+          <span class="overview__label">Platform</span>
+          <span class="overview__value">macOS</span>
+        </div>
+        <div class="overview__item">
+          <span class="overview__label">Built For</span>
+          <span class="overview__value">AI Coding Agents</span>
+        </div>
+        <div class="overview__item">
+          <span class="overview__label">Status</span>
+          <span class="overview__value">Active</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════ MISSION OBJECTIVES (features) ════════════════ -->
+  <section class="section" id="objectives" data-section>
+    <div class="container">
+      <div class="classified-header">Features</div>
+      <h2 class="section__title">What's on board</h2>
+      <p class="section__subtitle">Everything you need to run multiple AI coding agents from one window.</p>
+
+      <div class="objectives__grid">
+        <div class="objective-card">
+          <div class="objective-card__number">01</div>
+          <div class="objective-card__title">Tabs &amp; Workspaces</div>
+          <div class="objective-card__label">Tactical Command</div>
+          <p class="objective-card__desc">Organize agent sessions with draggable tabs and persistent workspaces that survive restarts.</p>
+        </div>
+
+        <div class="objective-card">
+          <div class="objective-card__number">02</div>
+          <div class="objective-card__title">Split Panes</div>
+          <div class="objective-card__label">Formation Control</div>
+          <p class="objective-card__desc">Divide your terminal into any layout — horizontal, vertical, or nested splits.</p>
+        </div>
+
+        <div class="objective-card">
+          <div class="objective-card__number">03</div>
+          <div class="objective-card__title">Activity Badges</div>
+          <div class="objective-card__label">Signal Detection</div>
+          <p class="objective-card__desc">See agent status at a glance — amber for permission needed, green for working, red for errors.</p>
+        </div>
+
+        <div class="objective-card">
+          <div class="objective-card__number">04</div>
+          <div class="objective-card__title">Git Integration</div>
+          <div class="objective-card__label">Supply Lines</div>
+          <p class="objective-card__desc">Branch labels, file diffs, and worktree management built right into the terminal.</p>
+        </div>
+
+        <div class="objective-card">
+          <div class="objective-card__number">05</div>
+          <div class="objective-card__title">Command Palette</div>
+          <div class="objective-card__label">Quick Orders</div>
+          <p class="objective-card__desc">Access any action instantly with Cmd+Shift+P. No menus, no hunting.</p>
+        </div>
+
+        <div class="objective-card">
+          <div class="objective-card__number">06</div>
+          <div class="objective-card__title">Clipboard History</div>
+          <div class="objective-card__label">Intel Archive</div>
+          <p class="objective-card__desc">Pull up previous clipboard entries with Cmd+Shift+H across all your sessions.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════ MID CTA ════════════════ -->
+  <section class="mid-cta">
+    <div class="container">
+      <p class="section__label">Ready to go</p>
+      <h2 class="section__title">Free and open source</h2>
+      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download Fleet</a>
+    </div>
+  </section>
+
+  <!-- ════════════════ COPILOT (primary showcase) ════════════════ -->
+  <section class="section" id="copilot" data-section>
+    <div class="container">
+      <div class="classified-header">Desktop Companion</div>
+      <h2 class="section__title">Copilot for Claude Code</h2>
+      <p class="section__subtitle">A floating desktop mascot that monitors all your Claude Code sessions. Approve permissions, read chat history, and send messages to Claude — without leaving whatever you're working on.</p>
+
+      <p class="section__subtitle" style="margin-top: 24px">When Claude needs permission to run a command, Allow/Deny buttons appear instantly — no terminal switching. See every session's status at a glance and type messages directly when Claude is waiting for input.</p>
+    </div>
+  </section>
+
+  <!-- ════════════════ CREW ROSTER (mascots) ════════════════ -->
+  <section class="section" id="crew" data-section>
+    <div class="container">
+      <div class="classified-header">Mascots</div>
+      <h2 class="section__title">Choose your copilot</h2>
+      <p class="section__subtitle">Five animated pixel art mascots, each with their own idle, working, and alert animations.</p>
+
+      <div class="crew__grid">
+        <div class="crew-card">
+          <div class="crew-card__portrait"><img src="images/officer.webp" alt="Officer mascot"></div>
+          <div class="crew-card__name">Officer</div>
+          <p class="crew-card__role">The classic Fleet officer — disciplined and dependable.</p>
+        </div>
+
+        <div class="crew-card">
+          <div class="crew-card__portrait"><img src="images/robot.webp" alt="Robot mascot"></div>
+          <div class="crew-card__name">Robot</div>
+          <p class="crew-card__role">A friendly automaton — efficient and tireless.</p>
+        </div>
+
+        <div class="crew-card">
+          <div class="crew-card__portrait"><img src="images/cat.webp" alt="Cat mascot"></div>
+          <div class="crew-card__name">Cat</div>
+          <p class="crew-card__role">A curious space cat — always exploring.</p>
+        </div>
+
+        <div class="crew-card">
+          <div class="crew-card__portrait"><img src="images/bear.webp" alt="Bear mascot"></div>
+          <div class="crew-card__name">Bear</div>
+          <p class="crew-card__role">An armored polar bear warrior — strong and protective.</p>
+        </div>
+
+        <div class="crew-card">
+          <div class="crew-card__portrait"><img src="images/kraken.webp" alt="Kraken mascot"></div>
+          <div class="crew-card__name">Kraken</div>
+          <p class="crew-card__role">An astral space kraken — mysterious and powerful.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════ MISSION LAUNCH (final CTA) ════════════════ -->
+  <section class="launch" id="launch" data-section>
+    <div class="container">
+      <p class="section__label">Get Started</p>
+      <h2 class="launch__title">Ready to fly?</h2>
+      <p class="launch__subtitle">Download Fleet and start running your AI coding agents together.</p>
+      <div class="launch__buttons">
+        <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
+        <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════════════ FOOTER ════════════════ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer__brand">Fleet Command &middot; Est. 2026</div>
+      <div class="footer__links">
+        <a href="https://github.com/khang859/fleet">GitHub</a>
+        <a href="https://github.com/khang859/fleet/releases">Releases</a>
+        <a href="https://github.com/khang859/fleet/blob/main/CHANGELOG.md">Changelog</a>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var sections = document.querySelectorAll('[data-section]');
+  var dots = document.querySelectorAll('.progress-nav__dot');
+
+  // Click-to-scroll for dots
+  dots.forEach(function (dot) {
+    dot.addEventListener('click', function () {
+      var targetId = dot.getAttribute('data-section');
+      var target = document.getElementById(targetId);
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth' });
+      }
+    });
+  });
+
+  // IntersectionObserver for active dot
+  if ('IntersectionObserver' in window) {
+    var currentActive = dots[0];
+
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          var id = entry.target.id;
+          dots.forEach(function (d) {
+            d.classList.toggle(
+              'progress-nav__dot--active',
+              d.getAttribute('data-section') === id
+            );
+          });
+        }
+      });
+    }, {
+      rootMargin: '-40% 0px -40% 0px',
+      threshold: 0
+    });
+
+    sections.forEach(function (section) {
+      observer.observe(section);
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
