@@ -45,6 +45,12 @@ const copilotApi = {
   hookStatus: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
 
+  installHooksTo: (configDir: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
+
+  hookStatusFor: (configDir: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
+
   serviceStatus: (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
 
