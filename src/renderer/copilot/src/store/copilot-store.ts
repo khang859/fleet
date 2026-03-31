@@ -25,6 +25,9 @@ type CopilotStoreState = {
   settings: CopilotSettings | null;
   hookInstalled: boolean;
   claudeDetected: boolean;
+  activeWorkspaceId: string | null;
+  activeWorkspaceName: string | null;
+  showAllWorkspaces: boolean;
 
   chatMessages: CopilotChatMessage[];
   chatLoading: boolean;
@@ -36,6 +39,9 @@ type CopilotStoreState = {
   backToList: () => void;
 
   setSessions: (sessions: CopilotSession[]) => void;
+  setActiveWorkspace: (workspaceId: string, workspaceName: string) => void;
+  setShowAllWorkspaces: (show: boolean) => Promise<void>;
+  filteredSessions: () => CopilotSession[];
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
   respondPermission: (toolUseId: string, decision: 'allow' | 'deny', reason?: string) => Promise<void>;
@@ -57,6 +63,9 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   settings: null,
   hookInstalled: false,
   claudeDetected: true, // optimistic default
+  activeWorkspaceId: null,
+  activeWorkspaceName: null,
+  showAllWorkspaces: false,
 
   chatMessages: [],
   chatLoading: false,
@@ -82,6 +91,23 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
 
   setSessions: (sessions) => set({ sessions }),
 
+  setActiveWorkspace: (workspaceId, workspaceName) => {
+    set({ activeWorkspaceId: workspaceId, activeWorkspaceName: workspaceName });
+  },
+
+  setShowAllWorkspaces: async (show) => {
+    set({ showAllWorkspaces: show });
+    await window.copilot.setSettings({ showAllWorkspaces: show });
+  },
+
+  filteredSessions: () => {
+    const { sessions, showAllWorkspaces, activeWorkspaceId } = get();
+    if (showAllWorkspaces) return sessions;
+    return sessions.filter(
+      (s) => !s.workspaceId || s.workspaceId === activeWorkspaceId
+    );
+  },
+
   loadSettings: async () => {
     const settings = await window.copilot.getSettings();
     const hookInstalled = await window.copilot.hookStatus();
@@ -93,7 +119,12 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
       // serviceStatus not available (older preload), assume true
     }
     log.debug('loadSettings', { settings, hookInstalled, claudeDetected });
-    set({ settings, hookInstalled, claudeDetected });
+    set({
+      settings,
+      hookInstalled,
+      claudeDetected,
+      showAllWorkspaces: settings.showAllWorkspaces ?? false,
+    });
   },
 
   updateSettings: async (partial) => {

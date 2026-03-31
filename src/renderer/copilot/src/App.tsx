@@ -67,9 +67,23 @@ export function App(): React.JSX.Element {
         setShowPane(expanded);
       }
     });
+
+    const setActiveWorkspace = useCopilotStore.getState().setActiveWorkspace;
+
+    // Load initial active workspace
+    window.copilot.getActiveWorkspace().then((ws) => {
+      if (ws) setActiveWorkspace(ws.workspaceId, ws.workspaceName);
+    }).catch(() => {});
+
+    // Subscribe to active workspace changes
+    const cleanupWorkspace = window.copilot.onActiveWorkspace((payload) => {
+      setActiveWorkspace(payload.workspaceId, payload.workspaceName);
+    });
+
     return () => {
       cleanupSessions();
       cleanupExpanded();
+      cleanupWorkspace();
     };
   }, [setSessions, loadSettings, setExpanded]);
 
