@@ -205,6 +205,22 @@ export function CopilotSection(): React.JSX.Element | null {
         )}
       </div>
 
+      {/* Show All Workspaces */}
+      <div>
+        <SettingRow label="Show All Workspaces">
+          <input
+            type="checkbox"
+            checked={copilot.showAllWorkspaces}
+            onChange={(e) => updateCopilot({ showAllWorkspaces: e.target.checked })}
+            className="accent-blue-500"
+          />
+        </SettingRow>
+        <p className="text-xs text-neutral-500 mt-1">
+          Show sessions from all workspaces in the Copilot overlay. When off, only the active
+          workspace&apos;s sessions are shown.
+        </p>
+      </div>
+
       {/* Workspace Overrides */}
       <div>
         <label className="text-sm text-neutral-300 block mb-1">Workspace Overrides</label>
