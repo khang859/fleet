@@ -92,33 +92,33 @@ export function registerCopilotIpcHandlers(
     }
   );
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS, async () => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS, () => {
     const settings = settingsStore.get();
     const configDir = settings.copilot.claudeConfigDir || undefined;
     hookInstaller.install(configDir);
     return true;
   });
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS, async () => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS, () => {
     const settings = settingsStore.get();
     const configDir = settings.copilot.claudeConfigDir || undefined;
     hookInstaller.uninstall(configDir);
     return true;
   });
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS, async () => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS, () => {
     const settings = settingsStore.get();
     const configDir = settings.copilot.claudeConfigDir || undefined;
     return hookInstaller.isInstalled(configDir);
   });
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, async (_event, configDir: string) => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, (_event, configDir: string) => {
     log.debug('ipc:copilot:install-hooks-to', { configDir });
     hookInstaller.install(configDir);
     return true;
   });
 
-  ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, async (_event, configDir: string) => {
+  ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, (_event, configDir: string) => {
     return hookInstaller.isInstalled(configDir);
   });
 
