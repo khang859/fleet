@@ -76,5 +76,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     claudeBinaryPath: '',
     claudeConfigDir: '',
     workspaceOverrides: {},
+    showAllWorkspaces: false,
   },
 };

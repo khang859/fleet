@@ -157,6 +157,8 @@ export type CopilotSession = {
   phase: CopilotSessionPhase;
   pid?: number;
   tty?: string;
+  workspaceId?: string;
+  workspaceName?: string;
   pendingPermissions: CopilotPendingPermission[];
   lastActivity: number;
   createdAt: number;
@@ -176,6 +178,7 @@ export type CopilotSettings = {
   claudeBinaryPath: string;
   claudeConfigDir: string;
   workspaceOverrides: Record<string, CopilotWorkspaceOverride>;
+  showAllWorkspaces: boolean;
 };
 
 export type SpriteAnimation = {
