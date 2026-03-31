@@ -56,13 +56,16 @@ function sortSessions(a: CopilotSession, b: CopilotSession): number {
 }
 
 export function SessionList(): React.JSX.Element {
-  const sessions = useCopilotStore((s) => s.sessions);
+  const filteredSessions = useCopilotStore((s) => s.filteredSessions);
+  const showAllWorkspaces = useCopilotStore((s) => s.showAllWorkspaces);
+  const setShowAllWorkspaces = useCopilotStore((s) => s.setShowAllWorkspaces);
   const selectSession = useCopilotStore((s) => s.selectSession);
   const respondPermission = useCopilotStore((s) => s.respondPermission);
   const setView = useCopilotStore((s) => s.setView);
   const hookInstalled = useCopilotStore((s) => s.hookInstalled);
   const claudeDetected = useCopilotStore((s) => s.claudeDetected);
 
+  const sessions = filteredSessions();
   const sorted = [...sessions].sort(sortSessions);
 
   return (
@@ -71,9 +74,31 @@ export function SessionList(): React.JSX.Element {
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
           <span className="text-sm font-medium text-neutral-300">
-            Claude Sessions ({sessions.length})
+            Sessions ({sessions.length})
           </span>
           <div className="flex items-center gap-1">
+            <div className="flex items-center bg-neutral-800 rounded text-xs">
+              <button
+                onClick={() => void setShowAllWorkspaces(false)}
+                className={`px-2 py-0.5 rounded transition-colors ${
+                  !showAllWorkspaces
+                    ? 'bg-neutral-600 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-400'
+                }`}
+              >
+                Active
+              </button>
+              <button
+                onClick={() => void setShowAllWorkspaces(true)}
+                className={`px-2 py-0.5 rounded transition-colors ${
+                  showAllWorkspaces
+                    ? 'bg-neutral-600 text-neutral-200'
+                    : 'text-neutral-500 hover:text-neutral-400'
+                }`}
+              >
+                All
+              </button>
+            </div>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
@@ -141,14 +166,19 @@ export function SessionList(): React.JSX.Element {
                       </Tooltip>
 
                       {/* Project name with truncation + tooltip (Baymard) */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-sm text-neutral-200 truncate">
-                            {session.projectName}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{session.projectName}</TooltipContent>
-                      </Tooltip>
+                      <div className="min-w-0">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="text-sm text-neutral-200 truncate block">
+                              {session.projectName}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>{session.projectName}</TooltipContent>
+                        </Tooltip>
+                        <span className="text-xs text-neutral-500 truncate block">
+                          {session.workspaceName ?? 'Unknown'}
+                        </span>
+                      </div>
                     </div>
                     <span className="text-xs text-neutral-500 ml-2 shrink-0">
                       {elapsed(session.createdAt)}
