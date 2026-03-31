@@ -83,17 +83,22 @@ export function SessionDetail(): React.JSX.Element | null {
             <ChevronLeft size={14} />
           </Button>
           <Badge status={status} />
+          <div className="min-w-0 flex-1">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className="text-sm font-medium text-neutral-200 truncate block">
+                  {session.projectName}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>{session.projectName}</TooltipContent>
+            </Tooltip>
+            <span className="text-xs text-neutral-500 truncate block">
+              {session.workspaceName ?? 'Unknown'}
+            </span>
+          </div>
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-sm font-medium text-neutral-200 truncate">
-                {session.projectName}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{session.projectName}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-xs text-neutral-500 ml-auto">{session.phase}</span>
+              <span className="text-xs text-neutral-500 ml-auto shrink-0">{session.phase}</span>
             </TooltipTrigger>
             <TooltipContent>Current phase: {session.phase}</TooltipContent>
           </Tooltip>
