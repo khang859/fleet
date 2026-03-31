@@ -27,6 +27,7 @@ export class FalAiProvider implements ImageProvider {
   name = 'fal.ai';
   private currentModel = 'fal-ai/nano-banana-2';
   private actionOverrides: Record<string, ImageActionSettings> = {};
+  private requestEndpoints = new Map<string, string>();
 
   configure(settings: Record<string, unknown>): void {
     this.actionOverrides = parseActionSettings(settings.actions);
@@ -51,11 +52,13 @@ export class FalAiProvider implements ImageProvider {
     if (isEdit) input.image_urls = opts.imageUrls;
 
     const result = await fal.queue.submit(endpoint, { input });
+    this.requestEndpoints.set(result.request_id, endpoint);
     return { requestId: result.request_id };
   }
 
   async poll(requestId: string): Promise<PollResult> {
-    const status = await fal.queue.status(this.currentModel, {
+    const endpoint = this.requestEndpoints.get(requestId) ?? this.currentModel;
+    const status = await fal.queue.status(endpoint, {
       requestId,
       logs: false
     });
@@ -76,7 +79,9 @@ export class FalAiProvider implements ImageProvider {
   }
 
   async getResult(requestId: string): Promise<GenerationResult> {
-    const result = await fal.queue.result(this.currentModel, { requestId });
+    const endpoint = this.requestEndpoints.get(requestId) ?? this.currentModel;
+    const result = await fal.queue.result(endpoint, { requestId });
+    this.requestEndpoints.delete(requestId);
     const raw: unknown = result.data;
     const data: Record<string, unknown> =
       raw != null && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
@@ -96,8 +101,15 @@ export class FalAiProvider implements ImageProvider {
     };
   }
 
+  registerRequest(requestId: string, model: string, mode: string): void {
+    const endpoint = mode === 'edit' && !model.endsWith('/edit') ? `${model}/edit` : model;
+    this.requestEndpoints.set(requestId, endpoint);
+  }
+
   async cancel(requestId: string): Promise<void> {
-    await fal.queue.cancel(this.currentModel, { requestId });
+    const endpoint = this.requestEndpoints.get(requestId) ?? this.currentModel;
+    await fal.queue.cancel(endpoint, { requestId });
+    this.requestEndpoints.delete(requestId);
   }
 
   private getActionModel(actionType: string): string | null {

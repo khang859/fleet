@@ -37,7 +37,7 @@ const DEFAULT_SETTINGS: ImageSettings = {
 
 const POLL_INITIAL_MS = 1000;
 const POLL_MAX_MS = 5000;
-const POLL_TIMEOUT_MS = 300_000; // 5 minutes
+const POLL_TIMEOUT_MS = 900_000; // 15 minutes
 
 function generateId(): string {
   const now = new Date();
@@ -470,7 +470,10 @@ export class ImageService extends EventEmitter {
     for (const meta of this.list()) {
       if ((meta.status === 'queued' || meta.status === 'processing') && meta.providerRequestId) {
         const provider = this.providers.get(meta.provider);
-        if (provider) this.pollLoop(meta.id, provider, meta.providerRequestId);
+        if (provider) {
+          provider.registerRequest?.(meta.providerRequestId, meta.model, meta.mode);
+          this.pollLoop(meta.id, provider, meta.providerRequestId);
+        }
       }
     }
   }
@@ -510,7 +513,7 @@ export class ImageService extends EventEmitter {
 
       while (!controller.signal.aborted) {
         if (Date.now() - startTime > POLL_TIMEOUT_MS) {
-          this.markStatus(id, 'timeout', 'Generation timed out after 300s');
+          this.markStatus(id, 'timeout', 'Generation timed out after 900s');
           break;
         }
         await new Promise((r) => setTimeout(r, delay));

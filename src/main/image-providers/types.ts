@@ -39,4 +39,6 @@ export interface ImageProvider {
   getResult(requestId: string): Promise<GenerationResult>;
   cancel(requestId: string): Promise<void>;
   getActions(): ImageActionConfig[];
+  /** Re-associate a request ID with its endpoint (used when resuming interrupted polls). */
+  registerRequest?(requestId: string, model: string, mode: string): void;
 }
