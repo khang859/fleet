@@ -1,6 +1,6 @@
 import Store from 'electron-store';
 import { randomUUID } from 'crypto';
-import type { Workspace, Tab } from '../shared/types';
+import type { Workspace, Tab, PaneNode } from '../shared/types';
 import { createLogger } from './logger';
 
 const log = createLogger('layout:persistence');
@@ -8,6 +8,11 @@ const log = createLogger('layout:persistence');
 type StoreSchema = {
   workspaces: Record<string, Workspace>;
 };
+
+function containsPane(node: PaneNode, paneId: string): boolean {
+  if (node.type === 'leaf') return node.id === paneId;
+  return containsPane(node.children[0], paneId) || containsPane(node.children[1], paneId);
+}
 
 export class LayoutStore {
   private store: Store<StoreSchema>;
@@ -42,6 +47,18 @@ export class LayoutStore {
   list(): Workspace[] {
     const workspaces = this.store.get('workspaces', {});
     return Object.values(workspaces);
+  }
+
+  findWorkspaceForPane(paneId: string): { workspaceId: string; workspaceName: string } | null {
+    const workspaces = this.store.get('workspaces', {});
+    for (const ws of Object.values(workspaces)) {
+      for (const tab of ws.tabs) {
+        if (containsPane(tab.splitRoot, paneId)) {
+          return { workspaceId: ws.id, workspaceName: ws.label };
+        }
+      }
+    }
+    return null;
   }
 
   delete(workspaceId: string): void {
