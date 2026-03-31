@@ -854,3 +854,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return [...active, ...background];
   }
 }));
+
+// Notify copilot of workspace changes
+let lastNotifiedWorkspaceId: string | null = null;
+useWorkspaceStore.subscribe((state) => {
+  const wsId = state.workspace.id;
+  if (wsId !== lastNotifiedWorkspaceId) {
+    lastNotifiedWorkspaceId = wsId;
+    window.fleet.copilot?.notifyActiveWorkspace(wsId, state.workspace.label);
+  }
+});

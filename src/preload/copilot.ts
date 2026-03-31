@@ -51,6 +51,22 @@ const copilotApi = {
   hookStatusFor: (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
 
+  onActiveWorkspace: (
+    cb: (payload: { workspaceId: string; workspaceName: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { workspaceId: string; workspaceName: string }
+    ): void => {
+      cb(payload);
+    };
+    ipcRenderer.on(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, handler);
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, handler);
+  },
+
+  getActiveWorkspace: (): Promise<{ workspaceId: string; workspaceName: string } | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE),
+
   serviceStatus: (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
 

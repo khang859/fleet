@@ -73,4 +73,6 @@ export const IPC_CHANNELS = {
   COPILOT_SEND_MESSAGE: 'copilot:send-message',
   COPILOT_FOCUS_TERMINAL: 'copilot:focus-terminal',
   COPILOT_SERVICE_STATUS: 'copilot:service-status',
+  COPILOT_ACTIVE_WORKSPACE: 'copilot:active-workspace',
+  COPILOT_GET_ACTIVE_WORKSPACE: 'copilot:get-active-workspace',
 } as const;

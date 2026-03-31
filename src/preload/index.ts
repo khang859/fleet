@@ -267,6 +267,10 @@ const fleetApi = {
   },
   log: {
     batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
+  },
+  copilot: {
+    notifyActiveWorkspace: (workspaceId: string, workspaceName: string): void =>
+      ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName }),
   }
 };
 
