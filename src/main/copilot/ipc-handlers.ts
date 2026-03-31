@@ -140,6 +140,21 @@ export function registerCopilotIpcHandlers(
     };
   });
 
+  // Active workspace: push from main renderer → copilot window, pull for initial load
+  let lastActiveWorkspace: { workspaceId: string; workspaceName: string } | null = null;
+
+  ipcMain.on(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, (
+    _event,
+    payload: { workspaceId: string; workspaceName: string }
+  ) => {
+    lastActiveWorkspace = payload;
+    copilotWindow.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, payload);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE, () => {
+    return lastActiveWorkspace;
+  });
+
   ipcMain.handle(IPC_CHANNELS.COPILOT_POSITION_GET, () => {
     return copilotWindow.getPosition();
   });
