@@ -302,7 +302,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start copilot (macOS only, gated internally)
-  await initCopilot(settingsStore, ptyManager, () => mainWindow);
+  await initCopilot(settingsStore, ptyManager, layoutStore, () => mainWindow);
 
   // Set dock icon on macOS — must happen AFTER copilot init because the copilot
   // window's setVisibleOnAllWorkspaces triggers an Electron bug (electron/electron#26350)

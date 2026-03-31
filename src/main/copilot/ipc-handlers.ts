@@ -6,6 +6,7 @@ import type { CopilotSessionStore } from './session-store';
 import type { CopilotSocketServer } from './socket-server';
 import type { CopilotWindow } from './copilot-window';
 import type { SettingsStore } from '../settings-store';
+import type { LayoutStore } from '../layout-store';
 import type { ConversationReader } from './conversation-reader';
 import type { PtyManager } from '../pty-manager';
 import * as hookInstaller from './hook-installer';
@@ -62,9 +63,17 @@ export function registerCopilotIpcHandlers(
   settingsStore: SettingsStore,
   conversationReader: ConversationReader,
   ptyManager: PtyManager,
+  layoutStore: LayoutStore,
   getMainWindow: () => BrowserWindow | null,
   onSettingsChanged?: () => Promise<void>
 ): void {
+  // Wire up workspace resolution: PID → paneId → workspaceId
+  socketServer.setWorkspaceResolver((pid: number) => {
+    const paneId = findPaneForPid(ptyManager, pid);
+    if (!paneId) return null;
+    return layoutStore.findWorkspaceForPane(paneId);
+  });
+
   ipcMain.handle(IPC_CHANNELS.COPILOT_SESSIONS, () => {
     return sessionStore.getSessions();
   });

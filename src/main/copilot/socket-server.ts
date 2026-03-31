@@ -16,9 +16,16 @@ export class CopilotSocketServer {
   private server: Server | null = null;
   private pendingSockets = new Map<string, PendingSocket>();
   private sessionStore: CopilotSessionStore;
+  private resolveWorkspace: ((pid: number) => { workspaceId: string; workspaceName: string } | null) | null = null;
 
   constructor(sessionStore: CopilotSessionStore) {
     this.sessionStore = sessionStore;
+  }
+
+  setWorkspaceResolver(
+    resolver: (pid: number) => { workspaceId: string; workspaceName: string } | null
+  ): void {
+    this.resolveWorkspace = resolver;
   }
 
   async start(): Promise<void> {
@@ -155,7 +162,10 @@ export class CopilotSocketServer {
         status: event.status,
       });
 
-      this.sessionStore.processHookEvent(event);
+      const workspaceInfo = event.pid && this.resolveWorkspace
+        ? this.resolveWorkspace(event.pid)
+        : null;
+      this.sessionStore.processHookEvent(event, workspaceInfo ?? undefined);
 
       if (event.status === 'waiting_for_approval') {
         const session = this.sessionStore.getSession(event.session_id);

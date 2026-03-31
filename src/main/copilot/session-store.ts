@@ -62,7 +62,10 @@ export class CopilotSessionStore {
     return this.sessions.get(sessionId);
   }
 
-  processHookEvent(event: HookEvent): void {
+  processHookEvent(
+    event: HookEvent,
+    workspaceInfo?: { workspaceId: string; workspaceName: string }
+  ): void {
     const { session_id, cwd, status, pid, tty, tool, tool_input, tool_use_id } = event;
     let phase = statusToPhase(status);
     const now = Date.now();
@@ -80,9 +83,14 @@ export class CopilotSessionStore {
         pendingPermissions: [],
         lastActivity: now,
         createdAt: now,
+        workspaceId: workspaceInfo?.workspaceId,
+        workspaceName: workspaceInfo?.workspaceName,
       };
       this.sessions.set(session_id, session);
       log.info('session created', { sessionId: session_id, cwd });
+    } else if (workspaceInfo && !session.workspaceId) {
+      session.workspaceId = workspaceInfo.workspaceId;
+      session.workspaceName = workspaceInfo.workspaceName;
     }
 
     if (pid) session.pid = pid;

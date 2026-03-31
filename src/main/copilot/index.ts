@@ -8,6 +8,7 @@ import * as hookInstaller from './hook-installer';
 import type { SettingsStore } from '../settings-store';
 import type { BrowserWindow } from 'electron';
 import type { PtyManager } from '../pty-manager';
+import type { LayoutStore } from '../layout-store';
 import { IPC_CHANNELS } from '../../shared/constants';
 
 const log = createLogger('copilot');
@@ -25,6 +26,7 @@ let pendingToggle: boolean | null = null;
 export async function initCopilot(
   settingsStore: SettingsStore,
   ptyManager: PtyManager,
+  layoutStore: LayoutStore,
   getMainWindow: () => BrowserWindow | null
 ): Promise<void> {
   log.info('initCopilot called', { platform: process.platform });
@@ -39,7 +41,7 @@ export async function initCopilot(
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, getMainWindow, onCopilotSettingsChanged);
+  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, layoutStore, getMainWindow, onCopilotSettingsChanged);
 
   const settings = settingsStore.get();
   log.info('copilot settings', { enabled: settings.copilot.enabled, autoStart: settings.copilot.autoStart });
