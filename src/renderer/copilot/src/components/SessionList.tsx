@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { ScrollArea } from './ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
-import { Settings, PawPrint } from 'lucide-react';
+import { PawPrint } from 'lucide-react';
 import { formatPermissionSummary } from '../lib/format-permission';
 
 type BadgeStatus = 'idle' | 'running' | 'permission' | 'error' | 'complete';
@@ -81,14 +81,6 @@ export function SessionList(): React.JSX.Element {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Mascots</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
-                  <Settings size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
             </Tooltip>
           </div>
         </div>

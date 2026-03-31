@@ -4,7 +4,6 @@ import { useCopilotStore } from './store/copilot-store';
 import { SpaceshipSprite } from './components/SpaceshipSprite';
 import { SessionList } from './components/SessionList';
 import { SessionDetail } from './components/SessionDetail';
-import { CopilotSettings } from './components/CopilotSettings';
 import { MascotPicker } from './components/MascotPicker';
 import { CrtFrame } from './components/CrtFrame';
 
@@ -139,7 +138,6 @@ export function App(): React.JSX.Element {
               <CrtFrame>
                 {view === 'sessions' && <SessionList />}
                 {view === 'detail' && <SessionDetail />}
-                {view === 'settings' && <CopilotSettings />}
                 {view === 'mascots' && <MascotPicker />}
               </CrtFrame>
             </div>
