@@ -203,6 +203,15 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.LAYOUT_DELETE, (_event, workspaceId: string) => {
     log.debug('ipc:layout:delete', { workspaceId });
     layoutStore.delete(workspaceId);
+
+    // Clean up copilot workspace overrides
+    const settings = settingsStore.get();
+    if (settings.copilot.workspaceOverrides[workspaceId]) {
+      const { [workspaceId]: _, ...remaining } = settings.copilot.workspaceOverrides;
+      settingsStore.set({
+        copilot: { ...settings.copilot, workspaceOverrides: remaining }
+      });
+    }
   });
 
   // Notification handlers
