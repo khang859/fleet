@@ -1,5 +1,20 @@
 # Changelog
 
+## v2.23.0
+
+### Features
+
+- **Landing**: Add GitHub Pages landing page with auto-resolved download links to latest arm64 dmg
+
+### Improvements
+
+- **Landing**: Convert all images to webp for faster load times
+- **Copilot**: Simplify system checks to fleet.sock only, auto-enable copilot on macOS
+
+### Bug Fixes
+
+- **Landing**: Add .nojekyll to bypass Jekyll processing
+
 ## v2.22.0
 
 ### Features
