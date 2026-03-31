@@ -127,6 +127,12 @@ export function registerCopilotIpcHandlers(
     return true;
   });
 
+  ipcMain.handle(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, (_event, configDir: string) => {
+    log.debug('ipc:copilot:uninstall-hooks-from', { configDir });
+    hookInstaller.uninstall(configDir);
+    return true;
+  });
+
   ipcMain.handle(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, (_event, configDir: string) => {
     return hookInstaller.isInstalled(configDir);
   });

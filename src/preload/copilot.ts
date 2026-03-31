@@ -48,6 +48,9 @@ const copilotApi = {
   installHooksTo: (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
 
+  uninstallHooksFrom: (configDir: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
+
   hookStatusFor: (configDir: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
 

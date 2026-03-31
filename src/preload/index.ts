@@ -269,6 +269,18 @@ const fleetApi = {
     batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
   },
   copilot: {
+    serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
+    installHooks: async (): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
+    uninstallHooks: async (): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
+    installHooksTo: async (configDir: string): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
+    uninstallHooksFrom: async (configDir: string): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS_FROM, configDir),
+    hookStatusFor: async (configDir: string): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
     notifyActiveWorkspace: (workspaceId: string, workspaceName: string): void =>
       ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName }),
   }

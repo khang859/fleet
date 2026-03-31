@@ -63,6 +63,7 @@ export const IPC_CHANNELS = {
   COPILOT_UNINSTALL_HOOKS: 'copilot:uninstall-hooks',
   COPILOT_HOOK_STATUS: 'copilot:hook-status',
   COPILOT_INSTALL_HOOKS_TO: 'copilot:install-hooks-to',
+  COPILOT_UNINSTALL_HOOKS_FROM: 'copilot:uninstall-hooks-from',
   COPILOT_HOOK_STATUS_FOR: 'copilot:hook-status-for',
   COPILOT_POSITION_GET: 'copilot:position:get',
   COPILOT_POSITION_SET: 'copilot:position:set',

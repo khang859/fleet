@@ -14,15 +14,14 @@ export function CopilotSection(): React.JSX.Element | null {
   const [expandedWs, setExpandedWs] = useState<string | null>(null);
   const [hookInstalled, setHookInstalled] = useState(false);
   const [claudeDetected, setClaudeDetected] = useState(true);
+  const [wsHookStatus, setWsHookStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     window.fleet.layout.list().then((res) => setWorkspaces(res.workspaces)).catch(() => {});
-    if (window.copilot) {
-      window.copilot.serviceStatus().then((st) => {
-        setHookInstalled(st.hookInstalled);
-        setClaudeDetected(st.claudeDetected);
-      }).catch(() => {});
-    }
+    window.fleet.copilot.serviceStatus().then((st) => {
+      setHookInstalled(st.hookInstalled);
+      setClaudeDetected(st.claudeDetected);
+    }).catch(() => {});
   }, []);
 
   if (!settings) return null;
@@ -49,14 +48,12 @@ export function CopilotSection(): React.JSX.Element | null {
   };
 
   const handleInstallHooks = async (): Promise<void> => {
-    if (!window.copilot) return;
-    await window.copilot.installHooks();
+    await window.fleet.copilot.installHooks();
     setHookInstalled(true);
   };
 
   const handleUninstallHooks = async (): Promise<void> => {
-    if (!window.copilot) return;
-    await window.copilot.uninstallHooks();
+    await window.fleet.copilot.uninstallHooks();
     setHookInstalled(false);
   };
 
@@ -85,6 +82,39 @@ export function CopilotSection(): React.JSX.Element | null {
     if (dir) {
       updateWorkspaceOverride(wsId, { claudeConfigDir: dir });
     }
+  };
+
+  const refreshWsHookStatus = (wsId: string, configDir: string | undefined): void => {
+    if (!configDir) {
+      setWsHookStatus((prev) => {
+        const next = { ...prev };
+        delete next[wsId];
+        return next;
+      });
+      return;
+    }
+    window.fleet.copilot.hookStatusFor(configDir).then((installed) => {
+      setWsHookStatus((prev) => ({ ...prev, [wsId]: installed }));
+    }).catch(() => {});
+  };
+
+  const handleWsExpandToggle = (wsId: string): void => {
+    const next = expandedWs === wsId ? null : wsId;
+    setExpandedWs(next);
+    if (next) {
+      const override = copilot.workspaceOverrides[wsId];
+      refreshWsHookStatus(wsId, override?.claudeConfigDir);
+    }
+  };
+
+  const handleWsInstallHooks = async (wsId: string, configDir: string): Promise<void> => {
+    await window.fleet.copilot.installHooksTo(configDir);
+    setWsHookStatus((prev) => ({ ...prev, [wsId]: true }));
+  };
+
+  const handleWsUninstallHooks = async (wsId: string, configDir: string): Promise<void> => {
+    await window.fleet.copilot.uninstallHooksFrom(configDir);
+    setWsHookStatus((prev) => ({ ...prev, [wsId]: false }));
   };
 
   const hasOverride = (wsId: string): boolean => {
@@ -237,7 +267,7 @@ export function CopilotSection(): React.JSX.Element | null {
               return (
                 <div key={ws.id} className="border border-neutral-700 rounded">
                   <button
-                    onClick={() => setExpandedWs(isExpanded ? null : ws.id)}
+                    onClick={() => handleWsExpandToggle(ws.id)}
                     className="w-full flex items-center justify-between px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/50"
                   >
                     <span className="flex items-center gap-2">
@@ -274,7 +304,10 @@ export function CopilotSection(): React.JSX.Element | null {
                           <input
                             type="text"
                             value={override.claudeConfigDir ?? ''}
-                            onChange={(e) => updateWorkspaceOverride(ws.id, { claudeConfigDir: e.target.value })}
+                            onChange={(e) => {
+                              updateWorkspaceOverride(ws.id, { claudeConfigDir: e.target.value });
+                              refreshWsHookStatus(ws.id, e.target.value || undefined);
+                            }}
                             placeholder="Use global default"
                             className="flex-1 bg-neutral-800 text-xs text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
                           />
@@ -286,6 +319,30 @@ export function CopilotSection(): React.JSX.Element | null {
                           </button>
                         </div>
                       </div>
+                      {(() => {
+                        const wsConfigDir = override.claudeConfigDir;
+                        if (!wsConfigDir) return null;
+                        const installed = wsHookStatus[ws.id] ?? false;
+                        return (
+                          <div>
+                            <label className="text-xs text-neutral-400 block mb-1">Hooks</label>
+                            <div className="flex items-center gap-2">
+                              <span className={`w-1.5 h-1.5 rounded-full ${installed ? 'bg-green-500' : 'bg-red-500'}`} />
+                              <span className="text-xs text-neutral-300">
+                                {installed ? 'Installed' : 'Not installed'}
+                              </span>
+                              <button
+                                onClick={() => void (installed
+                                  ? handleWsUninstallHooks(ws.id, wsConfigDir)
+                                  : handleWsInstallHooks(ws.id, wsConfigDir))}
+                                className="px-2 py-0.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
+                              >
+                                {installed ? 'Uninstall' : 'Install'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
