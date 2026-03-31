@@ -14,7 +14,7 @@ declare global {
   }
 }
 
-type CopilotView = 'sessions' | 'detail' | 'settings' | 'mascots';
+type CopilotView = 'sessions' | 'detail' | 'mascots';
 
 type CopilotStoreState = {
   expanded: boolean;

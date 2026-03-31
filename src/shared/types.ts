@@ -162,12 +162,20 @@ export type CopilotSession = {
   createdAt: number;
 };
 
+export type CopilotWorkspaceOverride = {
+  claudeBinaryPath?: string;
+  claudeConfigDir?: string;
+};
+
 export type CopilotSettings = {
   enabled: boolean;
   autoEnabled: boolean;
   spriteSheet: string;
   notificationSound: string;
   autoStart: boolean;
+  claudeBinaryPath: string;
+  claudeConfigDir: string;
+  workspaceOverrides: Record<string, CopilotWorkspaceOverride>;
 };
 
 export type SpriteAnimation = {

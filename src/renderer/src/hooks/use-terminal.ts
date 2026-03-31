@@ -23,6 +23,8 @@ export type UseTerminalOptions = {
   attachOnly?: boolean;
   /** If true, hide xterm's hardware cursor (for TUIs like Claude Code that draw their own). */
   cursorHidden?: boolean;
+  /** Workspace ID for resolving per-workspace Claude config. */
+  workspaceId?: string;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
@@ -258,7 +260,8 @@ function createTerminal(
     log.debug('pty.create', { paneId: options.paneId, cwd: options.cwd });
     void window.fleet.pty.create({
       paneId: options.paneId,
-      cwd: options.cwd
+      cwd: options.cwd,
+      workspaceId: options.workspaceId
     }).then(() => {
       // After hard refresh, createdPtys is reset so we hit this path even
       // though the PTY already exists in main (idempotent create). Apply the

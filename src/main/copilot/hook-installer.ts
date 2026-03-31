@@ -13,9 +13,7 @@ import { createLogger } from '../logger';
 
 const log = createLogger('copilot:hooks');
 
-const CLAUDE_DIR = join(homedir(), '.claude');
-const HOOKS_DIR = join(CLAUDE_DIR, 'hooks');
-const SETTINGS_PATH = join(CLAUDE_DIR, 'settings.json');
+const DEFAULT_CLAUDE_DIR = join(homedir(), '.claude');
 
 // Old Python script name — used for cleanup during migration
 const LEGACY_SCRIPT_NAME = 'fleet-copilot.py';
@@ -37,7 +35,19 @@ function getHookBinaryName(): string {
 }
 
 const HOOK_BINARY_NAME = getHookBinaryName();
-const HOOK_DEST = join(HOOKS_DIR, HOOK_BINARY_NAME);
+
+function resolvePaths(configDir?: string): {
+  claudeDir: string;
+  hooksDir: string;
+  settingsPath: string;
+  hookDest: string;
+} {
+  const claudeDir = configDir || DEFAULT_CLAUDE_DIR;
+  const hooksDir = join(claudeDir, 'hooks');
+  const settingsPath = join(claudeDir, 'settings.json');
+  const hookDest = join(hooksDir, HOOK_BINARY_NAME);
+  return { claudeDir, hooksDir, settingsPath, hookDest };
+}
 
 type HookEntry = {
   matcher?: string;
@@ -93,9 +103,11 @@ export function getHookBinarySourcePath(): string {
   return devPath; // fallback
 }
 
-function removeLegacyHooks(): void {
+function removeLegacyHooks(configDir?: string): void {
+  const { hooksDir, settingsPath } = resolvePaths(configDir);
+
   // Remove old Python script
-  const legacyDest = join(HOOKS_DIR, LEGACY_SCRIPT_NAME);
+  const legacyDest = join(hooksDir, LEGACY_SCRIPT_NAME);
   if (existsSync(legacyDest)) {
     try {
       unlinkSync(legacyDest);
@@ -106,9 +118,9 @@ function removeLegacyHooks(): void {
   }
 
   // Remove old Python hook entries from settings.json
-  if (!existsSync(SETTINGS_PATH)) return;
+  if (!existsSync(settingsPath)) return;
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
     const hooks = settings.hooks ?? {};
     let changed = false;
 
@@ -125,7 +137,7 @@ function removeLegacyHooks(): void {
 
     if (changed) {
       settings.hooks = hooks;
-      writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
       log.info('removed legacy Python hook entries from settings.json');
     }
   } catch {
@@ -133,8 +145,10 @@ function removeLegacyHooks(): void {
   }
 }
 
-export function syncScript(): void {
-  if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
+export function syncScript(configDir?: string): void {
+  const { hooksDir, hookDest } = resolvePaths(configDir);
+
+  if (!existsSync(hooksDir)) mkdirSync(hooksDir, { recursive: true });
 
   const source = getHookBinarySourcePath();
   if (!existsSync(source)) {
@@ -143,26 +157,28 @@ export function syncScript(): void {
   }
 
   try {
-    if (existsSync(HOOK_DEST)) {
+    if (existsSync(hookDest)) {
       const srcContent = readFileSync(source);
-      const destContent = readFileSync(HOOK_DEST);
+      const destContent = readFileSync(hookDest);
       if (srcContent.equals(destContent)) return;
     }
 
-    copyFileSync(source, HOOK_DEST);
-    chmodSync(HOOK_DEST, 0o755);
-    log.info('hook binary synced', { dest: HOOK_DEST });
+    copyFileSync(source, hookDest);
+    chmodSync(hookDest, 0o755);
+    log.info('hook binary synced', { dest: hookDest });
   } catch (err) {
     log.error('failed to sync hook binary', { error: String(err) });
   }
 }
 
-export function isInstalled(): boolean {
-  if (!existsSync(HOOK_DEST)) return false;
-  if (!existsSync(SETTINGS_PATH)) return false;
+export function isInstalled(configDir?: string): boolean {
+  const { settingsPath, hookDest } = resolvePaths(configDir);
+
+  if (!existsSync(hookDest)) return false;
+  if (!existsSync(settingsPath)) return false;
 
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
     const hooks = settings.hooks ?? {};
     return 'SessionStart' in hooks && hasFleetHook(hooks['SessionStart'] ?? []);
   } catch {
@@ -170,13 +186,14 @@ export function isInstalled(): boolean {
   }
 }
 
-export function install(): void {
+export function install(configDir?: string): void {
   log.info('installing hooks');
+  const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
 
   // Clean up legacy Python hooks first
-  removeLegacyHooks();
+  removeLegacyHooks(configDir);
 
-  if (!existsSync(HOOKS_DIR)) mkdirSync(HOOKS_DIR, { recursive: true });
+  if (!existsSync(hooksDir)) mkdirSync(hooksDir, { recursive: true });
 
   const source = getHookBinarySourcePath();
   if (!existsSync(source)) {
@@ -184,24 +201,24 @@ export function install(): void {
     throw new Error(`Hook binary not found: ${source}`);
   }
   try {
-    copyFileSync(source, HOOK_DEST);
-    chmodSync(HOOK_DEST, 0o755);
-    log.info('hook binary installed', { dest: HOOK_DEST });
+    copyFileSync(source, hookDest);
+    chmodSync(hookDest, 0o755);
+    log.info('hook binary installed', { dest: hookDest });
   } catch (err) {
     log.error('failed to copy/chmod hook binary', { error: String(err) });
     throw new Error(`Failed to install hook binary: ${String(err)}`);
   }
 
   let settings: ClaudeSettings = {};
-  if (existsSync(SETTINGS_PATH)) {
+  if (existsSync(settingsPath)) {
     try {
-      settings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+      settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
     } catch {
       log.warn('failed to parse existing settings.json, starting fresh');
     }
   }
 
-  const command = HOOK_DEST;
+  const command = hookDest;
   const newEntries = buildHookEntries(command);
 
   const existingHooks = settings.hooks ?? {};
@@ -215,7 +232,7 @@ export function install(): void {
 
   settings.hooks = existingHooks;
   try {
-    writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     log.info('settings.json updated');
   } catch (err) {
     log.error('failed to write settings.json', { error: String(err) });
@@ -223,19 +240,20 @@ export function install(): void {
   }
 }
 
-export function uninstall(): void {
+export function uninstall(configDir?: string): void {
   log.info('uninstalling hooks');
+  const { hooksDir, settingsPath, hookDest } = resolvePaths(configDir);
 
-  if (existsSync(HOOK_DEST)) {
+  if (existsSync(hookDest)) {
     try {
-      unlinkSync(HOOK_DEST);
+      unlinkSync(hookDest);
     } catch {
       log.warn('failed to remove hook binary');
     }
   }
 
   // Also clean up legacy Python script if present
-  const legacyDest = join(HOOKS_DIR, LEGACY_SCRIPT_NAME);
+  const legacyDest = join(hooksDir, LEGACY_SCRIPT_NAME);
   if (existsSync(legacyDest)) {
     try {
       unlinkSync(legacyDest);
@@ -244,10 +262,10 @@ export function uninstall(): void {
     }
   }
 
-  if (!existsSync(SETTINGS_PATH)) return;
+  if (!existsSync(settingsPath)) return;
 
   try {
-    const settings: ClaudeSettings = JSON.parse(readFileSync(SETTINGS_PATH, 'utf-8'));
+    const settings: ClaudeSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
     const hooks = settings.hooks ?? {};
 
     for (const eventName of Object.keys(hooks)) {
@@ -263,7 +281,7 @@ export function uninstall(): void {
     }
 
     settings.hooks = hooks;
-    writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), 'utf-8');
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8');
     log.info('settings.json cleaned');
   } catch {
     log.warn('failed to clean settings.json');

@@ -71,8 +71,32 @@ export function registerIpcHandlers(
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
     log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
+
+    // Resolve Claude config: workspace override → global → default
+    const settings = settingsStore.get();
+    const wsOverride = req.workspaceId
+      ? settings.copilot.workspaceOverrides[req.workspaceId]
+      : undefined;
+    const claudeConfigDir =
+      wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
+    const claudeBinaryPath =
+      wsOverride?.claudeBinaryPath || settings.copilot.claudeBinaryPath || '';
+
+    const extraEnv: Record<string, string> = {};
+    if (claudeConfigDir) {
+      extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
+    }
+    if (claudeBinaryPath) {
+      extraEnv.FLEET_CLAUDE_BINARY = claudeBinaryPath;
+    }
+
     const alreadyExisted = ptyManager.has(req.paneId);
-    const result = ptyManager.create(req);
+    const result = ptyManager.create({
+      ...req,
+      env: Object.keys(extraEnv).length > 0
+        ? { ...process.env, ...extraEnv }
+        : undefined
+    });
 
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
     // duplicate onExit/onData callbacks stacking up
@@ -186,6 +210,15 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.LAYOUT_DELETE, (_event, workspaceId: string) => {
     log.debug('ipc:layout:delete', { workspaceId });
     layoutStore.delete(workspaceId);
+
+    // Clean up copilot workspace overrides
+    const settings = settingsStore.get();
+    if (settings.copilot.workspaceOverrides[workspaceId]) {
+      const { [workspaceId]: _, ...remaining } = settings.copilot.workspaceOverrides;
+      settingsStore.set({
+        copilot: { ...settings.copilot, workspaceOverrides: remaining }
+      });
+    }
   });
 
   // Notification handlers
