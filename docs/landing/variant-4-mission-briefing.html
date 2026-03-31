@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fleet — Launch Your Fleet</title>
+<title>Fleet — Terminal Multiplexer for AI Agents</title>
 <meta name="description" content="Command multiple AI coding agents from a single terminal multiplexer. Lightweight, cross-platform, space-themed.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -258,19 +258,15 @@
 
   .hero__ship {
     width: 100%;
-    max-width: 1200px;
-    height: auto;
-    aspect-ratio: 3 / 1;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
+    max-width: 900px;
     margin-bottom: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
+  }
+
+  .hero__ship img {
+    width: 100%;
+    height: auto;
+    border-radius: 8px;
+    image-rendering: pixelated;
   }
 
   .hero__ctas {
@@ -400,6 +396,14 @@
     line-height: 1;
   }
 
+  .objective-card__title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: var(--text-primary);
+  }
+
   .objective-card__label {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
@@ -407,15 +411,8 @@
     letter-spacing: 2px;
     text-transform: uppercase;
     color: var(--secondary);
-    margin-bottom: 4px;
-  }
-
-  .objective-card__title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 18px;
-    font-weight: 700;
     margin-bottom: 10px;
-    color: var(--text-primary);
+    opacity: 0.6;
   }
 
   .objective-card__desc {
@@ -432,29 +429,6 @@
 
   .mid-cta .btn {
     margin-top: 24px;
-  }
-
-  /* ── Mission Control (visualizer) ── */
-  .visualizer__placeholder {
-    width: 100%;
-    aspect-ratio: 2 / 1;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    margin-top: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
-  }
-
-  .visualizer__desc {
-    margin-top: 20px;
-    color: var(--text-secondary);
-    font-size: 15px;
-    max-width: 640px;
   }
 
   /* ── Crew Roster (mascots) ── */
@@ -485,12 +459,17 @@
     border: 1px solid var(--card-border);
     border-radius: 50%;
     margin: 0 auto 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .crew-card__portrait img {
+    width: 1152px;
+    height: 128px;
+    max-width: none;
+    object-fit: none;
+    object-position: 0 0;
+    image-rendering: pixelated;
   }
 
   .crew-card__name {
@@ -505,27 +484,6 @@
     font-size: 12px;
     color: var(--text-secondary);
     line-height: 1.5;
-  }
-
-  /* ── Field Report (screenshots) ── */
-  .screenshots__grid {
-    display: grid;
-    gap: 24px;
-    margin-top: 48px;
-  }
-
-  .screenshot-placeholder {
-    width: 100%;
-    aspect-ratio: 1200 / 750;
-    background: var(--card-bg);
-    border: 1px solid var(--card-border);
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-secondary);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 13px;
   }
 
   /* ── Final CTA ── */
@@ -683,10 +641,6 @@
   <div class="progress-nav__line"></div>
   <button class="progress-nav__dot" data-section="crew" aria-label="Crew Roster"></button>
   <div class="progress-nav__line"></div>
-  <button class="progress-nav__dot" data-section="visualizer" aria-label="Fleet Visualizer"></button>
-  <div class="progress-nav__line"></div>
-  <button class="progress-nav__dot" data-section="screenshots" aria-label="Field Report"></button>
-  <div class="progress-nav__line"></div>
   <button class="progress-nav__dot" data-section="launch" aria-label="Mission Launch"></button>
 </nav>
 
@@ -695,10 +649,10 @@
   <!-- ════════════════ HERO ════════════════ -->
   <section class="hero" id="hero" data-section>
     <div class="hero__badge">// Mission Briefing</div>
-    <h1 class="hero__title">Launch your fleet</h1>
-    <p class="hero__subtitle">Command multiple AI coding agents from a single terminal multiplexer</p>
+    <h1 class="hero__title">Command your AI fleet</h1>
+    <p class="hero__subtitle">A lightweight terminal multiplexer built for running multiple AI coding agents side by side. See what each agent is doing, approve permissions, and stay in control — all from one window.</p>
     <div class="hero__ship">
-      <img src="images/hero-ship.png" alt="Pixel art spaceship approaching through deep space" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">
+      <img src="images/hero-ship.png" alt="Fleet spaceship flying through deep space">
     </div>
     <div class="hero__ctas">
       <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
@@ -712,16 +666,16 @@
     <div class="container">
       <div class="overview__grid">
         <div class="overview__item">
-          <span class="overview__label">Mission Classification</span>
+          <span class="overview__label">License</span>
           <span class="overview__value">Open Source</span>
         </div>
         <div class="overview__item">
-          <span class="overview__label">Platforms</span>
-          <span class="overview__value">macOS &amp; Windows</span>
+          <span class="overview__label">Platform</span>
+          <span class="overview__value">macOS</span>
         </div>
         <div class="overview__item">
-          <span class="overview__label">Primary Objective</span>
-          <span class="overview__value">AI Agent Management</span>
+          <span class="overview__label">Built For</span>
+          <span class="overview__value">AI Coding Agents</span>
         </div>
         <div class="overview__item">
           <span class="overview__label">Status</span>
@@ -734,51 +688,51 @@
   <!-- ════════════════ MISSION OBJECTIVES (features) ════════════════ -->
   <section class="section" id="objectives" data-section>
     <div class="container">
-      <div class="classified-header">Mission Objectives</div>
-      <h2 class="section__title">Ship Capabilities</h2>
-      <p class="section__subtitle">Every tool you need to coordinate a fleet of AI coding agents from one cockpit.</p>
+      <div class="classified-header">Features</div>
+      <h2 class="section__title">What's on board</h2>
+      <p class="section__subtitle">Everything you need to run multiple AI coding agents from one window.</p>
 
       <div class="objectives__grid">
         <div class="objective-card">
           <div class="objective-card__number">01</div>
-          <div class="objective-card__label">Tactical Command</div>
           <div class="objective-card__title">Tabs &amp; Workspaces</div>
-          <p class="objective-card__desc">Organize agent sessions with draggable tabs and persistent workspaces</p>
+          <div class="objective-card__label">Tactical Command</div>
+          <p class="objective-card__desc">Organize agent sessions with draggable tabs and persistent workspaces that survive restarts.</p>
         </div>
 
         <div class="objective-card">
           <div class="objective-card__number">02</div>
-          <div class="objective-card__label">Formation Control</div>
           <div class="objective-card__title">Split Panes</div>
-          <p class="objective-card__desc">Divide your terminal into any configuration with recursive splits</p>
+          <div class="objective-card__label">Formation Control</div>
+          <p class="objective-card__desc">Divide your terminal into any layout — horizontal, vertical, or nested splits.</p>
         </div>
 
         <div class="objective-card">
           <div class="objective-card__number">03</div>
-          <div class="objective-card__label">Signal Detection</div>
           <div class="objective-card__title">Activity Badges</div>
-          <p class="objective-card__desc">Amber for permission, green for working, blue for completed, red for errors</p>
+          <div class="objective-card__label">Signal Detection</div>
+          <p class="objective-card__desc">See agent status at a glance — amber for permission needed, green for working, red for errors.</p>
         </div>
 
         <div class="objective-card">
           <div class="objective-card__number">04</div>
-          <div class="objective-card__label">Supply Lines</div>
           <div class="objective-card__title">Git Integration</div>
-          <p class="objective-card__desc">Branch labels, file diffs, worktree management built in</p>
+          <div class="objective-card__label">Supply Lines</div>
+          <p class="objective-card__desc">Branch labels, file diffs, and worktree management built right into the terminal.</p>
         </div>
 
         <div class="objective-card">
           <div class="objective-card__number">05</div>
-          <div class="objective-card__label">Quick Orders</div>
           <div class="objective-card__title">Command Palette</div>
-          <p class="objective-card__desc">Access any action instantly with Cmd+Shift+P</p>
+          <div class="objective-card__label">Quick Orders</div>
+          <p class="objective-card__desc">Access any action instantly with Cmd+Shift+P. No menus, no hunting.</p>
         </div>
 
         <div class="objective-card">
           <div class="objective-card__number">06</div>
-          <div class="objective-card__label">Intel Archive</div>
           <div class="objective-card__title">Clipboard History</div>
-          <p class="objective-card__desc">Retrieve previous clipboard entries with Cmd+Shift+H</p>
+          <div class="objective-card__label">Intel Archive</div>
+          <p class="objective-card__desc">Pull up previous clipboard entries with Cmd+Shift+H across all your sessions.</p>
         </div>
       </div>
     </div>
@@ -787,8 +741,8 @@
   <!-- ════════════════ MID CTA ════════════════ -->
   <section class="mid-cta">
     <div class="container">
-      <p class="section__label">Mission Ready</p>
-      <h2 class="section__title">All systems operational</h2>
+      <p class="section__label">Ready to go</p>
+      <h2 class="section__title">Free and open source</h2>
       <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download Fleet</a>
     </div>
   </section>
@@ -796,93 +750,50 @@
   <!-- ════════════════ COPILOT (primary showcase) ════════════════ -->
   <section class="section" id="copilot" data-section>
     <div class="container">
-      <div class="classified-header">First Officer On Deck</div>
+      <div class="classified-header">Desktop Companion</div>
       <h2 class="section__title">Copilot for Claude Code</h2>
-      <p class="section__subtitle">A floating desktop mascot for macOS that watches over all your Claude Code sessions running in Fleet. Approve permissions without switching windows, view live chat history, and send messages directly to Claude.</p>
+      <p class="section__subtitle">A floating desktop mascot that monitors all your Claude Code sessions. Approve permissions, read chat history, and send messages to Claude — without leaving whatever you're working on.</p>
 
-      <div class="visualizer__placeholder">
-        <!-- Replace with: <img src="copilot-overlay.webp" alt="Fleet Copilot overlay monitoring Claude Code sessions" width="1200" height="600"> -->
-        1200 &times; 600 &mdash; Copilot Overlay with Permission Approval
-      </div>
-
-      <p class="visualizer__desc">When Claude Code needs permission to run a command, a panel appears with Allow/Deny buttons — no terminal prompt, no context switch. See every Claude Code session's status at a glance, read full chat history, and type messages to Claude when it's waiting for input. Drag the mascot anywhere on your macOS desktop.</p>
+      <p class="section__subtitle" style="margin-top: 24px">When Claude needs permission to run a command, Allow/Deny buttons appear instantly — no terminal switching. See every session's status at a glance and type messages directly when Claude is waiting for input.</p>
     </div>
   </section>
 
   <!-- ════════════════ CREW ROSTER (mascots) ════════════════ -->
   <section class="section" id="crew" data-section>
     <div class="container">
-      <div class="classified-header">Crew Manifest</div>
-      <h2 class="section__title">Choose Your Copilot</h2>
-      <p class="section__subtitle">Five animated mascots to accompany you on every mission. Each has their own personality and sprite animations.</p>
+      <div class="classified-header">Mascots</div>
+      <h2 class="section__title">Choose your copilot</h2>
+      <p class="section__subtitle">Five animated pixel art mascots, each with their own idle, working, and alert animations.</p>
 
       <div class="crew__grid">
         <div class="crew-card">
-          <div class="crew-card__portrait">128 &times; 128</div>
+          <div class="crew-card__portrait"><img src="images/officer.webp" alt="Officer mascot"></div>
           <div class="crew-card__name">Officer</div>
           <p class="crew-card__role">The classic Fleet officer — disciplined and dependable.</p>
         </div>
 
         <div class="crew-card">
-          <div class="crew-card__portrait">128 &times; 128</div>
+          <div class="crew-card__portrait"><img src="images/robot.webp" alt="Robot mascot"></div>
           <div class="crew-card__name">Robot</div>
           <p class="crew-card__role">A friendly automaton — efficient and tireless.</p>
         </div>
 
         <div class="crew-card">
-          <div class="crew-card__portrait">128 &times; 128</div>
+          <div class="crew-card__portrait"><img src="images/cat.webp" alt="Cat mascot"></div>
           <div class="crew-card__name">Cat</div>
           <p class="crew-card__role">A curious space cat — always exploring.</p>
         </div>
 
         <div class="crew-card">
-          <div class="crew-card__portrait">128 &times; 128</div>
+          <div class="crew-card__portrait"><img src="images/bear.webp" alt="Bear mascot"></div>
           <div class="crew-card__name">Bear</div>
           <p class="crew-card__role">An armored polar bear warrior — strong and protective.</p>
         </div>
 
         <div class="crew-card">
-          <div class="crew-card__portrait">128 &times; 128</div>
+          <div class="crew-card__portrait"><img src="images/kraken.webp" alt="Kraken mascot"></div>
           <div class="crew-card__name">Kraken</div>
           <p class="crew-card__role">An astral space kraken — mysterious and powerful.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ════════════════ FLEET VISUALIZER (fun bonus) ════════════════ -->
-  <section class="section" id="visualizer" data-section>
-    <div class="container">
-      <div class="classified-header">Bonus: Eye Candy</div>
-      <h2 class="section__title">Fleet Visualizer</h2>
-      <p class="section__subtitle">A live space scene showing your terminal panes as spaceships. Green ships are working, amber ships need attention, gray ships are idle. Toggle it with Cmd+Shift+V — click any ship to jump to that terminal. Pure fun.</p>
-
-      <div class="visualizer__placeholder">
-        <!-- Replace with: <img src="visualizer.webp" alt="Fleet space visualizer with agent ships" width="1200" height="600"> -->
-        1200 &times; 600 &mdash; Fleet Visualizer — Agents as Spaceships
-      </div>
-    </div>
-  </section>
-
-  <!-- ════════════════ FIELD REPORT (screenshots) ════════════════ -->
-  <section class="section" id="screenshots" data-section>
-    <div class="container">
-      <div class="classified-header">Field Observations</div>
-      <h2 class="section__title">From the Bridge</h2>
-      <p class="section__subtitle">See Fleet in action across different mission scenarios.</p>
-
-      <div class="screenshots__grid">
-        <div class="screenshot-placeholder">
-          <!-- Replace with: <img src="screenshot-split-panes.webp" alt="Fleet split panes view" width="1200" height="750"> -->
-          1200 &times; 750 &mdash; Split panes with multiple agents
-        </div>
-        <div class="screenshot-placeholder">
-          <!-- Replace with: <img src="screenshot-copilot.webp" alt="Fleet copilot overlay" width="1200" height="750"> -->
-          1200 &times; 750 &mdash; Copilot overlay with mascot
-        </div>
-        <div class="screenshot-placeholder">
-          <!-- Replace with: <img src="screenshot-git.webp" alt="Fleet git integration" width="1200" height="750"> -->
-          1200 &times; 750 &mdash; Git diff viewer
         </div>
       </div>
     </div>
@@ -891,12 +802,12 @@
   <!-- ════════════════ MISSION LAUNCH (final CTA) ════════════════ -->
   <section class="launch" id="launch" data-section>
     <div class="container">
-      <p class="section__label">All Stations Report</p>
-      <h2 class="launch__title">Ready for launch?</h2>
-      <p class="launch__subtitle">Download Fleet and take command of your AI coding agents today.</p>
+      <p class="section__label">Get Started</p>
+      <h2 class="launch__title">Ready to fly?</h2>
+      <p class="launch__subtitle">Download Fleet and start running your AI coding agents together.</p>
       <div class="launch__buttons">
         <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
-        <a href="https://github.com/khang859/fleet/releases" class="btn btn--ghost">Download for Windows</a>
+        <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
       </div>
     </div>
   </section>
