@@ -79,16 +79,23 @@ export function registerIpcHandlers(
       : undefined;
     const claudeConfigDir =
       wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
+    const claudeBinaryPath =
+      wsOverride?.claudeBinaryPath || settings.copilot.claudeBinaryPath || '';
 
     const extraEnv: Record<string, string> = {};
     if (claudeConfigDir) {
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
     }
+    if (claudeBinaryPath) {
+      extraEnv.FLEET_CLAUDE_BINARY = claudeBinaryPath;
+    }
 
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
-      env: Object.keys(extraEnv).length > 0 ? extraEnv : undefined
+      env: Object.keys(extraEnv).length > 0
+        ? { ...process.env, ...extraEnv }
+        : undefined
     });
 
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
