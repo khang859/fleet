@@ -22,6 +22,8 @@ jobs:
       - run: npm rebuild better-sqlite3
       - name: Build hook binary
         run: npm run build:hook
+      - name: Test hook binary
+        run: cd hooks/fleet-copilot-go && go test -v -count=1 ./...
       - name: Type check
         run: npx tsc --noEmit
       - name: Run tests

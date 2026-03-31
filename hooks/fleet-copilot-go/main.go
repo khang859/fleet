@@ -7,9 +7,11 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -130,6 +132,12 @@ func sendEvent(state *State, waitForResponse bool) *SocketResponse {
 }
 
 func main() {
+	// Ignore SIGINT so the hook binary survives Ctrl+C interrupts.
+	// When the user presses Ctrl+C, SIGINT propagates to the entire
+	// foreground process group. Without this, the binary is killed
+	// before it can send the Stop/SubagentStop event to Fleet.
+	signal.Ignore(syscall.SIGINT)
+
 	if os.Getenv("FLEET_SESSION") == "" {
 		os.Exit(0)
 	}
