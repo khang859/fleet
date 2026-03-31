@@ -71,8 +71,25 @@ export function registerIpcHandlers(
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
     log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
+
+    // Resolve Claude config: workspace override → global → default
+    const settings = settingsStore.get();
+    const wsOverride = req.workspaceId
+      ? settings.copilot.workspaceOverrides[req.workspaceId]
+      : undefined;
+    const claudeConfigDir =
+      wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
+
+    const extraEnv: Record<string, string> = {};
+    if (claudeConfigDir) {
+      extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
+    }
+
     const alreadyExisted = ptyManager.has(req.paneId);
-    const result = ptyManager.create(req);
+    const result = ptyManager.create({
+      ...req,
+      env: Object.keys(extraEnv).length > 0 ? extraEnv : undefined
+    });
 
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
     // duplicate onExit/onData callbacks stacking up

@@ -15,6 +15,8 @@ export type PtyCreateOptions = {
   /** If true, the PTY exits when cmd finishes instead of falling back to a shell.
    *  Used for crew PTYs where we need onExit to fire for cleanup. */
   exitOnComplete?: boolean;
+  /** For resolving per-workspace Claude config (e.g. CLAUDE_CONFIG_DIR). */
+  workspaceId?: string;
 };
 
 export type PtyCreateResult = {

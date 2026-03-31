@@ -4,6 +4,7 @@ import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { useCwdStore } from '../store/cwd-store';
+import { useWorkspaceStore } from '../store/workspace-store';
 import { joinPath } from '../lib/shell-utils';
 
 type TerminalPaneProps = {
@@ -33,6 +34,7 @@ export function TerminalPane({
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const workspaceId = useWorkspaceStore((s) => s.workspace.id);
   const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
     cwd,
@@ -40,6 +42,7 @@ export function TerminalPane({
     isActive,
     fontFamily,
     fontSize,
+    workspaceId,
     onScrollStateChange: setIsScrolledUp
   });
   const [searchOpen, setSearchOpen] = useState(false);

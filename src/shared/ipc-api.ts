@@ -5,6 +5,7 @@ export type PtyCreateRequest = {
   cwd: string;
   shell?: string;
   cmd?: string;
+  workspaceId?: string;
 };
 
 export type HostPlatform = 'darwin' | 'linux' | 'win32';
