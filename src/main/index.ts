@@ -1,5 +1,7 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { existsSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
@@ -54,6 +56,27 @@ imageService.on('changed', (id: string) => {
   }
 });
 log.info('startup marker', { runtime: 'spawn-ipc', preload: 'out/preload/index.js' });
+
+const execAsync = promisify(exec);
+
+/**
+ * On first launch on macOS, check if Claude Code is installed.
+ * If so, auto-enable the copilot and mark it as done so we never touch it again.
+ */
+async function autoEnableCopilot(settings: SettingsStore): Promise<void> {
+  const current = settings.get();
+  if (current.copilot.autoEnabled) return; // already ran once
+  if (process.platform !== 'darwin') return;
+
+  try {
+    await execAsync('claude --version', { timeout: 3000 });
+    log.info('claude-code detected, auto-enabling copilot');
+    settings.set({ copilot: { ...current.copilot, enabled: true, autoEnabled: true } });
+  } catch {
+    // Claude Code not installed — just mark as checked so we don't retry
+    settings.set({ copilot: { ...current.copilot, autoEnabled: true } });
+  }
+}
 
 function getHostPlatform(): HostContextPayload['platform'] {
   const p = process.platform;
@@ -266,6 +289,14 @@ void app.whenReady().then(async () => {
   });
   socketSupervisor.start().catch((err: unknown) => {
     log.error('socket-supervisor failed to start', {
+      error: err instanceof Error ? err.message : String(err)
+    });
+  });
+
+  // Auto-enable copilot on first launch if macOS + Claude Code installed.
+  // Awaited so initCopilot sees the updated setting; exec has a 3s timeout.
+  await autoEnableCopilot(settingsStore).catch((err: unknown) => {
+    log.error('copilot auto-enable check failed', {
       error: err instanceof Error ? err.message : String(err)
     });
   });

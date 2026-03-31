@@ -164,6 +164,7 @@ export type CopilotSession = {
 
 export type CopilotSettings = {
   enabled: boolean;
+  autoEnabled: boolean;
   spriteSheet: string;
   notificationSound: string;
   autoStart: boolean;
