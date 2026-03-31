@@ -685,7 +685,7 @@
       <img src="images/hero-ship.webp" alt="Fleet spaceship flying through deep space">
     </div>
     <div class="hero__ctas">
-      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
+      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary" data-download="arm64-dmg">Download for macOS</a>
       <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
     </div>
     <a href="#overview" class="hero__arrow" aria-label="Scroll to continue">&#8595;</a>
@@ -773,7 +773,7 @@
     <div class="container">
       <p class="section__label">Ready to go</p>
       <h2 class="section__title">Free and open source</h2>
-      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download Fleet</a>
+      <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary" data-download="arm64-dmg">Download Fleet</a>
     </div>
   </section>
 
@@ -836,7 +836,7 @@
       <h2 class="launch__title">Ready to fly?</h2>
       <p class="launch__subtitle">Download Fleet and start running your AI coding agents together.</p>
       <div class="launch__buttons">
-        <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary">Download for macOS</a>
+        <a href="https://github.com/khang859/fleet/releases" class="btn btn--primary" data-download="arm64-dmg">Download for macOS</a>
         <a href="https://github.com/khang859/fleet" class="btn btn--ghost">View on GitHub</a>
       </div>
     </div>
@@ -899,6 +899,26 @@
       observer.observe(section);
     });
   }
+})();
+
+// Resolve latest arm64 dmg download link
+(function () {
+  var buttons = document.querySelectorAll('[data-download="arm64-dmg"]');
+  if (!buttons.length) return;
+
+  fetch('https://api.github.com/repos/khang859/fleet/releases/latest')
+    .then(function (r) { return r.json(); })
+    .then(function (release) {
+      var asset = release.assets && release.assets.find(function (a) {
+        return a.name.match(/arm64\.dmg$/);
+      });
+      if (asset) {
+        buttons.forEach(function (btn) {
+          btn.href = asset.browser_download_url;
+        });
+      }
+    })
+    .catch(function () { /* fallback: links stay pointed at /releases */ });
 })();
 </script>
 
