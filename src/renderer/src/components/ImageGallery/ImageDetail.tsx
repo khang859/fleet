@@ -60,9 +60,9 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
         <span className="text-sm text-neutral-500 font-mono">{gen.id}</span>
       </div>
       <div className="flex flex-1 min-h-0">
-        <div className="flex-1 flex items-center justify-center bg-neutral-950 p-4 overflow-auto">
+        <div className="flex-1 bg-neutral-950 p-4 overflow-auto">
           {images.length > 0 ? (
-            <div className="flex gap-4 flex-wrap justify-center">
+            <div className="flex gap-4 flex-wrap justify-center items-center min-h-full">
               {images.map((img, i) => (
                 <DetailImage
                   key={i}
