@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.23.2
+
+### Bug Fixes
+
+- **Images**: Show pinned Images tab on fresh install — new users were missing the tab because the fresh-install startup path bypassed ensureImagesTab
+
 ## v2.23.1
 
 ### Bug Fixes
