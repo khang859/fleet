@@ -260,6 +260,8 @@ export function App(): React.JSX.Element {
         useWorkspaceStore.getState().loadWorkspace(defaultWs);
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
+        // Ensure the pinned Images tab exists for fresh installs
+        useWorkspaceStore.getState().ensureImagesTab();
       }
 
       // Load all other saved workspaces into background so their PTYs warm up

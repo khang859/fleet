@@ -127,6 +127,8 @@ type WorkspaceStore = {
   renameWorkspace: (label: string) => void;
   markClean: () => void;
 
+  ensureImagesTab: () => void;
+
   // File/image pane helpers
   openFile: (filePath: string) => string;
   openFileInTab: (
@@ -633,6 +635,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activePaneId: restoredPane,
       collapsedGroups: restoredCollapsed,
       isDirty: false
+    });
+  },
+
+  ensureImagesTab: () => {
+    set((state) => {
+      const updated = ensureImagesTab(state.workspace);
+      if (updated === state.workspace) return state;
+      return { workspace: updated, isDirty: true };
     });
   },
 
