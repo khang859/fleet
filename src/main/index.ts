@@ -21,6 +21,7 @@ import { SocketSupervisor } from './socket-supervisor';
 import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile } from './install-fleet-cli';
 import { ImageService } from './image-service';
+import { AnnotateService } from './annotate-service';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
@@ -49,6 +50,7 @@ const activityTracker = new ActivityTracker(eventBus, {
 });
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const imageService = new ImageService();
+const annotateService = new AnnotateService();
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
   if (windowRef && !windowRef.isDestroyed()) {
@@ -281,7 +283,7 @@ void app.whenReady().then(async () => {
   imageService.resumeInterrupted();
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService);
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -598,6 +600,7 @@ function shutdownAll(): void {
     })
   );
   imageService.shutdown();
+  annotateService.destroy();
 }
 
 app.on('window-all-closed', () => {
