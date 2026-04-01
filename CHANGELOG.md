@@ -1,5 +1,21 @@
 # Changelog
 
+## v2.24.0
+
+### Features
+
+- **Copilot**: Workspace-scoped sessions — sessions are tagged with the workspace they originated from
+- **Copilot**: Workspace filter toggle and labels in session list to view sessions per workspace or all workspaces
+- **Copilot**: Active workspace label in session detail header
+- **Copilot**: Per-workspace Claude config overrides and custom config directory support
+- **Copilot**: Config change UX with toast notifications, inline warnings, and terminal restart prompts
+- **Copilot**: Per-workspace hooks UI
+
+### Bug Fixes
+
+- **Copilot**: Survive SIGINT so Stop hook event reaches Fleet
+- **Copilot**: Re-apply hooks fix for per-workspace hooks
+
 ## v2.23.2
 
 ### Bug Fixes
