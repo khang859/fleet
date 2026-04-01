@@ -150,12 +150,16 @@ export function usePaneNavigation(): void {
       }
 
       // Cmd/Ctrl+1-9 to switch tabs (check metaKey on mac, ctrlKey on other)
+      // Only count normal tabs — special tabs (Images, Settings) are excluded
       const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
       const modHeld = isMac ? e.metaKey : e.ctrlKey;
       if (modHeld && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
-        const tab = workspace.tabs[index];
+        const normalTabs = workspace.tabs.filter(
+          (t) => t.type !== 'images' && t.type !== 'settings'
+        );
+        const tab = normalTabs[index];
         if (tab) setActiveTab(tab.id);
         return;
       }
