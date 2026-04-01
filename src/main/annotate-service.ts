@@ -7,11 +7,7 @@ import { existsSync } from 'fs';
 import { EventEmitter } from 'events';
 import { createLogger } from './logger';
 import { IPC_CHANNELS } from '../shared/constants';
-import type {
-  AnnotationResult,
-  AnnotateStartRequest,
-  ElementRect,
-} from '../shared/annotate-types';
+import type { AnnotationResult, AnnotateStartRequest, ElementRect } from '../shared/annotate-types';
 
 const log = createLogger('annotate');
 const SCREENSHOT_PADDING = 20;
@@ -26,7 +22,7 @@ export interface ElementScreenshot {
 export function cropRect(
   rect: ElementRect,
   padding: number,
-  viewport: { width: number; height: number },
+  viewport: { width: number; height: number }
 ): { x: number; y: number; width: number; height: number } {
   const x = Math.max(0, Math.floor(rect.x - padding));
   const y = Math.max(0, Math.floor(rect.y - padding));
@@ -37,7 +33,7 @@ export function cropRect(
 
 export async function writeResultFile(
   result: AnnotationResult,
-  screenshots: ElementScreenshot[],
+  screenshots: ElementScreenshot[]
 ): Promise<string> {
   const timestamp = Date.now();
   const basePath = join(tmpdir(), `fleet-annotate-${timestamp}`);
@@ -52,7 +48,7 @@ export async function writeResultFile(
         return { ...el, screenshotPath: pngPath };
       }
       return el;
-    }),
+    })
   };
 
   await Promise.all(
@@ -63,7 +59,7 @@ export async function writeResultFile(
       }
       const pngPath = `${basePath}-el${shot.index}.png`;
       await writeFile(pngPath, shot.pngBuffer, { mode: 0o600 });
-    }),
+    })
   );
 
   await writeFile(jsonPath, JSON.stringify(output, null, 2), { mode: 0o600 });
@@ -90,7 +86,7 @@ export class AnnotateService extends EventEmitter {
       await this.handleSubmit(result);
     });
 
-    ipcMain.handle(IPC_CHANNELS.ANNOTATE_CANCEL, async (_event, reason?: string) => {
+    ipcMain.handle(IPC_CHANNELS.ANNOTATE_CANCEL, (_event, reason?: string) => {
       this.handleCancel(reason ?? 'user');
     });
 
@@ -142,8 +138,8 @@ export class AnnotateService extends EventEmitter {
         session: annotateSession,
         contextIsolation: true,
         sandbox: false,
-        nodeIntegration: false,
-      },
+        nodeIntegration: false
+      }
     });
 
     this.window.on('closed', () => {
@@ -195,7 +191,7 @@ export class AnnotateService extends EventEmitter {
           if (!el.captureScreenshot) continue;
 
           await this.window.webContents.executeJavaScript(
-            `document.querySelector(${JSON.stringify(el.selector)})?.scrollIntoView({ block: 'center' })`,
+            `document.querySelector(${JSON.stringify(el.selector)})?.scrollIntoView({ block: 'center' })`
           );
           await new Promise((r) => setTimeout(r, 100));
 
@@ -216,7 +212,7 @@ export class AnnotateService extends EventEmitter {
       log.error('failed to write result', { error: String(err) });
       const errorResult: AnnotationResult = {
         success: false,
-        reason: `Failed to write results: ${String(err)}`,
+        reason: `Failed to write results: ${String(err)}`
       };
       try {
         const errorPath = await writeResultFile(errorResult, []);

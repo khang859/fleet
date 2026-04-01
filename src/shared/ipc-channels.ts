@@ -80,5 +80,5 @@ export const IPC_CHANNELS = {
   ANNOTATE_START: 'annotate:start',
   ANNOTATE_SUBMIT: 'annotate:submit',
   ANNOTATE_CANCEL: 'annotate:cancel',
-  ANNOTATE_SCREENSHOT: 'annotate:screenshot',
+  ANNOTATE_SCREENSHOT: 'annotate:screenshot'
 } as const;
