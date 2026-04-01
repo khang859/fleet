@@ -3,6 +3,7 @@ import { mkdirSync, unlinkSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { ImageService } from './image-service';
+import type { AnnotateService } from './annotate-service';
 import type { ImageProviderSettings } from '../shared/types';
 import { CodedError } from './errors';
 
@@ -50,7 +51,8 @@ export class SocketServer extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private imageService?: ImageService
+    private imageService?: ImageService,
+    private annotateService?: AnnotateService,
   ) {
     super();
   }
@@ -168,7 +170,7 @@ export class SocketServer extends EventEmitter {
     }
   }
 
-  private dispatch(command: string, args: Record<string, unknown>): unknown {
+  private async dispatch(command: string, args: Record<string, unknown>): Promise<unknown> {
     switch (command) {
       case 'ping':
         return { pong: true, uptime: this.startTime ? (Date.now() - this.startTime) / 1000 : 0 };
@@ -346,6 +348,19 @@ export class SocketServer extends EventEmitter {
         return this.imageService.listActions(
           typeof args.provider === 'string' ? args.provider : undefined
         );
+      }
+
+      // ── Annotate ──────────────────────────────────────────────────────────────
+      case 'annotate.start': {
+        if (!this.annotateService) throw new CodedError('Annotate service not available', 'UNAVAILABLE');
+        const url = typeof args.url === 'string' ? args.url : undefined;
+        const timeout = typeof args.timeout === 'number'
+          ? args.timeout
+          : typeof args.timeout === 'string'
+            ? Number(args.timeout)
+            : undefined;
+        const resultPath = await this.annotateService.start({ url, timeout });
+        return { resultPath };
       }
 
       default: {
