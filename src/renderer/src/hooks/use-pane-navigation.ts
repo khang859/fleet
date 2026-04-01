@@ -8,6 +8,11 @@ function sc(id: string): ShortcutDef {
   return ALL_SHORTCUTS.find((s) => s.id === id)!;
 }
 
+/** Filter out special tabs (Images, Settings) — used for Cmd+1-9 tab switching */
+export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
+  return tabs.filter((t) => t.type !== 'images' && t.type !== 'settings');
+}
+
 export function usePaneNavigation(): void {
   const { workspace, activeTabId, activePaneId, addTab, closePane, splitPane, setActiveTab } =
     useWorkspaceStore();
@@ -156,9 +161,7 @@ export function usePaneNavigation(): void {
       if (modHeld && !e.shiftKey && !e.altKey && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const index = parseInt(e.key) - 1;
-        const normalTabs = workspace.tabs.filter(
-          (t) => t.type !== 'images' && t.type !== 'settings'
-        );
+        const normalTabs = getNormalTabs(workspace.tabs);
         const tab = normalTabs[index];
         if (tab) setActiveTab(tab.id);
         return;
