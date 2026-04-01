@@ -79,15 +79,10 @@ export function registerIpcHandlers(
       : undefined;
     const claudeConfigDir =
       wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
-    const claudeBinaryPath =
-      wsOverride?.claudeBinaryPath || settings.copilot.claudeBinaryPath || '';
 
     const extraEnv: Record<string, string> = {};
     if (claudeConfigDir) {
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
-    }
-    if (claudeBinaryPath) {
-      extraEnv.FLEET_CLAUDE_BINARY = claudeBinaryPath;
     }
 
     const alreadyExisted = ptyManager.has(req.paneId);

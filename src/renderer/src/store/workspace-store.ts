@@ -855,12 +855,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   }
 }));
 
-// Notify copilot of workspace changes
+// Notify copilot of workspace changes + persist last active workspace for restart
 let lastNotifiedWorkspaceId: string | null = null;
 useWorkspaceStore.subscribe((state) => {
   const wsId = state.workspace.id;
   if (wsId !== lastNotifiedWorkspaceId) {
     lastNotifiedWorkspaceId = wsId;
     window.fleet.copilot?.notifyActiveWorkspace(wsId, state.workspace.label);
+    try { localStorage.setItem('fleet:last-workspace-id', wsId); } catch { /* ignore */ }
   }
 });

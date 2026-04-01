@@ -10,7 +10,7 @@ import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/wor
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
-import { clearCreatedPty, serializePane } from './hooks/use-terminal';
+import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { injectLiveCwd } from './lib/workspace-utils';
@@ -24,6 +24,7 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
+import { ToastContainer } from './components/ToastContainer';
 
 function MiniSidebarTooltip({
   label,
@@ -248,19 +249,26 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
-  // Restore default workspace on startup, or create a fresh tab
+  // Restore last active workspace on startup (or default), create a fresh tab if empty
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     void window.fleet.layout.list().then(({ workspaces }) => {
-      const defaultWs = workspaces.find((w) => w.id === 'default');
-      const others = workspaces.filter((w) => w.id !== 'default');
+      const lastWsId = localStorage.getItem('fleet:last-workspace-id');
+      const targetWs =
+        (lastWsId ? workspaces.find((w) => w.id === lastWsId) : null) ??
+        workspaces.find((w) => w.id === 'default');
+      const others = workspaces.filter((w) => w.id !== targetWs?.id);
 
-      if (defaultWs && defaultWs.tabs.length > 0) {
-        useWorkspaceStore.getState().loadWorkspace(defaultWs);
+      if (targetWs) {
+        useWorkspaceStore.getState().loadWorkspace(targetWs);
+        // If the restored workspace has no tabs, create a fresh one
+        if (targetWs.tabs.length === 0) {
+          addTab(undefined, window.fleet.homeDir);
+          useWorkspaceStore.getState().ensureImagesTab();
+        }
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
-        // Ensure the pinned Images tab exists for fresh installs
         useWorkspaceStore.getState().ensureImagesTab();
       }
 
@@ -417,6 +425,14 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const cleanup = window.fleet.pty.onExit(({ paneId }) => {
       clearCreatedPty(paneId);
+
+      // Skip tab close for panes being restarted (config change restart).
+      // Consume the entry so the guard doesn't leak.
+      if (restartingPanes.has(paneId)) {
+        restartingPanes.delete(paneId);
+        return;
+      }
+
       const state = useWorkspaceStore.getState();
 
       // Search active workspace first, then background workspaces
@@ -776,6 +792,7 @@ export function App(): React.JSX.Element {
         isOpen={clipboardHistoryOpen}
         onClose={() => setClipboardHistoryOpen(false)}
       />
+      <ToastContainer />
     </div>
   );
 }

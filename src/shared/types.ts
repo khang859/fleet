@@ -165,7 +165,6 @@ export type CopilotSession = {
 };
 
 export type CopilotWorkspaceOverride = {
-  claudeBinaryPath?: string;
   claudeConfigDir?: string;
 };
 
@@ -175,7 +174,6 @@ export type CopilotSettings = {
   spriteSheet: string;
   notificationSound: string;
   autoStart: boolean;
-  claudeBinaryPath: string;
   claudeConfigDir: string;
   workspaceOverrides: Record<string, CopilotWorkspaceOverride>;
   showAllWorkspaces: boolean;

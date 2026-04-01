@@ -1,5 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
+import { useToastStore } from '../../store/toast-store';
+import { useWorkspaceStore, collectPaneLeafs } from '../../store/workspace-store';
+import { useCwdStore } from '../../store/cwd-store';
+import { restartPane } from '../../hooks/use-terminal';
 import { SettingRow } from './SettingRow';
 import type { Workspace } from '../../../../shared/types';
 
@@ -10,6 +14,7 @@ const SYSTEM_SOUNDS = [
 
 export function CopilotSection(): React.JSX.Element | null {
   const { settings, updateSettings } = useSettingsStore();
+  const showToast = useToastStore((s) => s.show);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [expandedWs, setExpandedWs] = useState<string | null>(null);
   const [hookInstalled, setHookInstalled] = useState(false);
@@ -29,15 +34,37 @@ export function CopilotSection(): React.JSX.Element | null {
 
   const copilot = settings.copilot;
 
-  const updateCopilot = (patch: Partial<typeof copilot>): void => {
-    void updateSettings({ copilot: { ...copilot, ...patch } });
-  };
+  const restartAllTerminals = useCallback((): void => {
+    const wsState = useWorkspaceStore.getState();
+    const cwds = useCwdStore.getState().cwds;
+    const wsId = wsState.workspace.id;
+    const terminalLeafs = wsState.workspace.tabs
+      .filter((t) => !t.type || t.type === 'terminal')
+      .flatMap((t) => collectPaneLeafs(t.splitRoot))
+      .filter((leaf) => !leaf.paneType || leaf.paneType === 'terminal');
 
-  const handleBrowseBinary = async (): Promise<void> => {
-    const paths = await window.fleet.file.openDialog({});
-    if (paths.length > 0) {
-      updateCopilot({ claudeBinaryPath: paths[0] });
+    for (const leaf of terminalLeafs) {
+      const cwd = cwds.get(leaf.id) ?? leaf.cwd;
+      void restartPane(leaf.id, cwd, wsId);
     }
+  }, []);
+
+  const configToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configToast = useCallback((): void => {
+    if (configToastTimer.current) clearTimeout(configToastTimer.current);
+    configToastTimer.current = setTimeout(() => {
+      showToast('Config updated — open new terminals to apply', {
+        duration: 6000,
+        action: { label: 'Restart Terminals', onClick: restartAllTerminals },
+      });
+    }, 800);
+  }, [showToast, restartAllTerminals]);
+
+  const updateCopilot = (patch: Partial<typeof copilot>): void => {
+    if ('claudeConfigDir' in patch) {
+      configToast();
+    }
+    void updateSettings({ copilot: { ...copilot, ...patch } });
   };
 
   const handleBrowseConfigDir = async (): Promise<void> => {
@@ -57,24 +84,18 @@ export function CopilotSection(): React.JSX.Element | null {
     setHookInstalled(false);
   };
 
-  const updateWorkspaceOverride = (wsId: string, patch: { claudeBinaryPath?: string; claudeConfigDir?: string }): void => {
+  const updateWorkspaceOverride = (wsId: string, patch: { claudeConfigDir?: string }): void => {
     const current = copilot.workspaceOverrides[wsId] ?? {};
     const updated = { ...current, ...patch };
-    const isEmpty = !updated.claudeBinaryPath && !updated.claudeConfigDir;
+    const isEmpty = !updated.claudeConfigDir;
     const newOverrides = { ...copilot.workspaceOverrides };
     if (isEmpty) {
       delete newOverrides[wsId];
     } else {
       newOverrides[wsId] = updated;
     }
-    updateCopilot({ workspaceOverrides: newOverrides });
-  };
-
-  const handleBrowseWsBinary = async (wsId: string): Promise<void> => {
-    const paths = await window.fleet.file.openDialog({});
-    if (paths.length > 0) {
-      updateWorkspaceOverride(wsId, { claudeBinaryPath: paths[0] });
-    }
+    configToast();
+    void updateSettings({ copilot: { ...copilot, workspaceOverrides: newOverrides } });
   };
 
   const handleBrowseWsConfigDir = async (wsId: string): Promise<void> => {
@@ -119,7 +140,7 @@ export function CopilotSection(): React.JSX.Element | null {
 
   const hasOverride = (wsId: string): boolean => {
     const ov = copilot.workspaceOverrides[wsId];
-    return !!ov && !!(ov.claudeBinaryPath || ov.claudeConfigDir);
+    return !!ov && !!ov.claudeConfigDir;
   };
 
   return (
@@ -159,29 +180,6 @@ export function CopilotSection(): React.JSX.Element | null {
         </p>
       </div>
 
-      {/* Claude Code Binary Path */}
-      <div>
-        <label className="text-sm text-neutral-300 block mb-1">Claude Code Binary</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={copilot.claudeBinaryPath}
-            onChange={(e) => updateCopilot({ claudeBinaryPath: e.target.value })}
-            placeholder="/usr/local/bin/claude"
-            className="flex-1 bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
-          />
-          <button
-            onClick={() => void handleBrowseBinary()}
-            className="px-2 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
-          >
-            Browse
-          </button>
-        </div>
-        <p className="text-xs text-neutral-500 mt-1">
-          Path to the Claude Code binary. Leave empty to use the system PATH.
-        </p>
-      </div>
-
       {/* Config Directory */}
       <div>
         <label className="text-sm text-neutral-300 block mb-1">Config Directory</label>
@@ -203,6 +201,11 @@ export function CopilotSection(): React.JSX.Element | null {
         <p className="text-xs text-neutral-500 mt-1">
           Claude Code config directory. Leave empty to use the default (~/.claude).
         </p>
+        {copilot.claudeConfigDir && (
+          <p className="text-xs text-amber-500/70 mt-1">
+            Changes apply to new terminals only. Existing terminals keep the previous config.
+          </p>
+        )}
       </div>
 
       {/* Claude Code Hooks */}
@@ -281,24 +284,6 @@ export function CopilotSection(): React.JSX.Element | null {
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3 border-t border-neutral-700/50">
                       <div className="pt-2">
-                        <label className="text-xs text-neutral-400 block mb-1">Claude Code Binary</label>
-                        <div className="flex gap-2">
-                          <input
-                            type="text"
-                            value={override.claudeBinaryPath ?? ''}
-                            onChange={(e) => updateWorkspaceOverride(ws.id, { claudeBinaryPath: e.target.value })}
-                            placeholder="Use global default"
-                            className="flex-1 bg-neutral-800 text-xs text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
-                          />
-                          <button
-                            onClick={() => void handleBrowseWsBinary(ws.id)}
-                            className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
-                          >
-                            Browse
-                          </button>
-                        </div>
-                      </div>
-                      <div>
                         <label className="text-xs text-neutral-400 block mb-1">Config Directory</label>
                         <div className="flex gap-2">
                           <input
@@ -318,6 +303,9 @@ export function CopilotSection(): React.JSX.Element | null {
                             Browse
                           </button>
                         </div>
+                        {override.claudeConfigDir && (
+                          <p className="text-xs text-amber-500/70 mt-1">New terminals only.</p>
+                        )}
                       </div>
                       {(() => {
                         const wsConfigDir = override.claudeConfigDir;

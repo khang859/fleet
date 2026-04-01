@@ -73,7 +73,6 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     spriteSheet: 'officer',
     notificationSound: 'Pop',
     autoStart: false,
-    claudeBinaryPath: '',
     claudeConfigDir: '',
     workspaceOverrides: {},
     showAllWorkspaces: false,

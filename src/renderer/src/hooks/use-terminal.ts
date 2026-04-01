@@ -33,6 +33,12 @@ const createdPtys = new Set<string>();
 // Registry for serializing terminal content before close
 const serializeRegistry = new Map<string, SerializeAddon>();
 
+// Registry of live xterm Terminal instances (for clearing buffers on restart)
+const terminalRegistry = new Map<string, Terminal>();
+
+/** Panes currently being restarted — onExit handler should skip tab close for these. */
+export const restartingPanes = new Set<string>();
+
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
 }
@@ -40,6 +46,31 @@ export function clearCreatedPty(paneId: string): void {
 /** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
 export function markPtyCreated(paneId: string): void {
   createdPtys.add(paneId);
+}
+
+/**
+ * Restart a terminal pane: kill its PTY, clear the xterm buffer, and spawn a
+ * new PTY at the given cwd with fresh env (picks up updated config).
+ */
+export async function restartPane(paneId: string, cwd: string, workspaceId?: string): Promise<void> {
+  restartingPanes.add(paneId);
+  window.fleet.pty.kill(paneId);
+  createdPtys.delete(paneId);
+
+  // Clear xterm buffer so the user sees a fresh terminal
+  const term = terminalRegistry.get(paneId);
+  if (term) {
+    term.clear();
+    term.reset();
+  }
+
+  // Small delay to let the kill propagate before recreating
+  await new Promise((r) => setTimeout(r, 100));
+
+  createdPtys.add(paneId);
+  await window.fleet.pty.create({ paneId, cwd, workspaceId });
+  // Don't delete from restartingPanes here — the onExit handler consumes it
+  // when the kill's async IPC event arrives (may be after this point).
 }
 
 export function serializePane(paneId: string, scrollback?: number): string | undefined {
@@ -545,12 +576,14 @@ export function useTerminal(
     searchAddonRef.current = searchAddon;
     serializeAddonRef.current = serializeAddon;
     serializeRegistry.set(options.paneId, serializeAddon);
+    terminalRegistry.set(options.paneId, term);
 
     return () => {
       log.debug('terminal dispose', { paneId: options.paneId });
       termRef.current = null;
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
+      terminalRegistry.delete(options.paneId);
       cleanupResizeTimer();
       cursorSuppressor.dispose();
       ipcCleanup();
