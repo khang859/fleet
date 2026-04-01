@@ -331,7 +331,9 @@ const COMMAND_MAP: Record<string, string> = {
   'images.retry': 'image.retry',
   'images.config': 'image.config.get',
   'images.action': 'image.action',
-  'images.actions': 'image.actions.list'
+  'images.actions': 'image.actions.list',
+  // Annotate
+  'annotate.start': 'annotate.start'
 };
 
 function mapCommand(group: string, action: string): string {
@@ -402,6 +404,7 @@ Manage images and open files from the terminal.
 |---------|--------|
 | images | Generate, edit, and transform AI images. |
 | open | Open files or images in Fleet tabs. |
+| annotate | Visually annotate web page elements for AI agents. |
 
 ## Examples
 
@@ -437,6 +440,34 @@ Supports code files and common image formats (png, jpg, gif, webp, svg).
 fleet open src/main.ts
 fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
+\`\`\``,
+
+  annotate: `# fleet annotate
+
+Open visual annotation mode to select and annotate web page elements.
+
+## When to use
+
+Use \`fleet annotate\` when you want to visually point out UI elements for an AI agent
+to fix. Opens a browser window where you can click elements, add comments, and capture
+screenshots. Results are written to a JSON file that agents can read.
+
+## Usage
+
+  fleet annotate [url]
+  fleet annotate [url] --timeout <seconds>
+
+## Arguments
+
+  [url]       URL to annotate. If omitted, opens a blank page.
+  --timeout   Max seconds to wait for annotation (default: 300).
+
+## Examples
+
+\`\`\`bash
+fleet annotate https://localhost:3000
+fleet annotate https://example.com --timeout 600
+fleet annotate
 \`\`\``,
 
   images: `
@@ -559,6 +590,39 @@ export async function runCLI(
           ? errors.join('\n') + '\n' + `Opened ${files.length} file(s) in Fleet`
           : `Opened ${files.length} file(s) in Fleet`;
       return output;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+        return 'Fleet is not running';
+      }
+      return `Error: ${msg}`;
+    }
+  }
+
+  // ── Top-level "annotate" command ──────────────────────────────────────────
+  if (group === 'annotate') {
+    const url = action && !action.startsWith('--') ? action : undefined;
+    const allArgs = url ? rest : [action, ...rest].filter(Boolean);
+    const parsedArgs = parseArgs(allArgs);
+    const timeout = typeof parsedArgs.timeout === 'string' ? Number(parsedArgs.timeout) : undefined;
+
+    const command = 'annotate.start';
+    const args: Record<string, unknown> = {};
+    if (url) args.url = url;
+    if (timeout) args.timeout = timeout;
+
+    const cli = new FleetCLI(sockPath);
+    try {
+      const response = opts?.retry
+        ? await cli.sendWithRetry(command, args)
+        : await cli.send(command, args);
+      if (!response.ok) {
+        return `Error: ${response.error ?? 'Unknown error'}`;
+      }
+      if (isRecord(response.data) && typeof response.data.resultPath === 'string') {
+        return response.data.resultPath;
+      }
+      return toStr(response.data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
