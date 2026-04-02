@@ -193,17 +193,43 @@ export class AnnotateService extends EventEmitter {
           const el = result.elements[i];
           if (!el.captureScreenshot) continue;
 
-          await this.window.webContents.executeJavaScript(
-            `document.querySelector(${JSON.stringify(el.selector)})?.scrollIntoView({ block: 'center' })`
-          );
-          await new Promise((r) => setTimeout(r, 100));
+          // Scroll element into view, wait for repaint, then get fresh viewport-relative rect
+          const freshInfo = await this.window.webContents.executeJavaScript(`
+            (() => {
+              const el = document.querySelector(${JSON.stringify(el.selector)});
+              if (!el) return Promise.resolve(null);
+              el.scrollIntoView({ block: 'center' });
+              return new Promise(resolve => {
+                requestAnimationFrame(() => {
+                  const r = el.getBoundingClientRect();
+                  resolve({ x: r.x, y: r.y, width: r.width, height: r.height, dpr: window.devicePixelRatio || 1 });
+                });
+              });
+            })()
+          `) as (ElementRect & { dpr: number }) | null;
+          await new Promise((r) => setTimeout(r, 150));
+
+          if (!freshInfo) continue;
 
           const fullPng = await this.captureScreenshot();
           if (!fullPng) continue;
 
-          const crop = cropRect(el.rect, SCREENSHOT_PADDING, viewport);
+          // cropRect works in CSS pixels; scale by devicePixelRatio for the actual image
+          const cssCrop = cropRect(freshInfo, SCREENSHOT_PADDING, viewport);
+          const dpr = freshInfo.dpr;
+          const scaledCrop = {
+            x: Math.round(cssCrop.x * dpr),
+            y: Math.round(cssCrop.y * dpr),
+            width: Math.round(cssCrop.width * dpr),
+            height: Math.round(cssCrop.height * dpr)
+          };
           const fullImage = nativeImage.createFromBuffer(fullPng);
-          const cropped = fullImage.crop(crop);
+          const imgSize = fullImage.getSize();
+          // Clamp to actual image bounds
+          scaledCrop.width = Math.min(scaledCrop.width, imgSize.width - scaledCrop.x);
+          scaledCrop.height = Math.min(scaledCrop.height, imgSize.height - scaledCrop.y);
+          if (scaledCrop.width <= 0 || scaledCrop.height <= 0) continue;
+          const cropped = fullImage.crop(scaledCrop);
           screenshots.push({ index: i + 1, pngBuffer: cropped.toPNG() });
         }
       }
