@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.25.2
+
+- **Annotate**: Fix copy path to copy full absolute path so AI agents can find annotation files
+- **Annotate**: Fix toolbar annotate button not working when Annotate sidebar tab isn't active
+
 ## v2.25.1
 
 - **Annotate**: Make Annotate tab a special non-closable sidebar card with teal accent (matching Images tab treatment)
