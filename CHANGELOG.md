@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.25.1
+
+- **Annotate**: Make Annotate tab a special non-closable sidebar card with teal accent (matching Images tab treatment)
+- **Docs**: Add `fleet annotate` to injected skill documentation
+
 ## v2.25.0
 
 ### Features
