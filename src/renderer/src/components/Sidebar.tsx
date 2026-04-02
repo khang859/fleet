@@ -295,6 +295,66 @@ function ImagesTabCard({
   );
 }
 
+function AnnotateTabCard({
+  isActive,
+  onClick
+}: {
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      onClick={onClick}
+      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
+      style={{
+        background: isActive ? '#0a1a1a' : 'rgba(10,26,26,0.4)',
+        border: isActive ? '1px solid rgba(45,212,191,0.35)' : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: isActive
+          ? '0 0 10px rgba(45,212,191,0.15), inset 0 0 20px rgba(45,212,191,0.03)'
+          : 'none'
+      }}
+    >
+      {/* Subtle noise overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
+          backgroundSize: '100% 2px'
+        }}
+      />
+
+      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
+        {/* Icon */}
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center">
+          <svg
+            className="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={isActive ? 'rgb(94,234,212)' : 'rgba(94,234,212,0.4)'}
+            strokeWidth="1.5"
+          >
+            <path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+          </svg>
+        </div>
+
+        {/* Label */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-mono uppercase tracking-widest leading-none"
+            style={{
+              fontSize: '9px',
+              color: isActive ? 'rgb(94,234,212)' : 'rgba(94,234,212,0.5)'
+            }}
+          >
+            Annotate
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function OffScreenBadgeSummary({
   direction,
   count,
@@ -1006,14 +1066,22 @@ export function Sidebar({
                 onClick={() => setActiveTab(tab.id)}
               />
             ))}
-          {workspace.tabs.filter((t) => t.type === 'images').length > 0 && (
+          {/* Annotate tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'annotate')
+            .map((tab) => (
+              <AnnotateTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+          {workspace.tabs.some((t) => t.type === 'images' || t.type === 'annotate') && (
             <div className="h-px bg-neutral-800 mx-1 my-1" />
           )}
           {(() => {
             const regularTabs = workspace.tabs.filter(
-              (t) =>
-                t.type !== 'images' &&
-                t.type !== 'settings'
+              (t) => t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate'
             );
 
             const rendered: React.ReactNode[] = [];
