@@ -21,6 +21,7 @@ export default defineConfig({
         input: {
           index: 'src/preload/index.ts',
           copilot: 'src/preload/copilot.ts',
+          annotate: 'src/preload/annotate.ts',
         },
         output: { format: 'cjs' }
       }

@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen, Crosshair } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
@@ -37,6 +37,7 @@ type PaneToolbarProps = {
   onFileSearch?: () => void;
   onClipboardHistory?: () => void;
   onInjectSkills?: () => void;
+  onAnnotate?: () => void;
 };
 
 export function PaneToolbar({
@@ -49,7 +50,8 @@ export function PaneToolbar({
   onGitChanges,
   onFileSearch,
   onClipboardHistory,
-  onInjectSkills
+  onInjectSkills,
+  onAnnotate
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -128,6 +130,19 @@ export function PaneToolbar({
               className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
             >
               <BookOpen size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onAnnotate && (
+          <ToolbarTooltip label="Annotate webpage">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onAnnotate();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Crosshair size={14} />
             </button>
           </ToolbarTooltip>
         )}

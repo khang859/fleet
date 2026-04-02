@@ -38,6 +38,8 @@ import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
+import type { AnnotationStore } from './annotation-store';
+import type { AnnotateService } from './annotate-service';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
@@ -57,7 +59,9 @@ export function registerIpcHandlers(
   getWindow: () => BrowserWindow | null,
   workspacePath: string,
   activityTracker: ActivityTracker,
-  worktreeService: WorktreeService
+  worktreeService: WorktreeService,
+  annotationStore: AnnotationStore,
+  annotateService: AnnotateService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -437,6 +441,30 @@ export function registerIpcHandlers(
     IPC_CHANNELS.WORKTREE_REMOVE,
     async (_event, req: WorktreeRemoveRequest) => {
       return worktreeService.remove(req.worktreePath);
+    }
+  );
+
+  // ── Annotate ────────────────────────────────────────────────────────────
+  ipcMain.handle(IPC_CHANNELS.ANNOTATE_LIST, () => {
+    return annotationStore.list();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ANNOTATE_GET, (_event, id: string) => {
+    return annotationStore.get(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ANNOTATE_DELETE, (_event, id: string) => {
+    annotationStore.delete(id);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.ANNOTATE_UI_START,
+    async (_event, args: { url?: string; timeout?: number }) => {
+      const resultPath = await annotateService.start({
+        url: args.url,
+        timeout: args.timeout
+      });
+      return { resultPath };
     }
   );
 }

@@ -76,4 +76,16 @@ export const IPC_CHANNELS = {
   COPILOT_SERVICE_STATUS: 'copilot:service-status',
   COPILOT_ACTIVE_WORKSPACE: 'copilot:active-workspace',
   COPILOT_GET_ACTIVE_WORKSPACE: 'copilot:get-active-workspace',
+  // Annotate
+  ANNOTATE_START: 'annotate:start',
+  ANNOTATE_SUBMIT: 'annotate:submit',
+  ANNOTATE_CANCEL: 'annotate:cancel',
+  ANNOTATE_SCREENSHOT: 'annotate:screenshot',
+  ANNOTATE_SNAPSHOT_ELEMENT: 'annotate:snapshot-element',
+  // Annotate UI
+  ANNOTATE_UI_START: 'annotate:ui:start',
+  ANNOTATE_COMPLETED: 'annotate:completed',
+  ANNOTATE_LIST: 'annotate:list',
+  ANNOTATE_GET: 'annotate:get',
+  ANNOTATE_DELETE: 'annotate:delete'
 } as const;

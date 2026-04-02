@@ -1,6 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { SocketServer } from './socket-server';
 import type { ImageService } from './image-service';
+import type { AnnotateService } from './annotate-service';
 import { createLogger } from './logger';
 
 const log = createLogger('socket-supervisor');
@@ -19,7 +20,8 @@ export class SocketSupervisor extends EventEmitter {
 
   constructor(
     private socketPath: string,
-    private imageService?: ImageService
+    private imageService?: ImageService,
+    private annotateService?: AnnotateService,
   ) {
     super();
   }
@@ -85,7 +87,7 @@ export class SocketSupervisor extends EventEmitter {
   }
 
   private createServer(): SocketServer {
-    const server = new SocketServer(this.socketPath, this.imageService);
+    const server = new SocketServer(this.socketPath, this.imageService, this.annotateService);
 
     server.on('state-change', (...args: unknown[]) => {
       this.emit('state-change', ...args);

@@ -1,4 +1,4 @@
-export type SettingsSection = 'general' | 'notifications' | 'socket' | 'visualizer' | 'updates' | 'copilot';
+export type SettingsSection = 'general' | 'notifications' | 'socket' | 'visualizer' | 'updates' | 'copilot' | 'annotate';
 
 const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boolean }> = [
   { id: 'general', label: 'General' },
@@ -6,7 +6,8 @@ const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boo
   { id: 'socket', label: 'Socket API' },
   { id: 'visualizer', label: 'Visualizer' },
   { id: 'updates', label: 'Updates' },
-  { id: 'copilot', label: 'Copilot', darwinOnly: true }
+  { id: 'copilot', label: 'Copilot', darwinOnly: true },
+  { id: 'annotate', label: 'Annotate' }
 ];
 
 const SECTIONS = ALL_SECTIONS.filter(

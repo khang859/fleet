@@ -3,6 +3,7 @@ import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
+import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { joinPath } from '../lib/shell-utils';
@@ -128,6 +129,7 @@ export function TerminalPane({
           });
           focus();
         }}
+        onAnnotate={() => openAnnotateModal()}
       />
       <SearchBar
         isOpen={searchOpen}
