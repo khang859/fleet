@@ -23,6 +23,26 @@ fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
 ```
 
+## fleet annotate
+
+Visually annotate web page elements for AI agents to act on. Opens a browser window where you can click elements, add comments, and capture screenshots. Results are written to a JSON file.
+
+```bash
+fleet annotate [url]
+fleet annotate [url] --timeout <seconds>
+```
+
+- `[url]` — URL to annotate. If omitted, opens a blank page.
+- `--timeout <seconds>` — Max seconds to wait for annotation (default: 300).
+
+### Examples
+
+```bash
+fleet annotate https://localhost:3000
+fleet annotate https://example.com --timeout 600
+fleet annotate
+```
+
 ## fleet images
 
 Generate, edit, and manage AI images.
