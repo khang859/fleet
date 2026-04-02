@@ -7,6 +7,7 @@ import { SocketSection } from './SocketSection';
 import { VisualizerSection } from './VisualizerSection';
 import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
+import { AnnotateSection } from './AnnotateSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
@@ -14,7 +15,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   socket: SocketSection,
   visualizer: VisualizerSection,
   updates: UpdatesSection,
-  copilot: CopilotSection
+  copilot: CopilotSection,
+  annotate: AnnotateSection
 };
 
 export function SettingsTab(): React.JSX.Element {

@@ -10,7 +10,7 @@ function sc(id: string): ShortcutDef {
 
 /** Filter out special tabs (Images, Settings) — used for Cmd+1-9 tab switching */
 export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
-  return tabs.filter((t) => t.type !== 'images' && t.type !== 'settings');
+  return tabs.filter((t) => t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate');
 }
 
 export function usePaneNavigation(): void {

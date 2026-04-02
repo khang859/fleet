@@ -22,6 +22,7 @@ import { CwdPoller } from './cwd-poller';
 import { installFleetCLI, installSkillFile } from './install-fleet-cli';
 import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
+import { AnnotationStore } from './annotation-store';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
@@ -50,7 +51,9 @@ const activityTracker = new ActivityTracker(eventBus, {
 });
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const imageService = new ImageService();
-const annotateService = new AnnotateService();
+const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
+const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
+const annotateService = new AnnotateService(annotationStore);
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
   if (windowRef && !windowRef.isDestroyed()) {
@@ -277,10 +280,23 @@ void app.whenReady().then(async () => {
     () => mainWindow,
     workspacePath,
     activityTracker,
-    new WorktreeService()
+    new WorktreeService(),
+    annotationStore,
+    annotateService
   );
 
   imageService.resumeInterrupted();
+
+  // Clean up old annotations based on retention settings
+  const retentionDays = settingsStore.get().annotate?.retentionDays ?? 3;
+  annotationStore.cleanup(retentionDays);
+
+  // Forward annotation changes to renderer
+  annotationStore.on('changed', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.ANNOTATE_COMPLETED);
+    }
+  });
 
   // Start socket server for fleet CLI (images + open commands)
   socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);

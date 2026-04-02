@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Terminal, ImageIcon, Settings } from 'lucide-react';
+import { Terminal, ImageIcon, Settings, Crosshair } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
@@ -24,6 +24,7 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
+import { AnnotateTab } from './components/AnnotateTab';
 import { ToastContainer } from './components/ToastContainer';
 
 function MiniSidebarTooltip({
@@ -551,12 +552,39 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'images') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* File/terminal/image tab icons (excluding images, settings) */}
+            {/* Annotate pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'annotate')
+              .map((tab) => {
+                const isAnnotateActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Annotate" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isAnnotateActive
+                          ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
+                          : 'hover:bg-neutral-800'
+                      }`}
+                    >
+                      <Crosshair
+                        size={16}
+                        className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {workspace.tabs.some((t) => t.type === 'annotate') && (
+              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            )}
+            {/* File/terminal/image tab icons (excluding images, settings, annotate) */}
             {workspace.tabs
               .filter(
                 (t) =>
                   t.type !== 'images' &&
-                  t.type !== 'settings'
+                  t.type !== 'settings' &&
+                  t.type !== 'annotate'
               )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
@@ -682,6 +710,8 @@ export function App(): React.JSX.Element {
                     >
                       {tab.type === 'images' ? (
                         <ImageGallery />
+                      ) : tab.type === 'annotate' ? (
+                        <AnnotateTab />
                       ) : tab.type === 'settings' ? (
                         <SettingsTab />
                       ) : (

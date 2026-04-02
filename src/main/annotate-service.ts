@@ -8,6 +8,7 @@ import { EventEmitter } from 'events';
 import { createLogger } from './logger';
 import { IPC_CHANNELS } from '../shared/constants';
 import type { AnnotationResult, AnnotateStartRequest, ElementRect } from '../shared/annotate-types';
+import type { AnnotationStore, AnnotationScreenshot } from './annotation-store';
 
 const log = createLogger('annotate');
 const SCREENSHOT_PADDING = 20;
@@ -75,9 +76,11 @@ type PendingRequest = {
 export class AnnotateService extends EventEmitter {
   private window: BrowserWindow | null = null;
   private pending: PendingRequest | null = null;
+  private annotationStore: AnnotationStore | null = null;
 
-  constructor() {
+  constructor(annotationStore?: AnnotationStore) {
     super();
+    this.annotationStore = annotationStore ?? null;
     this.registerIpcHandlers();
   }
 
@@ -182,7 +185,7 @@ export class AnnotateService extends EventEmitter {
     this.pending = null;
 
     try {
-      const screenshots: ElementScreenshot[] = [];
+      const screenshots: AnnotationScreenshot[] = [];
       if (result.elements && this.window && !this.window.isDestroyed()) {
         const viewport = result.viewport ?? { width: 1440, height: 900 };
 
@@ -205,7 +208,14 @@ export class AnnotateService extends EventEmitter {
         }
       }
 
-      const resultPath = await writeResultFile(result, screenshots);
+      let resultPath: string;
+      if (this.annotationStore) {
+        const meta = this.annotationStore.add(result, screenshots);
+        resultPath = join(this.annotationStore['baseDir'], meta.dirPath, 'result.json');
+      } else {
+        resultPath = await writeResultFile(result, screenshots);
+      }
+
       log.info('annotation complete', { resultPath, elementCount: result.elements?.length ?? 0 });
       resolve(resultPath);
     } catch (err) {
@@ -215,7 +225,13 @@ export class AnnotateService extends EventEmitter {
         reason: `Failed to write results: ${String(err)}`
       };
       try {
-        const errorPath = await writeResultFile(errorResult, []);
+        const errorPath = this.annotationStore
+          ? join(
+              this.annotationStore['baseDir'],
+              this.annotationStore.add(errorResult, []).dirPath,
+              'result.json'
+            )
+          : await writeResultFile(errorResult, []);
         resolve(errorPath);
       } catch {
         resolve('');

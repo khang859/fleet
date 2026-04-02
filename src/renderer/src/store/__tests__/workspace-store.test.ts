@@ -137,14 +137,14 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures images tab for an empty workspace', () => {
+  it('ensures images and annotate tabs for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     const state = useWorkspaceStore.getState();
-    // Empty workspaces get a pinned images tab automatically
-    expect(state.workspace.tabs).toHaveLength(1);
+    // Empty workspaces get pinned images + annotate tabs automatically
+    expect(state.workspace.tabs).toHaveLength(2);
     expect(state.workspace.tabs[0].type).toBe('images');
-    expect(state.activeTabId).toBe(state.workspace.tabs[0].id);
+    expect(state.workspace.tabs[1].type).toBe('annotate');
   });
 });
 

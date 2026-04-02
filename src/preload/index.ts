@@ -32,7 +32,8 @@ import type {
   FleetSettings,
   UpdateStatus,
   ImageGenerationMeta,
-  ImageSettings
+  ImageSettings,
+  AnnotationMeta
 } from '../shared/types';
 
 type Unsubscribe = () => void;
@@ -283,6 +284,18 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
     notifyActiveWorkspace: (workspaceId: string, workspaceName: string): void =>
       ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName }),
+  },
+  annotate: {
+    list: async (): Promise<AnnotationMeta[]> =>
+      typedInvoke<AnnotationMeta[]>(IPC_CHANNELS.ANNOTATE_LIST),
+    get: async (id: string): Promise<unknown> =>
+      typedInvoke<unknown>(IPC_CHANNELS.ANNOTATE_GET, id),
+    delete: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ANNOTATE_DELETE, id),
+    start: async (args: { url?: string; timeout?: number }): Promise<{ resultPath: string }> =>
+      typedInvoke<{ resultPath: string }>(IPC_CHANNELS.ANNOTATE_UI_START, args),
+    onCompleted: (callback: () => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
   }
 };
 

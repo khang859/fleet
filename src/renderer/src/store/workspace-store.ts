@@ -69,6 +69,26 @@ function ensureImagesTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [imagesTab, ...workspace.tabs] };
 }
 
+/** Ensure workspace has a pinned Annotate tab; mutates and returns the workspace */
+function ensureAnnotateTab(workspace: Workspace): Workspace {
+  if (workspace.tabs.some((t) => t.type === 'annotate')) return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  const annotateTab: Tab = {
+    id: generateId(),
+    label: 'Annotate',
+    labelIsCustom: true,
+    cwd,
+    type: 'annotate',
+    splitRoot: createLeaf(cwd)
+  };
+  // Insert after images tab if present, otherwise prepend
+  const imagesIdx = workspace.tabs.findIndex((t) => t.type === 'images');
+  const insertIdx = imagesIdx >= 0 ? imagesIdx + 1 : 0;
+  const tabs = [...workspace.tabs];
+  tabs.splice(insertIdx, 0, annotateTab);
+  return { ...workspace, tabs };
+}
+
 /** Extract basename from a path for auto-labeling tabs */
 export function cwdBasename(cwd: string): string {
   const parts = cwd.replace(/\/+$/, '').split('/');
@@ -614,12 +634,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cwd: firstLeafCwd ?? t.cwd,
       };
     });
-    const migrated = ensureImagesTab({ ...workspace, tabs: migratedTabs });
+    const migrated = ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }));
 
     const restoredTab =
       (migrated.activeTabId
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-        : undefined) ?? migrated.tabs.find((t) => t.type !== 'images') ?? migrated.tabs[0];
+        : undefined) ?? migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ?? migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
     const restoredPane =
@@ -658,12 +678,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           cwd: firstLeafCwd ?? t.cwd,
         };
       });
-      const migrated = ensureImagesTab({ ...target, tabs: migratedTabs });
+      const migrated = ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }));
 
       const restoredTab =
         (migrated.activeTabId
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-          : undefined) ?? migrated.tabs.find((t) => t.type !== 'images') ?? migrated.tabs[0];
+          : undefined) ?? migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ?? migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
       const restoredPane =

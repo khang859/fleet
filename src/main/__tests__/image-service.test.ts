@@ -1,7 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { tmpdir } from 'node:os';
+
+// Redirect homedir to a temp directory so tests don't pollute ~/.fleet/images/
+// vi.hoisted runs before imports are hoisted, so we inline path/os calls
+const TEST_HOME = vi.hoisted(() => {
+  const path = require('node:path') as typeof import('node:path');
+  const os = require('node:os') as typeof import('node:os');
+  return path.join(os.tmpdir(), `fleet-image-test-${Date.now()}`);
+});
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: () => TEST_HOME };
+});
 
 // Mock the fal.ai client so tests never make real API calls
 vi.mock('@fal-ai/client', () => ({
@@ -18,8 +30,7 @@ vi.mock('@fal-ai/client', () => ({
 
 import { ImageService } from '../image-service';
 
-// Store original homedir and temporarily replace it
-const FLEET_IMAGES_DIR = join(homedir(), '.fleet', 'images');
+const FLEET_IMAGES_DIR = join(TEST_HOME, '.fleet', 'images');
 const GENERATIONS_DIR = join(FLEET_IMAGES_DIR, 'generations');
 
 let imageService: ImageService;
@@ -31,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   imageService.shutdown();
+  rmSync(TEST_HOME, { recursive: true, force: true });
 });
 
 describe('ImageService', () => {
