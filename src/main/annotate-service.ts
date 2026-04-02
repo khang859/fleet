@@ -77,6 +77,8 @@ export class AnnotateService extends EventEmitter {
   private window: BrowserWindow | null = null;
   private pending: PendingRequest | null = null;
   private annotationStore: AnnotationStore | null = null;
+  /** Pre-captured element snapshots: index -> cropped PNG buffer */
+  private elementSnapshots = new Map<number, Buffer>();
 
   constructor(annotationStore?: AnnotationStore) {
     super();
@@ -96,12 +98,52 @@ export class AnnotateService extends EventEmitter {
     ipcMain.handle(IPC_CHANNELS.ANNOTATE_SCREENSHOT, async () => {
       return this.captureScreenshot();
     });
+
+    ipcMain.handle(IPC_CHANNELS.ANNOTATE_SNAPSHOT_ELEMENT, async (_event, data: {
+      index: number;
+      viewportRect: ElementRect;
+      dpr: number;
+    }) => {
+      await this.captureElementSnapshot(data.index, data.viewportRect, data.dpr);
+    });
+  }
+
+  private async captureElementSnapshot(
+    index: number,
+    viewportRect: ElementRect,
+    dpr: number
+  ): Promise<void> {
+    const fullPng = await this.captureScreenshot();
+    if (!fullPng) return;
+
+    const viewport = this.window && !this.window.isDestroyed()
+      ? this.window.getBounds()
+      : { width: 1440, height: 900 };
+
+    const cssCrop = cropRect(viewportRect, SCREENSHOT_PADDING, viewport);
+    const scaledCrop = {
+      x: Math.round(cssCrop.x * dpr),
+      y: Math.round(cssCrop.y * dpr),
+      width: Math.round(cssCrop.width * dpr),
+      height: Math.round(cssCrop.height * dpr)
+    };
+
+    const fullImage = nativeImage.createFromBuffer(fullPng);
+    const imgSize = fullImage.getSize();
+    scaledCrop.width = Math.min(scaledCrop.width, imgSize.width - scaledCrop.x);
+    scaledCrop.height = Math.min(scaledCrop.height, imgSize.height - scaledCrop.y);
+    if (scaledCrop.width <= 0 || scaledCrop.height <= 0) return;
+
+    const cropped = fullImage.crop(scaledCrop);
+    this.elementSnapshots.set(index, cropped.toPNG());
+    log.info('element snapshot captured', { index });
   }
 
   async start(request: AnnotateStartRequest): Promise<string> {
     if (this.pending) {
       this.handleCancel('replaced');
     }
+    this.elementSnapshots.clear();
 
     const timeout = request.timeout ?? DEFAULT_TIMEOUT;
 
@@ -193,6 +235,13 @@ export class AnnotateService extends EventEmitter {
           const el = result.elements[i];
           if (!el.captureScreenshot) continue;
 
+          // Use pre-captured snapshot if available (for transient elements like hover menus)
+          const preCapture = this.elementSnapshots.get(i);
+          if (preCapture) {
+            screenshots.push({ index: i + 1, pngBuffer: preCapture });
+            continue;
+          }
+
           // Scroll element into view, wait for repaint, then get fresh viewport-relative rect
           const freshInfo = await this.window.webContents.executeJavaScript(`
             (() => {
@@ -263,6 +312,8 @@ export class AnnotateService extends EventEmitter {
         resolve('');
       }
     }
+
+    this.elementSnapshots.clear();
 
     if (this.window && !this.window.isDestroyed()) {
       this.window.close();

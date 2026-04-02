@@ -86,6 +86,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   var stackIndex = 0;
   var selectedElements = [];
   var elementScreenshots = new Map(); // index -> boolean
+  var elementSnapshots = new Map();   // index -> { viewportRect, dpr } (captured at selection time)
 
   // Note card state
   var notesContainer = null;
@@ -520,6 +521,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     stackIndex = 0;
     selectedElements = [];
     elementScreenshots = new Map();
+    elementSnapshots = new Map();
     elementComments = new Map();
     openNotes = new Set();
     notePositions = new Map();
@@ -586,6 +588,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     stackIndex = 0;
     selectedElements = [];
     elementScreenshots = new Map();
+    elementSnapshots = new Map();
     elementComments = new Map();
     openNotes = new Set();
     notePositions = new Map();
@@ -1321,6 +1324,7 @@ const PICKER_IIFE_SOURCE = `(function() {
       collapseAllNotes();
       selectedElements = [];
       elementScreenshots = new Map();
+      elementSnapshots = new Map();
       elementComments = new Map();
       notePositions = new Map();
     }
@@ -1387,6 +1391,19 @@ const PICKER_IIFE_SOURCE = `(function() {
 
   function selectElement(el) {
     selectedElements.push(createSelectionData(el));
+    var idx = selectedElements.length - 1;
+    // Capture a viewport snapshot immediately so transient elements (hover menus etc.) are preserved
+    var vr = el.getBoundingClientRect();
+    var snapshotData = {
+      index: idx,
+      viewportRect: { x: vr.x, y: vr.y, width: vr.width, height: vr.height },
+      dpr: window.devicePixelRatio || 1
+    };
+    elementSnapshots.set(idx, snapshotData);
+    // Ask main process to capture + crop now while the element is visible
+    if (window.fleetAnnotate && window.fleetAnnotate.snapshotElement) {
+      window.fleetAnnotate.snapshotElement(snapshotData).catch(function () { /* ignore */ });
+    }
   }
 
   function generateSelector(el) {
@@ -1955,7 +1972,8 @@ const PICKER_IIFE_SOURCE = `(function() {
         computedStyles: sel.computedStyles,
         parentContext: sel.parentContext,
         cssVariables: sel.cssVariables,
-        captureScreenshot: elementScreenshots.get(i) !== false
+        captureScreenshot: elementScreenshots.get(i) !== false,
+        hasSnapshot: elementSnapshots.has(i)
       };
     });
 

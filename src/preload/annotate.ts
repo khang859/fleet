@@ -9,5 +9,7 @@ contextBridge.exposeInMainWorld('fleetAnnotate', {
   submit: async (result: unknown): Promise<void> => typedInvoke('annotate:submit', result),
   cancel: async (reason?: string): Promise<void> => typedInvoke('annotate:cancel', reason),
   captureScreenshot: async (): Promise<string | null> =>
-    typedInvoke<string | null>('annotate:screenshot')
+    typedInvoke<string | null>('annotate:screenshot'),
+  snapshotElement: async (data: unknown): Promise<void> =>
+    typedInvoke<void>('annotate:snapshot-element', data)
 });
