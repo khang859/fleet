@@ -77,4 +77,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     workspaceOverrides: {},
     showAllWorkspaces: false,
   },
+  annotate: {
+    retentionDays: 3
+  },
 };

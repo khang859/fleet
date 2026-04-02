@@ -12,7 +12,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings';
+  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings' | 'annotate';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -125,6 +125,19 @@ export type FleetSettings = {
     soundVolume: number;
   };
   copilot: CopilotSettings;
+  annotate: {
+    retentionDays: number;
+  };
+};
+
+// ── Annotations ──────────────────────────────────────────────────────────
+
+export type AnnotationMeta = {
+  id: string;
+  url: string;
+  timestamp: number;
+  elementCount: number;
+  dirPath: string;
 };
 
 // ── Copilot (Claude Code Session Monitor) ──────────────────────────────────
