@@ -286,7 +286,7 @@ export class AnnotateService extends EventEmitter {
       let resultPath: string;
       if (this.annotationStore) {
         const meta = this.annotationStore.add(result, screenshots);
-        resultPath = join(this.annotationStore['baseDir'], meta.dirPath, 'result.json');
+        resultPath = join(meta.dirPath, 'result.json');
       } else {
         resultPath = await writeResultFile(result, screenshots);
       }
@@ -301,11 +301,7 @@ export class AnnotateService extends EventEmitter {
       };
       try {
         const errorPath = this.annotationStore
-          ? join(
-              this.annotationStore['baseDir'],
-              this.annotationStore.add(errorResult, []).dirPath,
-              'result.json'
-            )
+          ? join(this.annotationStore.add(errorResult, []).dirPath, 'result.json')
           : await writeResultFile(errorResult, []);
         resolve(errorPath);
       } catch {

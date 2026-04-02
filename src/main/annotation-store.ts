@@ -46,7 +46,7 @@ export class AnnotationStore extends EventEmitter {
   get(id: string): (AnnotationResult & { screenshotPaths?: string[] }) | null {
     const meta = this.list().find((m) => m.id === id);
     if (!meta) return null;
-    const resultPath = join(this.baseDir, meta.dirPath, 'result.json');
+    const resultPath = join(meta.dirPath, 'result.json');
     if (!existsSync(resultPath)) return null;
     try {
       const raw = readFileSync(resultPath, 'utf-8');
@@ -65,8 +65,8 @@ export class AnnotationStore extends EventEmitter {
   ): AnnotationMeta {
     const timestamp = Date.now();
     const id = `ann-${timestamp}-${randomUUID().slice(0, 8)}`;
-    const dirPath = id;
-    const fullDir = join(this.baseDir, dirPath);
+    const dirPath = join(this.baseDir, id);
+    const fullDir = dirPath;
     mkdirSync(fullDir, { recursive: true });
 
     // Write screenshot PNGs
@@ -122,9 +122,8 @@ export class AnnotationStore extends EventEmitter {
     const entry = index.find((m) => m.id === id);
     if (!entry) return;
 
-    const fullDir = join(this.baseDir, entry.dirPath);
-    if (existsSync(fullDir)) {
-      rmSync(fullDir, { recursive: true, force: true });
+    if (existsSync(entry.dirPath)) {
+      rmSync(entry.dirPath, { recursive: true, force: true });
     }
 
     this.saveIndex(index.filter((m) => m.id !== id));
@@ -137,9 +136,8 @@ export class AnnotationStore extends EventEmitter {
     const toDelete = index.filter((m) => m.timestamp < cutoff);
 
     for (const entry of toDelete) {
-      const fullDir = join(this.baseDir, entry.dirPath);
-      if (existsSync(fullDir)) {
-        rmSync(fullDir, { recursive: true, force: true });
+      if (existsSync(entry.dirPath)) {
+        rmSync(entry.dirPath, { recursive: true, force: true });
       }
     }
 

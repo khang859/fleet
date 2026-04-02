@@ -25,6 +25,7 @@ import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
+import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 
 function MiniSidebarTooltip({
@@ -822,6 +823,7 @@ export function App(): React.JSX.Element {
         isOpen={clipboardHistoryOpen}
         onClose={() => setClipboardHistoryOpen(false)}
       />
+      <AnnotateModal open={false} onClose={() => {}} />
       <ToastContainer />
     </div>
   );
