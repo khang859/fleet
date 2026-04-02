@@ -1,5 +1,15 @@
 # Changelog
 
+## v2.25.0
+
+### Features
+
+- **Annotate**: Webpage annotation with element picker and UI
+
+### Bug Fixes
+
+- **Tabs**: Make Cmd+1-9 target normal tabs, skip Images and Settings
+
 ## v2.24.0
 
 ### Features
