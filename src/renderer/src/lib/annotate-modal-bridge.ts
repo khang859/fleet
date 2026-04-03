@@ -4,7 +4,9 @@ let openModalFn: (() => void) | null = null;
 export function registerAnnotateModalOpener(fn: () => void): () => void {
   openModalFn = fn;
   return () => {
-    openModalFn = null;
+    if (openModalFn === fn) {
+      openModalFn = null;
+    }
   };
 }
 

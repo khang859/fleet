@@ -8,7 +8,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useAnnotationStore } from '../store/annotation-store';
-import { AnnotateModal } from './AnnotateModal';
+import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useToastStore } from '../store/toast-store';
 
 function timeAgo(timestamp: number): string {
@@ -36,7 +36,6 @@ export function AnnotateTab(): React.JSX.Element {
   } = useAnnotationStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AnnotationDetail>(null);
-  const [modalOpen, setModalOpen] = useState(false);
   const [expandedElements, setExpandedElements] = useState<Set<number>>(
     new Set()
   );
@@ -198,7 +197,6 @@ export function AnnotateTab(): React.JSX.Element {
           ))}
         </div>
 
-        <AnnotateModal open={modalOpen} onClose={() => setModalOpen(false)} />
       </div>
     );
   }
@@ -213,7 +211,7 @@ export function AnnotateTab(): React.JSX.Element {
           <span className="text-sm font-medium">Annotations</span>
         </div>
         <button
-          onClick={() => setModalOpen(true)}
+          onClick={() => openAnnotateModal()}
           className="px-2.5 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500"
         >
           New
@@ -230,7 +228,7 @@ export function AnnotateTab(): React.JSX.Element {
           <Crosshair size={32} className="text-neutral-700" />
           <p className="text-sm">No annotations yet</p>
           <button
-            onClick={() => setModalOpen(true)}
+            onClick={() => openAnnotateModal()}
             className="px-3 py-1.5 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500"
           >
             New Annotation
@@ -258,7 +256,6 @@ export function AnnotateTab(): React.JSX.Element {
         </div>
       )}
 
-      <AnnotateModal open={modalOpen} onClose={() => setModalOpen(false)} />
     </div>
   );
 }
