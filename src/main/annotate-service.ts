@@ -221,8 +221,7 @@ export class AnnotateService extends EventEmitter {
 
   private async compositeOverlay(
     pagePng: Buffer,
-    overlayDataURL: string,
-    _viewport: { width: number; height: number }
+    overlayDataURL: string
   ): Promise<Buffer> {
     try {
       const base64 = overlayDataURL.replace(/^data:image\/png;base64,/, '');
@@ -264,8 +263,8 @@ export class AnnotateService extends EventEmitter {
           // Use pre-captured snapshot if available (for transient elements like hover menus)
           const preCapture = this.elementSnapshots.get(i);
           if (preCapture) {
-            if ((result as any).canvasOverlay) {
-              const composited = await this.compositeOverlay(preCapture, (result as any).canvasOverlay, viewport);
+            if (result.canvasOverlay) {
+              const composited = await this.compositeOverlay(preCapture, result.canvasOverlay);
               screenshots.push({ index: i + 1, pngBuffer: composited });
             } else {
               screenshots.push({ index: i + 1, pngBuffer: preCapture });
@@ -296,8 +295,8 @@ export class AnnotateService extends EventEmitter {
 
           // Composite drawing overlay if present
           let compositedPng = fullPng;
-          if ((result as any).canvasOverlay) {
-            compositedPng = await this.compositeOverlay(fullPng, (result as any).canvasOverlay, viewport);
+          if (result.canvasOverlay) {
+            compositedPng = await this.compositeOverlay(fullPng, result.canvasOverlay);
           }
 
           // cropRect works in CSS pixels; scale by devicePixelRatio for the actual image
@@ -321,7 +320,7 @@ export class AnnotateService extends EventEmitter {
       }
 
       // Don't persist the canvas overlay data URL in the result JSON
-      delete (result as any).canvasOverlay;
+      delete result.canvasOverlay;
 
       let resultPath: string;
       if (this.annotationStore) {
