@@ -16,7 +16,9 @@ export class CopilotSocketServer {
   private server: Server | null = null;
   private pendingSockets = new Map<string, PendingSocket>();
   private sessionStore: CopilotSessionStore;
-  private resolveWorkspace: ((pid: number) => { workspaceId: string; workspaceName: string } | null) | null = null;
+  private resolveWorkspace:
+    | ((pid: number) => { workspaceId: string; workspaceName: string } | null)
+    | null = null;
 
   constructor(sessionStore: CopilotSessionStore) {
     this.sessionStore = sessionStore;
@@ -96,7 +98,7 @@ export class CopilotSocketServer {
           this.cleanupSocket();
           resolve();
         }, STOP_TIMEOUT_MS);
-      }),
+      })
     ]);
     this.server = null;
   }
@@ -111,11 +113,7 @@ export class CopilotSocketServer {
     }
   }
 
-  respondToPermission(
-    toolUseId: string,
-    decision: 'allow' | 'deny',
-    reason?: string
-  ): boolean {
+  respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
     const pending = this.pendingSockets.get(toolUseId);
     if (!pending) {
       log.warn('no pending socket for toolUseId', { toolUseId });
@@ -123,19 +121,22 @@ export class CopilotSocketServer {
     }
 
     const response = JSON.stringify({ decision, reason: reason ?? '' });
+    let success = true;
     try {
       pending.socket.write(response);
       pending.socket.end();
     } catch (err) {
       log.error('failed to write permission response', { toolUseId, error: String(err) });
-      return false;
+      success = false;
     } finally {
       this.pendingSockets.delete(toolUseId);
+      this.sessionStore.removePermission(pending.sessionId, toolUseId);
     }
 
-    this.sessionStore.removePermission(pending.sessionId, toolUseId);
-    log.info('permission responded', { toolUseId, decision });
-    return true;
+    if (success) {
+      log.info('permission responded', { toolUseId, decision });
+    }
+    return success;
   }
 
   private handleConnection(client: Socket): void {
@@ -159,25 +160,29 @@ export class CopilotSocketServer {
       log.debug('hook event received', {
         sessionId: event.session_id,
         event: event.event,
-        status: event.status,
+        status: event.status
       });
 
-      const workspaceInfo = event.pid && this.resolveWorkspace
-        ? this.resolveWorkspace(event.pid)
-        : null;
+      const workspaceInfo =
+        event.pid && this.resolveWorkspace ? this.resolveWorkspace(event.pid) : null;
       this.sessionStore.processHookEvent(event, workspaceInfo ?? undefined);
 
-      if (event.status === 'waiting_for_approval') {
+      if (event.status === 'waiting_for_approval' && event.tool !== 'AskUserQuestion') {
         const session = this.sessionStore.getSession(event.session_id);
         const lastPermission = session?.pendingPermissions.at(-1);
         if (lastPermission) {
           this.pendingSockets.set(lastPermission.toolUseId, {
             sessionId: event.session_id,
             toolUseId: lastPermission.toolUseId,
-            socket: client,
+            socket: client
           });
+          // The Go hook binary waits up to 300s for a response.
+          // With allowHalfOpen, the 'close' event may never fire when
+          // the binary exits. Set a timeout to force-destroy the socket
+          // so the 'close' handler can clean up stale permissions.
+          client.setTimeout(310_000);
           log.debug('holding socket for permission', {
-            toolUseId: lastPermission.toolUseId,
+            toolUseId: lastPermission.toolUseId
           });
           return;
         }
@@ -191,13 +196,18 @@ export class CopilotSocketServer {
         if (pending.socket === client) {
           log.info('socket closed, clearing stale permission', {
             toolUseId: id,
-            sessionId: pending.sessionId,
+            sessionId: pending.sessionId
           });
           this.pendingSockets.delete(id);
           this.sessionStore.removePermission(pending.sessionId, id);
           break;
         }
       }
+    });
+
+    client.on('timeout', () => {
+      log.info('permission socket timed out, destroying');
+      client.destroy();
     });
 
     client.on('error', (err) => {
