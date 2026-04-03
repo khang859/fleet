@@ -261,6 +261,32 @@ const PICKER_IIFE_SOURCE = `(function() {
     .fa-connector-dot {\
       fill: var(--fa-accent);\
     }\
+    #fleet-annotate-canvas {\
+      position: fixed;\
+      top: 0; left: 0;\
+      width: 100%; height: 100%;\
+      z-index: " + Z_INDEX_CANVAS + ";\
+      pointer-events: none;\
+    }\
+    #fleet-annotate-canvas.drawing {\
+      pointer-events: auto;\
+      cursor: crosshair;\
+    }\
+    #fleet-annotate-canvas.drawing.tool-text {\
+      cursor: text;\
+    }\
+    #fleet-annotate-text-input {\
+      position: fixed;\
+      z-index: " + Z_INDEX_CANVAS + ";\
+      background: transparent;\
+      border: 2px dashed var(--fa-accent);\
+      border-radius: 3px;\
+      color: inherit;\
+      font: 16px var(--fa-font-ui);\
+      padding: 2px 4px;\
+      outline: none;\
+      min-width: 100px;\
+    }\
     .fa-notes-container {\
       position: fixed;\
       top: 0; left: 0;\
@@ -523,6 +549,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     createMarkers();
     createNotesContainer();
     createPanel();
+    createCanvas();
 
     // Add listeners
     document.addEventListener("mousemove", onMouseMove, true);
@@ -676,6 +703,94 @@ const PICKER_IIFE_SOURCE = `(function() {
     connectorsEl = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     connectorsEl.setAttribute("class", "fa-connectors");
     document.body.appendChild(connectorsEl);
+  }
+
+  function createCanvas() {
+    canvasEl = document.createElement("canvas");
+    canvasEl.id = "fleet-annotate-canvas";
+    document.body.appendChild(canvasEl);
+    canvasCtx = canvasEl.getContext("2d");
+    sizeCanvas();
+  }
+
+  function sizeCanvas() {
+    if (!canvasEl || !canvasCtx) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    canvasEl.width = w * dpr;
+    canvasEl.height = h * dpr;
+    canvasEl.style.width = w + "px";
+    canvasEl.style.height = h + "px";
+    canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    renderAllOps();
+  }
+
+  function renderAllOps() {
+    if (!canvasCtx || !canvasEl) return;
+    var dpr = window.devicePixelRatio || 1;
+    canvasCtx.clearRect(0, 0, canvasEl.width / dpr, canvasEl.height / dpr);
+
+    for (var i = 0; i < drawOps.length; i++) {
+      renderOp(canvasCtx, drawOps[i]);
+    }
+    if (currentDrawOp) {
+      renderOp(canvasCtx, currentDrawOp);
+    }
+  }
+
+  function renderOp(ctx, op) {
+    ctx.save();
+    ctx.strokeStyle = op.color;
+    ctx.fillStyle = op.color;
+    ctx.lineWidth = op.width || 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (op.type === "freehand") {
+      if (op.points.length < 2) { ctx.restore(); return; }
+      ctx.beginPath();
+      ctx.moveTo(op.points[0][0], op.points[0][1]);
+      for (var j = 1; j < op.points.length; j++) {
+        ctx.lineTo(op.points[j][0], op.points[j][1]);
+      }
+      ctx.stroke();
+    } else if (op.type === "line") {
+      ctx.beginPath();
+      ctx.moveTo(op.start[0], op.start[1]);
+      ctx.lineTo(op.end[0], op.end[1]);
+      ctx.stroke();
+      if (op.arrow) {
+        drawArrowHead(ctx, op.start[0], op.start[1], op.end[0], op.end[1], op.width || 3);
+      }
+    } else if (op.type === "rect") {
+      ctx.beginPath();
+      ctx.rect(op.origin[0], op.origin[1], op.size[0], op.size[1]);
+      ctx.stroke();
+    } else if (op.type === "ellipse") {
+      ctx.beginPath();
+      ctx.ellipse(
+        op.center[0], op.center[1],
+        Math.abs(op.radii[0]), Math.abs(op.radii[1]),
+        0, 0, Math.PI * 2
+      );
+      ctx.stroke();
+    } else if (op.type === "text") {
+      ctx.font = op.fontSize + "px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(op.content, op.position[0], op.position[1]);
+    }
+    ctx.restore();
+  }
+
+  function drawArrowHead(ctx, fromX, fromY, toX, toY, lineWidth) {
+    var headLen = Math.max(10, lineWidth * 4);
+    var angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.stroke();
   }
 
   function createPanel() {
@@ -1396,6 +1511,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function handleResize() {
+    sizeCanvas();
     updateBadges();
     var panelHeight = (document.getElementById("fleet-annotate-panel") || {}).offsetHeight || 96;
 
