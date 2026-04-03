@@ -239,8 +239,16 @@ export function AnnotateTab(): React.JSX.Element {
           {annotations.map((ann) => (
             <div
               key={ann.id}
+              role="button"
+              tabIndex={0}
               className="flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
               onClick={() => setSelectedId(ann.id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setSelectedId(ann.id);
+                }
+              }}
             >
               <div className="flex-1 min-w-0 text-left">
                 <div className="text-sm text-neutral-200 truncate">
