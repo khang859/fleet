@@ -57,6 +57,7 @@ export interface AnnotationResult {
   elements?: ElementSelection[];
   cancelled?: boolean;
   reason?: string;
+  canvasOverlay?: string;  // Transient: drawing canvas data URL, stripped before persistence
 }
 
 export interface AnnotateStartRequest {

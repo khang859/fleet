@@ -30,11 +30,12 @@ const PICKER_IIFE_SOURCE = `(function() {
 
   var SCREENSHOT_PADDING = 20;
   var TEXT_MAX_LENGTH = 500;
+  var Z_INDEX_HIGHLIGHT  = 2147483640;
+  var Z_INDEX_CANVAS     = 2147483641;
   var Z_INDEX_CONNECTORS = 2147483643;
-  var Z_INDEX_MARKERS = 2147483644;
-  var Z_INDEX_HIGHLIGHT = 2147483645;
-  var Z_INDEX_PANEL = 2147483646;
-  var Z_INDEX_TOOLTIP = 2147483647;
+  var Z_INDEX_MARKERS    = 2147483644;
+  var Z_INDEX_PANEL      = 2147483646;
+  var Z_INDEX_TOOLTIP    = 2147483647;
   var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
   var ALT_KEY_LABEL = IS_MAC ? "\u2325" : "Alt";
 
@@ -95,6 +96,26 @@ const PICKER_IIFE_SOURCE = `(function() {
   var openNotes = new Set();       // indices of currently open notes
   var notePositions = new Map();   // index -> {x, y} manual position overrides
   var dragState = null;            // { card, startX, startY, startLeft, startTop }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Drawing State
+  // ─────────────────────────────────────────────────────────────────────
+
+  var drawOps = [];           // Array of completed DrawOp objects
+  var currentDrawOp = null;   // In-progress operation (during mousedown→mouseup)
+  var undoStack = [];         // For redo: popped ops go here
+  var activeTool = "pick";    // "pick" | "pen" | "line" | "shape" | "text"
+  var activeShape = "rect";   // "rect" | "ellipse" (sub-toggle for shape tool)
+  var drawColor = "#ef4444";  // Default red
+  var drawWidth = 3;          // Stroke width: 2=thin, 3=medium, 5=thick
+  var drawMouseDown = false;  // Whether mouse is currently pressed for drawing
+  var canvasEl = null;        // The <canvas> DOM element
+  var canvasCtx = null;       // The 2d rendering context
+  var textInputEl = null;     // Temporary <input> for text tool
+
+  var DRAW_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ffffff"];
+  var DRAW_WIDTHS = [2, 3, 5]; // thin, medium, thick
+  var POINT_MIN_DISTANCE = 3;  // Minimum px between freehand points
 
   // Debug mode state
   var debugMode = false;
@@ -239,6 +260,32 @@ const PICKER_IIFE_SOURCE = `(function() {
     }\
     .fa-connector-dot {\
       fill: var(--fa-accent);\
+    }\
+    #fleet-annotate-canvas {\
+      position: fixed;\
+      top: 0; left: 0;\
+      width: 100%; height: 100%;\
+      z-index: " + Z_INDEX_CANVAS + ";\
+      pointer-events: none;\
+    }\
+    #fleet-annotate-canvas.drawing {\
+      pointer-events: auto;\
+      cursor: crosshair;\
+    }\
+    #fleet-annotate-canvas.drawing.tool-text {\
+      cursor: text;\
+    }\
+    #fleet-annotate-text-input {\
+      position: fixed;\
+      z-index: " + Z_INDEX_CANVAS + ";\
+      background: transparent;\
+      border: 2px dashed var(--fa-accent);\
+      border-radius: 3px;\
+      color: inherit;\
+      font: 16px var(--fa-font-ui);\
+      padding: 2px 4px;\
+      outline: none;\
+      min-width: 100px;\
     }\
     .fa-notes-container {\
       position: fixed;\
@@ -407,6 +454,70 @@ const PICKER_IIFE_SOURCE = `(function() {
       border-color: var(--fa-accent);\
       color: var(--fa-bg-body);\
     }\
+    .fa-draw-tools {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 8px;\
+      padding-left: 8px;\
+      border-left: 1px solid var(--fa-border-muted);\
+    }\
+    .fa-tool-btn {\
+      background: var(--fa-bg-elevated);\
+      border: 1px solid transparent;\
+      border-radius: var(--fa-radius);\
+      padding: 5px 8px;\
+      font-size: 13px;\
+      color: var(--fa-fg-muted);\
+      cursor: pointer;\
+      transition: all 0.15s;\
+      line-height: 1;\
+    }\
+    .fa-tool-btn:hover { background: var(--fa-bg-hover); color: var(--fa-fg); }\
+    .fa-tool-btn.active {\
+      background: var(--fa-accent-muted);\
+      border-color: var(--fa-accent);\
+      color: var(--fa-accent);\
+    }\
+    .fa-color-swatches {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 8px;\
+      padding-left: 8px;\
+      border-left: 1px solid var(--fa-border-muted);\
+      align-items: center;\
+    }\
+    .fa-color-swatch {\
+      width: 18px;\
+      height: 18px;\
+      border-radius: 50%;\
+      border: 2px solid transparent;\
+      cursor: pointer;\
+      transition: border-color 0.15s, transform 0.15s;\
+    }\
+    .fa-color-swatch:hover { transform: scale(1.15); }\
+    .fa-color-swatch.active { border-color: var(--fa-fg); }\
+    .fa-width-toggle {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 4px;\
+      align-items: center;\
+    }\
+    .fa-width-btn {\
+      background: var(--fa-bg-elevated);\
+      border: 1px solid transparent;\
+      border-radius: var(--fa-radius);\
+      padding: 4px 6px;\
+      font-size: 10px;\
+      color: var(--fa-fg-muted);\
+      cursor: pointer;\
+      transition: all 0.15s;\
+    }\
+    .fa-width-btn:hover { background: var(--fa-bg-hover); }\
+    .fa-width-btn.active {\
+      background: var(--fa-accent-muted);\
+      border-color: var(--fa-accent);\
+      color: var(--fa-accent);\
+    }\
     .fa-spacer { flex: 1; }\
     .fa-count {\
       font-size: 12px;\
@@ -502,6 +613,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     createMarkers();
     createNotesContainer();
     createPanel();
+    createCanvas();
 
     // Add listeners
     document.addEventListener("mousemove", onMouseMove, true);
@@ -511,6 +623,11 @@ const PICKER_IIFE_SOURCE = `(function() {
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", handleResize);
     initDragHandlers();
+
+    // Drawing events
+    document.addEventListener("mousedown", onCanvasMouseDown, true);
+    document.addEventListener("mousemove", onCanvasMouseMove, true);
+    document.addEventListener("mouseup", onCanvasMouseUp, true);
 
     document.body.style.cursor = "crosshair";
     console.log("[fleet-annotate] Activated");
@@ -529,6 +646,20 @@ const PICKER_IIFE_SOURCE = `(function() {
     multiSelectMode = false;
     debugMode = false;
     resetCSSVarCache();
+
+    // Reset drawing state
+    drawOps = [];
+    currentDrawOp = null;
+    undoStack = [];
+    activeTool = "pick";
+    activeShape = "rect";
+    drawColor = "#ef4444";
+    drawWidth = 3;
+    drawMouseDown = false;
+    if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+    if (canvasEl && canvasCtx) {
+      canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    }
 
     // Reset UI elements
     if (markersContainer) markersContainer.innerHTML = "";
@@ -572,6 +703,10 @@ const PICKER_IIFE_SOURCE = `(function() {
     window.removeEventListener("resize", handleResize);
     cleanupDragHandlers();
 
+    document.removeEventListener("mousedown", onCanvasMouseDown, true);
+    document.removeEventListener("mousemove", onCanvasMouseMove, true);
+    document.removeEventListener("mouseup", onCanvasMouseUp, true);
+
     document.body.style.cursor = "";
 
     if (styleEl) styleEl.remove();
@@ -584,6 +719,15 @@ const PICKER_IIFE_SOURCE = `(function() {
 
     styleEl = highlightEl = tooltipEl = panelEl = markersContainer = null;
     notesContainer = connectorsEl = null;
+    if (canvasEl) canvasEl.remove();
+    canvasEl = null;
+    canvasCtx = null;
+    if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+    drawOps = [];
+    currentDrawOp = null;
+    undoStack = [];
+    activeTool = "pick";
+    drawMouseDown = false;
     elementStack = [];
     stackIndex = 0;
     selectedElements = [];
@@ -634,13 +778,101 @@ const PICKER_IIFE_SOURCE = `(function() {
     document.body.appendChild(connectorsEl);
   }
 
+  function createCanvas() {
+    canvasEl = document.createElement("canvas");
+    canvasEl.id = "fleet-annotate-canvas";
+    document.body.appendChild(canvasEl);
+    canvasCtx = canvasEl.getContext("2d");
+    sizeCanvas();
+  }
+
+  function sizeCanvas() {
+    if (!canvasEl || !canvasCtx) return;
+    var dpr = window.devicePixelRatio || 1;
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+    canvasEl.width = w * dpr;
+    canvasEl.height = h * dpr;
+    canvasEl.style.width = w + "px";
+    canvasEl.style.height = h + "px";
+    canvasCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    renderAllOps();
+  }
+
+  function renderAllOps() {
+    if (!canvasCtx || !canvasEl) return;
+    var dpr = window.devicePixelRatio || 1;
+    canvasCtx.clearRect(0, 0, canvasEl.width / dpr, canvasEl.height / dpr);
+
+    for (var i = 0; i < drawOps.length; i++) {
+      renderOp(canvasCtx, drawOps[i]);
+    }
+    if (currentDrawOp) {
+      renderOp(canvasCtx, currentDrawOp);
+    }
+  }
+
+  function renderOp(ctx, op) {
+    ctx.save();
+    ctx.strokeStyle = op.color;
+    ctx.fillStyle = op.color;
+    ctx.lineWidth = op.width || 3;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    if (op.type === "freehand") {
+      if (op.points.length < 2) { ctx.restore(); return; }
+      ctx.beginPath();
+      ctx.moveTo(op.points[0][0], op.points[0][1]);
+      for (var j = 1; j < op.points.length; j++) {
+        ctx.lineTo(op.points[j][0], op.points[j][1]);
+      }
+      ctx.stroke();
+    } else if (op.type === "line") {
+      ctx.beginPath();
+      ctx.moveTo(op.start[0], op.start[1]);
+      ctx.lineTo(op.end[0], op.end[1]);
+      ctx.stroke();
+      if (op.arrow) {
+        drawArrowHead(ctx, op.start[0], op.start[1], op.end[0], op.end[1], op.width || 3);
+      }
+    } else if (op.type === "rect") {
+      ctx.beginPath();
+      ctx.rect(op.origin[0], op.origin[1], op.size[0], op.size[1]);
+      ctx.stroke();
+    } else if (op.type === "ellipse") {
+      ctx.beginPath();
+      ctx.ellipse(
+        op.center[0], op.center[1],
+        Math.abs(op.radii[0]), Math.abs(op.radii[1]),
+        0, 0, Math.PI * 2
+      );
+      ctx.stroke();
+    } else if (op.type === "text") {
+      ctx.font = op.fontSize + "px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.fillText(op.content, op.position[0], op.position[1]);
+    }
+    ctx.restore();
+  }
+
+  function drawArrowHead(ctx, fromX, fromY, toX, toY, lineWidth) {
+    var headLen = Math.max(10, lineWidth * 4);
+    var angle = Math.atan2(toY - fromY, toX - fromX);
+    ctx.beginPath();
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+    ctx.moveTo(toX, toY);
+    ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+    ctx.stroke();
+  }
+
   function createPanel() {
     panelEl = document.createElement("div");
     panelEl.id = "fleet-annotate-panel";
     panelEl.innerHTML = '\
       <div class="fa-header">\
         <span class="fa-logo">Fleet Annotate</span>\
-        <span class="fa-hint">Click elements \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close</span>\
+        <span class="fa-hint">Click elements \u2022 Draw tools: P/L/S/T \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close</span>\
         <button class="fa-close" id="fleet-annotate-close" title="Close (ESC)">\u00d7</button>\
       </div>\
       <div class="fa-toolbar">\
@@ -648,6 +880,14 @@ const PICKER_IIFE_SOURCE = `(function() {
           <button class="fa-mode-btn active" id="fleet-annotate-mode-single" title="Click replaces selection">Single</button>\
           <button class="fa-mode-btn" id="fleet-annotate-mode-multi" title="Click adds to selection">Multi</button>\
         </div>\
+        <div class="fa-draw-tools">\
+          <button class="fa-tool-btn" data-tool="pen" title="Pen (P)">\u270E</button>\
+          <button class="fa-tool-btn" data-tool="line" title="Line / Arrow (L, hold Shift for arrow)">\u2571</button>\
+          <button class="fa-tool-btn" data-tool="shape" title="Shape (S)">\u25A1</button>\
+          <button class="fa-tool-btn" data-tool="text" title="Text (T)">T</button>\
+        </div>\
+        <div class="fa-color-swatches" id="fleet-annotate-colors"></div>\
+        <div class="fa-width-toggle" id="fleet-annotate-widths"></div>\
         <div class="fa-spacer"></div>\
         <span class="fa-count" id="fleet-annotate-count">0 selected</span>\
         <label class="fa-notes-toggle" title="Show/hide all note cards">\
@@ -702,9 +942,98 @@ const PICKER_IIFE_SOURCE = `(function() {
       }
       e.stopPropagation();
     }, true);
+
+    initDrawToolbar();
+  }
+
+  function setActiveTool(tool) {
+    activeTool = tool;
+
+    // Update pick mode buttons
+    var singleBtn = document.getElementById("fleet-annotate-mode-single");
+    var multiBtn = document.getElementById("fleet-annotate-mode-multi");
+    if (singleBtn) singleBtn.classList.toggle("active", tool === "pick" && !multiSelectMode);
+    if (multiBtn) multiBtn.classList.toggle("active", tool === "pick" && multiSelectMode);
+
+    // Update draw tool buttons
+    var toolBtns = panelEl ? panelEl.querySelectorAll(".fa-tool-btn") : [];
+    for (var i = 0; i < toolBtns.length; i++) {
+      toolBtns[i].classList.toggle("active", toolBtns[i].getAttribute("data-tool") === tool);
+    }
+
+    // Update canvas pointer-events
+    if (canvasEl) {
+      if (tool === "pick") {
+        canvasEl.classList.remove("drawing", "tool-text");
+      } else {
+        canvasEl.classList.add("drawing");
+        canvasEl.classList.toggle("tool-text", tool === "text");
+      }
+    }
+
+    // Disable highlight/tooltip when drawing
+    if (tool !== "pick") {
+      hideHighlight();
+      hideTooltip();
+    }
+  }
+
+  function initDrawToolbar() {
+    // Tool buttons
+    var toolBtns = panelEl ? panelEl.querySelectorAll(".fa-tool-btn") : [];
+    for (var i = 0; i < toolBtns.length; i++) {
+      toolBtns[i].addEventListener("click", function (e) {
+        var tool = this.getAttribute("data-tool");
+        if (tool === "shape" && activeTool === "shape") {
+          toggleShape();
+        } else if (activeTool === tool) {
+          setActiveTool("pick");
+        } else {
+          setActiveTool(tool);
+        }
+      });
+    }
+
+    // Color swatches
+    var colorsEl = document.getElementById("fleet-annotate-colors");
+    if (colorsEl) {
+      for (var ci = 0; ci < DRAW_COLORS.length; ci++) {
+        var swatch = document.createElement("div");
+        swatch.className = "fa-color-swatch" + (DRAW_COLORS[ci] === drawColor ? " active" : "");
+        swatch.style.background = DRAW_COLORS[ci];
+        swatch.setAttribute("data-color", DRAW_COLORS[ci]);
+        swatch.addEventListener("click", function () {
+          drawColor = this.getAttribute("data-color");
+          var all = colorsEl.querySelectorAll(".fa-color-swatch");
+          for (var s = 0; s < all.length; s++) all[s].classList.remove("active");
+          this.classList.add("active");
+        });
+        colorsEl.appendChild(swatch);
+      }
+    }
+
+    // Width buttons
+    var widthsEl = document.getElementById("fleet-annotate-widths");
+    var widthLabels = ["S", "M", "L"];
+    if (widthsEl) {
+      for (var wi = 0; wi < DRAW_WIDTHS.length; wi++) {
+        var wBtn = document.createElement("button");
+        wBtn.className = "fa-width-btn" + (DRAW_WIDTHS[wi] === drawWidth ? " active" : "");
+        wBtn.textContent = widthLabels[wi];
+        wBtn.setAttribute("data-width", DRAW_WIDTHS[wi]);
+        wBtn.addEventListener("click", function () {
+          drawWidth = parseInt(this.getAttribute("data-width"), 10);
+          var all = widthsEl.querySelectorAll(".fa-width-btn");
+          for (var w = 0; w < all.length; w++) all[w].classList.remove("active");
+          this.classList.add("active");
+        });
+        widthsEl.appendChild(wBtn);
+      }
+    }
   }
 
   function setMultiMode(isMulti) {
+    setActiveTool("pick");
     multiSelectMode = isMulti;
     var singleBtn = document.getElementById("fleet-annotate-mode-single");
     var multiBtn = document.getElementById("fleet-annotate-mode-multi");
@@ -1252,6 +1581,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   // ─────────────────────────────────────────────────────────────────────
 
   function onMouseMove(e) {
+    if (activeTool !== "pick") return;
     if (!isActive || e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) {
       hideHighlight();
       hideTooltip();
@@ -1301,6 +1631,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function onClick(e) {
+    if (activeTool !== "pick") return;
     if (!isActive || e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) return;
 
     e.preventDefault();
@@ -1340,9 +1671,51 @@ const PICKER_IIFE_SOURCE = `(function() {
 
   function onKeyDown(e) {
     if (!isActive) return;
+
+    // Don't intercept when typing in text inputs
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+      }
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
-      handleCancel();
+      if (activeTool !== "pick") {
+        setActiveTool("pick");
+      } else {
+        handleCancel();
+      }
+      return;
+    }
+
+    // Tool shortcuts
+    if (!e.ctrlKey && !e.metaKey) {
+      if (e.key === "p" || e.key === "P") { e.preventDefault(); setActiveTool(activeTool === "pen" ? "pick" : "pen"); return; }
+      if (e.key === "l" || e.key === "L") { e.preventDefault(); setActiveTool(activeTool === "line" ? "pick" : "line"); return; }
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        if (activeTool === "shape") {
+          toggleShape();
+        } else {
+          setActiveTool("shape");
+        }
+        return;
+      }
+      if (e.key === "t" || e.key === "T") { e.preventDefault(); setActiveTool(activeTool === "text" ? "pick" : "text"); return; }
+    }
+
+    // Undo/Redo
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        drawRedo();
+      } else {
+        drawUndo();
+      }
+      return;
     }
   }
 
@@ -1352,6 +1725,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function handleResize() {
+    sizeCanvas();
     updateBadges();
     var panelHeight = (document.getElementById("fleet-annotate-panel") || {}).offsetHeight || 96;
 
@@ -1383,6 +1757,181 @@ const PICKER_IIFE_SOURCE = `(function() {
       }
     });
     updateConnectors();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Drawing Event Handlers
+  // ─────────────────────────────────────────────────────────────────────
+
+  function onCanvasMouseDown(e) {
+    if (activeTool === "pick" || !canvasEl) return;
+
+    // Don't start drawing on panel or note cards
+    if (e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    drawMouseDown = true;
+
+    var x = e.clientX;
+    var y = e.clientY;
+
+    if (activeTool === "pen") {
+      currentDrawOp = { type: "freehand", points: [[x, y]], color: drawColor, width: drawWidth };
+    } else if (activeTool === "line") {
+      currentDrawOp = { type: "line", start: [x, y], end: [x, y], color: drawColor, width: drawWidth, arrow: e.shiftKey };
+    } else if (activeTool === "shape") {
+      if (activeShape === "rect") {
+        currentDrawOp = { type: "rect", origin: [x, y], size: [0, 0], color: drawColor, width: drawWidth };
+      } else {
+        currentDrawOp = { type: "ellipse", center: [x, y], radii: [0, 0], color: drawColor, width: drawWidth, dragStart: [x, y] };
+      }
+    } else if (activeTool === "text") {
+      commitTextInput();
+      showTextInput(x, y);
+      drawMouseDown = false;
+      return;
+    }
+  }
+
+  function onCanvasMouseMove(e) {
+    if (!drawMouseDown || !currentDrawOp) return;
+
+    var x = e.clientX;
+    var y = e.clientY;
+
+    if (currentDrawOp.type === "freehand") {
+      var last = currentDrawOp.points[currentDrawOp.points.length - 1];
+      var dx = x - last[0];
+      var dy = y - last[1];
+      if (dx * dx + dy * dy >= POINT_MIN_DISTANCE * POINT_MIN_DISTANCE) {
+        currentDrawOp.points.push([x, y]);
+      }
+    } else if (currentDrawOp.type === "line") {
+      currentDrawOp.end = [x, y];
+      currentDrawOp.arrow = e.shiftKey;
+    } else if (currentDrawOp.type === "rect") {
+      currentDrawOp.size = [x - currentDrawOp.origin[0], y - currentDrawOp.origin[1]];
+    } else if (currentDrawOp.type === "ellipse") {
+      var sx = currentDrawOp.dragStart[0];
+      var sy = currentDrawOp.dragStart[1];
+      currentDrawOp.center = [(sx + x) / 2, (sy + y) / 2];
+      currentDrawOp.radii = [Math.abs(x - sx) / 2, Math.abs(y - sy) / 2];
+    }
+
+    renderAllOps();
+  }
+
+  function onCanvasMouseUp(e) {
+    if (!drawMouseDown || !currentDrawOp) {
+      drawMouseDown = false;
+      return;
+    }
+    drawMouseDown = false;
+
+    // Clean up transient drag data
+    if (currentDrawOp.type === "ellipse") {
+      delete currentDrawOp.dragStart;
+    }
+
+    // Only commit ops with meaningful content
+    var dominated = false;
+    if (currentDrawOp.type === "freehand" && currentDrawOp.points.length < 2) dominated = true;
+    if (currentDrawOp.type === "line") {
+      var ld = Math.hypot(currentDrawOp.end[0] - currentDrawOp.start[0], currentDrawOp.end[1] - currentDrawOp.start[1]);
+      if (ld < 3) dominated = true;
+    }
+    if (currentDrawOp.type === "rect") {
+      if (Math.abs(currentDrawOp.size[0]) < 3 && Math.abs(currentDrawOp.size[1]) < 3) dominated = true;
+    }
+    if (currentDrawOp.type === "ellipse") {
+      if (Math.abs(currentDrawOp.radii[0]) < 2 && Math.abs(currentDrawOp.radii[1]) < 2) dominated = true;
+    }
+
+    if (!dominated) {
+      drawOps.push(currentDrawOp);
+      undoStack = [];
+    }
+    currentDrawOp = null;
+    renderAllOps();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Text Tool
+  // ─────────────────────────────────────────────────────────────────────
+
+  function showTextInput(x, y) {
+    textInputEl = document.createElement("input");
+    textInputEl.type = "text";
+    textInputEl.id = "fleet-annotate-text-input";
+    textInputEl.style.left = x + "px";
+    textInputEl.style.top = (y - 12) + "px";
+    textInputEl.style.color = drawColor;
+    textInputEl.style.fontSize = "16px";
+    textInputEl.placeholder = "Type text...";
+    document.body.appendChild(textInputEl);
+    textInputEl.focus();
+
+    textInputEl.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitTextInput();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+      }
+      e.stopPropagation();
+    });
+
+    textInputEl.addEventListener("blur", function () {
+      setTimeout(function () { commitTextInput(); }, 50);
+    });
+  }
+
+  function commitTextInput() {
+    if (!textInputEl) return;
+    var text = textInputEl.value.trim();
+    var x = parseInt(textInputEl.style.left, 10);
+    var y = parseInt(textInputEl.style.top, 10) + 16;
+    textInputEl.remove();
+    textInputEl = null;
+
+    if (text) {
+      drawOps.push({
+        type: "text",
+        position: [x, y],
+        content: text,
+        color: drawColor,
+        fontSize: 16
+      });
+      undoStack = [];
+      renderAllOps();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Undo / Redo
+  // ─────────────────────────────────────────────────────────────────────
+
+  function drawUndo() {
+    if (drawOps.length === 0) return;
+    undoStack.push(drawOps.pop());
+    renderAllOps();
+  }
+
+  function drawRedo() {
+    if (undoStack.length === 0) return;
+    drawOps.push(undoStack.pop());
+    renderAllOps();
+  }
+
+  function toggleShape() {
+    activeShape = activeShape === "rect" ? "ellipse" : "rect";
+    var shapeBtn = panelEl ? panelEl.querySelector('[data-tool="shape"]') : null;
+    if (shapeBtn) {
+      shapeBtn.textContent = activeShape === "rect" ? "\u25A1" : "\u25CB";
+      shapeBtn.title = activeShape === "rect" ? "Rectangle (S, click again for ellipse)" : "Ellipse (S, click again for rectangle)";
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
@@ -1940,6 +2489,11 @@ const PICKER_IIFE_SOURCE = `(function() {
   // Submit / Cancel
   // ─────────────────────────────────────────────────────────────────────
 
+  function getCanvasDataURL() {
+    if (!canvasEl || drawOps.length === 0) return null;
+    return canvasEl.toDataURL("image/png");
+  }
+
   function handleSubmit() {
     var contextEl = document.getElementById("fleet-annotate-context");
     var context = contextEl ? (contextEl.value || "").trim() : "";
@@ -1985,9 +2539,11 @@ const PICKER_IIFE_SOURCE = `(function() {
       elements: elements
     };
 
+    var canvasDataURL = getCanvasDataURL();
     deactivate();
-
-    // Submit via preload-exposed API
+    if (canvasDataURL) {
+      result.canvasOverlay = canvasDataURL;
+    }
     window.fleetAnnotate.submit(result);
   }
 
