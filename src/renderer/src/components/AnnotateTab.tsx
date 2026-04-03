@@ -237,12 +237,12 @@ export function AnnotateTab(): React.JSX.Element {
       ) : (
         <div className="flex-1 overflow-y-auto">
           {annotations.map((ann) => (
-            <button
+            <div
               key={ann.id}
+              className="flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
               onClick={() => setSelectedId(ann.id)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 text-left"
             >
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 text-left">
                 <div className="text-sm text-neutral-200 truncate">
                   {ann.url}
                 </div>
@@ -251,7 +251,29 @@ export function AnnotateTab(): React.JSX.Element {
                   {ann.elementCount !== 1 ? 's' : ''}
                 </div>
               </div>
-            </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCopyPath(ann.id);
+                  }}
+                  className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+                  title="Copy path"
+                >
+                  <ClipboardCopy size={14} />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void deleteAnnotation(ann.id);
+                  }}
+                  className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
+                  title="Delete"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}
