@@ -241,7 +241,7 @@ export function AnnotateTab(): React.JSX.Element {
               key={ann.id}
               role="button"
               tabIndex={0}
-              className="flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
               onClick={() => setSelectedId(ann.id)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
@@ -274,6 +274,7 @@ export function AnnotateTab(): React.JSX.Element {
                   onClick={(e) => {
                     e.stopPropagation();
                     void deleteAnnotation(ann.id);
+                    if (selectedId === ann.id) setSelectedId(null);
                   }}
                   className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
                   title="Delete"
