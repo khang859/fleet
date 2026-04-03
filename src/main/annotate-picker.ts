@@ -454,6 +454,70 @@ const PICKER_IIFE_SOURCE = `(function() {
       border-color: var(--fa-accent);\
       color: var(--fa-bg-body);\
     }\
+    .fa-draw-tools {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 8px;\
+      padding-left: 8px;\
+      border-left: 1px solid var(--fa-border-muted);\
+    }\
+    .fa-tool-btn {\
+      background: var(--fa-bg-elevated);\
+      border: 1px solid transparent;\
+      border-radius: var(--fa-radius);\
+      padding: 5px 8px;\
+      font-size: 13px;\
+      color: var(--fa-fg-muted);\
+      cursor: pointer;\
+      transition: all 0.15s;\
+      line-height: 1;\
+    }\
+    .fa-tool-btn:hover { background: var(--fa-bg-hover); color: var(--fa-fg); }\
+    .fa-tool-btn.active {\
+      background: var(--fa-accent-muted);\
+      border-color: var(--fa-accent);\
+      color: var(--fa-accent);\
+    }\
+    .fa-color-swatches {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 8px;\
+      padding-left: 8px;\
+      border-left: 1px solid var(--fa-border-muted);\
+      align-items: center;\
+    }\
+    .fa-color-swatch {\
+      width: 18px;\
+      height: 18px;\
+      border-radius: 50%;\
+      border: 2px solid transparent;\
+      cursor: pointer;\
+      transition: border-color 0.15s, transform 0.15s;\
+    }\
+    .fa-color-swatch:hover { transform: scale(1.15); }\
+    .fa-color-swatch.active { border-color: var(--fa-fg); }\
+    .fa-width-toggle {\
+      display: flex;\
+      gap: 3px;\
+      margin-left: 4px;\
+      align-items: center;\
+    }\
+    .fa-width-btn {\
+      background: var(--fa-bg-elevated);\
+      border: 1px solid transparent;\
+      border-radius: var(--fa-radius);\
+      padding: 4px 6px;\
+      font-size: 10px;\
+      color: var(--fa-fg-muted);\
+      cursor: pointer;\
+      transition: all 0.15s;\
+    }\
+    .fa-width-btn:hover { background: var(--fa-bg-hover); }\
+    .fa-width-btn.active {\
+      background: var(--fa-accent-muted);\
+      border-color: var(--fa-accent);\
+      color: var(--fa-accent);\
+    }\
     .fa-spacer { flex: 1; }\
     .fa-count {\
       font-size: 12px;\
@@ -807,6 +871,14 @@ const PICKER_IIFE_SOURCE = `(function() {
           <button class="fa-mode-btn active" id="fleet-annotate-mode-single" title="Click replaces selection">Single</button>\
           <button class="fa-mode-btn" id="fleet-annotate-mode-multi" title="Click adds to selection">Multi</button>\
         </div>\
+        <div class="fa-draw-tools">\
+          <button class="fa-tool-btn" data-tool="pen" title="Pen (P)">\u270E</button>\
+          <button class="fa-tool-btn" data-tool="line" title="Line / Arrow (L, hold Shift for arrow)">\u2571</button>\
+          <button class="fa-tool-btn" data-tool="shape" title="Shape (S)">\u25A1</button>\
+          <button class="fa-tool-btn" data-tool="text" title="Text (T)">T</button>\
+        </div>\
+        <div class="fa-color-swatches" id="fleet-annotate-colors"></div>\
+        <div class="fa-width-toggle" id="fleet-annotate-widths"></div>\
         <div class="fa-spacer"></div>\
         <span class="fa-count" id="fleet-annotate-count">0 selected</span>\
         <label class="fa-notes-toggle" title="Show/hide all note cards">\
@@ -861,9 +933,98 @@ const PICKER_IIFE_SOURCE = `(function() {
       }
       e.stopPropagation();
     }, true);
+
+    initDrawToolbar();
+  }
+
+  function setActiveTool(tool) {
+    activeTool = tool;
+
+    // Update pick mode buttons
+    var singleBtn = document.getElementById("fleet-annotate-mode-single");
+    var multiBtn = document.getElementById("fleet-annotate-mode-multi");
+    if (singleBtn) singleBtn.classList.toggle("active", tool === "pick" && !multiSelectMode);
+    if (multiBtn) multiBtn.classList.toggle("active", tool === "pick" && multiSelectMode);
+
+    // Update draw tool buttons
+    var toolBtns = panelEl ? panelEl.querySelectorAll(".fa-tool-btn") : [];
+    for (var i = 0; i < toolBtns.length; i++) {
+      toolBtns[i].classList.toggle("active", toolBtns[i].getAttribute("data-tool") === tool);
+    }
+
+    // Update canvas pointer-events
+    if (canvasEl) {
+      if (tool === "pick") {
+        canvasEl.classList.remove("drawing", "tool-text");
+      } else {
+        canvasEl.classList.add("drawing");
+        canvasEl.classList.toggle("tool-text", tool === "text");
+      }
+    }
+
+    // Disable highlight/tooltip when drawing
+    if (tool !== "pick") {
+      hideHighlight();
+      hideTooltip();
+    }
+  }
+
+  function initDrawToolbar() {
+    // Tool buttons
+    var toolBtns = panelEl ? panelEl.querySelectorAll(".fa-tool-btn") : [];
+    for (var i = 0; i < toolBtns.length; i++) {
+      toolBtns[i].addEventListener("click", function (e) {
+        var tool = this.getAttribute("data-tool");
+        if (tool === "shape" && activeTool === "shape") {
+          toggleShape();
+        } else if (activeTool === tool) {
+          setActiveTool("pick");
+        } else {
+          setActiveTool(tool);
+        }
+      });
+    }
+
+    // Color swatches
+    var colorsEl = document.getElementById("fleet-annotate-colors");
+    if (colorsEl) {
+      for (var ci = 0; ci < DRAW_COLORS.length; ci++) {
+        var swatch = document.createElement("div");
+        swatch.className = "fa-color-swatch" + (DRAW_COLORS[ci] === drawColor ? " active" : "");
+        swatch.style.background = DRAW_COLORS[ci];
+        swatch.setAttribute("data-color", DRAW_COLORS[ci]);
+        swatch.addEventListener("click", function () {
+          drawColor = this.getAttribute("data-color");
+          var all = colorsEl.querySelectorAll(".fa-color-swatch");
+          for (var s = 0; s < all.length; s++) all[s].classList.remove("active");
+          this.classList.add("active");
+        });
+        colorsEl.appendChild(swatch);
+      }
+    }
+
+    // Width buttons
+    var widthsEl = document.getElementById("fleet-annotate-widths");
+    var widthLabels = ["S", "M", "L"];
+    if (widthsEl) {
+      for (var wi = 0; wi < DRAW_WIDTHS.length; wi++) {
+        var wBtn = document.createElement("button");
+        wBtn.className = "fa-width-btn" + (DRAW_WIDTHS[wi] === drawWidth ? " active" : "");
+        wBtn.textContent = widthLabels[wi];
+        wBtn.setAttribute("data-width", DRAW_WIDTHS[wi]);
+        wBtn.addEventListener("click", function () {
+          drawWidth = parseInt(this.getAttribute("data-width"), 10);
+          var all = widthsEl.querySelectorAll(".fa-width-btn");
+          for (var w = 0; w < all.length; w++) all[w].classList.remove("active");
+          this.classList.add("active");
+        });
+        widthsEl.appendChild(wBtn);
+      }
+    }
   }
 
   function setMultiMode(isMulti) {
+    setActiveTool("pick");
     multiSelectMode = isMulti;
     var singleBtn = document.getElementById("fleet-annotate-mode-single");
     var multiBtn = document.getElementById("fleet-annotate-mode-multi");
