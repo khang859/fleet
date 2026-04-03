@@ -1671,9 +1671,51 @@ const PICKER_IIFE_SOURCE = `(function() {
 
   function onKeyDown(e) {
     if (!isActive) return;
+
+    // Don't intercept when typing in text inputs
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+      }
+      return;
+    }
+
     if (e.key === "Escape") {
       e.preventDefault();
-      handleCancel();
+      if (activeTool !== "pick") {
+        setActiveTool("pick");
+      } else {
+        handleCancel();
+      }
+      return;
+    }
+
+    // Tool shortcuts
+    if (!e.ctrlKey && !e.metaKey) {
+      if (e.key === "p" || e.key === "P") { e.preventDefault(); setActiveTool(activeTool === "pen" ? "pick" : "pen"); return; }
+      if (e.key === "l" || e.key === "L") { e.preventDefault(); setActiveTool(activeTool === "line" ? "pick" : "line"); return; }
+      if (e.key === "s" || e.key === "S") {
+        e.preventDefault();
+        if (activeTool === "shape") {
+          toggleShape();
+        } else {
+          setActiveTool("shape");
+        }
+        return;
+      }
+      if (e.key === "t" || e.key === "T") { e.preventDefault(); setActiveTool(activeTool === "text" ? "pick" : "text"); return; }
+    }
+
+    // Undo/Redo
+    if ((e.ctrlKey || e.metaKey) && e.key === "z") {
+      e.preventDefault();
+      if (e.shiftKey) {
+        drawRedo();
+      } else {
+        drawUndo();
+      }
+      return;
     }
   }
 
@@ -1812,6 +1854,84 @@ const PICKER_IIFE_SOURCE = `(function() {
     }
     currentDrawOp = null;
     renderAllOps();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Text Tool
+  // ─────────────────────────────────────────────────────────────────────
+
+  function showTextInput(x, y) {
+    textInputEl = document.createElement("input");
+    textInputEl.type = "text";
+    textInputEl.id = "fleet-annotate-text-input";
+    textInputEl.style.left = x + "px";
+    textInputEl.style.top = (y - 12) + "px";
+    textInputEl.style.color = drawColor;
+    textInputEl.style.fontSize = "16px";
+    textInputEl.placeholder = "Type text...";
+    document.body.appendChild(textInputEl);
+    textInputEl.focus();
+
+    textInputEl.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        commitTextInput();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+      }
+      e.stopPropagation();
+    });
+
+    textInputEl.addEventListener("blur", function () {
+      setTimeout(function () { commitTextInput(); }, 50);
+    });
+  }
+
+  function commitTextInput() {
+    if (!textInputEl) return;
+    var text = textInputEl.value.trim();
+    var x = parseInt(textInputEl.style.left, 10);
+    var y = parseInt(textInputEl.style.top, 10) + 16;
+    textInputEl.remove();
+    textInputEl = null;
+
+    if (text) {
+      drawOps.push({
+        type: "text",
+        position: [x, y],
+        content: text,
+        color: drawColor,
+        fontSize: 16
+      });
+      undoStack = [];
+      renderAllOps();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Undo / Redo
+  // ─────────────────────────────────────────────────────────────────────
+
+  function drawUndo() {
+    if (drawOps.length === 0) return;
+    undoStack.push(drawOps.pop());
+    renderAllOps();
+  }
+
+  function drawRedo() {
+    if (undoStack.length === 0) return;
+    drawOps.push(undoStack.pop());
+    renderAllOps();
+  }
+
+  function toggleShape() {
+    activeShape = activeShape === "rect" ? "ellipse" : "rect";
+    var shapeBtn = panelEl ? panelEl.querySelector('[data-tool="shape"]') : null;
+    if (shapeBtn) {
+      shapeBtn.textContent = activeShape === "rect" ? "\u25A1" : "\u25CB";
+      shapeBtn.title = activeShape === "rect" ? "Rectangle (S, click again for ellipse)" : "Ellipse (S, click again for rectangle)";
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────
