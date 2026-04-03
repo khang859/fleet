@@ -30,11 +30,12 @@ const PICKER_IIFE_SOURCE = `(function() {
 
   var SCREENSHOT_PADDING = 20;
   var TEXT_MAX_LENGTH = 500;
+  var Z_INDEX_HIGHLIGHT  = 2147483640;
+  var Z_INDEX_CANVAS     = 2147483641;
   var Z_INDEX_CONNECTORS = 2147483643;
-  var Z_INDEX_MARKERS = 2147483644;
-  var Z_INDEX_HIGHLIGHT = 2147483645;
-  var Z_INDEX_PANEL = 2147483646;
-  var Z_INDEX_TOOLTIP = 2147483647;
+  var Z_INDEX_MARKERS    = 2147483644;
+  var Z_INDEX_PANEL      = 2147483646;
+  var Z_INDEX_TOOLTIP    = 2147483647;
   var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
   var ALT_KEY_LABEL = IS_MAC ? "\u2325" : "Alt";
 
@@ -95,6 +96,26 @@ const PICKER_IIFE_SOURCE = `(function() {
   var openNotes = new Set();       // indices of currently open notes
   var notePositions = new Map();   // index -> {x, y} manual position overrides
   var dragState = null;            // { card, startX, startY, startLeft, startTop }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Drawing State
+  // ─────────────────────────────────────────────────────────────────────
+
+  var drawOps = [];           // Array of completed DrawOp objects
+  var currentDrawOp = null;   // In-progress operation (during mousedown→mouseup)
+  var undoStack = [];         // For redo: popped ops go here
+  var activeTool = "pick";    // "pick" | "pen" | "line" | "shape" | "text"
+  var activeShape = "rect";   // "rect" | "ellipse" (sub-toggle for shape tool)
+  var drawColor = "#ef4444";  // Default red
+  var drawWidth = 3;          // Stroke width: 2=thin, 3=medium, 5=thick
+  var drawMouseDown = false;  // Whether mouse is currently pressed for drawing
+  var canvasEl = null;        // The <canvas> DOM element
+  var canvasCtx = null;       // The 2d rendering context
+  var textInputEl = null;     // Temporary <input> for text tool
+
+  var DRAW_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ffffff"];
+  var DRAW_WIDTHS = [2, 3, 5]; // thin, medium, thick
+  var POINT_MIN_DISTANCE = 3;  // Minimum px between freehand points
 
   // Debug mode state
   var debugMode = false;
@@ -530,6 +551,20 @@ const PICKER_IIFE_SOURCE = `(function() {
     debugMode = false;
     resetCSSVarCache();
 
+    // Reset drawing state
+    drawOps = [];
+    currentDrawOp = null;
+    undoStack = [];
+    activeTool = "pick";
+    activeShape = "rect";
+    drawColor = "#ef4444";
+    drawWidth = 3;
+    drawMouseDown = false;
+    if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+    if (canvasEl && canvasCtx) {
+      canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+    }
+
     // Reset UI elements
     if (markersContainer) markersContainer.innerHTML = "";
     if (notesContainer) notesContainer.innerHTML = "";
@@ -584,6 +619,15 @@ const PICKER_IIFE_SOURCE = `(function() {
 
     styleEl = highlightEl = tooltipEl = panelEl = markersContainer = null;
     notesContainer = connectorsEl = null;
+    if (canvasEl) canvasEl.remove();
+    canvasEl = null;
+    canvasCtx = null;
+    if (textInputEl) { textInputEl.remove(); textInputEl = null; }
+    drawOps = [];
+    currentDrawOp = null;
+    undoStack = [];
+    activeTool = "pick";
+    drawMouseDown = false;
     elementStack = [];
     stackIndex = 0;
     selectedElements = [];
