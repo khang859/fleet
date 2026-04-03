@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.26.0
+
+- 
+
+
 ## v2.25.2
 
 - **Annotate**: Fix copy path to copy full absolute path so AI agents can find annotation files
