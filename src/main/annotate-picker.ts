@@ -624,6 +624,11 @@ const PICKER_IIFE_SOURCE = `(function() {
     window.addEventListener("resize", handleResize);
     initDragHandlers();
 
+    // Drawing events
+    document.addEventListener("mousedown", onCanvasMouseDown, true);
+    document.addEventListener("mousemove", onCanvasMouseMove, true);
+    document.addEventListener("mouseup", onCanvasMouseUp, true);
+
     document.body.style.cursor = "crosshair";
     console.log("[fleet-annotate] Activated");
   }
@@ -697,6 +702,10 @@ const PICKER_IIFE_SOURCE = `(function() {
     window.removeEventListener("scroll", handleScroll, true);
     window.removeEventListener("resize", handleResize);
     cleanupDragHandlers();
+
+    document.removeEventListener("mousedown", onCanvasMouseDown, true);
+    document.removeEventListener("mousemove", onCanvasMouseMove, true);
+    document.removeEventListener("mouseup", onCanvasMouseUp, true);
 
     document.body.style.cursor = "";
 
@@ -1572,6 +1581,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   // ─────────────────────────────────────────────────────────────────────
 
   function onMouseMove(e) {
+    if (activeTool !== "pick") return;
     if (!isActive || e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) {
       hideHighlight();
       hideTooltip();
@@ -1621,6 +1631,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function onClick(e) {
+    if (activeTool !== "pick") return;
     if (!isActive || e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) return;
 
     e.preventDefault();
@@ -1704,6 +1715,103 @@ const PICKER_IIFE_SOURCE = `(function() {
       }
     });
     updateConnectors();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Drawing Event Handlers
+  // ─────────────────────────────────────────────────────────────────────
+
+  function onCanvasMouseDown(e) {
+    if (activeTool === "pick" || !canvasEl) return;
+
+    // Don't start drawing on panel or note cards
+    if (e.target.closest("#fleet-annotate-panel") || e.target.closest(".fa-note-card")) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    drawMouseDown = true;
+
+    var x = e.clientX;
+    var y = e.clientY;
+
+    if (activeTool === "pen") {
+      currentDrawOp = { type: "freehand", points: [[x, y]], color: drawColor, width: drawWidth };
+    } else if (activeTool === "line") {
+      currentDrawOp = { type: "line", start: [x, y], end: [x, y], color: drawColor, width: drawWidth, arrow: e.shiftKey };
+    } else if (activeTool === "shape") {
+      if (activeShape === "rect") {
+        currentDrawOp = { type: "rect", origin: [x, y], size: [0, 0], color: drawColor, width: drawWidth };
+      } else {
+        currentDrawOp = { type: "ellipse", center: [x, y], radii: [0, 0], color: drawColor, width: drawWidth, dragStart: [x, y] };
+      }
+    } else if (activeTool === "text") {
+      commitTextInput();
+      showTextInput(x, y);
+      drawMouseDown = false;
+      return;
+    }
+  }
+
+  function onCanvasMouseMove(e) {
+    if (!drawMouseDown || !currentDrawOp) return;
+
+    var x = e.clientX;
+    var y = e.clientY;
+
+    if (currentDrawOp.type === "freehand") {
+      var last = currentDrawOp.points[currentDrawOp.points.length - 1];
+      var dx = x - last[0];
+      var dy = y - last[1];
+      if (dx * dx + dy * dy >= POINT_MIN_DISTANCE * POINT_MIN_DISTANCE) {
+        currentDrawOp.points.push([x, y]);
+      }
+    } else if (currentDrawOp.type === "line") {
+      currentDrawOp.end = [x, y];
+      currentDrawOp.arrow = e.shiftKey;
+    } else if (currentDrawOp.type === "rect") {
+      currentDrawOp.size = [x - currentDrawOp.origin[0], y - currentDrawOp.origin[1]];
+    } else if (currentDrawOp.type === "ellipse") {
+      var sx = currentDrawOp.dragStart[0];
+      var sy = currentDrawOp.dragStart[1];
+      currentDrawOp.center = [(sx + x) / 2, (sy + y) / 2];
+      currentDrawOp.radii = [Math.abs(x - sx) / 2, Math.abs(y - sy) / 2];
+    }
+
+    renderAllOps();
+  }
+
+  function onCanvasMouseUp(e) {
+    if (!drawMouseDown || !currentDrawOp) {
+      drawMouseDown = false;
+      return;
+    }
+    drawMouseDown = false;
+
+    // Clean up transient drag data
+    if (currentDrawOp.type === "ellipse") {
+      delete currentDrawOp.dragStart;
+    }
+
+    // Only commit ops with meaningful content
+    var dominated = false;
+    if (currentDrawOp.type === "freehand" && currentDrawOp.points.length < 2) dominated = true;
+    if (currentDrawOp.type === "line") {
+      var ld = Math.hypot(currentDrawOp.end[0] - currentDrawOp.start[0], currentDrawOp.end[1] - currentDrawOp.start[1]);
+      if (ld < 3) dominated = true;
+    }
+    if (currentDrawOp.type === "rect") {
+      if (Math.abs(currentDrawOp.size[0]) < 3 && Math.abs(currentDrawOp.size[1]) < 3) dominated = true;
+    }
+    if (currentDrawOp.type === "ellipse") {
+      if (Math.abs(currentDrawOp.radii[0]) < 2 && Math.abs(currentDrawOp.radii[1]) < 2) dominated = true;
+    }
+
+    if (!dominated) {
+      drawOps.push(currentDrawOp);
+      undoStack = [];
+    }
+    currentDrawOp = null;
+    renderAllOps();
   }
 
   // ─────────────────────────────────────────────────────────────────────
