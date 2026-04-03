@@ -2489,6 +2489,11 @@ const PICKER_IIFE_SOURCE = `(function() {
   // Submit / Cancel
   // ─────────────────────────────────────────────────────────────────────
 
+  function getCanvasDataURL() {
+    if (!canvasEl || drawOps.length === 0) return null;
+    return canvasEl.toDataURL("image/png");
+  }
+
   function handleSubmit() {
     var contextEl = document.getElementById("fleet-annotate-context");
     var context = contextEl ? (contextEl.value || "").trim() : "";
@@ -2534,9 +2539,11 @@ const PICKER_IIFE_SOURCE = `(function() {
       elements: elements
     };
 
+    var canvasDataURL = getCanvasDataURL();
     deactivate();
-
-    // Submit via preload-exposed API
+    if (canvasDataURL) {
+      result.canvasOverlay = canvasDataURL;
+    }
     window.fleetAnnotate.submit(result);
   }
 
