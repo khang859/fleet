@@ -872,7 +872,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     panelEl.innerHTML = '\
       <div class="fa-header">\
         <span class="fa-logo">Fleet Annotate</span>\
-        <span class="fa-hint">Click elements \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close</span>\
+        <span class="fa-hint">Click elements \u2022 Draw tools: P/L/S/T \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close</span>\
         <button class="fa-close" id="fleet-annotate-close" title="Close (ESC)">\u00d7</button>\
       </div>\
       <div class="fa-toolbar">\
