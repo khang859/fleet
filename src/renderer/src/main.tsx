@@ -20,12 +20,12 @@ window.addEventListener('unhandledrejection', (event) => {
   });
 });
 
-// Global click handler for Shift+Click on links to open in default browser.
-// Catches clicks on <a> tags before other handlers and opens external URLs.
+// Global click handler for Cmd+Click (macOS) / Ctrl+Click (Windows/Linux) on links
+// to open in default browser. Catches clicks on <a> tags before other handlers.
 window.addEventListener(
   'click',
   (event) => {
-    if (!event.shiftKey) return;
+    if (!event.metaKey && !event.ctrlKey) return;
 
     const link = event.target instanceof Element ? event.target.closest('a') : null;
     if (!link) return;
