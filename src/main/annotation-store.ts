@@ -61,7 +61,8 @@ export class AnnotationStore extends EventEmitter {
 
   add(
     result: AnnotationResult,
-    screenshots: AnnotationScreenshot[]
+    screenshots: AnnotationScreenshot[],
+    drawingOverlayPng?: Buffer | null
   ): AnnotationMeta {
     const timestamp = Date.now();
     const id = `ann-${timestamp}-${randomUUID().slice(0, 8)}`;
@@ -81,10 +82,18 @@ export class AnnotationStore extends EventEmitter {
       screenshotPaths.push(pngPath);
     }
 
+    // Write full-page drawing overlay if present
+    let drawingOverlayPath: string | undefined;
+    if (drawingOverlayPng && drawingOverlayPng.length <= MAX_SCREENSHOT_BYTES) {
+      drawingOverlayPath = join(fullDir, 'drawing.png');
+      writeFileSync(drawingOverlayPath, drawingOverlayPng, { mode: 0o600 });
+    }
+
     // Build result with screenshot paths on elements
     const outputResult = {
       ...result,
       screenshotPaths,
+      drawingOverlayPath,
       elements: result.elements?.map((el, i) => {
         const shot = screenshots.find((s) => s.index === i + 1);
         if (shot) {

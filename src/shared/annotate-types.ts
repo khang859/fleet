@@ -60,9 +60,12 @@ export interface AnnotationResult {
   canvasOverlay?: string;  // Transient: drawing canvas data URL, stripped before persistence
 }
 
+export type AnnotateMode = 'select' | 'draw';
+
 export interface AnnotateStartRequest {
   url?: string;
   timeout?: number;
+  mode?: AnnotateMode;
 }
 
 export interface AnnotateCompleteResponse {

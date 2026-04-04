@@ -122,6 +122,18 @@ export function AnnotateTab(): React.JSX.Element {
           </div>
         )}
 
+        {/* Drawing overlay screenshot */}
+        {detail.drawingOverlayPath && (
+          <div className="px-3 py-2 border-b border-neutral-800">
+            <div className="text-xs text-neutral-500 mb-1">Drawing</div>
+            <img
+              src={`fleet-image://${detail.drawingOverlayPath}`}
+              alt="Drawing overlay"
+              className="rounded border border-neutral-700 max-w-full max-h-60 object-contain"
+            />
+          </div>
+        )}
+
         {/* Elements */}
         <div className="flex-1 overflow-y-auto">
           {detail.elements?.map((el, i) => (

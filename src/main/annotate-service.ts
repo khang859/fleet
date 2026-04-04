@@ -77,6 +77,7 @@ export class AnnotateService extends EventEmitter {
   private window: BrowserWindow | null = null;
   private pending: PendingRequest | null = null;
   private annotationStore: AnnotationStore | null = null;
+  private currentMode: 'select' | 'draw' = 'select';
   /** Pre-captured element snapshots: index -> cropped PNG buffer */
   private elementSnapshots = new Map<number, Buffer>();
 
@@ -144,6 +145,7 @@ export class AnnotateService extends EventEmitter {
       this.handleCancel('replaced');
     }
     this.elementSnapshots.clear();
+    this.currentMode = request.mode ?? 'select';
 
     const timeout = request.timeout ?? DEFAULT_TIMEOUT;
 
@@ -204,8 +206,9 @@ export class AnnotateService extends EventEmitter {
   private async injectPicker(): Promise<void> {
     if (!this.window || this.window.isDestroyed()) return;
     const { getPickerSource } = await import('./annotate-picker');
-    await this.window.webContents.executeJavaScript(getPickerSource());
-    log.info('picker injected');
+    const modeSetup = `window.__fleetAnnotateMode = ${JSON.stringify(this.currentMode)};`;
+    await this.window.webContents.executeJavaScript(modeSetup + getPickerSource());
+    log.info('picker injected', { mode: this.currentMode });
   }
 
   private async captureScreenshot(): Promise<Buffer | null> {
@@ -223,21 +226,41 @@ export class AnnotateService extends EventEmitter {
     pagePng: Buffer,
     overlayDataURL: string
   ): Promise<Buffer> {
+    if (!this.window || this.window.isDestroyed()) return pagePng;
+
     try {
-      const base64 = overlayDataURL.replace(/^data:image\/png;base64,/, '');
-      const overlayBuffer = Buffer.from(base64, 'base64');
+      const pageImage = nativeImage.createFromBuffer(pagePng);
+      const pageDataURL = pageImage.toDataURL();
 
-      const sharp = (await import('sharp')).default;
-      const composited = await sharp(pagePng)
-        .composite([{
-          input: overlayBuffer,
-          top: 0,
-          left: 0
-        }])
-        .png()
-        .toBuffer();
+      const compositedDataURL = await this.window.webContents.executeJavaScript(`
+        (function() {
+          return new Promise(function(resolve) {
+            var base = new Image();
+            base.onload = function() {
+              var canvas = document.createElement('canvas');
+              canvas.width = base.naturalWidth;
+              canvas.height = base.naturalHeight;
+              var ctx = canvas.getContext('2d');
+              ctx.drawImage(base, 0, 0);
 
-      return composited;
+              var overlay = new Image();
+              overlay.onload = function() {
+                ctx.drawImage(overlay, 0, 0, canvas.width, canvas.height);
+                resolve(canvas.toDataURL('image/png'));
+              };
+              overlay.onerror = function() { resolve(null); };
+              overlay.src = ${JSON.stringify(overlayDataURL)};
+            };
+            base.onerror = function() { resolve(null); };
+            base.src = ${JSON.stringify(pageDataURL)};
+          });
+        })()
+      `) as string | null;
+
+      if (!compositedDataURL) return pagePng;
+
+      const b64 = compositedDataURL.replace(/^data:image\/png;base64,/, '');
+      return Buffer.from(b64, 'base64');
     } catch (err) {
       log.warn('overlay compositing failed, using plain screenshot', { error: String(err) });
       return pagePng;
@@ -263,12 +286,7 @@ export class AnnotateService extends EventEmitter {
           // Use pre-captured snapshot if available (for transient elements like hover menus)
           const preCapture = this.elementSnapshots.get(i);
           if (preCapture) {
-            if (result.canvasOverlay) {
-              const composited = await this.compositeOverlay(preCapture, result.canvasOverlay);
-              screenshots.push({ index: i + 1, pngBuffer: composited });
-            } else {
-              screenshots.push({ index: i + 1, pngBuffer: preCapture });
-            }
+            screenshots.push({ index: i + 1, pngBuffer: preCapture });
             continue;
           }
 
@@ -293,12 +311,6 @@ export class AnnotateService extends EventEmitter {
           const fullPng = await this.captureScreenshot();
           if (!fullPng) continue;
 
-          // Composite drawing overlay if present
-          let compositedPng = fullPng;
-          if (result.canvasOverlay) {
-            compositedPng = await this.compositeOverlay(fullPng, result.canvasOverlay);
-          }
-
           // cropRect works in CSS pixels; scale by devicePixelRatio for the actual image
           const cssCrop = cropRect(freshInfo, SCREENSHOT_PADDING, viewport);
           const dpr = freshInfo.dpr;
@@ -308,7 +320,7 @@ export class AnnotateService extends EventEmitter {
             width: Math.round(cssCrop.width * dpr),
             height: Math.round(cssCrop.height * dpr)
           };
-          const fullImage = nativeImage.createFromBuffer(compositedPng);
+          const fullImage = nativeImage.createFromBuffer(fullPng);
           const imgSize = fullImage.getSize();
           // Clamp to actual image bounds
           scaledCrop.width = Math.min(scaledCrop.width, imgSize.width - scaledCrop.x);
@@ -319,12 +331,21 @@ export class AnnotateService extends EventEmitter {
         }
       }
 
+      // Save full-page screenshot with drawing overlay composited
+      let drawingOverlayPng: Buffer | null = null;
+      if (result.canvasOverlay && this.window && !this.window.isDestroyed()) {
+        const fullPng = await this.captureScreenshot();
+        if (fullPng) {
+          drawingOverlayPng = await this.compositeOverlay(fullPng, result.canvasOverlay);
+        }
+      }
+
       // Don't persist the canvas overlay data URL in the result JSON
       delete result.canvasOverlay;
 
       let resultPath: string;
       if (this.annotationStore) {
-        const meta = this.annotationStore.add(result, screenshots);
+        const meta = this.annotationStore.add(result, screenshots, drawingOverlayPng);
         resultPath = join(meta.dirPath, 'result.json');
       } else {
         resultPath = await writeResultFile(result, screenshots);

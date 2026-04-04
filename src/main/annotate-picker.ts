@@ -38,6 +38,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   var Z_INDEX_TOOLTIP    = 2147483647;
   var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform);
   var ALT_KEY_LABEL = IS_MAC ? "\u2325" : "Alt";
+  var ANNOTATE_MODE = window.__fleetAnnotateMode || "select"; // "select" | "draw"
 
   // HTML escape to prevent XSS when inserting user-controlled content
   function escapeHtml(str) {
@@ -615,6 +616,11 @@ const PICKER_IIFE_SOURCE = `(function() {
     createPanel();
     createCanvas();
 
+    // Auto-activate pen in draw mode
+    if (ANNOTATE_MODE === "draw") {
+      setActiveTool("pen");
+    }
+
     // Add listeners
     document.addEventListener("mousemove", onMouseMove, true);
     document.addEventListener("click", onClick, true);
@@ -872,7 +878,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     panelEl.innerHTML = '\
       <div class="fa-header">\
         <span class="fa-logo">Fleet Annotate</span>\
-        <span class="fa-hint">Click elements \u2022 Draw tools: P/L/S/T \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close</span>\
+        <span class="fa-hint">' + (ANNOTATE_MODE === "draw" ? 'Draw tools: P/L/S/T \u2022 Ctrl+Z undo \u2022 ESC to close' : 'Click elements \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close') + '</span>\
         <button class="fa-close" id="fleet-annotate-close" title="Close (ESC)">\u00d7</button>\
       </div>\
       <div class="fa-toolbar">\
@@ -943,10 +949,32 @@ const PICKER_IIFE_SOURCE = `(function() {
       e.stopPropagation();
     }, true);
 
+    // Apply mode: hide irrelevant toolbar sections
+    if (ANNOTATE_MODE === "draw") {
+      // Hide element selection controls
+      var modeToggle = panelEl.querySelector(".fa-mode-toggle");
+      if (modeToggle) modeToggle.style.display = "none";
+      var countEl = document.getElementById("fleet-annotate-count");
+      if (countEl) countEl.style.display = "none";
+      var notesToggle = panelEl.querySelectorAll(".fa-notes-toggle");
+      for (var nt = 0; nt < notesToggle.length; nt++) notesToggle[nt].style.display = "none";
+    } else {
+      // Hide draw tools in select mode
+      var drawTools = panelEl.querySelector(".fa-draw-tools");
+      if (drawTools) drawTools.style.display = "none";
+      var colorSwatches = document.getElementById("fleet-annotate-colors");
+      if (colorSwatches) colorSwatches.style.display = "none";
+      var widthToggle = document.getElementById("fleet-annotate-widths");
+      if (widthToggle) widthToggle.style.display = "none";
+    }
+
     initDrawToolbar();
   }
 
   function setActiveTool(tool) {
+    // Enforce mode restrictions
+    if (ANNOTATE_MODE === "draw" && tool === "pick") return;
+    if (ANNOTATE_MODE === "select" && tool !== "pick") return;
     activeTool = tool;
 
     // Update pick mode buttons

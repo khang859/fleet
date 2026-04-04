@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Crosshair } from 'lucide-react';
+import { X, Crosshair, MousePointer, Pencil } from 'lucide-react';
+import type { AnnotateMode } from '../../../shared/annotate-types';
 import { useAnnotationStore } from '../store/annotation-store';
 import { registerAnnotateModalOpener } from '../lib/annotate-modal-bridge';
 
@@ -15,6 +16,7 @@ function looksLikeUrl(text: string): boolean {
 
 export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.Element | null {
   const [url, setUrl] = useState('');
+  const [mode, setMode] = useState<AnnotateMode>('select');
   const [internalOpen, setInternalOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const startAnnotation = useAnnotationStore((s) => s.startAnnotation);
@@ -44,6 +46,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
 
   const handleClose = (): void => {
     setUrl('');
+    setMode('select');
     setInternalOpen(false);
     onClose();
   };
@@ -51,7 +54,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
   const handleStart = (): void => {
     const trimmed = url.trim();
     handleClose();
-    void startAnnotation(trimmed || undefined);
+    void startAnnotation(trimmed || undefined, mode);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
@@ -103,6 +106,35 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
           <p className="mt-1 text-xs text-neutral-500">
             Leave empty to open a blank page
           </p>
+        </div>
+
+        {/* Mode selection */}
+        <div className="mb-4">
+          <label className="block text-sm text-neutral-400 mb-1.5">Mode</label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMode('select')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
+                mode === 'select'
+                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
+                  : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+              }`}
+            >
+              <MousePointer size={16} />
+              Element Selection
+            </button>
+            <button
+              onClick={() => setMode('draw')}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
+                mode === 'draw'
+                  ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
+                  : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
+              }`}
+            >
+              <Pencil size={16} />
+              Free Draw
+            </button>
+          </div>
         </div>
 
         {/* Actions */}

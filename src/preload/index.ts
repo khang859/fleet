@@ -292,7 +292,7 @@ const fleetApi = {
       typedInvoke<unknown>(IPC_CHANNELS.ANNOTATE_GET, id),
     delete: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.ANNOTATE_DELETE, id),
-    start: async (args: { url?: string; timeout?: number }): Promise<{ resultPath: string }> =>
+    start: async (args: { url?: string; timeout?: number; mode?: string }): Promise<{ resultPath: string }> =>
       typedInvoke<{ resultPath: string }>(IPC_CHANNELS.ANNOTATE_UI_START, args),
     onCompleted: (callback: () => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)

@@ -459,10 +459,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.ANNOTATE_UI_START,
-    async (_event, args: { url?: string; timeout?: number }) => {
+    async (_event, args: { url?: string; timeout?: number; mode?: string }) => {
       const resultPath = await annotateService.start({
         url: args.url,
-        timeout: args.timeout
+        timeout: args.timeout,
+        mode: args.mode === 'draw' ? 'draw' : 'select'
       });
       return { resultPath };
     }

@@ -30,6 +30,8 @@ type AnnotationDetail = {
     };
     keyStyles?: Record<string, string>;
   }>;
+  screenshotPaths?: string[];
+  drawingOverlayPath?: string;
 };
 
 type AnnotationStoreState = {
@@ -38,7 +40,7 @@ type AnnotationStoreState = {
   loadAnnotations: () => Promise<void>;
   getDetail: (id: string) => Promise<AnnotationDetail | null>;
   deleteAnnotation: (id: string) => Promise<void>;
-  startAnnotation: (url?: string) => Promise<{ resultPath: string }>;
+  startAnnotation: (url?: string, mode?: 'select' | 'draw') => Promise<{ resultPath: string }>;
 };
 
 export const useAnnotationStore = create<AnnotationStoreState>((set) => ({
@@ -63,8 +65,8 @@ export const useAnnotationStore = create<AnnotationStoreState>((set) => ({
     }));
   },
 
-  startAnnotation: async (url?: string): Promise<{ resultPath: string }> => {
-    const result = await window.fleet.annotate.start({ url });
+  startAnnotation: async (url?: string, mode?: 'select' | 'draw'): Promise<{ resultPath: string }> => {
+    const result = await window.fleet.annotate.start({ url, mode });
     return result;
   }
 }));
