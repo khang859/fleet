@@ -1,5 +1,14 @@
 # Changelog
 
+## v2.27.0
+
+- Add mode selection for annotations: choose between Element Selection or Free Draw before starting
+- Fix free draw annotations being lost on submit (canvas overlay was not saved)
+- Replace sharp-based image compositing with in-page canvas compositing (fixes bundled Electron compatibility)
+- Add move/drag tool (V key) for repositioning drawn elements in free draw mode
+- Hide picker UI (highlight, tooltip, badges) from captured screenshots
+- Save full-page drawing overlay as standalone screenshot for AI context
+
 ## v2.26.1
 
 - 
