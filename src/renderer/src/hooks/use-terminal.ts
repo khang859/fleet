@@ -138,11 +138,11 @@ function createTerminal(
   term.loadAddon(unicodeAddon);
   term.unicode.activeVersion = '11';
 
-  // Shift+click to open http/https URLs in the default browser.
+  // Cmd+click (macOS) or Ctrl+click (Windows/Linux) to open URLs in default browser.
   // The custom handler suppresses plain clicks so text selection still works normally.
   const webLinksAddon = new WebLinksAddon(
     (event, uri) => {
-      if (event.shiftKey) {
+      if (event.metaKey || event.ctrlKey) {
         void window.fleet.shell.openExternal(uri);
       }
     },
