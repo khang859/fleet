@@ -105,7 +105,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   var drawOps = [];           // Array of completed DrawOp objects
   var currentDrawOp = null;   // In-progress operation (during mousedown→mouseup)
   var undoStack = [];         // For redo: popped ops go here
-  var activeTool = "pick";    // "pick" | "pen" | "line" | "shape" | "text"
+  var activeTool = "pick";    // "pick" | "pen" | "line" | "shape" | "text" | "move"
   var activeShape = "rect";   // "rect" | "ellipse" (sub-toggle for shape tool)
   var drawColor = "#ef4444";  // Default red
   var drawWidth = 3;          // Stroke width: 2=thin, 3=medium, 5=thick
@@ -114,6 +114,7 @@ const PICKER_IIFE_SOURCE = `(function() {
   var canvasCtx = null;       // The 2d rendering context
   var textInputEl = null;     // Temporary <input> for text tool
 
+  var moveTarget = null;      // { opIndex, startX, startY } for move tool
   var DRAW_COLORS = ["#ef4444", "#f59e0b", "#22c55e", "#3b82f6", "#a855f7", "#ffffff"];
   var DRAW_WIDTHS = [2, 3, 5]; // thin, medium, thick
   var POINT_MIN_DISTANCE = 3;  // Minimum px between freehand points
@@ -275,6 +276,9 @@ const PICKER_IIFE_SOURCE = `(function() {
     }\
     #fleet-annotate-canvas.drawing.tool-text {\
       cursor: text;\
+    }\
+    #fleet-annotate-canvas.drawing.tool-move {\
+      cursor: move;\
     }\
     #fleet-annotate-text-input {\
       position: fixed;\
@@ -662,6 +666,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     drawColor = "#ef4444";
     drawWidth = 3;
     drawMouseDown = false;
+    moveTarget = null;
     if (textInputEl) { textInputEl.remove(); textInputEl = null; }
     if (canvasEl && canvasCtx) {
       canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
@@ -878,7 +883,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     panelEl.innerHTML = '\
       <div class="fa-header">\
         <span class="fa-logo">Fleet Annotate</span>\
-        <span class="fa-hint">' + (ANNOTATE_MODE === "draw" ? 'Draw tools: P/L/S/T \u2022 Ctrl+Z undo \u2022 ESC to close' : 'Click elements \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close') + '</span>\
+        <span class="fa-hint">' + (ANNOTATE_MODE === "draw" ? 'V move \u2022 P pen \u2022 L line \u2022 S shape \u2022 T text \u2022 Ctrl+Z undo \u2022 ESC to close' : 'Click elements \u2022 ' + ALT_KEY_LABEL + '+scroll cycles parents \u2022 ESC to close') + '</span>\
         <button class="fa-close" id="fleet-annotate-close" title="Close (ESC)">\u00d7</button>\
       </div>\
       <div class="fa-toolbar">\
@@ -887,6 +892,7 @@ const PICKER_IIFE_SOURCE = `(function() {
           <button class="fa-mode-btn" id="fleet-annotate-mode-multi" title="Click adds to selection">Multi</button>\
         </div>\
         <div class="fa-draw-tools">\
+          <button class="fa-tool-btn" data-tool="move" title="Move (V)">\u2725</button>\
           <button class="fa-tool-btn" data-tool="pen" title="Pen (P)">\u270E</button>\
           <button class="fa-tool-btn" data-tool="line" title="Line / Arrow (L, hold Shift for arrow)">\u2571</button>\
           <button class="fa-tool-btn" data-tool="shape" title="Shape (S)">\u25A1</button>\
@@ -996,6 +1002,7 @@ const PICKER_IIFE_SOURCE = `(function() {
       } else {
         canvasEl.classList.add("drawing");
         canvasEl.classList.toggle("tool-text", tool === "text");
+        canvasEl.classList.toggle("tool-move", tool === "move");
       }
     }
 
@@ -1721,6 +1728,7 @@ const PICKER_IIFE_SOURCE = `(function() {
 
     // Tool shortcuts
     if (!e.ctrlKey && !e.metaKey) {
+      if (e.key === "v" || e.key === "V") { e.preventDefault(); setActiveTool(activeTool === "move" ? "pick" : "move"); return; }
       if (e.key === "p" || e.key === "P") { e.preventDefault(); setActiveTool(activeTool === "pen" ? "pick" : "pen"); return; }
       if (e.key === "l" || e.key === "L") { e.preventDefault(); setActiveTool(activeTool === "line" ? "pick" : "line"); return; }
       if (e.key === "s" || e.key === "S") {
@@ -1788,6 +1796,64 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   // ─────────────────────────────────────────────────────────────────────
+  // Hit Testing for Move Tool
+  // ─────────────────────────────────────────────────────────────────────
+
+  function distToSegment(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var len2 = dx * dx + dy * dy;
+    var t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2));
+    var projX = ax + t * dx, projY = ay + t * dy;
+    return Math.hypot(px - projX, py - projY);
+  }
+
+  function hitTestOp(op, x, y, threshold) {
+    if (op.type === "freehand") {
+      for (var i = 1; i < op.points.length; i++) {
+        if (distToSegment(x, y, op.points[i-1][0], op.points[i-1][1], op.points[i][0], op.points[i][1]) < threshold) return true;
+      }
+    } else if (op.type === "line") {
+      return distToSegment(x, y, op.start[0], op.start[1], op.end[0], op.end[1]) < threshold;
+    } else if (op.type === "rect") {
+      var rx = Math.min(op.origin[0], op.origin[0] + op.size[0]);
+      var ry = Math.min(op.origin[1], op.origin[1] + op.size[1]);
+      var rw = Math.abs(op.size[0]), rh = Math.abs(op.size[1]);
+      // Check proximity to any of the 4 edges
+      return distToSegment(x, y, rx, ry, rx + rw, ry) < threshold ||
+             distToSegment(x, y, rx + rw, ry, rx + rw, ry + rh) < threshold ||
+             distToSegment(x, y, rx + rw, ry + rh, rx, ry + rh) < threshold ||
+             distToSegment(x, y, rx, ry + rh, rx, ry) < threshold;
+    } else if (op.type === "ellipse") {
+      var edx = x - op.center[0], edy = y - op.center[1];
+      var rx2 = Math.abs(op.radii[0]) || 1, ry2 = Math.abs(op.radii[1]) || 1;
+      var norm = (edx * edx) / (rx2 * rx2) + (edy * edy) / (ry2 * ry2);
+      return Math.abs(Math.sqrt(norm) - 1) * Math.min(rx2, ry2) < threshold;
+    } else if (op.type === "text") {
+      var tw = op.content.length * op.fontSize * 0.6;
+      return x >= op.position[0] && x <= op.position[0] + tw &&
+             y >= op.position[1] - op.fontSize && y <= op.position[1];
+    }
+    return false;
+  }
+
+  function translateOp(op, dx, dy) {
+    if (op.type === "freehand") {
+      for (var i = 0; i < op.points.length; i++) {
+        op.points[i] = [op.points[i][0] + dx, op.points[i][1] + dy];
+      }
+    } else if (op.type === "line") {
+      op.start = [op.start[0] + dx, op.start[1] + dy];
+      op.end = [op.end[0] + dx, op.end[1] + dy];
+    } else if (op.type === "rect") {
+      op.origin = [op.origin[0] + dx, op.origin[1] + dy];
+    } else if (op.type === "ellipse") {
+      op.center = [op.center[0] + dx, op.center[1] + dy];
+    } else if (op.type === "text") {
+      op.position = [op.position[0] + dx, op.position[1] + dy];
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
   // Drawing Event Handlers
   // ─────────────────────────────────────────────────────────────────────
 
@@ -1804,7 +1870,17 @@ const PICKER_IIFE_SOURCE = `(function() {
     var x = e.clientX;
     var y = e.clientY;
 
-    if (activeTool === "pen") {
+    if (activeTool === "move") {
+      // Find topmost op under cursor (search in reverse for z-order)
+      for (var mi = drawOps.length - 1; mi >= 0; mi--) {
+        if (hitTestOp(drawOps[mi], x, y, 10)) {
+          moveTarget = { opIndex: mi, startX: x, startY: y };
+          break;
+        }
+      }
+      if (!moveTarget) drawMouseDown = false;
+      return;
+    } else if (activeTool === "pen") {
       currentDrawOp = { type: "freehand", points: [[x, y]], color: drawColor, width: drawWidth };
     } else if (activeTool === "line") {
       currentDrawOp = { type: "line", start: [x, y], end: [x, y], color: drawColor, width: drawWidth, arrow: e.shiftKey };
@@ -1823,10 +1899,23 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function onCanvasMouseMove(e) {
-    if (!drawMouseDown || !currentDrawOp) return;
+    if (!drawMouseDown) return;
 
     var x = e.clientX;
     var y = e.clientY;
+
+    // Handle move tool
+    if (activeTool === "move" && moveTarget) {
+      var mdx = x - moveTarget.startX;
+      var mdy = y - moveTarget.startY;
+      translateOp(drawOps[moveTarget.opIndex], mdx, mdy);
+      moveTarget.startX = x;
+      moveTarget.startY = y;
+      renderAllOps();
+      return;
+    }
+
+    if (!currentDrawOp) return;
 
     if (currentDrawOp.type === "freehand") {
       var last = currentDrawOp.points[currentDrawOp.points.length - 1];
@@ -1851,6 +1940,11 @@ const PICKER_IIFE_SOURCE = `(function() {
   }
 
   function onCanvasMouseUp(e) {
+    if (activeTool === "move" && moveTarget) {
+      moveTarget = null;
+      drawMouseDown = false;
+      return;
+    }
     if (!drawMouseDown || !currentDrawOp) {
       drawMouseDown = false;
       return;
@@ -1978,6 +2072,7 @@ const PICKER_IIFE_SOURCE = `(function() {
     };
     elementSnapshots.set(idx, snapshotData);
     // Ask main process to capture + crop now while the element is visible
+    // (main process handles hiding/restoring picker UI around the capture)
     if (window.fleetAnnotate && window.fleetAnnotate.snapshotElement) {
       window.fleetAnnotate.snapshotElement(snapshotData).catch(function () { /* ignore */ });
     }

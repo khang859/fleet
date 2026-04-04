@@ -114,7 +114,33 @@ export class AnnotateService extends EventEmitter {
     viewportRect: ElementRect,
     dpr: number
   ): Promise<void> {
+    // Hide picker UI, wait for repaint, then capture
+    if (this.window && !this.window.isDestroyed()) {
+      await this.window.webContents.executeJavaScript(`
+        (function() {
+          var ids = ['fleet-annotate-panel', 'fleet-annotate-highlight',
+                     'fleet-annotate-tooltip', 'fleet-annotate-markers', 'fleet-annotate-notes',
+                     'fleet-annotate-connectors'];
+          ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.visibility = 'hidden'; });
+          return new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); });
+        })()
+      `);
+    }
+
     const fullPng = await this.captureScreenshot();
+
+    // Restore picker UI
+    if (this.window && !this.window.isDestroyed()) {
+      await this.window.webContents.executeJavaScript(`
+        (function() {
+          var ids = ['fleet-annotate-panel', 'fleet-annotate-highlight',
+                     'fleet-annotate-tooltip', 'fleet-annotate-markers', 'fleet-annotate-notes',
+                     'fleet-annotate-connectors'];
+          ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.style.visibility = ''; });
+        })()
+      `);
+    }
+
     if (!fullPng) return;
 
     const viewport = this.window && !this.window.isDestroyed()
@@ -275,6 +301,19 @@ export class AnnotateService extends EventEmitter {
     this.pending = null;
 
     try {
+      // Ensure all picker UI is removed and the page has repainted
+      if (this.window && !this.window.isDestroyed()) {
+        await this.window.webContents.executeJavaScript(`
+          (function() {
+            var ids = ['fleet-annotate-panel', 'fleet-annotate-styles', 'fleet-annotate-highlight',
+                       'fleet-annotate-tooltip', 'fleet-annotate-markers', 'fleet-annotate-notes',
+                       'fleet-annotate-connectors', 'fleet-annotate-canvas'];
+            ids.forEach(function(id) { var el = document.getElementById(id); if (el) el.remove(); });
+            return new Promise(function(resolve) { requestAnimationFrame(function() { requestAnimationFrame(resolve); }); });
+          })()
+        `);
+      }
+
       const screenshots: AnnotationScreenshot[] = [];
       if (result.elements && this.window && !this.window.isDestroyed()) {
         const viewport = result.viewport ?? { width: 1440, height: 900 };
