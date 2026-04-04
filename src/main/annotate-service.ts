@@ -219,6 +219,31 @@ export class AnnotateService extends EventEmitter {
     }
   }
 
+  private async compositeOverlay(
+    pagePng: Buffer,
+    overlayDataURL: string
+  ): Promise<Buffer> {
+    try {
+      const base64 = overlayDataURL.replace(/^data:image\/png;base64,/, '');
+      const overlayBuffer = Buffer.from(base64, 'base64');
+
+      const sharp = (await import('sharp')).default;
+      const composited = await sharp(pagePng)
+        .composite([{
+          input: overlayBuffer,
+          top: 0,
+          left: 0
+        }])
+        .png()
+        .toBuffer();
+
+      return composited;
+    } catch (err) {
+      log.warn('overlay compositing failed, using plain screenshot', { error: String(err) });
+      return pagePng;
+    }
+  }
+
   private async handleSubmit(result: AnnotationResult): Promise<void> {
     if (!this.pending) return;
 
@@ -238,7 +263,12 @@ export class AnnotateService extends EventEmitter {
           // Use pre-captured snapshot if available (for transient elements like hover menus)
           const preCapture = this.elementSnapshots.get(i);
           if (preCapture) {
-            screenshots.push({ index: i + 1, pngBuffer: preCapture });
+            if (result.canvasOverlay) {
+              const composited = await this.compositeOverlay(preCapture, result.canvasOverlay);
+              screenshots.push({ index: i + 1, pngBuffer: composited });
+            } else {
+              screenshots.push({ index: i + 1, pngBuffer: preCapture });
+            }
             continue;
           }
 
@@ -263,6 +293,12 @@ export class AnnotateService extends EventEmitter {
           const fullPng = await this.captureScreenshot();
           if (!fullPng) continue;
 
+          // Composite drawing overlay if present
+          let compositedPng = fullPng;
+          if (result.canvasOverlay) {
+            compositedPng = await this.compositeOverlay(fullPng, result.canvasOverlay);
+          }
+
           // cropRect works in CSS pixels; scale by devicePixelRatio for the actual image
           const cssCrop = cropRect(freshInfo, SCREENSHOT_PADDING, viewport);
           const dpr = freshInfo.dpr;
@@ -272,7 +308,7 @@ export class AnnotateService extends EventEmitter {
             width: Math.round(cssCrop.width * dpr),
             height: Math.round(cssCrop.height * dpr)
           };
-          const fullImage = nativeImage.createFromBuffer(fullPng);
+          const fullImage = nativeImage.createFromBuffer(compositedPng);
           const imgSize = fullImage.getSize();
           // Clamp to actual image bounds
           scaledCrop.width = Math.min(scaledCrop.width, imgSize.width - scaledCrop.x);
@@ -282,6 +318,9 @@ export class AnnotateService extends EventEmitter {
           screenshots.push({ index: i + 1, pngBuffer: cropped.toPNG() });
         }
       }
+
+      // Don't persist the canvas overlay data URL in the result JSON
+      delete result.canvasOverlay;
 
       let resultPath: string;
       if (this.annotationStore) {
