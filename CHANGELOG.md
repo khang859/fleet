@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.27.1
+
+- Fix git changes tool not loading after app restart with restored workspaces
+- Fix cmd+click / ctrl+click to open links in browser
+
 ## v2.27.0
 
 - Add mode selection for annotations: choose between Element Selection or Free Draw before starting
