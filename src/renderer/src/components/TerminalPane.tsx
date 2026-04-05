@@ -53,6 +53,15 @@ export function TerminalPane({
   const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isDragOver, handlers: dragHandlers } = useTerminalDrop(paneId, focus);
 
+  // Seed the CWD store with the pane's initial cwd on mount so that
+  // git-changes and other CWD-dependent tools work immediately after
+  // workspace restore, before OSC 7 or CWD polling has fired.
+  useEffect(() => {
+    if (cwd && !useCwdStore.getState().cwds.has(paneId)) {
+      useCwdStore.getState().setCwd(paneId, cwd);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (!currentCwd) {
       setIsGitRepo(false);
