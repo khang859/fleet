@@ -82,6 +82,7 @@ function PiTerminal({
     paneId,
     cwd,
     cmd: launchConfig.cmd,
+    exitOnComplete: true,
     isActive,
     fontFamily,
     fontSize,

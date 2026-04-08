@@ -6,6 +6,8 @@ export type PtyCreateRequest = {
   shell?: string;
   cmd?: string;
   workspaceId?: string;
+  /** If true, PTY exits when cmd finishes instead of falling back to shell. */
+  exitOnComplete?: boolean;
 };
 
 export type HostPlatform = 'darwin' | 'linux' | 'win32';
