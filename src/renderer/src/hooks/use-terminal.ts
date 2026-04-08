@@ -17,6 +17,8 @@ export type UseTerminalOptions = {
   fontSize?: number;
   fontFamily?: string;
   scrollback?: number;
+  /** Shell command to run instead of default shell (e.g. pi agent binary). */
+  cmd?: string;
   serializedContent?: string;
   onScrollStateChange?: (isScrolledUp: boolean) => void;
   /** If true, skip PTY creation (attach to an already-running PTY, e.g. Admiral). */
@@ -292,6 +294,7 @@ function createTerminal(
     void window.fleet.pty.create({
       paneId: options.paneId,
       cwd: options.cwd,
+      cmd: options.cmd,
       workspaceId: options.workspaceId
     }).then(() => {
       // After hard refresh, createdPtys is reset so we hit this path even
