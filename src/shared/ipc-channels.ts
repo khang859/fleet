@@ -87,5 +87,8 @@ export const IPC_CHANNELS = {
   ANNOTATE_COMPLETED: 'annotate:completed',
   ANNOTATE_LIST: 'annotate:list',
   ANNOTATE_GET: 'annotate:get',
-  ANNOTATE_DELETE: 'annotate:delete'
+  ANNOTATE_DELETE: 'annotate:delete',
+  // Pi Agent
+  PI_OPEN: 'pi:open',
+  PI_LAUNCH_CONFIG: 'pi:launch-config',
 } as const;

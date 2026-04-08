@@ -363,6 +363,13 @@ export class SocketServer extends EventEmitter {
         return { resultPath };
       }
 
+      case 'pi.open': {
+        const cwd = typeof args.cwd === 'string' ? args.cwd : undefined;
+        if (!cwd) throw new CodedError('pi.open requires a cwd', 'BAD_REQUEST');
+        this.emit('pi-open', { cwd });
+        return { ok: true };
+      }
+
       default: {
         throw new CodedError(`Unknown command: ${command}`, 'NOT_FOUND');
       }

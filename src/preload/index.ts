@@ -25,7 +25,9 @@ import type {
   ActivityStatePayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
-  WorktreeRemoveRequest
+  WorktreeRemoveRequest,
+  PiOpenPayload,
+  PiLaunchConfig
 } from '../shared/ipc-api';
 import type {
   Workspace,
@@ -296,7 +298,13 @@ const fleetApi = {
       typedInvoke<{ resultPath: string }>(IPC_CHANNELS.ANNOTATE_UI_START, args),
     onCompleted: (callback: () => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
-  }
+  },
+  pi: {
+    onOpen: (callback: (payload: PiOpenPayload) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.PI_OPEN, callback),
+    getLaunchConfig: async (paneId: string): Promise<PiLaunchConfig> =>
+      typedInvoke(IPC_CHANNELS.PI_LAUNCH_CONFIG, { paneId }),
+  },
 };
 
 contextBridge.exposeInMainWorld('fleet', fleetApi);

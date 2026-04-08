@@ -40,6 +40,8 @@ import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
+import type { PiAgentManager } from './pi-agent-manager';
+import type { FleetBridgeServer } from './fleet-bridge';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
@@ -61,7 +63,9 @@ export function registerIpcHandlers(
   activityTracker: ActivityTracker,
   worktreeService: WorktreeService,
   annotationStore: AnnotationStore,
-  annotateService: AnnotateService
+  annotateService: AnnotateService,
+  piAgentManager: PiAgentManager,
+  fleetBridge: FleetBridgeServer
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -468,6 +472,14 @@ export function registerIpcHandlers(
       return { resultPath };
     }
   );
+
+  ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
+    await piAgentManager.ensureInstalled();
+    const token = fleetBridge.generateToken();
+    const port = fleetBridge.getPort();
+    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId);
+    return { cmd };
+  });
 }
 
 // Exported for testing

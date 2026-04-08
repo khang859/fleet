@@ -23,6 +23,8 @@ import { installFleetCLI, installSkillFile } from './install-fleet-cli';
 import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
+import { PiAgentManager } from './pi-agent-manager';
+import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
@@ -54,6 +56,8 @@ const imageService = new ImageService();
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
+const piAgentManager = new PiAgentManager();
+const fleetBridge = new FleetBridgeServer();
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
   if (windowRef && !windowRef.isDestroyed()) {
@@ -282,7 +286,9 @@ void app.whenReady().then(async () => {
     activityTracker,
     new WorktreeService(),
     annotationStore,
-    annotateService
+    annotateService,
+    piAgentManager,
+    fleetBridge
   );
 
   imageService.resumeInterrupted();
@@ -305,9 +311,37 @@ void app.whenReady().then(async () => {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
     }
   });
+  socketSupervisor.on('pi-open', (payload: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PI_OPEN, payload);
+    }
+  });
   socketSupervisor.start().catch((err: unknown) => {
     log.error('socket-supervisor failed to start', {
       error: err instanceof Error ? err.message : String(err)
+    });
+  });
+
+  // Start Fleet bridge for Pi agent extensions
+  fleetBridge.onRequest(async (type, payload, _paneId) => {
+    switch (type) {
+      case 'file.open': {
+        const filePath = typeof payload.path === 'string' ? payload.path : '';
+        if (!filePath) throw new Error('file.open requires a path');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
+            files: [{ path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }],
+          });
+        }
+        return { ok: true };
+      }
+      default:
+        throw new Error(`Unknown bridge command: ${type}`);
+    }
+  });
+  fleetBridge.start().catch((err: unknown) => {
+    log.error('Fleet bridge failed to start', {
+      error: err instanceof Error ? err.message : String(err),
     });
   });
 
