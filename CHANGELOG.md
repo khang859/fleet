@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.28.0
+
+- Add Pi agent tab type with Fleet extensions
+
 ## v2.27.1
 
 - Fix git changes tool not loading after app restart with restored workspaces

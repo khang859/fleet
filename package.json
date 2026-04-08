@@ -1,7 +1,7 @@
 {
   "name": "fleet",
   "productName": "Fleet",
-  "version": "2.27.1",
+  "version": "2.28.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
   "author": {
