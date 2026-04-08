@@ -632,6 +632,30 @@ export async function runCLI(
     }
   }
 
+  // ── Top-level "pi" command ───────────────────────────────────────────────
+  if (group === 'pi') {
+    const cwd = process.cwd();
+    const command = 'pi.open';
+    const args: Record<string, unknown> = { cwd };
+
+    const cli = new FleetCLI(sockPath);
+    try {
+      const response = opts?.retry
+        ? await cli.sendWithRetry(command, args)
+        : await cli.send(command, args);
+      if (!response.ok) {
+        return `Error: ${response.error ?? 'Unknown error'}`;
+      }
+      return 'Opening Pi agent in Fleet';
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+        return 'Fleet is not running';
+      }
+      return `Error: ${msg}`;
+    }
+  }
+
   // ── Images config (get or set based on flags) ──────────────────────────
   if (group === 'images' && action === 'config') {
     const configArgs = parseArgs(rest.filter((t) => t !== '--quiet'));

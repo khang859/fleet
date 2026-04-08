@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Settings, Terminal, ImageIcon, ChevronRight } from 'lucide-react';
+import { Settings, Terminal, ImageIcon, ChevronRight, Bot } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
@@ -1150,7 +1150,9 @@ export function Sidebar({
               const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
 
               let icon: React.ReactNode;
-              if (isFile) {
+              if (tab.type === 'pi') {
+                icon = <Bot size={14} />;
+              } else if (isFile) {
                 const leafs2 = collectPaneLeafs(tab.splitRoot);
                 const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
                 icon =

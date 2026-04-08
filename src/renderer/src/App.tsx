@@ -25,6 +25,7 @@ import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
+import { PiTab } from './components/PiTab';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 
@@ -235,6 +236,16 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const cleanup = window.fleet.file.onOpenInTab((payload) => {
       useWorkspaceStore.getState().openFileInTab(payload.files);
+    });
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  // Open Pi agent tab via IPC (fleet pi CLI command)
+  useEffect(() => {
+    const cleanup = window.fleet.pi.onOpen((payload) => {
+      useWorkspaceStore.getState().addPiTab(payload.cwd);
     });
     return () => {
       cleanup();
@@ -715,6 +726,13 @@ export function App(): React.JSX.Element {
                         <AnnotateTab />
                       ) : tab.type === 'settings' ? (
                         <SettingsTab />
+                      ) : tab.type === 'pi' ? (
+                        <PiTab
+                          tab={tab}
+                          isActive={tab.id === activeTabId}
+                          fontFamily={settings?.general.fontFamily}
+                          fontSize={settings?.general.fontSize}
+                        />
                       ) : (
                         <PaneGrid
                           root={tab.splitRoot}

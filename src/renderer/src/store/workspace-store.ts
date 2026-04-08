@@ -113,6 +113,7 @@ type WorkspaceStore = {
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
+  addPiTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
@@ -261,6 +262,29 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       activeTabId: tab.id,
       activePaneId: leaf.id,
       isDirty: true
+    }));
+    return leaf.id;
+  },
+
+  addPiTab: (cwd) => {
+    const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd, paneType: 'pi' };
+    const tab: Tab = {
+      id: generateId(),
+      label: 'Pi Agent',
+      labelIsCustom: true,
+      cwd,
+      type: 'pi',
+      splitRoot: leaf,
+    };
+    logTabs.debug('addPiTab', { tabId: tab.id, cwd, paneId: leaf.id });
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: [...state.workspace.tabs, tab],
+      },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true,
     }));
     return leaf.id;
   },
