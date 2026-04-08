@@ -14,6 +14,7 @@ export default defineConfig(
       'reference/**',
       '.claude/**',
       '.worktrees/**',
+      'resources/pi-extensions/**',
       'eslint.config.mjs'
     ]
   },
