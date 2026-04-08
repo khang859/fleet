@@ -5,7 +5,8 @@
  * Will be enabled once Fleet supports creating terminal tabs with commands via IPC.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function fleetTerminal(_pi: any): void {
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+export default function (_pi: ExtensionAPI): void {
   // No-op for now
 }

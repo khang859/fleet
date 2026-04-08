@@ -5,48 +5,41 @@
  * Requires fleet-bridge.ts to be loaded first.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default function fleetFiles(pi: any): void {
-  const metadata = pi.metadata ?? {};
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
 
+const FleetOpenParams = Type.Object({
+  path: Type.String({ description: "Absolute path to the file to open" }),
+});
+
+export default function (pi: ExtensionAPI): void {
   pi.registerTool({
-    name: 'fleet_open',
+    name: "fleet_open",
+    label: "Fleet Open",
     description:
       "Open a file in the Fleet editor. Use this when you want the user to see a file in Fleet's built-in editor tab.",
-    parameters: {
-      type: 'object',
-      properties: {
-        path: {
-          type: 'string',
-          description: 'Absolute path to the file to open',
-        },
-      },
-      required: ['path'],
-    },
-    async execute({ path }: { path: string }) {
-      const bridge = metadata.fleetBridge as
-        | {
-            send: (
-              type: string,
-              payload: Record<string, unknown>
-            ) => Promise<unknown>;
-            isConnected: () => boolean;
-          }
-        | undefined;
+    parameters: FleetOpenParams,
+
+    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      const bridge = globalThis.__fleetBridge;
 
       if (!bridge || !bridge.isConnected()) {
         return {
-          error:
-            'Fleet bridge not connected. Fleet-specific tools are unavailable.',
+          content: [{ type: "text" as const, text: "Fleet bridge not connected. Fleet-specific tools are unavailable." }],
+          details: undefined,
         };
       }
 
       try {
-        await bridge.send('file.open', { path });
-        return { success: true, message: `Opened ${path} in Fleet editor` };
+        await bridge.send("file.open", { path: params.path });
+        return {
+          content: [{ type: "text" as const, text: `Opened ${params.path} in Fleet editor` }],
+          details: undefined,
+        };
       } catch (err) {
         return {
-          error: err instanceof Error ? err.message : String(err),
+          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
+          details: undefined,
         };
       }
     },
