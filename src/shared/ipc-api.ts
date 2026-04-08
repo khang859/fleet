@@ -20,6 +20,14 @@ export type PtyCreateResponse = {
   pid: number;
 };
 
+export type PiOpenPayload = {
+  cwd: string;
+};
+
+export type PiLaunchConfig = {
+  cmd: string;
+};
+
 export type PtyDataPayload = {
   paneId: string;
   data: string;
