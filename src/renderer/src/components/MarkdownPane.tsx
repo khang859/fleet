@@ -18,8 +18,13 @@ type ViewMode = 'preview' | 'raw';
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
+function stripFragmentAndQuery(href: string): string {
+  return href.split(/[?#]/)[0];
+}
+
 function isMarkdownPath(href: string): boolean {
-  const ext = href.split('.').pop()?.toLowerCase() ?? '';
+  const clean = stripFragmentAndQuery(href);
+  const ext = clean.split('.').pop()?.toLowerCase() ?? '';
   return MARKDOWN_EXTENSIONS.has(`.${ext}`);
 }
 
@@ -105,7 +110,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
               className="text-blue-400 hover:underline cursor-pointer"
               onClick={(e) => {
                 e.preventDefault();
-                window.open(href);
+                void window.fleet.shell.openExternal(href);
               }}
               {...props}
             >
@@ -115,7 +120,8 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
         }
 
         // Relative links — open in Fleet
-        const resolvedPath = resolve(baseDir, href);
+        const cleanHref = stripFragmentAndQuery(href);
+        const resolvedPath = resolve(baseDir, cleanHref);
         const paneType = isMarkdownPath(href) ? 'markdown' : 'file';
         const label = href.split('/').pop() ?? href;
 
@@ -191,27 +197,26 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
         </button>
       </div>
 
-      {/* Content area */}
-      <div className="flex-1 min-h-0 overflow-hidden">
-        {activeView === 'preview' ? (
-          <div className="h-full overflow-y-auto">
-            <div className="max-w-3xl mx-auto px-8 py-6 text-neutral-300 leading-relaxed markdown-preview">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={markdownComponents}
-              >
-                {previewContent}
-              </ReactMarkdown>
-            </div>
+      {/* Content area — both views stay mounted to preserve editor state */}
+      <div className="flex-1 min-h-0 overflow-hidden relative">
+        <div className={`h-full overflow-y-auto ${activeView === 'preview' ? '' : 'hidden'}`}>
+          <div className="max-w-3xl mx-auto px-8 py-6 text-neutral-300 leading-relaxed markdown-preview">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={markdownComponents}
+            >
+              {previewContent}
+            </ReactMarkdown>
           </div>
-        ) : (
+        </div>
+        <div className={`h-full ${activeView === 'raw' ? '' : 'hidden'}`}>
           <FileEditorPane
             paneId={paneId}
             filePath={filePath}
             onContentChange={handleContentChange}
           />
-        )}
+        </div>
       </div>
     </div>
   );
