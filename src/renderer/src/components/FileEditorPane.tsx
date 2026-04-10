@@ -95,9 +95,10 @@ function getLanguageName(filePath: string): string {
 type Props = {
   paneId: string;
   filePath: string;
+  onContentChange?: (content: string) => void;
 };
 
-export function FileEditorPane({ paneId, filePath }: Props): React.JSX.Element {
+export function FileEditorPane({ paneId, filePath, onContentChange }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
@@ -139,6 +140,9 @@ export function FileEditorPane({ paneId, filePath }: Props): React.JSX.Element {
   // Keep saveRef current so closures in EditorView always call the latest save
   const saveRef = useRef(save);
   saveRef.current = save;
+
+  const onContentChangeRef = useRef(onContentChange);
+  onContentChangeRef.current = onContentChange;
 
   // Load file on mount
   useEffect(() => {
@@ -198,6 +202,7 @@ export function FileEditorPane({ paneId, filePath }: Props): React.JSX.Element {
             const current = update.state.doc.toString();
             const dirty = current !== savedContentRef.current;
             setIsDirty(dirty);
+            onContentChangeRef.current?.(current);
             setPaneDirty(paneId, dirty);
             if (dirty) {
               if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
