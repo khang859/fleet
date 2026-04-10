@@ -12,7 +12,7 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings' | 'annotate' | 'pi';
+  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings' | 'annotate' | 'pi' | 'markdown';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -38,7 +38,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi';
+  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi' | 'markdown';
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;

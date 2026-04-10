@@ -15,6 +15,8 @@ const IMAGE_EXTENSIONS = new Set([
   '.ico'
 ]);
 
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+
 const BINARY_BLOCKLIST = new Set([
   '.zip',
   '.tar',
@@ -550,7 +552,7 @@ export async function runCLI(
     }
 
     const errors: string[] = [];
-    const files: Array<{ path: string; paneType: 'file' | 'image' }> = [];
+    const files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' }> = [];
 
     for (const p of paths) {
       const resolved = resolve(p);
@@ -571,7 +573,11 @@ export async function runCLI(
         continue;
       }
 
-      const paneType = IMAGE_EXTENSIONS.has(ext) ? ('image' as const) : ('file' as const);
+      const paneType = IMAGE_EXTENSIONS.has(ext)
+        ? ('image' as const)
+        : MARKDOWN_EXTENSIONS.has(ext)
+          ? ('markdown' as const)
+          : ('file' as const);
       files.push({ path: resolved, paneType });
     }
 
