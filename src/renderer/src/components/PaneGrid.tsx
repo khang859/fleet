@@ -3,6 +3,7 @@ import type { PaneNode, PaneLeaf } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
 import { ImageViewerPane } from './ImageViewerPane';
 import { FileEditorPane } from './FileEditorPane';
+import { MarkdownPane } from './MarkdownPane';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { createLogger } from '../logger';
 
@@ -151,6 +152,13 @@ export function PaneGrid({
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
               <FileEditorPane paneId={leaf.id} filePath={leaf.node.filePath ?? ''} />
+            </div>
+          );
+        }
+        if (leaf.node.paneType === 'markdown') {
+          return (
+            <div key={leaf.id} style={rectStyle(leaf.rect)}>
+              <MarkdownPane paneId={leaf.id} filePath={leaf.node.filePath ?? ''} />
             </div>
           );
         }
