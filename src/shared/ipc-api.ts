@@ -98,7 +98,7 @@ export type GitIsRepoPayload = {
 };
 
 export type FileOpenInTabPayload = {
-  files: Array<{ path: string; paneType: 'file' | 'image'; label: string }>;
+  files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown'; label: string }>;
 };
 
 export type SystemDepResult = {
