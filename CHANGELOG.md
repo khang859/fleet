@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.29.0
+
+- Add markdown preview tab with preview/raw sub-tabs
+
 ## v2.28.0
 
 - Add Pi agent tab type with Fleet extensions
