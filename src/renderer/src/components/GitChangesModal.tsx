@@ -4,6 +4,7 @@ import { X, Loader2, GitBranch, AlertCircle } from 'lucide-react';
 import { DiffView, DiffModeEnum, DiffFile, type DiffHighlighter } from '@git-diff-view/react';
 import '@git-diff-view/react/styles/diff-view.css';
 import type { GitStatusPayload, GitFileStatus } from '../../../shared/ipc-api';
+import { getLanguageForPath } from '../../../shared/languages';
 
 type DiffHighlighterInstance = Omit<DiffHighlighter, 'getHighlighterEngine'> | undefined;
 
@@ -484,34 +485,7 @@ export function parseUnifiedDiff(rawDiff: string): ParsedFileDiff[] {
 }
 
 function getLanguageFromFilename(filename: string): string | undefined {
-  const ext = filename.split('.').pop()?.toLowerCase();
-  const langMap: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'tsx',
-    js: 'javascript',
-    jsx: 'jsx',
-    py: 'python',
-    rb: 'ruby',
-    rs: 'rust',
-    go: 'go',
-    java: 'java',
-    css: 'css',
-    scss: 'scss',
-    html: 'html',
-    json: 'json',
-    yaml: 'yaml',
-    yml: 'yaml',
-    md: 'markdown',
-    sh: 'bash',
-    bash: 'bash',
-    zsh: 'bash',
-    sql: 'sql',
-    toml: 'toml',
-    xml: 'xml',
-    vue: 'vue',
-    svelte: 'svelte'
-  };
-  return ext ? langMap[ext] : undefined;
+  return getLanguageForPath(filename)?.id;
 }
 
 function parseDiffToFiles(rawDiff: string, highlighter: DiffHighlighterInstance): DiffFile[] {
