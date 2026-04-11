@@ -30,6 +30,7 @@ export const IPC_CHANNELS = {
   FILE_READ_BINARY: 'file:read-binary',
   FILE_OPEN_IN_TAB: 'file:open-in-tab',
   FILE_SEARCH: 'file:search',
+  FILE_GREP: 'file:grep',
   FILE_RECENT_IMAGES: 'file:recent-images',
   CLIPBOARD_HISTORY: 'clipboard:history',
   CLIPBOARD_CHANGED: 'clipboard:changed',
