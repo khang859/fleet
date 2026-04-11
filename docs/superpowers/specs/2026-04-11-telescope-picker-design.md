@@ -88,6 +88,10 @@ type TelescopeMode = {
   renderPreview: (item: TelescopeItem) => ReactNode;
   onSelect: (item: TelescopeItem) => void;
   onAltSelect?: (item: TelescopeItem) => void;
+  // Browse mode extensions (optional, only used by browse-mode)
+  breadcrumbs?: string[];            // current path segments for breadcrumb display
+  onNavigate?: (dir: string) => void; // drill into directory or jump to breadcrumb
+  onNavigateUp?: () => void;          // go up one directory (Backspace on empty query)
 };
 ```
 
