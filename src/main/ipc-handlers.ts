@@ -406,9 +406,7 @@ export function registerIpcHandlers(
     async (_event, { dirPath }: { dirPath: string }): Promise<string[]> => {
       try {
         const entries = await readdir(dirPath, { withFileTypes: true });
-        const names = entries
-          .filter((e) => e.isFile() || e.isDirectory())
-          .map((e) => e.name);
+        const names = entries.filter((e) => e.isFile() || e.isDirectory()).map((e) => e.name);
         if (names.length === 0) return [];
 
         const { stdout } = await execAsync(
