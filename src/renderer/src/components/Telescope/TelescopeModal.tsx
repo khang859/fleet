@@ -9,6 +9,24 @@ import { createBrowseMode } from './modes/browse-mode';
 import { createPanesMode } from './modes/panes-mode';
 import type { TelescopeMode, TelescopeItem } from './types';
 
+const IMAGE_EXTENSIONS = new Set([
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'webp',
+  'avif',
+  'svg',
+  'bmp',
+  'ico',
+  'cur'
+]);
+
+function isImageFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
 type TelescopeModalProps = {
   isOpen: boolean;
   onClose: () => void;
@@ -28,6 +46,10 @@ export function TelescopeModal({
   const [results, setResults] = useState<TelescopeItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<{
+    base64: string;
+    mimeType: string;
+  } | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [browseRevision, forceUpdate] = useReducer((n: number) => n + 1, 0);
 
@@ -65,6 +87,7 @@ export function TelescopeModal({
       setResults([]);
       setSelectedIndex(0);
       setPreviewContent(null);
+      setPreviewImage(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
   }, [isOpen]);
@@ -99,6 +122,7 @@ export function TelescopeModal({
   useEffect(() => {
     if (!isOpen || results.length === 0) {
       setPreviewContent(null);
+      setPreviewImage(null);
       return;
     }
 
@@ -119,6 +143,7 @@ export function TelescopeModal({
         ]
           .filter(Boolean)
           .join('\n');
+        setPreviewImage(null);
         setPreviewContent(paneInfo);
         return;
       }
@@ -127,6 +152,7 @@ export function TelescopeModal({
 
       if (filePath !== null && data?.isDirectory === true) {
         setPreviewLoading(true);
+        setPreviewImage(null);
         void window.fleet.file
           .readdir(filePath)
           .then((result) => {
@@ -147,8 +173,26 @@ export function TelescopeModal({
         return;
       }
 
+      if (filePath !== null && isImageFile(filePath)) {
+        setPreviewLoading(true);
+        setPreviewContent(null);
+        void window.fleet.file
+          .readBinary(filePath)
+          .then((result) => {
+            if (result.success && result.data) {
+              setPreviewImage({ base64: result.data.base64, mimeType: result.data.mimeType });
+            } else {
+              setPreviewImage(null);
+              setPreviewContent('Could not read image');
+            }
+          })
+          .finally(() => setPreviewLoading(false));
+        return;
+      }
+
       if (filePath !== null) {
         setPreviewLoading(true);
+        setPreviewImage(null);
         void window.fleet.file
           .read(filePath)
           .then((result) => {
@@ -172,6 +216,7 @@ export function TelescopeModal({
         return;
       }
 
+      setPreviewImage(null);
       setPreviewContent('No preview available');
     }, 100);
 
@@ -285,6 +330,18 @@ export function TelescopeModal({
   const renderPreviewPanel = (): React.JSX.Element => {
     if (previewLoading) {
       return <div className="text-xs text-neutral-500 p-3">Loading preview...</div>;
+    }
+
+    if (previewImage) {
+      return (
+        <div className="flex items-center justify-center h-full">
+          <img
+            src={`data:${previewImage.mimeType};base64,${previewImage.base64}`}
+            className="max-w-full max-h-full object-contain"
+            alt="Preview"
+          />
+        </div>
+      );
     }
 
     if (!previewContent) {
