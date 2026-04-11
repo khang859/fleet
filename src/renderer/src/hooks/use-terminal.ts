@@ -162,68 +162,46 @@ function createTerminal(
     term.write(options.serializedContent);
   }
 
-  // Cursor suppression for TUI apps that render their own cursor glyphs.
-  // Two modes:
-  // - Static (cursorHidden: true): always hide xterm's cursor. Used for terminals
-  //   that always run a TUI.
-  // - Dynamic (default): auto-activate suppression when an app enters the alternate
-  //   screen (\x1b[?1049h) and deactivate on exit (\x1b[?1049l). Prevents double
-  //   cursors (xterm's native cursor + TUI-drawn cursor glyph) in regular panes
-  //   without breaking normal shell cursor behavior.
-  let tuiMode = false;
+  // Cursor suppression for terminals that always run a TUI which draws its own
+  // cursor glyph (e.g. Claude Code via PiTab). In this mode xterm's native cursor
+  // is permanently hidden so it doesn't double up with the TUI-drawn one.
+  // Regular terminal panes pass all cursor sequences through to xterm unchanged —
+  // apps like nvim, htop, and less rely on the terminal's native DECTCEM cursor.
+  let cursorHidden = false;
   if (options.cursorHidden) {
-    tuiMode = true;
+    cursorHidden = true;
     term.options.cursorBlink = false;
     term.options.cursorInactiveStyle = 'none';
     term.write('\x1b[?25l');
   }
 
-  // DECSET handler (CSI ? ... h): detect alt-screen entry and suppress cursor show.
-  const decsetSuppressor = term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
-    if (params[0] === 1049 && !options.cursorHidden) {
-      tuiMode = true; // TUI entered alternate screen — activate cursor suppression
-    }
-    if (params[0] === 25 && tuiMode) {
-      return true; // suppress DECTCEM show-cursor while TUI is active
-    }
-    return false; // pass through to xterm's default handler
-  });
-
-  // DECRST handler (CSI ? ... l): deactivate suppression when TUI exits alt-screen.
-  // Not needed in static mode (cursorHidden) since suppression is permanent there.
-  const decrstSuppressor = options.cursorHidden
-    ? null
-    : term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, (params) => {
-        if (params[0] === 1049) {
-          tuiMode = false;
-          // Restore cursor visibility after TUI exits. Deferred to avoid re-entrant
-          // parsing; guard re-checks tuiMode in case a new TUI started immediately.
-          setTimeout(() => {
-            if (!tuiMode && term.element) {
-              term.write('\x1b[?25h');
-            }
-          }, 0);
+  // Suppress DECTCEM show-cursor in static cursorHidden mode only.
+  const decsetSuppressor = options.cursorHidden
+    ? term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, (params) => {
+        if (params[0] === 25) {
+          return true; // suppress show-cursor — TUI draws its own
         }
-        return false; // always pass through to xterm's default handler
-      });
+        return false;
+      })
+    : null;
 
   // Re-suppress xterm's hardware cursor after window focus restore.
-  // When the Electron window regains focus (e.g. after switching macOS workspaces),
-  // xterm internally re-enables its hardware cursor — bypassing the CSI parser suppressor.
-  // Re-hiding it here ensures the TUI-drawn cursor glyph is the only cursor visible.
+  // When the Electron window regains focus xterm internally re-enables its
+  // hardware cursor — bypassing the CSI parser suppressor.
   const onWindowFocus = (): void => {
-    if (tuiMode && term.element) {
+    if (cursorHidden && term.element) {
       term.write('\x1b[?25l');
     }
   };
-  window.addEventListener('focus', onWindowFocus);
+  if (options.cursorHidden) {
+    window.addEventListener('focus', onWindowFocus);
+  }
 
   const cursorSuppressor: { dispose(): void } = {
     dispose(): void {
-      tuiMode = false;
+      cursorHidden = false;
       window.removeEventListener('focus', onWindowFocus);
-      decsetSuppressor.dispose();
-      decrstSuppressor?.dispose();
+      decsetSuppressor?.dispose();
     }
   };
 
