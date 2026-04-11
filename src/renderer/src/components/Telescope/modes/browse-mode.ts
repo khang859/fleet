@@ -8,10 +8,14 @@ import { useWorkspaceStore } from '../../../store/workspace-store';
 import type { DirEntry } from '../../../../../shared/ipc-api';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
+// Module-level cache for gitignore results per directory
+const ignoreCache = new Map<string, Set<string>>();
+
 type BrowseState = {
   currentDir: string;
   entries: DirEntry[];
   loading: boolean;
+  ignoredNames: Set<string>;
 };
 
 export function createBrowseMode(
@@ -22,7 +26,8 @@ export function createBrowseMode(
   const state: BrowseState = {
     currentDir: cwd,
     entries: [],
-    loading: false
+    loading: false,
+    ignoredNames: new Set()
   };
 
   async function loadDir(dir: string): Promise<void> {
@@ -39,8 +44,16 @@ export function createBrowseMode(
         }
         return a.name.localeCompare(b.name);
       });
+
+      // Fetch gitignore status (use cache if available)
+      if (!ignoreCache.has(dir)) {
+        const ignored = await window.fleet.file.checkIgnored(dir);
+        ignoreCache.set(dir, new Set(ignored));
+      }
+      state.ignoredNames = ignoreCache.get(dir) ?? new Set();
     } else {
       state.entries = [];
+      state.ignoredNames = new Set();
     }
 
     state.loading = false;
@@ -89,7 +102,11 @@ export function createBrowseMode(
             : getFileIcon(entry.name),
           title: entry.name,
           subtitle: entry.isDirectory ? 'Directory' : undefined,
-          data: { filePath: entry.path, isDirectory: entry.isDirectory }
+          data: {
+            filePath: entry.path,
+            isDirectory: entry.isDirectory,
+            isIgnored: state.ignoredNames.has(entry.name) || entry.name === '.git'
+          }
         })
       );
     },

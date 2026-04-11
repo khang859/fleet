@@ -441,7 +441,9 @@ export function TelescopeModal({
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
                       isSelected
                         ? 'bg-neutral-700 text-white'
-                        : 'text-neutral-300 hover:bg-neutral-800'
+                        : item.data?.isIgnored
+                          ? 'text-neutral-600 hover:bg-neutral-800'
+                          : 'text-neutral-300 hover:bg-neutral-800'
                     }`}
                     onMouseEnter={() => setSelectedIndex(i)}
                     onClick={() => {
