@@ -95,6 +95,23 @@ export function createCommandRegistry(): Command[] {
       execute: () => document.dispatchEvent(new CustomEvent('fleet:rename-active-tab'))
     },
     {
+      id: 'rename-pane',
+      label: 'Rename Pane',
+      shortcut: sc('rename-pane'),
+      category: 'Panes',
+      execute: () => {
+        const state = useWorkspaceStore.getState();
+        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+        if (activeTab?.splitRoot.type === 'split' && state.activePaneId) {
+          document.dispatchEvent(
+            new CustomEvent('fleet:rename-active-pane', {
+              detail: { paneId: state.activePaneId }
+            })
+          );
+        }
+      }
+    },
+    {
       id: 'git-changes',
       label: 'Git Changes',
       shortcut: sc('git-changes'),
