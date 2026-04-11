@@ -47,16 +47,17 @@ export function createGrepMode(cwd: string, activePaneId: string | null): Telesc
     },
 
     onSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      if (!filePath) return;
+      const filePath = item.data?.filePath;
+      if (typeof filePath !== 'string') return;
       useWorkspaceStore.getState().openFile(filePath);
     },
 
     onAltSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      const line = item.data?.line as number | undefined;
-      if (!filePath || !activePaneId) return;
-      const ref = line != null ? `${filePath}:${line}` : filePath;
+      const filePath = item.data?.filePath;
+      const line = item.data?.line;
+      if (typeof filePath !== 'string' || !activePaneId) return;
+      const lineNum = typeof line === 'number' ? line : null;
+      const ref = lineNum != null ? `${filePath}:${lineNum}` : filePath;
       window.fleet.pty.input({
         paneId: activePaneId,
         data: bracketedPaste(ref)

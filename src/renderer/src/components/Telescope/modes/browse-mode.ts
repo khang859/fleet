@@ -48,7 +48,7 @@ export function createBrowseMode(
   }
 
   // Initial load
-  loadDir(cwd);
+  void loadDir(cwd);
 
   const mode: TelescopeMode & { getState: () => BrowseState } = {
     id: 'browse',
@@ -68,12 +68,12 @@ export function createBrowseMode(
     },
 
     onNavigate: (dir: string) => {
-      loadDir(dir);
+      void loadDir(dir);
     },
 
     onNavigateUp: () => {
       const parent = state.currentDir.split('/').slice(0, -1).join('/') || '/';
-      loadDir(parent);
+      void loadDir(parent);
     },
 
     onSearch: (query: string): TelescopeItem[] => {
@@ -81,31 +81,33 @@ export function createBrowseMode(
         ? state.entries.filter((e) => fuzzyMatch(query, e.name))
         : state.entries;
 
-      return entries.map((entry): TelescopeItem => ({
-        id: entry.path,
-        icon: entry.isDirectory
-          ? createElement(Folder, { size: 14, className: 'text-blue-400' })
-          : getFileIcon(entry.name),
-        title: entry.name,
-        subtitle: entry.isDirectory ? 'Directory' : undefined,
-        data: { filePath: entry.path, isDirectory: entry.isDirectory }
-      }));
+      return entries.map(
+        (entry): TelescopeItem => ({
+          id: entry.path,
+          icon: entry.isDirectory
+            ? createElement(Folder, { size: 14, className: 'text-blue-400' })
+            : getFileIcon(entry.name),
+          title: entry.name,
+          subtitle: entry.isDirectory ? 'Directory' : undefined,
+          data: { filePath: entry.path, isDirectory: entry.isDirectory }
+        })
+      );
     },
 
     onSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      const isDirectory = item.data?.isDirectory as boolean | undefined;
-      if (!filePath) return;
-      if (isDirectory) {
-        loadDir(filePath);
+      const filePath = item.data?.filePath;
+      const isDirectory = item.data?.isDirectory;
+      if (typeof filePath !== 'string') return;
+      if (isDirectory === true) {
+        void loadDir(filePath);
       } else {
         useWorkspaceStore.getState().openFile(filePath);
       }
     },
 
     onAltSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      if (!filePath || !activePaneId) return;
+      const filePath = item.data?.filePath;
+      if (typeof filePath !== 'string' || !activePaneId) return;
       const quoted = quotePathForShell(filePath, window.fleet.platform);
       window.fleet.pty.input({
         paneId: activePaneId,

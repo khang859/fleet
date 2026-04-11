@@ -18,7 +18,11 @@ type TelescopeModalProps = {
 const isMac = typeof navigator !== 'undefined' && navigator.platform.toUpperCase().includes('MAC');
 const modKey = isMac ? '⌘' : 'Ctrl+';
 
-export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): React.JSX.Element | null {
+export function TelescopeModal({
+  isOpen,
+  onClose,
+  cwd
+}: TelescopeModalProps): React.JSX.Element | null {
   const [activeModeId, setActiveModeId] = useState<string>('files');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TelescopeItem[]>([]);
@@ -76,7 +80,7 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
     searchDebounceRef.current = setTimeout(() => {
       const result = activeMode.onSearch(query);
       if (result instanceof Promise) {
-        result.then((items) => {
+        void result.then((items) => {
           setResults(items);
           setSelectedIndex(0);
         });
@@ -102,19 +106,16 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
 
     previewDebounceRef.current = setTimeout(() => {
       const item = results[selectedIndex];
-      if (!item) {
-        setPreviewContent(null);
-        return;
-      }
-
       const data = item.data;
 
-      if (data?.paneId) {
+      if (typeof data?.paneId === 'string') {
+        const paneType = typeof data.paneType === 'string' ? data.paneType : 'terminal';
+        const cwd = typeof data.cwd === 'string' ? data.cwd : '';
         const paneInfo = [
           `Pane: ${item.title}`,
-          `Type: ${String(data.paneType ?? 'terminal')}`,
-          `CWD: ${String(data.cwd ?? '')}`,
-          data.cwd ? `\nDirectory: ${String(data.cwd)}` : ''
+          `Type: ${paneType}`,
+          `CWD: ${cwd}`,
+          cwd ? `\nDirectory: ${cwd}` : ''
         ]
           .filter(Boolean)
           .join('\n');
@@ -122,10 +123,12 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
         return;
       }
 
-      if (data?.isDirectory && data?.filePath) {
+      const filePath = typeof data?.filePath === 'string' ? data.filePath : null;
+
+      if (filePath !== null && data?.isDirectory === true) {
         setPreviewLoading(true);
-        window.fleet.file
-          .readdir(String(data.filePath))
+        void window.fleet.file
+          .readdir(filePath)
           .then((result) => {
             if (result.success) {
               const listing = result.entries
@@ -144,17 +147,20 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
         return;
       }
 
-      if (data?.filePath) {
+      if (filePath !== null) {
         setPreviewLoading(true);
-        window.fleet.file
-          .read(String(data.filePath))
+        void window.fleet.file
+          .read(filePath)
           .then((result) => {
-            if (result.success && result.data.content != null) {
+            if (result.success) {
               const lines = result.data.content.split('\n').slice(0, 200);
-              const targetLine = data.line != null ? Number(data.line) : null;
+              const targetLine = typeof data?.line === 'number' ? data.line : null;
               const numbered = lines.map((line, i) => {
                 const lineNum = i + 1;
-                const prefix = targetLine === lineNum ? `> ${String(lineNum).padStart(4)} ` : `  ${String(lineNum).padStart(4)} `;
+                const prefix =
+                  targetLine === lineNum
+                    ? `> ${String(lineNum).padStart(4)} `
+                    : `  ${String(lineNum).padStart(4)} `;
                 return `${prefix}${line}`;
               });
               setPreviewContent(numbered.join('\n'));
@@ -189,9 +195,8 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
       if (cmdOrCtrl && ['1', '2', '3', '4'].includes(e.key)) {
         e.preventDefault();
         const idx = parseInt(e.key, 10) - 1;
-        const target = modeList[idx];
-        if (target) {
-          setActiveModeId(target.id);
+        if (idx >= 0 && idx < modeList.length) {
+          setActiveModeId(modeList[idx].id);
           setQuery('');
         }
         return;
@@ -205,14 +210,15 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
         setSelectedIndex((i) => Math.max(i - 1, 0));
       } else if (e.key === 'Enter' && e.shiftKey) {
         e.preventDefault();
-        const item = results[selectedIndex];
-        if (item && activeMode?.onAltSelect) activeMode.onAltSelect(item);
+        if (selectedIndex < results.length && activeMode?.onAltSelect) {
+          activeMode.onAltSelect(results[selectedIndex]);
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault();
+        if (selectedIndex >= results.length || !activeMode) return;
         const item = results[selectedIndex];
-        if (!item || !activeMode) return;
-        const isDirectory = item.data?.isDirectory as boolean | undefined;
-        if (activeModeId === 'browse' && isDirectory) {
+        const isDirectory = item.data?.isDirectory;
+        if (activeModeId === 'browse' && isDirectory === true) {
           // navigate into directory — don't close
           activeMode.onSelect(item);
         } else {
@@ -255,8 +261,8 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
               {i > 0 && <span className="text-neutral-600">/</span>}
               <button
                 onClick={() => {
-                  if (!isLast) {
-                    activeMode?.onNavigate?.(pathUpToSegment);
+                  if (!isLast && activeMode.onNavigate) {
+                    activeMode.onNavigate(pathUpToSegment);
                   }
                 }}
                 className={
@@ -291,10 +297,7 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-center bg-black/60"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
       <div
         className="mt-[10vh] w-[800px] max-h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
         onClick={(e) => e.stopPropagation()}
@@ -364,10 +367,7 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
         {/* Body */}
         <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
           {/* Results column */}
-          <div
-            ref={listRef}
-            className="w-[40%] overflow-y-auto border-r border-neutral-800 py-1"
-          >
+          <div ref={listRef} className="w-[40%] overflow-y-auto border-r border-neutral-800 py-1">
             {results.length === 0 ? (
               <div className="px-3 py-4 text-xs text-neutral-600 text-center italic">
                 {query ? 'No results' : 'Type to search'}
@@ -387,8 +387,8 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
                     onMouseEnter={() => setSelectedIndex(i)}
                     onClick={() => {
                       if (!activeMode) return;
-                      const isDirectory = item.data?.isDirectory as boolean | undefined;
-                      if (activeModeId === 'browse' && isDirectory) {
+                      const isDirectory = item.data?.isDirectory;
+                      if (activeModeId === 'browse' && isDirectory === true) {
                         activeMode.onSelect(item);
                       } else {
                         activeMode.onSelect(item);
@@ -413,9 +413,7 @@ export function TelescopeModal({ isOpen, onClose, cwd }: TelescopeModalProps): R
           </div>
 
           {/* Preview column */}
-          <div className="w-[60%] overflow-auto p-3">
-            {renderPreviewPanel()}
-          </div>
+          <div className="w-[60%] overflow-auto p-3">{renderPreviewPanel()}</div>
         </div>
 
         {/* Footer */}

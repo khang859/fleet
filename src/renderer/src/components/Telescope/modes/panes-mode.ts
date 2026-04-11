@@ -43,8 +43,8 @@ export function createPanesMode(): TelescopeMode {
     },
 
     onSelect: (item) => {
-      const paneId = item.data?.paneId as string | undefined;
-      if (!paneId) return;
+      const paneId = item.data?.paneId;
+      if (typeof paneId !== 'string') return;
       useWorkspaceStore.getState().setActivePane(paneId);
       requestAnimationFrame(() => {
         document.dispatchEvent(new CustomEvent('fleet:refocus-pane', { detail: { paneId } }));

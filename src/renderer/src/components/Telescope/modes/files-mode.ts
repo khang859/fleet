@@ -28,10 +28,8 @@ function makeItem(file: FileEntry): TelescopeItem {
 export function createFilesMode(cwd: string, activePaneId: string | null): TelescopeMode {
   // Pre-load file listing in the background
   if (!fileCache.has(cwd)) {
-    window.fleet.file.list(cwd).then((result) => {
-      if (result.success && result.files) {
-        fileCache.set(cwd, result.files);
-      }
+    void window.fleet.file.list(cwd).then((result) => {
+      fileCache.set(cwd, result.files);
     });
   }
 
@@ -61,12 +59,8 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
       let files = fileCache.get(cwd);
       if (!files) {
         const result = await window.fleet.file.list(cwd);
-        if (result.success && result.files) {
-          fileCache.set(cwd, result.files);
-          files = result.files;
-        } else {
-          files = [];
-        }
+        fileCache.set(cwd, result.files);
+        files = result.files;
       }
 
       return files
@@ -76,14 +70,14 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
     },
 
     onSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      if (!filePath) return;
+      const filePath = item.data?.filePath;
+      if (typeof filePath !== 'string') return;
       useWorkspaceStore.getState().openFile(filePath);
     },
 
     onAltSelect: (item) => {
-      const filePath = item.data?.filePath as string | undefined;
-      if (!filePath || !activePaneId) return;
+      const filePath = item.data?.filePath;
+      if (typeof filePath !== 'string' || !activePaneId) return;
       const quoted = quotePathForShell(filePath, window.fleet.platform);
       window.fleet.pty.input({
         paneId: activePaneId,
