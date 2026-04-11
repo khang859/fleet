@@ -52,18 +52,18 @@ body,
   overflow: hidden;
 }
 
-/* Custom scrollbar — dark sci-fi theme */
-.scrollbar-sc::-webkit-scrollbar {
+/* Global scrollbar — dark sci-fi theme */
+*::-webkit-scrollbar {
   width: 6px;
 }
-.scrollbar-sc::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track {
   background: transparent;
 }
-.scrollbar-sc::-webkit-scrollbar-thumb {
+*::-webkit-scrollbar-thumb {
   background: #2dd4bf33;
   border-radius: 3px;
 }
-.scrollbar-sc::-webkit-scrollbar-thumb:hover {
+*::-webkit-scrollbar-thumb:hover {
   background: #2dd4bf66;
 }
 
