@@ -5,9 +5,9 @@ const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boo
   { id: 'notifications', label: 'Notifications' },
   { id: 'socket', label: 'Socket API' },
   { id: 'visualizer', label: 'Visualizer' },
-  { id: 'updates', label: 'Updates' },
   { id: 'copilot', label: 'Copilot', darwinOnly: true },
-  { id: 'annotate', label: 'Annotate' }
+  { id: 'annotate', label: 'Annotate' },
+  { id: 'updates', label: 'Updates' } // Always keep at bottom
 ];
 
 const SECTIONS = ALL_SECTIONS.filter(
