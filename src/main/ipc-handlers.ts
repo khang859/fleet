@@ -400,6 +400,28 @@ export function registerIpcHandlers(
     }
   });
 
+  // Check which entries in a directory are gitignored (returns ignored names)
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_CHECK_IGNORED,
+    async (_event, { dirPath }: { dirPath: string }): Promise<string[]> => {
+      try {
+        const entries = await readdir(dirPath, { withFileTypes: true });
+        const names = entries.filter((e) => e.isFile() || e.isDirectory()).map((e) => e.name);
+        if (names.length === 0) return [];
+
+        const { stdout } = await execAsync(
+          `git check-ignore -- ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
+          { cwd: dirPath, maxBuffer: 1024 * 1024 }
+        );
+        return stdout.split('\n').filter(Boolean);
+      } catch {
+        // git check-ignore exits with code 1 when no files are ignored,
+        // or fails if not a git repo — both cases mean "nothing ignored"
+        return [];
+      }
+    }
+  );
+
   ipcMain.handle(IPC_CHANNELS.FILE_READ_BINARY, async (_event, filePath: string) => {
     try {
       const ext = extname(filePath).toLowerCase().slice(1);

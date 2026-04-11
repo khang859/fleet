@@ -358,7 +358,7 @@ export function TelescopeModal({
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
       <div
-        className="mt-[10vh] w-[800px] max-h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
+        className="mt-[10vh] w-[800px] h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header: search input + mode tabs */}
@@ -441,7 +441,9 @@ export function TelescopeModal({
                     className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
                       isSelected
                         ? 'bg-neutral-700 text-white'
-                        : 'text-neutral-300 hover:bg-neutral-800'
+                        : item.data?.isIgnored
+                          ? 'text-neutral-600 hover:bg-neutral-800'
+                          : 'text-neutral-300 hover:bg-neutral-800'
                     }`}
                     onMouseEnter={() => setSelectedIndex(i)}
                     onClick={() => {

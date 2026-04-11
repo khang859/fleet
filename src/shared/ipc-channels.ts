@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   FILE_SEARCH: 'file:search',
   FILE_GREP: 'file:grep',
   FILE_RECENT_IMAGES: 'file:recent-images',
+  FILE_CHECK_IGNORED: 'file:check-ignored',
   CLIPBOARD_HISTORY: 'clipboard:history',
   CLIPBOARD_CHANGED: 'clipboard:changed',
   SYSTEM_CHECK: 'system:check',
