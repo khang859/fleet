@@ -91,17 +91,10 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
         <button
           className="ml-1 text-neutral-500 hover:text-neutral-300 transition-colors"
           onClick={() => resetPaneLabel(paneId)}
-          title="Reset to path"
-          aria-label="Reset pane name"
+          title="Clear custom title and show path"
+          aria-label="Clear pane title"
         >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path
-              d="M2 2l6 6M8 2l-6 6"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            />
-          </svg>
+          clear title
         </button>
       )}
     </div>
