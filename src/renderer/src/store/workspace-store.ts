@@ -30,6 +30,29 @@ function saveRecentFiles(files: string[]): void {
   }
 }
 
+const RECENT_FOLDERS_KEY = 'fleet:recent-folders';
+const MAX_RECENT_FOLDERS = 10;
+
+function loadRecentFolders(): string[] {
+  try {
+    const raw = localStorage.getItem(RECENT_FOLDERS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === 'string');
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentFolders(folders: string[]): void {
+  try {
+    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(folders));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function generateId(): string {
   return crypto.randomUUID();
 }
@@ -110,6 +133,7 @@ type WorkspaceStore = {
   lastClosedTab: ClosedTabRecord | null;
   isDirty: boolean;
   recentFiles: string[];
+  recentFolders: string[];
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
@@ -158,6 +182,7 @@ type WorkspaceStore = {
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown'; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
+  addRecentFolder: (folderPath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
   setPaneDirty: (paneId: string, dirty: boolean) => void;
 
@@ -253,6 +278,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   activeTabId: null,
   activePaneId: null,
   recentFiles: loadRecentFiles(),
+  recentFolders: loadRecentFolders(),
   lastClosedTab: null,
   isDirty: false,
   collapsedGroups: new Set(),
@@ -733,6 +759,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       collapsedGroups: restoredCollapsed,
       isDirty: false
     });
+
+    const folderCwd = migratedTabs[0]?.cwd;
+    if (folderCwd) {
+      get().addRecentFolder(folderCwd);
+    }
   },
 
   ensureImagesTab: () => {
@@ -745,6 +776,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
+    const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
+    const resolvedFirstCwd = getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = target.tabs.map((t) => {
@@ -796,6 +829,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         isDirty: false
       };
     });
+
+    if (resolvedFirstCwd) {
+      get().addRecentFolder(resolvedFirstCwd);
+    }
   },
 
   loadBackgroundWorkspaces: (workspaces) => {
@@ -925,6 +962,15 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const updated = [filePath, ...filtered].slice(0, MAX_RECENT_FILES);
       saveRecentFiles(updated);
       return { recentFiles: updated };
+    });
+  },
+
+  addRecentFolder: (folderPath) => {
+    set((state) => {
+      const filtered = state.recentFolders.filter((f) => f !== folderPath);
+      const updated = [folderPath, ...filtered].slice(0, MAX_RECENT_FOLDERS);
+      saveRecentFolders(updated);
+      return { recentFolders: updated };
     });
   },
 

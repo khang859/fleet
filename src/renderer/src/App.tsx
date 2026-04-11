@@ -5,6 +5,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
+import { Dashboard } from './components/Dashboard';
 import { PaneGrid } from './components/PaneGrid';
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
@@ -89,7 +90,10 @@ export function App(): React.JSX.Element {
     setActivePane,
     addTab,
     lastClosedTab,
-    undoCloseTab
+    undoCloseTab,
+    recentFiles,
+    recentFolders,
+    openFile
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -100,7 +104,10 @@ export function App(): React.JSX.Element {
       setActivePane: s.setActivePane,
       addTab: s.addTab,
       lastClosedTab: s.lastClosedTab,
-      undoCloseTab: s.undoCloseTab
+      undoCloseTab: s.undoCloseTab,
+      recentFiles: s.recentFiles,
+      recentFolders: s.recentFolders,
+      openFile: s.openFile
     }))
   );
   const settings = useSettingsStore((s) => s.settings);
@@ -760,9 +767,13 @@ export function App(): React.JSX.Element {
                 );
               })
             ) : (
-              <div className="flex items-center justify-center h-full text-neutral-600">
-                No tabs open. Press Cmd+T to create one.
-              </div>
+              <Dashboard
+                recentFiles={recentFiles}
+                recentFolders={recentFolders}
+                onNewTerminal={() => addTab(undefined, '/')}
+                onOpenFile={openFile}
+                onOpenFolder={(folderPath) => addTab(undefined, folderPath)}
+              />
             )}
             {/* Background workspace tabs (hidden, keep PTYs warm) */}
             {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
