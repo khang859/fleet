@@ -23,6 +23,7 @@ import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
+import { TelescopeModal } from './components/Telescope/TelescopeModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
@@ -121,6 +122,7 @@ export function App(): React.JSX.Element {
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
+  const [telescopeOpen, setTelescopeOpen] = useState(false);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -216,6 +218,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setClipboardHistoryOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-clipboard-history', handler);
     return () => document.removeEventListener('fleet:toggle-clipboard-history', handler);
+  }, []);
+
+  // Telescope modal toggle (Cmd+Shift+T)
+  useEffect(() => {
+    const handler = (): void => setTelescopeOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-telescope', handler);
+    return () => document.removeEventListener('fleet:toggle-telescope', handler);
   }, []);
 
   // Open file dialog (Cmd+O)
@@ -840,6 +849,11 @@ export function App(): React.JSX.Element {
       <ClipboardHistoryOverlay
         isOpen={clipboardHistoryOpen}
         onClose={() => setClipboardHistoryOpen(false)}
+      />
+      <TelescopeModal
+        isOpen={telescopeOpen}
+        onClose={() => setTelescopeOpen(false)}
+        cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <ToastContainer />
