@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { EditorState } from '@codemirror/state';
+import { EditorState, StateEffect } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -10,86 +10,107 @@ import {
   highlightActiveLine
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
-import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { syntaxHighlighting, defaultHighlightStyle, LanguageSupport } from '@codemirror/language';
 import { search, searchKeymap } from '@codemirror/search';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { javascript } from '@codemirror/lang-javascript';
-import { html } from '@codemirror/lang-html';
-import { css } from '@codemirror/lang-css';
-import { json } from '@codemirror/lang-json';
-import { markdown } from '@codemirror/lang-markdown';
-import { python } from '@codemirror/lang-python';
-import type { LanguageSupport } from '@codemirror/language';
+import { getLanguageForPath } from '../../../shared/languages';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
 
-function getLanguageExtension(filePath: string): LanguageSupport | null {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'js':
-    case 'mjs':
-    case 'cjs':
-      return javascript();
-    case 'ts':
-      return javascript({ typescript: true });
-    case 'tsx':
-      return javascript({ typescript: true, jsx: true });
+async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport | null> {
+  switch (langId) {
+    case 'javascript':
+      return import('@codemirror/lang-javascript').then((m) => m.javascript());
     case 'jsx':
-      return javascript({ jsx: true });
+      return import('@codemirror/lang-javascript').then((m) => m.javascript({ jsx: true }));
+    case 'typescript':
+      return import('@codemirror/lang-javascript').then((m) => m.javascript({ typescript: true }));
+    case 'tsx':
+      return import('@codemirror/lang-javascript').then((m) =>
+        m.javascript({ typescript: true, jsx: true })
+      );
     case 'html':
-    case 'htm':
-      return html();
+      return import('@codemirror/lang-html').then((m) => m.html());
     case 'css':
-    case 'scss':
+      return import('@codemirror/lang-css').then((m) => m.css());
     case 'less':
-      return css();
+    case 'scss':
+      return import('@codemirror/lang-sass').then((m) => m.sass());
     case 'json':
-      return json();
-    case 'md':
+      return import('@codemirror/lang-json').then((m) => m.json());
     case 'markdown':
-      return markdown();
-    case 'py':
-      return python();
+      return import('@codemirror/lang-markdown').then((m) => m.markdown());
+    case 'python':
+      return import('@codemirror/lang-python').then((m) => m.python());
+    case 'rust':
+      return import('@codemirror/lang-rust').then((m) => m.rust());
+    case 'go':
+      return import('@codemirror/lang-go').then((m) => m.go());
+    case 'java':
+    case 'kotlin':
+      return import('@codemirror/lang-java').then((m) => m.java());
+    case 'c':
+    case 'cpp':
+      return import('@codemirror/lang-cpp').then((m) => m.cpp());
+    case 'xml':
+      return import('@codemirror/lang-xml').then((m) => m.xml());
+    case 'sql':
+      return import('@codemirror/lang-sql').then((m) => m.sql());
+    case 'php':
+      return import('@codemirror/lang-php').then((m) => m.php());
+    case 'vue':
+      return import('@codemirror/lang-vue').then((m) => m.vue());
+    case 'yaml':
+      return import('@codemirror/lang-yaml').then((m) => m.yaml());
+    case 'bash': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { shell } = await import('@codemirror/legacy-modes/mode/shell');
+      return new LanguageSupport(StreamLanguage.define(shell));
+    }
+    case 'dockerfile': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { dockerFile } = await import('@codemirror/legacy-modes/mode/dockerfile');
+      return new LanguageSupport(StreamLanguage.define(dockerFile));
+    }
+    case 'toml': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { toml } = await import('@codemirror/legacy-modes/mode/toml');
+      return new LanguageSupport(StreamLanguage.define(toml));
+    }
+    case 'ruby': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { ruby } = await import('@codemirror/legacy-modes/mode/ruby');
+      return new LanguageSupport(StreamLanguage.define(ruby));
+    }
+    case 'lua': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { lua } = await import('@codemirror/legacy-modes/mode/lua');
+      return new LanguageSupport(StreamLanguage.define(lua));
+    }
+    case 'swift': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { swift } = await import('@codemirror/legacy-modes/mode/swift');
+      return new LanguageSupport(StreamLanguage.define(swift));
+    }
+    case 'makefile': {
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { cmake } = await import('@codemirror/legacy-modes/mode/cmake');
+      return new LanguageSupport(StreamLanguage.define(cmake));
+    }
+    case 'svelte':
+      return import('@codemirror/lang-html').then((m) => m.html());
+    case 'zig':
+      return import('@codemirror/lang-cpp').then((m) => m.cpp());
     default:
       return null;
   }
 }
 
 function getLanguageName(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
-  switch (ext) {
-    case 'js':
-    case 'mjs':
-    case 'cjs':
-      return 'JavaScript';
-    case 'ts':
-      return 'TypeScript';
-    case 'tsx':
-      return 'TSX';
-    case 'jsx':
-      return 'JSX';
-    case 'html':
-    case 'htm':
-      return 'HTML';
-    case 'css':
-      return 'CSS';
-    case 'scss':
-      return 'SCSS';
-    case 'less':
-      return 'Less';
-    case 'json':
-      return 'JSON';
-    case 'md':
-    case 'markdown':
-      return 'Markdown';
-    case 'py':
-      return 'Python';
-    default:
-      return 'Plain Text';
-  }
+  return getLanguageForPath(filePath)?.label ?? 'Plain Text';
 }
 
 type Props = {
@@ -169,7 +190,7 @@ export function FileEditorPane({ paneId, filePath, onContentChange }: Props): Re
     const content = initialContentRef.current;
     savedContentRef.current = content;
 
-    const langExt = getLanguageExtension(filePath);
+    const langInfo = getLanguageForPath(filePath);
 
     const view = new EditorView({
       state: EditorState.create({
@@ -222,13 +243,23 @@ export function FileEditorPane({ paneId, filePath, onContentChange }: Props): Re
             '&': { height: '100%' },
             '.cm-scroller': { overflow: 'auto' }
           }),
-          ...(langExt ? [langExt] : [])
         ]
       }),
       parent: containerRef.current
     });
 
     viewRef.current = view;
+
+    // Lazy-load and apply syntax highlighting
+    if (langInfo) {
+      void loadCodeMirrorLanguage(langInfo.id).then((langExt) => {
+        if (langExt && viewRef.current === view) {
+          view.dispatch({
+            effects: StateEffect.appendConfig.of(langExt)
+          });
+        }
+      });
+    }
 
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
