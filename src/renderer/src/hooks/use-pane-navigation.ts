@@ -19,6 +19,22 @@ export function usePaneNavigation(): void {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent): void {
+      // Shift+F2 to rename active pane
+      if (matchesShortcut(e, sc('rename-pane'))) {
+        e.preventDefault();
+        const state = useWorkspaceStore.getState();
+        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+        // Only fire when there are 2+ panes (header is visible)
+        if (activeTab?.splitRoot.type === 'split' && state.activePaneId) {
+          document.dispatchEvent(
+            new CustomEvent('fleet:rename-active-pane', {
+              detail: { paneId: state.activePaneId }
+            })
+          );
+        }
+        return;
+      }
+
       // F2 to rename active tab
       if (matchesShortcut(e, sc('rename-tab'))) {
         e.preventDefault();

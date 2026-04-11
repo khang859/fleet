@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf } from '../../../shared/types';
 import { TerminalPane } from './TerminalPane';
+import { PaneHeader } from './PaneHeader';
 import { ImageViewerPane } from './ImageViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { MarkdownPane } from './MarkdownPane';
@@ -170,19 +171,28 @@ export function PaneGrid({
           );
         }
         return (
-          <div key={leaf.id} style={rectStyle(leaf.rect)}>
-            <TerminalPane
-              paneId={leaf.id}
-              cwd={leaf.node.cwd}
-              isActive={leaf.id === activePaneId}
-              onFocus={() => onPaneFocus(leaf.id)}
-              serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
-              fontFamily={fontFamily}
-              fontSize={fontSize}
-              onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
-              onSplitVertical={() => splitPane(leaf.id, 'vertical')}
-              onClose={() => closePane(leaf.id)}
-            />
+          <div key={leaf.id} style={rectStyle(leaf.rect)} className="flex flex-col">
+            {root.type === 'split' && (
+              <PaneHeader
+                paneId={leaf.id}
+                label={leaf.node.label}
+                labelIsCustom={leaf.node.labelIsCustom}
+              />
+            )}
+            <div className="flex-1 min-h-0">
+              <TerminalPane
+                paneId={leaf.id}
+                cwd={leaf.node.cwd}
+                isActive={leaf.id === activePaneId}
+                onFocus={() => onPaneFocus(leaf.id)}
+                serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
+                fontFamily={fontFamily}
+                fontSize={fontSize}
+                onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
+                onSplitVertical={() => splitPane(leaf.id, 'vertical')}
+                onClose={() => closePane(leaf.id)}
+              />
+            </div>
           </div>
         );
       })}

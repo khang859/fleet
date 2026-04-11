@@ -42,6 +42,8 @@ export type PaneLeaf = {
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;
+  label?: string;
+  labelIsCustom?: boolean;
 };
 
 export type NotificationLevel = 'permission' | 'error' | 'info' | 'subtle';

@@ -138,6 +138,8 @@ type WorkspaceStore = {
   closePane: (paneId: string) => void;
   setActivePane: (paneId: string) => void;
   resizeSplit: (splitNodePath: number[], ratio: number) => void;
+  renamePane: (paneId: string, label: string) => void;
+  resetPaneLabel: (paneId: string) => void;
 
   // Workspace actions
   loadWorkspace: (workspace: Workspace) => void;
@@ -644,6 +646,40 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         }
       };
     });
+  },
+
+  renamePane: (paneId, label) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
+            ...leaf,
+            label,
+            labelIsCustom: true
+          }))
+        }))
+      },
+      isDirty: true
+    }));
+  },
+
+  resetPaneLabel: (paneId) => {
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: state.workspace.tabs.map((tab) => ({
+          ...tab,
+          splitRoot: updateLeafInTree(tab.splitRoot, paneId, (leaf) => ({
+            ...leaf,
+            label: undefined,
+            labelIsCustom: false
+          }))
+        }))
+      },
+      isDirty: true
+    }));
   },
 
   loadWorkspace: (workspace) => {
