@@ -760,7 +760,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: false
     });
 
-    const folderCwd = workspace.tabs[0]?.cwd;
+    const folderCwd = migratedTabs[0]?.cwd;
     if (folderCwd) {
       get().addRecentFolder(folderCwd);
     }
@@ -776,6 +776,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
+    const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
+    const resolvedFirstCwd = getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = target.tabs.map((t) => {
@@ -828,9 +830,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       };
     });
 
-    const folderCwd = ws.tabs[0]?.cwd;
-    if (folderCwd) {
-      get().addRecentFolder(folderCwd);
+    if (resolvedFirstCwd) {
+      get().addRecentFolder(resolvedFirstCwd);
     }
   },
 
