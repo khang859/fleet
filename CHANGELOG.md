@@ -1,5 +1,16 @@
 # Changelog
 
+## v2.30.0
+
+- Add telescope picker — multi-mode fuzzy finder modal with file, symbol, and browse modes
+- Add image preview support in telescope file picker
+- Dim gitignored files in telescope browse mode
+- Enable directory navigation in telescope browse mode
+- Add pane naming headers to terminal panes
+- Fix native cursor visibility in TUI apps
+- Fix custom scrollbar applied globally
+- Improve pane header visibility, contrast, and active highlight
+
 ## v2.29.0
 
 - Add markdown preview tab with preview/raw sub-tabs
