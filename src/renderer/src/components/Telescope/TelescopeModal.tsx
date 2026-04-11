@@ -8,6 +8,7 @@ import { createGrepMode } from './modes/grep-mode';
 import { createBrowseMode } from './modes/browse-mode';
 import { createPanesMode } from './modes/panes-mode';
 import type { TelescopeMode, TelescopeItem } from './types';
+import { ShikiPreview } from './ShikiPreview';
 
 const IMAGE_EXTENSIONS = new Set([
   'png',
@@ -46,6 +47,7 @@ export function TelescopeModal({
   const [results, setResults] = useState<TelescopeItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<{
     base64: string;
     mimeType: string;
@@ -87,6 +89,7 @@ export function TelescopeModal({
       setResults([]);
       setSelectedIndex(0);
       setPreviewContent(null);
+      setPreviewFilePath(null);
       setPreviewImage(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
@@ -122,6 +125,7 @@ export function TelescopeModal({
   useEffect(() => {
     if (!isOpen || results.length === 0) {
       setPreviewContent(null);
+      setPreviewFilePath(null);
       setPreviewImage(null);
       return;
     }
@@ -144,6 +148,7 @@ export function TelescopeModal({
           .filter(Boolean)
           .join('\n');
         setPreviewImage(null);
+        setPreviewFilePath(null);
         setPreviewContent(paneInfo);
         return;
       }
@@ -153,6 +158,7 @@ export function TelescopeModal({
       if (filePath !== null && data?.isDirectory === true) {
         setPreviewLoading(true);
         setPreviewImage(null);
+        setPreviewFilePath(null);
         void window.fleet.file
           .readdir(filePath)
           .then((result) => {
@@ -176,6 +182,7 @@ export function TelescopeModal({
       if (filePath !== null && isImageFile(filePath)) {
         setPreviewLoading(true);
         setPreviewContent(null);
+        setPreviewFilePath(null);
         void window.fleet.file
           .readBinary(filePath)
           .then((result) => {
@@ -198,18 +205,11 @@ export function TelescopeModal({
           .then((result) => {
             if (result.success) {
               const lines = result.data.content.split('\n').slice(0, 200);
-              const targetLine = typeof data?.line === 'number' ? data.line : null;
-              const numbered = lines.map((line, i) => {
-                const lineNum = i + 1;
-                const prefix =
-                  targetLine === lineNum
-                    ? `> ${String(lineNum).padStart(4)} `
-                    : `  ${String(lineNum).padStart(4)} `;
-                return `${prefix}${line}`;
-              });
-              setPreviewContent(numbered.join('\n'));
+              setPreviewContent(lines.join('\n'));
+              setPreviewFilePath(filePath);
             } else {
               setPreviewContent('Could not read file');
+              setPreviewFilePath(null);
             }
           })
           .finally(() => setPreviewLoading(false));
@@ -217,6 +217,7 @@ export function TelescopeModal({
       }
 
       setPreviewImage(null);
+      setPreviewFilePath(null);
       setPreviewContent('No preview available');
     }, 100);
 
@@ -346,6 +347,10 @@ export function TelescopeModal({
 
     if (!previewContent) {
       return <div className="text-xs text-neutral-600 p-3 italic">Select an item to preview</div>;
+    }
+
+    if (previewFilePath) {
+      return <ShikiPreview content={previewContent} filePath={previewFilePath} />;
     }
 
     return (
