@@ -25,7 +25,7 @@ export function usePaneNavigation(): void {
         const state = useWorkspaceStore.getState();
         const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
         // Only fire when there are 2+ panes (header is visible)
-        if (activeTab && activeTab.splitRoot.type === 'split' && state.activePaneId) {
+        if (activeTab?.splitRoot.type === 'split' && state.activePaneId) {
           document.dispatchEvent(
             new CustomEvent('fleet:rename-active-pane', {
               detail: { paneId: state.activePaneId }
