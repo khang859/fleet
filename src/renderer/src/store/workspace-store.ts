@@ -226,6 +226,22 @@ export function collectPaneIds(node: PaneNode): string[] {
   return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
 }
 
+/** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings']);
+
+function isNormalTab(tab: Tab): boolean {
+  return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
+}
+
+/** Pick the best next tab after closing one — prefer normal tabs, fall back to null */
+function pickNextTab(tabs: Tab[], closedIndex: number): Tab | null {
+  const normalTabs = tabs.filter(isNormalTab);
+  if (normalTabs.length > 0) {
+    return normalTabs[Math.min(closedIndex, normalTabs.length - 1)] ?? normalTabs[0];
+  }
+  return null;
+}
+
 export function collectPaneLeafs(node: PaneNode): PaneLeaf[] {
   if (node.type === 'leaf') return [node];
   return [...collectPaneLeafs(node.children[0]), ...collectPaneLeafs(node.children[1])];
@@ -299,7 +315,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       // Inject live CWDs so undo-close restores the PTY at the correct directory
       const closedTab = rawTab ? { ...rawTab, splitRoot: injectLiveCwd(rawTab.splitRoot) } : rawTab;
       const tabs = state.workspace.tabs.filter((t) => t.id !== tabId);
-      const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
+      const nextTab = pickNextTab(tabs, tabIndex);
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: nextTab?.id ?? null,
@@ -466,7 +482,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         }
       }
 
-      const nextTab = tabs.length > 0 ? tabs[Math.min(tabIndex, tabs.length - 1)] : null;
+      const nextTab = pickNextTab(tabs, tabIndex);
 
       return {
         workspace: { ...state.workspace, tabs },
@@ -486,7 +502,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closeWorktreeGroup: (groupId) => {
     set((state) => {
       const tabs = state.workspace.tabs.filter((t) => t.groupId !== groupId);
-      const nextTab = tabs.length > 0 ? tabs[0] : null;
+      const nextTab = pickNextTab(tabs, 0);
 
       const newCollapsed = new Set(state.collapsedGroups);
       newCollapsed.delete(groupId);
@@ -616,11 +632,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
       const currentTab = tabs.find((t) => t.id === state.activeTabId);
       const nextPaneId = currentTab ? (collectPaneIds(currentTab.splitRoot)[0] ?? null) : null;
+      const fallbackTab = currentTab ?? pickNextTab(tabs, 0);
 
       return {
         workspace: { ...state.workspace, tabs },
-        activeTabId: currentTab?.id ?? tabs[0]?.id ?? null,
-        activePaneId: nextPaneId,
+        activeTabId: fallbackTab?.id ?? null,
+        activePaneId: fallbackTab === currentTab ? nextPaneId : (fallbackTab ? (collectPaneIds(fallbackTab.splitRoot)[0] ?? null) : null),
         isDirty: true
       };
     });

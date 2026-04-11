@@ -719,65 +719,65 @@ export function App(): React.JSX.Element {
         )}
         <div className="flex-1 min-w-0 h-full flex flex-col">
           <main className="flex-1 min-w-0 relative overflow-hidden">
-            {workspace.tabs.length > 0 || backgroundWorkspaces.size > 0 ? (
-              <>
-                {workspace.tabs.map((tab) => {
-                  const serializedPanes = restoredPanesRef.current.get(tab.id);
-                  return (
-                    <div
-                      key={tab.id}
-                      className="h-full w-full"
-                      style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
-                    >
-                      {tab.type === 'images' ? (
-                        <ImageGallery />
-                      ) : tab.type === 'annotate' ? (
-                        <AnnotateTab />
-                      ) : tab.type === 'settings' ? (
-                        <SettingsTab />
-                      ) : tab.type === 'pi' ? (
-                        <PiTab
-                          tab={tab}
-                          isActive={tab.id === activeTabId}
-                          fontFamily={settings?.general.fontFamily}
-                          fontSize={settings?.general.fontSize}
-                        />
-                      ) : (
-                        <PaneGrid
-                          root={tab.splitRoot}
-                          activePaneId={tab.id === activeTabId ? activePaneId : null}
-                          onPaneFocus={(paneId) => {
-                            setActivePane(paneId);
-                            window.fleet.notifications.paneFocused({ paneId });
-                            useNotificationStore.getState().clearPane(paneId);
-                          }}
-                          serializedPanes={serializedPanes}
-                          fontFamily={settings?.general.fontFamily}
-                          fontSize={settings?.general.fontSize}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
-                {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
-                  bgWs.tabs.map((tab) => (
-                    <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
-                      <PaneGrid
-                        root={tab.splitRoot}
-                        activePaneId={null}
-                        onPaneFocus={() => {}}
-                        serializedPanes={undefined}
+            {/* Active tab content — show empty state when no tab is selected */}
+            {activeTabId ? (
+              workspace.tabs.map((tab) => {
+                const serializedPanes = restoredPanesRef.current.get(tab.id);
+                return (
+                  <div
+                    key={tab.id}
+                    className="h-full w-full"
+                    style={{ display: tab.id === activeTabId ? 'block' : 'none' }}
+                  >
+                    {tab.type === 'images' ? (
+                      <ImageGallery />
+                    ) : tab.type === 'annotate' ? (
+                      <AnnotateTab />
+                    ) : tab.type === 'settings' ? (
+                      <SettingsTab />
+                    ) : tab.type === 'pi' ? (
+                      <PiTab
+                        tab={tab}
+                        isActive={tab.id === activeTabId}
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
                       />
-                    </div>
-                  ))
-                )}
-              </>
+                    ) : (
+                      <PaneGrid
+                        root={tab.splitRoot}
+                        activePaneId={tab.id === activeTabId ? activePaneId : null}
+                        onPaneFocus={(paneId) => {
+                          setActivePane(paneId);
+                          window.fleet.notifications.paneFocused({ paneId });
+                          useNotificationStore.getState().clearPane(paneId);
+                        }}
+                        serializedPanes={serializedPanes}
+                        fontFamily={settings?.general.fontFamily}
+                        fontSize={settings?.general.fontSize}
+                      />
+                    )}
+                  </div>
+                );
+              })
             ) : (
               <div className="flex items-center justify-center h-full text-neutral-600">
                 No tabs open. Press Cmd+T to create one.
               </div>
+            )}
+            {/* Background workspace tabs (hidden, keep PTYs warm) */}
+            {Array.from(backgroundWorkspaces.values()).flatMap((bgWs) =>
+              bgWs.tabs.map((tab) => (
+                <div key={tab.id} className="h-full w-full" style={{ display: 'none' }}>
+                  <PaneGrid
+                    root={tab.splitRoot}
+                    activePaneId={null}
+                    onPaneFocus={() => {}}
+                    serializedPanes={undefined}
+                    fontFamily={settings?.general.fontFamily}
+                    fontSize={settings?.general.fontSize}
+                  />
+                </div>
+              ))
             )}
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
