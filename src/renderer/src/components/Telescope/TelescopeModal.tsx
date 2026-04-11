@@ -358,7 +358,7 @@ export function TelescopeModal({
   return (
     <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
       <div
-        className="mt-[10vh] w-[800px] max-h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
+        className="mt-[10vh] w-[800px] h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header: search input + mode tabs */}
