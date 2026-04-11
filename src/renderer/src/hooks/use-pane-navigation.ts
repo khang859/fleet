@@ -159,6 +159,12 @@ export function usePaneNavigation(): void {
         return;
       }
 
+      if (matchesShortcut(e, sc('telescope'))) {
+        e.preventDefault();
+        document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'));
+        return;
+      }
+
       if (matchesShortcut(e, sc('inject-skills'))) {
         e.preventDefault();
         if (activePaneId) {
