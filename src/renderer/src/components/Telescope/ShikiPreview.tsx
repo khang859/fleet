@@ -1,23 +1,39 @@
 import { useEffect, useRef, useState } from 'react';
+import type { BundledLanguage, Highlighter } from 'shiki';
 import { getLanguageForPath } from '../../../../shared/languages';
 
-type HighlighterInstance = Awaited<ReturnType<typeof import('shiki')['createHighlighter']>>;
-
-let highlighterPromise: Promise<HighlighterInstance> | null = null;
+let highlighterPromise: Promise<Highlighter> | null = null;
+let bundledLangSet: Set<string> | null = null;
 
 /** Core languages to pre-load with the highlighter */
 const PRELOAD_LANGS = [
-  'typescript', 'javascript', 'json', 'html', 'css', 'python', 'bash',
-  'yaml', 'markdown', 'tsx', 'jsx', 'rust', 'go',
+  'typescript',
+  'javascript',
+  'json',
+  'html',
+  'css',
+  'python',
+  'bash',
+  'yaml',
+  'markdown',
+  'tsx',
+  'jsx',
+  'rust',
+  'go'
 ] as const;
 
-function getHighlighter(): Promise<HighlighterInstance> {
-  highlighterPromise ??= import('shiki').then((mod) =>
-    mod.createHighlighter({
+function isBundledLanguage(id: string): id is BundledLanguage {
+  return bundledLangSet?.has(id) === true;
+}
+
+async function getHighlighter(): Promise<Highlighter> {
+  highlighterPromise ??= import('shiki').then(async (mod) => {
+    bundledLangSet = new Set(Object.keys(mod.bundledLanguages));
+    return mod.createHighlighter({
       themes: ['one-dark-pro'],
-      langs: [...PRELOAD_LANGS],
-    })
-  );
+      langs: [...PRELOAD_LANGS]
+    });
+  });
   return highlighterPromise;
 }
 
@@ -44,8 +60,9 @@ export function ShikiPreview({ content, filePath }: Props): React.JSX.Element {
         // Load the language grammar if not already loaded
         const loadedLangs = highlighter.getLoadedLanguages();
         if (!loadedLangs.includes(langInfo.id)) {
+          if (!isBundledLanguage(langInfo.id)) return; // not a Shiki language
           try {
-            await highlighter.loadLanguage(langInfo.id as Parameters<HighlighterInstance['loadLanguage']>[0]);
+            await highlighter.loadLanguage(langInfo.id);
           } catch {
             // Language not available in Shiki — fall back to plain text
             return;
@@ -56,7 +73,7 @@ export function ShikiPreview({ content, filePath }: Props): React.JSX.Element {
 
         const html = highlighter.codeToHtml(content, {
           lang: langInfo.id,
-          theme: 'one-dark-pro',
+          theme: 'one-dark-pro'
         });
 
         if (generation === generationRef.current) {

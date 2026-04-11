@@ -242,7 +242,7 @@ export function FileEditorPane({ paneId, filePath, onContentChange }: Props): Re
           EditorView.theme({
             '&': { height: '100%' },
             '.cm-scroller': { overflow: 'auto' }
-          }),
+          })
         ]
       }),
       parent: containerRef.current

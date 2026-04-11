@@ -12,8 +12,14 @@ describe('getLanguageForPath', () => {
   });
 
   it('handles full file paths', () => {
-    expect(getLanguageForPath('/home/user/project/src/index.tsx')).toEqual({ id: 'tsx', label: 'TSX' });
-    expect(getLanguageForPath('C:\\Users\\dev\\file.py')).toEqual({ id: 'python', label: 'Python' });
+    expect(getLanguageForPath('/home/user/project/src/index.tsx')).toEqual({
+      id: 'tsx',
+      label: 'TSX'
+    });
+    expect(getLanguageForPath('C:\\Users\\dev\\file.py')).toEqual({
+      id: 'python',
+      label: 'Python'
+    });
   });
 
   it('handles case-insensitive extensions', () => {
@@ -22,7 +28,10 @@ describe('getLanguageForPath', () => {
   });
 
   it('matches special filenames without extensions', () => {
-    expect(getLanguageForPath('/project/Dockerfile')).toEqual({ id: 'dockerfile', label: 'Dockerfile' });
+    expect(getLanguageForPath('/project/Dockerfile')).toEqual({
+      id: 'dockerfile',
+      label: 'Dockerfile'
+    });
     expect(getLanguageForPath('/project/Makefile')).toEqual({ id: 'makefile', label: 'Makefile' });
   });
 

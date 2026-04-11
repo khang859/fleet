@@ -47,13 +47,13 @@ const extensionMap: Record<string, LanguageInfo> = {
   plist: { id: 'xml', label: 'XML' },
   yaml: { id: 'yaml', label: 'YAML' },
   yml: { id: 'yaml', label: 'YAML' },
-  zig: { id: 'zig', label: 'Zig' },
+  zig: { id: 'zig', label: 'Zig' }
 };
 
 /** Filenames (no extension) that map to a language */
 const filenameMap: Record<string, LanguageInfo> = {
   Dockerfile: { id: 'dockerfile', label: 'Dockerfile' },
-  Makefile: { id: 'makefile', label: 'Makefile' },
+  Makefile: { id: 'makefile', label: 'Makefile' }
 };
 
 export function getLanguageForPath(filePath: string): LanguageInfo | null {
@@ -65,6 +65,6 @@ export function getLanguageForPath(filePath: string): LanguageInfo | null {
   if (byName) return byName;
 
   // Check by extension
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() ?? '' : '';
+  const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() ?? '') : '';
   return extensionMap[ext] ?? null;
 }
