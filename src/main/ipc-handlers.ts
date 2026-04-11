@@ -412,7 +412,7 @@ export function registerIpcHandlers(
         if (names.length === 0) return [];
 
         const { stdout } = await execAsync(
-          `git check-ignore ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
+          `git check-ignore -- ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
           { cwd: dirPath, maxBuffer: 1024 * 1024 }
         );
         return stdout.split('\n').filter(Boolean);
