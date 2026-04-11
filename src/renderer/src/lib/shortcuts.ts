@@ -96,6 +96,12 @@ export const ALL_SHORTCUTS: ShortcutDef[] = [
     other: { key: 'F2' }
   },
   {
+    id: 'rename-pane',
+    label: 'Rename pane',
+    mac: { key: 'F2', shift: true },
+    other: { key: 'F2', shift: true }
+  },
+  {
     id: 'command-palette',
     label: 'Command palette',
     mac: { key: 'P', meta: true, shift: true },
