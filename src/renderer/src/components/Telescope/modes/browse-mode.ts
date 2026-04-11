@@ -101,7 +101,6 @@ export function createBrowseMode(
             ? createElement(Folder, { size: 14, className: 'text-blue-400' })
             : getFileIcon(entry.name),
           title: entry.name,
-          subtitle: entry.isDirectory ? 'Directory' : undefined,
           data: {
             filePath: entry.path,
             isDirectory: entry.isDirectory,
