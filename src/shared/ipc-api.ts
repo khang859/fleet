@@ -137,6 +137,26 @@ export type FileSearchResponse =
   | { success: true; requestId: number; results: FileSearchResult[] }
   | { success: false; requestId: number; error: string };
 
+export type FileGrepRequest = {
+  requestId: number;
+  query: string;
+  cwd: string;
+  limit?: number;
+};
+
+export type FileGrepResult = {
+  file: string;
+  relativePath: string;
+  line: number;
+  text: string;
+  contextBefore?: string[];
+  contextAfter?: string[];
+};
+
+export type FileGrepResponse =
+  | { success: true; requestId: number; results: FileGrepResult[] }
+  | { success: false; requestId: number; error: string };
+
 export type RecentImageResult = {
   path: string;
   name: string;

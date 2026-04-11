@@ -22,6 +22,7 @@ import type {
   PaneFocusedPayload,
   DirEntry,
   FileSearchRequest,
+  FileGrepRequest,
   LogEntry,
   WorktreeCreateRequest,
   WorktreeRemoveRequest
@@ -45,6 +46,7 @@ import type { FleetBridgeServer } from './fleet-bridge';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
+import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
@@ -422,6 +424,10 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) =>
     searchFiles(req)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) =>
+    grepFiles(req)
   );
 
   ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());

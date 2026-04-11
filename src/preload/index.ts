@@ -19,6 +19,8 @@ import type {
   ReaddirResponse,
   FileSearchRequest,
   FileSearchResponse,
+  FileGrepRequest,
+  FileGrepResponse,
   RecentImagesResponse,
   ClipboardHistoryResponse,
   LogEntry,
@@ -202,6 +204,8 @@ const fleetApi = {
     }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath),
     search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
+    grep: async (req: FileGrepRequest): Promise<FileGrepResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_GREP, req),
     searchRecentImages: async (): Promise<RecentImagesResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES)
   },

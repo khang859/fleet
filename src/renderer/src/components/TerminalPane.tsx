@@ -139,6 +139,7 @@ export function TerminalPane({
           focus();
         }}
         onAnnotate={() => openAnnotateModal()}
+        onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
       />
       <SearchBar
         isOpen={searchOpen}

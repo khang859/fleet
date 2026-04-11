@@ -1,6 +1,22 @@
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen, Crosshair } from 'lucide-react';
+import {
+  Columns2,
+  Rows2,
+  Search,
+  X,
+  GitBranch,
+  FileSearch,
+  Clipboard,
+  BookOpen,
+  Crosshair,
+  Telescope
+} from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
+
+function shortcutLabel(id: string): string {
+  const def = getShortcut(id);
+  return def ? formatShortcut(def) : id;
+}
 
 function ToolbarTooltip({
   label,
@@ -38,6 +54,7 @@ type PaneToolbarProps = {
   onClipboardHistory?: () => void;
   onInjectSkills?: () => void;
   onAnnotate?: () => void;
+  onTelescope?: () => void;
 };
 
 export function PaneToolbar({
@@ -51,7 +68,8 @@ export function PaneToolbar({
   onFileSearch,
   onClipboardHistory,
   onInjectSkills,
-  onAnnotate
+  onAnnotate,
+  onTelescope
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -59,7 +77,7 @@ export function PaneToolbar({
         className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
-        <ToolbarTooltip label={`Split Right (${formatShortcut(getShortcut('split-right')!)})`}>
+        <ToolbarTooltip label={`Split Right (${shortcutLabel('split-right')})`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -70,7 +88,7 @@ export function PaneToolbar({
             <Columns2 size={14} />
           </button>
         </ToolbarTooltip>
-        <ToolbarTooltip label={`Split Down (${formatShortcut(getShortcut('split-down')!)})`}>
+        <ToolbarTooltip label={`Split Down (${shortcutLabel('split-down')})`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -82,7 +100,7 @@ export function PaneToolbar({
           </button>
         </ToolbarTooltip>
         {isGitRepo && (
-          <ToolbarTooltip label={`Git Changes (${formatShortcut(getShortcut('git-changes')!)})`}>
+          <ToolbarTooltip label={`Git Changes (${shortcutLabel('git-changes')})`}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -95,7 +113,7 @@ export function PaneToolbar({
           </ToolbarTooltip>
         )}
         {onFileSearch && (
-          <ToolbarTooltip label={`Search Files (${formatShortcut(getShortcut('file-search')!)})`}>
+          <ToolbarTooltip label={`Search Files (${shortcutLabel('file-search')})`}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -108,7 +126,7 @@ export function PaneToolbar({
           </ToolbarTooltip>
         )}
         {onClipboardHistory && (
-          <ToolbarTooltip label={`Clipboard History (${formatShortcut(getShortcut('clipboard-history')!)})`}>
+          <ToolbarTooltip label={`Clipboard History (${shortcutLabel('clipboard-history')})`}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -121,7 +139,7 @@ export function PaneToolbar({
           </ToolbarTooltip>
         )}
         {onInjectSkills && (
-          <ToolbarTooltip label={`Inject Fleet Skills (${formatShortcut(getShortcut('inject-skills')!)})`}>
+          <ToolbarTooltip label={`Inject Fleet Skills (${shortcutLabel('inject-skills')})`}>
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -146,7 +164,20 @@ export function PaneToolbar({
             </button>
           </ToolbarTooltip>
         )}
-        <ToolbarTooltip label={`Search in Pane (${formatShortcut(getShortcut('search')!)})`}>
+        {onTelescope && (
+          <ToolbarTooltip label={`Telescope (${shortcutLabel('telescope')})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTelescope();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Telescope size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        <ToolbarTooltip label={`Search in Pane (${shortcutLabel('search')})`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -157,7 +188,7 @@ export function PaneToolbar({
             <Search size={14} />
           </button>
         </ToolbarTooltip>
-        <ToolbarTooltip label={`Close Pane (${formatShortcut(getShortcut('close-pane')!)})`}>
+        <ToolbarTooltip label={`Close Pane (${shortcutLabel('close-pane')})`}>
           <button
             onClick={(e) => {
               e.stopPropagation();
