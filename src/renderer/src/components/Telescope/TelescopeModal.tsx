@@ -29,7 +29,7 @@ export function TelescopeModal({
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [, forceUpdate] = useReducer((n: number) => n + 1, 0);
+  const [browseRevision, forceUpdate] = useReducer((n: number) => n + 1, 0);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -93,7 +93,7 @@ export function TelescopeModal({
     return () => {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     };
-  }, [isOpen, query, activeModeId, activeMode]);
+  }, [isOpen, query, activeModeId, activeMode, browseRevision]);
 
   // Preview effect
   useEffect(() => {
@@ -221,6 +221,8 @@ export function TelescopeModal({
         if (activeModeId === 'browse' && isDirectory === true) {
           // navigate into directory — don't close
           activeMode.onSelect(item);
+          setQuery('');
+          setSelectedIndex(0);
         } else {
           activeMode.onSelect(item);
           onClose();
@@ -390,6 +392,8 @@ export function TelescopeModal({
                       const isDirectory = item.data?.isDirectory;
                       if (activeModeId === 'browse' && isDirectory === true) {
                         activeMode.onSelect(item);
+                        setQuery('');
+                        setSelectedIndex(0);
                       } else {
                         activeMode.onSelect(item);
                         onClose();
