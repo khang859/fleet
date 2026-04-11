@@ -241,7 +241,8 @@ function removePaneFromTree(node: PaneNode, paneId: string): PaneNode | null {
   return { ...node, children: [newLeft, newRight] };
 }
 
-function getFirstLeafCwd(node: PaneNode): string | undefined {
+function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
+  if (!node) return undefined;
   if (node.type === 'leaf') return node.cwd;
   return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
 }
