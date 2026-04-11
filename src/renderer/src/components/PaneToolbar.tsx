@@ -1,4 +1,4 @@
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen, Crosshair } from 'lucide-react';
+import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen, Crosshair, Telescope } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 
@@ -38,6 +38,7 @@ type PaneToolbarProps = {
   onClipboardHistory?: () => void;
   onInjectSkills?: () => void;
   onAnnotate?: () => void;
+  onTelescope?: () => void;
 };
 
 export function PaneToolbar({
@@ -51,7 +52,8 @@ export function PaneToolbar({
   onFileSearch,
   onClipboardHistory,
   onInjectSkills,
-  onAnnotate
+  onAnnotate,
+  onTelescope
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -143,6 +145,19 @@ export function PaneToolbar({
               className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
             >
               <Crosshair size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onTelescope && (
+          <ToolbarTooltip label={`Telescope (${formatShortcut(getShortcut('telescope')!)})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onTelescope();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Telescope size={14} />
             </button>
           </ToolbarTooltip>
         )}
