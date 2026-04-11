@@ -770,8 +770,8 @@ export function App(): React.JSX.Element {
               <Dashboard
                 recentFiles={recentFiles}
                 recentFolders={recentFolders}
-                onNewTerminal={() => addTab(undefined, workspace.tabs[0]?.cwd ?? '/')}
-                onOpenFile={(filePath) => openFile(filePath)}
+                onNewTerminal={() => addTab(undefined, '/')}
+                onOpenFile={openFile}
                 onOpenFolder={(folderPath) => addTab(undefined, folderPath)}
               />
             )}
