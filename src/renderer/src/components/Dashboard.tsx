@@ -1,4 +1,5 @@
 import { Terminal, Folder, FileText } from 'lucide-react';
+import { shortenPath } from '../lib/shorten-path';
 
 const ASCII_LINES = [
   '███████╗██╗     ███████╗███████╗████████╗',
@@ -17,14 +18,6 @@ const LINE_COLORS = [
   'text-cyan-400',
   'text-cyan-400'
 ];
-
-function shortenPath(fullPath: string): string {
-  const home = window.fleet.homeDir;
-  if (home && fullPath.startsWith(home)) {
-    return '~' + fullPath.slice(home.length);
-  }
-  return fullPath;
-}
 
 type DashboardProps = {
   recentFiles: string[];
@@ -50,7 +43,7 @@ export function Dashboard({
         {/* ASCII Art Header */}
         <pre className="text-sm leading-tight font-mono">
           {ASCII_LINES.map((line, i) => (
-            <span key={i} className={`block ${LINE_COLORS[i]}`}>
+            <span key={line} className={`block ${LINE_COLORS[i]}`}>
               {line}
             </span>
           ))}
