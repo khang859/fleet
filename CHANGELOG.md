@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.31.0
+
+- Add dashboard empty state with ASCII art header, recent files, and recent folders
+- Track recent folders in localStorage for quick workspace access
+
 ## v2.30.0
 
 - Add telescope picker — multi-mode fuzzy finder modal with file, symbol, and browse modes
