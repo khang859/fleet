@@ -9,6 +9,9 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@sinclair/typebox";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const PLAN_MODE_STATUS_KEY = "plan-mode";
 const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
@@ -36,6 +39,46 @@ When you have enough that another engineer could execute without asking question
 const BLOCKED_TOOLS = new Set<string>(["write", "edit", "bash", "fleet_run"]);
 const PLAN_MODE_BLOCK_REASON =
   "Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.";
+
+const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+const PLAN_PREVIEW_LINES = 60;
+
+const ExitPlanModeParams = Type.Object({
+  plan: Type.String({
+    description:
+      "The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths.",
+  }),
+  topic: Type.String({
+    description:
+      "Short kebab-case topic used in the filename, e.g. 'pi-plan-mode' or 'fix-pty-leak'. Must match /^[a-z0-9][a-z0-9-]*$/.",
+  }),
+});
+
+function formatDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function resolvePlanPath(cwd: string, topic: string): string {
+  const dir = join(cwd, "docs", "plans");
+  const date = formatDate(new Date());
+  let candidate = join(dir, `${date}-${topic}.md`);
+  let counter = 2;
+  while (existsSync(candidate)) {
+    candidate = join(dir, `${date}-${topic}-${counter}.md`);
+    counter++;
+  }
+  return candidate;
+}
+
+function previewPlan(plan: string): string {
+  const split = plan.split("\n");
+  if (split.length <= PLAN_PREVIEW_LINES) return plan;
+  const remaining = split.length - PLAN_PREVIEW_LINES;
+  return `${split.slice(0, PLAN_PREVIEW_LINES).join("\n")}\n\n…(${remaining} more lines)`;
+}
 
 let planMode = false;
 
@@ -94,5 +137,72 @@ export default function (pi: ExtensionAPI): void {
     if (!planMode) return;
     if (!BLOCKED_TOOLS.has(event.toolName)) return;
     return { block: true, reason: PLAN_MODE_BLOCK_REASON };
+  });
+
+  pi.registerTool({
+    name: "exit_plan_mode",
+    label: "Exit Plan Mode",
+    description:
+      "Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.",
+    parameters: ExitPlanModeParams,
+
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (!planMode) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "Plan mode is not active. exit_plan_mode can only be called while in plan mode.",
+            },
+          ],
+          details: undefined,
+        };
+      }
+
+      if (!TOPIC_PATTERN.test(params.topic)) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: `Invalid topic '${params.topic}'. Must be kebab-case matching /^[a-z0-9][a-z0-9-]*$/ (e.g. 'pi-plan-mode').`,
+            },
+          ],
+          details: undefined,
+        };
+      }
+
+      const planPath = resolvePlanPath(ctx.cwd, params.topic);
+      const body = `Path: ${planPath}\n\n---\n\n${previewPlan(params.plan)}`;
+      const approved = await ctx.ui.confirm("Approve plan?", body);
+
+      if (!approved) {
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: "User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.",
+            },
+          ],
+          details: undefined,
+        };
+      }
+
+      const dir = join(ctx.cwd, "docs", "plans");
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(planPath, params.plan, "utf-8");
+
+      planMode = false;
+      ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Plan approved and written to ${planPath}. Plan mode is off — you may now execute the plan.`,
+          },
+        ],
+        details: undefined,
+      };
+    },
   });
 }
