@@ -24,6 +24,8 @@ import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
 import { PiAgentManager } from './pi-agent-manager';
+import { PiConfigManager } from './pi-config-manager';
+import { PiAuthInspector } from './pi-auth-inspector';
 import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
@@ -58,6 +60,20 @@ const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
 const piAgentManager = new PiAgentManager();
+const piConfigManager = new PiConfigManager();
+const piAuthInspector = new PiAuthInspector({
+  modelCatalogPath: join(
+    homedir(),
+    '.fleet',
+    'agents',
+    'pi',
+    'node_modules',
+    '@mariozechner',
+    'pi-ai',
+    'src',
+    'models.generated.ts'
+  )
+});
 const fleetBridge = new FleetBridgeServer();
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
@@ -300,7 +316,9 @@ void app.whenReady().then(async () => {
     annotationStore,
     annotateService,
     piAgentManager,
-    fleetBridge
+    fleetBridge,
+    piConfigManager,
+    piAuthInspector
   );
 
   imageService.resumeInterrupted();

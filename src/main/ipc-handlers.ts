@@ -43,6 +43,10 @@ import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
 import type { PiAgentManager } from './pi-agent-manager';
 import type { FleetBridgeServer } from './fleet-bridge';
+import type { PiConfigManager } from './pi-config-manager';
+import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
+import type { PiAuthInspector } from './pi-auth-inspector';
+import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
@@ -67,7 +71,9 @@ export function registerIpcHandlers(
   annotationStore: AnnotationStore,
   annotateService: AnnotateService,
   piAgentManager: PiAgentManager,
-  fleetBridge: FleetBridgeServer
+  fleetBridge: FleetBridgeServer,
+  piConfigManager: PiConfigManager,
+  piAuthInspector: PiAuthInspector
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -505,6 +511,94 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.PI_CHECK_UPDATES, async () => {
     return piAgentManager.checkForUpdates();
+  });
+
+  function toPiConfigError(err: unknown): Error {
+    if (err instanceof PiConfigParseError) {
+      const e = new Error(err.message);
+      e.name = 'PiConfigParseError';
+      Object.assign(e, { file: err.file, rawSnippet: err.rawSnippet });
+      return e;
+    }
+    if (err instanceof PiConfigValidationError) {
+      const e = new Error(err.message);
+      e.name = 'PiConfigValidationError';
+      Object.assign(e, { file: err.file, issues: err.issues });
+      return e;
+    }
+    return toError(err);
+  }
+
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_READ_SETTINGS, async () => {
+    try {
+      return await piConfigManager.readSettings();
+    } catch (err) {
+      throw toPiConfigError(err);
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.PI_CONFIG_WRITE_SETTINGS,
+    async (_event, patch: Partial<PiSettings>) => {
+      try {
+        await piConfigManager.writeSettings(patch);
+      } catch (err) {
+        throw toPiConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_READ_MODELS, async () => {
+    try {
+      return await piConfigManager.readModels();
+    } catch (err) {
+      throw toPiConfigError(err);
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.PI_CONFIG_WRITE_PROVIDER,
+    async (_event, payload: { id: string; provider: PiProvider }) => {
+      try {
+        await piConfigManager.writeProvider(payload.id, payload.provider);
+      } catch (err) {
+        throw toPiConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER,
+    async (_event, id: string) => {
+      try {
+        await piConfigManager.deleteProvider(id);
+      } catch (err) {
+        throw toPiConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.PI_CONFIG_RENAME_PROVIDER,
+    async (_event, payload: { oldId: string; newId: string }) => {
+      try {
+        await piConfigManager.renameProvider(payload.oldId, payload.newId);
+      } catch (err) {
+        throw toPiConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_BUILT_IN_STATUS, async () => {
+    return piAuthInspector.getBuiltInStatus();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_LIST_MODELS, async () => {
+    return piAuthInspector.listAvailableModels();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER, async () => {
+    await piConfigManager.openConfigFolder();
   });
 }
 
