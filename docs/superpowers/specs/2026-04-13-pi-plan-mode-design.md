@@ -75,13 +75,12 @@ This addendum is stored as a `const` at the top of the extension file. It is app
 
 While `planMode === true`, the `tool_call` handler blocks the following tools by returning `{ block: true, reason: "Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan." }`:
 
-- `write_file`
-- `edit_file`
-- `apply_patch`
-- `fleet_run` (Fleet's terminal-execution extension)
-- `bash` (all invocations — we do not attempt to classify commands as read-only vs. mutating)
+- `write` — Pi built-in (write new file)
+- `edit` — Pi built-in (modify file)
+- `bash` — Pi built-in (all invocations — we do not attempt to classify commands as read-only vs. mutating)
+- `fleet_run` — Fleet's terminal-execution extension (currently a stub; future-proofed)
 
-Any tool not on this list passes through unchanged. The `exit_plan_mode` tool (registered by this extension) is never blocked.
+Pi's read-only built-ins (`read`, `grep`, `find`, `ls`) and Fleet's `fleet_open` pass through unchanged. The `exit_plan_mode` tool (registered by this extension) is never blocked.
 
 The `reason` string is returned to the LLM in the tool result, giving it feedback to self-correct.
 
@@ -147,7 +146,7 @@ No automated tests for this iteration — the extension runs inside a subprocess
 None. All decisions are locked in per the brainstorming discussion:
 
 - Path: `docs/plans/YYYY-MM-DD-<topic>.md`
-- Blocked tools: `write_file`, `edit_file`, `apply_patch`, `fleet_run`, all `bash`
+- Blocked tools: `write`, `edit`, `bash`, `fleet_run`
 - Entry/exit UX: `/plan` to enter, `exit_plan_mode` tool to exit via approval, `/plan cancel` to abort
 - Prompt content: investigation protocol (not output template)
 - TDD: not enforced
