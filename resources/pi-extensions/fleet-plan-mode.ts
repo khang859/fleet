@@ -2,10 +2,13 @@
  * Fleet Plan Mode Extension for Pi Coding Agent
  *
  * Adds a "plan mode" to Pi. While active, Pi follows an investigation
- * protocol injected into the system prompt, write/exec tools are blocked,
- * and the LLM produces a markdown plan via the `exit_plan_mode` tool.
- * The plan is written to docs/plans/YYYY-MM-DD-<topic>.md after the user
- * approves it.
+ * protocol injected into the system prompt; the active toolset is
+ * swapped to hide write/exec tools via pi.setActiveTools. The LLM
+ * produces a markdown plan via the exit_plan_mode tool; the plan is
+ * written to docs/plans/YYYY-MM-DD-<topic>.md after the user approves.
+ *
+ * Also registers pi's built-in grep/find/ls tools, which are not in
+ * the default toolset.
  */
 
 import {
@@ -13,6 +16,7 @@ import {
   grepToolDefinition,
   lsToolDefinition,
   type ExtensionAPI,
+  type ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -23,19 +27,7 @@ const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
 
 const PLAN_MODE_ADDENDUM = `Plan Mode Investigation Protocol
 
-You are in plan mode. Write/exec tools (write, edit, bash, fleet_run) are disabled until you call exit_plan_mode.
-
-Do NOT use bash. All investigation must go through the first-class read-only tools:
-
-- ls — list a directory (use this instead of \`bash ls\`, \`bash pwd\`, \`bash find\` for listings)
-- find — find files by name/glob (use this instead of \`bash find\`)
-- grep — search file contents by regex (use this instead of \`bash rg\` or \`bash grep\`)
-- read — read a file (with offset/limit for big files; use this instead of \`bash cat\`/\`head\`/\`tail\`)
-- fleet_open — open a file in the Fleet editor for the user to see
-
-If you're about to call bash for any reason, stop: use the tool above instead.
-
-Follow this protocol:
+You are in plan mode. Only read-only tools are available (write, edit, bash, fleet_run are hidden). Use read/grep/find/ls/fleet_open to investigate. Follow this protocol:
 
 1. Understand the question. Restate the ask in your own words if anything is ambiguous. Identify purpose, constraints, and what "done" looks like.
 
@@ -53,19 +45,7 @@ Follow this protocol:
 
 When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
 
-const BLOCKED_TOOLS = new Set<string>(["write", "edit", "bash", "fleet_run"]);
-const PLAN_MODE_BLOCK_REASONS: Record<string, string> = {
-  bash:
-    "Plan mode is active — bash is disabled. Use the first-class read-only tools instead: `ls` for listings, `find` for filename search, `grep` for content search, `read` for file contents. Do NOT retry with bash.",
-  write:
-    "Plan mode is active — `write` is disabled. Finish investigating and call `exit_plan_mode` with your plan; the user will approve it and then you can write files.",
-  edit:
-    "Plan mode is active — `edit` is disabled. Finish investigating and call `exit_plan_mode` with your plan; the user will approve it and then you can edit files.",
-  fleet_run:
-    "Plan mode is active — `fleet_run` is disabled. Investigate with `ls`/`find`/`grep`/`read` and call `exit_plan_mode` when your plan is ready."
-};
-const PLAN_MODE_BLOCK_REASON_FALLBACK =
-  "Plan mode is active — this tool is disabled. Use read-only tools (ls, find, grep, read) to investigate, then call exit_plan_mode with your plan.";
+const BLOCKED_IN_PLAN = new Set<string>(["write", "edit", "bash", "fleet_run"]);
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -100,11 +80,29 @@ function resolvePlanPath(cwd: string, topic: string): string {
 }
 
 let planMode = false;
+let savedActiveTools: string[] | null = null;
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool(grepToolDefinition);
   pi.registerTool(findToolDefinition);
   pi.registerTool(lsToolDefinition);
+
+  function enterPlanMode(ctx: ExtensionContext): void {
+    savedActiveTools = pi.getActiveTools();
+    const next = savedActiveTools.filter((t) => !BLOCKED_IN_PLAN.has(t));
+    pi.setActiveTools(next);
+    planMode = true;
+    ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, PLAN_MODE_STATUS_LABEL);
+  }
+
+  function leavePlanMode(ctx: ExtensionContext): void {
+    if (savedActiveTools) {
+      pi.setActiveTools(savedActiveTools);
+      savedActiveTools = null;
+    }
+    planMode = false;
+    ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+  }
 
   pi.registerCommand("plan", {
     description:
@@ -117,8 +115,7 @@ export default function (pi: ExtensionAPI): void {
           ctx.ui.notify("Plan mode is not active.", "info");
           return;
         }
-        planMode = false;
-        ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+        leavePlanMode(ctx);
         ctx.ui.notify("Plan mode cancelled. No plan was written.", "info");
         return;
       }
@@ -136,8 +133,7 @@ export default function (pi: ExtensionAPI): void {
         return;
       }
 
-      planMode = true;
-      ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, PLAN_MODE_STATUS_LABEL);
+      enterPlanMode(ctx);
       ctx.ui.notify(
         "Plan mode on — read-only until you approve the plan.",
         "info",
@@ -147,6 +143,7 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, _ctx) => {
     planMode = false;
+    savedActiveTools = null;
   });
 
   pi.on("before_agent_start", async (event, _ctx) => {
@@ -154,14 +151,6 @@ export default function (pi: ExtensionAPI): void {
     return {
       systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`,
     };
-  });
-
-  pi.on("tool_call", async (event, _ctx) => {
-    if (!planMode) return;
-    if (!BLOCKED_TOOLS.has(event.toolName)) return;
-    const reason =
-      PLAN_MODE_BLOCK_REASONS[event.toolName] ?? PLAN_MODE_BLOCK_REASON_FALLBACK;
-    return { block: true, reason };
   });
 
   pi.registerTool({
@@ -218,8 +207,7 @@ export default function (pi: ExtensionAPI): void {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(planPath, params.plan, "utf-8");
 
-      planMode = false;
-      ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+      leavePlanMode(ctx);
 
       return {
         content: [
