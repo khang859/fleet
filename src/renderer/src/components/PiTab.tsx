@@ -1,5 +1,11 @@
 import { useRef, useState, useEffect } from 'react';
+import { z } from 'zod';
 import { useTerminal } from '../hooks/use-terminal';
+import { useWorkspaceStore } from '../store/workspace-store';
+import { PaneToolbar } from './PaneToolbar';
+import { SearchBar } from './SearchBar';
+import { openAnnotateModal } from '../lib/annotate-modal-bridge';
+import { joinPath } from '../lib/shell-utils';
 import type { Tab } from '../../../shared/types';
 
 type PiTabProps = {
@@ -55,6 +61,7 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
   return (
     <PiTerminal
       key={paneId}
+      tabId={tab.id}
       paneId={paneId}
       cwd={tab.cwd}
       isActive={isActive}
@@ -65,7 +72,10 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
   );
 }
 
+const PaneEventDetailSchema = z.object({ paneId: z.string() });
+
 function PiTerminal({
+  tabId,
   paneId,
   cwd,
   isActive,
@@ -73,6 +83,7 @@ function PiTerminal({
   fontSize,
   launchConfig
 }: {
+  tabId: string;
   paneId: string;
   cwd: string;
   isActive: boolean;
@@ -82,8 +93,13 @@ function PiTerminal({
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [isGitRepo, setIsGitRepo] = useState(false);
+  const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeTab = useWorkspaceStore((s) => s.closeTab);
 
-  const { focus, scrollToBottom } = useTerminal(containerRef, {
+  const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
     cwd,
     cmd: launchConfig.cmd,
@@ -95,11 +111,71 @@ function PiTerminal({
     onScrollStateChange: setIsScrolledUp
   });
 
+  useEffect(() => {
+    if (!cwd) {
+      setIsGitRepo(false);
+      return;
+    }
+    if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
+    gitCheckTimerRef.current = setTimeout(() => {
+      void window.fleet.git.isRepo(cwd).then((result) => {
+        setIsGitRepo(result.isRepo);
+      });
+    }, 500);
+    return () => {
+      if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
+    };
+  }, [cwd]);
+
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      if (!(e instanceof CustomEvent)) return;
+      const parsed = PaneEventDetailSchema.safeParse(e.detail);
+      if (parsed.success && parsed.data.paneId === paneId) {
+        setSearchOpen((prev) => !prev);
+      }
+    };
+    document.addEventListener('fleet:toggle-search', handler);
+    return () => document.removeEventListener('fleet:toggle-search', handler);
+  }, [paneId]);
+
   return (
     <div
       className="relative h-full w-full overflow-hidden p-3 bg-[#151515]"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       onClick={() => focus()}
     >
+      <PaneToolbar
+        visible={hovered}
+        isGitRepo={isGitRepo}
+        onClose={() => closeTab(tabId)}
+        onSearch={() => setSearchOpen(true)}
+        onGitChanges={() => document.dispatchEvent(new CustomEvent('fleet:toggle-git-changes'))}
+        onFileSearch={() => document.dispatchEvent(new CustomEvent('fleet:toggle-file-search'))}
+        onClipboardHistory={() =>
+          document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
+        }
+        onInjectSkills={() => {
+          window.fleet.pty.input({
+            paneId,
+            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
+          });
+          focus();
+        }}
+        onAnnotate={() => openAnnotateModal()}
+        onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
+      />
+      <SearchBar
+        isOpen={searchOpen}
+        onClose={() => {
+          setSearchOpen(false);
+          clearSearch();
+          focus();
+        }}
+        onSearch={(q) => search(q)}
+        onSearchPrevious={(q) => searchPrevious(q)}
+      />
       <div ref={containerRef} className="h-full w-full" />
       {isScrolledUp && (
         <button

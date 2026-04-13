@@ -45,8 +45,8 @@ function ToolbarTooltip({
 type PaneToolbarProps = {
   visible: boolean;
   isGitRepo: boolean;
-  onSplitHorizontal: () => void;
-  onSplitVertical: () => void;
+  onSplitHorizontal?: () => void;
+  onSplitVertical?: () => void;
   onClose: () => void;
   onSearch: () => void;
   onGitChanges: () => void;
@@ -77,28 +77,32 @@ export function PaneToolbar({
         className={`absolute top-2 right-2 z-20 transition-opacity flex items-center gap-0.5 bg-neutral-800/80 backdrop-blur-sm rounded-md border border-neutral-700/50 p-0.5 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{ WebkitAppRegion: 'no-drag' }}
       >
-        <ToolbarTooltip label={`Split Right (${shortcutLabel('split-right')})`}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSplitHorizontal();
-            }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          >
-            <Columns2 size={14} />
-          </button>
-        </ToolbarTooltip>
-        <ToolbarTooltip label={`Split Down (${shortcutLabel('split-down')})`}>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onSplitVertical();
-            }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
-          >
-            <Rows2 size={14} />
-          </button>
-        </ToolbarTooltip>
+        {onSplitHorizontal && (
+          <ToolbarTooltip label={`Split Right (${shortcutLabel('split-right')})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSplitHorizontal();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Columns2 size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onSplitVertical && (
+          <ToolbarTooltip label={`Split Down (${shortcutLabel('split-down')})`}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onSplitVertical();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <Rows2 size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
         {isGitRepo && (
           <ToolbarTooltip label={`Git Changes (${shortcutLabel('git-changes')})`}>
             <button
