@@ -1,14 +1,18 @@
-import { readFile, mkdir } from 'fs/promises';
+import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { existsSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { shell } from 'electron';
+import { createLogger } from './logger';
 import {
   PiSettingsSchema,
   PiModelsFileSchema,
   type PiSettings,
+  type PiProvider,
   type PiModelsFile
 } from '../shared/pi-config-types';
+
+const log = createLogger('pi-config-manager');
 
 export class PiConfigParseError extends Error {
   constructor(
@@ -42,6 +46,7 @@ export class PiConfigManager {
   private readonly settingsPath: string;
   private readonly modelsPath: string;
   private readonly authPath: string;
+  private readonly writeLocks = new Map<string, Promise<void>>();
 
   constructor(opts: PiConfigManagerOptions = {}) {
     this.configDir = opts.configDir ?? join(homedir(), '.pi', 'agent');
@@ -111,5 +116,72 @@ export class PiConfigManager {
           : [{ path: '', message: err instanceof Error ? err.message : String(err) }];
       throw new PiConfigValidationError(fileLabel, issues);
     }
+  }
+
+  async writeSettings(patch: Partial<PiSettings>): Promise<void> {
+    await this.withLock(this.settingsPath, async () => {
+      const current = await this.readSettings();
+      const merged = { ...current, ...patch };
+      await this.atomicWriteJson(this.settingsPath, merged);
+    });
+  }
+
+  async writeProvider(id: string, provider: PiProvider): Promise<void> {
+    await this.withLock(this.modelsPath, async () => {
+      const current = await this.readModels();
+      const providers = { ...current.providers, [id]: provider };
+      await this.atomicWriteJson(this.modelsPath, { ...current, providers });
+    });
+  }
+
+  async deleteProvider(id: string): Promise<void> {
+    await this.withLock(this.modelsPath, async () => {
+      const current = await this.readModels();
+      if (!(id in current.providers)) return;
+      const providers = { ...current.providers };
+      delete providers[id];
+      await this.atomicWriteJson(this.modelsPath, { ...current, providers });
+    });
+  }
+
+  async renameProvider(oldId: string, newId: string): Promise<void> {
+    if (oldId === newId) return;
+    await this.withLock(this.modelsPath, async () => {
+      const current = await this.readModels();
+      const value = current.providers[oldId];
+      if (!value) return;
+      const providers = { ...current.providers, [newId]: value };
+      delete providers[oldId];
+      await this.atomicWriteJson(this.modelsPath, { ...current, providers });
+    });
+  }
+
+  private async withLock<T>(path: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(path) ?? Promise.resolve();
+    let resolveNext!: () => void;
+    const next = new Promise<void>((r) => (resolveNext = r));
+    const chain = prev.then(() => next);
+    this.writeLocks.set(path, chain);
+    try {
+      await prev;
+      return await fn();
+    } finally {
+      resolveNext();
+      if (this.writeLocks.get(path) === chain) {
+        this.writeLocks.delete(path);
+      }
+    }
+  }
+
+  private async atomicWriteJson(path: string, obj: unknown): Promise<void> {
+    const dir = dirname(path);
+    if (!existsSync(dir)) {
+      await mkdir(dir, { recursive: true });
+    }
+    const tmp = `${path}.tmp`;
+    const text = `${JSON.stringify(obj, null, 2)}\n`;
+    await writeFile(tmp, text, 'utf-8');
+    await rename(tmp, path);
+    log.debug('wrote pi config', { path });
   }
 }
