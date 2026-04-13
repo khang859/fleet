@@ -18,13 +18,17 @@ const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
 
 const PLAN_MODE_ADDENDUM = `Plan Mode Investigation Protocol
 
-You are in plan mode. Write/exec tools (write, edit, bash, fleet_run) are disabled until you call exit_plan_mode. Use the available read-only tools to investigate:
+You are in plan mode. Write/exec tools (write, edit, bash, fleet_run) are disabled until you call exit_plan_mode.
 
-- read — read a file (with offset/limit for big files)
-- grep — search file contents by regex
-- find — find files by name/glob
-- ls — list a directory
+Do NOT use bash. All investigation must go through the first-class read-only tools:
+
+- ls — list a directory (use this instead of \`bash ls\`, \`bash pwd\`, \`bash find\` for listings)
+- find — find files by name/glob (use this instead of \`bash find\`)
+- grep — search file contents by regex (use this instead of \`bash rg\` or \`bash grep\`)
+- read — read a file (with offset/limit for big files; use this instead of \`bash cat\`/\`head\`/\`tail\`)
 - fleet_open — open a file in the Fleet editor for the user to see
+
+If you're about to call bash for any reason, stop: use the tool above instead.
 
 Follow this protocol:
 
@@ -45,8 +49,18 @@ Follow this protocol:
 When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
 
 const BLOCKED_TOOLS = new Set<string>(["write", "edit", "bash", "fleet_run"]);
-const PLAN_MODE_BLOCK_REASON =
-  "Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.";
+const PLAN_MODE_BLOCK_REASONS: Record<string, string> = {
+  bash:
+    "Plan mode is active — bash is disabled. Use the first-class read-only tools instead: `ls` for listings, `find` for filename search, `grep` for content search, `read` for file contents. Do NOT retry with bash.",
+  write:
+    "Plan mode is active — `write` is disabled. Finish investigating and call `exit_plan_mode` with your plan; the user will approve it and then you can write files.",
+  edit:
+    "Plan mode is active — `edit` is disabled. Finish investigating and call `exit_plan_mode` with your plan; the user will approve it and then you can edit files.",
+  fleet_run:
+    "Plan mode is active — `fleet_run` is disabled. Investigate with `ls`/`find`/`grep`/`read` and call `exit_plan_mode` when your plan is ready."
+};
+const PLAN_MODE_BLOCK_REASON_FALLBACK =
+  "Plan mode is active — this tool is disabled. Use read-only tools (ls, find, grep, read) to investigate, then call exit_plan_mode with your plan.";
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const PLAN_PREVIEW_LINES = 60;
@@ -144,7 +158,9 @@ export default function (pi: ExtensionAPI): void {
   pi.on("tool_call", async (event, _ctx) => {
     if (!planMode) return;
     if (!BLOCKED_TOOLS.has(event.toolName)) return;
-    return { block: true, reason: PLAN_MODE_BLOCK_REASON };
+    const reason =
+      PLAN_MODE_BLOCK_REASONS[event.toolName] ?? PLAN_MODE_BLOCK_REASON_FALLBACK;
+    return { block: true, reason };
   });
 
   pi.registerTool({
