@@ -8,6 +8,7 @@ import { VisualizerSection } from './VisualizerSection';
 import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { AnnotateSection } from './AnnotateSection';
+import { PiSection } from './pi/PiSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
@@ -16,7 +17,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   visualizer: VisualizerSection,
   updates: UpdatesSection,
   copilot: CopilotSection,
-  annotate: AnnotateSection
+  annotate: AnnotateSection,
+  pi: PiSection
 };
 
 export function SettingsTab(): React.JSX.Element {
