@@ -14,6 +14,41 @@ import {
 
 const log = createLogger('pi-config-manager');
 
+function messageOf(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (typeof err === 'number' || typeof err === 'boolean') return String(err);
+  return 'Unknown error';
+}
+
+function extractZodIssues(err: unknown): Array<{ path: string; message: string }> {
+  if (err === null || typeof err !== 'object' || !('issues' in err)) {
+    return [{ path: '', message: messageOf(err) }];
+  }
+  const issues: unknown = err.issues;
+  if (!Array.isArray(issues)) {
+    return [{ path: '', message: messageOf(err) }];
+  }
+  const results: Array<{ path: string; message: string }> = [];
+  for (const raw of issues as unknown[]) {
+    if (raw === null || typeof raw !== 'object') continue;
+    let path = '';
+    if ('path' in raw) {
+      const p: unknown = raw.path;
+      if (Array.isArray(p)) {
+        path = (p as unknown[]).map((s) => String(s)).join('.');
+      }
+    }
+    let message = '';
+    if ('message' in raw) {
+      const m: unknown = raw.message;
+      if (typeof m === 'string') message = m;
+    }
+    results.push({ path, message });
+  }
+  return results;
+}
+
 export class PiConfigParseError extends Error {
   constructor(
     public readonly file: string,
@@ -91,7 +126,7 @@ export class PiConfigManager {
     try {
       text = await readFile(path, 'utf-8');
     } catch (err: unknown) {
-      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+      if (err instanceof Error && 'code' in err && err.code === 'ENOENT') {
         return parse(fileLabel === 'models.json' ? { providers: {} } : {});
       }
       throw err;
@@ -101,20 +136,13 @@ export class PiConfigManager {
     try {
       raw = JSON.parse(text);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new PiConfigParseError(fileLabel, msg, text.slice(0, 200));
+      throw new PiConfigParseError(fileLabel, messageOf(err), text.slice(0, 200));
     }
 
     try {
       return parse(raw);
     } catch (err: unknown) {
-      const issues =
-        err && typeof err === 'object' && 'issues' in err && Array.isArray((err as { issues: unknown[] }).issues)
-          ? ((err as { issues: Array<{ path: (string | number)[]; message: string }> }).issues.map(
-              (i) => ({ path: i.path.join('.'), message: i.message })
-            ))
-          : [{ path: '', message: err instanceof Error ? err.message : String(err) }];
-      throw new PiConfigValidationError(fileLabel, issues);
+      throw new PiConfigValidationError(fileLabel, extractZodIssues(err));
     }
   }
 
@@ -160,7 +188,7 @@ export class PiConfigManager {
     const prev = this.writeLocks.get(path) ?? Promise.resolve();
     let resolveNext!: () => void;
     const next = new Promise<void>((r) => (resolveNext = r));
-    const chain = prev.then(() => next);
+    const chain = prev.then(async () => next);
     this.writeLocks.set(path, chain);
     try {
       await prev;
