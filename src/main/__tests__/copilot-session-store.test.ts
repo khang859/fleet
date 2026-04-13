@@ -8,7 +8,7 @@ function makeEvent(overrides: Partial<HookEvent> = {}): HookEvent {
     event: 'UserPromptSubmit',
     status: 'processing',
     pid: 12345,
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -81,7 +81,9 @@ describe('CopilotSessionStore', () => {
   });
 
   it('handles running_tool status as processing phase', () => {
-    store.processHookEvent(makeEvent({ event: 'PreToolUse', status: 'running_tool', tool: 'Bash' }));
+    store.processHookEvent(
+      makeEvent({ event: 'PreToolUse', status: 'running_tool', tool: 'Bash' })
+    );
     expect(store.getSessions()[0].phase).toBe('processing');
   });
 
@@ -138,12 +140,14 @@ describe('CopilotSessionStore', () => {
   describe('permission handling during interrupt', () => {
     it('Stop event does not clear pending permissions list', () => {
       // Permission request arrives
-      store.processHookEvent(makeEvent({
-        event: 'PreToolUse',
-        status: 'waiting_for_approval',
-        tool: 'Bash',
-        tool_use_id: 'tu-1',
-      }));
+      store.processHookEvent(
+        makeEvent({
+          event: 'PreToolUse',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          tool_use_id: 'tu-1'
+        })
+      );
       expect(store.getSession('sess-1')!.pendingPermissions).toHaveLength(1);
 
       // User interrupts
@@ -154,12 +158,14 @@ describe('CopilotSessionStore', () => {
     });
 
     it('removePermission does not override waitingForInput phase', () => {
-      store.processHookEvent(makeEvent({
-        event: 'PreToolUse',
-        status: 'waiting_for_approval',
-        tool: 'Bash',
-        tool_use_id: 'tu-1',
-      }));
+      store.processHookEvent(
+        makeEvent({
+          event: 'PreToolUse',
+          status: 'waiting_for_approval',
+          tool: 'Bash',
+          tool_use_id: 'tu-1'
+        })
+      );
 
       // Stop event arrives — phase changes to waitingForInput
       store.processHookEvent(makeEvent({ event: 'Stop', status: 'waiting_for_input' }));

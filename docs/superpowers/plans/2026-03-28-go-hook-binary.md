@@ -13,6 +13,7 @@
 ### Task 1: Create the Go module and source
 
 **Files:**
+
 - Create: `hooks/fleet-copilot-go/go.mod`
 - Create: `hooks/fleet-copilot-go/main.go`
 
@@ -27,6 +28,7 @@ go 1.22
 - [ ] **Step 2: Write main.go**
 
 Port the Python script logic 1:1. The binary must:
+
 - Check `FLEET_SESSION` env var, exit 0 if unset
 - Read JSON from stdin
 - Get parent PID and its TTY (via `ps -p <ppid> -o tty=`)
@@ -286,6 +288,7 @@ git commit -m "feat(copilot): add Go source for hook binary"
 ### Task 2: Create the build script and npm integration
 
 **Files:**
+
 - Create: `scripts/build-hook.sh`
 - Modify: `package.json` (scripts section)
 
@@ -330,6 +333,7 @@ Add to the `"scripts"` section in `package.json`:
 
 Run: `npm run build:hook`
 Expected: Four binaries in `hooks/bin/`:
+
 - `fleet-copilot-darwin-arm64`
 - `fleet-copilot-darwin-amd64`
 - `fleet-copilot-windows-amd64.exe`
@@ -349,6 +353,7 @@ git commit -m "feat(copilot): add hook binary build script and npm integration"
 ### Task 3: Update .gitignore and electron-builder.yml
 
 **Files:**
+
 - Modify: `.gitignore`
 - Modify: `electron-builder.yml`
 
@@ -392,11 +397,13 @@ git commit -m "chore: gitignore hook binaries, ship only bin/ in extraResources"
 ### Task 4: Update hook-installer.ts
 
 **Files:**
+
 - Modify: `src/main/copilot/hook-installer.ts`
 
 - [ ] **Step 1: Replace hook-installer.ts**
 
 Replace the full content of `src/main/copilot/hook-installer.ts`. Key changes:
+
 - Remove `detectPython()` and `makeHookCommand()` — no interpreter needed
 - Add `getHookBinaryName()` that returns the platform+arch-specific binary filename
 - The hook command in settings.json is now just the absolute path to the binary in `~/.claude/hooks/`
@@ -410,7 +417,7 @@ import {
   existsSync,
   mkdirSync,
   chmodSync,
-  unlinkSync,
+  unlinkSync
 } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -456,12 +463,12 @@ type ClaudeSettings = {
 
 function buildHookEntries(command: string): Record<string, HookEntry[]> {
   const simpleHook = (timeout?: number): HookEntry => ({
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   const matcherHook = (matcher: string, timeout?: number): HookEntry => ({
     matcher,
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   return {
@@ -474,7 +481,7 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
     SubagentStop: [simpleHook()],
     SessionStart: [simpleHook()],
     SessionEnd: [simpleHook()],
-    PreCompact: [matcherHook('auto'), matcherHook('manual')],
+    PreCompact: [matcherHook('auto'), matcherHook('manual')]
   };
 }
 
@@ -682,6 +689,7 @@ git commit -m "feat(copilot): switch hook-installer to use Go binary instead of 
 ### Task 5: Delete the Python script
 
 **Files:**
+
 - Delete: `hooks/fleet-copilot.py`
 
 - [ ] **Step 1: Remove the Python script**
@@ -706,6 +714,7 @@ git commit -m "chore(copilot): remove Python hook script, replaced by Go binary"
 ### Task 6: Update CI workflow — ci.yml
 
 **Files:**
+
 - Modify: `.github/workflows/ci.yml`
 
 - [ ] **Step 1: Add Go setup and hook build to ci.yml**
@@ -713,11 +722,11 @@ git commit -m "chore(copilot): remove Python hook script, replaced by Go binary"
 Insert after the `npm ci` step and before `npm rebuild better-sqlite3`:
 
 ```yaml
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build hook binary
-        run: npm run build:hook
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.22'
+- name: Build hook binary
+  run: npm run build:hook
 ```
 
 The full file should be:
@@ -765,6 +774,7 @@ git commit -m "ci: add Go setup and hook binary build to CI"
 ### Task 7: Update release workflow — release.yml
 
 **Files:**
+
 - Modify: `.github/workflows/release.yml`
 
 - [ ] **Step 1: Add Go setup and hook build to each release job**
@@ -774,32 +784,32 @@ Add `actions/setup-go@v5` and `npm run build:hook` to each of the four release j
 **release-mac-arm64** — insert after `npm ci` (line 35), before the `Rebuild native Electron deps` step:
 
 ```yaml
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build hook binary
-        run: npm run build:hook
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.22'
+- name: Build hook binary
+  run: npm run build:hook
 ```
 
 **release-mac-x64** — same insertion point (after `npm ci`, before `Rebuild native Electron deps`):
 
 ```yaml
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build hook binary
-        run: npm run build:hook
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.22'
+- name: Build hook binary
+  run: npm run build:hook
 ```
 
 **release-win** — insert after `npm ci`, before the `Extract release notes config` step:
 
 ```yaml
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build hook binary
-        run: sh scripts/build-hook.sh
-        shell: bash
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.22'
+- name: Build hook binary
+  run: sh scripts/build-hook.sh
+  shell: bash
 ```
 
 Note: On Windows we use `shell: bash` (Git Bash) to run the shell script, and call the script directly instead of via npm to avoid shell quoting issues.
@@ -807,11 +817,11 @@ Note: On Windows we use `shell: bash` (Git Bash) to run the shell script, and ca
 **release-linux** — insert after `npm ci`, before `Extract release notes config`:
 
 ```yaml
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-      - name: Build hook binary
-        run: npm run build:hook
+- uses: actions/setup-go@v5
+  with:
+    go-version: '1.22'
+- name: Build hook binary
+  run: npm run build:hook
 ```
 
 - [ ] **Step 2: Commit**

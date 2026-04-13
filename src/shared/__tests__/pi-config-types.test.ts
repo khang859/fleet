@@ -23,9 +23,7 @@ describe('PiSettingsSchema', () => {
   });
 
   it('rejects invalid thinking level', () => {
-    expect(() =>
-      PiSettingsSchema.parse({ defaultThinkingLevel: 'extreme' })
-    ).toThrow();
+    expect(() => PiSettingsSchema.parse({ defaultThinkingLevel: 'extreme' })).toThrow();
   });
 });
 
@@ -54,18 +52,21 @@ describe('PiModelsFileSchema', () => {
 
 describe('parseApiKeyString', () => {
   it('detects shell command by leading !', () => {
-    expect(parseApiKeyString('!security find-generic-password -ws anthropic'))
-      .toEqual({ kind: 'shell', command: 'security find-generic-password -ws anthropic' });
+    expect(parseApiKeyString('!security find-generic-password -ws anthropic')).toEqual({
+      kind: 'shell',
+      command: 'security find-generic-password -ws anthropic'
+    });
   });
 
   it('detects env var from SCREAMING_SNAKE_CASE', () => {
-    expect(parseApiKeyString('ANTHROPIC_API_KEY'))
-      .toEqual({ kind: 'envVar', name: 'ANTHROPIC_API_KEY' });
+    expect(parseApiKeyString('ANTHROPIC_API_KEY')).toEqual({
+      kind: 'envVar',
+      name: 'ANTHROPIC_API_KEY'
+    });
   });
 
   it('treats literal-looking values as literal', () => {
-    expect(parseApiKeyString('sk-ant-abc123'))
-      .toEqual({ kind: 'literal', value: 'sk-ant-abc123' });
+    expect(parseApiKeyString('sk-ant-abc123')).toEqual({ kind: 'literal', value: 'sk-ant-abc123' });
   });
 
   it('treats empty/undefined as undefined', () => {
@@ -76,17 +77,14 @@ describe('parseApiKeyString', () => {
 
 describe('serializeApiKey', () => {
   it('serializes shell with leading !', () => {
-    expect(serializeApiKey({ kind: 'shell', command: 'op read foo' }))
-      .toBe('!op read foo');
+    expect(serializeApiKey({ kind: 'shell', command: 'op read foo' })).toBe('!op read foo');
   });
 
   it('serializes envVar as name', () => {
-    expect(serializeApiKey({ kind: 'envVar', name: 'MY_KEY' }))
-      .toBe('MY_KEY');
+    expect(serializeApiKey({ kind: 'envVar', name: 'MY_KEY' })).toBe('MY_KEY');
   });
 
   it('serializes literal as value', () => {
-    expect(serializeApiKey({ kind: 'literal', value: 'sk-123' }))
-      .toBe('sk-123');
+    expect(serializeApiKey({ kind: 'literal', value: 'sk-123' })).toBe('sk-123');
   });
 });

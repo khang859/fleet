@@ -66,15 +66,12 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
   }, []);
 
   // Refresh preview content when switching to preview tab
-  const handleTabSwitch = useCallback(
-    (view: ViewMode) => {
-      if (view === 'preview') {
-        setPreviewContent(contentRef.current);
-      }
-      setActiveView(view);
-    },
-    []
-  );
+  const handleTabSwitch = useCallback((view: ViewMode) => {
+    if (view === 'preview') {
+      setPreviewContent(contentRef.current);
+    }
+    setActiveView(view);
+  }, []);
 
   // Custom link renderer for Fleet-aware navigation
   const baseDir = useMemo(() => dirname(filePath), [filePath]);

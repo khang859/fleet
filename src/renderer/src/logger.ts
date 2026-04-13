@@ -79,15 +79,17 @@ function createDevLogger(tag: string): RendererLogger {
     const timestamp = new Date().toISOString();
 
     // Console output (human-readable)
-    const metaStr = resolved && Object.keys(resolved).length > 0
-      ? ` ${JSON.stringify(resolved)}`
-      : '';
+    const metaStr =
+      resolved && Object.keys(resolved).length > 0 ? ` ${JSON.stringify(resolved)}` : '';
     console[CONSOLE_METHOD[level]](
       `%c${timestamp.slice(11, 23)} [${tag}] ${level}: ${message}${metaStr}`,
-      level === 'error' ? 'color: #f87171' :
-      level === 'warn' ? 'color: #fbbf24' :
-      level === 'debug' ? 'color: #9ca3af' :
-      'color: #60a5fa'
+      level === 'error'
+        ? 'color: #f87171'
+        : level === 'warn'
+          ? 'color: #fbbf24'
+          : level === 'debug'
+            ? 'color: #9ca3af'
+            : 'color: #60a5fa'
     );
 
     // Enqueue for IPC batch

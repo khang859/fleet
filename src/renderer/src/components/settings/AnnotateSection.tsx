@@ -16,9 +16,7 @@ export function AnnotateSection(): React.JSX.Element {
       <div className="space-y-3">
         <h3 className="text-sm font-medium text-neutral-300">Storage</h3>
         <div className="flex items-center justify-between">
-          <label className="text-sm text-neutral-400">
-            Delete annotations older than
-          </label>
+          <label className="text-sm text-neutral-400">Delete annotations older than</label>
           <div className="flex items-center gap-1.5">
             <input
               type="number"

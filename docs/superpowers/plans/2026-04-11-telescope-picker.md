@@ -15,6 +15,7 @@
 ### Task 1: Types & Mode Interface
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/types.ts`
 
 - [ ] **Step 1: Create the types file**
@@ -69,6 +70,7 @@ git commit -m "feat(telescope): add TelescopeItem and TelescopeMode type definit
 ### Task 2: IPC — FILE_GREP Channel & Types
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts:32` (add after FILE_SEARCH)
 - Modify: `src/shared/ipc-api.ts:138` (add after FileSearchResponse)
 
@@ -123,6 +125,7 @@ git commit -m "feat(telescope): add FILE_GREP IPC channel and request/response t
 ### Task 3: file-grep.ts Backend
 
 **Files:**
+
 - Create: `src/main/file-grep.ts`
 
 This follows the exact same pattern as `src/main/file-search.ts` — spawn a process, parse stdout, normalize results, kill previous on new request.
@@ -144,22 +147,24 @@ function killActive(): void {
   activeProcess = null;
 }
 
-function buildCommand(
-  query: string,
-  cwd: string,
-  limit: number
-): { cmd: string; args: string[] } {
+function buildCommand(query: string, cwd: string, limit: number): { cmd: string; args: string[] } {
   // Try ripgrep first (cross-platform, fast, respects .gitignore)
   return {
     cmd: 'rg',
     args: [
       '--no-heading',
       '--line-number',
-      '--color', 'never',
-      '--max-count', String(limit),
-      '-B', '1',
-      '-A', '1',
-      '--', query, cwd
+      '--color',
+      'never',
+      '--max-count',
+      String(limit),
+      '-B',
+      '1',
+      '-A',
+      '1',
+      '--',
+      query,
+      cwd
     ]
   };
 }
@@ -366,6 +371,7 @@ git commit -m "feat(telescope): add file-grep backend with rg/grep/findstr fallb
 ### Task 4: Wire FILE_GREP into IPC & Preload
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts:425` (add after FILE_SEARCH handler)
 - Modify: `src/preload/index.ts:204` (add after file.search in the file namespace)
 
@@ -380,9 +386,7 @@ import { grepFiles } from './file-grep';
 Then add the handler after the `FILE_SEARCH` handler (after line 425):
 
 ```typescript
-  ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) =>
-    grepFiles(req)
-  );
+ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) => grepFiles(req));
 ```
 
 Also add the `FileGrepRequest` import from `'../shared/ipc-api'` to the existing import statement.
@@ -415,6 +419,7 @@ git commit -m "feat(telescope): wire FILE_GREP IPC handler and preload API"
 ### Task 5: Keyboard Shortcut Definition
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts:145` (add before closing bracket of ALL_SHORTCUTS)
 
 - [ ] **Step 1: Add the telescope shortcut**
@@ -447,6 +452,7 @@ git commit -m "feat(telescope): add Cmd+Shift+T keyboard shortcut definition"
 ### Task 6: Files Mode
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/modes/files-mode.ts`
 
 - [ ] **Step 1: Create the files mode**
@@ -566,6 +572,7 @@ git commit -m "feat(telescope): add Files mode — fuzzy file search in cwd"
 ### Task 7: Grep Mode
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/modes/grep-mode.ts`
 
 - [ ] **Step 1: Create the grep mode**
@@ -605,7 +612,11 @@ export function createGrepMode(cwd: string, activePaneId: string | null): Telesc
 
       return res.results.map((r) => ({
         id: `${r.file}:${r.line}`,
-        icon: createElement('span', { className: 'text-[10px] text-neutral-500 font-mono w-4 text-right' }, String(r.line)),
+        icon: createElement(
+          'span',
+          { className: 'text-[10px] text-neutral-500 font-mono w-4 text-right' },
+          String(r.line)
+        ),
         title: r.relativePath,
         subtitle: r.text.trim(),
         meta: `L${r.line}`,
@@ -659,6 +670,7 @@ git commit -m "feat(telescope): add Grep mode — content search via FILE_GREP I
 ### Task 8: Browse Mode
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/modes/browse-mode.ts`
 
 - [ ] **Step 1: Create the browse mode**
@@ -704,13 +716,12 @@ export function createBrowseMode(
 
     void window.fleet.file.readdir(dir).then((res) => {
       if (res.success) {
-        state.entries = res.entries
-          .sort((a, b) => {
-            // Directories first, then alphabetical
-            if (a.isDirectory && !b.isDirectory) return -1;
-            if (!a.isDirectory && b.isDirectory) return 1;
-            return a.name.localeCompare(b.name);
-          });
+        state.entries = res.entries.sort((a, b) => {
+          // Directories first, then alphabetical
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.name.localeCompare(b.name);
+        });
       }
       state.loading = false;
       onStateChange();
@@ -823,6 +834,7 @@ git commit -m "feat(telescope): add Browse mode — directory navigation with br
 ### Task 9: Panes Mode
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/modes/panes-mode.ts`
 
 - [ ] **Step 1: Create the panes mode**
@@ -882,9 +894,7 @@ export function createPanesMode(): TelescopeMode {
       const paneId = item.data?.paneId as string;
       if (paneId) {
         useWorkspaceStore.getState().setActivePane(paneId);
-        document.dispatchEvent(
-          new CustomEvent('fleet:refocus-pane', { detail: { paneId } })
-        );
+        document.dispatchEvent(new CustomEvent('fleet:refocus-pane', { detail: { paneId } }));
       }
     }
   };
@@ -908,6 +918,7 @@ git commit -m "feat(telescope): add Panes mode — switch between open terminal 
 ### Task 10: TelescopeModal Shell Component
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/TelescopeModal.tsx`
 
 This is the main modal shell — layout, mode tabs, keyboard nav, preview panel. It delegates search/actions to the active mode.
@@ -1305,6 +1316,7 @@ git commit -m "feat(telescope): add TelescopeModal shell with two-column layout 
 ### Task 11: Wire into App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add import**
@@ -1320,7 +1332,7 @@ import { TelescopeModal } from './components/Telescope/TelescopeModal';
 Add alongside the other overlay state declarations (near line 122):
 
 ```typescript
-  const [telescopeOpen, setTelescopeOpen] = useState(false);
+const [telescopeOpen, setTelescopeOpen] = useState(false);
 ```
 
 - [ ] **Step 3: Add event listener**
@@ -1328,12 +1340,12 @@ Add alongside the other overlay state declarations (near line 122):
 Add alongside the other toggle event listeners (after the clipboard-history listener, ~line 219):
 
 ```typescript
-  // Telescope modal toggle (Cmd+Shift+T)
-  useEffect(() => {
-    const handler = (): void => setTelescopeOpen((prev) => !prev);
-    document.addEventListener('fleet:toggle-telescope', handler);
-    return () => document.removeEventListener('fleet:toggle-telescope', handler);
-  }, []);
+// Telescope modal toggle (Cmd+Shift+T)
+useEffect(() => {
+  const handler = (): void => setTelescopeOpen((prev) => !prev);
+  document.addEventListener('fleet:toggle-telescope', handler);
+  return () => document.removeEventListener('fleet:toggle-telescope', handler);
+}, []);
 ```
 
 - [ ] **Step 4: Render the component**
@@ -1365,6 +1377,7 @@ git commit -m "feat(telescope): wire TelescopeModal into App.tsx with event list
 ### Task 12: Add Toolbar Button & Event Dispatching
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
 - Modify: `src/renderer/src/components/TerminalPane.tsx`
 
@@ -1375,7 +1388,18 @@ In `src/renderer/src/components/PaneToolbar.tsx`:
 Add `Telescope` to the lucide-react import on line 1:
 
 ```typescript
-import { Columns2, Rows2, Search, X, GitBranch, FileSearch, Clipboard, BookOpen, Crosshair, Telescope } from 'lucide-react';
+import {
+  Columns2,
+  Rows2,
+  Search,
+  X,
+  GitBranch,
+  FileSearch,
+  Clipboard,
+  BookOpen,
+  Crosshair,
+  Telescope
+} from 'lucide-react';
 ```
 
 Add `onTelescope` to the `PaneToolbarProps` type (after `onAnnotate` on line 40):
@@ -1387,7 +1411,7 @@ Add `onTelescope` to the `PaneToolbarProps` type (after `onAnnotate` on line 40)
 Add `onTelescope` to the destructured props (after `onAnnotate` on line 54):
 
 ```typescript
-  onTelescope
+onTelescope;
 ```
 
 - [ ] **Step 2: Add the Telescope button**
@@ -1435,6 +1459,7 @@ git commit -m "feat(telescope): add Telescope button to pane toolbar"
 ### Task 13: Keyboard Shortcut Handler
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx` (the global keydown handler)
 
 Check how existing shortcuts dispatch their events — likely a global keydown listener.
@@ -1446,10 +1471,10 @@ Look for where `matchesShortcut` is called in `App.tsx` or a related hook. The t
 Search for the existing shortcut dispatch pattern and add:
 
 ```typescript
-    if (matchesShortcut(e, getShortcut('telescope')!)) {
-      e.preventDefault();
-      document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'));
-    }
+if (matchesShortcut(e, getShortcut('telescope')!)) {
+  e.preventDefault();
+  document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'));
+}
 ```
 
 This should be added in the same keydown handler where other shortcuts like `quick-open`, `file-search`, and `clipboard-history` are handled.
@@ -1471,6 +1496,7 @@ git commit -m "feat(telescope): add Cmd+Shift+T keyboard shortcut handler"
 ### Task 14: Manual Testing & Polish
 
 **Files:**
+
 - No new files — testing and fixing issues found.
 
 - [ ] **Step 1: Start the dev server**

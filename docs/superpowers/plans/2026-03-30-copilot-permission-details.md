@@ -15,6 +15,7 @@
 ### Task 1: Create `formatPermissionSummary` with tests
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/lib/__tests__/format-permission.test.ts`
 - Create: `src/renderer/copilot/src/lib/format-permission.ts`
 
@@ -147,7 +148,7 @@ const TOOL_MAPPINGS: ToolMapping[] = [
   { names: ['glob'], prefix: 'glob', fields: ['pattern'] },
   { names: ['grep'], prefix: 'grep', fields: ['pattern'] },
   { names: ['websearch'], prefix: 'search', fields: ['query'] },
-  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] },
+  { names: ['webfetch'], prefix: 'fetch', fields: ['url'] }
 ];
 
 function truncate(value: string, max: number): string {
@@ -196,6 +197,7 @@ git commit -m "feat(copilot): add formatPermissionSummary utility with tests"
 ### Task 2: Wire `formatPermissionSummary` into `SessionList.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx:1-8,166-180`
 
 - [ ] **Step 1: Add the import**
@@ -211,27 +213,25 @@ import { formatPermissionSummary } from '../lib/format-permission';
 Replace the current permission display block (lines 173-180):
 
 ```tsx
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-xs text-amber-400 truncate flex-1">
-                            {perm.tool.toolName}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{perm.tool.toolName}</TooltipContent>
-                      </Tooltip>
+<Tooltip>
+  <TooltipTrigger asChild>
+    <span className="text-xs text-amber-400 truncate flex-1">{perm.tool.toolName}</span>
+  </TooltipTrigger>
+  <TooltipContent>{perm.tool.toolName}</TooltipContent>
+</Tooltip>
 ```
 
 With:
 
 ```tsx
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-xs text-amber-400 truncate flex-1">
-                            {formatPermissionSummary(perm.tool).label}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{formatPermissionSummary(perm.tool).detail}</TooltipContent>
-                      </Tooltip>
+<Tooltip>
+  <TooltipTrigger asChild>
+    <span className="text-xs text-amber-400 truncate flex-1">
+      {formatPermissionSummary(perm.tool).label}
+    </span>
+  </TooltipTrigger>
+  <TooltipContent>{formatPermissionSummary(perm.tool).detail}</TooltipContent>
+</Tooltip>
 ```
 
 - [ ] **Step 3: Run typecheck**

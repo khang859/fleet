@@ -41,6 +41,7 @@ Record the returned `character_id`.
 Call `mcp__pixellab__get_character` with the character ID and `include_preview: true`.
 
 Verify:
+
 - Job status is complete
 - Preview image shows the nebula pup design
 - Note the list of available template animations for the dog quadruped
@@ -60,6 +61,7 @@ Show the preview to the user. If the design doesn't look right, go back to Step 
 From the `get_character` response in Task 1 Step 2, identify available quadruped/dog animations. Expected templates include: `walk`, `run`, `idle`, `sleep`, `attack`, `eat`.
 
 Map our states to the best available templates:
+
 - **Idle state** → `sleep` or `idle` template
 - **Processing state** → `walk` or `run` template (shows energy/alertness)
 - **Complete state** → attempt a template first; if none fits "celebration," use custom animation
@@ -141,6 +143,7 @@ Show animation previews to the user. If any don't look right, regenerate with ad
 ### Task 3: Download and Assemble Sprite Sheet
 
 **Files:**
+
 - Create: `scripts/assemble-copilot-sprites.mjs` (temporary build script)
 - Modify: `src/renderer/copilot/src/assets/copilot-sprites.png`
 
@@ -195,7 +198,7 @@ const states = [
   { name: 'idle', frames: 2 },
   { name: 'processing', frames: 3 },
   { name: 'permission', frames: 2 },
-  { name: 'complete', frames: 2 },
+  { name: 'complete', frames: 2 }
 ];
 
 const FRAME_SIZE = 128;
@@ -211,7 +214,7 @@ for (const state of states) {
     process.exit(1);
   }
   const files = readdirSync(stateDir)
-    .filter(f => f.endsWith('.png'))
+    .filter((f) => f.endsWith('.png'))
     .sort((a, b) => parseInt(a) - parseInt(b));
 
   // Take exactly the number of frames we need (PixelLab may generate more)
@@ -229,14 +232,11 @@ console.log(`Assembling ${framePaths.length} frames into ${outputPng}...`);
 
 // Use ImageMagick to create horizontal strip
 // Each frame is resized/cropped to exactly FRAME_SIZE x FRAME_SIZE
-const args = framePaths
-  .map(p => `"${p}"`)
-  .join(' ');
+const args = framePaths.map((p) => `"${p}"`).join(' ');
 
-execSync(
-  `convert ${args} -resize ${FRAME_SIZE}x${FRAME_SIZE} +append "${outputPng}"`,
-  { stdio: 'inherit' }
-);
+execSync(`convert ${args} -resize ${FRAME_SIZE}x${FRAME_SIZE} +append "${outputPng}"`, {
+  stdio: 'inherit'
+});
 
 console.log(`Done: ${TOTAL_FRAMES} frames, ${TOTAL_FRAMES * FRAME_SIZE}x${FRAME_SIZE}px`);
 ```
@@ -264,6 +264,7 @@ Open the sprite sheet image and verify all 9 frames look correct in sequence.
 ### Task 4: Update the Base64 Asset and Verify
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/assets/copilot-sprites.ts`
 
 - [ ] **Step 1: Regenerate the base64 data URI**

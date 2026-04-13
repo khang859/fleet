@@ -12,19 +12,20 @@
 
 ### File Map
 
-| File | Action | Responsibility |
-|---|---|---|
-| `src/shared/types.ts` | Modify | Add `SpriteAnimation`, `SpriteAnimations` types; extend `MascotDefinition` |
-| `src/shared/mascots.ts` | Modify | Export `DEFAULT_ANIMATIONS`; add helper `getMascotAnimations()` |
+| File                                                      | Action | Responsibility                                                             |
+| --------------------------------------------------------- | ------ | -------------------------------------------------------------------------- |
+| `src/shared/types.ts`                                     | Modify | Add `SpriteAnimation`, `SpriteAnimations` types; extend `MascotDefinition` |
+| `src/shared/mascots.ts`                                   | Modify | Export `DEFAULT_ANIMATIONS`; add helper `getMascotAnimations()`            |
 | `src/renderer/copilot/src/components/SpaceshipSprite.tsx` | Modify | Use registry animations instead of hardcoded constant; dynamic frame count |
-| `src/renderer/copilot/src/components/MascotPicker.tsx` | Modify | Dynamic frame count for thumbnail background sizing |
-| `scripts/assemble-copilot-sprites.ts` | Modify | Remove `TOTAL_FRAMES = 9` cap; accept variable frame count |
+| `src/renderer/copilot/src/components/MascotPicker.tsx`    | Modify | Dynamic frame count for thumbnail background sizing                        |
+| `scripts/assemble-copilot-sprites.ts`                     | Modify | Remove `TOTAL_FRAMES = 9` cap; accept variable frame count                 |
 
 ---
 
 ### Task 1: Add sprite animation types
 
 **Files:**
+
 - Modify: `src/shared/types.ts:172-177`
 
 - [ ] **Step 1: Add SpriteAnimation and SpriteAnimations types**
@@ -37,7 +38,10 @@ export type SpriteAnimation = {
   fps: number;
 };
 
-export type SpriteAnimations = Record<'idle' | 'processing' | 'permission' | 'complete', SpriteAnimation>;
+export type SpriteAnimations = Record<
+  'idle' | 'processing' | 'permission' | 'complete',
+  SpriteAnimation
+>;
 ```
 
 - [ ] **Step 2: Extend MascotDefinition with optional animations field**
@@ -71,6 +75,7 @@ git commit -m "feat(mascots): add SpriteAnimation types and optional animations 
 ### Task 2: Export DEFAULT_ANIMATIONS and helper from mascots registry
 
 **Files:**
+
 - Modify: `src/shared/mascots.ts`
 
 - [ ] **Step 1: Add DEFAULT_ANIMATIONS and getMascotAnimations helper**
@@ -85,14 +90,14 @@ export const MASCOT_REGISTRY: MascotDefinition[] = [
   { id: 'robot', name: 'Robot', description: 'A friendly automaton', thumbnailFrame: 0 },
   { id: 'cat', name: 'Cat', description: 'A curious space cat', thumbnailFrame: 0 },
   { id: 'bear', name: 'Bear', description: 'An armored polar bear warrior', thumbnailFrame: 0 },
-  { id: 'kraken', name: 'Kraken', description: 'An astral space kraken', thumbnailFrame: 0 },
+  { id: 'kraken', name: 'Kraken', description: 'An astral space kraken', thumbnailFrame: 0 }
 ];
 
 export const DEFAULT_ANIMATIONS: SpriteAnimations = {
   idle: { frames: [0, 1], fps: 2 },
   processing: { frames: [2, 3, 4], fps: 4 },
   permission: { frames: [5, 6], fps: 3 },
-  complete: { frames: [7, 8], fps: 2 },
+  complete: { frames: [7, 8], fps: 2 }
 };
 
 /** Resolve a mascot's animations, falling back to the legacy 9-frame layout. */
@@ -124,6 +129,7 @@ git commit -m "feat(mascots): add DEFAULT_ANIMATIONS, getMascotAnimations, and g
 ### Task 3: Update SpaceshipSprite to use registry animations
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SpaceshipSprite.tsx`
 
 - [ ] **Step 1: Replace hardcoded SPRITE_ANIMATIONS with registry lookup**
@@ -240,6 +246,7 @@ git commit -m "feat(mascots): use registry-based animations in SpaceshipSprite"
 ### Task 4: Update MascotPicker thumbnail sizing
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/MascotPicker.tsx`
 
 - [ ] **Step 1: Import helpers and use dynamic frame count**
@@ -304,6 +311,7 @@ git commit -m "feat(mascots): dynamic frame count in MascotPicker thumbnails"
 ### Task 5: Update assembly script for variable frame count
 
 **Files:**
+
 - Modify: `scripts/assemble-copilot-sprites.ts`
 
 - [ ] **Step 1: Remove TOTAL_FRAMES constant and accept variable input**
@@ -441,6 +449,7 @@ git commit -m "feat(mascots): allow variable frame count in sprite assembly scri
 ### Task 6: Update CLAUDE.md documentation
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 - [ ] **Step 1: Update the mascot sprite documentation**
@@ -448,12 +457,15 @@ git commit -m "feat(mascots): allow variable frame count in sprite assembly scri
 Update the "Copilot Mascot Sprites" section in `CLAUDE.md` to reflect the new flexible format:
 
 Replace:
+
 > Each mascot is a 9-frame horizontal WebP sprite sheet (1152×128px) stored in `resources/mascots/`. Frame layout: `idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)`.
 
 With:
+
 > Each mascot is a horizontal WebP sprite sheet stored in `resources/mascots/` at 128×128px per frame. Legacy mascots use 9 frames (1152×128px) with the default layout: `idle(0,1) processing(2,3,4) permission(5,6) complete(7,8)`. New mascots can have any number of frames — define a custom `animations` field in the mascot registry entry (see `src/shared/mascots.ts`). Recommended 16-frame layout: `idle(0-3) processing(4-9) permission(10,11) complete(12-15)`.
 
 Update the assembly script usage note:
+
 > This outputs `resources/mascots/<mascot-id>.webp`. Then register the mascot in `src/shared/mascots.ts`. For mascots with more than 9 frames, include an `animations` field mapping each state to its frame indices and FPS.
 
 - [ ] **Step 2: Commit**

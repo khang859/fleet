@@ -12,14 +12,14 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/main/copilot/copilot-window.ts` | Modify | Full-display resize on expand, remove direction logic |
-| `src/preload/copilot.ts` | Modify | Remove `direction` from `onExpandedChanged` callback |
-| `src/renderer/copilot/src/store/copilot-store.ts` | Modify | Remove `panelDirection`, simplify `setExpanded` |
-| `src/renderer/copilot/src/App.tsx` | Modify | New centered pane layout with backdrop |
-| `src/renderer/copilot/src/components/SpaceshipSprite.tsx` | Modify | Add `mode` prop for floating vs header rendering |
-| `src/renderer/copilot/src/index.css` | Modify | Add teleport keyframe animations |
+| File                                                      | Action | Responsibility                                        |
+| --------------------------------------------------------- | ------ | ----------------------------------------------------- |
+| `src/main/copilot/copilot-window.ts`                      | Modify | Full-display resize on expand, remove direction logic |
+| `src/preload/copilot.ts`                                  | Modify | Remove `direction` from `onExpandedChanged` callback  |
+| `src/renderer/copilot/src/store/copilot-store.ts`         | Modify | Remove `panelDirection`, simplify `setExpanded`       |
+| `src/renderer/copilot/src/App.tsx`                        | Modify | New centered pane layout with backdrop                |
+| `src/renderer/copilot/src/components/SpaceshipSprite.tsx` | Modify | Add `mode` prop for floating vs header rendering      |
+| `src/renderer/copilot/src/index.css`                      | Modify | Add teleport keyframe animations                      |
 
 ---
 
@@ -28,6 +28,7 @@
 Remove the directional expand logic from `copilot-window.ts`. The window now expands to cover the full display work area and collapses back to 128x128.
 
 **Files:**
+
 - Modify: `src/main/copilot/copilot-window.ts`
 
 - [ ] **Step 1: Rewrite `applyExpanded` to use full display work area**
@@ -132,6 +133,7 @@ git commit -m "refactor(copilot): replace directional expand with full-display r
 Strip `panelDirection` and `direction` params from the IPC bridge and Zustand store.
 
 **Files:**
+
 - Modify: `src/preload/copilot.ts`
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts`
 
@@ -159,12 +161,14 @@ onExpandedChanged: (
 In `src/renderer/copilot/src/store/copilot-store.ts`:
 
 1. Remove `panelDirection` from the `CopilotStoreState` type:
+
 ```typescript
 // REMOVE this line from the type:
 // panelDirection: { horizontal: 'left' | 'right'; vertical: 'up' | 'down' } | null;
 ```
 
 2. Update the `setExpanded` signature and implementation:
+
 ```typescript
 // In the type definition, change:
 setExpanded: (expanded: boolean) => void;
@@ -197,6 +201,7 @@ git commit -m "refactor(copilot): remove panelDirection from preload and store"
 Add the teleport flash-out and flash-in keyframe animations to the copilot stylesheet.
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/index.css`
 
 - [ ] **Step 1: Add teleport keyframes**
@@ -205,15 +210,33 @@ Append to `src/renderer/copilot/src/index.css`:
 
 ```css
 @keyframes teleport-out {
-  0% { opacity: 1; filter: brightness(1); }
-  40% { opacity: 1; filter: brightness(3); }
-  100% { opacity: 0; filter: brightness(3); }
+  0% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(3);
+  }
+  100% {
+    opacity: 0;
+    filter: brightness(3);
+  }
 }
 
 @keyframes teleport-in {
-  0% { opacity: 0; filter: brightness(3); }
-  40% { opacity: 1; filter: brightness(3); }
-  100% { opacity: 1; filter: brightness(1); }
+  0% {
+    opacity: 0;
+    filter: brightness(3);
+  }
+  40% {
+    opacity: 1;
+    filter: brightness(3);
+  }
+  100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
 }
 
 .animate-teleport-out {
@@ -239,6 +262,7 @@ git commit -m "feat(copilot): add teleport flash animation keyframes"
 Add a `mode` prop to `SpaceshipSprite` that switches between floating (128x128, draggable, click-to-expand) and header (48x48, no drag, click-to-close).
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SpaceshipSprite.tsx`
 
 - [ ] **Step 1: Add `mode` prop and conditional rendering**
@@ -257,7 +281,7 @@ type SpaceshipSpriteProps = {
 
 export function SpaceshipSprite({
   mode = 'floating',
-  teleportState = 'idle',
+  teleportState = 'idle'
 }: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
   const frameIndex = useSpriteAnimation(spriteState);
@@ -269,37 +293,37 @@ export function SpaceshipSprite({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const windowStartPos = useRef({ x: 0, y: 0 });
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (mode === 'header') return; // No dragging in header mode
-    wasDragged.current = false;
-    dragStartPos.current = { x: e.screenX, y: e.screenY };
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (mode === 'header') return; // No dragging in header mode
+      wasDragged.current = false;
+      dragStartPos.current = { x: e.screenX, y: e.screenY };
 
-    window.copilot.getPosition().then((pos) => {
-      if (pos) {
-        windowStartPos.current = { x: pos.x, y: pos.y };
-      }
-    });
+      window.copilot.getPosition().then((pos) => {
+        if (pos) {
+          windowStartPos.current = { x: pos.x, y: pos.y };
+        }
+      });
 
-    const handleMouseMove = (ev: MouseEvent): void => {
-      const dx = ev.screenX - dragStartPos.current.x;
-      const dy = ev.screenY - dragStartPos.current.y;
-      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-        wasDragged.current = true;
-        window.copilot.setPosition(
-          windowStartPos.current.x + dx,
-          windowStartPos.current.y + dy
-        );
-      }
-    };
+      const handleMouseMove = (ev: MouseEvent): void => {
+        const dx = ev.screenX - dragStartPos.current.x;
+        const dy = ev.screenY - dragStartPos.current.y;
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+          wasDragged.current = true;
+          window.copilot.setPosition(windowStartPos.current.x + dx, windowStartPos.current.y + dy);
+        }
+      };
 
-    const handleMouseUp = (): void => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
+      const handleMouseUp = (): void => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [mode]);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [mode]
+  );
 
   const handleClick = useCallback(() => {
     if (mode === 'floating' && wasDragged.current) return;
@@ -308,18 +332,22 @@ export function SpaceshipSprite({
 
   const size = mode === 'header' ? HEADER_SPRITE_SIZE : SPRITE_SIZE;
 
-  const animationClass = mode === 'floating' ? {
-    idle: 'animate-bob',
-    processing: 'animate-thrust',
-    permission: 'animate-pulse-amber',
-    complete: 'animate-flash-green',
-  }[spriteState] : '';
-
-  const teleportClass = teleportState === 'out'
-    ? 'animate-teleport-out'
-    : teleportState === 'in'
-      ? 'animate-teleport-in'
+  const animationClass =
+    mode === 'floating'
+      ? {
+          idle: 'animate-bob',
+          processing: 'animate-thrust',
+          permission: 'animate-pulse-amber',
+          complete: 'animate-flash-green'
+        }[spriteState]
       : '';
+
+  const teleportClass =
+    teleportState === 'out'
+      ? 'animate-teleport-out'
+      : teleportState === 'in'
+        ? 'animate-teleport-in'
+        : '';
 
   return (
     <div
@@ -333,7 +361,7 @@ export function SpaceshipSprite({
         backgroundPosition: `-${frameIndex * size}px 0`,
         backgroundSize: `${size * 9}px ${size}px`,
         backgroundRepeat: 'no-repeat',
-        imageRendering: 'pixelated',
+        imageRendering: 'pixelated'
       }}
     />
   );
@@ -361,6 +389,7 @@ git commit -m "feat(copilot): add header mode and teleport state to SpaceshipSpr
 Replace the directional panel layout with the centered pane + backdrop. Orchestrate the teleport animation state machine.
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/App.tsx`
 
 - [ ] **Step 1: Rewrite App.tsx**
@@ -430,7 +459,10 @@ export function App(): React.JSX.Element {
   // IPC subscriptions
   useEffect(() => {
     if (!window.copilot) return;
-    window.copilot.getSessions().then(setSessions).catch(() => {});
+    window.copilot
+      .getSessions()
+      .then(setSessions)
+      .catch(() => {});
     loadSettings().catch(() => {});
     const cleanupSessions = window.copilot.onSessions(setSessions);
     const cleanupExpanded = window.copilot.onExpandedChanged(setExpanded);
@@ -462,19 +494,19 @@ export function App(): React.JSX.Element {
   }, []);
 
   // Determine teleport visual state for the sprite
-  const spriteTeleportState = teleportPhase === 'flash-out' || teleportPhase === 'flash-in'
-    ? (teleportPhase === 'flash-out' ? 'out' : 'in')
-    : 'idle';
+  const spriteTeleportState =
+    teleportPhase === 'flash-out' || teleportPhase === 'flash-in'
+      ? teleportPhase === 'flash-out'
+        ? 'out'
+        : 'in'
+      : 'idle';
 
   return (
     <div className="relative w-full h-full">
       {/* Floating mascot — visible when pane is NOT shown */}
       {!showPane && (
         <div className="flex justify-end">
-          <SpaceshipSprite
-            mode="floating"
-            teleportState={spriteTeleportState}
-          />
+          <SpaceshipSprite mode="floating" teleportState={spriteTeleportState} />
         </div>
       )}
 
@@ -492,10 +524,7 @@ export function App(): React.JSX.Element {
           >
             {/* Pane header with mascot */}
             <div className="flex items-center gap-3 px-4 py-2 shrink-0">
-              <SpaceshipSprite
-                mode="header"
-                teleportState={spriteTeleportState}
-              />
+              <SpaceshipSprite mode="header" teleportState={spriteTeleportState} />
               <span className="text-white text-sm font-medium tracking-wide opacity-70">
                 Fleet Copilot
               </span>
@@ -542,6 +571,7 @@ git commit -m "feat(copilot): centered rich pane with backdrop and teleport anim
 Verify the full flow works end-to-end in dev mode.
 
 **Files:**
+
 - Possibly modify: any of the above files for fixes
 
 - [ ] **Step 1: Start dev mode**

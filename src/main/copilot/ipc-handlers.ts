@@ -28,7 +28,7 @@ function isClaudeInstalled(): boolean {
  */
 function findPaneForPid(ptyManager: PtyManager, pid: number): string | null {
   const paneIds = ptyManager.paneIds();
-  const ptyPids = paneIds.map(id => ({ paneId: id, pid: ptyManager.getPid(id) }));
+  const ptyPids = paneIds.map((id) => ({ paneId: id, pid: ptyManager.getPid(id) }));
   log.debug('findPaneForPid', { claudePid: pid, ptyPids });
 
   try {
@@ -142,20 +142,20 @@ export function registerCopilotIpcHandlers(
     const configDir = settings.copilot.claudeConfigDir || undefined;
     return {
       hookInstalled: hookInstaller.isInstalled(configDir),
-      claudeDetected: isClaudeInstalled(),
+      claudeDetected: isClaudeInstalled()
     };
   });
 
   // Active workspace: push from main renderer → copilot window, pull for initial load
   let lastActiveWorkspace: { workspaceId: string; workspaceName: string } | null = null;
 
-  ipcMain.on(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, (
-    _event,
-    payload: { workspaceId: string; workspaceName: string }
-  ) => {
-    lastActiveWorkspace = payload;
-    copilotWindow.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, payload);
-  });
+  ipcMain.on(
+    IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE,
+    (_event, payload: { workspaceId: string; workspaceName: string }) => {
+      lastActiveWorkspace = payload;
+      copilotWindow.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, payload);
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE, () => {
     return lastActiveWorkspace;
@@ -165,12 +165,9 @@ export function registerCopilotIpcHandlers(
     return copilotWindow.getPosition();
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_POSITION_SET,
-    (_event, pos: { x: number; y: number }) => {
-      copilotWindow.setPosition(pos.x, pos.y);
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.COPILOT_POSITION_SET, (_event, pos: { x: number; y: number }) => {
+    copilotWindow.setPosition(pos.x, pos.y);
+  });
 
   ipcMain.on('copilot:toggle-expanded', () => {
     copilotWindow.toggleExpanded();
@@ -199,40 +196,44 @@ export function registerCopilotIpcHandlers(
       }
       const paneId = findPaneForPid(ptyManager, session.pid);
       if (!paneId) {
-        log.warn('no Fleet pane found for session PID', { sessionId: args.sessionId, pid: session.pid });
+        log.warn('no Fleet pane found for session PID', {
+          sessionId: args.sessionId,
+          pid: session.pid
+        });
         return false;
       }
       // Send text then carriage return (Enter), matching what terminal emulators send
       ptyManager.write(paneId, args.message + '\r');
-      log.info('message sent via PTY master', { sessionId: args.sessionId, paneId, pid: session.pid });
+      log.info('message sent via PTY master', {
+        sessionId: args.sessionId,
+        paneId,
+        pid: session.pid
+      });
       return true;
     }
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_FOCUS_TERMINAL,
-    (_event, args: { sessionId: string }) => {
-      const session = sessionStore.getSession(args.sessionId);
-      if (!session?.pid) {
-        log.warn('no PID for session, cannot focus terminal', { sessionId: args.sessionId });
-        return false;
-      }
-      const paneId = findPaneForPid(ptyManager, session.pid);
-      if (!paneId) {
-        log.warn('no Fleet pane found for session', { sessionId: args.sessionId, pid: session.pid });
-        return false;
-      }
-      const win = getMainWindow();
-      if (win) {
-        win.show();
-        win.focus();
-        win.webContents.send('fleet:focus-pane', { paneId });
-        log.info('focused terminal pane', { sessionId: args.sessionId, paneId });
-      }
-      copilotWindow.setExpanded(false);
-      return true;
+  ipcMain.handle(IPC_CHANNELS.COPILOT_FOCUS_TERMINAL, (_event, args: { sessionId: string }) => {
+    const session = sessionStore.getSession(args.sessionId);
+    if (!session?.pid) {
+      log.warn('no PID for session, cannot focus terminal', { sessionId: args.sessionId });
+      return false;
     }
-  );
+    const paneId = findPaneForPid(ptyManager, session.pid);
+    if (!paneId) {
+      log.warn('no Fleet pane found for session', { sessionId: args.sessionId, pid: session.pid });
+      return false;
+    }
+    const win = getMainWindow();
+    if (win) {
+      win.show();
+      win.focus();
+      win.webContents.send('fleet:focus-pane', { paneId });
+      log.info('focused terminal pane', { sessionId: args.sessionId, paneId });
+    }
+    copilotWindow.setExpanded(false);
+    return true;
+  });
 
   log.info('IPC handlers registered');
 }

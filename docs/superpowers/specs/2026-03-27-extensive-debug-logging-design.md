@@ -6,6 +6,7 @@
 ## Context
 
 Fleet already has a Winston logger system in the main process with:
+
 - Child logger factory (`createLogger(tag)`)
 - Console transport (colorized in dev) + daily rotating file transport (`~/.fleet/logs/`)
 - `debug` level in dev, `info` in production
@@ -20,6 +21,7 @@ Fleet already has a Winston logger system in the main process with:
 New file: `src/renderer/src/logger.ts`
 
 Mirrors the main process API:
+
 ```typescript
 import { createLogger } from './logger';
 const log = createLogger('sidebar:drag');
@@ -27,6 +29,7 @@ log.debug('drag start', { tabId, fromIndex });
 ```
 
 Behavior by environment:
+
 - **Dev mode**: Formats and outputs to `console.log/warn/error` (visible in DevTools) AND batches messages over IPC to main's Winston for file persistence
 - **Production (packaged)**: All methods are no-op empty functions. Zero overhead, no IPC bridge initialized, no batch queue.
 
@@ -35,16 +38,19 @@ Behavior by environment:
 Three changes to wire renderer logs to main's Winston:
 
 1. **New IPC channel** in `src/shared/ipc-channels.ts`:
+
    ```typescript
-   LOG_BATCH: 'log:batch'
+   LOG_BATCH: 'log:batch';
    ```
 
 2. **Preload bridge** — new entry in `fleetApi` (`src/preload/index.ts`):
+
    ```typescript
    log: {
-     batch: (entries: LogEntry[]) => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
+     batch: (entries: LogEntry[]) => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries);
    }
    ```
+
    Uses `send` (fire-and-forget), not `invoke` — logging must never block the renderer.
 
 3. **Main process handler** in `src/main/ipc-handlers.ts`:
@@ -53,6 +59,7 @@ Three changes to wire renderer logs to main's Winston:
 ### Shared LogEntry Type
 
 In `src/shared/ipc-api.ts`:
+
 ```typescript
 export interface LogEntry {
   tag: string;
@@ -66,6 +73,7 @@ export interface LogEntry {
 ### Batching Strategy
 
 Renderer logs queue in memory and flush to main via IPC:
+
 - Flush every **100ms** or when queue hits **50 entries**, whichever comes first
 - Queue caps at **200 entries** — overflow drops oldest entries with a single warning
 - Metadata objects are shallow-copied at call time (mutations after logging don't corrupt the log)
@@ -74,47 +82,51 @@ Renderer logs queue in memory and flush to main via IPC:
 ### Lazy Metadata
 
 For expensive debug metadata, support a lazy pattern:
+
 ```typescript
 log.debug('state', () => ({ snapshot: getExpensiveState() }));
 ```
+
 The function is only called if debug level is active (dev mode).
 
 ## Where to Add Debug Logs
 
 ### Renderer — New Logging (fine-grained tags)
 
-| Tag | Location | What to log |
-|-----|----------|-------------|
-| `sidebar:tabs` | Sidebar tab components | Tab click, selection change, tab close, tab creation |
-| `sidebar:dnd` | Drag-and-drop handlers | Drag start (tabId, fromIndex), drag over (targetIndex, position), drop (fromIndex, toIndex), reorder result, cancellation |
-| `layout:state` | Layout store/components | Pane add/remove/split, workspace save/load, layout mutations, active pane changes |
-| `terminal:lifecycle` | Terminal components | xterm mount/unmount/attach/detach, fit resize dimensions, data flow connect/disconnect |
-| `store:notifications` | Notification store | Notification received, dismissed, state transitions |
-| `store:settings` | Settings store | Setting read/write, store hydration |
-| `store:cwd` | CWD store | CWD changes per pane, tracking updates |
-| `ipc:calls` | Preload/IPC utility | Every IPC invoke/send with channel name and payload summary (truncated for large payloads) |
+| Tag                   | Location                | What to log                                                                                                               |
+| --------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `sidebar:tabs`        | Sidebar tab components  | Tab click, selection change, tab close, tab creation                                                                      |
+| `sidebar:dnd`         | Drag-and-drop handlers  | Drag start (tabId, fromIndex), drag over (targetIndex, position), drop (fromIndex, toIndex), reorder result, cancellation |
+| `layout:state`        | Layout store/components | Pane add/remove/split, workspace save/load, layout mutations, active pane changes                                         |
+| `terminal:lifecycle`  | Terminal components     | xterm mount/unmount/attach/detach, fit resize dimensions, data flow connect/disconnect                                    |
+| `store:notifications` | Notification store      | Notification received, dismissed, state transitions                                                                       |
+| `store:settings`      | Settings store          | Setting read/write, store hydration                                                                                       |
+| `store:cwd`           | CWD store               | CWD changes per pane, tracking updates                                                                                    |
+| `ipc:calls`           | Preload/IPC utility     | Every IPC invoke/send with channel name and payload summary (truncated for large payloads)                                |
 
 ### Main Process — Enhance Existing Loggers
 
-| Tag | Location | What to add |
-|-----|----------|-------------|
-| `pty:lifecycle` | pty-manager.ts | Spawn args, environment snapshot, exit code+signal, resize dimensions |
-| `pty:data` | pty-manager.ts | Data flow direction, byte counts (NOT content), backpressure pause/resume events |
-| `ipc:dispatch` | ipc-handlers.ts | Every incoming IPC with channel, args summary, response time |
-| `layout:persistence` | layout-store.ts | Save/load operations, workspace structure, error details |
-| `socket:messages` | socket-command-handler.ts | Inbound/outbound message types, routing decisions |
-| `window:lifecycle` | index.ts | Window create/focus/blur/close, BrowserWindow state |
+| Tag                  | Location                  | What to add                                                                      |
+| -------------------- | ------------------------- | -------------------------------------------------------------------------------- |
+| `pty:lifecycle`      | pty-manager.ts            | Spawn args, environment snapshot, exit code+signal, resize dimensions            |
+| `pty:data`           | pty-manager.ts            | Data flow direction, byte counts (NOT content), backpressure pause/resume events |
+| `ipc:dispatch`       | ipc-handlers.ts           | Every incoming IPC with channel, args summary, response time                     |
+| `layout:persistence` | layout-store.ts           | Save/load operations, workspace structure, error details                         |
+| `socket:messages`    | socket-command-handler.ts | Inbound/outbound message types, routing decisions                                |
+| `window:lifecycle`   | index.ts                  | Window create/focus/blur/close, BrowserWindow state                              |
 
 Each log call includes enough context to reconstruct what happened: IDs, indices, before/after values, timing.
 
 ## Production Safety
 
 **Dev-only guarantee**:
+
 - Renderer `createLogger` checks `import.meta.env.DEV` at module load time
 - If not dev: returns stub object where all methods are `() => {}` — zero cost
 - Main process: `app.isPackaged` defaults Winston to `info` level, filtering out `debug` calls
 
 **Performance guardrails**:
+
 - Batch queue overflow drops oldest entries (cap: 200)
 - Shallow-copy metadata at call time
 - No serialization in hot path — only at flush

@@ -66,13 +66,14 @@ export function SessionDetail(): React.JSX.Element | null {
   }
 
   const canSendMessage = session.phase === 'waitingForInput';
-  const status = session.pendingPermissions.length > 0
-    ? 'permission' as const
-    : session.phase === 'processing' || session.phase === 'compacting'
-      ? 'running' as const
-      : session.phase === 'ended'
-        ? 'complete' as const
-        : 'idle' as const;
+  const status =
+    session.pendingPermissions.length > 0
+      ? ('permission' as const)
+      : session.phase === 'processing' || session.phase === 'compacting'
+        ? ('running' as const)
+        : session.phase === 'ended'
+          ? ('complete' as const)
+          : ('idle' as const);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -107,15 +108,11 @@ export function SessionDetail(): React.JSX.Element | null {
         {/* Pending permissions */}
         {session.pendingPermissions.length > 0 && (
           <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-xs font-medium text-amber-400 mb-1">
-              Pending Permissions
-            </div>
+            <div className="text-xs font-medium text-amber-400 mb-1">Pending Permissions</div>
             {session.pendingPermissions.map((perm) => (
               <Card key={perm.toolUseId} className="mb-2 border-amber-500/20">
                 <CardContent>
-                  <div className="text-sm text-neutral-200 font-medium">
-                    {perm.tool.toolName}
-                  </div>
+                  <div className="text-sm text-neutral-200 font-medium">{perm.tool.toolName}</div>
                   {Object.keys(perm.tool.toolInput).length > 0 && (
                     <pre className="mt-1 text-xs text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
                       {JSON.stringify(perm.tool.toolInput, null, 2)}
@@ -176,11 +173,7 @@ export function SessionDetail(): React.JSX.Element | null {
                     : 'No TTY — cannot send messages'
               }
             />
-            <Button
-              size="sm"
-              onClick={handleSend}
-              disabled={!canSendMessage || !inputText.trim()}
-            >
+            <Button size="sm" onClick={handleSend} disabled={!canSendMessage || !inputText.trim()}>
               <ArrowUp size={14} />
             </Button>
           </div>

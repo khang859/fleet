@@ -149,7 +149,12 @@ type WorkspaceStore = {
   collapsedGroups: Set<string>;
   worktreeCloseConfirm: { tabId: string; label: string } | null;
   setWorktreeCloseConfirm: (confirm: { tabId: string; label: string } | null) => void;
-  createWorktreeGroup: (tabId: string, worktreePath: string, branchName: string, repoPath: string) => void;
+  createWorktreeGroup: (
+    tabId: string,
+    worktreePath: string,
+    branchName: string,
+    repoPath: string
+  ) => void;
   closeWorktreeTab: (tabId: string) => void;
   closeWorktreeGroup: (groupId: string) => void;
   toggleGroupCollapsed: (groupId: string) => void;
@@ -319,17 +324,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       labelIsCustom: true,
       cwd,
       type: 'pi',
-      splitRoot: leaf,
+      splitRoot: leaf
     };
     logTabs.debug('addPiTab', { tabId: tab.id, cwd, paneId: leaf.id });
     set((state) => ({
       workspace: {
         ...state.workspace,
-        tabs: [...state.workspace.tabs, tab],
+        tabs: [...state.workspace.tabs, tab]
       },
       activeTabId: tab.id,
       activePaneId: leaf.id,
-      isDirty: true,
+      isDirty: true
     }));
     return leaf.id;
   },
@@ -420,7 +425,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       if (fromIndex === toIndex) return state;
       const [moved] = tabs.splice(fromIndex, 1);
       tabs.splice(toIndex, 0, moved);
-      logTabs.debug('reorderTab result', { movedTabId: moved.id, newOrder: tabs.map(t => t.id) });
+      logTabs.debug('reorderTab result', { movedTabId: moved.id, newOrder: tabs.map((t) => t.id) });
       return {
         workspace: { ...state.workspace, tabs },
         isDirty: true
@@ -459,7 +464,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         groupRole: 'worktree',
         groupLabel,
         worktreeBranch: branchName,
-        worktreePath,
+        worktreePath
       };
 
       // Insert worktree tab right after the last tab in this group
@@ -480,7 +485,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         activeTabId: worktreeTab.id,
         activePaneId: leaf.id,
         collapsedGroups: newCollapsed,
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -502,9 +507,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         const remainingGroupTabs = tabs.filter((t) => t.groupId === groupId);
         if (remainingGroupTabs.length <= 1) {
           tabs = tabs.map((t) =>
-            t.groupId === groupId
-              ? { ...t, groupId: undefined, groupRole: undefined }
-              : t
+            t.groupId === groupId ? { ...t, groupId: undefined, groupRole: undefined } : t
           );
         }
       }
@@ -519,9 +522,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           tab: closedTab,
           index: tabIndex,
           closedAt: Date.now(),
-          serializedPanes: new Map<string, string>(),
+          serializedPanes: new Map<string, string>()
         },
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -539,7 +542,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         activeTabId: nextTab?.id ?? null,
         activePaneId: nextTab ? (collectPaneIds(nextTab.splitRoot)[0] ?? null) : null,
         collapsedGroups: newCollapsed,
-        isDirty: true,
+        isDirty: true
       };
     });
   },
@@ -599,9 +602,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
           t.groupId === groupId ? { ...t, groupLabel: label } : t
-        ),
+        )
       },
-      isDirty: true,
+      isDirty: true
     }));
   },
 
@@ -664,7 +667,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return {
         workspace: { ...state.workspace, tabs },
         activeTabId: fallbackTab?.id ?? null,
-        activePaneId: fallbackTab === currentTab ? nextPaneId : (fallbackTab ? (collectPaneIds(fallbackTab.splitRoot)[0] ?? null) : null),
+        activePaneId:
+          fallbackTab === currentTab
+            ? nextPaneId
+            : fallbackTab
+              ? (collectPaneIds(fallbackTab.splitRoot)[0] ?? null)
+              : null,
         isDirty: true
       };
     });
@@ -727,7 +735,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   loadWorkspace: (workspace) => {
-    logLayout.debug('loadWorkspace', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
+    logLayout.debug('loadWorkspace', {
+      id: workspace.id,
+      label: workspace.label,
+      tabCount: workspace.tabs.length
+    });
     // Backward compat: old saved workspaces may lack labelIsCustom
     // Also sync tab cwd from first pane leaf (pane CWDs are always up-to-date)
     const migratedTabs = workspace.tabs.map((t) => {
@@ -735,7 +747,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       return {
         ...t,
         labelIsCustom: t.labelIsCustom ?? false,
-        cwd: firstLeafCwd ?? t.cwd,
+        cwd: firstLeafCwd ?? t.cwd
       };
     });
     const migrated = ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }));
@@ -743,7 +755,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     const restoredTab =
       (migrated.activeTabId
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-        : undefined) ?? migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ?? migrated.tabs[0];
+        : undefined) ??
+      migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ??
+      migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
     const restoredPane =
@@ -778,7 +792,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
-    const resolvedFirstCwd = getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
+    const resolvedFirstCwd =
+      getFirstLeafCwd(resolvedTarget.tabs[0]?.splitRoot) ?? resolvedTarget.tabs[0]?.cwd;
     set((state) => {
       const target = state.backgroundWorkspaces.get(ws.id) ?? ws;
       const migratedTabs = target.tabs.map((t) => {
@@ -786,7 +801,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         return {
           ...t,
           labelIsCustom: t.labelIsCustom ?? false,
-          cwd: firstLeafCwd ?? t.cwd,
+          cwd: firstLeafCwd ?? t.cwd
         };
       });
       const migrated = ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }));
@@ -794,7 +809,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const restoredTab =
         (migrated.activeTabId
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
-          : undefined) ?? migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ?? migrated.tabs[0];
+          : undefined) ??
+        migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ??
+        migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
       const restoredPane =
@@ -815,7 +832,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           return {
             ...tab,
             cwd: liveCwd ?? tab.cwd,
-            splitRoot: injectLiveCwd(tab.splitRoot),
+            splitRoot: injectLiveCwd(tab.splitRoot)
           };
         })
       });
@@ -847,7 +864,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             return {
               ...t,
               labelIsCustom: t.labelIsCustom ?? false,
-              cwd: firstLeafCwd ?? t.cwd,
+              cwd: firstLeafCwd ?? t.cwd
             };
           });
           newBackground.set(ws.id, { ...ws, tabs: migratedTabs });
@@ -944,7 +961,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           label: file.label,
           labelIsCustom: true,
           cwd: '/',
-          type: file.paneType === 'image' ? 'image' : file.paneType === 'markdown' ? 'markdown' : 'file',
+          type:
+            file.paneType === 'image'
+              ? 'image'
+              : file.paneType === 'markdown'
+                ? 'markdown'
+                : 'file',
           splitRoot: leaf
         };
         set((s) => ({
@@ -1006,6 +1028,10 @@ useWorkspaceStore.subscribe((state) => {
   if (wsId !== lastNotifiedWorkspaceId) {
     lastNotifiedWorkspaceId = wsId;
     window.fleet.copilot?.notifyActiveWorkspace(wsId, state.workspace.label);
-    try { localStorage.setItem('fleet:last-workspace-id', wsId); } catch { /* ignore */ }
+    try {
+      localStorage.setItem('fleet:last-workspace-id', wsId);
+    } catch {
+      /* ignore */
+    }
   }
 });

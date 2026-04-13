@@ -14,35 +14,36 @@
 
 ### New Files
 
-| File | Responsibility |
-|------|---------------|
-| `src/main/annotation-store.ts` | Persistent storage for annotation metadata + files in `~/.fleet/annotations/`. CRUD operations, cleanup by retention days. |
-| `src/renderer/src/store/annotation-store.ts` | Zustand store for annotation list and detail data in the renderer. |
-| `src/renderer/src/components/AnnotateTab.tsx` | Sidebar tab component: list view, detail view, empty state. |
-| `src/renderer/src/components/AnnotateModal.tsx` | Modal for starting a new annotation: URL input with clipboard auto-fill. |
-| `src/main/__tests__/annotation-store.test.ts` | Unit tests for annotation store CRUD and cleanup. |
+| File                                            | Responsibility                                                                                                             |
+| ----------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `src/main/annotation-store.ts`                  | Persistent storage for annotation metadata + files in `~/.fleet/annotations/`. CRUD operations, cleanup by retention days. |
+| `src/renderer/src/store/annotation-store.ts`    | Zustand store for annotation list and detail data in the renderer.                                                         |
+| `src/renderer/src/components/AnnotateTab.tsx`   | Sidebar tab component: list view, detail view, empty state.                                                                |
+| `src/renderer/src/components/AnnotateModal.tsx` | Modal for starting a new annotation: URL input with clipboard auto-fill.                                                   |
+| `src/main/__tests__/annotation-store.test.ts`   | Unit tests for annotation store CRUD and cleanup.                                                                          |
 
 ### Modified Files
 
-| File | Change |
-|------|--------|
-| `src/shared/ipc-channels.ts` | Add 5 new annotate UI channels |
-| `src/shared/types.ts` | Add `annotate` to `FleetSettings`, add `AnnotationMeta` type, add `'annotate'` to Tab type union |
-| `src/shared/constants.ts` | Add `annotate` defaults to `DEFAULT_SETTINGS` |
-| `src/main/annotation-store.ts` | New file (listed above) |
-| `src/main/annotate-service.ts` | Accept `AnnotationStore`, write results to `~/.fleet/annotations/` instead of tmpdir |
-| `src/main/ipc-handlers.ts` | Add annotate IPC handlers (list, get, delete, ui-start) |
-| `src/main/index.ts` | Instantiate `AnnotationStore`, pass to `AnnotateService` and IPC handlers, run cleanup on startup |
-| `src/preload/index.ts` | Add `annotate` API group |
-| `src/renderer/src/store/workspace-store.ts` | Add `ensureAnnotateTab()` like `ensureImagesTab()` |
-| `src/renderer/src/App.tsx` | Add annotate tab rendering, mini sidebar icon |
-| `src/renderer/src/components/PaneToolbar.tsx` | Add annotate button |
+| File                                          | Change                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `src/shared/ipc-channels.ts`                  | Add 5 new annotate UI channels                                                                    |
+| `src/shared/types.ts`                         | Add `annotate` to `FleetSettings`, add `AnnotationMeta` type, add `'annotate'` to Tab type union  |
+| `src/shared/constants.ts`                     | Add `annotate` defaults to `DEFAULT_SETTINGS`                                                     |
+| `src/main/annotation-store.ts`                | New file (listed above)                                                                           |
+| `src/main/annotate-service.ts`                | Accept `AnnotationStore`, write results to `~/.fleet/annotations/` instead of tmpdir              |
+| `src/main/ipc-handlers.ts`                    | Add annotate IPC handlers (list, get, delete, ui-start)                                           |
+| `src/main/index.ts`                           | Instantiate `AnnotationStore`, pass to `AnnotateService` and IPC handlers, run cleanup on startup |
+| `src/preload/index.ts`                        | Add `annotate` API group                                                                          |
+| `src/renderer/src/store/workspace-store.ts`   | Add `ensureAnnotateTab()` like `ensureImagesTab()`                                                |
+| `src/renderer/src/App.tsx`                    | Add annotate tab rendering, mini sidebar icon                                                     |
+| `src/renderer/src/components/PaneToolbar.tsx` | Add annotate button                                                                               |
 
 ---
 
 ## Task 1: Types, IPC Channels, Settings
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/shared/constants.ts`
@@ -68,18 +69,21 @@ export type AnnotationMeta = {
 In the `FleetSettings` type, add after `copilot: CopilotSettings;`:
 
 ```typescript
-  annotate: {
-    retentionDays: number;
-  };
+annotate: {
+  retentionDays: number;
+}
 ```
 
 - [ ] **Step 3: Add 'annotate' to Tab type union**
 
 Change line 15 of types.ts from:
+
 ```typescript
   type?: 'terminal' | 'file' | 'image' | 'images' | 'settings';
 ```
+
 to:
+
 ```typescript
   type?: 'terminal' | 'file' | 'image' | 'images' | 'settings' | 'annotate';
 ```
@@ -124,6 +128,7 @@ git commit -m "feat(annotate): add annotation types, IPC channels, and settings"
 ## Task 2: AnnotationStore (Main Process)
 
 **Files:**
+
 - Create: `src/main/annotation-store.ts`
 - Create: `src/main/__tests__/annotation-store.test.ts`
 
@@ -402,6 +407,7 @@ git commit -m "feat(annotate): add persistent annotation store"
 ## Task 3: Integrate AnnotationStore with AnnotateService
 
 **Files:**
+
 - Modify: `src/main/annotate-service.ts`
 - Modify: `src/main/index.ts`
 
@@ -410,11 +416,13 @@ git commit -m "feat(annotate): add persistent annotation store"
 In `src/main/annotate-service.ts`, update the constructor and `handleSubmit`:
 
 Add import:
+
 ```typescript
 import type { AnnotationStore, AnnotationScreenshot } from './annotation-store';
 ```
 
 Update constructor:
+
 ```typescript
 export class AnnotateService extends EventEmitter {
   private window: BrowserWindow | null = null;
@@ -499,26 +507,30 @@ Add `join` import from `path` if not already present.
 - [ ] **Step 2: Update index.ts to create AnnotationStore and pass it**
 
 Add import:
+
 ```typescript
 import { AnnotationStore } from './annotation-store';
 ```
 
 Add after `const annotateService = new AnnotateService();`:
+
 ```typescript
 const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 ```
 
 Update `AnnotateService` instantiation:
+
 ```typescript
 const annotateService = new AnnotateService(annotationStore);
 ```
 
 Add cleanup on startup (after `imageService.resumeInterrupted()`):
+
 ```typescript
-  // Clean up old annotations based on retention settings
-  const retentionDays = settingsStore.get().annotate?.retentionDays ?? 3;
-  annotationStore.cleanup(retentionDays);
+// Clean up old annotations based on retention settings
+const retentionDays = settingsStore.get().annotate?.retentionDays ?? 3;
+annotationStore.cleanup(retentionDays);
 ```
 
 - [ ] **Step 3: Run typecheck and tests**
@@ -538,6 +550,7 @@ git commit -m "feat(annotate): integrate annotation store with service"
 ## Task 4: IPC Handlers + Preload API
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/preload/index.ts`
 
@@ -546,6 +559,7 @@ git commit -m "feat(annotate): integrate annotation store with service"
 In `src/main/ipc-handlers.ts`:
 
 Add imports:
+
 ```typescript
 import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
@@ -556,26 +570,29 @@ Add `annotationStore` and `annotateService` parameters to `registerIpcHandlers()
 Add handler block after the worktree handlers:
 
 ```typescript
-  // ── Annotate ────────────────────────────────────────────────────────────
-  ipcMain.handle(IPC_CHANNELS.ANNOTATE_LIST, () => {
-    return annotationStore.list();
-  });
+// ── Annotate ────────────────────────────────────────────────────────────
+ipcMain.handle(IPC_CHANNELS.ANNOTATE_LIST, () => {
+  return annotationStore.list();
+});
 
-  ipcMain.handle(IPC_CHANNELS.ANNOTATE_GET, (_event, id: string) => {
-    return annotationStore.get(id);
-  });
+ipcMain.handle(IPC_CHANNELS.ANNOTATE_GET, (_event, id: string) => {
+  return annotationStore.get(id);
+});
 
-  ipcMain.handle(IPC_CHANNELS.ANNOTATE_DELETE, (_event, id: string) => {
-    annotationStore.delete(id);
-  });
+ipcMain.handle(IPC_CHANNELS.ANNOTATE_DELETE, (_event, id: string) => {
+  annotationStore.delete(id);
+});
 
-  ipcMain.handle(IPC_CHANNELS.ANNOTATE_UI_START, async (_event, args: { url?: string; timeout?: number }) => {
+ipcMain.handle(
+  IPC_CHANNELS.ANNOTATE_UI_START,
+  async (_event, args: { url?: string; timeout?: number }) => {
     const resultPath = await annotateService.start({
       url: args.url,
       timeout: args.timeout
     });
     return { resultPath };
-  });
+  }
+);
 ```
 
 - [ ] **Step 2: Update index.ts to pass new params to registerIpcHandlers**
@@ -608,6 +625,7 @@ In `src/preload/index.ts`, add an `annotate` property to the `fleetApi` object (
 ```
 
 Add the `AnnotationMeta` import at the top of the preload file:
+
 ```typescript
 import type { AnnotationMeta } from '../shared/types';
 ```
@@ -629,6 +647,7 @@ git commit -m "feat(annotate): add IPC handlers and preload API"
 ## Task 5: Renderer Zustand Store
 
 **Files:**
+
 - Create: `src/renderer/src/store/annotation-store.ts`
 
 - [ ] **Step 1: Create the store**
@@ -723,6 +742,7 @@ git commit -m "feat(annotate): add renderer annotation store"
 ## Task 6: Annotate Modal
 
 **Files:**
+
 - Create: `src/renderer/src/components/AnnotateModal.tsx`
 
 - [ ] **Step 1: Create the modal component**
@@ -819,9 +839,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps) {
             placeholder="https://example.com"
             className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
           />
-          <p className="mt-1 text-xs text-neutral-500">
-            Leave empty to open a blank page
-          </p>
+          <p className="mt-1 text-xs text-neutral-500">Leave empty to open a blank page</p>
         </div>
 
         {/* Actions */}
@@ -862,6 +880,7 @@ git commit -m "feat(annotate): add annotation trigger modal"
 ## Task 7: Annotate Sidebar Tab
 
 **Files:**
+
 - Create: `src/renderer/src/components/AnnotateTab.tsx`
 
 - [ ] **Step 1: Create the tab component**
@@ -869,7 +888,15 @@ git commit -m "feat(annotate): add annotation trigger modal"
 ```tsx
 // src/renderer/src/components/AnnotateTab.tsx
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Crosshair, Trash2, Copy, ClipboardCopy, ChevronDown, ChevronRight } from 'lucide-react';
+import {
+  ArrowLeft,
+  Crosshair,
+  Trash2,
+  Copy,
+  ClipboardCopy,
+  ChevronDown,
+  ChevronRight
+} from 'lucide-react';
 import { useAnnotationStore } from '../store/annotation-store';
 import { AnnotateModal } from './AnnotateModal';
 import { useToastStore } from '../store/toast-store';
@@ -885,7 +912,9 @@ function timeAgo(timestamp: number): string {
   return `${days}d ago`;
 }
 
-type AnnotationDetail = Awaited<ReturnType<ReturnType<typeof useAnnotationStore.getState>['getDetail']>>;
+type AnnotationDetail = Awaited<
+  ReturnType<ReturnType<typeof useAnnotationStore.getState>['getDetail']>
+>;
 
 export function AnnotateTab() {
   const { annotations, isLoaded, loadAnnotations, getDetail, deleteAnnotation, startAnnotation } =
@@ -998,9 +1027,7 @@ export function AnnotateTab() {
               {/* Expanded detail */}
               {expandedElements.has(i) && (
                 <div className="px-3 pb-3 pl-10 space-y-1.5">
-                  {el.comment && (
-                    <div className="text-sm text-amber-300">"{el.comment}"</div>
-                  )}
+                  {el.comment && <div className="text-sm text-amber-300">"{el.comment}"</div>}
                   {el.text && (
                     <div className="text-xs text-neutral-400">
                       Text: <span className="text-neutral-300">{el.text}</span>
@@ -1089,9 +1116,7 @@ export function AnnotateTab() {
               className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 text-left"
             >
               <div className="flex-1 min-w-0">
-                <div className="text-sm text-neutral-200 truncate">
-                  {ann.url}
-                </div>
+                <div className="text-sm text-neutral-200 truncate">{ann.url}</div>
                 <div className="text-xs text-neutral-500">
                   {timeAgo(ann.timestamp)} · {ann.elementCount} element
                   {ann.elementCount !== 1 ? 's' : ''}
@@ -1125,6 +1150,7 @@ git commit -m "feat(annotate): add annotate sidebar tab with list and detail vie
 ## Task 8: Wire into App Layout
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 - Modify: `src/renderer/src/App.tsx`
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts`
@@ -1158,6 +1184,7 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
 Then find where `ensureImagesTab` is called (in the workspace loading/creation logic) and chain `ensureAnnotateTab`:
 
 Search for `ensureImagesTab(` and after each call, chain `ensureAnnotateTab`. For example:
+
 ```typescript
 workspace = ensureAnnotateTab(ensureImagesTab(workspace));
 ```
@@ -1179,6 +1206,7 @@ In the tab content rendering block (around line 683), add before the PaneGrid fa
 ```
 
 Import at top of App.tsx:
+
 ```typescript
 import { AnnotateTab } from './components/AnnotateTab';
 ```
@@ -1188,32 +1216,36 @@ import { AnnotateTab } from './components/AnnotateTab';
 After the Images pinned icon block (around line 550), add a similar block for the Annotate tab:
 
 ```tsx
-{/* Annotate pinned icon */}
-{workspace.tabs
-  .filter((t) => t.type === 'annotate')
-  .map((tab) => {
-    const isAnnotateActive = tab.id === activeTabId;
-    return (
-      <MiniSidebarTooltip label="Annotate" key={tab.id}>
-        <button
-          onClick={() => setActiveTab(tab.id)}
-          className={`p-1.5 rounded transition-colors ${
-            isAnnotateActive
-              ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
-              : 'hover:bg-neutral-800'
-          }`}
-        >
-          <Crosshair
-            size={16}
-            className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
-          />
-        </button>
-      </MiniSidebarTooltip>
-    );
-  })}
-{workspace.tabs.some((t) => t.type === 'annotate') && (
-  <div className="w-6 h-px bg-neutral-800 my-0.5" />
-)}
+{
+  /* Annotate pinned icon */
+}
+{
+  workspace.tabs
+    .filter((t) => t.type === 'annotate')
+    .map((tab) => {
+      const isAnnotateActive = tab.id === activeTabId;
+      return (
+        <MiniSidebarTooltip label="Annotate" key={tab.id}>
+          <button
+            onClick={() => setActiveTab(tab.id)}
+            className={`p-1.5 rounded transition-colors ${
+              isAnnotateActive ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800'
+            }`}
+          >
+            <Crosshair
+              size={16}
+              className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
+            />
+          </button>
+        </MiniSidebarTooltip>
+      );
+    });
+}
+{
+  workspace.tabs.some((t) => t.type === 'annotate') && (
+    <div className="w-6 h-px bg-neutral-800 my-0.5" />
+  );
+}
 ```
 
 Import `Crosshair` from lucide-react at the top.
@@ -1256,6 +1288,7 @@ git commit -m "feat(annotate): wire annotate tab into app layout and sidebar"
 ## Task 9: PaneToolbar Button
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneToolbar.tsx`
 
 - [ ] **Step 1: Add annotate button to PaneToolbar**
@@ -1269,18 +1302,20 @@ onAnnotate?: () => void;
 Add a button before the close button (last in the toolbar), wrapped in a conditional like the skills button:
 
 ```tsx
-{onAnnotate && (
-  <ToolbarTooltip label="Annotate webpage">
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onAnnotate();
-      }}
-    >
-      <Crosshair size={14} />
-    </button>
-  </ToolbarTooltip>
-)}
+{
+  onAnnotate && (
+    <ToolbarTooltip label="Annotate webpage">
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onAnnotate();
+        }}
+      >
+        <Crosshair size={14} />
+      </button>
+    </ToolbarTooltip>
+  );
+}
 ```
 
 Import `Crosshair` from lucide-react.
@@ -1302,10 +1337,13 @@ export function openAnnotateModal() {
 ```
 
 In the `AnnotateModal` component, register the function:
+
 ```typescript
 useEffect(() => {
   openModalFn = () => setInternalOpen(true);
-  return () => { openModalFn = null; };
+  return () => {
+    openModalFn = null;
+  };
 }, []);
 ```
 
@@ -1328,6 +1366,7 @@ git commit -m "feat(annotate): add annotate button to pane toolbar"
 ## Task 10: Settings UI
 
 **Files:**
+
 - Modify: `src/renderer/src/components/SettingsTab.tsx` (or wherever settings are rendered)
 
 - [ ] **Step 1: Add annotate retention setting**
@@ -1335,13 +1374,13 @@ git commit -m "feat(annotate): add annotate button to pane toolbar"
 Find the Settings tab component. Add an "Annotations" section with a number input:
 
 ```tsx
-{/* Annotations */}
+{
+  /* Annotations */
+}
 <div className="space-y-3">
   <h3 className="text-sm font-medium text-neutral-300">Annotations</h3>
   <div className="flex items-center justify-between">
-    <label className="text-sm text-neutral-400">
-      Delete annotations older than
-    </label>
+    <label className="text-sm text-neutral-400">Delete annotations older than</label>
     <div className="flex items-center gap-1.5">
       <input
         type="number"
@@ -1357,7 +1396,7 @@ Find the Settings tab component. Add an "Annotations" section with a number inpu
       <span className="text-sm text-neutral-400">days</span>
     </div>
   </div>
-</div>
+</div>;
 ```
 
 - [ ] **Step 2: Run typecheck**

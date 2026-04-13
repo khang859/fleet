@@ -5,7 +5,10 @@ import { tmpdir } from 'os';
 import { PiConfigManager } from '../pi-config-manager';
 
 function makeTestDir(): string {
-  const dir = join(tmpdir(), `fleet-pi-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const dir = join(
+    tmpdir(),
+    `fleet-pi-config-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -110,7 +113,10 @@ describe('PiConfigManager — writeSettings', () => {
 
   it('creates the file on first write', async () => {
     await mgr.writeSettings({ defaultProvider: 'anthropic' });
-    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     expect(raw.defaultProvider).toBe('anthropic');
   });
 
@@ -124,7 +130,10 @@ describe('PiConfigManager — writeSettings', () => {
       })
     );
     await mgr.writeSettings({ defaultProvider: 'anthropic' });
-    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     expect(raw.defaultProvider).toBe('anthropic');
     expect(raw.compaction).toEqual({ enabled: true, reserveTokens: 16384 });
     expect(raw.unknownField).toBe('keep me');
@@ -136,7 +145,10 @@ describe('PiConfigManager — writeSettings', () => {
       mgr.writeSettings({ defaultModel: 'm1' }),
       mgr.writeSettings({ theme: 'dark' })
     ]);
-    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(join(dir, 'settings.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     expect(raw.defaultProvider).toBe('a');
     expect(raw.defaultModel).toBe('m1');
     expect(raw.theme).toBe('dark');
@@ -207,7 +219,10 @@ describe('PiConfigManager — writeProvider / deleteProvider / renameProvider', 
       JSON.stringify({ providers: {}, somePiInternal: { x: 1 } })
     );
     await mgr.writeProvider('z', { baseUrl: 'http://z' });
-    const raw = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf-8')) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(join(dir, 'models.json'), 'utf-8')) as Record<
+      string,
+      unknown
+    >;
     expect(raw.somePiInternal).toEqual({ x: 1 });
   });
 });

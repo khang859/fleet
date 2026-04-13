@@ -13,6 +13,7 @@
 ### Task 1: Add `AnnotateTabCard` component to Sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx` (add component after `ImagesTabCard` definition, ~line 296)
 
 - [ ] **Step 1: Add the `AnnotateTabCard` component**
@@ -98,6 +99,7 @@ git commit -m "feat(annotate): add AnnotateTabCard component"
 ### Task 2: Render `AnnotateTabCard` in sidebar and filter from regular tabs
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx` (~lines 999-1017)
 
 - [ ] **Step 1: Add AnnotateTabCard rendering after ImagesTabCard**
@@ -135,22 +137,15 @@ Replace with:
 Find (~line 1013-1017):
 
 ```tsx
-            const regularTabs = workspace.tabs.filter(
-              (t) =>
-                t.type !== 'images' &&
-                t.type !== 'settings'
-            );
+const regularTabs = workspace.tabs.filter((t) => t.type !== 'images' && t.type !== 'settings');
 ```
 
 Replace with:
 
 ```tsx
-            const regularTabs = workspace.tabs.filter(
-              (t) =>
-                t.type !== 'images' &&
-                t.type !== 'settings' &&
-                t.type !== 'annotate'
-            );
+const regularTabs = workspace.tabs.filter(
+  (t) => t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate'
+);
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -180,6 +175,7 @@ git commit -m "feat(annotate): render as special card in sidebar, exclude from r
 ### Task 3: Document `fleet annotate` in skill doc
 
 **Files:**
+
 - Modify: `resources/skills/fleet.md` (insert between `fleet open` section and `fleet images` section)
 
 - [ ] **Step 1: Add fleet annotate documentation**
@@ -192,7 +188,7 @@ Find the line (line 26):
 
 Insert before it:
 
-```markdown
+````markdown
 ## fleet annotate
 
 Visually annotate web page elements for AI agents to act on. Opens a browser window where you can click elements, add comments, and capture screenshots. Results are written to a JSON file.
@@ -201,6 +197,7 @@ Visually annotate web page elements for AI agents to act on. Opens a browser win
 fleet annotate [url]
 fleet annotate [url] --timeout <seconds>
 ```
+````
 
 - `[url]` — URL to annotate. If omitted, opens a blank page.
 - `--timeout <seconds>` — Max seconds to wait for annotation (default: 300).
@@ -213,11 +210,11 @@ fleet annotate https://example.com --timeout 600
 fleet annotate
 ```
 
-```
+````
 
 - [ ] **Step 2: Commit**
 
 ```bash
 git add resources/skills/fleet.md
 git commit -m "docs: add fleet annotate to injected skill doc"
-```
+````

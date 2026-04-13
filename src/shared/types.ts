@@ -199,7 +199,10 @@ export type SpriteAnimation = {
   fps: number;
 };
 
-export type SpriteAnimations = Record<'idle' | 'processing' | 'permission' | 'complete', SpriteAnimation>;
+export type SpriteAnimations = Record<
+  'idle' | 'processing' | 'permission' | 'complete',
+  SpriteAnimation
+>;
 
 export type MascotDefinition = {
   id: string;
@@ -219,7 +222,13 @@ export type CopilotPosition = {
 
 export type CopilotMessageBlock =
   | { type: 'text'; text: string }
-  | { type: 'tool_use'; id: string; name: string; inputPreview: string; input?: Record<string, unknown> }
+  | {
+      type: 'tool_use';
+      id: string;
+      name: string;
+      inputPreview: string;
+      input?: Record<string, unknown>;
+    }
   | { type: 'thinking'; text: string }
   | { type: 'interrupted' };
 

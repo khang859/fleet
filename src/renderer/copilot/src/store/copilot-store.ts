@@ -1,10 +1,6 @@
 import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
-import type {
-  CopilotSession,
-  CopilotSettings,
-  CopilotChatMessage,
-} from '../../../../shared/types';
+import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
 
 const log = createLogger('store');
 
@@ -44,7 +40,11 @@ type CopilotStoreState = {
   filteredSessions: () => CopilotSession[];
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
-  respondPermission: (toolUseId: string, decision: 'allow' | 'deny', reason?: string) => Promise<void>;
+  respondPermission: (
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string
+  ) => Promise<void>;
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
   uninstallHooks: () => Promise<void>;
@@ -103,9 +103,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   filteredSessions: () => {
     const { sessions, showAllWorkspaces, activeWorkspaceId } = get();
     if (showAllWorkspaces) return sessions;
-    return sessions.filter(
-      (s) => !s.workspaceId || s.workspaceId === activeWorkspaceId
-    );
+    return sessions.filter((s) => !s.workspaceId || s.workspaceId === activeWorkspaceId);
   },
 
   loadSettings: async () => {
@@ -123,7 +121,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
       settings,
       hookInstalled,
       claudeDetected,
-      showAllWorkspaces: settings.showAllWorkspaces ?? false,
+      showAllWorkspaces: settings.showAllWorkspaces ?? false
     });
   },
 
@@ -172,5 +170,5 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
 
   sendMessage: async (sessionId, message) => {
     return window.copilot.sendMessage(sessionId, message);
-  },
+  }
 }));

@@ -12,17 +12,18 @@
 
 ### File Map
 
-| File | Action | Responsibility |
-|------|--------|----------------|
+| File                                        | Action | Responsibility                                                           |
+| ------------------------------------------- | ------ | ------------------------------------------------------------------------ |
 | `src/renderer/src/store/workspace-store.ts` | Modify | Add `recentFolders` state, load/save helpers, `addRecentFolder()` action |
-| `src/renderer/src/components/Dashboard.tsx` | Create | Dashboard UI component with ASCII art, action, recent lists |
-| `src/renderer/src/App.tsx` | Modify | Import `Dashboard`, wire it into the empty-state slot |
+| `src/renderer/src/components/Dashboard.tsx` | Create | Dashboard UI component with ASCII art, action, recent lists              |
+| `src/renderer/src/App.tsx`                  | Modify | Import `Dashboard`, wire it into the empty-state slot                    |
 
 ---
 
 ### Task 1: Add recent folders tracking to workspace store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add constants and load/save helpers**
@@ -126,6 +127,7 @@ git commit -m "feat: add recent folders tracking to workspace store"
 ### Task 2: Create Dashboard component
 
 **Files:**
+
 - Create: `src/renderer/src/components/Dashboard.tsx`
 
 - [ ] **Step 1: Create the Dashboard component file**
@@ -141,7 +143,7 @@ const ASCII_LINES = [
   '█████╗  ██║     █████╗  █████╗     ██║   ',
   '██╔══╝  ██║     ██╔══╝  ██╔══╝     ██║   ',
   '██║     ███████╗███████╗███████╗   ██║   ',
-  '╚═╝     ╚══════╝╚══════╝╚══════╝   ╚═╝   ',
+  '╚═╝     ╚══════╝╚══════╝╚══════╝   ╚═╝   '
 ];
 
 const LINE_COLORS = [
@@ -150,7 +152,7 @@ const LINE_COLORS = [
   'text-cyan-500',
   'text-cyan-500',
   'text-cyan-400',
-  'text-cyan-400',
+  'text-cyan-400'
 ];
 
 function shortenPath(fullPath: string): string {
@@ -174,7 +176,7 @@ export function Dashboard({
   recentFolders,
   onNewTerminal,
   onOpenFile,
-  onOpenFolder,
+  onOpenFolder
 }: DashboardProps): React.JSX.Element {
   const displayFiles = recentFiles.slice(0, 10);
   const displayFolders = recentFolders.slice(0, 10);
@@ -192,9 +194,7 @@ export function Dashboard({
         </pre>
 
         {/* Tagline */}
-        <p className="text-neutral-600 text-xs tracking-wide">
-          terminal multiplexer for ai agents
-        </p>
+        <p className="text-neutral-600 text-xs tracking-wide">terminal multiplexer for ai agents</p>
 
         {/* New Terminal Action */}
         <button
@@ -291,6 +291,7 @@ git commit -m "feat: add Dashboard empty state component"
 ### Task 3: Integrate Dashboard into App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Add Dashboard import**
@@ -318,7 +319,7 @@ const {
   undoCloseTab,
   recentFiles,
   recentFolders,
-  openFile,
+  openFile
 } = useWorkspaceStore(
   useShallow((s) => ({
     workspace: s.workspace,
@@ -332,7 +333,7 @@ const {
     undoCloseTab: s.undoCloseTab,
     recentFiles: s.recentFiles,
     recentFolders: s.recentFolders,
-    openFile: s.openFile,
+    openFile: s.openFile
   }))
 );
 ```
@@ -372,6 +373,7 @@ Expected: No errors
 Run: `npm run dev`
 
 Verify:
+
 1. Launch the app — dashboard should appear with ASCII art, tagline, and New Terminal button
 2. Click "New Terminal" — should create a terminal tab and dashboard disappears
 3. Close all tabs — dashboard should reappear

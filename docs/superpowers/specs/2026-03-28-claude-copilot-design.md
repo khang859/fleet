@@ -41,6 +41,7 @@ Four components:
 Single PNG sprite sheet with all frames, animated via `background-position` stepping. Default sprite is Fleet's pixel art spaceship (placeholder until AI-generated sprites are ready). Sprite sheet is swappable via settings.
 
 Animation states mapped to session status:
+
 - **No sessions** — gentle idle bob
 - **Processing** — thruster flame animation
 - **Permission needed** — amber pulse (highest priority, overrides processing)
@@ -157,19 +158,19 @@ hooks/
 
 All Claude Island capabilities translate to Electron:
 
-| Capability | Approach |
-|---|---|
+| Capability                       | Approach                                                          |
+| -------------------------------- | ----------------------------------------------------------------- |
 | Always-on-top transparent window | `BrowserWindow` with `transparent`, `frame: false`, `alwaysOnTop` |
-| Non-activating, all Spaces | `focusable: false`, `setVisibleOnAllWorkspaces(true)` |
-| Click-through when collapsed | `setIgnoreMouseEvents(true, { forward: true })` |
-| Unix socket server | Node `net.createServer()` |
-| Hook installation | Node `fs` module |
-| Permission sync response | Hold socket connection open |
-| Tmux integration | `child_process.execFile('tmux', ...)` |
-| Window focus (yabai) | `child_process.execFile('yabai', ...)` |
-| System sounds | `child_process.spawn('afplay', ...)` |
-| Launch at login | `app.setLoginItemSettings()` |
-| Multi-monitor | `screen.getAllDisplays()` |
-| Process discovery | `ps` / `lsof` via `child_process` |
+| Non-activating, all Spaces       | `focusable: false`, `setVisibleOnAllWorkspaces(true)`             |
+| Click-through when collapsed     | `setIgnoreMouseEvents(true, { forward: true })`                   |
+| Unix socket server               | Node `net.createServer()`                                         |
+| Hook installation                | Node `fs` module                                                  |
+| Permission sync response         | Hold socket connection open                                       |
+| Tmux integration                 | `child_process.execFile('tmux', ...)`                             |
+| Window focus (yabai)             | `child_process.execFile('yabai', ...)`                            |
+| System sounds                    | `child_process.spawn('afplay', ...)`                              |
+| Launch at login                  | `app.setLoginItemSettings()`                                      |
+| Multi-monitor                    | `screen.getAllDisplays()`                                         |
+| Process discovery                | `ps` / `lsof` via `child_process`                                 |
 
 No native addons required. The draggable spaceship approach avoids the two hardest Claude Island problems (notch geometry detection and global mouse monitoring).

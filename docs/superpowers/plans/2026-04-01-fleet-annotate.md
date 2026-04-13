@@ -14,30 +14,31 @@
 
 ### New Files
 
-| File | Responsibility |
-|------|---------------|
-| `src/main/annotate-service.ts` | Main process annotation lifecycle: open/reuse BrowserWindow, handle IPC from preload, capture screenshots, crop to element rects, write result JSON + PNGs to temp dir, resolve pending CLI requests |
-| `src/preload/annotate.ts` | Preload script for annotation BrowserWindow: exposes `fleetAnnotate` API via contextBridge, bridges picker submit/cancel to main process via ipcRenderer |
-| `src/main/annotate-picker.ts` | Picker UI source — vanilla JS string exported as a function. Injected into the annotation BrowserWindow page via `webContents.executeJavaScript()`. Contains all the DOM manipulation: highlights, note cards, toolbar, connectors, ancestor cycling, data capture |
-| `src/shared/annotate-types.ts` | TypeScript interfaces: `ElementRect`, `BoxModel`, `AccessibilityInfo`, `ElementSelection`, `AnnotationResult`, `AnnotateRequest`, `AnnotateResponse` |
-| `src/main/__tests__/annotate-service.test.ts` | Unit tests for result file generation, screenshot cropping math, selector formatting |
-| `src/main/__tests__/fleet-cli-annotate.test.ts` | Unit tests for `fleet annotate` CLI argument parsing and validation |
+| File                                            | Responsibility                                                                                                                                                                                                                                                     |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/main/annotate-service.ts`                  | Main process annotation lifecycle: open/reuse BrowserWindow, handle IPC from preload, capture screenshots, crop to element rects, write result JSON + PNGs to temp dir, resolve pending CLI requests                                                               |
+| `src/preload/annotate.ts`                       | Preload script for annotation BrowserWindow: exposes `fleetAnnotate` API via contextBridge, bridges picker submit/cancel to main process via ipcRenderer                                                                                                           |
+| `src/main/annotate-picker.ts`                   | Picker UI source — vanilla JS string exported as a function. Injected into the annotation BrowserWindow page via `webContents.executeJavaScript()`. Contains all the DOM manipulation: highlights, note cards, toolbar, connectors, ancestor cycling, data capture |
+| `src/shared/annotate-types.ts`                  | TypeScript interfaces: `ElementRect`, `BoxModel`, `AccessibilityInfo`, `ElementSelection`, `AnnotationResult`, `AnnotateRequest`, `AnnotateResponse`                                                                                                               |
+| `src/main/__tests__/annotate-service.test.ts`   | Unit tests for result file generation, screenshot cropping math, selector formatting                                                                                                                                                                               |
+| `src/main/__tests__/fleet-cli-annotate.test.ts` | Unit tests for `fleet annotate` CLI argument parsing and validation                                                                                                                                                                                                |
 
 ### Modified Files
 
-| File | Change |
-|------|--------|
-| `src/shared/ipc-channels.ts` | Add `ANNOTATE_START`, `ANNOTATE_SUBMIT`, `ANNOTATE_CANCEL`, `ANNOTATE_SCREENSHOT` channels |
-| `src/main/fleet-cli.ts` | Add `annotate` top-level command in `runCLI()`, add to `HELP_GROUPS`, add validation |
-| `src/main/socket-server.ts` | Add `annotate.start` dispatch case, accept `AnnotateService` in constructor |
-| `src/main/index.ts` | Instantiate `AnnotateService`, pass to socket server, wire up socket event to trigger annotation |
-| `electron.vite.config.ts` | Add `annotate` preload entry |
+| File                         | Change                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------ |
+| `src/shared/ipc-channels.ts` | Add `ANNOTATE_START`, `ANNOTATE_SUBMIT`, `ANNOTATE_CANCEL`, `ANNOTATE_SCREENSHOT` channels       |
+| `src/main/fleet-cli.ts`      | Add `annotate` top-level command in `runCLI()`, add to `HELP_GROUPS`, add validation             |
+| `src/main/socket-server.ts`  | Add `annotate.start` dispatch case, accept `AnnotateService` in constructor                      |
+| `src/main/index.ts`          | Instantiate `AnnotateService`, pass to socket server, wire up socket event to trigger annotation |
+| `electron.vite.config.ts`    | Add `annotate` preload entry                                                                     |
 
 ---
 
 ## Task 1: Shared Types
 
 **Files:**
+
 - Create: `src/shared/annotate-types.ts`
 - Modify: `src/shared/ipc-channels.ts`
 
@@ -147,6 +148,7 @@ git commit -m "feat(annotate): add shared types and IPC channels"
 ## Task 2: Annotation Service (Main Process)
 
 **Files:**
+
 - Create: `src/main/annotate-service.ts`
 - Create: `src/main/__tests__/annotate-service.test.ts`
 
@@ -161,20 +163,18 @@ import type { AnnotationResult } from '../../shared/annotate-types';
 
 describe('cropRect', () => {
   it('crops element rect with padding, clamped to viewport', () => {
-    const result = cropRect(
-      { x: 100, y: 200, width: 120, height: 40 },
-      20,
-      { width: 1440, height: 900 }
-    );
+    const result = cropRect({ x: 100, y: 200, width: 120, height: 40 }, 20, {
+      width: 1440,
+      height: 900
+    });
     expect(result).toEqual({ x: 80, y: 180, width: 160, height: 80 });
   });
 
   it('clamps to viewport boundaries', () => {
-    const result = cropRect(
-      { x: 5, y: 5, width: 100, height: 100 },
-      20,
-      { width: 200, height: 200 }
-    );
+    const result = cropRect({ x: 5, y: 5, width: 100, height: 100 }, 20, {
+      width: 200,
+      height: 200
+    });
     expect(result.x).toBe(0);
     expect(result.y).toBe(0);
     expect(result.width).toBeLessThanOrEqual(200);
@@ -202,18 +202,18 @@ describe('writeResultFile', () => {
           content: { width: 96, height: 24 },
           padding: { top: 8, right: 12, bottom: 8, left: 12 },
           border: { top: 1, right: 1, bottom: 1, left: 1 },
-          margin: { top: 0, right: 0, bottom: 0, left: 0 },
+          margin: { top: 0, right: 0, bottom: 0, left: 0 }
         },
         accessibility: {
           role: 'button',
           name: 'Click me',
           description: null,
           focusable: true,
-          disabled: false,
+          disabled: false
         },
-        keyStyles: { display: 'flex' },
-      },
-    ],
+        keyStyles: { display: 'flex' }
+      }
+    ]
   };
 
   let resultPath: string | null = null;
@@ -261,11 +261,7 @@ import { existsSync } from 'fs';
 import { EventEmitter } from 'events';
 import { createLogger } from './logger';
 import { IPC_CHANNELS } from '../shared/constants';
-import type {
-  AnnotationResult,
-  AnnotateStartRequest,
-  ElementRect,
-} from '../shared/annotate-types';
+import type { AnnotationResult, AnnotateStartRequest, ElementRect } from '../shared/annotate-types';
 
 const log = createLogger('annotate');
 const SCREENSHOT_PADDING = 20;
@@ -315,7 +311,7 @@ export async function writeResultFile(
         return { ...el, screenshotPath: pngPath };
       }
       return el;
-    }),
+    })
   };
 
   // Write all screenshot files
@@ -417,8 +413,8 @@ export class AnnotateService extends EventEmitter {
         session: annotateSession,
         contextIsolation: true,
         sandbox: false,
-        nodeIntegration: false,
-      },
+        nodeIntegration: false
+      }
     });
 
     this.window.on('closed', () => {
@@ -500,7 +496,7 @@ export class AnnotateService extends EventEmitter {
       // Still resolve with an error result file
       const errorResult: AnnotationResult = {
         success: false,
-        reason: `Failed to write results: ${String(err)}`,
+        reason: `Failed to write results: ${String(err)}`
       };
       try {
         const errorPath = await writeResultFile(errorResult, []);
@@ -554,6 +550,7 @@ git commit -m "feat(annotate): add annotation service with result file writing"
 ## Task 3: Preload Script
 
 **Files:**
+
 - Create: `src/preload/annotate.ts`
 - Modify: `electron.vite.config.ts`
 
@@ -566,7 +563,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 const IPC = {
   SUBMIT: 'annotate:submit',
   CANCEL: 'annotate:cancel',
-  SCREENSHOT: 'annotate:screenshot',
+  SCREENSHOT: 'annotate:screenshot'
 } as const;
 
 contextBridge.exposeInMainWorld('fleetAnnotate', {
@@ -584,7 +581,7 @@ contextBridge.exposeInMainWorld('fleetAnnotate', {
    * Request a screenshot from the main process.
    * Returns a base64 data URL or null.
    */
-  captureScreenshot: (): Promise<string | null> => ipcRenderer.invoke(IPC.SCREENSHOT),
+  captureScreenshot: (): Promise<string | null> => ipcRenderer.invoke(IPC.SCREENSHOT)
 });
 ```
 
@@ -624,6 +621,7 @@ git commit -m "feat(annotate): add preload script and build entry"
 ## Task 4: Element Picker (Injected UI)
 
 **Files:**
+
 - Create: `src/main/annotate-picker.ts`
 
 This is the largest task. The picker is a vanilla JS script injected into the annotation BrowserWindow's page via `executeJavaScript()`. It is ported from `reference/pi-annotate/chrome-extension/content.js` (2332 lines) with adaptations:
@@ -755,6 +753,7 @@ git commit -m "feat(annotate): add element picker UI (ported from pi-annotate)"
 ## Task 5: CLI Command — `fleet annotate`
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 - Create: `src/main/__tests__/fleet-cli-annotate.test.ts`
 
@@ -809,7 +808,7 @@ const COMMAND_MAP: Record<string, string> = {
   'images.action': 'image.action',
   'images.actions': 'image.actions.list',
   // Annotate
-  'annotate.start': 'annotate.start',
+  'annotate.start': 'annotate.start'
 };
 ```
 
@@ -858,39 +857,39 @@ Also update `HELP_TOP` to add annotate to the commands table:
 In `runCLI()`, add a top-level `annotate` handler after the `open` block (before `images config`):
 
 ```typescript
-  // ── Top-level "annotate" command ──────────────────────────────────────────
-  if (group === 'annotate') {
-    // URL is optional first positional arg
-    const url = action && !action.startsWith('--') ? action : undefined;
-    const allArgs = url ? rest : [action, ...rest].filter(Boolean);
-    const parsedArgs = parseArgs(allArgs);
-    const timeout = typeof parsedArgs.timeout === 'string' ? Number(parsedArgs.timeout) : undefined;
+// ── Top-level "annotate" command ──────────────────────────────────────────
+if (group === 'annotate') {
+  // URL is optional first positional arg
+  const url = action && !action.startsWith('--') ? action : undefined;
+  const allArgs = url ? rest : [action, ...rest].filter(Boolean);
+  const parsedArgs = parseArgs(allArgs);
+  const timeout = typeof parsedArgs.timeout === 'string' ? Number(parsedArgs.timeout) : undefined;
 
-    const command = 'annotate.start';
-    const args: Record<string, unknown> = {};
-    if (url) args.url = url;
-    if (timeout) args.timeout = timeout;
+  const command = 'annotate.start';
+  const args: Record<string, unknown> = {};
+  if (url) args.url = url;
+  if (timeout) args.timeout = timeout;
 
-    const cli = new FleetCLI(sockPath);
-    try {
-      const response = opts?.retry
-        ? await cli.sendWithRetry(command, args)
-        : await cli.send(command, args);
-      if (!response.ok) {
-        return `Error: ${response.error ?? 'Unknown error'}`;
-      }
-      if (isRecord(response.data) && typeof response.data.resultPath === 'string') {
-        return response.data.resultPath;
-      }
-      return toStr(response.data);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
-        return 'Fleet is not running';
-      }
-      return `Error: ${msg}`;
+  const cli = new FleetCLI(sockPath);
+  try {
+    const response = opts?.retry
+      ? await cli.sendWithRetry(command, args)
+      : await cli.send(command, args);
+    if (!response.ok) {
+      return `Error: ${response.error ?? 'Unknown error'}`;
     }
+    if (isRecord(response.data) && typeof response.data.resultPath === 'string') {
+      return response.data.resultPath;
+    }
+    return toStr(response.data);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+      return 'Fleet is not running';
+    }
+    return `Error: ${msg}`;
   }
+}
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
@@ -915,6 +914,7 @@ git commit -m "feat(annotate): add fleet annotate CLI command"
 ## Task 6: Socket Server Handler
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 
 - [ ] **Step 1: Add AnnotateService to socket server constructor**
@@ -976,6 +976,7 @@ git commit -m "feat(annotate): add annotate.start socket dispatch handler"
 ## Task 7: Wire Up in Main Process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Import and instantiate AnnotateService**
@@ -1113,6 +1114,7 @@ fleet annotate https://example.com
 ```
 
 Verify:
+
 - A new BrowserWindow opens showing example.com
 - The picker UI is visible (highlight on hover, toolbar at bottom)
 - Click an element — note card appears

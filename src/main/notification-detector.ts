@@ -96,7 +96,7 @@ export class NotificationDetector {
       this.eventBus.emit('command-started', {
         type: 'command-started',
         paneId,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     }
 

@@ -65,9 +65,7 @@ export class PiConfigValidationError extends Error {
     public readonly file: string,
     public readonly issues: Array<{ path: string; message: string }>
   ) {
-    super(
-      `Invalid ${file}: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`
-    );
+    super(`Invalid ${file}: ${issues.map((i) => `${i.path}: ${i.message}`).join('; ')}`);
     this.name = 'PiConfigValidationError';
   }
 }

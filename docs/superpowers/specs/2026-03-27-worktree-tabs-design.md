@@ -22,10 +22,10 @@ The visual grouping design is informed by Nielsen Norman Group and Baymard Insti
 ```ts
 interface Tab {
   // ...existing fields...
-  groupId?: string             // shared by all tabs in a worktree group
-  groupRole?: 'parent' | 'worktree'  // parent = original tab, worktree = created variant
-  worktreeBranch?: string      // auto-generated branch name for worktree tabs
-  worktreePath?: string        // absolute path to worktree directory on disk
+  groupId?: string; // shared by all tabs in a worktree group
+  groupRole?: 'parent' | 'worktree'; // parent = original tab, worktree = created variant
+  worktreeBranch?: string; // auto-generated branch name for worktree tabs
+  worktreePath?: string; // absolute path to worktree directory on disk
 }
 ```
 
@@ -135,9 +135,11 @@ If `git worktree add` fails (not a git repo, branch conflict, disk error), show 
 ## Files to Create/Modify
 
 ### New files
+
 - `src/main/worktree-service.ts` — git worktree operations
 
 ### Modified files
+
 - `src/shared/types.ts` — Tab type extensions
 - `src/shared/ipc-channels.ts` — new WORKTREE_CREATE, WORKTREE_REMOVE channels
 - `src/shared/ipc-api.ts` — payload types for worktree IPC

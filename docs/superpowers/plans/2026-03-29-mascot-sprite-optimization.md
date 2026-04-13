@@ -13,6 +13,7 @@
 ### Task 1: Convert existing base64 sprites to WebP files
 
 **Files:**
+
 - Create: `resources/mascots/officer.webp`
 - Create: `resources/mascots/robot.webp`
 - Create: `resources/mascots/cat.webp`
@@ -53,14 +54,14 @@ async function main(): Promise<void> {
     const base64 = dataUri.replace(/^data:image\/png;base64,/, '');
     const pngBuffer = Buffer.from(base64, 'base64');
 
-    const webpBuffer = await sharp(pngBuffer)
-      .webp({ lossless: true })
-      .toBuffer();
+    const webpBuffer = await sharp(pngBuffer).webp({ lossless: true }).toBuffer();
 
     const outPath = join(MASCOTS_DIR, `${id}.webp`);
     await writeFile(outPath, webpBuffer);
     const savings = Math.round((1 - webpBuffer.length / pngBuffer.length) * 100);
-    console.log(`${id}: ${pngBuffer.length} bytes PNG -> ${webpBuffer.length} bytes WebP (${savings}% smaller)`);
+    console.log(
+      `${id}: ${pngBuffer.length} bytes PNG -> ${webpBuffer.length} bytes WebP (${savings}% smaller)`
+    );
   }
 
   console.log('\nDone! WebP files written to resources/mascots/');
@@ -91,6 +92,7 @@ git commit -m "feat: convert mascot sprites from base64 PNG to static WebP files
 ### Task 2: Register `fleet-asset://` protocol in the main process
 
 **Files:**
+
 - Modify: `src/main/index.ts:177-185` (protocol registration area)
 
 - [ ] **Step 1: Add `fleet-asset` to the privileged schemes list**
@@ -110,23 +112,23 @@ protocol.registerSchemesAsPrivileged([
 After the existing `protocol.handle('fleet-image', ...)` block at line 182-185, add the `fleet-asset` handler:
 
 ```ts
-  // Serve static assets from resources/ directory (mascot sprites, etc.)
-  protocol.handle('fleet-asset', async (request) => {
-    const url = new URL(request.url);
-    const relativePath = decodeURIComponent(url.hostname + url.pathname);
+// Serve static assets from resources/ directory (mascot sprites, etc.)
+protocol.handle('fleet-asset', async (request) => {
+  const url = new URL(request.url);
+  const relativePath = decodeURIComponent(url.hostname + url.pathname);
 
-    // Prevent path traversal
-    if (relativePath.includes('..')) {
-      return new Response('Forbidden', { status: 403 });
-    }
+  // Prevent path traversal
+  if (relativePath.includes('..')) {
+    return new Response('Forbidden', { status: 403 });
+  }
 
-    const resourcesDir = app.isPackaged
-      ? join(process.resourcesPath, 'resources')
-      : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
+  const resourcesDir = app.isPackaged
+    ? join(process.resourcesPath, 'resources')
+    : join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'resources');
 
-    const filePath = join(resourcesDir, relativePath);
-    return net.fetch(`file://${filePath}`);
-  });
+  const filePath = join(resourcesDir, relativePath);
+  return net.fetch(`file://${filePath}`);
+});
 ```
 
 - [ ] **Step 3: Verify typecheck passes**
@@ -146,6 +148,7 @@ git commit -m "feat: register fleet-asset:// protocol for serving static resourc
 ### Task 3: Add `resources/mascots` to electron-builder extraResources
 
 **Files:**
+
 - Modify: `electron-builder.yml:15-17`
 
 - [ ] **Step 1: Add mascots to extraResources**
@@ -172,6 +175,7 @@ git commit -m "build: ship mascot WebP sprites via extraResources"
 ### Task 4: Update sprite-loader to use protocol URLs
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/assets/sprite-loader.ts`
 
 - [ ] **Step 1: Replace the sprite loader**
@@ -206,6 +210,7 @@ git commit -m "refactor: sprite-loader uses fleet-asset:// URLs instead of base6
 ### Task 5: Delete old base64 sprite files
 
 **Files:**
+
 - Delete: `src/renderer/copilot/src/assets/sprites-officer.ts`
 - Delete: `src/renderer/copilot/src/assets/sprites-robot.ts`
 - Delete: `src/renderer/copilot/src/assets/sprites-cat.ts`
@@ -248,6 +253,7 @@ git commit -m "chore: delete base64 sprite files replaced by static WebP assets"
 ### Task 6: Update assembly script to output WebP
 
 **Files:**
+
 - Modify: `scripts/assemble-copilot-sprites.ts`
 
 - [ ] **Step 1: Update the assembly script**
@@ -288,7 +294,9 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
   if (args.length === 0) {
-    console.error('Usage: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <img1> ... <img9>');
+    console.error(
+      'Usage: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <img1> ... <img9>'
+    );
     console.error('   or: npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> <directory>');
     process.exit(1);
   }
@@ -329,7 +337,10 @@ async function main(): Promise<void> {
   const resizedBuffers: Buffer[] = [];
   for (let i = 0; i < imagePaths.length; i++) {
     const buf = await sharp(imagePaths[i])
-      .resize(FRAME_SIZE, FRAME_SIZE, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .resize(FRAME_SIZE, FRAME_SIZE, {
+        fit: 'contain',
+        background: { r: 0, g: 0, b: 0, alpha: 0 }
+      })
       .png()
       .toBuffer();
     resizedBuffers.push(buf);
@@ -340,7 +351,7 @@ async function main(): Promise<void> {
   const composites = resizedBuffers.map((buf, i) => ({
     input: buf,
     left: i * FRAME_SIZE,
-    top: 0,
+    top: 0
   }));
 
   const sheet = await sharp({
@@ -348,8 +359,8 @@ async function main(): Promise<void> {
       width: FRAME_SIZE * TOTAL_FRAMES,
       height: FRAME_SIZE,
       channels: 4 as const,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    },
+      background: { r: 0, g: 0, b: 0, alpha: 0 }
+    }
   })
     .composite(composites)
     .webp({ lossless: true })
@@ -359,7 +370,9 @@ async function main(): Promise<void> {
   await mkdir(MASCOTS_DIR, { recursive: true });
   const webpPath = join(MASCOTS_DIR, `${mascotId}.webp`);
   await writeFile(webpPath, sheet);
-  console.log(`\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`);
+  console.log(
+    `\nSprite sheet: ${webpPath} (${FRAME_SIZE * TOTAL_FRAMES}x${FRAME_SIZE}px, ${Math.round(sheet.length / 1024)}KB)`
+  );
   console.log('\nDone! Remember to add an entry to MASCOT_REGISTRY in src/shared/mascots.ts');
 }
 
@@ -383,6 +396,7 @@ git commit -m "refactor: assembly script outputs WebP to resources/mascots/ inst
 ### Task 7: Update CLAUDE.md documentation
 
 **Files:**
+
 - Modify: `CLAUDE.md`
 
 - [ ] **Step 1: Update the Copilot Mascot Sprites section**
@@ -398,7 +412,9 @@ To add or update a mascot sprite sheet from 9 source images:
 
 \`\`\`bash
 npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> img0.png img1.png ... img8.png
+
 # or from a directory of 9+ images (sorted by name):
+
 npx tsx scripts/assemble-copilot-sprites.ts <mascot-id> path/to/frames/
 \`\`\`
 
@@ -417,6 +433,7 @@ git commit -m "docs: update CLAUDE.md for WebP mascot sprite workflow"
 ### Task 8: Delete the one-time migration script
 
 **Files:**
+
 - Delete: `scripts/convert-sprites-to-webp.ts`
 
 - [ ] **Step 1: Delete the migration script**
@@ -454,6 +471,7 @@ Expected: Build succeeds. The bundle should be noticeably smaller without ~1 MB 
 - [ ] **Step 4: Manual smoke test**
 
 Launch the app with `npm run dev`. Verify:
+
 1. The copilot mascot renders correctly (not a broken image)
 2. Switching mascots in the mascot picker works
 3. Animation states (idle, processing) display correctly

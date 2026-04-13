@@ -54,7 +54,7 @@ function useSpriteAnimation(state: SpriteState, animations: SpriteAnimations): n
 export function SpaceshipSprite({
   mode = 'floating',
   teleportState = 'idle',
-  onToggle,
+  onToggle
 }: SpaceshipSpriteProps): React.JSX.Element {
   const spriteState = useSpriteState();
   const toggleExpanded = useCopilotStore((s) => s.toggleExpanded);
@@ -64,7 +64,7 @@ export function SpaceshipSprite({
   const animations = mascot?.animations ?? DEFAULT_ANIMATIONS;
   const totalFrames = useMemo(
     () => Math.max(...Object.values(animations).flatMap((a) => a.frames)) + 1,
-    [animations],
+    [animations]
   );
   const frameIndex = useSpriteAnimation(spriteState, animations);
   const spriteSheet = getSpriteSheet(mascotId);
@@ -73,37 +73,37 @@ export function SpaceshipSprite({
   const dragStartPos = useRef({ x: 0, y: 0 });
   const windowStartPos = useRef({ x: 0, y: 0 });
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (mode === 'header') return; // No dragging in header mode
-    wasDragged.current = false;
-    dragStartPos.current = { x: e.screenX, y: e.screenY };
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (mode === 'header') return; // No dragging in header mode
+      wasDragged.current = false;
+      dragStartPos.current = { x: e.screenX, y: e.screenY };
 
-    window.copilot.getPosition().then((pos) => {
-      if (pos) {
-        windowStartPos.current = { x: pos.x, y: pos.y };
-      }
-    });
+      window.copilot.getPosition().then((pos) => {
+        if (pos) {
+          windowStartPos.current = { x: pos.x, y: pos.y };
+        }
+      });
 
-    const handleMouseMove = (ev: MouseEvent): void => {
-      const dx = ev.screenX - dragStartPos.current.x;
-      const dy = ev.screenY - dragStartPos.current.y;
-      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-        wasDragged.current = true;
-        window.copilot.setPosition(
-          windowStartPos.current.x + dx,
-          windowStartPos.current.y + dy
-        );
-      }
-    };
+      const handleMouseMove = (ev: MouseEvent): void => {
+        const dx = ev.screenX - dragStartPos.current.x;
+        const dy = ev.screenY - dragStartPos.current.y;
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+          wasDragged.current = true;
+          window.copilot.setPosition(windowStartPos.current.x + dx, windowStartPos.current.y + dy);
+        }
+      };
 
-    const handleMouseUp = (): void => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
+      const handleMouseUp = (): void => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [mode]);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [mode]
+  );
 
   const handleClick = useCallback(() => {
     if (mode === 'floating' && wasDragged.current) return;
@@ -116,18 +116,22 @@ export function SpaceshipSprite({
 
   const size = mode === 'header' ? HEADER_SPRITE_SIZE : SPRITE_SIZE;
 
-  const animationClass = mode === 'floating' ? {
-    idle: 'animate-bob',
-    processing: 'animate-thrust',
-    permission: 'animate-pulse-amber',
-    complete: 'animate-flash-green',
-  }[spriteState] : '';
-
-  const teleportClass = teleportState === 'out'
-    ? 'animate-teleport-out'
-    : teleportState === 'in'
-      ? 'animate-teleport-in'
+  const animationClass =
+    mode === 'floating'
+      ? {
+          idle: 'animate-bob',
+          processing: 'animate-thrust',
+          permission: 'animate-pulse-amber',
+          complete: 'animate-flash-green'
+        }[spriteState]
       : '';
+
+  const teleportClass =
+    teleportState === 'out'
+      ? 'animate-teleport-out'
+      : teleportState === 'in'
+        ? 'animate-teleport-in'
+        : '';
 
   return (
     <div
@@ -141,7 +145,7 @@ export function SpaceshipSprite({
         backgroundPosition: `-${frameIndex * size}px 0`,
         backgroundSize: `${size * totalFrames}px ${size}px`,
         backgroundRepeat: 'no-repeat',
-        imageRendering: 'pixelated',
+        imageRendering: 'pixelated'
       }}
     />
   );

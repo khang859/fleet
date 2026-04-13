@@ -8,7 +8,7 @@
  * Must be loaded first (-e flag order matters).
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 const RECONNECT_DELAY_MS = 2000;
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -26,7 +26,7 @@ declare global {
 export default function (_pi: ExtensionAPI): void {
   const port = process.env.FLEET_BRIDGE_PORT;
   const token = process.env.FLEET_BRIDGE_TOKEN;
-  const paneId = process.env.FLEET_PANE_ID ?? "unknown";
+  const paneId = process.env.FLEET_PANE_ID ?? 'unknown';
 
   if (!port || !token) {
     return; // Not running inside Fleet
@@ -50,7 +50,7 @@ export default function (_pi: ExtensionAPI): void {
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(String(event.data)) as Record<string, unknown>;
-          if (typeof msg.id === "string" && pending.has(msg.id)) {
+          if (typeof msg.id === 'string' && pending.has(msg.id)) {
             const handler = pending.get(msg.id)!;
             pending.delete(msg.id);
             if (msg.error) {
@@ -60,7 +60,7 @@ export default function (_pi: ExtensionAPI): void {
             }
             return;
           }
-          if (typeof msg.type === "string") {
+          if (typeof msg.type === 'string') {
             const payload = (msg.payload ?? {}) as Record<string, unknown>;
             for (const handler of eventHandlers) {
               handler(msg.type, payload);
@@ -91,7 +91,7 @@ export default function (_pi: ExtensionAPI): void {
     send(type, payload) {
       return new Promise((resolve, reject) => {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
-          reject(new Error("Fleet bridge not connected"));
+          reject(new Error('Fleet bridge not connected'));
           return;
         }
         const id = String(++requestId);
@@ -101,7 +101,7 @@ export default function (_pi: ExtensionAPI): void {
         setTimeout(() => {
           if (pending.has(id)) {
             pending.delete(id);
-            reject(new Error("Fleet bridge request timed out"));
+            reject(new Error('Fleet bridge request timed out'));
           }
         }, 10_000);
       });
@@ -111,7 +111,7 @@ export default function (_pi: ExtensionAPI): void {
     },
     isConnected() {
       return ws !== null && ws.readyState === WebSocket.OPEN;
-    },
+    }
   };
 
   globalThis.__fleetBridge = client;

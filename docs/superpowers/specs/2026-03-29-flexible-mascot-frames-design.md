@@ -43,7 +43,7 @@ export const DEFAULT_ANIMATIONS: SpriteAnimations = {
   idle: { frames: [0, 1], fps: 2 },
   processing: { frames: [2, 3, 4], fps: 4 },
   permission: { frames: [5, 6], fps: 3 },
-  complete: { frames: [7, 8], fps: 2 },
+  complete: { frames: [7, 8], fps: 2 }
 };
 ```
 
@@ -84,12 +84,12 @@ Existing mascots remain unchanged (no `animations` field). New mascots include t
 
 Based on game dev best practices for smooth pixel art animation:
 
-| State | Frames | FPS | Reasoning |
-|---|---|---|---|
-| idle | 4 (0-3) | 3 | Smooth breathing/bob cycle |
-| processing | 6 (4-9) | 8 | Most visible state, benefits most from extra frames |
-| permission | 2 (10-11) | 3 | Snappy/urgent feel, fewer frames = better |
-| complete | 4 (12-15) | 4 | Satisfying celebration payoff |
+| State      | Frames    | FPS | Reasoning                                           |
+| ---------- | --------- | --- | --------------------------------------------------- |
+| idle       | 4 (0-3)   | 3   | Smooth breathing/bob cycle                          |
+| processing | 6 (4-9)   | 8   | Most visible state, benefits most from extra frames |
+| permission | 2 (10-11) | 3   | Snappy/urgent feel, fewer frames = better           |
+| complete   | 4 (12-15) | 4   | Satisfying celebration payoff                       |
 
 ## Backward compatibility
 

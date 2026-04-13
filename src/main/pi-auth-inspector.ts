@@ -86,7 +86,9 @@ export class PiAuthInspector {
       }
       return results;
     } catch (err) {
-      log.debug('model catalog unavailable', { err: err instanceof Error ? err.message : String(err) });
+      log.debug('model catalog unavailable', {
+        err: err instanceof Error ? err.message : String(err)
+      });
       return [];
     }
   }

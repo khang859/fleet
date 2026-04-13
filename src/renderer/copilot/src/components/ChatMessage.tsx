@@ -12,7 +12,7 @@ const MODE_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'EnterWorktree', 'E
 
 function ToolUseBlock({
   name,
-  inputPreview,
+  inputPreview
 }: {
   name: string;
   inputPreview: string;
@@ -105,13 +105,17 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
     <details className="text-xs text-neutral-500">
       <summary className="cursor-pointer hover:text-neutral-400">Thinking...</summary>
       <div className="mt-1 whitespace-pre-wrap break-words pl-2 border-l border-neutral-700">
-        {text.slice(0, 500)}{text.length > 500 ? '...' : ''}
+        {text.slice(0, 500)}
+        {text.length > 500 ? '...' : ''}
       </div>
     </details>
   );
 }
 
-function renderToolUse(block: Extract<CopilotMessageBlock, { type: 'tool_use' }>, key: string): React.JSX.Element {
+function renderToolUse(
+  block: Extract<CopilotMessageBlock, { type: 'tool_use' }>,
+  key: string
+): React.JSX.Element {
   if (block.name === 'AskUserQuestion' && block.input) {
     return (
       <div key={key} className="max-w-[95%]">

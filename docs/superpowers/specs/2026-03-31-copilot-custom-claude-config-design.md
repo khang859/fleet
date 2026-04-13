@@ -52,12 +52,15 @@ type CopilotSettings = {
   notificationSound: string;
   autoStart: boolean;
   // New fields:
-  claudeBinaryPath: string;    // empty = system PATH
-  claudeConfigDir: string;     // empty = ~/.claude/
-  workspaceOverrides: Record<WorkspaceId, {
-    claudeBinaryPath?: string;
-    claudeConfigDir?: string;
-  }>;
+  claudeBinaryPath: string; // empty = system PATH
+  claudeConfigDir: string; // empty = ~/.claude/
+  workspaceOverrides: Record<
+    WorkspaceId,
+    {
+      claudeBinaryPath?: string;
+      claudeConfigDir?: string;
+    }
+  >;
 };
 ```
 

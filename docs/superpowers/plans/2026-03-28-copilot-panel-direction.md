@@ -13,6 +13,7 @@
 ### Task 1: Add direction type and update IPC payload in main process
 
 **Files:**
+
 - Modify: `src/main/copilot/copilot-window.ts:200-233`
 
 - [ ] **Step 1: Add direction type at the top of the file**
@@ -122,6 +123,7 @@ git commit -m "feat(copilot): add direction-aware panel expansion in main proces
 ### Task 2: Update preload to pass direction to renderer
 
 **Files:**
+
 - Modify: `src/preload/copilot.ts:60-66`
 
 - [ ] **Step 1: Update `onExpandedChanged` handler**
@@ -155,6 +157,7 @@ git commit -m "feat(copilot): update preload to pass panel direction from IPC"
 ### Task 3: Update store and App.tsx to use direction
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts:31,62-64`
 - Modify: `src/renderer/copilot/src/App.tsx:10,21,54-62`
 
@@ -238,9 +241,11 @@ In `src/renderer/copilot/src/App.tsx`, update the sprite wrapper to position the
 With:
 
 ```tsx
-<div className={`flex justify-end ${
-  expanded && panelDirection?.vertical === 'up' ? 'absolute bottom-0 right-0 left-0' : ''
-}`}>
+<div
+  className={`flex justify-end ${
+    expanded && panelDirection?.vertical === 'up' ? 'absolute bottom-0 right-0 left-0' : ''
+  }`}
+>
   <SpaceshipSprite />
 </div>
 ```

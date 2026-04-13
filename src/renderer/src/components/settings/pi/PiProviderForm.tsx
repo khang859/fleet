@@ -20,7 +20,12 @@ type Props = {
   onCancel: () => void;
 };
 
-const APIS: PiApi[] = ['openai-completions', 'openai-responses', 'anthropic-messages', 'google-generative-ai'];
+const APIS: PiApi[] = [
+  'openai-completions',
+  'openai-responses',
+  'anthropic-messages',
+  'google-generative-ai'
+];
 
 function parseApi(value: string): PiApi | undefined {
   return APIS.find((a) => a === value);
@@ -40,7 +45,9 @@ export function PiProviderForm({
   const [id, setId] = useState(initialId);
   const [baseUrl, setBaseUrl] = useState(initialProvider.baseUrl ?? '');
   const [api, setApi] = useState<PiApi | undefined>(initialProvider.api);
-  const [apiKey, setApiKey] = useState<PiApiKey | undefined>(parseApiKeyString(initialProvider.apiKey));
+  const [apiKey, setApiKey] = useState<PiApiKey | undefined>(
+    parseApiKeyString(initialProvider.apiKey)
+  );
   const [compatText, setCompatText] = useState(() =>
     initialProvider.compat ? JSON.stringify(initialProvider.compat, null, 2) : ''
   );

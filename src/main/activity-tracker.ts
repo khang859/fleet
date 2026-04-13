@@ -38,7 +38,7 @@ export class ActivityTracker {
       state: 'idle',
       silenceTimer: null,
       lastOutputAt: 0,
-      exited: false,
+      exited: false
     });
   }
 
@@ -144,7 +144,7 @@ export class ActivityTracker {
       paneId,
       state: newState,
       lastOutputAt: pane.lastOutputAt,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
   }
 }

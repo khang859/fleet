@@ -13,6 +13,7 @@
 ## File Structure
 
 **New files:**
+
 - `src/main/pi-agent-manager.ts` — Install/version-manage pi, build launch command
 - `src/main/fleet-bridge.ts` — WebSocket bridge server for Fleet <-> pi extension communication
 - `src/renderer/src/components/PiTab.tsx` — Tab component rendering xterm for pi agent
@@ -21,6 +22,7 @@
 - `resources/pi-extensions/fleet-terminal.ts` — `fleet_run` tool for creating terminal tabs
 
 **Modified files:**
+
 - `package.json` — Add `ws` dependency
 - `src/shared/types.ts:15` — Add `'pi'` to Tab type union
 - `src/shared/types.ts:42` — Add `'pi'` to PaneLeaf paneType union
@@ -41,6 +43,7 @@
 ### Task 1: Add `ws` Dependency
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install ws**
@@ -72,6 +75,7 @@ git commit -m "chore: add ws dependency for Pi agent WebSocket bridge"
 ### Task 2: Type Definitions
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/shared/ipc-api.ts`
@@ -136,6 +140,7 @@ git commit -m "feat(pi): add pi tab type and IPC channel definitions"
 ### Task 3: PiAgentManager
 
 **Files:**
+
 - Create: `src/main/pi-agent-manager.ts`
 
 - [ ] **Step 1: Create the PiAgentManager**
@@ -245,19 +250,36 @@ export class PiAgentManager {
     // Initialize a package.json if missing (npm install --prefix requires it)
     const pkgJsonPath = join(PI_INSTALL_DIR, 'package.json');
     if (!existsSync(pkgJsonPath)) {
-      writeFileSync(pkgJsonPath, JSON.stringify({ name: 'fleet-pi-agent', private: true }, null, 2));
+      writeFileSync(
+        pkgJsonPath,
+        JSON.stringify({ name: 'fleet-pi-agent', private: true }, null, 2)
+      );
     }
 
-    const { stdout } = await execFileAsync('npm', ['install', PI_PACKAGE, '--prefix', PI_INSTALL_DIR], {
-      timeout: 120_000,
-    });
+    const { stdout } = await execFileAsync(
+      'npm',
+      ['install', PI_PACKAGE, '--prefix', PI_INSTALL_DIR],
+      {
+        timeout: 120_000
+      }
+    );
     log.info('Pi agent installed', { output: stdout.slice(0, 200) });
 
     // Read installed version from the installed package
     try {
-      const installedPkg = join(PI_INSTALL_DIR, 'node_modules', PI_PACKAGE.split('/').pop()!, 'package.json');
+      const installedPkg = join(
+        PI_INSTALL_DIR,
+        'node_modules',
+        PI_PACKAGE.split('/').pop()!,
+        'package.json'
+      );
       // The package is scoped, so the path is node_modules/@mariozechner/pi-coding-agent/package.json
-      const scopedPkg = join(PI_INSTALL_DIR, 'node_modules', ...PI_PACKAGE.split('/'), 'package.json');
+      const scopedPkg = join(
+        PI_INSTALL_DIR,
+        'node_modules',
+        ...PI_PACKAGE.split('/'),
+        'package.json'
+      );
       const pkgPath = existsSync(scopedPkg) ? scopedPkg : installedPkg;
       const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version: string };
       this.installedVersion = pkg.version;
@@ -268,7 +290,7 @@ export class PiAgentManager {
       this.installedVersion = 'unknown';
       writeFileSync(VERSION_FILE, this.installedVersion);
       log.warn('Could not read pi agent version', {
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : String(err)
       });
     }
   }
@@ -279,13 +301,13 @@ export class PiAgentManager {
     try {
       log.info('Checking for pi-coding-agent updates');
       await execFileAsync('npm', ['update', PI_PACKAGE, '--prefix', PI_INSTALL_DIR], {
-        timeout: 60_000,
+        timeout: 60_000
       });
       this.loadVersion();
       log.info('Pi agent update check complete', { version: this.installedVersion });
     } catch (err) {
       log.warn('Pi agent update check failed', {
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : String(err)
       });
     }
   }
@@ -309,6 +331,7 @@ git commit -m "feat(pi): add PiAgentManager for install and launch"
 ### Task 4: FleetBridgeServer
 
 **Files:**
+
 - Create: `src/main/fleet-bridge.ts`
 
 - [ ] **Step 1: Create the WebSocket bridge server**
@@ -404,7 +427,7 @@ export class FleetBridgeServer {
         ws.on('error', (err) => {
           log.error('Bridge connection error', {
             paneId,
-            error: err.message,
+            error: err.message
           });
         });
       });
@@ -483,7 +506,7 @@ export class FleetBridgeServer {
     } catch (err) {
       const response: BridgeResponse = {
         id: msg.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : String(err)
       };
       ws.send(JSON.stringify(response));
     }
@@ -508,6 +531,7 @@ git commit -m "feat(pi): add FleetBridgeServer WebSocket bridge"
 ### Task 5: CLI Command (`fleet pi`)
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/socket-supervisor.ts`
@@ -517,29 +541,29 @@ git commit -m "feat(pi): add FleetBridgeServer WebSocket bridge"
 In `src/main/fleet-cli.ts`, add a top-level handler for the `pi` command. Add this block after the `annotate` command handler (after line 633, before the `images config` block):
 
 ```typescript
-  // ── Top-level "pi" command ───────────────────────────────────────────────
-  if (group === 'pi') {
-    const cwd = process.cwd();
-    const command = 'pi.open';
-    const args: Record<string, unknown> = { cwd };
+// ── Top-level "pi" command ───────────────────────────────────────────────
+if (group === 'pi') {
+  const cwd = process.cwd();
+  const command = 'pi.open';
+  const args: Record<string, unknown> = { cwd };
 
-    const cli = new FleetCLI(sockPath);
-    try {
-      const response = opts?.retry
-        ? await cli.sendWithRetry(command, args)
-        : await cli.send(command, args);
-      if (!response.ok) {
-        return `Error: ${response.error ?? 'Unknown error'}`;
-      }
-      return 'Opening Pi agent in Fleet';
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
-        return 'Fleet is not running';
-      }
-      return `Error: ${msg}`;
+  const cli = new FleetCLI(sockPath);
+  try {
+    const response = opts?.retry
+      ? await cli.sendWithRetry(command, args)
+      : await cli.send(command, args);
+    if (!response.ok) {
+      return `Error: ${response.error ?? 'Unknown error'}`;
     }
+    return 'Opening Pi agent in Fleet';
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {
+      return 'Fleet is not running';
+    }
+    return `Error: ${msg}`;
   }
+}
 ```
 
 - [ ] **Step 2: Add socket server dispatch case**
@@ -560,9 +584,9 @@ In `src/main/socket-server.ts`, add a new case before the `default` case (before
 In `src/main/socket-supervisor.ts`, inside the `createServer()` method (after line 97, after the `file-open` forwarding block), add:
 
 ```typescript
-    server.on('pi-open', (...args: unknown[]) => {
-      this.emit('pi-open', ...args);
-    });
+server.on('pi-open', (...args: unknown[]) => {
+  this.emit('pi-open', ...args);
+});
 ```
 
 - [ ] **Step 4: Verify typecheck passes**
@@ -582,6 +606,7 @@ git commit -m "feat(pi): add fleet pi CLI command and socket dispatch"
 ### Task 6: Preload API and IPC Wiring
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 - Modify: `src/main/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
@@ -602,11 +627,11 @@ In `src/preload/index.ts`, add `PiOpenPayload` to the imports from `../shared/ip
 In `src/main/index.ts`, after the `socketSupervisor.on('file-open', ...)` block (after line 307), add:
 
 ```typescript
-  socketSupervisor.on('pi-open', (payload: unknown) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.PI_OPEN, payload);
-    }
-  });
+socketSupervisor.on('pi-open', (payload: unknown) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(IPC_CHANNELS.PI_OPEN, payload);
+  }
+});
 ```
 
 - [ ] **Step 3: Instantiate PiAgentManager and FleetBridgeServer in main**
@@ -630,28 +655,30 @@ const fleetBridge = new FleetBridgeServer();
 In `src/main/index.ts`, after the socket supervisor start block (after line 312), add:
 
 ```typescript
-  // Start Fleet bridge for Pi agent extensions
-  fleetBridge.onRequest(async (type, payload, _paneId) => {
-    switch (type) {
-      case 'file.open': {
-        const filePath = typeof payload.path === 'string' ? payload.path : '';
-        if (!filePath) throw new Error('file.open requires a path');
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
-            files: [{ path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }],
-          });
-        }
-        return { ok: true };
+// Start Fleet bridge for Pi agent extensions
+fleetBridge.onRequest(async (type, payload, _paneId) => {
+  switch (type) {
+    case 'file.open': {
+      const filePath = typeof payload.path === 'string' ? payload.path : '';
+      if (!filePath) throw new Error('file.open requires a path');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
+          files: [
+            { path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }
+          ]
+        });
       }
-      default:
-        throw new Error(`Unknown bridge command: ${type}`);
+      return { ok: true };
     }
+    default:
+      throw new Error(`Unknown bridge command: ${type}`);
+  }
+});
+fleetBridge.start().catch((err: unknown) => {
+  log.error('Fleet bridge failed to start', {
+    error: err instanceof Error ? err.message : String(err)
   });
-  fleetBridge.start().catch((err: unknown) => {
-    log.error('Fleet bridge failed to start', {
-      error: err instanceof Error ? err.message : String(err),
-    });
-  });
+});
 ```
 
 - [ ] **Step 5: Add IPC handler for pi PTY creation**
@@ -690,13 +717,13 @@ In `src/preload/index.ts`, add to the `pi` object:
 In `src/main/ipc-handlers.ts`, update `registerIpcHandlers` signature to accept `piAgentManager: PiAgentManager` and `fleetBridge: FleetBridgeServer`, then add:
 
 ```typescript
-  ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
-    await piAgentManager.ensureInstalled();
-    const token = fleetBridge.generateToken();
-    const port = fleetBridge.getPort();
-    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId);
-    return { cmd };
-  });
+ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
+  await piAgentManager.ensureInstalled();
+  const token = fleetBridge.generateToken();
+  const port = fleetBridge.getPort();
+  const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId);
+  return { cmd };
+});
 ```
 
 Update the `registerIpcHandlers` call in `index.ts` to pass `piAgentManager` and `fleetBridge`.
@@ -718,6 +745,7 @@ git commit -m "feat(pi): wire IPC and preload for pi tab creation"
 ### Task 7: Workspace Store — `addPiTab` Action
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add `addPiTab` action to the store interface**
@@ -774,6 +802,7 @@ git commit -m "feat(pi): add addPiTab action to workspace store"
 ### Task 8: PiTab Component
 
 **Files:**
+
 - Create: `src/renderer/src/components/PiTab.tsx`
 
 - [ ] **Step 1: Create the PiTab component**
@@ -800,15 +829,20 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
   // Fetch pi launch config before creating the PTY
   useEffect(() => {
     let cancelled = false;
-    void window.fleet.pi.getLaunchConfig(paneId).then((config) => {
-      if (cancelled) return;
-      launchConfigRef.current = config;
-      setPiReady(true);
-    }).catch((err: unknown) => {
-      if (cancelled) return;
-      setError(err instanceof Error ? err.message : String(err));
-    });
-    return () => { cancelled = true; };
+    void window.fleet.pi
+      .getLaunchConfig(paneId)
+      .then((config) => {
+        if (cancelled) return;
+        launchConfigRef.current = config;
+        setPiReady(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Once config is loaded, useTerminal creates the PTY with the pi command
@@ -854,7 +888,7 @@ function PiTerminal({
   isActive,
   fontFamily,
   fontSize,
-  launchConfig,
+  launchConfig
 }: {
   paneId: string;
   cwd: string;
@@ -873,7 +907,7 @@ function PiTerminal({
     fontFamily,
     fontSize,
     cursorHidden: true,
-    onScrollStateChange: setIsScrolledUp,
+    onScrollStateChange: setIsScrolledUp
   });
 
   // Create PTY with pi command — the useTerminal hook creates a bare shell PTY,
@@ -898,7 +932,7 @@ function PiTerminal({
     void window.fleet.pty.create({
       paneId,
       cwd,
-      cmd: launchConfig.cmd,
+      cmd: launchConfig.cmd
     });
   }, [paneId, cwd, launchConfig.cmd]);
 
@@ -920,7 +954,13 @@ function PiTerminal({
           aria-label="Scroll to bottom"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           <span>Bottom</span>
         </button>
@@ -947,7 +987,7 @@ function PiTerminal({
   isActive,
   fontFamily,
   fontSize,
-  launchConfig,
+  launchConfig
 }: {
   paneId: string;
   cwd: string;
@@ -967,7 +1007,7 @@ function PiTerminal({
     fontFamily,
     fontSize,
     cursorHidden: true,
-    onScrollStateChange: setIsScrolledUp,
+    onScrollStateChange: setIsScrolledUp
   });
 
   return (
@@ -988,7 +1028,13 @@ function PiTerminal({
           aria-label="Scroll to bottom"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           <span>Bottom</span>
         </button>
@@ -1035,6 +1081,7 @@ git commit -m "feat(pi): add PiTab component with xterm rendering"
 ### Task 9: App.tsx Rendering and Sidebar Integration
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
@@ -1043,15 +1090,15 @@ git commit -m "feat(pi): add PiTab component with xterm rendering"
 In `src/renderer/src/App.tsx`, add after the `file:open-in-tab` useEffect (after line 242):
 
 ```typescript
-  // Open Pi agent tab via IPC (fleet pi CLI command)
-  useEffect(() => {
-    const cleanup = window.fleet.pi.onOpen((payload) => {
-      useWorkspaceStore.getState().addPiTab(payload.cwd);
-    });
-    return () => {
-      cleanup();
-    };
-  }, []);
+// Open Pi agent tab via IPC (fleet pi CLI command)
+useEffect(() => {
+  const cleanup = window.fleet.pi.onOpen((payload) => {
+    useWorkspaceStore.getState().addPiTab(payload.cwd);
+  });
+  return () => {
+    cleanup();
+  };
+}, []);
 ```
 
 - [ ] **Step 2: Add pi tab rendering branch**
@@ -1126,6 +1173,7 @@ git commit -m "feat(pi): render PiTab in App and add sidebar icon"
 ### Task 10: Pi Extensions
 
 **Files:**
+
 - Create: `resources/pi-extensions/fleet-bridge.ts`
 - Create: `resources/pi-extensions/fleet-files.ts`
 - Create: `resources/pi-extensions/fleet-terminal.ts`
@@ -1231,12 +1279,13 @@ export default function fleetBridge(pi: ExtensionAPI): void {
     },
     isConnected() {
       return ws !== null && ws.readyState === WebSocket.OPEN;
-    },
+    }
   };
 
   // Store on pi metadata for other extensions to access
   (pi as unknown as Record<string, unknown>).metadata ??= {};
-  ((pi as unknown as Record<string, unknown>).metadata as Record<string, unknown>).fleetBridge = client;
+  ((pi as unknown as Record<string, unknown>).metadata as Record<string, unknown>).fleetBridge =
+    client;
 
   connect();
 }
@@ -1250,26 +1299,32 @@ export default function fleetBridge(pi: ExtensionAPI): void {
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 export default function fleetFiles(pi: ExtensionAPI): void {
-  const metadata = ((pi as unknown as Record<string, unknown>).metadata ?? {}) as Record<string, unknown>;
+  const metadata = ((pi as unknown as Record<string, unknown>).metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   pi.registerTool({
     name: 'fleet_open',
-    description: 'Open a file in the Fleet editor. Use this when you want the user to see a file in Fleet\'s built-in editor tab.',
+    description:
+      "Open a file in the Fleet editor. Use this when you want the user to see a file in Fleet's built-in editor tab.",
     parameters: {
       type: 'object',
       properties: {
         path: {
           type: 'string',
-          description: 'Absolute path to the file to open',
-        },
+          description: 'Absolute path to the file to open'
+        }
       },
-      required: ['path'],
+      required: ['path']
     },
     async execute({ path }: { path: string }) {
-      const bridge = metadata.fleetBridge as {
-        send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
-        isConnected: () => boolean;
-      } | undefined;
+      const bridge = metadata.fleetBridge as
+        | {
+            send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
+            isConnected: () => boolean;
+          }
+        | undefined;
 
       if (!bridge || !bridge.isConnected()) {
         return { error: 'Fleet bridge not connected. Fleet-specific tools are unavailable.' };
@@ -1281,7 +1336,7 @@ export default function fleetFiles(pi: ExtensionAPI): void {
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
-    },
+    }
   });
 }
 ```
@@ -1292,30 +1347,36 @@ export default function fleetFiles(pi: ExtensionAPI): void {
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
 export default function fleetTerminal(pi: ExtensionAPI): void {
-  const metadata = ((pi as unknown as Record<string, unknown>).metadata ?? {}) as Record<string, unknown>;
+  const metadata = ((pi as unknown as Record<string, unknown>).metadata ?? {}) as Record<
+    string,
+    unknown
+  >;
 
   pi.registerTool({
     name: 'fleet_run',
-    description: 'Run a command in a new Fleet terminal tab. Use this to run background tasks (like dev servers, builds, or tests) in a separate terminal while continuing your work.',
+    description:
+      'Run a command in a new Fleet terminal tab. Use this to run background tasks (like dev servers, builds, or tests) in a separate terminal while continuing your work.',
     parameters: {
       type: 'object',
       properties: {
         command: {
           type: 'string',
-          description: 'The shell command to run',
+          description: 'The shell command to run'
         },
         cwd: {
           type: 'string',
-          description: 'Working directory for the command (optional, defaults to current directory)',
-        },
+          description: 'Working directory for the command (optional, defaults to current directory)'
+        }
       },
-      required: ['command'],
+      required: ['command']
     },
     async execute({ command, cwd }: { command: string; cwd?: string }) {
-      const bridge = metadata.fleetBridge as {
-        send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
-        isConnected: () => boolean;
-      } | undefined;
+      const bridge = metadata.fleetBridge as
+        | {
+            send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
+            isConnected: () => boolean;
+          }
+        | undefined;
 
       if (!bridge || !bridge.isConnected()) {
         return { error: 'Fleet bridge not connected. Fleet-specific tools are unavailable.' };
@@ -1327,7 +1388,7 @@ export default function fleetTerminal(pi: ExtensionAPI): void {
       } catch (err) {
         return { error: err instanceof Error ? err.message : String(err) };
       }
-    },
+    }
   });
 }
 ```
@@ -1345,6 +1406,7 @@ git commit -m "feat(pi): add Fleet pi extensions for bridge, files, and terminal
 ### Task 11: Wire `terminal.run` Bridge Command
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Add terminal.run handler to bridge request handler**
@@ -1393,6 +1455,7 @@ git commit -m "feat(pi): wire file.open bridge handler, stub terminal.run"
 ### Task 12: Electron Builder — Bundle Pi Extensions
 
 **Files:**
+
 - Modify: `electron-builder.yml` (or equivalent build config)
 
 - [ ] **Step 1: Check build config for extraResources**

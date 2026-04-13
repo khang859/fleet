@@ -15,10 +15,12 @@ Resize the existing transparent Electron `BrowserWindow` to cover the full displ
 ## Window Lifecycle
 
 ### Collapsed State
+
 - 128x128 transparent window, mascot visible, draggable, always-on-top
 - No change from current behavior
 
 ### Expanding
+
 1. Save the mascot's current screen position (`savedPosition`) for later restoration
 2. Play teleport-out animation on mascot (~200ms)
 3. Get the current display's work area via `screen.getDisplayNearestPoint()`
@@ -29,6 +31,7 @@ Resize the existing transparent Electron `BrowserWindow` to cover the full displ
 8. Window remains always-on-top at `'pop-up-menu'` level
 
 ### Collapsing
+
 1. Play teleport-out animation on mascot in header (~200ms)
 2. Renderer hides backdrop + pane
 3. `setBounds()` back to 128x128 at `savedPosition`
@@ -61,41 +64,49 @@ Resize the existing transparent Electron `BrowserWindow` to cover the full displ
 ```
 
 ### Backdrop
+
 - `bg-black/60` for now
 - Structured as its own div so sci-fi background images/assets can be layered in later
 - Click on backdrop closes the pane (`e.stopPropagation()` on the pane prevents close when clicking inside it)
 
 ### Collapsed Structure
+
 - Same as current: just `<SpaceshipSprite mode="floating" />` at 128x128
 
 ## Component Changes
 
 ### SpaceshipSprite
+
 - Add `mode` prop: `'floating'` | `'header'`
 - `'floating'`: Current behavior — 128x128, draggable, click toggles expand
 - `'header'`: 48x48 (CSS scale or explicit sizing), no drag, click triggers close
 - Animation loop continues in both modes (idle bob stays alive in header)
 
 ### App.tsx (copilot renderer)
+
 - Orchestrates between collapsed and expanded layouts
 - Manages teleport animation state machine
 - Handles Escape key listener when expanded
 
 ### SessionList, SessionDetail, CopilotSettings, MascotPicker
+
 - No structural changes — they render inside a larger container and naturally have more room (600px vs 350px)
 
 ### CrtFrame
+
 - Still wraps the pane body for CRT aesthetic
 
 ## State Changes
 
 ### Zustand Store (`copilot-store.ts`)
+
 - `expanded`: boolean — stays as-is
 - `panelDirection`: **removed** — no longer needed
 - `savedPosition: { x: number, y: number } | null`: **added** — where mascot was before expand
 - `view`: reset to `'sessions'` on close
 
 ### Main Process (`copilot-window.ts`)
+
 - `toggleExpanded()` reworked:
   - Expand: save bounds, get display work area, `setBounds()` to full work area
   - Collapse: `setBounds()` back to 128x128 at saved position
@@ -104,6 +115,7 @@ Resize the existing transparent Electron `BrowserWindow` to cover the full displ
 - Keep `setAlwaysOnTop(true, 'pop-up-menu')` when expanded
 
 ### IPC Changes
+
 - `copilot:expanded-changed` payload simplifies: `{ expanded: boolean }` — no more `direction` object
 - `copilot:set-expanded` and `copilot:toggle-expanded` unchanged
 - Preload API: remove `direction` from `onExpandedChanged` callback signature
@@ -111,26 +123,31 @@ Resize the existing transparent Electron `BrowserWindow` to cover the full displ
 ## Teleport Animation
 
 ### Flash Out (~200ms)
+
 1. White flash overlay on mascot sprite for ~100ms (opacity pulse to bright)
 2. Mascot fades to transparent over ~100ms
 
 ### Flash In (~200ms)
+
 1. Mascot starts invisible at destination
 2. Brief white flash/glow at position for ~100ms
 3. Mascot fades in over ~100ms
 
 ### Implementation
+
 - CSS `@keyframes` animations: `teleport-out` and `teleport-in`
 - Classes toggled via component state
 - Window resize triggered between the two animations with ~200ms delay
 - Total transition time: ~400ms
 
 ### Reverse
+
 Same effect on close — flash out in header, window resizes, flash in at floating position.
 
 ## Close Interactions
 
 Three close triggers:
+
 1. **Mascot click in header**: `SpaceshipSprite` in `'header'` mode click calls `toggleExpanded()`
 2. **Backdrop click**: Backdrop div `onClick` calls `toggleExpanded()`; pane uses `e.stopPropagation()`
 3. **Escape key**: `keydown` listener on expanded container; cleaned up on collapse

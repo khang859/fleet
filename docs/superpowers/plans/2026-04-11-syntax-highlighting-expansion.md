@@ -12,21 +12,22 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `src/shared/languages.ts` | Create | Shared extension-to-language registry |
-| `src/shared/__tests__/languages.test.ts` | Create | Tests for the language registry |
-| `src/renderer/src/components/FileEditorPane.tsx` | Modify | Consume shared registry, lazy-load expanded CodeMirror langs |
-| `src/renderer/src/components/Telescope/ShikiPreview.tsx` | Create | Shiki-highlighted preview component |
-| `src/renderer/src/components/Telescope/TelescopeModal.tsx` | Modify | Use ShikiPreview instead of plain `<pre>` |
-| `src/renderer/src/components/GitChangesModal.tsx` | Modify | Replace local lang map with shared registry |
-| `package.json` | Modify | Add new `@codemirror/lang-*` packages |
+| File                                                       | Action | Responsibility                                               |
+| ---------------------------------------------------------- | ------ | ------------------------------------------------------------ |
+| `src/shared/languages.ts`                                  | Create | Shared extension-to-language registry                        |
+| `src/shared/__tests__/languages.test.ts`                   | Create | Tests for the language registry                              |
+| `src/renderer/src/components/FileEditorPane.tsx`           | Modify | Consume shared registry, lazy-load expanded CodeMirror langs |
+| `src/renderer/src/components/Telescope/ShikiPreview.tsx`   | Create | Shiki-highlighted preview component                          |
+| `src/renderer/src/components/Telescope/TelescopeModal.tsx` | Modify | Use ShikiPreview instead of plain `<pre>`                    |
+| `src/renderer/src/components/GitChangesModal.tsx`          | Modify | Replace local lang map with shared registry                  |
+| `package.json`                                             | Modify | Add new `@codemirror/lang-*` packages                        |
 
 ---
 
 ### Task 1: Install CodeMirror Language Packages
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install all new CodeMirror language packages**
@@ -52,6 +53,7 @@ git commit -m "chore: add codemirror language packages for syntax highlighting e
 ### Task 2: Create Shared Language Registry
 
 **Files:**
+
 - Create: `src/shared/languages.ts`
 - Create: `src/shared/__tests__/languages.test.ts`
 
@@ -74,8 +76,14 @@ describe('getLanguageForPath', () => {
   });
 
   it('handles full file paths', () => {
-    expect(getLanguageForPath('/home/user/project/src/index.tsx')).toEqual({ id: 'tsx', label: 'TSX' });
-    expect(getLanguageForPath('C:\\Users\\dev\\file.py')).toEqual({ id: 'python', label: 'Python' });
+    expect(getLanguageForPath('/home/user/project/src/index.tsx')).toEqual({
+      id: 'tsx',
+      label: 'TSX'
+    });
+    expect(getLanguageForPath('C:\\Users\\dev\\file.py')).toEqual({
+      id: 'python',
+      label: 'Python'
+    });
   });
 
   it('handles case-insensitive extensions', () => {
@@ -84,7 +92,10 @@ describe('getLanguageForPath', () => {
   });
 
   it('matches special filenames without extensions', () => {
-    expect(getLanguageForPath('/project/Dockerfile')).toEqual({ id: 'dockerfile', label: 'Dockerfile' });
+    expect(getLanguageForPath('/project/Dockerfile')).toEqual({
+      id: 'dockerfile',
+      label: 'Dockerfile'
+    });
     expect(getLanguageForPath('/project/Makefile')).toEqual({ id: 'makefile', label: 'Makefile' });
   });
 
@@ -168,13 +179,13 @@ const extensionMap: Record<string, LanguageInfo> = {
   plist: { id: 'xml', label: 'XML' },
   yaml: { id: 'yaml', label: 'YAML' },
   yml: { id: 'yaml', label: 'YAML' },
-  zig: { id: 'zig', label: 'Zig' },
+  zig: { id: 'zig', label: 'Zig' }
 };
 
 /** Filenames (no extension) that map to a language */
 const filenameMap: Record<string, LanguageInfo> = {
   Dockerfile: { id: 'dockerfile', label: 'Dockerfile' },
-  Makefile: { id: 'makefile', label: 'Makefile' },
+  Makefile: { id: 'makefile', label: 'Makefile' }
 };
 
 export function getLanguageForPath(filePath: string): LanguageInfo | null {
@@ -186,7 +197,7 @@ export function getLanguageForPath(filePath: string): LanguageInfo | null {
   if (byName) return byName;
 
   // Check by extension
-  const ext = filename.includes('.') ? filename.split('.').pop()?.toLowerCase() ?? '' : '';
+  const ext = filename.includes('.') ? (filename.split('.').pop()?.toLowerCase() ?? '') : '';
   return extensionMap[ext] ?? null;
 }
 ```
@@ -208,6 +219,7 @@ git commit -m "feat: add shared language registry for syntax highlighting"
 ### Task 3: Expand FileEditorPane Language Support
 
 **Files:**
+
 - Modify: `src/renderer/src/components/FileEditorPane.tsx:1-93` (imports and language functions)
 
 - [ ] **Step 1: Replace the inline language functions with shared registry + lazy loader**
@@ -215,6 +227,7 @@ git commit -m "feat: add shared language registry for syntax highlighting"
 In `src/renderer/src/components/FileEditorPane.tsx`, replace the entire top section (lines 1-59) with the following. This replaces `getLanguageExtension()` with an async `loadCodeMirrorLanguage()` that lazy-loads language packs, and replaces `getLanguageName()` with the shared registry.
 
 Remove these static imports (lines 16-21):
+
 ```ts
 import { javascript } from '@codemirror/lang-javascript';
 import { html } from '@codemirror/lang-html';
@@ -225,11 +238,13 @@ import { python } from '@codemirror/lang-python';
 ```
 
 Add this import near the top:
+
 ```ts
 import { getLanguageForPath } from '../../../shared/languages';
 ```
 
 Replace the `getLanguageExtension` function (lines 29-59) with:
+
 ```ts
 async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport | null> {
   switch (langId) {
@@ -324,6 +339,7 @@ async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport |
 ```
 
 Replace the `getLanguageName` function (lines 61-93) with:
+
 ```ts
 function getLanguageName(filePath: string): string {
   return getLanguageForPath(filePath)?.label ?? 'Plain Text';
@@ -337,7 +353,7 @@ In the `useEffect` that creates the editor (line 165), replace the synchronous l
 Replace the synchronous `const langExt = getLanguageExtension(filePath);` (line 172) with:
 
 ```ts
-    const langInfo = getLanguageForPath(filePath);
+const langInfo = getLanguageForPath(filePath);
 ```
 
 In the extensions array, remove `...(langExt ? [langExt] : [])` (line 225) — language will be added dynamically after creation.
@@ -345,19 +361,20 @@ In the extensions array, remove `...(langExt ? [langExt] : [])` (line 225) — l
 After `viewRef.current = view;` (line 231), add:
 
 ```ts
-    // Lazy-load and apply syntax highlighting
-    if (langInfo) {
-      void loadCodeMirrorLanguage(langInfo.id).then((langExt) => {
-        if (langExt && viewRef.current === view) {
-          view.dispatch({
-            effects: StateEffect.appendConfig.of(langExt)
-          });
-        }
+// Lazy-load and apply syntax highlighting
+if (langInfo) {
+  void loadCodeMirrorLanguage(langInfo.id).then((langExt) => {
+    if (langExt && viewRef.current === view) {
+      view.dispatch({
+        effects: StateEffect.appendConfig.of(langExt)
       });
     }
+  });
+}
 ```
 
 Add to the imports at top:
+
 ```ts
 import { StateEffect } from '@codemirror/state';
 ```
@@ -381,6 +398,7 @@ git commit -m "feat: expand file editor to support ~30 languages with lazy loadi
 ### Task 4: Create Shiki Preview Component for Telescope
 
 **Files:**
+
 - Create: `src/renderer/src/components/Telescope/ShikiPreview.tsx`
 
 - [ ] **Step 1: Create the ShikiPreview component**
@@ -391,21 +409,32 @@ Create `src/renderer/src/components/Telescope/ShikiPreview.tsx`:
 import { useEffect, useRef, useState } from 'react';
 import { getLanguageForPath } from '../../../../shared/languages';
 
-type HighlighterInstance = Awaited<ReturnType<typeof import('shiki')['createHighlighter']>>;
+type HighlighterInstance = Awaited<ReturnType<(typeof import('shiki'))['createHighlighter']>>;
 
 let highlighterPromise: Promise<HighlighterInstance> | null = null;
 
 /** Core languages to pre-load with the highlighter */
 const PRELOAD_LANGS = [
-  'typescript', 'javascript', 'json', 'html', 'css', 'python', 'bash',
-  'yaml', 'markdown', 'tsx', 'jsx', 'rust', 'go',
+  'typescript',
+  'javascript',
+  'json',
+  'html',
+  'css',
+  'python',
+  'bash',
+  'yaml',
+  'markdown',
+  'tsx',
+  'jsx',
+  'rust',
+  'go'
 ] as const;
 
 function getHighlighter(): Promise<HighlighterInstance> {
   highlighterPromise ??= import('shiki').then((mod) =>
     mod.createHighlighter({
       themes: ['one-dark-pro'],
-      langs: [...PRELOAD_LANGS],
+      langs: [...PRELOAD_LANGS]
     })
   );
   return highlighterPromise;
@@ -435,7 +464,9 @@ export function ShikiPreview({ content, filePath }: Props): React.JSX.Element {
         const loadedLangs = highlighter.getLoadedLanguages();
         if (!loadedLangs.includes(langInfo.id)) {
           try {
-            await highlighter.loadLanguage(langInfo.id as Parameters<HighlighterInstance['loadLanguage']>[0]);
+            await highlighter.loadLanguage(
+              langInfo.id as Parameters<HighlighterInstance['loadLanguage']>[0]
+            );
           } catch {
             // Language not available in Shiki — fall back to plain text
             return;
@@ -446,7 +477,7 @@ export function ShikiPreview({ content, filePath }: Props): React.JSX.Element {
 
         const html = highlighter.codeToHtml(content, {
           lang: langInfo.id,
-          theme: 'one-dark-pro',
+          theme: 'one-dark-pro'
         });
 
         if (generation === generationRef.current) {
@@ -493,20 +524,24 @@ git commit -m "feat: add ShikiPreview component for telescope file preview"
 ### Task 5: Integrate ShikiPreview into TelescopeModal
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Telescope/TelescopeModal.tsx:121-226,330-356`
 
 This task changes two things in TelescopeModal:
+
 1. Store raw content + filePath separately from the display string (so ShikiPreview can receive unhighlighted content)
 2. Use `ShikiPreview` in the preview panel
 
 - [ ] **Step 1: Add new state and import**
 
 At the top of `TelescopeModal.tsx`, add the import:
+
 ```ts
 import { ShikiPreview } from './ShikiPreview';
 ```
 
 Near the existing `previewContent` state (line 48), add a new state variable:
+
 ```ts
 const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
 ```
@@ -516,29 +551,30 @@ const [previewFilePath, setPreviewFilePath] = useState<string | null>(null);
 In the preview effect (lines 121-226), in the file-reading branch (lines 193-216), after reading the file content, store both the raw content and the file path. Replace lines 193-216:
 
 ```ts
-      if (filePath !== null) {
-        setPreviewLoading(true);
-        setPreviewImage(null);
-        void window.fleet.file
-          .read(filePath)
-          .then((result) => {
-            if (result.success) {
-              const lines = result.data.content.split('\n').slice(0, 200);
-              setPreviewContent(lines.join('\n'));
-              setPreviewFilePath(filePath);
-            } else {
-              setPreviewContent('Could not read file');
-              setPreviewFilePath(null);
-            }
-          })
-          .finally(() => setPreviewLoading(false));
-        return;
+if (filePath !== null) {
+  setPreviewLoading(true);
+  setPreviewImage(null);
+  void window.fleet.file
+    .read(filePath)
+    .then((result) => {
+      if (result.success) {
+        const lines = result.data.content.split('\n').slice(0, 200);
+        setPreviewContent(lines.join('\n'));
+        setPreviewFilePath(filePath);
+      } else {
+        setPreviewContent('Could not read file');
+        setPreviewFilePath(null);
       }
+    })
+    .finally(() => setPreviewLoading(false));
+  return;
+}
 ```
 
 Note: We removed the line-number prefixing — Shiki needs raw content. Line numbers come from Shiki's output or CSS.
 
 Also update the reset points to clear `previewFilePath`:
+
 - At lines 124-125 (the early return when no results), add `setPreviewFilePath(null);`
 - At line 146 (pane preview), add `setPreviewFilePath(null);` after `setPreviewImage(null);`
 - At line 155 (directory preview), add `setPreviewFilePath(null);` after `setPreviewImage(null);`
@@ -602,11 +638,13 @@ git commit -m "feat: integrate shiki syntax highlighting into telescope preview"
 ### Task 6: Consolidate GitChangesModal Language Mapping
 
 **Files:**
+
 - Modify: `src/renderer/src/components/GitChangesModal.tsx:486-515`
 
 - [ ] **Step 1: Add the shared registry import**
 
 At the top of `GitChangesModal.tsx`, add:
+
 ```ts
 import { getLanguageForPath } from '../../../shared/languages';
 ```
@@ -664,6 +702,7 @@ Expected: No lint errors (fix any that appear).
 Run: `npm run dev`
 
 Open a file tab for each of these file types and verify syntax highlighting appears:
+
 - `.ts` / `.tsx` — TypeScript/TSX (was working, verify no regression)
 - `.sh` — Bash (new)
 - `.yaml` — YAML (new)
@@ -674,6 +713,7 @@ Open a file tab for each of these file types and verify syntax highlighting appe
 - [ ] **Step 5: Test Telescope preview**
 
 Open Telescope (`Cmd+P` or equivalent), browse to files of different types:
+
 - A `.ts` file — should show highlighted TypeScript
 - A `.sh` file — should show highlighted Bash
 - A `.json` file — should show highlighted JSON
@@ -687,6 +727,7 @@ Make a change to a `.yaml` or `.rs` file, then open the Git Changes modal. Verif
 - [ ] **Step 7: Commit any fixes**
 
 If any issues were found and fixed during manual testing:
+
 ```bash
 git add -A
 git commit -m "fix: address issues found during syntax highlighting manual testing"

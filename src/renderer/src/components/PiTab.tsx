@@ -17,15 +17,20 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
 
   useEffect(() => {
     let cancelled = false;
-    void window.fleet.pi.getLaunchConfig(paneId).then((config) => {
-      if (cancelled) return;
-      launchConfigRef.current = config;
-      setPiReady(true);
-    }).catch((err: unknown) => {
-      if (cancelled) return;
-      setError(err instanceof Error ? err.message : String(err));
-    });
-    return () => { cancelled = true; };
+    void window.fleet.pi
+      .getLaunchConfig(paneId)
+      .then((config) => {
+        if (cancelled) return;
+        launchConfigRef.current = config;
+        setPiReady(true);
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [paneId]);
 
   if (error) {
@@ -66,7 +71,7 @@ function PiTerminal({
   isActive,
   fontFamily,
   fontSize,
-  launchConfig,
+  launchConfig
 }: {
   paneId: string;
   cwd: string;
@@ -87,7 +92,7 @@ function PiTerminal({
     fontFamily,
     fontSize,
     cursorHidden: true,
-    onScrollStateChange: setIsScrolledUp,
+    onScrollStateChange: setIsScrolledUp
   });
 
   return (
@@ -108,7 +113,13 @@ function PiTerminal({
           aria-label="Scroll to bottom"
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path
+              d="M2 4l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
           </svg>
           <span>Bottom</span>
         </button>

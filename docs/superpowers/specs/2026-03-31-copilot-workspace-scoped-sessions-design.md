@@ -22,8 +22,8 @@ export type CopilotSession = {
   phase: CopilotSessionPhase;
   pid?: number;
   tty?: string;
-  workspaceId?: string;    // NEW
-  workspaceName?: string;  // NEW
+  workspaceId?: string; // NEW
+  workspaceName?: string; // NEW
   pendingPermissions: CopilotPendingPermission[];
   lastActivity: number;
   createdAt: number;
@@ -131,19 +131,19 @@ This controls the same `showAllWorkspaces` setting that the overlay toggle contr
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/shared/types.ts` | Add `workspaceId`, `workspaceName` to `CopilotSession`; add `showAllWorkspaces` to `CopilotSettings` |
-| `src/shared/ipc-channels.ts` | Add `COPILOT_ACTIVE_WORKSPACE` channel |
-| `src/main/settings-store.ts` | Default `showAllWorkspaces: false` |
-| `src/main/layout-store.ts` | Add `findWorkspaceForPane(paneId)` lookup |
-| `src/main/copilot/session-store.ts` | Accept and store `workspaceId`/`workspaceName` on upsert |
-| `src/main/copilot/socket-server.ts` | Pass workspace info when creating/updating sessions |
-| `src/main/copilot/ipc-handlers.ts` | Resolve workspace from PID on hook events; handle active workspace forwarding |
-| `src/main/copilot/copilot-window.ts` | Send active workspace to copilot window on creation |
-| `src/preload/copilot.ts` | Expose `onActiveWorkspace` listener |
-| `src/renderer/copilot/src/store/copilot-store.ts` | Add `activeWorkspaceId`, `showAllWorkspaces` state; filtering logic |
-| `src/renderer/copilot/src/components/SessionList.tsx` | Add filter toggle UI; add workspace subtitle per session |
-| `src/renderer/copilot/src/components/SessionDetail.tsx` | Add workspace subtitle in header |
-| `src/renderer/src/components/settings/CopilotSection.tsx` | Add "Show All Workspaces" toggle |
-| `src/renderer/src/store/workspace-store.ts` or equivalent | Notify main process on workspace switch |
+| File                                                      | Change                                                                                               |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`                                     | Add `workspaceId`, `workspaceName` to `CopilotSession`; add `showAllWorkspaces` to `CopilotSettings` |
+| `src/shared/ipc-channels.ts`                              | Add `COPILOT_ACTIVE_WORKSPACE` channel                                                               |
+| `src/main/settings-store.ts`                              | Default `showAllWorkspaces: false`                                                                   |
+| `src/main/layout-store.ts`                                | Add `findWorkspaceForPane(paneId)` lookup                                                            |
+| `src/main/copilot/session-store.ts`                       | Accept and store `workspaceId`/`workspaceName` on upsert                                             |
+| `src/main/copilot/socket-server.ts`                       | Pass workspace info when creating/updating sessions                                                  |
+| `src/main/copilot/ipc-handlers.ts`                        | Resolve workspace from PID on hook events; handle active workspace forwarding                        |
+| `src/main/copilot/copilot-window.ts`                      | Send active workspace to copilot window on creation                                                  |
+| `src/preload/copilot.ts`                                  | Expose `onActiveWorkspace` listener                                                                  |
+| `src/renderer/copilot/src/store/copilot-store.ts`         | Add `activeWorkspaceId`, `showAllWorkspaces` state; filtering logic                                  |
+| `src/renderer/copilot/src/components/SessionList.tsx`     | Add filter toggle UI; add workspace subtitle per session                                             |
+| `src/renderer/copilot/src/components/SessionDetail.tsx`   | Add workspace subtitle in header                                                                     |
+| `src/renderer/src/components/settings/CopilotSection.tsx` | Add "Show All Workspaces" toggle                                                                     |
+| `src/renderer/src/store/workspace-store.ts` or equivalent | Notify main process on workspace switch                                                              |

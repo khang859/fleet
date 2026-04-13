@@ -54,6 +54,7 @@ fleet images generate --prompt "A cat in space"
 ```
 
 Options:
+
 - `--provider <id>` — image provider (default: fal-ai)
 - `--model <model>` — model to use (default: fal-ai/nano-banana-2)
 - `--resolution <res>` — 0.5K, 1K, 2K, or 4K (default: 1K)
@@ -144,12 +145,12 @@ Be specific about materials, textures, condition, and scale:
 
 ### Style Keywords
 
-| Category | Keywords |
-|----------|----------|
-| Traditional | oil painting, watercolor, charcoal sketch, ink wash, gouache |
-| Digital | digital illustration, concept art, matte painting, 3D render, vector art |
-| Photography | photorealistic, DSLR photo, film photography, 35mm film, Kodak Portra 400 |
-| Specific styles | art nouveau, minimalist, cyberpunk, vaporwave, brutalist |
+| Category        | Keywords                                                                  |
+| --------------- | ------------------------------------------------------------------------- |
+| Traditional     | oil painting, watercolor, charcoal sketch, ink wash, gouache              |
+| Digital         | digital illustration, concept art, matte painting, 3D render, vector art  |
+| Photography     | photorealistic, DSLR photo, film photography, 35mm film, Kodak Portra 400 |
+| Specific styles | art nouveau, minimalist, cyberpunk, vaporwave, brutalist                  |
 
 ### Lighting
 

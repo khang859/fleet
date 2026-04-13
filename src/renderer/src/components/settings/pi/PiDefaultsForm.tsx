@@ -64,7 +64,10 @@ export function PiDefaultsForm({
           <select
             value={settings.defaultProvider ?? ''}
             onChange={(e) =>
-              void onChange({ defaultProvider: e.target.value || undefined, defaultModel: undefined })
+              void onChange({
+                defaultProvider: e.target.value || undefined,
+                defaultModel: undefined
+              })
             }
             className="bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700"
           >

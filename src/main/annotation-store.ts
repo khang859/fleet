@@ -1,10 +1,4 @@
-import {
-  mkdirSync,
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  rmSync
-} from 'fs';
+import { mkdirSync, existsSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 import { EventEmitter } from 'events';
@@ -104,11 +98,9 @@ export class AnnotationStore extends EventEmitter {
     };
 
     // Write result.json
-    writeFileSync(
-      join(fullDir, 'result.json'),
-      JSON.stringify(outputResult, null, 2),
-      { mode: 0o600 }
-    );
+    writeFileSync(join(fullDir, 'result.json'), JSON.stringify(outputResult, null, 2), {
+      mode: 0o600
+    });
 
     const meta: AnnotationMeta = {
       id,

@@ -12,23 +12,24 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/shared/types.ts` | Modify | Add `CopilotChatMessage` and `CopilotMessageBlock` types |
-| `src/shared/ipc-channels.ts` | Modify | Add `COPILOT_CHAT_HISTORY` and `COPILOT_SEND_MESSAGE` channels |
-| `src/main/copilot/conversation-reader.ts` | Create | Read + incrementally parse JSONL files, watch for changes |
-| `src/main/copilot/ipc-handlers.ts` | Modify | Register chat history and send message handlers |
-| `src/main/copilot/index.ts` | Modify | Initialize ConversationReader, wire up to session store |
-| `src/preload/copilot.ts` | Modify | Expose `getChatHistory`, `onChatHistory`, `sendMessage` APIs |
-| `src/renderer/copilot/src/store/copilot-store.ts` | Modify | Add chat messages state and actions |
-| `src/renderer/copilot/src/components/SessionDetail.tsx` | Modify | Replace placeholder with message list + input bar |
-| `src/renderer/copilot/src/components/ChatMessage.tsx` | Create | Render individual user/assistant/tool messages |
+| File                                                    | Action | Responsibility                                                 |
+| ------------------------------------------------------- | ------ | -------------------------------------------------------------- |
+| `src/shared/types.ts`                                   | Modify | Add `CopilotChatMessage` and `CopilotMessageBlock` types       |
+| `src/shared/ipc-channels.ts`                            | Modify | Add `COPILOT_CHAT_HISTORY` and `COPILOT_SEND_MESSAGE` channels |
+| `src/main/copilot/conversation-reader.ts`               | Create | Read + incrementally parse JSONL files, watch for changes      |
+| `src/main/copilot/ipc-handlers.ts`                      | Modify | Register chat history and send message handlers                |
+| `src/main/copilot/index.ts`                             | Modify | Initialize ConversationReader, wire up to session store        |
+| `src/preload/copilot.ts`                                | Modify | Expose `getChatHistory`, `onChatHistory`, `sendMessage` APIs   |
+| `src/renderer/copilot/src/store/copilot-store.ts`       | Modify | Add chat messages state and actions                            |
+| `src/renderer/copilot/src/components/SessionDetail.tsx` | Modify | Replace placeholder with message list + input bar              |
+| `src/renderer/copilot/src/components/ChatMessage.tsx`   | Create | Render individual user/assistant/tool messages                 |
 
 ---
 
 ### Task 1: Add shared types for chat messages
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 - Modify: `src/shared/ipc-channels.ts`
 
@@ -80,6 +81,7 @@ git commit -m "feat(copilot): add chat message types and IPC channels"
 ### Task 2: Create conversation reader (main process)
 
 **Files:**
+
 - Create: `src/main/copilot/conversation-reader.ts`
 
 This module reads JSONL files incrementally and watches for changes. It follows Claude Island's `ConversationParser` approach but in TypeScript/Node.js.
@@ -111,10 +113,7 @@ function sessionFilePath(sessionId: string, cwd: string): string {
   return join(homedir(), '.claude', 'projects', projectDir, `${sessionId}.jsonl`);
 }
 
-function formatToolInputPreview(
-  toolName: string,
-  input: Record<string, unknown>
-): string {
+function formatToolInputPreview(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
     case 'Read':
     case 'Write':
@@ -214,7 +213,7 @@ function parseMessageLine(
             type: 'tool_use',
             id: toolId ?? '',
             name,
-            inputPreview: formatToolInputPreview(name, input),
+            inputPreview: formatToolInputPreview(name, input)
           });
           break;
         }
@@ -238,7 +237,7 @@ function parseMessageLine(
     id: uuid,
     role: type as 'user' | 'assistant',
     timestamp,
-    blocks,
+    blocks
   };
 }
 
@@ -381,6 +380,7 @@ git commit -m "feat(copilot): add conversation JSONL reader with incremental par
 ### Task 3: Wire up conversation reader to IPC and session lifecycle
 
 **Files:**
+
 - Modify: `src/main/copilot/ipc-handlers.ts`
 - Modify: `src/main/copilot/index.ts`
 
@@ -408,39 +408,39 @@ export function registerCopilotIpcHandlers(
 Add before the `log.info('IPC handlers registered')` line:
 
 ```typescript
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_CHAT_HISTORY,
-    (_event, args: { sessionId: string; cwd: string }) => {
-      const messages = conversationReader.getMessages(args.sessionId, args.cwd);
-      conversationReader.watch(args.sessionId, args.cwd);
-      return messages;
-    }
-  );
+ipcMain.handle(
+  IPC_CHANNELS.COPILOT_CHAT_HISTORY,
+  (_event, args: { sessionId: string; cwd: string }) => {
+    const messages = conversationReader.getMessages(args.sessionId, args.cwd);
+    conversationReader.watch(args.sessionId, args.cwd);
+    return messages;
+  }
+);
 
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_SEND_MESSAGE,
-    async (_event, args: { sessionId: string; message: string }) => {
-      const session = sessionStore.getSession(args.sessionId);
-      if (!session?.tty) {
-        log.warn('no TTY for session, cannot send message', { sessionId: args.sessionId });
-        return false;
-      }
-      try {
-        const { openSync, writeSync, closeSync } = await import('fs');
-        const fd = openSync(session.tty, 'w');
-        try {
-          writeSync(fd, args.message + '\n');
-        } finally {
-          closeSync(fd);
-        }
-        log.info('message sent to TTY', { sessionId: args.sessionId, tty: session.tty });
-        return true;
-      } catch (err) {
-        log.error('failed to send message', { error: String(err) });
-        return false;
-      }
+ipcMain.handle(
+  IPC_CHANNELS.COPILOT_SEND_MESSAGE,
+  async (_event, args: { sessionId: string; message: string }) => {
+    const session = sessionStore.getSession(args.sessionId);
+    if (!session?.tty) {
+      log.warn('no TTY for session, cannot send message', { sessionId: args.sessionId });
+      return false;
     }
-  );
+    try {
+      const { openSync, writeSync, closeSync } = await import('fs');
+      const fd = openSync(session.tty, 'w');
+      try {
+        writeSync(fd, args.message + '\n');
+      } finally {
+        closeSync(fd);
+      }
+      log.info('message sent to TTY', { sessionId: args.sessionId, tty: session.tty });
+      return true;
+    } catch (err) {
+      log.error('failed to send message', { error: String(err) });
+      return false;
+    }
+  }
+);
 ```
 
 - [ ] **Step 2: Initialize ConversationReader in index.ts**
@@ -448,16 +448,19 @@ Add before the `log.info('IPC handlers registered')` line:
 Read the current `src/main/copilot/index.ts` to understand its structure, then:
 
 Add import:
+
 ```typescript
 import { ConversationReader } from './conversation-reader';
 ```
 
 Create the instance alongside the other services (after `CopilotSessionStore` and before `registerCopilotIpcHandlers`):
+
 ```typescript
 const conversationReader = new ConversationReader();
 ```
 
 Wire up the `onChange` callback to push updates to the renderer:
+
 ```typescript
 conversationReader.setOnChange((sessionId, messages) => {
   const win = copilotWindow.getWindow();
@@ -470,6 +473,7 @@ conversationReader.setOnChange((sessionId, messages) => {
 Pass `conversationReader` to `registerCopilotIpcHandlers` (add it as the 5th argument).
 
 Clean up watchers when the session ends — in the `sessionStore.setOnChange` callback, after ended sessions are cleaned up, call `conversationReader.unwatch(sessionId)` for ended sessions. Alternatively, add cleanup in the dispose path:
+
 ```typescript
 // In the cleanup/dispose section:
 conversationReader.dispose();
@@ -492,17 +496,19 @@ git commit -m "feat(copilot): wire conversation reader to IPC and session lifecy
 ### Task 4: Expose chat APIs in preload bridge
 
 **Files:**
+
 - Modify: `src/preload/copilot.ts`
 
 - [ ] **Step 1: Add chat history and send message methods**
 
 Add the import for `CopilotChatMessage`:
+
 ```typescript
 import type {
   CopilotSession,
   CopilotSettings,
   CopilotPosition,
-  CopilotChatMessage,
+  CopilotChatMessage
 } from '../shared/types';
 ```
 
@@ -546,20 +552,19 @@ git commit -m "feat(copilot): expose chat history and send message in preload AP
 ### Task 5: Add chat state to Zustand store
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts`
 
 - [ ] **Step 1: Add chat messages state and actions**
 
 Add the `CopilotChatMessage` import:
+
 ```typescript
-import type {
-  CopilotSession,
-  CopilotSettings,
-  CopilotChatMessage,
-} from '../../../../shared/types';
+import type { CopilotSession, CopilotSettings, CopilotChatMessage } from '../../../../shared/types';
 ```
 
 Add to the `CopilotStoreState` type:
+
 ```typescript
   chatMessages: CopilotChatMessage[];
   chatLoading: boolean;
@@ -569,12 +574,14 @@ Add to the `CopilotStoreState` type:
 ```
 
 Add initial state values:
+
 ```typescript
   chatMessages: [],
   chatLoading: false,
 ```
 
 Add the action implementations:
+
 ```typescript
   loadChatHistory: async (sessionId, cwd) => {
     set({ chatLoading: true });
@@ -598,6 +605,7 @@ Add the action implementations:
 ```
 
 Also update `backToList` to clear chat messages:
+
 ```typescript
   backToList: () => set({ view: 'sessions', selectedSessionId: null, chatMessages: [] }),
 ```
@@ -619,6 +627,7 @@ git commit -m "feat(copilot): add chat messages state and actions to store"
 ### Task 6: Create ChatMessage component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/ChatMessage.tsx`
 
 - [ ] **Step 1: Create the ChatMessage component**
@@ -632,7 +641,7 @@ function TextBlock({ text }: { text: string }): React.JSX.Element {
 
 function ToolUseBlock({
   name,
-  inputPreview,
+  inputPreview
 }: {
   name: string;
   inputPreview: string;
@@ -640,9 +649,7 @@ function ToolUseBlock({
   return (
     <div className="flex items-center gap-1 text-[10px] text-neutral-400 bg-neutral-800/50 rounded px-1.5 py-0.5">
       <span className="text-blue-400 font-medium">{name}</span>
-      {inputPreview && (
-        <span className="truncate opacity-70">{inputPreview}</span>
-      )}
+      {inputPreview && <span className="truncate opacity-70">{inputPreview}</span>}
     </div>
   );
 }
@@ -652,7 +659,8 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
     <details className="text-[10px] text-neutral-500">
       <summary className="cursor-pointer hover:text-neutral-400">Thinking...</summary>
       <div className="mt-1 whitespace-pre-wrap break-words pl-2 border-l border-neutral-700">
-        {text.slice(0, 500)}{text.length > 500 ? '...' : ''}
+        {text.slice(0, 500)}
+        {text.length > 500 ? '...' : ''}
       </div>
     </details>
   );
@@ -671,9 +679,7 @@ export function ChatMessageItem({ message }: { message: CopilotChatMessage }): R
               <div
                 key={key}
                 className={`max-w-[90%] rounded-lg px-2 py-1 ${
-                  isUser
-                    ? 'bg-blue-600/30 text-blue-100'
-                    : 'bg-neutral-800 text-neutral-200'
+                  isUser ? 'bg-blue-600/30 text-blue-100' : 'bg-neutral-800 text-neutral-200'
                 }`}
               >
                 <TextBlock text={block.text} />
@@ -721,6 +727,7 @@ git commit -m "feat(copilot): add ChatMessage renderer component"
 ### Task 7: Update SessionDetail with chat history and input
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionDetail.tsx`
 - Modify: `src/renderer/copilot/src/App.tsx` (subscribe to chat updates)
 
@@ -799,23 +806,20 @@ export function SessionDetail(): React.JSX.Element | null {
         <button onClick={backToList} className="text-xs text-neutral-400 hover:text-neutral-200">
           ←
         </button>
-        <span className="text-xs font-medium text-neutral-200 truncate">
-          {session.projectName}
-        </span>
+        <span className="text-xs font-medium text-neutral-200 truncate">{session.projectName}</span>
         <span className="text-[9px] text-neutral-500 ml-auto">{session.phase}</span>
       </div>
 
       {/* Pending permissions */}
       {session.pendingPermissions.length > 0 && (
         <div className="px-3 py-2 border-b border-neutral-800">
-          <div className="text-[10px] font-medium text-amber-400 mb-1">
-            Pending Permissions
-          </div>
+          <div className="text-[10px] font-medium text-amber-400 mb-1">Pending Permissions</div>
           {session.pendingPermissions.map((perm) => (
-            <div key={perm.toolUseId} className="mb-2 p-2 bg-neutral-800/50 rounded border border-amber-500/20">
-              <div className="text-xs text-neutral-200 font-medium">
-                {perm.tool.toolName}
-              </div>
+            <div
+              key={perm.toolUseId}
+              className="mb-2 p-2 bg-neutral-800/50 rounded border border-amber-500/20"
+            >
+              <div className="text-xs text-neutral-200 font-medium">{perm.tool.toolName}</div>
               {Object.keys(perm.tool.toolInput).length > 0 && (
                 <pre className="mt-1 text-[10px] text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
                   {JSON.stringify(perm.tool.toolInput, null, 2)}
@@ -891,14 +895,14 @@ export function SessionDetail(): React.JSX.Element | null {
 In `src/renderer/copilot/src/App.tsx`, add a `useEffect` to subscribe to chat update events from the main process. Add this alongside existing effect hooks:
 
 ```tsx
-  // Subscribe to real-time chat updates
-  useEffect(() => {
-    const setChatMessages = useCopilotStore.getState().setChatMessages;
-    const unsub = window.copilot.onChatUpdated(({ sessionId, messages }) => {
-      setChatMessages(sessionId, messages);
-    });
-    return unsub;
-  }, []);
+// Subscribe to real-time chat updates
+useEffect(() => {
+  const setChatMessages = useCopilotStore.getState().setChatMessages;
+  const unsub = window.copilot.onChatUpdated(({ sessionId, messages }) => {
+    setChatMessages(sessionId, messages);
+  });
+  return unsub;
+}, []);
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -928,6 +932,7 @@ git commit -m "feat(copilot): add chat history display and message input to sess
 ### Task 8: Handle session ended cleanup for conversation reader
 
 **Files:**
+
 - Modify: `src/main/copilot/index.ts`
 
 - [ ] **Step 1: Clean up watchers when sessions end**
@@ -940,7 +945,7 @@ After `sessionStore.processHookEvent(event)` or in the `onChange` callback, chec
 // In the sessionStore onChange handler, after pushing sessions to renderer:
 // Clean up watchers for sessions that have ended
 const activeSessions = sessionStore.getSessions();
-const activeIds = new Set(activeSessions.map(s => s.sessionId));
+const activeIds = new Set(activeSessions.map((s) => s.sessionId));
 // The ConversationReader should expose a method to clean up stale watchers
 // For now, ended sessions are cleaned up by the 30-second timeout in session-store
 ```
@@ -950,7 +955,7 @@ Actually, the simplest approach: in the `session-store.ts` where it deletes ende
 Add to the `onChange` callback in index.ts:
 
 ```typescript
-const currentSessionIds = new Set(sessionStore.getSessions().map(s => s.sessionId));
+const currentSessionIds = new Set(sessionStore.getSessions().map((s) => s.sessionId));
 for (const watchedId of conversationReader.getWatchedSessionIds()) {
   if (!currentSessionIds.has(watchedId)) {
     conversationReader.unwatch(watchedId);

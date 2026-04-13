@@ -18,7 +18,10 @@ export const useSettingsStore = create<SettingsStoreState>((set) => ({
   loadSettings: async () => {
     log.debug('loadSettings');
     const settings = await window.fleet.settings.get();
-    log.debug('loadSettings complete', { fontFamily: settings.general.fontFamily, fontSize: settings.general.fontSize });
+    log.debug('loadSettings complete', {
+      fontFamily: settings.general.fontFamily,
+      fontSize: settings.general.fontSize
+    });
     set({ settings, isLoaded: true });
   },
 

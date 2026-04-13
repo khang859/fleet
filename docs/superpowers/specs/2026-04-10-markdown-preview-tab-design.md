@@ -47,9 +47,11 @@ const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
 // In the open command handler:
 const ext = extname(resolved).toLowerCase();
-const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image'
-  : MARKDOWN_EXTENSIONS.has(ext) ? 'markdown'
-  : 'file';
+const paneType = IMAGE_EXTENSIONS.has(ext)
+  ? 'image'
+  : MARKDOWN_EXTENSIONS.has(ext)
+    ? 'markdown'
+    : 'file';
 ```
 
 ### `src/main/socket-server.ts`
@@ -136,6 +138,7 @@ When switching from Raw to Preview: `MarkdownPane` holds a `contentRef` that `Fi
 ### Link Handling
 
 Custom `react-markdown` link renderer:
+
 - Relative `.md`/`.markdown` links → `openFileInTab({ path: resolved, paneType: 'markdown' })`
 - Relative non-markdown links → `openFileInTab({ path: resolved, paneType: 'file' })`
 - External URLs (`http://`, `https://`) → `window.open(url)`
@@ -153,16 +156,16 @@ Path resolution uses the directory of the current file as the base.
 
 ### Element Styles (Dark Theme)
 
-| Element | Style |
-|---------|-------|
-| Headings | `text-neutral-100`, scaled sizes (h1 `text-2xl`, h2 `text-xl`, etc.) |
-| Body text | `text-neutral-300`, `leading-relaxed` |
-| Links | `text-blue-400 hover:underline`, cursor pointer |
-| Inline code | `bg-neutral-800 px-1.5 py-0.5 rounded text-sm font-mono` |
-| Blockquotes | `border-l-2 border-neutral-600 pl-4 text-neutral-400` |
-| Tables | `border-neutral-700`, alternating row backgrounds |
-| Lists | Proper indentation and bullet/number styling |
-| Horizontal rules | `border-neutral-700` |
+| Element          | Style                                                                |
+| ---------------- | -------------------------------------------------------------------- |
+| Headings         | `text-neutral-100`, scaled sizes (h1 `text-2xl`, h2 `text-xl`, etc.) |
+| Body text        | `text-neutral-300`, `leading-relaxed`                                |
+| Links            | `text-blue-400 hover:underline`, cursor pointer                      |
+| Inline code      | `bg-neutral-800 px-1.5 py-0.5 rounded text-sm font-mono`             |
+| Blockquotes      | `border-l-2 border-neutral-600 pl-4 text-neutral-400`                |
+| Tables           | `border-neutral-700`, alternating row backgrounds                    |
+| Lists            | Proper indentation and bullet/number styling                         |
+| Horizontal rules | `border-neutral-700`                                                 |
 
 ### Code Blocks
 
@@ -175,12 +178,12 @@ Path resolution uses the directory of the current file as the base.
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/shared/types.ts` | Add `'markdown'` to `Tab.type` and `PaneLeaf.paneType` unions |
-| `src/main/fleet-cli.ts` | Add `MARKDOWN_EXTENSIONS` set, route `.md` files to `paneType: 'markdown'` |
-| `src/renderer/src/store/workspace-store.ts` | Map `'markdown'` paneType to `'markdown'` tab type |
-| `src/renderer/src/components/PaneGrid.tsx` | Add `'markdown'` branch rendering `MarkdownPane` |
+| File                                             | Change                                                                                                                               |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/shared/types.ts`                            | Add `'markdown'` to `Tab.type` and `PaneLeaf.paneType` unions                                                                        |
+| `src/main/fleet-cli.ts`                          | Add `MARKDOWN_EXTENSIONS` set, route `.md` files to `paneType: 'markdown'`                                                           |
+| `src/renderer/src/store/workspace-store.ts`      | Map `'markdown'` paneType to `'markdown'` tab type                                                                                   |
+| `src/renderer/src/components/PaneGrid.tsx`       | Add `'markdown'` branch rendering `MarkdownPane`                                                                                     |
 | `src/renderer/src/components/FileEditorPane.tsx` | Add optional `onContentChange?: (content: string) => void` prop, called from the existing `EditorView.updateListener` on doc changes |
-| `src/renderer/src/components/MarkdownPane.tsx` | **New file** — MarkdownPane component |
-| `package.json` | Add `rehype-highlight` dependency |
+| `src/renderer/src/components/MarkdownPane.tsx`   | **New file** — MarkdownPane component                                                                                                |
+| `package.json`                                   | Add `rehype-highlight` dependency                                                                                                    |

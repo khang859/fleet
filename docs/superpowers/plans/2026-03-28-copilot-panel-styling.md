@@ -13,6 +13,7 @@
 ## File Structure
 
 ### New Files
+
 - `scripts/crop-crt-sprites.ts` — One-time sharp script to crop/scale CRT assets
 - `src/renderer/copilot/src/assets/crt/` — 7 cropped CRT PNGs (output of script)
 - `src/renderer/copilot/src/lib/utils.ts` — `cn()` utility
@@ -26,6 +27,7 @@
 - `src/renderer/copilot/src/components/CrtFrame.tsx` — CRT bezel wrapper
 
 ### Modified Files
+
 - `package.json` — Add `@radix-ui/react-scroll-area`
 - `src/renderer/copilot/src/index.css` — Add `.pixelated` utility, focus-visible base styles
 - `src/renderer/copilot/src/App.tsx` — Wrap panel in `CrtFrame`
@@ -39,6 +41,7 @@
 ### Task 1: Install Dependencies and Crop CRT Assets
 
 **Files:**
+
 - Modify: `package.json`
 - Create: `scripts/crop-crt-sprites.ts`
 - Create: `src/renderer/copilot/src/assets/crt/` (7 PNGs)
@@ -79,36 +82,36 @@ const corners: CropSpec[] = [
   {
     file: 'crt-corner-tl.png',
     extract: { left: 45, top: 45, width: 467, height: 467 },
-    resize: { width: 32, height: 32 },
+    resize: { width: 32, height: 32 }
   },
   {
     file: 'crt-corner-tr.png',
     extract: { left: 0, top: 45, width: 467, height: 467 },
-    resize: { width: 32, height: 32 },
+    resize: { width: 32, height: 32 }
   },
   {
     file: 'crt-corner-bl.png',
     extract: { left: 45, top: 0, width: 467, height: 467 },
-    resize: { width: 32, height: 32 },
+    resize: { width: 32, height: 32 }
   },
   {
     file: 'crt-corner-br.png',
     extract: { left: 0, top: 0, width: 467, height: 467 },
-    resize: { width: 32, height: 32 },
-  },
+    resize: { width: 32, height: 32 }
+  }
 ];
 
 const edges: CropSpec[] = [
   {
     file: 'crt-edge-v.png',
     extract: { left: 127, top: 0, width: 258, height: 512 },
-    resize: { width: 16, height: 64 },
+    resize: { width: 16, height: 64 }
   },
   {
     file: 'crt-edge-h.png',
     extract: { left: 0, top: 163, width: 512, height: 145 },
-    resize: { width: 64, height: 16 },
-  },
+    resize: { width: 64, height: 16 }
+  }
 ];
 
 async function cropAndScale(spec: CropSpec): Promise<void> {
@@ -117,7 +120,7 @@ async function cropAndScale(spec: CropSpec): Promise<void> {
   await sharp(input)
     .extract(spec.extract)
     .resize(spec.resize.width, spec.resize.height, {
-      kernel: sharp.kernel.nearest, // Preserve pixel art
+      kernel: sharp.kernel.nearest // Preserve pixel art
     })
     .toFile(output);
   console.log(`✓ ${spec.file} → ${spec.resize.width}x${spec.resize.height}`);
@@ -151,6 +154,7 @@ npx tsx scripts/crop-crt-sprites.ts
 ```
 
 Expected output:
+
 ```
 Cropping CRT sprites...
 Source: .../sprites-raw/star-command/chrome
@@ -191,6 +195,7 @@ git commit -m "feat(copilot): add CRT sprite crop script and cropped assets"
 ### Task 2: Create `cn()` Utility and CSS Foundation
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/lib/utils.ts`
 - Modify: `src/renderer/copilot/src/index.css`
 
@@ -244,6 +249,7 @@ git commit -m "feat(copilot): add cn() utility and CSS foundation"
 ### Task 3: Create shadcn UI Components (Button, Input, Card, Badge)
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/ui/button.tsx`
 - Create: `src/renderer/copilot/src/components/ui/input.tsx`
 - Create: `src/renderer/copilot/src/components/ui/card.tsx`
@@ -267,18 +273,18 @@ const buttonVariants = cva(
         destructive: 'bg-red-600/30 text-red-400 hover:bg-red-600/50',
         success: 'bg-green-600/30 text-green-400 hover:bg-green-600/50',
         outline: 'border border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700',
-        ghost: 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800',
+        ghost: 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800'
       },
       size: {
         default: 'px-2 py-1',
         sm: 'px-1.5 py-0.5 text-[10px]',
-        icon: 'h-6 w-6',
-      },
+        icon: 'h-6 w-6'
+      }
     },
     defaultVariants: {
       variant: 'default',
-      size: 'default',
-    },
+      size: 'default'
+    }
   }
 );
 
@@ -287,11 +293,7 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> &
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, ...props }, ref) => (
-    <button
-      className={cn(buttonVariants({ variant, size, className }))}
-      ref={ref}
-      {...props}
-    />
+    <button className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />
   )
 );
 Button.displayName = 'Button';
@@ -347,9 +349,7 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
 Card.displayName = 'Card';
 
 const CardContent = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-  ({ className, ...props }, ref) => (
-    <div ref={ref} className={cn('p-2', className)} {...props} />
-  )
+  ({ className, ...props }, ref) => <div ref={ref} className={cn('p-2', className)} {...props} />
 );
 CardContent.displayName = 'CardContent';
 
@@ -365,26 +365,22 @@ import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 
-const badgeVariants = cva(
-  'inline-flex items-center justify-center',
-  {
-    variants: {
-      status: {
-        idle: 'text-neutral-500',
-        running: 'text-blue-400 animate-pulse',
-        permission: 'text-amber-400 animate-pulse-amber',
-        error: 'text-red-400',
-        complete: 'text-green-400',
-      },
-    },
-    defaultVariants: {
-      status: 'idle',
-    },
+const badgeVariants = cva('inline-flex items-center justify-center', {
+  variants: {
+    status: {
+      idle: 'text-neutral-500',
+      running: 'text-blue-400 animate-pulse',
+      permission: 'text-amber-400 animate-pulse-amber',
+      error: 'text-red-400',
+      complete: 'text-green-400'
+    }
+  },
+  defaultVariants: {
+    status: 'idle'
   }
-);
+});
 
-export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> &
-  VariantProps<typeof badgeVariants>;
+export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>;
 
 /**
  * Multi-signal status badge per Baymard accessibility guidelines.
@@ -398,12 +394,17 @@ export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> &
  */
 function statusIcon(status: BadgeProps['status']): string {
   switch (status) {
-    case 'running': return '◎';
-    case 'permission': return '△';
-    case 'error': return '■';
-    case 'complete': return '✓';
+    case 'running':
+      return '◎';
+    case 'permission':
+      return '△';
+    case 'error':
+      return '■';
+    case 'complete':
+      return '✓';
     case 'idle':
-    default: return '○';
+    default:
+      return '○';
   }
 }
 
@@ -459,6 +460,7 @@ git commit -m "feat(copilot): add shadcn Button, Input, Card, Badge components"
 ### Task 4: Create shadcn UI Components (ScrollArea, Tooltip, DropdownMenu)
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/ui/scroll-area.tsx`
 - Create: `src/renderer/copilot/src/components/ui/tooltip.tsx`
 - Create: `src/renderer/copilot/src/components/ui/dropdown-menu.tsx`
@@ -615,6 +617,7 @@ git commit -m "feat(copilot): add shadcn ScrollArea, Tooltip, DropdownMenu compo
 ### Task 5: Create CrtFrame Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/CrtFrame.tsx`
 
 - [ ] **Step 1: Create the CrtFrame component**
@@ -632,7 +635,7 @@ import edgeV from '../assets/crt/crt-edge-v.png';
 import scanline from '../assets/crt/crt-scanline.png';
 
 const CORNER = 32; // px - matches cropped corner size
-const EDGE = 16;   // px - matches cropped edge thickness
+const EDGE = 16; // px - matches cropped edge thickness
 
 export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Element {
   return (
@@ -677,7 +680,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           height: EDGE,
           backgroundImage: `url(${edgeH})`,
           backgroundRepeat: 'repeat-x',
-          backgroundSize: `auto ${EDGE}px`,
+          backgroundSize: `auto ${EDGE}px`
         }}
       />
       <div
@@ -690,7 +693,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           backgroundImage: `url(${edgeH})`,
           backgroundRepeat: 'repeat-x',
           backgroundSize: `auto ${EDGE}px`,
-          transform: 'scaleY(-1)',
+          transform: 'scaleY(-1)'
         }}
       />
 
@@ -704,7 +707,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           width: EDGE,
           backgroundImage: `url(${edgeV})`,
           backgroundRepeat: 'repeat-y',
-          backgroundSize: `${EDGE}px auto`,
+          backgroundSize: `${EDGE}px auto`
         }}
       />
       <div
@@ -717,7 +720,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           backgroundImage: `url(${edgeV})`,
           backgroundRepeat: 'repeat-y',
           backgroundSize: `${EDGE}px auto`,
-          transform: 'scaleX(-1)',
+          transform: 'scaleX(-1)'
         }}
       />
 
@@ -731,7 +734,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           bottom: EDGE,
           backgroundImage: `url(${scanline})`,
           backgroundRepeat: 'repeat',
-          opacity: 0.05,
+          opacity: 0.05
         }}
       />
 
@@ -742,7 +745,7 @@ export function CrtFrame({ children }: { children: ReactNode }): React.JSX.Eleme
           paddingTop: CORNER,
           paddingBottom: EDGE,
           paddingLeft: EDGE,
-          paddingRight: EDGE,
+          paddingRight: EDGE
         }}
       >
         {children}
@@ -789,6 +792,7 @@ git commit -m "feat(copilot): add CrtFrame bezel wrapper component"
 ### Task 6: Integrate CrtFrame into App.tsx
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/App.tsx`
 
 - [ ] **Step 1: Wrap the expanded panel in CrtFrame**
@@ -796,37 +800,41 @@ git commit -m "feat(copilot): add CrtFrame bezel wrapper component"
 In `src/renderer/copilot/src/App.tsx`, replace the expanded panel `div` with `CrtFrame`. The current code (lines 59-69):
 
 ```tsx
-      {expanded && (
-        <div
-          className={`absolute right-0 left-0 h-[450px] ${
-            panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
-          }`}
-          style={{ zIndex: 10 }}
-        >
-          {view === 'sessions' && <SessionList />}
-          {view === 'detail' && <SessionDetail />}
-          {view === 'settings' && <CopilotSettings />}
-        </div>
-      )}
+{
+  expanded && (
+    <div
+      className={`absolute right-0 left-0 h-[450px] ${
+        panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
+      }`}
+      style={{ zIndex: 10 }}
+    >
+      {view === 'sessions' && <SessionList />}
+      {view === 'detail' && <SessionDetail />}
+      {view === 'settings' && <CopilotSettings />}
+    </div>
+  );
+}
 ```
 
 Replace with:
 
 ```tsx
-      {expanded && (
-        <div
-          className={`absolute right-0 left-0 h-[450px] ${
-            panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
-          }`}
-          style={{ zIndex: 10 }}
-        >
-          <CrtFrame>
-            {view === 'sessions' && <SessionList />}
-            {view === 'detail' && <SessionDetail />}
-            {view === 'settings' && <CopilotSettings />}
-          </CrtFrame>
-        </div>
-      )}
+{
+  expanded && (
+    <div
+      className={`absolute right-0 left-0 h-[450px] ${
+        panelDirection?.vertical === 'up' ? 'bottom-[132px]' : 'top-[132px]'
+      }`}
+      style={{ zIndex: 10 }}
+    >
+      <CrtFrame>
+        {view === 'sessions' && <SessionList />}
+        {view === 'detail' && <SessionDetail />}
+        {view === 'settings' && <CopilotSettings />}
+      </CrtFrame>
+    </div>
+  );
+}
 ```
 
 Add the import at the top:
@@ -855,6 +863,7 @@ git commit -m "feat(copilot): wrap expanded panel in CrtFrame"
 ### Task 7: Restyle SessionList with shadcn + Baymard UX
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx`
 
 - [ ] **Step 1: Rewrite SessionList**
@@ -889,12 +898,17 @@ function sessionStatus(session: CopilotSession): BadgeStatus {
 
 function statusLabel(status: BadgeStatus): string {
   switch (status) {
-    case 'running': return 'Processing';
-    case 'permission': return 'Waiting for permission';
-    case 'error': return 'Error';
-    case 'complete': return 'Completed';
+    case 'running':
+      return 'Processing';
+    case 'permission':
+      return 'Waiting for permission';
+    case 'error':
+      return 'Error';
+    case 'complete':
+      return 'Completed';
     case 'idle':
-    default: return 'Idle';
+    default:
+      return 'Idle';
   }
 }
 
@@ -1060,6 +1074,7 @@ truncation, Button variants, 44px hit areas, focus indicators."
 ### Task 8: Restyle SessionDetail with shadcn + Baymard UX
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionDetail.tsx`
 
 - [ ] **Step 1: Rewrite SessionDetail**
@@ -1134,13 +1149,14 @@ export function SessionDetail(): React.JSX.Element | null {
   }
 
   const canSendMessage = session.phase === 'waitingForInput';
-  const status = session.pendingPermissions.length > 0
-    ? 'permission' as const
-    : session.phase === 'processing' || session.phase === 'compacting'
-      ? 'running' as const
-      : session.phase === 'ended'
-        ? 'complete' as const
-        : 'idle' as const;
+  const status =
+    session.pendingPermissions.length > 0
+      ? ('permission' as const)
+      : session.phase === 'processing' || session.phase === 'compacting'
+        ? ('running' as const)
+        : session.phase === 'ended'
+          ? ('complete' as const)
+          : ('idle' as const);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -1170,15 +1186,11 @@ export function SessionDetail(): React.JSX.Element | null {
         {/* Pending permissions */}
         {session.pendingPermissions.length > 0 && (
           <div className="px-3 py-2 border-b border-neutral-800">
-            <div className="text-[10px] font-medium text-amber-400 mb-1">
-              Pending Permissions
-            </div>
+            <div className="text-[10px] font-medium text-amber-400 mb-1">Pending Permissions</div>
             {session.pendingPermissions.map((perm) => (
               <Card key={perm.toolUseId} className="mb-2 border-amber-500/20">
                 <CardContent>
-                  <div className="text-xs text-neutral-200 font-medium">
-                    {perm.tool.toolName}
-                  </div>
+                  <div className="text-xs text-neutral-200 font-medium">{perm.tool.toolName}</div>
                   {Object.keys(perm.tool.toolInput).length > 0 && (
                     <pre className="mt-1 text-[10px] text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
                       {JSON.stringify(perm.tool.toolInput, null, 2)}
@@ -1239,11 +1251,7 @@ export function SessionDetail(): React.JSX.Element | null {
                     : 'No TTY — cannot send messages'
               }
             />
-            <Button
-              size="sm"
-              onClick={handleSend}
-              disabled={!canSendMessage || !inputText.trim()}
-            >
+            <Button size="sm" onClick={handleSend} disabled={!canSendMessage || !inputText.trim()}>
               ↑
             </Button>
           </div>
@@ -1277,6 +1285,7 @@ Adds focus indicators and truncation tooltips."
 ### Task 9: Restyle ChatMessage with Card + Tooltip
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/ChatMessage.tsx`
 
 - [ ] **Step 1: Update ChatMessage to use Card and Tooltip**
@@ -1298,7 +1307,7 @@ const MODE_TOOLS = new Set(['EnterPlanMode', 'ExitPlanMode', 'EnterWorktree', 'E
 
 function ToolUseBlock({
   name,
-  inputPreview,
+  inputPreview
 }: {
   name: string;
   inputPreview: string;
@@ -1373,9 +1382,13 @@ function AskUserQuestionBlock({ input }: { input: Record<string, unknown> }): Re
                 onClick={() => handleSelect(i)}
               >
                 <span className="text-[10px] text-amber-400 font-medium mr-1.5">{i + 1}.</span>
-                <span className="text-[11px] text-neutral-200">{(opt['label'] as string) ?? ''}</span>
+                <span className="text-[11px] text-neutral-200">
+                  {(opt['label'] as string) ?? ''}
+                </span>
                 {opt['description'] && (
-                  <span className="text-[10px] text-neutral-500 ml-1">{opt['description'] as string}</span>
+                  <span className="text-[10px] text-neutral-500 ml-1">
+                    {opt['description'] as string}
+                  </span>
                 )}
               </Button>
             ))}
@@ -1391,13 +1404,17 @@ function ThinkingBlock({ text }: { text: string }): React.JSX.Element {
     <details className="text-[10px] text-neutral-500">
       <summary className="cursor-pointer hover:text-neutral-400">Thinking...</summary>
       <div className="mt-1 whitespace-pre-wrap break-words pl-2 border-l border-neutral-700">
-        {text.slice(0, 500)}{text.length > 500 ? '...' : ''}
+        {text.slice(0, 500)}
+        {text.length > 500 ? '...' : ''}
       </div>
     </details>
   );
 }
 
-function renderToolUse(block: Extract<CopilotMessageBlock, { type: 'tool_use' }>, key: string): React.JSX.Element {
+function renderToolUse(
+  block: Extract<CopilotMessageBlock, { type: 'tool_use' }>,
+  key: string
+): React.JSX.Element {
   if (block.name === 'AskUserQuestion' && block.input) {
     return (
       <div key={key} className="max-w-[95%]">
@@ -1479,6 +1496,7 @@ AskUserQuestion uses Card + Button components."
 ### Task 10: Restyle CopilotSettings with shadcn + Tooltips
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/CopilotSettings.tsx`
 
 - [ ] **Step 1: Rewrite CopilotSettings**
@@ -1496,12 +1514,24 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuTrigger
 } from './ui/dropdown-menu';
 
 const SYSTEM_SOUNDS = [
-  'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
-  'Funk', 'Hero', 'Morse', 'Purr', 'Sosumi', 'Submarine', 'Basso',
+  'Pop',
+  'Ping',
+  'Tink',
+  'Glass',
+  'Blow',
+  'Bottle',
+  'Frog',
+  'Funk',
+  'Hero',
+  'Morse',
+  'Purr',
+  'Sosumi',
+  'Submarine',
+  'Basso'
 ];
 
 export function CopilotSettings(): React.JSX.Element {
@@ -1540,9 +1570,7 @@ export function CopilotSettings(): React.JSX.Element {
                     Notification Sound
                   </label>
                 </TooltipTrigger>
-                <TooltipContent>
-                  Sound played when an agent needs attention
-                </TooltipContent>
+                <TooltipContent>Sound played when an agent needs attention</TooltipContent>
               </Tooltip>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -1568,9 +1596,7 @@ export function CopilotSettings(): React.JSX.Element {
 
             {/* Sprite */}
             <div>
-              <label className="text-[10px] text-neutral-400 block mb-1">
-                Sprite
-              </label>
+              <label className="text-[10px] text-neutral-400 block mb-1">Sprite</label>
               <div className="text-[10px] text-neutral-500">
                 Default spaceship (more sprites coming soon)
               </div>
@@ -1633,6 +1659,7 @@ Tooltip for 'what's this?' on labels, Button + ScrollArea."
 ### Task 11: Remove Old Border Styling from Panel Views
 
 **Files:**
+
 - Verify: `src/renderer/copilot/src/components/SessionList.tsx`
 - Verify: `src/renderer/copilot/src/components/SessionDetail.tsx`
 - Verify: `src/renderer/copilot/src/components/CopilotSettings.tsx`
@@ -1680,6 +1707,7 @@ npm run dev
 ```
 
 Open the copilot panel by clicking the spaceship sprite. Verify:
+
 1. CRT frame renders with corners, edges, and subtle scanline
 2. Frame images are crisp (pixel-art, not blurry)
 3. Content sits inside the frame with correct padding
@@ -1720,10 +1748,13 @@ git add -A && git commit -m "fix(copilot): visual polish for CRT frame and compo
 - [ ] **Step 7: Mark item #7 in ux-improvements.md as complete**
 
 In `docs/ux-improvements.md`, change line 24:
+
 ```
 - [ ] **7. Running/idle state indicator per tab**
 ```
+
 to:
+
 ```
 - [x] **7. Running/idle state indicator per tab**
 ```

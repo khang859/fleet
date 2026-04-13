@@ -21,7 +21,7 @@ export default defineConfig({
         input: {
           index: 'src/preload/index.ts',
           copilot: 'src/preload/copilot.ts',
-          annotate: 'src/preload/annotate.ts',
+          annotate: 'src/preload/annotate.ts'
         },
         output: { format: 'cjs' }
       }
@@ -31,14 +31,14 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
-        '@copilot': resolve('src/renderer/copilot/src'),
+        '@copilot': resolve('src/renderer/copilot/src')
       }
     },
     build: {
       rollupOptions: {
         input: {
           index: 'src/renderer/index.html',
-          copilot: 'src/renderer/copilot/index.html',
+          copilot: 'src/renderer/copilot/index.html'
         }
       }
     },

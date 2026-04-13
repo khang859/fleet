@@ -27,10 +27,12 @@ Single module exporting:
 ### Transports
 
 **Console transport (always active):**
+
 - Custom format: `[tag] level: message` with colorization in dev
 - Human-readable for terminal output during `electron-vite dev`
 
 **File transport (`winston-daily-rotate-file`):**
+
 - Path: `~/.fleet/logs/fleet-%DATE%.log`
 - Rotation: daily
 - Retention: 7 days max
@@ -40,11 +42,11 @@ Single module exporting:
 
 ```ts
 // src/main/pty-manager.ts
-import { createLogger } from './logger'
-const log = createLogger('pty-manager')
+import { createLogger } from './logger';
+const log = createLogger('pty-manager');
 
-log.debug('spawning PTY', { shell, cols, rows })
-log.error('PTY exited unexpectedly', { code })
+log.debug('spawning PTY', { shell, cols, rows });
+log.error('PTY exited unexpectedly', { code });
 ```
 
 ## Initialization
@@ -57,12 +59,12 @@ Replace `console.*` calls in `src/main/` files (~20 files, ~100+ call sites) wit
 
 ### Mapping
 
-| Before | After |
-|--------|-------|
-| `console.log('[tag] msg', data)` | `log.info('msg', { data })` |
-| `console.warn('[tag] msg')` | `log.warn('msg')` |
+| Before                            | After                              |
+| --------------------------------- | ---------------------------------- |
+| `console.log('[tag] msg', data)`  | `log.info('msg', { data })`        |
+| `console.warn('[tag] msg')`       | `log.warn('msg')`                  |
 | `console.error('[tag] msg', err)` | `log.error('msg', { error: err })` |
-| `console.log('[debug ...]')` | `log.debug('...')` |
+| `console.log('[debug ...]')`      | `log.debug('...')`                 |
 
 ### Rules
 

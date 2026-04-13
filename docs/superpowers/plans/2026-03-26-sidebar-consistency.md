@@ -12,23 +12,25 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `src/renderer/src/App.tsx` | Modify | Remove `isFullScreenTab`/`sidebarManualOpen`, add `sidebarCollapsed` state, pass collapse toggle to Sidebar, refactor mini sidebar with tooltips + grouping + workspace popover |
-| `src/renderer/src/components/Sidebar.tsx` | Modify | Accept `onCollapse` always (not conditional), unify crew tab rendering to use `TabItem` |
-| `src/renderer/src/components/TabItem.tsx` | Modify | Add optional `borderColor` prop for cyan vs blue active borders |
+| File                                      | Action | Responsibility                                                                                                                                                                  |
+| ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/renderer/src/App.tsx`                | Modify | Remove `isFullScreenTab`/`sidebarManualOpen`, add `sidebarCollapsed` state, pass collapse toggle to Sidebar, refactor mini sidebar with tooltips + grouping + workspace popover |
+| `src/renderer/src/components/Sidebar.tsx` | Modify | Accept `onCollapse` always (not conditional), unify crew tab rendering to use `TabItem`                                                                                         |
+| `src/renderer/src/components/TabItem.tsx` | Modify | Add optional `borderColor` prop for cyan vs blue active borders                                                                                                                 |
 
 ---
 
 ### Task 1: Remove auto-collapse and add user-controlled toggle
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx:47-84` (remove `sidebarManualOpen`, `isFullScreenTab`, `showSidebar` derived state)
 - Modify: `src/renderer/src/App.tsx:370-596` (render section — always show sidebar or mini sidebar based on `sidebarCollapsed`)
 
 - [ ] **Step 1: Replace `sidebarManualOpen` and `isFullScreenTab` with `sidebarCollapsed`**
 
 In `App.tsx`, remove:
+
 ```typescript
 const [sidebarManualOpen, setSidebarManualOpen] = useState(false);
 
@@ -45,6 +47,7 @@ useEffect(() => {
 ```
 
 Replace with:
+
 ```typescript
 const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 ```
@@ -52,6 +55,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 - [ ] **Step 2: Update the sidebar render condition**
 
 In the render section of `App.tsx`, change:
+
 ```typescript
 {showSidebar ? (
   <Sidebar
@@ -62,6 +66,7 @@ In the render section of `App.tsx`, change:
 ```
 
 To:
+
 ```typescript
 {!sidebarCollapsed ? (
   <Sidebar
@@ -74,10 +79,13 @@ To:
 - [ ] **Step 3: Update the mini sidebar expand button**
 
 In the mini sidebar section, change:
+
 ```typescript
 onClick={() => setSidebarManualOpen(true)}
 ```
+
 To:
+
 ```typescript
 onClick={() => setSidebarCollapsed(false)}
 ```
@@ -99,11 +107,13 @@ git commit -m "refactor: remove auto-collapse, add user-controlled sidebar toggl
 ### Task 2: Add tooltips to collapsed sidebar icons
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx:386-491` (mini sidebar section)
 
 - [ ] **Step 1: Add Radix Tooltip import to App.tsx**
 
 Add at the top of `App.tsx`:
+
 ```typescript
 import * as Tooltip from '@radix-ui/react-tooltip';
 ```
@@ -111,6 +121,7 @@ import * as Tooltip from '@radix-ui/react-tooltip';
 - [ ] **Step 2: Create a MiniSidebarTooltip helper component**
 
 Add above the `App` function in `App.tsx`:
+
 ```typescript
 function MiniSidebarTooltip({
   label,
@@ -142,13 +153,22 @@ function MiniSidebarTooltip({
 - [ ] **Step 3: Wrap the expand button with tooltip**
 
 Change the expand button in the mini sidebar from using `title="Show sidebar"` to:
+
 ```tsx
 <MiniSidebarTooltip label="Show sidebar">
   <button
     onClick={() => setSidebarCollapsed(false)}
     className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
   >
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
       <rect x="1" y="2" width="14" height="12" rx="2" />
       <line x1="5.5" y1="2" x2="5.5" y2="14" />
     </svg>
@@ -161,14 +181,13 @@ Remove the `title` attribute from the button (tooltip replaces it).
 - [ ] **Step 4: Wrap the Images pinned icon with tooltip**
 
 Change the Images icon button — remove `title="Images"` and wrap with:
+
 ```tsx
 <MiniSidebarTooltip label="Images" key={tab.id}>
   <button
     onClick={() => setActiveTab(tab.id)}
     className={`p-1.5 rounded transition-colors ${
-      isImagesActive
-        ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
-        : 'hover:bg-neutral-800'
+      isImagesActive ? 'bg-purple-900/40 ring-1 ring-purple-500/30' : 'hover:bg-neutral-800'
     }`}
   >
     {/* existing SVG icon */}
@@ -179,6 +198,7 @@ Change the Images icon button — remove `title="Images"` and wrap with:
 - [ ] **Step 5: Wrap all tab icons with tooltip**
 
 In the tab icons `.map()` section, remove `title={tab.label}` from the button and wrap with:
+
 ```tsx
 <MiniSidebarTooltip label={tab.label} key={tab.id}>
   <button
@@ -195,6 +215,7 @@ In the tab icons `.map()` section, remove `title={tab.label}` from the button an
 - [ ] **Step 6: Wrap the Settings button with tooltip**
 
 Remove `title="Settings"` and wrap with:
+
 ```tsx
 <MiniSidebarTooltip label="Settings">
   <button
@@ -223,6 +244,7 @@ git commit -m "feat: add Radix tooltips to collapsed sidebar icons"
 ### Task 3: Add divider grouping to collapsed sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx:386-491` (mini sidebar section)
 
 - [ ] **Step 1: Add Star Command icon to collapsed sidebar**
@@ -230,33 +252,38 @@ git commit -m "feat: add Radix tooltips to collapsed sidebar icons"
 Currently the collapsed sidebar skips the Star Command tab entirely. After the expand button and first divider, add the Star Command icon before the Images icon:
 
 ```tsx
-{/* Star Command pinned icon */}
-{workspace.tabs
-  .filter((t) => t.type === 'star-command')
-  .map((tab) => {
-    const isScActive = tab.id === activeTabId;
-    return (
-      <MiniSidebarTooltip label="Star Command" key={tab.id}>
-        <button
-          onClick={() => setActiveTab(tab.id)}
-          className={`p-1.5 rounded transition-colors ${
-            isScActive
-              ? 'bg-teal-900/40 ring-1 ring-teal-500/30'
-              : 'hover:bg-neutral-800'
-          }`}
-        >
-          <img
-            src={ADMIRAL_IMAGES[useStarCommandStore.getState().admiralAvatarState] ?? ADMIRAL_IMAGES.default}
-            alt="Star Command"
-            width={16}
-            height={16}
-            style={{ imageRendering: 'pixelated' }}
-            className="rounded-sm"
-          />
-        </button>
-      </MiniSidebarTooltip>
-    );
-  })}
+{
+  /* Star Command pinned icon */
+}
+{
+  workspace.tabs
+    .filter((t) => t.type === 'star-command')
+    .map((tab) => {
+      const isScActive = tab.id === activeTabId;
+      return (
+        <MiniSidebarTooltip label="Star Command" key={tab.id}>
+          <button
+            onClick={() => setActiveTab(tab.id)}
+            className={`p-1.5 rounded transition-colors ${
+              isScActive ? 'bg-teal-900/40 ring-1 ring-teal-500/30' : 'hover:bg-neutral-800'
+            }`}
+          >
+            <img
+              src={
+                ADMIRAL_IMAGES[useStarCommandStore.getState().admiralAvatarState] ??
+                ADMIRAL_IMAGES.default
+              }
+              alt="Star Command"
+              width={16}
+              height={16}
+              style={{ imageRendering: 'pixelated' }}
+              className="rounded-sm"
+            />
+          </button>
+        </MiniSidebarTooltip>
+      );
+    });
+}
 ```
 
 Note: Import `useStarCommandStore` and the `ADMIRAL_IMAGES` map will need to be accessible. Since `ADMIRAL_IMAGES` is defined in `Sidebar.tsx`, either move it to a shared location or re-define the admiral image imports in `App.tsx`. The simplest approach: import the admiral default image and use it as a static icon:
@@ -270,6 +297,7 @@ And use `admiralDefault` as the `src` instead of the dynamic lookup (the collaps
 - [ ] **Step 2: Restructure dividers to match expanded sidebar sections**
 
 Reorganize the mini sidebar content order to:
+
 1. Expand toggle
 2. Divider
 3. Star Command icon (pinned)
@@ -285,56 +313,66 @@ Reorganize the mini sidebar content order to:
 Replace the current flat structure. The crew tabs are filtered separately:
 
 ```tsx
-{/* Crew icons */}
-{workspace.tabs
-  .filter((t) => t.type === 'crew')
-  .map((tab) => {
-    const isActive = tab.id === activeTabId;
-    return (
-      <MiniSidebarTooltip label={tab.label} key={tab.id}>
-        <button
-          onClick={() => setActiveTab(tab.id)}
-          className={`p-1 rounded transition-colors ${
-            isActive ? 'bg-neutral-700 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800'
-          }`}
-        >
-          <Avatar type="crew" variant={tab.avatarVariant} size={20} />
-        </button>
-      </MiniSidebarTooltip>
-    );
-  })}
-{workspace.tabs.some((t) => t.type === 'crew') && (
-  <div className="w-6 h-px bg-neutral-800 my-0.5" />
-)}
-{/* Regular tab icons (file/terminal/image) */}
-{workspace.tabs
-  .filter((t) => t.type !== 'star-command' && t.type !== 'images' && t.type !== 'crew')
-  .map((tab) => {
-    const isActive = tab.id === activeTabId;
-    return (
-      <MiniSidebarTooltip label={tab.label} key={tab.id}>
-        <button
-          onClick={() => setActiveTab(tab.id)}
-          className={`p-1 rounded transition-colors ${
-            isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
-          }`}
-        >
-          {tab.type === 'file' ? (
-            <span className={isActive ? 'text-white' : 'text-neutral-500'}>
-              {getFileIcon(
-                collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ?? tab.label,
-                16
-              )}
-            </span>
-          ) : tab.type === 'image' ? (
-            <ImageIcon size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
-          ) : (
-            <Terminal size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
-          )}
-        </button>
-      </MiniSidebarTooltip>
-    );
-  })}
+{
+  /* Crew icons */
+}
+{
+  workspace.tabs
+    .filter((t) => t.type === 'crew')
+    .map((tab) => {
+      const isActive = tab.id === activeTabId;
+      return (
+        <MiniSidebarTooltip label={tab.label} key={tab.id}>
+          <button
+            onClick={() => setActiveTab(tab.id)}
+            className={`p-1 rounded transition-colors ${
+              isActive ? 'bg-neutral-700 ring-1 ring-cyan-500/30' : 'hover:bg-neutral-800'
+            }`}
+          >
+            <Avatar type="crew" variant={tab.avatarVariant} size={20} />
+          </button>
+        </MiniSidebarTooltip>
+      );
+    });
+}
+{
+  workspace.tabs.some((t) => t.type === 'crew') && (
+    <div className="w-6 h-px bg-neutral-800 my-0.5" />
+  );
+}
+{
+  /* Regular tab icons (file/terminal/image) */
+}
+{
+  workspace.tabs
+    .filter((t) => t.type !== 'star-command' && t.type !== 'images' && t.type !== 'crew')
+    .map((tab) => {
+      const isActive = tab.id === activeTabId;
+      return (
+        <MiniSidebarTooltip label={tab.label} key={tab.id}>
+          <button
+            onClick={() => setActiveTab(tab.id)}
+            className={`p-1 rounded transition-colors ${
+              isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
+            }`}
+          >
+            {tab.type === 'file' ? (
+              <span className={isActive ? 'text-white' : 'text-neutral-500'}>
+                {getFileIcon(
+                  collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ?? tab.label,
+                  16
+                )}
+              </span>
+            ) : tab.type === 'image' ? (
+              <ImageIcon size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
+            ) : (
+              <Terminal size={16} className={isActive ? 'text-white' : 'text-neutral-500'} />
+            )}
+          </button>
+        </MiniSidebarTooltip>
+      );
+    });
+}
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -354,11 +392,13 @@ git commit -m "feat: add Star Command icon and divider grouping to collapsed sid
 ### Task 4: Add workspace popover to collapsed sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx` (mini sidebar section — add workspace icon + Popover before Settings)
 
 - [ ] **Step 1: Add Popover import**
 
 Add at the top of `App.tsx`:
+
 ```typescript
 import * as Popover from '@radix-ui/react-popover';
 ```
@@ -366,9 +406,12 @@ import * as Popover from '@radix-ui/react-popover';
 - [ ] **Step 2: Add workspace popover state and handlers**
 
 Add inside the `App` component, near the other state:
+
 ```typescript
 const [miniWsOpen, setMiniWsOpen] = useState(false);
-const [miniWsList, setMiniWsList] = useState<Array<{ id: string; label: string; tabCount: number }>>([]);
+const [miniWsList, setMiniWsList] = useState<
+  Array<{ id: string; label: string; tabCount: number }>
+>([]);
 
 // Load workspaces when popover opens
 useEffect(() => {
@@ -386,6 +429,7 @@ useEffect(() => {
 - [ ] **Step 3: Add workspace switch handler for mini sidebar**
 
 Add inside the `App` component:
+
 ```typescript
 const handleMiniWsSwitch = useCallback(async (wsId: string) => {
   setMiniWsOpen(false);
@@ -423,12 +467,22 @@ const handleMiniWsSwitch = useCallback(async (wsId: string) => {
 In the mini sidebar, between the `<div className="flex-1" />` spacer and the Settings button, add:
 
 ```tsx
-{/* Workspace switcher */}
+{
+  /* Workspace switcher */
+}
 <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
   <MiniSidebarTooltip label={workspace.label}>
     <Popover.Trigger asChild>
       <button className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
           <rect x="2" y="3" width="12" height="10" rx="1.5" />
           <path d="M2 6h12" />
           <path d="M5 3V1.5" />
@@ -455,7 +509,9 @@ In the mini sidebar, between the `<div className="flex-1" />` spacer and the Set
             onClick={() => void handleMiniWsSwitch(ws.id)}
           >
             <span className="truncate">{ws.label}</span>
-            <span className="text-[10px] text-neutral-600 ml-2">{ws.tabCount} tab{ws.tabCount !== 1 ? 's' : ''}</span>
+            <span className="text-[10px] text-neutral-600 ml-2">
+              {ws.tabCount} tab{ws.tabCount !== 1 ? 's' : ''}
+            </span>
           </button>
         ))
       ) : (
@@ -464,7 +520,7 @@ In the mini sidebar, between the `<div className="flex-1" />` spacer and the Set
       <Popover.Arrow className="fill-neutral-800" />
     </Popover.Content>
   </Popover.Portal>
-</Popover.Root>
+</Popover.Root>;
 ```
 
 - [ ] **Step 5: Run typecheck**
@@ -484,12 +540,14 @@ git commit -m "feat: add workspace switcher popover to collapsed sidebar"
 ### Task 5: Make collapse toggle always available in expanded sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx:280-286` (props type)
 - Modify: `src/renderer/src/components/Sidebar.tsx:687-706` (collapse button conditional)
 
 - [ ] **Step 1: Update Sidebar props — make onCollapse required**
 
 Change the Sidebar props type from:
+
 ```typescript
 export function Sidebar({
   updateReady,
@@ -501,6 +559,7 @@ export function Sidebar({
 ```
 
 To:
+
 ```typescript
 export function Sidebar({
   updateReady,
@@ -514,6 +573,7 @@ export function Sidebar({
 - [ ] **Step 2: Remove the conditional on the collapse button**
 
 Change:
+
 ```tsx
 {onCollapse && (
   <button
@@ -524,6 +584,7 @@ Change:
 ```
 
 To (remove the `{onCollapse && (` wrapper and its closing `)}`, keep the button):
+
 ```tsx
 <button
   className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
@@ -549,12 +610,14 @@ git commit -m "feat: make sidebar collapse toggle always available"
 ### Task 6: Add borderColor prop to TabItem for crew/file distinction
 
 **Files:**
+
 - Modify: `src/renderer/src/components/TabItem.tsx:18-41` (props type)
 - Modify: `src/renderer/src/components/TabItem.tsx:129-141` (active border class)
 
 - [ ] **Step 1: Add `activeBorderColor` prop**
 
 In `TabItemProps`, add:
+
 ```typescript
 /** Tailwind border color class for active state. Defaults to 'border-blue-500'. */
 activeBorderColor?: string;
@@ -563,6 +626,7 @@ activeBorderColor?: string;
 - [ ] **Step 2: Destructure the new prop with default**
 
 In the `TabItem` function signature, add:
+
 ```typescript
 activeBorderColor = 'border-blue-500',
 ```
@@ -570,17 +634,19 @@ activeBorderColor = 'border-blue-500',
 - [ ] **Step 3: Use `activeBorderColor` in the className**
 
 Change the active class from:
+
 ```typescript
 isActive
   ? 'bg-neutral-700 text-white border-l-2 border-blue-500'
-  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent';
 ```
 
 To:
+
 ```typescript
 isActive
   ? `bg-neutral-700 text-white border-l-2 ${activeBorderColor}`
-  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
+  : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent';
 ```
 
 - [ ] **Step 4: Run typecheck**
@@ -600,22 +666,25 @@ git commit -m "feat: add activeBorderColor prop to TabItem"
 ### Task 7: Unify crew tab rendering to use TabItem
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx:739-785` (crew tabs section)
 
 - [ ] **Step 1: Replace inline crew tab rendering with TabItem**
 
 Replace the crew tabs section (lines 739-785) from:
+
 ```tsx
-{workspace.tabs
-  .filter((tab) => tab.type === 'crew')
-  .map((tab) => {
-    const paneIds = collectPaneIds(tab.splitRoot);
-    const badge = getTabBadge(paneIds);
-    return (
-      <div
-        key={tab.id}
-        data-tab-id={tab.id}
-        className={`
+{
+  workspace.tabs
+    .filter((tab) => tab.type === 'crew')
+    .map((tab) => {
+      const paneIds = collectPaneIds(tab.splitRoot);
+      const badge = getTabBadge(paneIds);
+      return (
+        <div
+          key={tab.id}
+          data-tab-id={tab.id}
+          className={`
         group flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md text-sm min-h-[44px] transition-colors
         ${
           tab.id === activeTabId
@@ -623,70 +692,74 @@ Replace the crew tabs section (lines 739-785) from:
             : 'text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 border-l-2 border-transparent'
         }
       `}
-        onClick={() => {
-          setActiveTab(tab.id);
-          for (const paneId of paneIds) {
-            useNotificationStore.getState().clearPane(paneId);
-            window.fleet.notifications.paneFocused({ paneId });
-          }
-        }}
-      >
-        <Avatar type="crew" variant={tab.avatarVariant} size={24} />
-        <div className="flex-1 min-w-0">
-          <div className="truncate text-sm leading-tight">{tab.label}</div>
+          onClick={() => {
+            setActiveTab(tab.id);
+            for (const paneId of paneIds) {
+              useNotificationStore.getState().clearPane(paneId);
+              window.fleet.notifications.paneFocused({ paneId });
+            }
+          }}
+        >
+          <Avatar type="crew" variant={tab.avatarVariant} size={24} />
+          <div className="flex-1 min-w-0">
+            <div className="truncate text-sm leading-tight">{tab.label}</div>
+          </div>
+          {badge && tab.id !== activeTabId && (
+            <span
+              className={`rounded-full flex-shrink-0 w-2 h-2 ${
+                badge === 'error'
+                  ? 'bg-red-400'
+                  : badge === 'permission'
+                    ? 'bg-amber-400 animate-pulse'
+                    : 'bg-blue-400'
+              }`}
+            />
+          )}
         </div>
-        {badge && tab.id !== activeTabId && (
-          <span
-            className={`rounded-full flex-shrink-0 w-2 h-2 ${
-              badge === 'error'
-                ? 'bg-red-400'
-                : badge === 'permission'
-                  ? 'bg-amber-400 animate-pulse'
-                  : 'bg-blue-400'
-            }`}
-          />
-        )}
-      </div>
-    );
-  })}
+      );
+    });
+}
 ```
 
 With:
+
 ```tsx
-{workspace.tabs
-  .filter((tab) => tab.type === 'crew')
-  .map((tab, index) => {
-    const paneIds = collectPaneIds(tab.splitRoot);
-    return (
-      <TabItem
-        key={tab.id}
-        id={tab.id}
-        label={tab.label}
-        labelIsCustom={tab.labelIsCustom ?? false}
-        cwd={tab.cwd}
-        isActive={tab.id === activeTabId}
-        badge={getTabBadge(paneIds)}
-        icon={<Avatar type="crew" variant={tab.avatarVariant} size={24} />}
-        activeBorderColor="border-cyan-500"
-        disableReset
-        index={index}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        isDragOver={dropTarget?.index === index ? dropTarget.position : null}
-        onClick={() => {
-          setActiveTab(tab.id);
-          for (const paneId of paneIds) {
-            useNotificationStore.getState().clearPane(paneId);
-            window.fleet.notifications.paneFocused({ paneId });
-          }
-        }}
-        onClose={() => handleCloseTab(tab.id)}
-        onRename={(newLabel) => renameTab(tab.id, newLabel)}
-        onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
-      />
-    );
-  })}
+{
+  workspace.tabs
+    .filter((tab) => tab.type === 'crew')
+    .map((tab, index) => {
+      const paneIds = collectPaneIds(tab.splitRoot);
+      return (
+        <TabItem
+          key={tab.id}
+          id={tab.id}
+          label={tab.label}
+          labelIsCustom={tab.labelIsCustom ?? false}
+          cwd={tab.cwd}
+          isActive={tab.id === activeTabId}
+          badge={getTabBadge(paneIds)}
+          icon={<Avatar type="crew" variant={tab.avatarVariant} size={24} />}
+          activeBorderColor="border-cyan-500"
+          disableReset
+          index={index}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          isDragOver={dropTarget?.index === index ? dropTarget.position : null}
+          onClick={() => {
+            setActiveTab(tab.id);
+            for (const paneId of paneIds) {
+              useNotificationStore.getState().clearPane(paneId);
+              window.fleet.notifications.paneFocused({ paneId });
+            }
+          }}
+          onClose={() => handleCloseTab(tab.id)}
+          onRename={(newLabel) => renameTab(tab.id, newLabel)}
+          onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
+        />
+      );
+    });
+}
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -728,6 +801,7 @@ Expected: PASS
 - [ ] **Step 4: Manual verification checklist**
 
 Verify the following behaviors:
+
 1. Sidebar stays visible when switching to Star Command tab
 2. Sidebar stays visible when switching to Images tab
 3. Collapse toggle button visible on all tabs (not just Star Command/Images)

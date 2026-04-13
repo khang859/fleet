@@ -18,43 +18,44 @@
 
 ### New Files
 
-| File | Responsibility |
-|------|---------------|
-| `src/renderer/src/components/diagram/DiagramPane.tsx` | Top-level pane component — loads file, wires React Flow, manages sync |
-| `src/renderer/src/components/diagram/DiagramToolbar.tsx` | Toolbar: add node, undo/redo, zoom, auto-layout, export |
-| `src/renderer/src/components/diagram/PropertiesPanel.tsx` | Right sidebar for editing selected node/edge properties |
-| `src/renderer/src/components/diagram/NodeContextMenu.tsx` | Right-click context menu on canvas/nodes/edges |
-| `src/renderer/src/components/diagram/nodes/MarkdownNode.tsx` | Custom React Flow node: renders markdown content |
-| `src/renderer/src/components/diagram/nodes/ImageNode.tsx` | Custom React Flow node: displays an image |
-| `src/renderer/src/components/diagram/nodes/GroupNode.tsx` | Custom React Flow node: container for child nodes |
-| `src/renderer/src/components/diagram/use-diagram-store.ts` | Per-pane Zustand store factory: nodes, edges, history, sync state |
-| `src/renderer/src/components/diagram/use-diagram-sync.ts` | Hook: two-way sync between store and file (debounced write-back + file change listener) |
-| `src/renderer/src/components/diagram/use-diagram-history.ts` | Hook: undo/redo snapshot history |
-| `src/renderer/src/components/diagram/layout.ts` | Dagre auto-layout helper |
-| `src/renderer/src/components/diagram/types.ts` | FleetDiagram file format types (meta envelope + React Flow data) |
-| `src/renderer/src/components/diagram/export.ts` | PNG/SVG export helpers |
-| `src/main/diagram-watcher.ts` | Main process: file watcher registry for diagram files |
-| `src/main/diagram-analyzer.ts` | Main process: static analysis (dependency graph, directory structure) |
+| File                                                         | Responsibility                                                                          |
+| ------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| `src/renderer/src/components/diagram/DiagramPane.tsx`        | Top-level pane component — loads file, wires React Flow, manages sync                   |
+| `src/renderer/src/components/diagram/DiagramToolbar.tsx`     | Toolbar: add node, undo/redo, zoom, auto-layout, export                                 |
+| `src/renderer/src/components/diagram/PropertiesPanel.tsx`    | Right sidebar for editing selected node/edge properties                                 |
+| `src/renderer/src/components/diagram/NodeContextMenu.tsx`    | Right-click context menu on canvas/nodes/edges                                          |
+| `src/renderer/src/components/diagram/nodes/MarkdownNode.tsx` | Custom React Flow node: renders markdown content                                        |
+| `src/renderer/src/components/diagram/nodes/ImageNode.tsx`    | Custom React Flow node: displays an image                                               |
+| `src/renderer/src/components/diagram/nodes/GroupNode.tsx`    | Custom React Flow node: container for child nodes                                       |
+| `src/renderer/src/components/diagram/use-diagram-store.ts`   | Per-pane Zustand store factory: nodes, edges, history, sync state                       |
+| `src/renderer/src/components/diagram/use-diagram-sync.ts`    | Hook: two-way sync between store and file (debounced write-back + file change listener) |
+| `src/renderer/src/components/diagram/use-diagram-history.ts` | Hook: undo/redo snapshot history                                                        |
+| `src/renderer/src/components/diagram/layout.ts`              | Dagre auto-layout helper                                                                |
+| `src/renderer/src/components/diagram/types.ts`               | FleetDiagram file format types (meta envelope + React Flow data)                        |
+| `src/renderer/src/components/diagram/export.ts`              | PNG/SVG export helpers                                                                  |
+| `src/main/diagram-watcher.ts`                                | Main process: file watcher registry for diagram files                                   |
+| `src/main/diagram-analyzer.ts`                               | Main process: static analysis (dependency graph, directory structure)                   |
 
 ### Modified Files
 
-| File | Change |
-|------|--------|
-| `src/shared/types.ts:15,41` | Add `'diagram'` to Tab.type and PaneLeaf.paneType unions |
-| `src/shared/ipc-channels.ts:96` | Add DIAGRAM_* IPC channel constants |
-| `src/main/ipc-handlers.ts` | Register diagram IPC handlers (watch, unwatch, save, analyze) |
-| `src/preload/index.ts` | Expose `window.fleet.diagram.*` API |
-| `src/renderer/src/components/PaneGrid.tsx:172` | Add `paneType === 'diagram'` rendering branch |
+| File                                                | Change                                                           |
+| --------------------------------------------------- | ---------------------------------------------------------------- |
+| `src/shared/types.ts:15,41`                         | Add `'diagram'` to Tab.type and PaneLeaf.paneType unions         |
+| `src/shared/ipc-channels.ts:96`                     | Add DIAGRAM\_\* IPC channel constants                            |
+| `src/main/ipc-handlers.ts`                          | Register diagram IPC handlers (watch, unwatch, save, analyze)    |
+| `src/preload/index.ts`                              | Expose `window.fleet.diagram.*` API                              |
+| `src/renderer/src/components/PaneGrid.tsx:172`      | Add `paneType === 'diagram'` rendering branch                    |
 | `src/renderer/src/store/workspace-store.ts:894-916` | Update `openFile` to detect `.fleet-diagram.json` → diagram pane |
-| `src/renderer/src/components/Sidebar.tsx:1152-1162` | Add diagram icon mapping |
-| `src/renderer/src/lib/commands.ts` | Add diagram commands to command palette |
-| `package.json` | Add `@xyflow/react` and `@dagrejs/dagre` dependencies |
+| `src/renderer/src/components/Sidebar.tsx:1152-1162` | Add diagram icon mapping                                         |
+| `src/renderer/src/lib/commands.ts`                  | Add diagram commands to command palette                          |
+| `package.json`                                      | Add `@xyflow/react` and `@dagrejs/dagre` dependencies            |
 
 ---
 
 ## Task 1: Install Dependencies and Add Type Foundations
 
 **Files:**
+
 - Modify: `package.json`
 - Modify: `src/shared/types.ts:15,41`
 - Create: `src/renderer/src/components/diagram/types.ts`
@@ -124,7 +125,7 @@ export function createEmptyDiagram(title: string): FleetDiagramFile {
     meta: { title, createdAt: new Date().toISOString() },
     nodes: [],
     edges: [],
-    viewport: { x: 0, y: 0, zoom: 1 },
+    viewport: { x: 0, y: 0, zoom: 1 }
   };
 }
 
@@ -162,6 +163,7 @@ git commit -m "feat(diagram): install react flow, add diagram type foundations"
 ## Task 2: IPC Channels, Main Process Watcher, and Preload API
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts:96`
 - Create: `src/main/diagram-watcher.ts`
 - Modify: `src/main/ipc-handlers.ts`
@@ -288,25 +290,25 @@ import { DiagramWatcher } from './diagram-watcher';
 Inside `registerIpcHandlers`, after the existing file operation handlers, add:
 
 ```typescript
-  // Diagram
-  const diagramWatcher = new DiagramWatcher(getWindow);
+// Diagram
+const diagramWatcher = new DiagramWatcher(getWindow);
 
-  ipcMain.handle(IPC_CHANNELS.DIAGRAM_WATCH, async (_event, filePath: string) => {
-    diagramWatcher.watch(filePath);
-    return { success: true };
-  });
+ipcMain.handle(IPC_CHANNELS.DIAGRAM_WATCH, async (_event, filePath: string) => {
+  diagramWatcher.watch(filePath);
+  return { success: true };
+});
 
-  ipcMain.handle(IPC_CHANNELS.DIAGRAM_UNWATCH, async (_event, filePath: string) => {
-    diagramWatcher.unwatch(filePath);
-    return { success: true };
-  });
+ipcMain.handle(IPC_CHANNELS.DIAGRAM_UNWATCH, async (_event, filePath: string) => {
+  diagramWatcher.unwatch(filePath);
+  return { success: true };
+});
 
-  ipcMain.handle(
-    IPC_CHANNELS.DIAGRAM_SAVE,
-    async (_event, { filePath, content }: { filePath: string; content: string }) => {
-      return diagramWatcher.save(filePath, content);
-    }
-  );
+ipcMain.handle(
+  IPC_CHANNELS.DIAGRAM_SAVE,
+  async (_event, { filePath, content }: { filePath: string; content: string }) => {
+    return diagramWatcher.save(filePath, content);
+  }
+);
 ```
 
 - [ ] **Step 4: Expose diagram API in preload**
@@ -347,6 +349,7 @@ git commit -m "feat(diagram): add IPC channels, file watcher, and preload API"
 ## Task 3: Per-Pane Zustand Store and History Hook
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/use-diagram-store.ts`
 - Create: `src/renderer/src/components/diagram/use-diagram-history.ts`
 
@@ -439,7 +442,7 @@ export function createDiagramStore(filePath: string): StoreApi<DiagramState> {
     pushHistory: () =>
       set((state) => ({
         past: [...state.past.slice(-(MAX_HISTORY - 1)), { nodes: state.nodes, edges: state.edges }],
-        future: [],
+        future: []
       })),
 
     undo: () => {
@@ -451,7 +454,7 @@ export function createDiagramStore(filePath: string): StoreApi<DiagramState> {
         future: [{ nodes, edges }, ...get().future],
         nodes: prev.nodes,
         edges: prev.edges,
-        isDirty: true,
+        isDirty: true
       });
     },
 
@@ -464,12 +467,12 @@ export function createDiagramStore(filePath: string): StoreApi<DiagramState> {
         past: [...get().past, { nodes, edges }],
         nodes: next.nodes,
         edges: next.edges,
-        isDirty: true,
+        isDirty: true
       });
     },
 
     setSelection: (nodeIds, edgeIds) =>
-      set({ selectedNodeIds: new Set(nodeIds), selectedEdgeIds: new Set(edgeIds) }),
+      set({ selectedNodeIds: new Set(nodeIds), selectedEdgeIds: new Set(edgeIds) })
   }));
 }
 ```
@@ -531,6 +534,7 @@ git commit -m "feat(diagram): add per-pane Zustand store and undo/redo history"
 ## Task 4: Two-Way File Sync Hook
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/use-diagram-sync.ts`
 
 - [ ] **Step 1: Create the sync hook**
@@ -620,7 +624,7 @@ export function useDiagramSync(
         meta: state.meta,
         nodes: state.nodes,
         edges: state.edges,
-        viewport: state.viewport,
+        viewport: state.viewport
       };
       const content = serializeDiagramFile(diagram);
       void window.fleet.diagram.save(filePath, content).then((result) => {
@@ -697,6 +701,7 @@ git commit -m "feat(diagram): add two-way file sync hook with debounced writes"
 ## Task 5: Auto-Layout Helper
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/layout.ts`
 
 - [ ] **Step 1: Create the dagre layout helper**
@@ -763,7 +768,7 @@ export function autoLayout(
 
     return {
       ...node,
-      position: { x: pos.x - w / 2, y: pos.y - h / 2 },
+      position: { x: pos.x - w / 2, y: pos.y - h / 2 }
     };
   });
 
@@ -797,6 +802,7 @@ git commit -m "feat(diagram): add dagre auto-layout helper"
 ## Task 6: Custom Node Types (Markdown, Image, Group)
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/nodes/MarkdownNode.tsx`
 - Create: `src/renderer/src/components/diagram/nodes/ImageNode.tsx`
 - Create: `src/renderer/src/components/diagram/nodes/GroupNode.tsx`
@@ -912,6 +918,7 @@ git commit -m "feat(diagram): add custom node types (markdown, image, group)"
 ## Task 7: DiagramPane Component (Core)
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/DiagramPane.tsx`
 - Modify: `src/renderer/src/components/PaneGrid.tsx:172`
 
@@ -1100,6 +1107,7 @@ git commit -m "feat(diagram): add DiagramPane component wired into PaneGrid"
 ## Task 8: Open Diagram Files from Workspace Store and Sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts:894-916`
 - Modify: `src/renderer/src/components/Sidebar.tsx:1131,1152-1162`
 
@@ -1143,13 +1151,13 @@ to:
 In `src/renderer/src/components/Sidebar.tsx`, around line 1131, change:
 
 ```typescript
-              const isFile = tab.type === 'file' || tab.type === 'image';
+const isFile = tab.type === 'file' || tab.type === 'image';
 ```
 
 to:
 
 ```typescript
-              const isFile = tab.type === 'file' || tab.type === 'image' || tab.type === 'diagram';
+const isFile = tab.type === 'file' || tab.type === 'image' || tab.type === 'diagram';
 ```
 
 - [ ] **Step 4: Add diagram icon to Sidebar**
@@ -1193,6 +1201,7 @@ git commit -m "feat(diagram): open .fleet-diagram.json as diagram pane with icon
 ## Task 9: Command Palette Integration
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/commands.ts`
 
 - [ ] **Step 1: Add diagram commands to command registry**
@@ -1254,6 +1263,7 @@ git commit -m "feat(diagram): add new blank diagram command to command palette"
 ## Task 10: DiagramToolbar
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/DiagramToolbar.tsx`
 - Modify: `src/renderer/src/components/diagram/DiagramPane.tsx`
 
@@ -1458,6 +1468,7 @@ git commit -m "feat(diagram): add toolbar with add node, undo/redo, layout, fit 
 ## Task 11: Properties Panel
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/PropertiesPanel.tsx`
 - Modify: `src/renderer/src/components/diagram/DiagramPane.tsx`
 
@@ -1666,6 +1677,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 Then add the panel inside the flex container, after the `<DiagramToolbar>` and before the `<div className="flex-1 min-h-0">`. The container div should become `relative`:
 
 Change:
+
 ```typescript
     <div className="flex h-full w-full flex-col" data-pane-id={paneId}>
       <DiagramToolbar store={store} onCaptureSnapshot={captureSnapshot} />
@@ -1673,6 +1685,7 @@ Change:
 ```
 
 to:
+
 ```typescript
     <div className="flex h-full w-full flex-col" data-pane-id={paneId}>
       <DiagramToolbar store={store} onCaptureSnapshot={captureSnapshot} />
@@ -1711,6 +1724,7 @@ git commit -m "feat(diagram): add properties panel for node/edge editing"
 ## Task 12: Context Menu and Copy/Paste
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/NodeContextMenu.tsx`
 - Modify: `src/renderer/src/components/diagram/DiagramPane.tsx`
 
@@ -1892,10 +1906,10 @@ import { useContextMenu, NodeContextMenu } from './NodeContextMenu';
 Inside `DiagramPaneInner`, after the `useDiagramSync` call, add:
 
 ```typescript
-  const { menuPos, onContextMenu, close, deleteSelected, copySelected, paste } = useContextMenu(
-    store,
-    captureSnapshot
-  );
+const { menuPos, onContextMenu, close, deleteSelected, copySelected, paste } = useContextMenu(
+  store,
+  captureSnapshot
+);
 ```
 
 Add `onContextMenu={onContextMenu}` to the `<ReactFlow>` component props.
@@ -1942,6 +1956,7 @@ git commit -m "feat(diagram): add context menu with copy/paste/delete and keyboa
 ## Task 13: Export (PNG/SVG)
 
 **Files:**
+
 - Create: `src/renderer/src/components/diagram/export.ts`
 - Modify: `src/renderer/src/components/diagram/DiagramToolbar.tsx`
 
@@ -1954,7 +1969,7 @@ import { toSvg, toPng } from '@xyflow/react';
 
 export async function exportDiagramPng(element: HTMLElement): Promise<void> {
   const dataUrl = await toPng(element, {
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#0a0a0a'
   });
   const link = document.createElement('a');
   link.download = 'diagram.png';
@@ -1964,7 +1979,7 @@ export async function exportDiagramPng(element: HTMLElement): Promise<void> {
 
 export async function exportDiagramSvg(element: HTMLElement): Promise<void> {
   const dataUrl = await toSvg(element, {
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#0a0a0a'
   });
   const link = document.createElement('a');
   link.download = 'diagram.svg';
@@ -1984,15 +1999,15 @@ import { exportDiagramPng, exportDiagramSvg } from './export';
 Add export callbacks inside the component:
 
 ```typescript
-  const handleExportPng = useCallback(() => {
-    const el = document.querySelector('.react-flow') as HTMLElement | null;
-    if (el) void exportDiagramPng(el);
-  }, []);
+const handleExportPng = useCallback(() => {
+  const el = document.querySelector('.react-flow') as HTMLElement | null;
+  if (el) void exportDiagramPng(el);
+}, []);
 
-  const handleExportSvg = useCallback(() => {
-    const el = document.querySelector('.react-flow') as HTMLElement | null;
-    if (el) void exportDiagramSvg(el);
-  }, []);
+const handleExportSvg = useCallback(() => {
+  const el = document.querySelector('.react-flow') as HTMLElement | null;
+  if (el) void exportDiagramSvg(el);
+}, []);
 ```
 
 Add export buttons to the toolbar JSX, after the fit view button:
@@ -2033,6 +2048,7 @@ git commit -m "feat(diagram): add PNG and SVG export"
 ## Task 14: Static Codebase Analyzers (Dependency Graph + Directory Structure)
 
 **Files:**
+
 - Create: `src/main/diagram-analyzer.ts`
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/shared/ipc-channels.ts`
@@ -2105,7 +2121,7 @@ export async function analyzeDependencies(rootDir: string): Promise<FleetDiagram
       type: 'default',
       position: { x: 0, y: 0 },
       data: { label: relPath },
-      style: { background: '#1e293b', border: '1px solid #334155', fontSize: '10px' },
+      style: { background: '#1e293b', border: '1px solid #334155', fontSize: '10px' }
     });
   }
 
@@ -2124,7 +2140,7 @@ export async function analyzeDependencies(rootDir: string): Promise<FleetDiagram
           id: `e-${sourceId}-${targetId}`,
           source: sourceId,
           target: targetId,
-          type: 'smoothstep',
+          type: 'smoothstep'
         });
       }
     }
@@ -2144,10 +2160,14 @@ export async function analyzeDependencies(rootDir: string): Promise<FleetDiagram
 
   return {
     version: 1,
-    meta: { title: 'Dependency Graph', createdBy: 'fleet-analyzer', createdAt: new Date().toISOString() },
+    meta: {
+      title: 'Dependency Graph',
+      createdBy: 'fleet-analyzer',
+      createdAt: new Date().toISOString()
+    },
     nodes,
     edges,
-    viewport: { x: 0, y: 0, zoom: 1 },
+    viewport: { x: 0, y: 0, zoom: 1 }
   };
 }
 
@@ -2178,9 +2198,15 @@ export async function analyzeDirectoryStructure(rootDir: string): Promise<FleetD
         position: { x: childIndex * 40, y: childIndex * 40 },
         data: { label: entry.name },
         style: entry.isDirectory()
-          ? { background: 'rgba(30,41,59,0.3)', border: '2px dashed #334155', padding: 30, minWidth: 200, minHeight: 80 }
+          ? {
+              background: 'rgba(30,41,59,0.3)',
+              border: '2px dashed #334155',
+              padding: 30,
+              minWidth: 200,
+              minHeight: 80
+            }
           : { background: '#1e293b', border: '1px solid #334155', fontSize: '11px' },
-        ...(parentId ? { parentId, extent: 'parent' as const } : {}),
+        ...(parentId ? { parentId, extent: 'parent' as const } : {})
       };
       nodes.push(node);
 
@@ -2195,10 +2221,14 @@ export async function analyzeDirectoryStructure(rootDir: string): Promise<FleetD
 
   return {
     version: 1,
-    meta: { title: 'Directory Structure', createdBy: 'fleet-analyzer', createdAt: new Date().toISOString() },
+    meta: {
+      title: 'Directory Structure',
+      createdBy: 'fleet-analyzer',
+      createdAt: new Date().toISOString()
+    },
     nodes,
     edges: [],
-    viewport: { x: 0, y: 0, zoom: 1 },
+    viewport: { x: 0, y: 0, zoom: 1 }
   };
 }
 ```
@@ -2218,23 +2248,23 @@ import { analyzeDependencies, analyzeDirectoryStructure } from './diagram-analyz
 Add handlers after the existing diagram handlers:
 
 ```typescript
-  ipcMain.handle(IPC_CHANNELS.DIAGRAM_ANALYZE_DEPS, async (_event, rootDir: string) => {
-    try {
-      const diagram = await analyzeDependencies(rootDir);
-      return { success: true, data: diagram };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+ipcMain.handle(IPC_CHANNELS.DIAGRAM_ANALYZE_DEPS, async (_event, rootDir: string) => {
+  try {
+    const diagram = await analyzeDependencies(rootDir);
+    return { success: true, data: diagram };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
 
-  ipcMain.handle(IPC_CHANNELS.DIAGRAM_ANALYZE_DIRS, async (_event, rootDir: string) => {
-    try {
-      const diagram = await analyzeDirectoryStructure(rootDir);
-      return { success: true, data: diagram };
-    } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  });
+ipcMain.handle(IPC_CHANNELS.DIAGRAM_ANALYZE_DIRS, async (_event, rootDir: string) => {
+  try {
+    const diagram = await analyzeDirectoryStructure(rootDir);
+    return { success: true, data: diagram };
+  } catch (err) {
+    return { success: false, error: err instanceof Error ? err.message : String(err) };
+  }
+});
 ```
 
 - [ ] **Step 4: Expose in preload**
@@ -2316,6 +2346,7 @@ git commit -m "feat(diagram): add static codebase analyzers (dependency graph + 
 ## Task 15: Final Integration Test and Cleanup
 
 **Files:**
+
 - No new files.
 
 - [ ] **Step 1: Run full typecheck**
@@ -2338,6 +2369,7 @@ Expected: PASS — the app builds successfully with the new diagram feature.
 Run: `npm run dev`
 
 Test the complete feature flow:
+
 1. **New blank diagram:** Command palette → "Diagram: New Blank Diagram" → empty canvas opens with toolbar.
 2. **Add nodes:** Use toolbar to add default, markdown, and group nodes. Connect them with edges.
 3. **Edit properties:** Click a node → properties panel opens → change label, colors. Click edge → change type.

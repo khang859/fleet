@@ -18,12 +18,12 @@ Replace the current copilot character sprite with a new "Nebula Pup" mascot gene
 
 Single horizontal PNG strip, 128x128px per frame. Same format as current `copilot-sprites.png`.
 
-| State | Frames | FPS | Behavior | PixelLab Approach |
-|-------|--------|-----|----------|-------------------|
-| Idle | 0, 1 | 2 | Sleeping/resting, gentle tail glow pulse | `animate_character` idle template — "sleeping curled up" |
-| Processing | 2, 3, 4 | 4 | Alert, ears perked, tail wagging | `animate_character` walking/idle template — "excited, ears up, wagging tail" |
-| Permission | 5, 6 | 3 | Pawing/looking up expectantly | Separate character pose fallback — "looking up, one paw raised" |
-| Complete | 7, 8 | 2 | Happy celebration bounce | `animate_character` — "happy jump/bounce" |
+| State      | Frames  | FPS | Behavior                                 | PixelLab Approach                                                            |
+| ---------- | ------- | --- | ---------------------------------------- | ---------------------------------------------------------------------------- |
+| Idle       | 0, 1    | 2   | Sleeping/resting, gentle tail glow pulse | `animate_character` idle template — "sleeping curled up"                     |
+| Processing | 2, 3, 4 | 4   | Alert, ears perked, tail wagging         | `animate_character` walking/idle template — "excited, ears up, wagging tail" |
+| Permission | 5, 6    | 3   | Pawing/looking up expectantly            | Separate character pose fallback — "looking up, one paw raised"              |
+| Complete   | 7, 8    | 2   | Happy celebration bounce                 | `animate_character` — "happy jump/bounce"                                    |
 
 **Total: 9 frames** — matches current sprite sheet exactly.
 
@@ -53,10 +53,12 @@ create_character:
 ## Integration
 
 **Files changed:**
+
 - `src/renderer/copilot/src/assets/copilot-sprites.png` — replaced with new sprite sheet
 - `src/renderer/copilot/src/assets/copilot-sprites.ts` — regenerated base64 data URI
 
 **No changes to:**
+
 - `SpaceshipSprite.tsx` — frame count, sizes, animation config all stay identical
 - CSS animations (bob, thrust, pulse-amber, flash-green)
 - Any component logic

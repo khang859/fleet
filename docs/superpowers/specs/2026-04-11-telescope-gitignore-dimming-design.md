@@ -21,11 +21,11 @@ Based on Baymard Institute and Nielsen Norman Group research:
 
 ## Visual Treatment
 
-| State | Text Color | Notes |
-|-------|-----------|-------|
-| Normal file/folder (unselected) | `text-neutral-300` | Current behavior, unchanged |
-| Gitignored file/folder (unselected) | `text-neutral-600` | Muted but still readable |
-| Any file/folder (selected) | `text-white` on `bg-neutral-700` | Selection always wins, no dimming |
+| State                               | Text Color                       | Notes                             |
+| ----------------------------------- | -------------------------------- | --------------------------------- |
+| Normal file/folder (unselected)     | `text-neutral-300`               | Current behavior, unchanged       |
+| Gitignored file/folder (unselected) | `text-neutral-600`               | Muted but still readable          |
+| Any file/folder (selected)          | `text-white` on `bg-neutral-700` | Selection always wins, no dimming |
 
 The icon color follows the text color — no separate icon treatment needed.
 
@@ -34,7 +34,7 @@ The icon color follows the text color — no separate icon treatment needed.
 ### New IPC Handler: `FILE_CHECK_IGNORED`
 
 - **Input:** directory path (string)
-- **Process:** 
+- **Process:**
   1. Read directory entries via `readdir()`
   2. Run `git check-ignore <entries...>` in one batch call from the directory
   3. Parse output to get the set of ignored entry names
@@ -64,10 +64,10 @@ The icon color follows the text color — no separate icon treatment needed.
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/shared/ipc-api.ts` | Add `FILE_CHECK_IGNORED` channel definition |
-| `src/main/ipc-handlers.ts` | Add handler that runs `git check-ignore` |
-| `src/preload/index.ts` | Expose `file.checkIgnored()` to renderer |
+| File                                                         | Change                                                |
+| ------------------------------------------------------------ | ----------------------------------------------------- |
+| `src/shared/ipc-api.ts`                                      | Add `FILE_CHECK_IGNORED` channel definition           |
+| `src/main/ipc-handlers.ts`                                   | Add handler that runs `git check-ignore`              |
+| `src/preload/index.ts`                                       | Expose `file.checkIgnored()` to renderer              |
 | `src/renderer/src/components/Telescope/modes/browse-mode.ts` | Call `checkIgnored`, attach `isIgnored` flag to items |
-| `src/renderer/src/components/Telescope/TelescopeModal.tsx` | Apply muted color class for ignored items |
+| `src/renderer/src/components/Telescope/TelescopeModal.tsx`   | Apply muted color class for ignored items             |

@@ -83,7 +83,10 @@ function getTimeGroup(epochMs: number): TimeGroup {
   return 'Older';
 }
 
-function groupByTime<T>(items: T[], getTime: (item: T) => number): Array<{ group: TimeGroup; items: T[] }> {
+function groupByTime<T>(
+  items: T[],
+  getTime: (item: T) => number
+): Array<{ group: TimeGroup; items: T[] }> {
   const groups = new Map<TimeGroup, T[]>();
   const order: TimeGroup[] = ['Today', 'Yesterday', 'This Week', 'Older'];
   for (const g of order) groups.set(g, []);
@@ -93,7 +96,9 @@ function groupByTime<T>(items: T[], getTime: (item: T) => number): Array<{ group
     groups.get(group)!.push(item);
   }
 
-  return order.filter((g) => groups.get(g)!.length > 0).map((g) => ({ group: g, items: groups.get(g)! }));
+  return order
+    .filter((g) => groups.get(g)!.length > 0)
+    .map((g) => ({ group: g, items: groups.get(g)! }));
 }
 
 // --- Highlight matched characters ---
@@ -198,7 +203,13 @@ function GeneratedThumbnail({
         <img src={src} alt={generation.prompt} className={imgClass} />
       ) : (
         <div className={placeholderClass}>
-          <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <svg
+            className="w-6 h-6"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <circle cx="8.5" cy="8.5" r="1.5" />
             <path d="M21 15l-5-5L5 21" />
@@ -487,7 +498,8 @@ export function FileSearchOverlay({
           </div>
           <p className="text-sm text-neutral-400">No generated images yet</p>
           <p className="text-xs text-neutral-600 mt-1">
-            Generate one with: <code className="text-neutral-500">fleet images generate --prompt &quot;...&quot;</code>
+            Generate one with:{' '}
+            <code className="text-neutral-500">fleet images generate --prompt &quot;...&quot;</code>
           </p>
         </div>
       );
@@ -528,9 +540,7 @@ export function FileSearchOverlay({
           </div>
         );
       }
-      return (
-        <div className="px-3 py-4 text-sm text-neutral-500 text-center">No recent files</div>
-      );
+      return <div className="px-3 py-4 text-sm text-neutral-500 text-center">No recent files</div>;
     }
 
     return (

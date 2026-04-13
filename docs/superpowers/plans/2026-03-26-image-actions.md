@@ -12,27 +12,28 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/main/image-providers/action-types.ts` | Create | `ImageActionConfig` type, `ImageActionInfo` serializable type, output validator |
-| `src/main/image-providers/types.ts` | Modify | Add `getActions()` to `ImageProvider` interface |
-| `src/main/image-providers/fal-ai.ts` | Modify | Implement `getActions()` returning remove-background config |
-| `src/shared/types.ts` | Modify | Extend `ImageGenerationMode`, add `sourceImage` to `ImageGenerationMeta` |
-| `src/main/image-service.ts` | Modify | Add `runAction()`, `listActions()`, `resolveSourceImage()` |
-| `src/shared/ipc-channels.ts` | Modify | Add `IMAGES_RUN_ACTION` and `IMAGES_LIST_ACTIONS` channels |
-| `src/main/index.ts` | Modify | Register new IPC handlers |
-| `src/preload/index.ts` | Modify | Expose `runAction` and `listActions` |
-| `src/renderer/src/store/image-store.ts` | Modify | Add `runAction`, `actions`, `loadActions` |
-| `src/renderer/src/components/ImageGallery/ImageDetail.tsx` | Modify | Add action buttons |
-| `src/renderer/src/components/ImageViewerPane.tsx` | Modify | Add action buttons to status bar |
-| `src/main/fleet-cli.ts` | Modify | Add `images.action` and `images.actions` command mappings, validation, help |
-| `src/main/socket-server.ts` | Modify | Handle `image.action` and `image.actions.list` |
+| File                                                       | Action | Responsibility                                                                  |
+| ---------------------------------------------------------- | ------ | ------------------------------------------------------------------------------- |
+| `src/main/image-providers/action-types.ts`                 | Create | `ImageActionConfig` type, `ImageActionInfo` serializable type, output validator |
+| `src/main/image-providers/types.ts`                        | Modify | Add `getActions()` to `ImageProvider` interface                                 |
+| `src/main/image-providers/fal-ai.ts`                       | Modify | Implement `getActions()` returning remove-background config                     |
+| `src/shared/types.ts`                                      | Modify | Extend `ImageGenerationMode`, add `sourceImage` to `ImageGenerationMeta`        |
+| `src/main/image-service.ts`                                | Modify | Add `runAction()`, `listActions()`, `resolveSourceImage()`                      |
+| `src/shared/ipc-channels.ts`                               | Modify | Add `IMAGES_RUN_ACTION` and `IMAGES_LIST_ACTIONS` channels                      |
+| `src/main/index.ts`                                        | Modify | Register new IPC handlers                                                       |
+| `src/preload/index.ts`                                     | Modify | Expose `runAction` and `listActions`                                            |
+| `src/renderer/src/store/image-store.ts`                    | Modify | Add `runAction`, `actions`, `loadActions`                                       |
+| `src/renderer/src/components/ImageGallery/ImageDetail.tsx` | Modify | Add action buttons                                                              |
+| `src/renderer/src/components/ImageViewerPane.tsx`          | Modify | Add action buttons to status bar                                                |
+| `src/main/fleet-cli.ts`                                    | Modify | Add `images.action` and `images.actions` command mappings, validation, help     |
+| `src/main/socket-server.ts`                                | Modify | Handle `image.action` and `image.actions.list`                                  |
 
 ---
 
 ### Task 1: Action Config Types
 
 **Files:**
+
 - Create: `src/main/image-providers/action-types.ts`
 
 - [ ] **Step 1: Create the action types file**
@@ -89,6 +90,7 @@ git commit -m "feat(images): add ImageActionConfig and ImageActionInfo types"
 ### Task 2: Extend ImageProvider Interface and FalAiProvider
 
 **Files:**
+
 - Modify: `src/main/image-providers/types.ts:31-39`
 - Modify: `src/main/image-providers/fal-ai.ts`
 
@@ -150,6 +152,7 @@ git commit -m "feat(images): add getActions() to ImageProvider, implement remove
 ### Task 3: Extend Shared Types
 
 **Files:**
+
 - Modify: `src/shared/types.ts:140,150-170`
 
 - [ ] **Step 1: Extend ImageGenerationMode**
@@ -171,8 +174,8 @@ export type ImageGenerationMode = 'generate' | 'edit' | `action:${string}`;
 In `src/shared/types.ts`, add `sourceImage` field to `ImageGenerationMeta` after `providerRequestId` (line 169):
 
 ```ts
-  providerRequestId: string | null;
-  sourceImage: string | null;
+providerRequestId: string | null;
+sourceImage: string | null;
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -215,6 +218,7 @@ git commit -m "feat(images): extend ImageGenerationMode for actions, add sourceI
 ### Task 4: Add runAction and listActions to ImageService
 
 **Files:**
+
 - Modify: `src/main/image-service.ts`
 
 - [ ] **Step 1: Add imports**
@@ -230,7 +234,11 @@ import type { ImageActionInfo } from './image-providers/action-types';
 (Combine the imports into one line):
 
 ```ts
-import { toActionInfo, type ImageActionConfig, type ImageActionInfo } from './image-providers/action-types';
+import {
+  toActionInfo,
+  type ImageActionConfig,
+  type ImageActionInfo
+} from './image-providers/action-types';
 ```
 
 - [ ] **Step 2: Add listActions method**
@@ -406,6 +414,7 @@ git commit -m "feat(images): add runAction(), listActions(), and action executor
 ### Task 5: Add IPC Channels and Wire Up Main Process
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts:90-98`
 - Modify: `src/main/index.ts:813-840`
 - Modify: `src/preload/index.ts:336-367`
@@ -424,14 +433,14 @@ In `src/shared/ipc-channels.ts`, add before the closing `} as const;` (after lin
 In `src/main/index.ts`, add after the `IMAGES_CONFIG_SET` handler (after line 840):
 
 ```ts
-  ipcMain.handle(
-    IPC_CHANNELS.IMAGES_RUN_ACTION,
-    (_e, opts: { actionType: string; source: string; provider?: string }) =>
-      imageService.runAction(opts)
-  );
-  ipcMain.handle(IPC_CHANNELS.IMAGES_LIST_ACTIONS, (_e, provider?: string) =>
-    imageService.listActions(provider)
-  );
+ipcMain.handle(
+  IPC_CHANNELS.IMAGES_RUN_ACTION,
+  (_e, opts: { actionType: string; source: string; provider?: string }) =>
+    imageService.runAction(opts)
+);
+ipcMain.handle(IPC_CHANNELS.IMAGES_LIST_ACTIONS, (_e, provider?: string) =>
+  imageService.listActions(provider)
+);
 ```
 
 - [ ] **Step 3: Expose in preload**
@@ -470,6 +479,7 @@ git commit -m "feat(images): add IPC channels for runAction and listActions"
 ### Task 6: Update Image Store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/image-store.ts`
 
 - [ ] **Step 1: Add action types and methods to the store**
@@ -558,6 +568,7 @@ git commit -m "feat(images): add runAction and actions to image store"
 ### Task 7: Add Action Buttons to ImageDetail
 
 **Files:**
+
 - Modify: `src/renderer/src/components/ImageGallery/ImageDetail.tsx`
 
 - [ ] **Step 1: Add action imports and state**
@@ -575,21 +586,21 @@ import { useImageStore } from '../../store/image-store';
 Inside the `ImageDetail` component function, after the existing handler functions (after `handleCopyPath`), add:
 
 ```ts
-  const { retry, deleteGeneration, runAction, actions, loadActions } = useImageStore();
-  const [runningAction, setRunningAction] = useState<string | null>(null);
+const { retry, deleteGeneration, runAction, actions, loadActions } = useImageStore();
+const [runningAction, setRunningAction] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadActions();
-  }, [loadActions]);
+useEffect(() => {
+  void loadActions();
+}, [loadActions]);
 
-  const handleAction = useCallback(
-    (actionType: string, filename: string) => {
-      setRunningAction(actionType);
-      const source = `${gen.id}/${filename}`;
-      void runAction({ actionType, source }).finally(() => setRunningAction(null));
-    },
-    [gen.id, runAction]
-  );
+const handleAction = useCallback(
+  (actionType: string, filename: string) => {
+    setRunningAction(actionType);
+    const source = `${gen.id}/${filename}`;
+    void runAction({ actionType, source }).finally(() => setRunningAction(null));
+  },
+  [gen.id, runAction]
+);
 ```
 
 Update the destructuring at the top to remove the old `retry, deleteGeneration` since we now get them from the expanded destructuring above.
@@ -599,21 +610,23 @@ Update the destructuring at the top to remove the old `retry, deleteGeneration` 
 In the sidebar actions section (around line 165, the `<div className="pt-3 border-t ...">` block), add an Actions section before the existing Retry/Copy Path/Delete buttons:
 
 ```tsx
-          {gen.status === 'completed' && images.length > 0 && actions.length > 0 && (
-            <div className="pb-3 border-b border-neutral-800 space-y-2">
-              <span className="text-xs text-neutral-500">Actions</span>
-              {actions.map((action) => (
-                <button
-                  key={action.id}
-                  className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 disabled:opacity-50"
-                  disabled={runningAction !== null}
-                  onClick={() => handleAction(action.actionType, images[0].filename!)}
-                >
-                  {runningAction === action.actionType ? 'Processing...' : action.name}
-                </button>
-              ))}
-            </div>
-          )}
+{
+  gen.status === 'completed' && images.length > 0 && actions.length > 0 && (
+    <div className="pb-3 border-b border-neutral-800 space-y-2">
+      <span className="text-xs text-neutral-500">Actions</span>
+      {actions.map((action) => (
+        <button
+          key={action.id}
+          className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 disabled:opacity-50"
+          disabled={runningAction !== null}
+          onClick={() => handleAction(action.actionType, images[0].filename!)}
+        >
+          {runningAction === action.actionType ? 'Processing...' : action.name}
+        </button>
+      ))}
+    </div>
+  );
+}
 ```
 
 - [ ] **Step 4: Run typecheck**
@@ -633,6 +646,7 @@ git commit -m "feat(images): add action buttons to ImageDetail gallery panel"
 ### Task 8: Add Action Buttons to ImageViewerPane
 
 **Files:**
+
 - Modify: `src/renderer/src/components/ImageViewerPane.tsx`
 
 - [ ] **Step 1: Add imports and action state**
@@ -649,20 +663,20 @@ import { useImageStore } from '../store/image-store';
 Inside the component, after the keyboard shortcuts `useEffect` (around line 194), add:
 
 ```ts
-  const { actions, loadActions, runAction } = useImageStore();
-  const [runningAction, setRunningAction] = useState<string | null>(null);
+const { actions, loadActions, runAction } = useImageStore();
+const [runningAction, setRunningAction] = useState<string | null>(null);
 
-  useEffect(() => {
-    void loadActions();
-  }, [loadActions]);
+useEffect(() => {
+  void loadActions();
+}, [loadActions]);
 
-  const handleAction = useCallback(
-    (actionType: string) => {
-      setRunningAction(actionType);
-      void runAction({ actionType, source: filePath }).finally(() => setRunningAction(null));
-    },
-    [filePath, runAction]
-  );
+const handleAction = useCallback(
+  (actionType: string) => {
+    setRunningAction(actionType);
+    void runAction({ actionType, source: filePath }).finally(() => setRunningAction(null));
+  },
+  [filePath, runAction]
+);
 ```
 
 - [ ] **Step 3: Add action buttons to the status bar**
@@ -670,20 +684,22 @@ Inside the component, after the keyboard shortcuts `useEffect` (around line 194)
 In the status bar JSX (the `<div className="flex-shrink-0 flex items-center ...">` block), add after the zoom controls `</div>` (around line 285) but before the closing status bar `</div>`:
 
 ```tsx
-        {imageSrc && actions.length > 0 && (
-          <div className="flex items-center gap-0.5 ml-2">
-            <div className="w-px h-3.5 bg-neutral-700 mx-1" />
-            {actions.map((action) => (
-              <ToolbarButton
-                key={action.id}
-                onClick={() => handleAction(action.actionType)}
-                title={action.description}
-              >
-                {runningAction === action.actionType ? '...' : action.name}
-              </ToolbarButton>
-            ))}
-          </div>
-        )}
+{
+  imageSrc && actions.length > 0 && (
+    <div className="flex items-center gap-0.5 ml-2">
+      <div className="w-px h-3.5 bg-neutral-700 mx-1" />
+      {actions.map((action) => (
+        <ToolbarButton
+          key={action.id}
+          onClick={() => handleAction(action.actionType)}
+          title={action.description}
+        >
+          {runningAction === action.actionType ? '...' : action.name}
+        </ToolbarButton>
+      ))}
+    </div>
+  );
+}
 ```
 
 This goes right after the zoom controls div that closes around line 285, inside the `{imageSrc && (...)}` conditional — but as a sibling to the existing zoom controls div (both wrapped by the status bar flex container).
@@ -705,6 +721,7 @@ git commit -m "feat(images): add action buttons to ImageViewerPane status bar"
 ### Task 9: Add CLI Command Mapping and Validation
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 
 - [ ] **Step 1: Add command mappings**
@@ -770,6 +787,7 @@ git commit -m "feat(images): add CLI command mapping and help for image actions"
 ### Task 10: Add Socket Server Handlers
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 
 - [ ] **Step 1: Add image.action handler**

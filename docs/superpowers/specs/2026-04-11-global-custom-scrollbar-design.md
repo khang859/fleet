@@ -17,14 +17,14 @@ Fleet uses native Chromium scrollbars which are thick, gray, and visually jarrin
 
 ## Spec
 
-| Property | Value | Rationale |
-|---|---|---|
-| Thumb width | `6px` | Subtle but grabbable (VS Code uses ~7px) |
-| Thumb color | `#2dd4bf33` (cyan 20% opacity) | On-brand accent, doesn't compete with content |
-| Thumb hover | `#2dd4bf66` (cyan 40% opacity) | Visible feedback on interaction |
-| Thumb border-radius | `3px` | Soft pill shape |
-| Track background | `transparent` | Invisible track, thumb floats cleanly |
-| Visibility | Always visible when content overflows | Per Baymard/NNG recommendation |
+| Property            | Value                                 | Rationale                                     |
+| ------------------- | ------------------------------------- | --------------------------------------------- |
+| Thumb width         | `6px`                                 | Subtle but grabbable (VS Code uses ~7px)      |
+| Thumb color         | `#2dd4bf33` (cyan 20% opacity)        | On-brand accent, doesn't compete with content |
+| Thumb hover         | `#2dd4bf66` (cyan 40% opacity)        | Visible feedback on interaction               |
+| Thumb border-radius | `3px`                                 | Soft pill shape                               |
+| Track background    | `transparent`                         | Invisible track, thumb floats cleanly         |
+| Visibility          | Always visible when content overflows | Per Baymard/NNG recommendation                |
 
 ## Changes
 

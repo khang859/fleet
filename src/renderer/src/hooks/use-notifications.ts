@@ -67,7 +67,7 @@ export function useNotifications(): void {
         paneId: payload.paneId,
         state: payload.state,
         lastOutputAt: payload.lastOutputAt,
-        timestamp: payload.timestamp,
+        timestamp: payload.timestamp
       });
 
       // Play sound for needs_me state (agent blocked on permission)

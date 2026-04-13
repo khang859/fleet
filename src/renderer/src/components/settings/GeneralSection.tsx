@@ -128,7 +128,9 @@ export function GeneralSection(): React.JSX.Element {
     settings?.general.fontSize !== undefined ? String(settings.general.fontSize) : '14'
   );
   const [localScrollback, setLocalScrollback] = useState(
-    settings?.general.scrollbackSize !== undefined ? String(settings.general.scrollbackSize) : '10000'
+    settings?.general.scrollbackSize !== undefined
+      ? String(settings.general.scrollbackSize)
+      : '10000'
   );
 
   const debouncedSaveShell = useDebouncedCallback((value: string) => {

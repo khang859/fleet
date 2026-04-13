@@ -13,9 +13,24 @@ type KindMeta = {
 };
 
 const KINDS: KindMeta[] = [
-  { kind: 'envVar', label: 'Env var', placeholder: 'MY_API_KEY', help: 'Reads process.env[name] at request time.' },
-  { kind: 'literal', label: 'Literal', placeholder: 'sk-...', help: 'Stored in plain text in models.json.' },
-  { kind: 'shell', label: 'Shell cmd', placeholder: 'security find-generic-password -ws anthropic', help: 'Runs the command and uses stdout.' }
+  {
+    kind: 'envVar',
+    label: 'Env var',
+    placeholder: 'MY_API_KEY',
+    help: 'Reads process.env[name] at request time.'
+  },
+  {
+    kind: 'literal',
+    label: 'Literal',
+    placeholder: 'sk-...',
+    help: 'Stored in plain text in models.json.'
+  },
+  {
+    kind: 'shell',
+    label: 'Shell cmd',
+    placeholder: 'security find-generic-password -ws anthropic',
+    help: 'Runs the command and uses stdout.'
+  }
 ];
 
 function metaFor(kind: PiApiKey['kind']): KindMeta {

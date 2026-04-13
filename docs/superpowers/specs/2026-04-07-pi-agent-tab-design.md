@@ -13,6 +13,7 @@ New `'pi'` value added to the `Tab['type']` union in `src/shared/types.ts`. Pi t
 The pane leaf gets a new `paneType: 'pi'` that behaves like a terminal pane (xterm.js + node-pty) but auto-launches `pi` instead of a shell.
 
 Environment variables set on the PTY:
+
 - `FLEET_BRIDGE_PORT` - WebSocket bridge port
 - `FLEET_BRIDGE_TOKEN` - one-time auth token for the bridge connection
 
@@ -64,11 +65,13 @@ New `FleetBridgeServer` in `src/main/fleet-bridge.ts`.
 JSON messages with `{ type, payload }` structure. Request/response uses `{ id, type, payload }` with `{ id, result }` replies.
 
 **Pi extension -> Fleet (requests):**
+
 - `file.open` - open a file in Fleet's editor
 - `tab.create` - create a new terminal tab
 - `terminal.run` - run a command in a new terminal
 
 **Fleet -> Pi extension (events):**
+
 - `file.opened` - user opened a file
 - `tab.changed` - active tab changed
 - `git.status` - git status update
@@ -147,6 +150,7 @@ fleet pi (in terminal)
 ### App.tsx
 
 New branch in tab rendering conditional:
+
 ```
 tab.type === 'pi' ? <PiTab tab={tab} /> : ...
 ```
@@ -167,17 +171,18 @@ tab.type === 'pi' ? <PiTab tab={tab} /> : ...
 
 ## Error Handling
 
-| Scenario | Behavior |
-|----------|----------|
-| Pi not installed | Auto-install on first `fleet pi`. Show progress in terminal. |
-| Install fails | Display error in terminal pane with instructions |
-| Pi crashes/exits | Show exit message, tab stays open for reading output |
-| WebSocket fails | Extensions retry with backoff. Pi still works standalone - Fleet tools unavailable but agent functional |
-| Version outdated | Log note at launch, update in background for next time |
+| Scenario         | Behavior                                                                                                |
+| ---------------- | ------------------------------------------------------------------------------------------------------- |
+| Pi not installed | Auto-install on first `fleet pi`. Show progress in terminal.                                            |
+| Install fails    | Display error in terminal pane with instructions                                                        |
+| Pi crashes/exits | Show exit message, tab stays open for reading output                                                    |
+| WebSocket fails  | Extensions retry with backoff. Pi still works standalone - Fleet tools unavailable but agent functional |
+| Version outdated | Log note at launch, update in background for next time                                                  |
 
 ## Files to Create/Modify
 
 **New files:**
+
 - `src/main/pi-agent-manager.ts` - installation, version management, launch config
 - `src/main/fleet-bridge.ts` - WebSocket bridge server
 - `src/renderer/src/components/PiTab.tsx` - tab component
@@ -186,6 +191,7 @@ tab.type === 'pi' ? <PiTab tab={tab} /> : ...
 - `resources/pi-extensions/fleet-terminal.ts` - terminal creation tool
 
 **Modified files:**
+
 - `src/shared/types.ts` - add `'pi'` to Tab type union and PaneLeaf paneType union
 - `src/renderer/src/App.tsx` - add pi tab rendering branch
 - `src/renderer/src/store/workspace-store.ts` - add `addPiTab()` action

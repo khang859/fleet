@@ -38,5 +38,5 @@ export const useToastStore = create<ToastStore>((set) => ({
   },
   dismiss: (id) => {
     set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) }));
-  },
+  }
 }));

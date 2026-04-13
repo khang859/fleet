@@ -39,10 +39,12 @@ The sidebar has several inconsistencies that violate UX best practices identifie
 The mini sidebar (44px) gets these additions:
 
 **Tooltips:**
+
 - All icons show tab label on hover with short delay
 - Pinned items show their name (e.g., "Star Command", "Images")
 
 **Divider grouping matching expanded state:**
+
 - Pinned section (Star Command, Images icons) at top
 - Divider
 - Crew icons
@@ -53,11 +55,13 @@ The mini sidebar (44px) gets these additions:
 - Settings icon (bottom)
 
 **Workspace popover:**
+
 - Clicking the workspace icon opens a small popover anchored to the icon
 - Reuses the existing `WorkspacePicker` dropdown menu content: list of saved workspaces (click to switch), "New Workspace", "Save Current"
 - Ensures workspace switching is accessible without expanding the sidebar
 
 **Active state indicators:**
+
 - Background highlight on active tab icon persists in collapsed view
 
 **No auto-collapse triggers remain.** Only the user clicking the toggle changes sidebar state.

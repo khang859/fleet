@@ -22,28 +22,31 @@ export function App(): React.JSX.Element {
   const teleportingRef = useRef(false);
 
   // Animate transition: flash-out → resize window + swap view → flash-in
-  const animateTransition = useCallback((willExpand: boolean) => {
-    if (teleportingRef.current) return;
-    teleportingRef.current = true;
+  const animateTransition = useCallback(
+    (willExpand: boolean) => {
+      if (teleportingRef.current) return;
+      teleportingRef.current = true;
 
-    // Phase 1: flash-out the current sprite
-    setTeleportPhase('flash-out');
-
-    setTimeout(() => {
-      // Phase 2: tell main to resize, swap the visible view
-      window.copilot.setExpanded(willExpand);
-      setExpanded(willExpand);
-      setShowPane(willExpand);
-
-      // Phase 3: flash-in the new sprite
-      setTeleportPhase('flash-in');
+      // Phase 1: flash-out the current sprite
+      setTeleportPhase('flash-out');
 
       setTimeout(() => {
-        setTeleportPhase('idle');
-        teleportingRef.current = false;
+        // Phase 2: tell main to resize, swap the visible view
+        window.copilot.setExpanded(willExpand);
+        setExpanded(willExpand);
+        setShowPane(willExpand);
+
+        // Phase 3: flash-in the new sprite
+        setTeleportPhase('flash-in');
+
+        setTimeout(() => {
+          setTeleportPhase('idle');
+          teleportingRef.current = false;
+        }, TELEPORT_FLASH_MS);
       }, TELEPORT_FLASH_MS);
-    }, TELEPORT_FLASH_MS);
-  }, [setExpanded]);
+    },
+    [setExpanded]
+  );
 
   const handleToggle = useCallback(() => {
     animateTransition(!showPane);
@@ -56,7 +59,10 @@ export function App(): React.JSX.Element {
   // IPC subscriptions
   useEffect(() => {
     if (!window.copilot) return;
-    window.copilot.getSessions().then(setSessions).catch(() => {});
+    window.copilot
+      .getSessions()
+      .then(setSessions)
+      .catch(() => {});
     loadSettings().catch(() => {});
     const cleanupSessions = window.copilot.onSessions(setSessions);
     const cleanupExpanded = window.copilot.onExpandedChanged((expanded) => {
@@ -71,9 +77,12 @@ export function App(): React.JSX.Element {
     const setActiveWorkspace = useCopilotStore.getState().setActiveWorkspace;
 
     // Load initial active workspace
-    window.copilot.getActiveWorkspace().then((ws) => {
-      if (ws) setActiveWorkspace(ws.workspaceId, ws.workspaceName);
-    }).catch(() => {});
+    window.copilot
+      .getActiveWorkspace()
+      .then((ws) => {
+        if (ws) setActiveWorkspace(ws.workspaceId, ws.workspaceName);
+      })
+      .catch(() => {});
 
     // Subscribe to active workspace changes
     const cleanupWorkspace = window.copilot.onActiveWorkspace((payload) => {
@@ -109,11 +118,8 @@ export function App(): React.JSX.Element {
   }, []);
 
   // Determine teleport visual state for the sprite
-  const spriteTeleportState = teleportPhase === 'flash-out'
-    ? 'out'
-    : teleportPhase === 'flash-in'
-      ? 'in'
-      : 'idle';
+  const spriteTeleportState =
+    teleportPhase === 'flash-out' ? 'out' : teleportPhase === 'flash-in' ? 'in' : 'idle';
 
   return (
     <div className="relative w-full h-full">
@@ -145,10 +151,7 @@ export function App(): React.JSX.Element {
             </div>
 
             {/* Pane body */}
-            <div
-              style={{ width: 650, height: 500 }}
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div style={{ width: 650, height: 500 }} onClick={(e) => e.stopPropagation()}>
               <CrtFrame>
                 {view === 'sessions' && <SessionList />}
                 {view === 'detail' && <SessionDetail />}

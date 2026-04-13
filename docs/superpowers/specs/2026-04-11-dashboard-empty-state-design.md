@@ -14,6 +14,7 @@ Replace the current minimal empty state ("No tabs open. Press Cmd+T to create on
 A standalone React component rendered in place of the current empty-state `div` in `App.tsx` (line 763). Receives props from the workspace store and callbacks for actions.
 
 **Props:**
+
 - `recentFiles: string[]` — from workspace store (already exists)
 - `recentFolders: string[]` — from workspace store (new)
 - `onNewTerminal: () => void` — triggers `addTab()`
@@ -71,6 +72,7 @@ Block-letter "FLEET" rendered as a `<pre>` with each line as a separate styled `
 ```
 
 Top-to-bottom teal-to-cyan gradient applied per line:
+
 - Lines 1-2: `text-teal-500`
 - Lines 3-4: `text-cyan-500`
 - Lines 5-6: `text-cyan-400`
@@ -84,6 +86,7 @@ Font: monospace (inherits app Nerd Font). Size: `text-sm`.
 ### New Terminal Action
 
 Single clickable row:
+
 - Terminal icon (lucide-react `Terminal`, 16px)
 - "New Terminal" label
 - `⌘T` keybinding badge (dimmer, `text-neutral-600`)
@@ -109,6 +112,7 @@ Styled: `text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer`.
 ### Path Display
 
 All paths are shortened for display:
+
 - Replace home directory prefix with `~`
 - Show full shortened path (e.g., `~/Dev/fleet/src/App.tsx`)
 

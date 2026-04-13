@@ -5,17 +5,17 @@
  * Requires fleet-bridge.ts to be loaded first.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
+import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import { Type } from '@sinclair/typebox';
 
 const FleetOpenParams = Type.Object({
-  path: Type.String({ description: "Absolute path to the file to open" }),
+  path: Type.String({ description: 'Absolute path to the file to open' })
 });
 
 export default function (pi: ExtensionAPI): void {
   pi.registerTool({
-    name: "fleet_open",
-    label: "Fleet Open",
+    name: 'fleet_open',
+    label: 'Fleet Open',
     description:
       "Open a file in the Fleet editor. Use this when you want the user to see a file in Fleet's built-in editor tab.",
     parameters: FleetOpenParams,
@@ -25,23 +25,33 @@ export default function (pi: ExtensionAPI): void {
 
       if (!bridge || !bridge.isConnected()) {
         return {
-          content: [{ type: "text" as const, text: "Fleet bridge not connected. Fleet-specific tools are unavailable." }],
-          details: undefined,
+          content: [
+            {
+              type: 'text' as const,
+              text: 'Fleet bridge not connected. Fleet-specific tools are unavailable.'
+            }
+          ],
+          details: undefined
         };
       }
 
       try {
-        await bridge.send("file.open", { path: params.path });
+        await bridge.send('file.open', { path: params.path });
         return {
-          content: [{ type: "text" as const, text: `Opened ${params.path} in Fleet editor` }],
-          details: undefined,
+          content: [{ type: 'text' as const, text: `Opened ${params.path} in Fleet editor` }],
+          details: undefined
         };
       } catch (err) {
         return {
-          content: [{ type: "text" as const, text: `Error: ${err instanceof Error ? err.message : String(err)}` }],
-          details: undefined,
+          content: [
+            {
+              type: 'text' as const,
+              text: `Error: ${err instanceof Error ? err.message : String(err)}`
+            }
+          ],
+          details: undefined
         };
       }
-    },
+    }
   });
 }

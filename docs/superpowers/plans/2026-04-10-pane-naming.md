@@ -12,22 +12,23 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `src/shared/types.ts` | Modify | Add `label?` and `labelIsCustom?` to `PaneLeaf` |
-| `src/renderer/src/store/workspace-store.ts` | Modify | Add `renamePane` and `resetPaneLabel` actions |
-| `src/renderer/src/lib/shortcuts.ts` | Modify | Add `rename-pane` shortcut definition |
-| `src/renderer/src/lib/shorten-path.ts` | Create | Extract `shortenPath` utility from TabItem for reuse |
-| `src/renderer/src/components/PaneHeader.tsx` | Create | Pane header bar with path display, inline edit, reset |
-| `src/renderer/src/components/TabItem.tsx` | Modify | Import shared `shortenPath` instead of local copy |
-| `src/renderer/src/components/PaneGrid.tsx` | Modify | Render `PaneHeader` above terminal panes when split |
-| `src/renderer/src/hooks/use-pane-navigation.ts` | Modify | Handle `rename-pane` shortcut |
+| File                                            | Action | Responsibility                                        |
+| ----------------------------------------------- | ------ | ----------------------------------------------------- |
+| `src/shared/types.ts`                           | Modify | Add `label?` and `labelIsCustom?` to `PaneLeaf`       |
+| `src/renderer/src/store/workspace-store.ts`     | Modify | Add `renamePane` and `resetPaneLabel` actions         |
+| `src/renderer/src/lib/shortcuts.ts`             | Modify | Add `rename-pane` shortcut definition                 |
+| `src/renderer/src/lib/shorten-path.ts`          | Create | Extract `shortenPath` utility from TabItem for reuse  |
+| `src/renderer/src/components/PaneHeader.tsx`    | Create | Pane header bar with path display, inline edit, reset |
+| `src/renderer/src/components/TabItem.tsx`       | Modify | Import shared `shortenPath` instead of local copy     |
+| `src/renderer/src/components/PaneGrid.tsx`      | Modify | Render `PaneHeader` above terminal panes when split   |
+| `src/renderer/src/hooks/use-pane-navigation.ts` | Modify | Handle `rename-pane` shortcut                         |
 
 ---
 
 ### Task 1: Extend PaneLeaf Type
 
 **Files:**
+
 - Modify: `src/shared/types.ts:35-45`
 
 - [ ] **Step 1: Add label fields to PaneLeaf**
@@ -67,6 +68,7 @@ git commit -m "feat(pane-naming): add label and labelIsCustom fields to PaneLeaf
 ### Task 2: Add Store Actions
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add renamePane and resetPaneLabel to the WorkspaceStore type**
@@ -146,6 +148,7 @@ git commit -m "feat(pane-naming): add renamePane and resetPaneLabel store action
 ### Task 3: Register Keyboard Shortcut
 
 **Files:**
+
 - Modify: `src/renderer/src/lib/shortcuts.ts`
 - Modify: `src/renderer/src/hooks/use-pane-navigation.ts`
 
@@ -167,21 +170,21 @@ In `src/renderer/src/lib/shortcuts.ts`, add to the `ALL_SHORTCUTS` array (after 
 In `src/renderer/src/hooks/use-pane-navigation.ts`, add after the F2 rename-tab handler (after line 27):
 
 ```typescript
-      // Shift+F2 to rename active pane
-      if (matchesShortcut(e, sc('rename-pane'))) {
-        e.preventDefault();
-        const state = useWorkspaceStore.getState();
-        const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
-        // Only fire when there are 2+ panes (header is visible)
-        if (activeTab && activeTab.splitRoot.type === 'split' && state.activePaneId) {
-          document.dispatchEvent(
-            new CustomEvent('fleet:rename-active-pane', {
-              detail: { paneId: state.activePaneId }
-            })
-          );
-        }
-        return;
-      }
+// Shift+F2 to rename active pane
+if (matchesShortcut(e, sc('rename-pane'))) {
+  e.preventDefault();
+  const state = useWorkspaceStore.getState();
+  const activeTab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+  // Only fire when there are 2+ panes (header is visible)
+  if (activeTab && activeTab.splitRoot.type === 'split' && state.activePaneId) {
+    document.dispatchEvent(
+      new CustomEvent('fleet:rename-active-pane', {
+        detail: { paneId: state.activePaneId }
+      })
+    );
+  }
+  return;
+}
 ```
 
 Note: The `rename-pane` shortcut check must come **before** the `rename-tab` (F2) check, because Shift+F2 is a superset of F2. The `matchesShortcut` function checks `shift` strictly, so Shift+F2 won't match the non-shift F2 definition. But placing it first makes the intent clearer and avoids any future ambiguity.
@@ -203,6 +206,7 @@ git commit -m "feat(pane-naming): register Shift+F2 shortcut for pane rename"
 ### Task 4: Extract shortenPath Utility
 
 **Files:**
+
 - Create: `src/renderer/src/lib/shorten-path.ts`
 - Modify: `src/renderer/src/components/TabItem.tsx`
 
@@ -252,6 +256,7 @@ git commit -m "refactor: extract shortenPath to shared utility for reuse"
 ### Task 5: Create PaneHeader Component
 
 **Files:**
+
 - Create: `src/renderer/src/components/PaneHeader.tsx`
 
 - [ ] **Step 1: Create the PaneHeader component**
@@ -386,6 +391,7 @@ git commit -m "feat(pane-naming): create PaneHeader component with path display 
 ### Task 6: Integrate PaneHeader into PaneGrid
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneGrid.tsx`
 
 - [ ] **Step 1: Add PaneHeader import**
@@ -433,6 +439,7 @@ In `PaneGrid.tsx`, replace the terminal pane rendering block (lines 172-187):
 ```
 
 Key changes:
+
 - Outer div gets `className="flex flex-col"` for vertical stacking
 - `PaneHeader` conditionally rendered when `root.type === 'split'`
 - `TerminalPane` wrapped in a `flex-1 min-h-0` div so it fills remaining height after the header

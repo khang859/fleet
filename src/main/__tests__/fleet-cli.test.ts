@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { parseArgs, validateCommand, getHelpText, runCLI, FleetCLI, formatTable, stripAnsi } from '../fleet-cli';
+import {
+  parseArgs,
+  validateCommand,
+  getHelpText,
+  runCLI,
+  FleetCLI,
+  formatTable,
+  stripAnsi
+} from '../fleet-cli';
 
 // ── parseArgs tests ───────────────────────────────────────────────────────────
 

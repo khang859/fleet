@@ -5,7 +5,10 @@ import { tmpdir } from 'os';
 import { PiAuthInspector } from '../pi-auth-inspector';
 
 function makeDir(): string {
-  const d = join(tmpdir(), `fleet-pi-auth-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const d = join(
+    tmpdir(),
+    `fleet-pi-auth-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  );
   mkdirSync(d, { recursive: true });
   return d;
 }
@@ -17,7 +20,13 @@ describe('PiAuthInspector.getBuiltInStatus', () => {
   beforeEach(() => {
     dir = makeDir();
     for (const k of Object.keys(process.env)) {
-      if (k.endsWith('_API_KEY') || k.startsWith('AWS_') || k.startsWith('GOOGLE_') || k.startsWith('AZURE_') || k === 'HF_TOKEN') {
+      if (
+        k.endsWith('_API_KEY') ||
+        k.startsWith('AWS_') ||
+        k.startsWith('GOOGLE_') ||
+        k.startsWith('AZURE_') ||
+        k === 'HF_TOKEN'
+      ) {
         delete process.env[k];
       }
     }
@@ -50,7 +59,9 @@ describe('PiAuthInspector.getBuiltInStatus', () => {
   it('detects OAuth-based auth from auth.json', async () => {
     writeFileSync(
       join(dir, 'auth.json'),
-      JSON.stringify({ anthropic: { oauth: { access_token: 'tok', expires_at: Date.now() + 3600_000 } } })
+      JSON.stringify({
+        anthropic: { oauth: { access_token: 'tok', expires_at: Date.now() + 3600_000 } }
+      })
     );
     const insp = new PiAuthInspector({ authPath: join(dir, 'auth.json') });
     const list = await insp.getBuiltInStatus();

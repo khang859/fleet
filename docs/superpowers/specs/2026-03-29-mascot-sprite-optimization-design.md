@@ -51,7 +51,7 @@ fleet-asset://mascots/robot.webp  ->  <app-resources>/mascots/robot.webp
 
 ```ts
 export function getSpriteSheet(id: string): string {
-  return `fleet-asset://mascots/${id}.webp`
+  return `fleet-asset://mascots/${id}.webp`;
 }
 ```
 
@@ -83,13 +83,16 @@ No sprite-loader changes, no imports, no base64 step.
 ## Migration & Cleanup
 
 **Deleted:**
+
 - All `sprites-*.ts` files in `src/renderer/copilot/src/assets/`
 - `copilot-sprites.ts` and `copilot-sprites.png`
 
 **Created:**
+
 - `resources/mascots/` with 5 `.webp` files converted from existing sprites
 
 **Modified:**
+
 - `assemble-copilot-sprites.ts` — output WebP to `resources/mascots/`
 - `sprite-loader.ts` — URL construction instead of base64 imports
 - `electron-builder` config — add `resources/mascots` to `extraResources`

@@ -28,7 +28,7 @@ export class SettingsStore {
         ...saved.visualizer,
         effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer?.effects }
       },
-      copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
+      copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot }
     };
   }
 
@@ -45,7 +45,7 @@ export class SettingsStore {
         ...(partial.visualizer ?? {}),
         effects: { ...current.visualizer.effects, ...(partial.visualizer?.effects ?? {}) }
       },
-      copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
+      copilot: { ...current.copilot, ...(partial.copilot ?? {}) }
     };
     this.store.set('settings', merged);
   }

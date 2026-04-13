@@ -14,7 +14,7 @@ describe('ActivityTracker', () => {
     tracker = new ActivityTracker(eventBus, {
       silenceThresholdMs: 5000,
       processPollingIntervalMs: 2000,
-      getProcessName,
+      getProcessName
     });
   });
 
@@ -34,7 +34,7 @@ describe('ActivityTracker', () => {
       expect.objectContaining({
         type: 'activity-state-change',
         paneId: 'pane-1',
-        state: 'working',
+        state: 'working'
       })
     );
   });
@@ -52,7 +52,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'idle',
+        state: 'idle'
       })
     );
   });
@@ -68,14 +68,10 @@ describe('ActivityTracker', () => {
     callback.mockClear();
 
     vi.advanceTimersByTime(4000); // 4s after reset, still under 5s
-    expect(callback).not.toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
 
     vi.advanceTimersByTime(1000); // now 5s after reset
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
   });
 
   it('transitions to done on process exit code 0', () => {
@@ -88,7 +84,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'done',
+        state: 'done'
       })
     );
   });
@@ -103,7 +99,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'error',
+        state: 'error'
       })
     );
   });
@@ -118,7 +114,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'needs_me',
+        state: 'needs_me'
       })
     );
   });
@@ -136,7 +132,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'needs_me',
+        state: 'needs_me'
       })
     );
   });
@@ -152,9 +148,7 @@ describe('ActivityTracker', () => {
 
     // Should only emit once for 'working' — subsequent data events
     // in the same state are deduped
-    const workingCalls = callback.mock.calls.filter(
-      (c) => c[0].state === 'working'
-    );
+    const workingCalls = callback.mock.calls.filter((c) => c[0].state === 'working');
     expect(workingCalls).toHaveLength(1);
   });
 
@@ -186,8 +180,6 @@ describe('ActivityTracker', () => {
     // Process poll alone doesn't override — but combined with silence at 5s:
     vi.advanceTimersByTime(3000); // total 5s silence
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
   });
 });

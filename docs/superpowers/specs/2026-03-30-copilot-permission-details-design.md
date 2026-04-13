@@ -22,17 +22,17 @@ A pure function `formatPermissionSummary(tool: CopilotToolInfo): { label: string
 
 **Tool-to-parameter mapping:**
 
-| toolName pattern | Key field(s) | Display format |
-|-----------------|-------------|----------------|
-| `bash`, `Bash` | `command` | `bash: <command>` |
-| `edit`, `Edit`, `edit_file` | `file_path` or `path` | `edit: <path>` |
-| `write`, `Write`, `create_file` | `file_path` or `path` | `write: <path>` |
-| `read`, `Read`, `read_file` | `file_path` or `path` | `read: <path>` |
-| `glob`, `Glob` | `pattern` | `glob: <pattern>` |
-| `grep`, `Grep` | `pattern` | `grep: <pattern>` |
-| `WebSearch` | `query` | `search: <query>` |
-| `WebFetch` | `url` | `fetch: <url>` |
-| Unknown tool | — | `<toolName>` (no detail) |
+| toolName pattern                | Key field(s)          | Display format           |
+| ------------------------------- | --------------------- | ------------------------ |
+| `bash`, `Bash`                  | `command`             | `bash: <command>`        |
+| `edit`, `Edit`, `edit_file`     | `file_path` or `path` | `edit: <path>`           |
+| `write`, `Write`, `create_file` | `file_path` or `path` | `write: <path>`          |
+| `read`, `Read`, `read_file`     | `file_path` or `path` | `read: <path>`           |
+| `glob`, `Glob`                  | `pattern`             | `glob: <pattern>`        |
+| `grep`, `Grep`                  | `pattern`             | `grep: <pattern>`        |
+| `WebSearch`                     | `query`               | `search: <query>`        |
+| `WebFetch`                      | `url`                 | `fetch: <url>`           |
+| Unknown tool                    | —                     | `<toolName>` (no detail) |
 
 Matching is case-insensitive. Long values are truncated to 60 characters with `…`.
 

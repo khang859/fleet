@@ -65,7 +65,10 @@ export const useAnnotationStore = create<AnnotationStoreState>((set) => ({
     }));
   },
 
-  startAnnotation: async (url?: string, mode?: 'select' | 'draw'): Promise<{ resultPath: string }> => {
+  startAnnotation: async (
+    url?: string,
+    mode?: 'select' | 'draw'
+  ): Promise<{ resultPath: string }> => {
     const result = await window.fleet.annotate.start({ url, mode });
     return result;
   }

@@ -13,6 +13,7 @@
 ### Task 1: Update TabItem props and context menu rendering
 
 **Files:**
+
 - Modify: `src/renderer/src/components/TabItem.tsx`
 
 - [ ] **Step 1: Update the import to include GitBranch icon**
@@ -60,48 +61,50 @@ Replace `isWorktreeChild` in the destructuring:
 Replace this block (lines 304–314):
 
 ```tsx
-          {onCreateWorktree && !isWorktreeChild && (
-            <>
-              <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
-              <ContextMenu.Item
-                className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
-                onSelect={onCreateWorktree}
-              >
-                Create Worktree
-              </ContextMenu.Item>
-            </>
-          )}
+{
+  onCreateWorktree && !isWorktreeChild && (
+    <>
+      <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+      <ContextMenu.Item
+        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+        onSelect={onCreateWorktree}
+      >
+        Create Worktree
+      </ContextMenu.Item>
+    </>
+  );
+}
 ```
 
 with:
 
 ```tsx
-          {worktreeDisabledReason !== undefined && (
-            <>
-              <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
-              <ContextMenu.Item
-                className={`px-2 py-1.5 rounded outline-none ${
-                  worktreeDisabledReason === null
-                    ? 'cursor-pointer focus:bg-neutral-700 hover:bg-neutral-700'
-                    : 'cursor-default text-neutral-500'
-                }`}
-                disabled={worktreeDisabledReason !== null}
-                onSelect={() => {
-                  if (worktreeDisabledReason === null) onCreateWorktree?.();
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <GitBranch size={14} />
-                  <span>Create Worktree</span>
-                </div>
-                {worktreeDisabledReason && (
-                  <div className="text-xs text-neutral-500 mt-0.5 ml-6">
-                    {worktreeDisabledReason}
-                  </div>
-                )}
-              </ContextMenu.Item>
-            </>
-          )}
+{
+  worktreeDisabledReason !== undefined && (
+    <>
+      <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+      <ContextMenu.Item
+        className={`px-2 py-1.5 rounded outline-none ${
+          worktreeDisabledReason === null
+            ? 'cursor-pointer focus:bg-neutral-700 hover:bg-neutral-700'
+            : 'cursor-default text-neutral-500'
+        }`}
+        disabled={worktreeDisabledReason !== null}
+        onSelect={() => {
+          if (worktreeDisabledReason === null) onCreateWorktree?.();
+        }}
+      >
+        <div className="flex items-center gap-2">
+          <GitBranch size={14} />
+          <span>Create Worktree</span>
+        </div>
+        {worktreeDisabledReason && (
+          <div className="text-xs text-neutral-500 mt-0.5 ml-6">{worktreeDisabledReason}</div>
+        )}
+      </ContextMenu.Item>
+    </>
+  );
+}
 ```
 
 - [ ] **Step 5: Run typecheck**
@@ -121,6 +124,7 @@ git commit -m "refactor(ui): make Create Worktree menu item always-visible with 
 ### Task 2: Update Sidebar to compute and pass `worktreeDisabledReason`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
 - [ ] **Step 1: Replace `isWorktreeChild` and `onCreateWorktree` props**
@@ -192,6 +196,7 @@ Expected: PASS
 - [ ] **Step 2: Verify visually (manual)**
 
 Launch the app and verify these scenarios:
+
 1. Right-click a terminal tab in a git repo → "Create Worktree" enabled with GitBranch icon
 2. Right-click a terminal tab in a non-git folder → "Create Worktree" disabled, subtitle "Not a git repository"
 3. Right-click a worktree child tab → "Create Worktree" disabled, subtitle "Already a worktree"

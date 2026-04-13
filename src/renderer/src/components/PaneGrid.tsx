@@ -171,7 +171,11 @@ export function PaneGrid({
           );
         }
         return (
-          <div key={leaf.id} style={rectStyle(leaf.rect)} className={`flex flex-col ${leaf.id === activePaneId ? 'ring-2 ring-blue-500/70' : 'ring-1 ring-neutral-800/50'}`}>
+          <div
+            key={leaf.id}
+            style={rectStyle(leaf.rect)}
+            className={`flex flex-col ${leaf.id === activePaneId ? 'ring-2 ring-blue-500/70' : 'ring-1 ring-neutral-800/50'}`}
+          >
             {root.type === 'split' && (
               <PaneHeader
                 paneId={leaf.id}

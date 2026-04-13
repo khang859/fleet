@@ -56,7 +56,11 @@ export function markPtyCreated(paneId: string): void {
  * Restart a terminal pane: kill its PTY, clear the xterm buffer, and spawn a
  * new PTY at the given cwd with fresh env (picks up updated config).
  */
-export async function restartPane(paneId: string, cwd: string, workspaceId?: string): Promise<void> {
+export async function restartPane(
+  paneId: string,
+  cwd: string,
+  workspaceId?: string
+): Promise<void> {
   restartingPanes.add(paneId);
   window.fleet.pty.kill(paneId);
   createdPtys.delete(paneId);
@@ -271,27 +275,29 @@ function createTerminal(
   } else if (!isPreCreated) {
     createdPtys.add(options.paneId);
     log.debug('pty.create', { paneId: options.paneId, cwd: options.cwd });
-    void window.fleet.pty.create({
-      paneId: options.paneId,
-      cwd: options.cwd,
-      cmd: options.cmd,
-      exitOnComplete: options.exitOnComplete,
-      workspaceId: options.workspaceId
-    }).then(() => {
-      // After hard refresh, createdPtys is reset so we hit this path even
-      // though the PTY already exists in main (idempotent create). Apply the
-      // resize trick to force any running TUI to redraw, same as attachOnly.
-      // Harmless on genuinely new PTYs since the shell hasn't drawn yet.
-      if (!term.element) return;
-      const cols = term.cols;
-      const rows = term.rows;
-      if (cols > 1) {
-        window.fleet.pty.resize({ paneId: options.paneId, cols: cols - 1, rows });
-        setTimeout(() => {
-          window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
-        }, 50);
-      }
-    });
+    void window.fleet.pty
+      .create({
+        paneId: options.paneId,
+        cwd: options.cwd,
+        cmd: options.cmd,
+        exitOnComplete: options.exitOnComplete,
+        workspaceId: options.workspaceId
+      })
+      .then(() => {
+        // After hard refresh, createdPtys is reset so we hit this path even
+        // though the PTY already exists in main (idempotent create). Apply the
+        // resize trick to force any running TUI to redraw, same as attachOnly.
+        // Harmless on genuinely new PTYs since the shell hasn't drawn yet.
+        if (!term.element) return;
+        const cols = term.cols;
+        const rows = term.rows;
+        if (cols > 1) {
+          window.fleet.pty.resize({ paneId: options.paneId, cols: cols - 1, rows });
+          setTimeout(() => {
+            window.fleet.pty.resize({ paneId: options.paneId, cols, rows });
+          }, 50);
+        }
+      });
   } else {
     // For pre-created PTYs (crew deployments), attach to get buffered output
     // and transition to live streaming. This closes the race where PTY data

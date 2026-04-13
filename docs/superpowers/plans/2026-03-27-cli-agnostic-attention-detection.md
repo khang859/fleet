@@ -12,29 +12,30 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/shared/types.ts` | Modify | Add `ActivityState` type |
-| `src/shared/ipc-channels.ts` | Modify | Add `ACTIVITY_STATE` channel |
-| `src/main/activity-tracker.ts` | Create | Per-pane silence timer, process polling, state resolution |
-| `src/main/__tests__/activity-tracker.test.ts` | Create | Unit tests for ActivityTracker |
-| `src/main/notification-detector.ts` | Modify | Expand permission patterns, add OSC 133 parsing |
-| `src/main/__tests__/notification-detector.test.ts` | Modify | Tests for new patterns and OSC 133 |
-| `src/main/event-bus.ts` | Modify | Add `activity-state-change` event type |
-| `src/main/index.ts` | Modify | Wire ActivityTracker into PTY data flow and IPC |
-| `src/main/pty-manager.ts` | Modify | Add `getProcessName()` method |
-| `src/preload/index.ts` | Modify | Expose `activity.onStateChange` bridge |
-| `src/shared/ipc-api.ts` | Modify | Add `ActivityStatePayload` type |
-| `src/renderer/src/store/notification-store.ts` | Modify | Add activity state tracking, freshness timestamps |
-| `src/renderer/src/components/TabItem.tsx` | Modify | Update badge config, add freshness display |
-| `src/renderer/src/components/Sidebar.tsx` | Modify | Add off-screen badge summary |
-| `src/renderer/src/hooks/use-notifications.ts` | Modify | Subscribe to activity state changes |
+| File                                               | Action | Responsibility                                            |
+| -------------------------------------------------- | ------ | --------------------------------------------------------- |
+| `src/shared/types.ts`                              | Modify | Add `ActivityState` type                                  |
+| `src/shared/ipc-channels.ts`                       | Modify | Add `ACTIVITY_STATE` channel                              |
+| `src/main/activity-tracker.ts`                     | Create | Per-pane silence timer, process polling, state resolution |
+| `src/main/__tests__/activity-tracker.test.ts`      | Create | Unit tests for ActivityTracker                            |
+| `src/main/notification-detector.ts`                | Modify | Expand permission patterns, add OSC 133 parsing           |
+| `src/main/__tests__/notification-detector.test.ts` | Modify | Tests for new patterns and OSC 133                        |
+| `src/main/event-bus.ts`                            | Modify | Add `activity-state-change` event type                    |
+| `src/main/index.ts`                                | Modify | Wire ActivityTracker into PTY data flow and IPC           |
+| `src/main/pty-manager.ts`                          | Modify | Add `getProcessName()` method                             |
+| `src/preload/index.ts`                             | Modify | Expose `activity.onStateChange` bridge                    |
+| `src/shared/ipc-api.ts`                            | Modify | Add `ActivityStatePayload` type                           |
+| `src/renderer/src/store/notification-store.ts`     | Modify | Add activity state tracking, freshness timestamps         |
+| `src/renderer/src/components/TabItem.tsx`          | Modify | Update badge config, add freshness display                |
+| `src/renderer/src/components/Sidebar.tsx`          | Modify | Add off-screen badge summary                              |
+| `src/renderer/src/hooks/use-notifications.ts`      | Modify | Subscribe to activity state changes                       |
 
 ---
 
 ### Task 1: Add ActivityState Type and IPC Channel
 
 **Files:**
+
 - Modify: `src/shared/types.ts:40`
 - Modify: `src/shared/ipc-channels.ts:101`
 - Modify: `src/shared/ipc-api.ts:57`
@@ -80,6 +81,7 @@ git commit -m "feat(attention): add ActivityState type and IPC channel"
 ### Task 2: Add getProcessName to PtyManager
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts:178-179`
 
 - [ ] **Step 1: Add getProcessName method to PtyManager**
@@ -107,6 +109,7 @@ git commit -m "feat(pty): add getProcessName for foreground process detection"
 ### Task 3: Add activity-state-change Event to EventBus
 
 **Files:**
+
 - Modify: `src/main/event-bus.ts:4-16`
 
 - [ ] **Step 1: Add event type to FleetEvent union**
@@ -129,6 +132,7 @@ git commit -m "feat(events): add activity-state-change event type"
 ### Task 4: Create ActivityTracker with Tests (TDD)
 
 **Files:**
+
 - Create: `src/main/__tests__/activity-tracker.test.ts`
 - Create: `src/main/activity-tracker.ts`
 
@@ -153,7 +157,7 @@ describe('ActivityTracker', () => {
     tracker = new ActivityTracker(eventBus, {
       silenceThresholdMs: 5000,
       processPollingIntervalMs: 2000,
-      getProcessName,
+      getProcessName
     });
   });
 
@@ -173,7 +177,7 @@ describe('ActivityTracker', () => {
       expect.objectContaining({
         type: 'activity-state-change',
         paneId: 'pane-1',
-        state: 'working',
+        state: 'working'
       })
     );
   });
@@ -191,7 +195,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'idle',
+        state: 'idle'
       })
     );
   });
@@ -207,14 +211,10 @@ describe('ActivityTracker', () => {
     callback.mockClear();
 
     vi.advanceTimersByTime(4000); // 4s after reset, still under 5s
-    expect(callback).not.toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
 
     vi.advanceTimersByTime(1000); // now 5s after reset
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
   });
 
   it('transitions to done on process exit code 0', () => {
@@ -227,7 +227,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'done',
+        state: 'done'
       })
     );
   });
@@ -242,7 +242,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'error',
+        state: 'error'
       })
     );
   });
@@ -257,7 +257,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'needs_me',
+        state: 'needs_me'
       })
     );
   });
@@ -275,7 +275,7 @@ describe('ActivityTracker', () => {
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         paneId: 'pane-1',
-        state: 'needs_me',
+        state: 'needs_me'
       })
     );
   });
@@ -291,9 +291,7 @@ describe('ActivityTracker', () => {
 
     // Should only emit once for 'working' — subsequent data events
     // in the same state are deduped
-    const workingCalls = callback.mock.calls.filter(
-      (c) => c[0].state === 'working'
-    );
+    const workingCalls = callback.mock.calls.filter((c) => c[0].state === 'working');
     expect(workingCalls).toHaveLength(1);
   });
 
@@ -325,9 +323,7 @@ describe('ActivityTracker', () => {
     // Process poll alone doesn't override — but combined with silence at 5s:
     vi.advanceTimersByTime(3000); // total 5s silence
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ state: 'idle' })
-    );
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
   });
 });
 ```
@@ -382,7 +378,7 @@ export class ActivityTracker {
       state: 'idle',
       silenceTimer: null,
       lastOutputAt: 0,
-      exited: false,
+      exited: false
     });
   }
 
@@ -488,7 +484,7 @@ export class ActivityTracker {
       paneId,
       state: newState,
       lastOutputAt: pane.lastOutputAt,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
   }
 }
@@ -511,6 +507,7 @@ git commit -m "feat(attention): add ActivityTracker with silence timer and proce
 ### Task 5: Expand NotificationDetector with Generic Patterns and OSC 133
 
 **Files:**
+
 - Modify: `src/main/notification-detector.ts`
 - Modify: `src/main/__tests__/notification-detector.test.ts`
 
@@ -519,71 +516,69 @@ git commit -m "feat(attention): add ActivityTracker with silence timer and proce
 Add these tests to `src/main/__tests__/notification-detector.test.ts`:
 
 ```typescript
-  it('detects generic [Y/n] permission prompt', () => {
-    const callback = vi.fn();
-    eventBus.on('notification', callback);
+it('detects generic [Y/n] permission prompt', () => {
+  const callback = vi.fn();
+  eventBus.on('notification', callback);
 
-    detector.scan('pane-1', 'Overwrite file? [Y/n] ');
+  detector.scan('pane-1', 'Overwrite file? [Y/n] ');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(
+    expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+  );
+});
 
-  it('detects "Are you sure?" prompt', () => {
-    const callback = vi.fn();
-    eventBus.on('notification', callback);
+it('detects "Are you sure?" prompt', () => {
+  const callback = vi.fn();
+  eventBus.on('notification', callback);
 
-    detector.scan('pane-1', 'Are you sure? ');
+  detector.scan('pane-1', 'Are you sure? ');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(
+    expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+  );
+});
 
-  it('detects "Continue?" prompt', () => {
-    const callback = vi.fn();
-    eventBus.on('notification', callback);
+it('detects "Continue?" prompt', () => {
+  const callback = vi.fn();
+  eventBus.on('notification', callback);
 
-    detector.scan('pane-1', 'Continue? ');
+  detector.scan('pane-1', 'Continue? ');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(
+    expect.objectContaining({ paneId: 'pane-1', level: 'permission' })
+  );
+});
 
-  it('detects OSC 133;D command completion with exit code 0', () => {
-    const callback = vi.fn();
-    eventBus.on('notification', callback);
+it('detects OSC 133;D command completion with exit code 0', () => {
+  const callback = vi.fn();
+  eventBus.on('notification', callback);
 
-    detector.scan('pane-1', '\x1b]133;D;0\x1b\\');
+  detector.scan('pane-1', '\x1b]133;D;0\x1b\\');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1', level: 'subtle' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(
+    expect.objectContaining({ paneId: 'pane-1', level: 'subtle' })
+  );
+});
 
-  it('detects OSC 133;D command completion with non-zero exit code', () => {
-    const callback = vi.fn();
-    eventBus.on('notification', callback);
+it('detects OSC 133;D command completion with non-zero exit code', () => {
+  const callback = vi.fn();
+  eventBus.on('notification', callback);
 
-    detector.scan('pane-1', '\x1b]133;D;1\x1b\\');
+  detector.scan('pane-1', '\x1b]133;D;1\x1b\\');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1', level: 'error' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(
+    expect.objectContaining({ paneId: 'pane-1', level: 'error' })
+  );
+});
 
-  it('detects OSC 133;C command execution start', () => {
-    const callback = vi.fn();
-    eventBus.on('command-started', callback);
+it('detects OSC 133;C command execution start', () => {
+  const callback = vi.fn();
+  eventBus.on('command-started', callback);
 
-    detector.scan('pane-1', '\x1b]133;C\x1b\\');
+  detector.scan('pane-1', '\x1b]133;C\x1b\\');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1' })
-    );
-  });
+  expect(callback).toHaveBeenCalledWith(expect.objectContaining({ paneId: 'pane-1' }));
+});
 ```
 
 - [ ] **Step 2: Run tests to verify new tests fail**
@@ -609,7 +604,7 @@ const PERMISSION_PATTERNS = [
   /Approve\?\s*$/i,
   /Press Enter to continue/i,
   /Are you sure\?/i,
-  /\(yes\/no\)\s*$/i,
+  /\(yes\/no\)\s*$/i
 ];
 ```
 
@@ -680,6 +675,7 @@ git commit -m "feat(attention): expand permission patterns and add OSC 133 parsi
 ### Task 6: Wire ActivityTracker into Main Process
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Import and instantiate ActivityTracker**
@@ -696,7 +692,7 @@ Add instantiation after the `notificationState` line (after line 48):
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
-  getProcessName: (paneId) => ptyManager.getProcessName(paneId),
+  getProcessName: (paneId) => ptyManager.getProcessName(paneId)
 });
 ```
 
@@ -756,7 +752,7 @@ eventBus.on('activity-state-change', (event) => {
       paneId: event.paneId,
       state: event.state,
       lastOutputAt: event.lastOutputAt,
-      timestamp: event.timestamp,
+      timestamp: event.timestamp
     });
   }
 });
@@ -779,6 +775,7 @@ git commit -m "feat(attention): wire ActivityTracker into PTY data flow and IPC"
 ### Task 7: Add Preload Bridge for Activity State
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 - Modify: `src/shared/ipc-api.ts` (already done in Task 1)
 
@@ -816,6 +813,7 @@ git commit -m "feat(attention): expose activity state change bridge in preload"
 ### Task 8: Update Renderer Notification Store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/notification-store.ts`
 
 - [ ] **Step 1: Add activity state tracking to the store**
@@ -863,11 +861,16 @@ const PRIORITY: Record<NotificationLevel, number> = {
 /** Map activity states to notification badge levels for the tab sidebar. */
 function activityToBadge(state: ActivityState): NotificationLevel | null {
   switch (state) {
-    case 'needs_me': return 'permission';
-    case 'error': return 'error';
-    case 'done': return 'info';
-    case 'working': return 'subtle';
-    case 'idle': return null;
+    case 'needs_me':
+      return 'permission';
+    case 'error':
+      return 'error';
+    case 'done':
+      return 'info';
+    case 'working':
+      return 'subtle';
+    case 'idle':
+      return null;
   }
 }
 
@@ -948,7 +951,7 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       }
     }
     return latest;
-  },
+  }
 }));
 ```
 
@@ -969,6 +972,7 @@ git commit -m "feat(attention): add activity state tracking to notification stor
 ### Task 9: Subscribe to Activity State in useNotifications Hook
 
 **Files:**
+
 - Modify: `src/renderer/src/hooks/use-notifications.ts`
 
 - [ ] **Step 1: Add activity state subscription**
@@ -1045,7 +1049,7 @@ export function useNotifications(): void {
         paneId: payload.paneId,
         state: payload.state,
         lastOutputAt: payload.lastOutputAt,
-        timestamp: payload.timestamp,
+        timestamp: payload.timestamp
       });
 
       // Play sound for needs_me state (agent blocked on permission)
@@ -1079,6 +1083,7 @@ git commit -m "feat(attention): subscribe to activity state changes in useNotifi
 ### Task 10: Update TabItem Badge Config and Add Freshness Display
 
 **Files:**
+
 - Modify: `src/renderer/src/components/TabItem.tsx`
 
 - [ ] **Step 1: Update BADGE_CONFIG**
@@ -1121,27 +1126,27 @@ function formatFreshness(lastOutputAt: number, state: string): string | null {
 Inside the `TabItem` component, add a subscription to the activity store. After the `liveCwd` line (line 82):
 
 ```typescript
-  const activity = useNotificationStore((s) =>
-    drivingPaneId ? s.getActivity(drivingPaneId) : undefined
-  );
+const activity = useNotificationStore((s) =>
+  drivingPaneId ? s.getActivity(drivingPaneId) : undefined
+);
 ```
 
 Add a state variable for freshness that updates periodically:
 
 ```typescript
-  const [freshness, setFreshness] = useState<string | null>(null);
+const [freshness, setFreshness] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!activity || activity.state === 'working') {
-      setFreshness(null);
-      return;
-    }
-    // Update freshness every 10s
-    const update = (): void => setFreshness(formatFreshness(activity.lastOutputAt, activity.state));
-    update();
-    const interval = setInterval(update, 10_000);
-    return () => clearInterval(interval);
-  }, [activity]);
+useEffect(() => {
+  if (!activity || activity.state === 'working') {
+    setFreshness(null);
+    return;
+  }
+  // Update freshness every 10s
+  const update = (): void => setFreshness(formatFreshness(activity.lastOutputAt, activity.state));
+  update();
+  const interval = setInterval(update, 10_000);
+  return () => clearInterval(interval);
+}, [activity]);
 ```
 
 Update the subtitle display (around line 213) to include freshness:
@@ -1187,6 +1192,7 @@ git commit -m "feat(attention): add freshness timestamps and reduced-motion supp
 ### Task 11: Add Off-Screen Badge Summary to Sidebar
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
 - [ ] **Step 1: Find the tab list scroll container in Sidebar.tsx**
@@ -1225,39 +1231,44 @@ Use an `IntersectionObserver` on each tab item to detect visibility. In the Side
 const [offScreenCounts, setOffScreenCounts] = useState({ above: 0, below: 0 });
 const tabListRef = useRef<HTMLDivElement>(null);
 
-useEffect(() => {
-  const container = tabListRef.current;
-  if (!container) return;
+useEffect(
+  () => {
+    const container = tabListRef.current;
+    if (!container) return;
 
-  const observer = new IntersectionObserver(
-    () => {
-      // Count tabs with badges that are above/below the visible area
-      const tabElements = container.querySelectorAll('[data-tab-id]');
-      let above = 0;
-      let below = 0;
-      const containerRect = container.getBoundingClientRect();
+    const observer = new IntersectionObserver(
+      () => {
+        // Count tabs with badges that are above/below the visible area
+        const tabElements = container.querySelectorAll('[data-tab-id]');
+        let above = 0;
+        let below = 0;
+        const containerRect = container.getBoundingClientRect();
 
-      tabElements.forEach((el) => {
-        const tabId = el.getAttribute('data-tab-id');
-        if (!tabId) return;
-        // Check if this tab has a badge (find associated tab data)
-        const rect = el.getBoundingClientRect();
-        const hasBadge = el.querySelector('[aria-label*="notification"]');
-        if (!hasBadge) return;
-        if (rect.bottom < containerRect.top) above++;
-        else if (rect.top > containerRect.bottom) below++;
-      });
+        tabElements.forEach((el) => {
+          const tabId = el.getAttribute('data-tab-id');
+          if (!tabId) return;
+          // Check if this tab has a badge (find associated tab data)
+          const rect = el.getBoundingClientRect();
+          const hasBadge = el.querySelector('[aria-label*="notification"]');
+          if (!hasBadge) return;
+          if (rect.bottom < containerRect.top) above++;
+          else if (rect.top > containerRect.bottom) below++;
+        });
 
-      setOffScreenCounts({ above, below });
-    },
-    { root: container, threshold: 0 }
-  );
+        setOffScreenCounts({ above, below });
+      },
+      { root: container, threshold: 0 }
+    );
 
-  const tabElements = container.querySelectorAll('[data-tab-id]');
-  tabElements.forEach((el) => observer.observe(el));
+    const tabElements = container.querySelectorAll('[data-tab-id]');
+    tabElements.forEach((el) => observer.observe(el));
 
-  return () => observer.disconnect();
-}, [/* re-run when tabs change */]);
+    return () => observer.disconnect();
+  },
+  [
+    /* re-run when tabs change */
+  ]
+);
 ```
 
 - [ ] **Step 4: Render the summaries**
@@ -1289,6 +1300,7 @@ git commit -m "feat(attention): add off-screen badge summary to sidebar"
 ### Task 12: Wire Up PTY Create to ActivityTracker in IPC Handlers
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts` or `src/main/index.ts` (wherever PTY creation is handled)
 
 - [ ] **Step 1: Find where PTY create IPC is handled**
@@ -1350,6 +1362,7 @@ Expected: PASS
 - [ ] **Step 5: Manual smoke test**
 
 Launch Fleet in dev mode (`npm run dev`). Open 3 terminal tabs:
+
 1. Run `sleep 10` in tab 1 — should show working (subtle green dot), then idle after it finishes
 2. Run a command that prompts for input (e.g., `rm -i somefile`) in tab 2 — should show needs_me (amber dot with ?)
 3. Run `exit 1` in tab 3 — should show error (red dot with !)

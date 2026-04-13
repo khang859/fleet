@@ -46,13 +46,13 @@ Fleet recognizes any `.fleet-diagram.json` file as a diagram. The format is Reac
 
 **Supported node types:**
 
-| Type | Description |
-|------|-------------|
-| `default` | Standard labeled box |
-| `group` | Container that parents other nodes (via `parentId` + `extent: "parent"`) |
-| `markdown` | Renders markdown content inside the node |
-| `image` | Displays an image (local path or URL) |
-| `input` / `output` | Entry/exit point markers |
+| Type               | Description                                                              |
+| ------------------ | ------------------------------------------------------------------------ |
+| `default`          | Standard labeled box                                                     |
+| `group`            | Container that parents other nodes (via `parentId` + `extent: "parent"`) |
+| `markdown`         | Renders markdown content inside the node                                 |
+| `image`            | Displays an image (local path or URL)                                    |
+| `input` / `output` | Entry/exit point markers                                                 |
 
 The `meta` envelope is Fleet-specific (title, provenance). Everything inside `nodes`, `edges`, `viewport` is pure React Flow — agents can generate it using React Flow docs directly.
 
@@ -100,13 +100,13 @@ Appears when a node or edge is selected:
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+Z` / `Cmd+Shift+Z` | Undo / Redo |
-| `Cmd+C` / `Cmd+V` | Copy / Paste nodes |
-| `Delete` / `Backspace` | Remove selected |
-| `Cmd+A` | Select all |
-| `Cmd+Shift+L` | Auto-layout |
+| Shortcut                | Action             |
+| ----------------------- | ------------------ |
+| `Cmd+Z` / `Cmd+Shift+Z` | Undo / Redo        |
+| `Cmd+C` / `Cmd+V`       | Copy / Paste nodes |
+| `Delete` / `Backspace`  | Remove selected    |
+| `Cmd+A`                 | Select all         |
+| `Cmd+Shift+L`           | Auto-layout        |
 
 ### Theming
 
@@ -169,12 +169,14 @@ Two analysis modes triggered from Fleet commands.
 Runs in the main process. Produces deterministic, structural diagrams.
 
 **Dependency graph analyzer:**
+
 - Parses JS/TS files using a lightweight regex-based import scanner (not a full AST). Scans `import`/`require` statements to build a module dependency graph.
 - v1 supports JS/TS only. Other languages (Python, Go, Rust) can be added later via pattern matchers.
 - Outputs a `.fleet-diagram.json` with one node per module and edges for imports.
 - Uses dagre for auto-layout (hierarchical top-down).
 
 **Directory structure analyzer:**
+
 - Walks the file tree (respecting `.gitignore`) and generates a nested group diagram — folders are group nodes, files are leaf nodes inside them.
 
 ### AI-Powered Analysis
@@ -186,12 +188,12 @@ Runs in the main process. Produces deterministic, structural diagrams.
 
 ### Commands (Command Palette)
 
-| Command | Type | Description |
-|---------|------|-------------|
-| `Diagram: Dependency Graph` | Static | Import/require dependency graph of current workspace |
-| `Diagram: Directory Structure` | Static | Nested folder/file visual map |
-| `Diagram: Architecture (AI)` | AI | High-level system architecture diagram |
-| `Diagram: New Blank Diagram` | — | Creates an empty diagram and opens it |
+| Command                        | Type   | Description                                          |
+| ------------------------------ | ------ | ---------------------------------------------------- |
+| `Diagram: Dependency Graph`    | Static | Import/require dependency graph of current workspace |
+| `Diagram: Directory Structure` | Static | Nested folder/file visual map                        |
+| `Diagram: Architecture (AI)`   | AI     | High-level system architecture diagram               |
+| `Diagram: New Blank Diagram`   | —      | Creates an empty diagram and opens it                |
 
 ### Output Location
 
@@ -259,9 +261,9 @@ DiagramStore
 
 ### New Dependencies
 
-| Package | Purpose |
-|---------|---------|
-| `@xyflow/react` | React Flow v12 — diagram engine |
-| `@dagrejs/dagre` | Auto-layout |
+| Package          | Purpose                         |
+| ---------------- | ------------------------------- |
+| `@xyflow/react`  | React Flow v12 — diagram engine |
+| `@dagrejs/dagre` | Auto-layout                     |
 
 No other new dependencies. Rich editing UI is built with existing shadcn/Radix + Tailwind.

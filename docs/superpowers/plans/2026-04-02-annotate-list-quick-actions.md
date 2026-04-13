@@ -13,6 +13,7 @@
 ### Task 1: Add quick action buttons to annotation list items
 
 **Files:**
+
 - Modify: `src/renderer/src/components/AnnotateTab.tsx:239-255`
 
 - [ ] **Step 1: Replace list item `<button>` with `<div>` wrapper and add action buttons**
@@ -20,45 +21,45 @@
 Replace the list item markup (lines 239-255) with:
 
 ```tsx
-{annotations.map((ann) => (
-  <div
-    key={ann.id}
-    className="flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
-    onClick={() => setSelectedId(ann.id)}
-  >
-    <div className="flex-1 min-w-0 text-left">
-      <div className="text-sm text-neutral-200 truncate">
-        {ann.url}
+{
+  annotations.map((ann) => (
+    <div
+      key={ann.id}
+      className="flex items-center gap-2 px-3 py-2.5 hover:bg-neutral-900 border-b border-neutral-800/50 cursor-pointer"
+      onClick={() => setSelectedId(ann.id)}
+    >
+      <div className="flex-1 min-w-0 text-left">
+        <div className="text-sm text-neutral-200 truncate">{ann.url}</div>
+        <div className="text-xs text-neutral-500">
+          {timeAgo(ann.timestamp)} &middot; {ann.elementCount} element
+          {ann.elementCount !== 1 ? 's' : ''}
+        </div>
       </div>
-      <div className="text-xs text-neutral-500">
-        {timeAgo(ann.timestamp)} &middot; {ann.elementCount} element
-        {ann.elementCount !== 1 ? 's' : ''}
+      <div className="flex items-center gap-1 flex-shrink-0">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCopyPath(ann.id);
+          }}
+          className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+          title="Copy path"
+        >
+          <ClipboardCopy size={14} />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void deleteAnnotation(ann.id);
+          }}
+          className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
+          title="Delete"
+        >
+          <Trash2 size={14} />
+        </button>
       </div>
     </div>
-    <div className="flex items-center gap-1 flex-shrink-0">
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          handleCopyPath(ann.id);
-        }}
-        className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
-        title="Copy path"
-      >
-        <ClipboardCopy size={14} />
-      </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          void deleteAnnotation(ann.id);
-        }}
-        className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
-        title="Delete"
-      >
-        <Trash2 size={14} />
-      </button>
-    </div>
-  </div>
-))}
+  ));
+}
 ```
 
 - [ ] **Step 2: Run typecheck to verify no type errors**

@@ -50,7 +50,7 @@ function AnimationPreview({ mascotId }: { mascotId: string }): React.JSX.Element
           backgroundPosition: `-${frameIndex * size}px 0`,
           backgroundSize: `${size * totalFrames}px ${size}px`,
           backgroundRepeat: 'no-repeat',
-          imageRendering: 'pixelated',
+          imageRendering: 'pixelated'
         }}
       />
       <div className="flex gap-1">
@@ -128,7 +128,7 @@ export function MascotPicker(): React.JSX.Element {
                       backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
                       backgroundSize: `${128 * totalFrames * (48 / 128)}px ${48}px`,
                       backgroundRepeat: 'no-repeat',
-                      imageRendering: 'pixelated',
+                      imageRendering: 'pixelated'
                     }}
                   />
                   <span className="text-xs text-neutral-300">{mascot.name}</span>

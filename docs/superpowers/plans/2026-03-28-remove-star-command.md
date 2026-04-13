@@ -15,6 +15,7 @@
 **Files to delete:**
 
 Frontend:
+
 - `src/renderer/src/components/star-command/` (entire directory — 18 files)
 - `src/renderer/src/components/StarCommandTab.tsx`
 - `src/renderer/src/components/StarCommandConfig.tsx`
@@ -26,6 +27,7 @@ Frontend:
 - `src/renderer/src/assets/admiral-standby.png`
 
 Backend:
+
 - `src/main/starbase/` (entire directory — 36 files + prompts subdirectory)
 - `src/main/starbase-runtime-core.ts`
 - `src/main/starbase-runtime-socket-services.ts`
@@ -33,11 +35,13 @@ Backend:
 - `src/main/starbase-runtime-process.ts`
 
 Tests:
+
 - `src/main/__tests__/conventional-commits.test.ts`
 - `src/main/__tests__/workspace-templates.test.ts`
 - `src/main/__tests__/runtime-message-shape.test.ts`
 
 Scripts:
+
 - `scripts/assemble-star-command-sprites.ts`
 
 - [ ] **Step 1: Delete frontend star-command directory and components**
@@ -85,6 +89,7 @@ git commit -m "chore: delete all dedicated star command source files"
 ### Task 2: Clean up `src/shared/types.ts`
 
 **Files:**
+
 - Modify: `src/shared/types.ts`
 
 Remove star-command-related types while keeping everything else.
@@ -92,11 +97,13 @@ Remove star-command-related types while keeping everything else.
 - [ ] **Step 1: Remove `'star-command' | 'crew'` from Tab.type union**
 
 In `src/shared/types.ts`, the `Tab` type has:
+
 ```ts
 type?: 'terminal' | 'star-command' | 'crew' | 'file' | 'image' | 'images' | 'settings';
 ```
 
 Change to:
+
 ```ts
 type?: 'terminal' | 'file' | 'image' | 'images' | 'settings';
 ```
@@ -108,18 +115,28 @@ Delete the entire `VisualizerEffects` type definition.
 - [ ] **Step 3: Remove `visualizer` from `FleetSettings` and starbase notification keys**
 
 In `FleetSettings`, remove:
+
 ```ts
 visualizer: {
   panelMode: 'drawer' | 'tab';
   effects: VisualizerEffects;
   soundVolume: number;
-};
+}
 ```
 
 Also remove from `notifications`:
+
 ```ts
-comms: { badge: boolean; sound: boolean; os: boolean };
-memos: { badge: boolean; sound: boolean; os: boolean };
+comms: {
+  badge: boolean;
+  sound: boolean;
+  os: boolean;
+}
+memos: {
+  badge: boolean;
+  sound: boolean;
+  os: boolean;
+}
 ```
 
 - [ ] **Step 4: Commit**
@@ -134,6 +151,7 @@ git commit -m "chore: remove star command types from shared types"
 ### Task 3: Clean up `src/shared/ipc-api.ts`
 
 **Files:**
+
 - Modify: `src/shared/ipc-api.ts`
 
 Remove all starbase-related type exports.
@@ -141,6 +159,7 @@ Remove all starbase-related type exports.
 - [ ] **Step 1: Remove starbase types**
 
 Delete these types (lines 52-318):
+
 - `StarbaseRuntimeStatus`
 - `SectorPayload`, `AddSectorRequest`, `UpdateSectorRequest`, `SetConfigRequest`
 - `DeployRequest`, `DeployResponse`, `RecallRequest`
@@ -168,9 +187,10 @@ git commit -m "chore: remove starbase types from ipc-api"
 ### Task 4: Clean up `src/shared/ipc-channels.ts`
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts`
 
-- [ ] **Step 1: Remove all STARBASE_, ADMIRAL_, MEMO_, FOCUS_COMMS, FOCUS_FIRST_OFFICER channels**
+- [ ] **Step 1: Remove all STARBASE*, ADMIRAL*, MEMO\_, FOCUS_COMMS, FOCUS_FIRST_OFFICER channels**
 
 Remove lines 21-84 (all the starbase/admiral/memo/comms/focus channels). Keep all other channels (PTY, LAYOUT, NOTIFICATION, ACTIVITY, SETTINGS, GIT, FILE, CLIPBOARD, LOG, IMAGES, UPDATE, APP, SYSTEM, WORKTREE, SHELL).
 
@@ -186,11 +206,13 @@ git commit -m "chore: remove starbase IPC channels"
 ### Task 5: Clean up `src/main/event-bus.ts`
 
 **Files:**
+
 - Modify: `src/main/event-bus.ts`
 
 - [ ] **Step 1: Remove starbase event types**
 
 Remove from the `FleetEvent` union:
+
 ```ts
 | {
     type: 'admiral-state-change';
@@ -200,6 +222,7 @@ Remove from the `FleetEvent` union:
 ```
 
 And:
+
 ```ts
 | { type: 'starbase-changed' }
 ```
@@ -216,6 +239,7 @@ git commit -m "chore: remove starbase events from event bus"
 ### Task 6: Clean up `src/main/layout-store.ts`
 
 **Files:**
+
 - Modify: `src/main/layout-store.ts`
 
 - [ ] **Step 1: Remove `ensureStarCommandTab` method**
@@ -225,12 +249,14 @@ Delete the `ensureStarCommandTab` method (starting at line 54). Keep `ensureImag
 - [ ] **Step 2: Update `ensureImagesTab` insertion logic**
 
 The current `ensureImagesTab` inserts after the star-command tab:
+
 ```ts
 // Insert after star-command tab if it exists, otherwise at the start
 const starIdx = workspace.tabs.findIndex((t) => t.type === 'star-command');
 ```
 
 Change to insert at the start (index 0) since star-command tab no longer exists:
+
 ```ts
 workspace.tabs.unshift(imagesTab);
 ```
@@ -249,6 +275,7 @@ git commit -m "chore: remove ensureStarCommandTab from layout store"
 ### Task 7: Clean up `src/main/index.ts` — the big one
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 This is the most complex file. Remove all starbase bootstrap logic while keeping the core app, image service, socket supervisor (for open/images CLI), and auto-updater.
@@ -256,6 +283,7 @@ This is the most complex file. Remove all starbase bootstrap logic while keeping
 - [ ] **Step 1: Remove starbase imports**
 
 Remove these imports:
+
 ```ts
 import { AdmiralProcess } from './starbase/admiral-process';
 import { AdmiralStateDetector } from './starbase/admiral-state-detector';
@@ -268,22 +296,27 @@ Remove `StarbaseRuntimeStatus` from the ipc-api import.
 - [ ] **Step 2: Remove starbase module-level variables and initialization**
 
 Remove:
+
 ```ts
 const starbaseLog = createLogger('starbase');
 ```
+
 ```ts
 let lastUnreadCommsCount = 0;
 let lastUnreadMemosCount = 0;
 ```
+
 ```ts
 let admiralProcess: AdmiralProcess | null = null;
 ```
+
 ```ts
 const admiralStateDetector = new AdmiralStateDetector(eventBus);
 const runtimeClient = new StarbaseRuntimeClient(
   new URL('./starbase-runtime-process.mjs', import.meta.url)
 );
 ```
+
 ```ts
 const STARBASE_PARENT_TRACE_FILE = '/tmp/fleet-starbase-parent.log';
 ```
@@ -295,6 +328,7 @@ Delete the entire `traceStarbase` function (lines 82-93) and the call at line 95
 - [ ] **Step 4: Remove `runtimeStatus`, `setRuntimeStatus`, `handleStarbaseSnapshot`**
 
 Delete:
+
 - `let runtimeStatus` variable (line 100)
 - `setRuntimeStatus` function (lines 116-123)
 - `handleStarbaseSnapshot` function (lines 125-179)
@@ -302,6 +336,7 @@ Delete:
 - [ ] **Step 5: Remove starbase push-on-load in `createWindow`**
 
 In `createWindow()`, remove the `did-finish-load` handler that pushes starbase snapshots (lines 268-293):
+
 ```ts
 mainWindow.webContents.on('did-finish-load', () => {
   if (runtimeStatus.state === 'ready') { ... }
@@ -311,6 +346,7 @@ mainWindow.webContents.on('did-finish-load', () => {
 - [ ] **Step 6: Remove `child-process-gone` handler for starbase**
 
 Remove lines 318-322:
+
 ```ts
 app.on('child-process-gone', (_event, details) => {
   if (details.type === 'Utility' || details.serviceName === 'Fleet Starbase Runtime') {
@@ -322,6 +358,7 @@ app.on('child-process-gone', (_event, details) => {
 - [ ] **Step 7: Remove `bootstrapStarbase` function and related logic in `whenReady`**
 
 Inside the `app.whenReady()` callback, remove:
+
 - `let starbaseReadyPromise` and `starbaseBootstrapInFlight` variables
 - The entire `bootstrapStarbase` async function
 - The `ensureStarCommandTab` call in the bootstrap
@@ -341,6 +378,7 @@ Simplify `registerIpcHandlers` call — remove the starbase-related factory argu
 - [ ] **Step 8: Simplify `shutdownAll`**
 
 Remove from `shutdownAll()`:
+
 ```ts
 socketSupervisor?.stop().catch(...)
 admiralProcess?.stop();
@@ -364,6 +402,7 @@ git commit -m "chore: remove starbase bootstrap and admiral from main process"
 ### Task 8: Clean up `src/main/ipc-handlers.ts`
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts`
 
 - [ ] **Step 1: Remove starbase imports and types**
@@ -379,6 +418,7 @@ Remove the `getStarbaseServices` parameter and simplify the bootstrap state para
 - [ ] **Step 3: Remove all starbase IPC handlers**
 
 Remove all `ipcMain.handle` calls for:
+
 - `STARBASE_RUNTIME_STATUS_GET`, `STARBASE_RUNTIME_STATUS_RETRY`
 - `STARBASE_LIST_SECTORS`, `STARBASE_ADD_SECTOR`, `STARBASE_REMOVE_SECTOR`, `STARBASE_UPDATE_SECTOR`
 - `STARBASE_GET_CONFIG`, `STARBASE_SET_CONFIG`
@@ -406,6 +446,7 @@ git commit -m "chore: remove starbase IPC handlers"
 ### Task 9: Clean up `src/main/socket-command-handler.ts`
 
 **Files:**
+
 - Modify: `src/main/socket-command-handler.ts`
 
 - [ ] **Step 1: Remove all starbase imports, fields, and methods**
@@ -432,6 +473,7 @@ git commit -m "chore: remove starbase commands from socket handler"
 ### Task 10: Clean up socket server (`src/main/socket-server.ts` and `src/main/socket-supervisor.ts`)
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts`
 - Modify: `src/main/socket-supervisor.ts`
 
@@ -457,6 +499,7 @@ git commit -m "chore: remove starbase services from socket server"
 ### Task 11: Clean up `src/preload/index.ts`
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 
 - [ ] **Step 1: Remove starbase type imports**
@@ -491,11 +534,13 @@ git commit -m "chore: remove starbase/admiral/memo bridge from preload"
 ### Task 12: Clean up `src/renderer/src/App.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 
 - [ ] **Step 1: Remove star command imports and assets**
 
 Remove:
+
 ```ts
 import admiralDefault from './assets/admiral-default.png';
 import { StarCommandTab } from './components/StarCommandTab';
@@ -509,6 +554,7 @@ Remove the entire block that filters for `star-command` tabs and renders the min
 - [ ] **Step 3: Remove Star Command from tab content rendering**
 
 Remove the `star-command` case from the tab content area:
+
 ```tsx
 {tab.type === 'star-command' ? (
   <StarCommandTab />
@@ -528,11 +574,13 @@ git commit -m "chore: remove star command tab rendering from App"
 ### Task 13: Clean up `src/renderer/src/components/Sidebar.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
 - [ ] **Step 1: Remove star command imports**
 
 Remove:
+
 ```ts
 import { useStarCommandStore } from '../store/star-command-store';
 import admiralDefault from '../assets/admiral-default.png';
@@ -565,17 +613,21 @@ git commit -m "chore: remove star command from sidebar"
 ### Task 14: Clean up `FileSearchOverlay.tsx` and `ClipboardHistoryOverlay.tsx`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/FileSearchOverlay.tsx`
 - Modify: `src/renderer/src/components/ClipboardHistoryOverlay.tsx`
 
 - [ ] **Step 1: Clean FileSearchOverlay.tsx**
 
 Remove the `useStarCommandStore` import and `admiralPaneId` usage. The target pane logic should just use `activePaneId` directly without the star-command special case:
+
 ```ts
 // Before:
 const admiralPaneId = useStarCommandStore((s) => s.admiralPaneId);
 const targetPaneId =
-  activeTab?.type === 'star-command' ? (admiralPaneId ?? activePaneId) : (activePaneId ?? admiralPaneId);
+  activeTab?.type === 'star-command'
+    ? (admiralPaneId ?? activePaneId)
+    : (activePaneId ?? admiralPaneId);
 // After:
 const targetPaneId = activePaneId;
 ```
@@ -596,6 +648,7 @@ git commit -m "chore: remove star command references from overlays"
 ### Task 15: Clean up `src/renderer/src/hooks/use-terminal.ts`
 
 **Files:**
+
 - Modify: `src/renderer/src/hooks/use-terminal.ts`
 
 - [ ] **Step 1: Remove star command comments and attachOnly references**
@@ -614,11 +667,13 @@ git commit -m "chore: remove star command references from use-terminal hook"
 ### Task 16: Clean up `src/main/pty-manager.ts`
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts`
 
 - [ ] **Step 1: Remove star command comment**
 
 Remove or update the comment on line 40:
+
 ```ts
 /** PTYs that must not be killed by the renderer-driven GC (e.g. Star Command crews). */
 ```
@@ -637,12 +692,14 @@ git commit -m "chore: remove star command comment from pty-manager"
 ### Task 17: Clean up Fleet CLI (`src/main/fleet-cli.ts`)
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts`
 
 - [ ] **Step 1: Remove starbase entries from `COMMAND_MAP`**
 
 Remove all entries except `images.*`:
 Keep:
+
 ```ts
 'images.generate': 'image.generate',
 'images.edit': 'image.edit',
@@ -663,6 +720,7 @@ Remove all `case` blocks except image-related ones from `validateCommand()`.
 - [ ] **Step 3: Rewrite `HELP_TOP`**
 
 Replace with a simplified version that only references `images` and `open`:
+
 ```ts
 const HELP_TOP = `# Fleet CLI
 
@@ -712,6 +770,7 @@ git commit -m "chore: remove starbase CLI commands, keep images and open"
 ### Task 18: Clean up `src/main/fleet-cli.ts` test
 
 **Files:**
+
 - Modify: `src/main/__tests__/fleet-cli.test.ts`
 
 - [ ] **Step 1: Remove starbase-related test cases**
@@ -730,6 +789,7 @@ git commit -m "chore: remove starbase CLI tests"
 ### Task 19: Clean up settings store for removed notification keys
 
 **Files:**
+
 - Modify: `src/main/settings-store.ts` (if it has defaults for `comms`/`memos` notifications or `visualizer`)
 
 - [ ] **Step 1: Check and remove starbase defaults**
@@ -769,6 +829,7 @@ rm -f star-command-asset-prompts.md
 - [ ] **Step 2: Delete star command specs and plans**
 
 Delete specs and plans that are primarily about star command features. Use grep to identify:
+
 ```bash
 grep -l "star.command\|starbase\|admiral\|crew.*deploy\|sector.*service\|first.officer\|navigator.*protocol" docs/superpowers/specs/*.md docs/superpowers/plans/*.md
 ```
@@ -824,6 +885,7 @@ git commit -m "fix: resolve typecheck and lint errors from star command removal"
 - [ ] **Step 1: Add entry to CHANGELOG.md**
 
 Add at the top of the changelog (under the latest version or as a new unreleased section):
+
 ```markdown
 - Removed Star Command system (starbase, crews, missions, sectors, comms, cargo, protocols, admiral, navigator, first officer)
 - Removed fleet CLI commands: sectors, missions, crew, comms, cargo, log, protocols, config

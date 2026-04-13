@@ -45,6 +45,7 @@ The existing `SettingsModal.tsx` is deleted after migration. Settings store, IPC
 ## Extensibility
 
 Adding a new settings section requires:
+
 1. Create a new section component
 2. Add an entry to the nav list in `SettingsNav.tsx`
 3. Add a case to the section renderer in `SettingsTab.tsx`

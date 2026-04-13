@@ -61,19 +61,19 @@ Injected into the BrowserWindow via preload script. Vanilla JS, no framework dep
 
 ### Interaction Model
 
-| Action | How |
-|--------|-----|
-| Select element | Click on page |
-| Cycle ancestors | Alt/⌥+scroll while hovering |
-| Multi-select | Toggle "Multi" or Shift+click |
-| Add comment | Type in note card textarea |
-| Toggle screenshot | 📷 button in note card header |
-| Reposition note | Drag by header |
-| Scroll to element | Click selector in note card |
-| Toggle note | Click numbered badge |
-| Expand/collapse all | ▼/▲ buttons in toolbar |
-| Toggle annotation UI | Cmd/Ctrl+Shift+P |
-| Close | Esc |
+| Action               | How                           |
+| -------------------- | ----------------------------- |
+| Select element       | Click on page                 |
+| Cycle ancestors      | Alt/⌥+scroll while hovering   |
+| Multi-select         | Toggle "Multi" or Shift+click |
+| Add comment          | Type in note card textarea    |
+| Toggle screenshot    | 📷 button in note card header |
+| Reposition note      | Drag by header                |
+| Scroll to element    | Click selector in note card   |
+| Toggle note          | Click numbered badge          |
+| Expand/collapse all  | ▼/▲ buttons in toolbar        |
+| Toggle annotation UI | Cmd/Ctrl+Shift+P              |
+| Close                | Esc                           |
 
 ### UI Components
 
@@ -105,6 +105,7 @@ fleet annotate --timeout 600   # custom timeout (default 300s)
 ```
 
 Prints the result file path to stdout on completion:
+
 ```
 /tmp/fleet-annotate-1712000000.json
 ```

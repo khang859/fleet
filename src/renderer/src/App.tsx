@@ -147,9 +147,7 @@ export function App(): React.JSX.Element {
     return window.fleet.notifications.onFocusPane(({ paneId }) => {
       const state = useWorkspaceStore.getState();
       // Find which tab contains this pane
-      const tab = state.workspace.tabs.find((t) =>
-        collectPaneIds(t.splitRoot).includes(paneId)
-      );
+      const tab = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
       if (tab) {
         useWorkspaceStore.setState({ activeTabId: tab.id, activePaneId: paneId });
       }
@@ -516,10 +514,7 @@ export function App(): React.JSX.Element {
       </div>
       <div className="flex flex-1 min-h-0">
         {!sidebarCollapsed ? (
-          <Sidebar
-            updateReady={updateReady}
-            onCollapse={() => setSidebarCollapsed(true)}
-          />
+          <Sidebar updateReady={updateReady} onCollapse={() => setSidebarCollapsed(true)} />
         ) : (
           <div
             className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
@@ -608,12 +603,7 @@ export function App(): React.JSX.Element {
             )}
             {/* File/terminal/image tab icons (excluding images, settings, annotate) */}
             {workspace.tabs
-              .filter(
-                (t) =>
-                  t.type !== 'images' &&
-                  t.type !== 'settings' &&
-                  t.type !== 'annotate'
-              )
+              .filter((t) => t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate')
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
@@ -813,7 +803,9 @@ export function App(): React.JSX.Element {
                       killClosedTabPtys(collectPaneIds(lastClosedTab.tab.splitRoot));
                       pendingKillRef.current = [];
                       if (lastClosedTab.tab.worktreePath) {
-                        void window.fleet.worktree.remove({ worktreePath: lastClosedTab.tab.worktreePath });
+                        void window.fleet.worktree.remove({
+                          worktreePath: lastClosedTab.tab.worktreePath
+                        });
                       }
                     }
                   }}

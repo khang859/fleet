@@ -12,23 +12,24 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/main/copilot/index.ts` | Modify | State machine, serialized toggle, try/catch wrappers |
-| `src/main/copilot/socket-server.ts` | Modify | Timeout on `stop()`, graceful pending socket shutdown |
-| `src/main/copilot/hook-installer.ts` | Modify | try/catch filesystem ops, logging in `syncScript()` |
-| `src/main/copilot/session-store.ts` | Modify | Add `clear()` method |
-| `src/shared/ipc-channels.ts` | Modify | Add `COPILOT_SERVICE_STATUS` channel |
-| `src/renderer/copilot/src/components/CopilotSettings.tsx` | Modify | Better hook error feedback |
-| `src/renderer/copilot/src/components/SessionList.tsx` | Modify | Better empty state with hook/Claude guidance |
-| `src/renderer/copilot/src/store/copilot-store.ts` | Modify | Track `serviceStatus` from main |
-| `src/preload/copilot.ts` | Modify (if needed) | Expose `serviceStatus` IPC |
+| File                                                      | Action             | Responsibility                                        |
+| --------------------------------------------------------- | ------------------ | ----------------------------------------------------- |
+| `src/main/copilot/index.ts`                               | Modify             | State machine, serialized toggle, try/catch wrappers  |
+| `src/main/copilot/socket-server.ts`                       | Modify             | Timeout on `stop()`, graceful pending socket shutdown |
+| `src/main/copilot/hook-installer.ts`                      | Modify             | try/catch filesystem ops, logging in `syncScript()`   |
+| `src/main/copilot/session-store.ts`                       | Modify             | Add `clear()` method                                  |
+| `src/shared/ipc-channels.ts`                              | Modify             | Add `COPILOT_SERVICE_STATUS` channel                  |
+| `src/renderer/copilot/src/components/CopilotSettings.tsx` | Modify             | Better hook error feedback                            |
+| `src/renderer/copilot/src/components/SessionList.tsx`     | Modify             | Better empty state with hook/Claude guidance          |
+| `src/renderer/copilot/src/store/copilot-store.ts`         | Modify             | Track `serviceStatus` from main                       |
+| `src/preload/copilot.ts`                                  | Modify (if needed) | Expose `serviceStatus` IPC                            |
 
 ---
 
 ### Task 1: Add `clear()` to session store
 
 **Files:**
+
 - Modify: `src/main/copilot/session-store.ts:48-173`
 
 - [ ] **Step 1: Add `clear()` method to `CopilotSessionStore`**
@@ -60,6 +61,7 @@ git commit -m "feat(copilot): add clear() method to session store"
 ### Task 2: Add timeout to socket server `stop()`
 
 **Files:**
+
 - Modify: `src/main/copilot/socket-server.ts:56-79`
 
 - [ ] **Step 1: Replace `stop()` with timeout-protected version**
@@ -137,6 +139,7 @@ git commit -m "fix(copilot): add timeout to socket server stop and graceful clie
 ### Task 3: Wrap filesystem ops in hook-installer and add logging
 
 **Files:**
+
 - Modify: `src/main/copilot/hook-installer.ts:136-207`
 
 - [ ] **Step 1: Add logging to `syncScript()` when binary is missing**
@@ -216,6 +219,7 @@ git commit -m "fix(copilot): wrap filesystem ops in try/catch and add sync loggi
 This is the core fix. Replace the boolean `servicesRunning` with a state machine and serialize enable/disable operations.
 
 **Files:**
+
 - Modify: `src/main/copilot/index.ts:1-143`
 
 - [ ] **Step 1: Replace the module-level state and add state machine**
@@ -285,7 +289,7 @@ async function startCopilotServices(): Promise<void> {
     log.error('startCopilotServices: missing dependencies', {
       hasSessionStore: !!sessionStore,
       hasSocketServer: !!socketServer,
-      hasCopilotWindow: !!copilotWindow,
+      hasCopilotWindow: !!copilotWindow
     });
     return;
   }
@@ -302,7 +306,7 @@ async function startCopilotServices(): Promise<void> {
 
     if (conversationReader) {
       const activeSessions = sessionStore!.getSessions();
-      const activeIds = new Set(activeSessions.map(s => s.sessionId));
+      const activeIds = new Set(activeSessions.map((s) => s.sessionId));
 
       for (const watchedId of conversationReader.getWatchedSessionIds()) {
         if (activeIds.has(watchedId)) {
@@ -424,6 +428,7 @@ git commit -m "fix(copilot): replace boolean flag with state machine and seriali
 ### Task 5: Add `COPILOT_SERVICE_STATUS` IPC channel and expose hook failure state
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts:58-72`
 - Modify: `src/main/copilot/ipc-handlers.ts:49-174`
 
@@ -440,12 +445,12 @@ In `src/shared/ipc-channels.ts`, after the `COPILOT_FOCUS_TERMINAL` line (line 7
 In `src/main/copilot/ipc-handlers.ts`, after the `COPILOT_HOOK_STATUS` handler (after line 98), add:
 
 ```typescript
-  ipcMain.handle(IPC_CHANNELS.COPILOT_SERVICE_STATUS, () => {
-    return {
-      hookInstalled: hookInstaller.isInstalled(),
-      claudeDetected: isClaudeInstalled(),
-    };
-  });
+ipcMain.handle(IPC_CHANNELS.COPILOT_SERVICE_STATUS, () => {
+  return {
+    hookInstalled: hookInstaller.isInstalled(),
+    claudeDetected: isClaudeInstalled()
+  };
+});
 ```
 
 - [ ] **Step 3: Add `isClaudeInstalled()` helper at top of ipc-handlers.ts**
@@ -486,6 +491,7 @@ git commit -m "feat(copilot): add service status IPC channel with Claude detecti
 ### Task 6: Expose service status in copilot preload
 
 **Files:**
+
 - Modify: `src/preload/copilot.ts` (need to check this file first)
 
 - [ ] **Step 1: Read the preload file and add the new API**
@@ -518,6 +524,7 @@ git commit -m "feat(copilot): expose service status in copilot preload"
 ### Task 7: Update copilot store to track service status
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts:19-138`
 
 - [ ] **Step 1: Add service status state and action**
@@ -571,6 +578,7 @@ git commit -m "feat(copilot): track Claude detection status in copilot store"
 ### Task 8: Improve CopilotSettings UI feedback
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/CopilotSettings.tsx:91-116`
 
 - [ ] **Step 1: Add Claude detection info and better hook error state**
@@ -578,49 +586,51 @@ git commit -m "feat(copilot): track Claude detection status in copilot store"
 Replace lines 91-116 (the `{/* Claude Code Hooks */}` section) with:
 
 ```tsx
-            {/* Claude Code Status */}
-            {!claudeDetected && (
-              <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5">
-                <span className="text-[10px] text-amber-400 block font-medium mb-0.5">
-                  Claude Code not found
-                </span>
-                <span className="text-[10px] text-amber-400/70 block">
-                  Install it with: npm install -g @anthropic-ai/claude-code
-                </span>
-              </div>
-            )}
+{
+  /* Claude Code Status */
+}
+{
+  !claudeDetected && (
+    <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5">
+      <span className="text-[10px] text-amber-400 block font-medium mb-0.5">
+        Claude Code not found
+      </span>
+      <span className="text-[10px] text-amber-400/70 block">
+        Install it with: npm install -g @anthropic-ai/claude-code
+      </span>
+    </div>
+  );
+}
 
-            {/* Claude Code Hooks */}
-            <div>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
-                    Claude Code Hooks
-                  </label>
-                </TooltipTrigger>
-                <TooltipContent>
-                  Hooks let Fleet monitor Claude Code sessions for permissions and status changes
-                </TooltipContent>
-              </Tooltip>
-              <div className="flex items-center gap-2">
-                <Badge status={hookInstalled ? 'complete' : 'error'} />
-                <span className="text-xs text-neutral-300">
-                  {hookInstalled ? 'Installed' : 'Not installed'}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={hookInstalled ? uninstallHooks : installHooks}
-                >
-                  {hookInstalled ? 'Uninstall' : 'Install'}
-                </Button>
-              </div>
-              {!hookInstalled && (
-                <span className="text-[10px] text-neutral-500 block mt-1">
-                  Hooks are required for Fleet to monitor your Claude Code sessions.
-                </span>
-              )}
-            </div>
+{
+  /* Claude Code Hooks */
+}
+<div>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <label className="text-[10px] text-neutral-400 block mb-1 cursor-help">
+        Claude Code Hooks
+      </label>
+    </TooltipTrigger>
+    <TooltipContent>
+      Hooks let Fleet monitor Claude Code sessions for permissions and status changes
+    </TooltipContent>
+  </Tooltip>
+  <div className="flex items-center gap-2">
+    <Badge status={hookInstalled ? 'complete' : 'error'} />
+    <span className="text-xs text-neutral-300">
+      {hookInstalled ? 'Installed' : 'Not installed'}
+    </span>
+    <Button variant="outline" size="sm" onClick={hookInstalled ? uninstallHooks : installHooks}>
+      {hookInstalled ? 'Uninstall' : 'Install'}
+    </Button>
+  </div>
+  {!hookInstalled && (
+    <span className="text-[10px] text-neutral-500 block mt-1">
+      Hooks are required for Fleet to monitor your Claude Code sessions.
+    </span>
+  )}
+</div>;
 ```
 
 - [ ] **Step 2: Add `claudeDetected` to the component's store selectors**
@@ -648,6 +658,7 @@ git commit -m "fix(copilot): show actionable feedback for missing Claude Code an
 ### Task 9: Improve SessionList empty state
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx:84-89`
 
 - [ ] **Step 1: Replace generic empty state with contextual guidance**

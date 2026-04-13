@@ -12,19 +12,20 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/shared/ipc-channels.ts` | Modify (line 34) | Add `FILE_CHECK_IGNORED` channel constant |
-| `src/main/ipc-handlers.ts` | Modify (after line 401) | Add IPC handler that runs `git check-ignore` |
-| `src/preload/index.ts` | Modify (line 191) | Expose `file.checkIgnored()` to renderer |
-| `src/renderer/src/components/Telescope/modes/browse-mode.ts` | Modify | Call `checkIgnored` after `readdir`, attach `isIgnored` flag |
-| `src/renderer/src/components/Telescope/TelescopeModal.tsx` | Modify (line 441) | Apply muted color for ignored items |
+| File                                                         | Action                  | Responsibility                                               |
+| ------------------------------------------------------------ | ----------------------- | ------------------------------------------------------------ |
+| `src/shared/ipc-channels.ts`                                 | Modify (line 34)        | Add `FILE_CHECK_IGNORED` channel constant                    |
+| `src/main/ipc-handlers.ts`                                   | Modify (after line 401) | Add IPC handler that runs `git check-ignore`                 |
+| `src/preload/index.ts`                                       | Modify (line 191)       | Expose `file.checkIgnored()` to renderer                     |
+| `src/renderer/src/components/Telescope/modes/browse-mode.ts` | Modify                  | Call `checkIgnored` after `readdir`, attach `isIgnored` flag |
+| `src/renderer/src/components/Telescope/TelescopeModal.tsx`   | Modify (line 441)       | Apply muted color for ignored items                          |
 
 ---
 
 ### Task 1: Add IPC Channel Constant
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts:34`
 
 - [ ] **Step 1: Add the channel constant**
@@ -53,6 +54,7 @@ git commit -m "feat(telescope): add FILE_CHECK_IGNORED IPC channel constant"
 ### Task 2: Add IPC Handler in Main Process
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts` (after line 401, after `FILE_READDIR` handler)
 
 - [ ] **Step 1: Add the handler**
@@ -60,29 +62,27 @@ git commit -m "feat(telescope): add FILE_CHECK_IGNORED IPC channel constant"
 In `src/main/ipc-handlers.ts`, add this handler after the `FILE_READDIR` handler (after line 401):
 
 ```typescript
-  // Check which entries in a directory are gitignored (returns ignored names)
-  ipcMain.handle(
-    IPC_CHANNELS.FILE_CHECK_IGNORED,
-    async (_event, { dirPath }: { dirPath: string }): Promise<string[]> => {
-      try {
-        const entries = await readdir(dirPath, { withFileTypes: true });
-        const names = entries
-          .filter((e) => e.isFile() || e.isDirectory())
-          .map((e) => e.name);
-        if (names.length === 0) return [];
+// Check which entries in a directory are gitignored (returns ignored names)
+ipcMain.handle(
+  IPC_CHANNELS.FILE_CHECK_IGNORED,
+  async (_event, { dirPath }: { dirPath: string }): Promise<string[]> => {
+    try {
+      const entries = await readdir(dirPath, { withFileTypes: true });
+      const names = entries.filter((e) => e.isFile() || e.isDirectory()).map((e) => e.name);
+      if (names.length === 0) return [];
 
-        const { stdout } = await execAsync(
-          `git check-ignore ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
-          { cwd: dirPath, maxBuffer: 1024 * 1024 }
-        );
-        return stdout.split('\n').filter(Boolean);
-      } catch {
-        // git check-ignore exits with code 1 when no files are ignored,
-        // or fails if not a git repo — both cases mean "nothing ignored"
-        return [];
-      }
+      const { stdout } = await execAsync(
+        `git check-ignore ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
+        { cwd: dirPath, maxBuffer: 1024 * 1024 }
+      );
+      return stdout.split('\n').filter(Boolean);
+    } catch {
+      // git check-ignore exits with code 1 when no files are ignored,
+      // or fails if not a git repo — both cases mean "nothing ignored"
+      return [];
     }
-  );
+  }
+);
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -102,6 +102,7 @@ git commit -m "feat(telescope): add FILE_CHECK_IGNORED IPC handler"
 ### Task 3: Expose `checkIgnored` in Preload
 
 **Files:**
+
 - Modify: `src/preload/index.ts` (inside `file` object, after `searchRecentImages` around line 210)
 
 - [ ] **Step 1: Add the preload method**
@@ -132,6 +133,7 @@ git commit -m "feat(telescope): expose file.checkIgnored in preload API"
 ### Task 4: Integrate `checkIgnored` into Browse Mode
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Telescope/modes/browse-mode.ts`
 
 - [ ] **Step 1: Add ignore cache and fetch logic to `loadDir`**
@@ -148,35 +150,35 @@ const ignoreCache = new Map<string, Set<string>>();
 Replace the `loadDir` function body inside `createBrowseMode` (lines 28-48) with:
 
 ```typescript
-  async function loadDir(dir: string): Promise<void> {
-    state.currentDir = dir;
-    state.loading = true;
-    onStateChange();
+async function loadDir(dir: string): Promise<void> {
+  state.currentDir = dir;
+  state.loading = true;
+  onStateChange();
 
-    const result = await window.fleet.file.readdir(dir);
-    if (result.success) {
-      // Sort: directories first, then alphabetical within each group
-      state.entries = [...result.entries].sort((a, b) => {
-        if (a.isDirectory !== b.isDirectory) {
-          return a.isDirectory ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-      });
-
-      // Fetch gitignore status (use cache if available)
-      if (!ignoreCache.has(dir)) {
-        const ignored = await window.fleet.file.checkIgnored(dir);
-        ignoreCache.set(dir, new Set(ignored));
+  const result = await window.fleet.file.readdir(dir);
+  if (result.success) {
+    // Sort: directories first, then alphabetical within each group
+    state.entries = [...result.entries].sort((a, b) => {
+      if (a.isDirectory !== b.isDirectory) {
+        return a.isDirectory ? -1 : 1;
       }
-      state.ignoredNames = ignoreCache.get(dir) ?? new Set();
-    } else {
-      state.entries = [];
-      state.ignoredNames = new Set();
-    }
+      return a.name.localeCompare(b.name);
+    });
 
-    state.loading = false;
-    onStateChange();
+    // Fetch gitignore status (use cache if available)
+    if (!ignoreCache.has(dir)) {
+      const ignored = await window.fleet.file.checkIgnored(dir);
+      ignoreCache.set(dir, new Set(ignored));
+    }
+    state.ignoredNames = ignoreCache.get(dir) ?? new Set();
+  } else {
+    state.entries = [];
+    state.ignoredNames = new Set();
   }
+
+  state.loading = false;
+  onStateChange();
+}
 ```
 
 - [ ] **Step 2: Add `ignoredNames` to `BrowseState`**
@@ -195,12 +197,12 @@ type BrowseState = {
 And update the initial state inside `createBrowseMode`:
 
 ```typescript
-  const state: BrowseState = {
-    currentDir: cwd,
-    entries: [],
-    loading: false,
-    ignoredNames: new Set()
-  };
+const state: BrowseState = {
+  currentDir: cwd,
+  entries: [],
+  loading: false,
+  ignoredNames: new Set()
+};
 ```
 
 - [ ] **Step 3: Attach `isIgnored` flag to each TelescopeItem**
@@ -208,21 +210,21 @@ And update the initial state inside `createBrowseMode`:
 Update the `onSearch` method's `entries.map` call (around line 84-94) to include `isIgnored` in the `data`:
 
 ```typescript
-      return entries.map(
-        (entry): TelescopeItem => ({
-          id: entry.path,
-          icon: entry.isDirectory
-            ? createElement(Folder, { size: 14, className: 'text-blue-400' })
-            : getFileIcon(entry.name),
-          title: entry.name,
-          subtitle: entry.isDirectory ? 'Directory' : undefined,
-          data: {
-            filePath: entry.path,
-            isDirectory: entry.isDirectory,
-            isIgnored: state.ignoredNames.has(entry.name) || entry.name === '.git'
-          }
-        })
-      );
+return entries.map(
+  (entry): TelescopeItem => ({
+    id: entry.path,
+    icon: entry.isDirectory
+      ? createElement(Folder, { size: 14, className: 'text-blue-400' })
+      : getFileIcon(entry.name),
+    title: entry.name,
+    subtitle: entry.isDirectory ? 'Directory' : undefined,
+    data: {
+      filePath: entry.path,
+      isDirectory: entry.isDirectory,
+      isIgnored: state.ignoredNames.has(entry.name) || entry.name === '.git'
+    }
+  })
+);
 ```
 
 - [ ] **Step 4: Run typecheck**
@@ -242,6 +244,7 @@ git commit -m "feat(telescope): fetch gitignore status in browse mode"
 ### Task 5: Apply Muted Color in TelescopeModal
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Telescope/TelescopeModal.tsx` (line 441)
 
 - [ ] **Step 1: Update the result item className**

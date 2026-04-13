@@ -63,7 +63,7 @@ export class CopilotWindow {
   constructor() {
     this.positionStore = new Store<CopilotWindowStore>({
       name: 'fleet-copilot-position',
-      defaults: { position: null },
+      defaults: { position: null }
     });
   }
 
@@ -104,8 +104,8 @@ export class CopilotWindow {
         contextIsolation: true,
         sandbox: false,
         nodeIntegration: false,
-        webSecurity: !isDev,
-      },
+        webSecurity: !isDev
+      }
     });
 
     // NOTE: Do NOT pass { visibleOnFullScreen: true } here — it triggers
@@ -205,7 +205,7 @@ export class CopilotWindow {
         x: workArea.x,
         y: workArea.y,
         width: workArea.width,
-        height: workArea.height,
+        height: workArea.height
       };
       log.info('expanding to full display', newBounds);
       this.win.setBounds(newBounds);
@@ -213,7 +213,7 @@ export class CopilotWindow {
       this.win.setIgnoreMouseEvents(false);
 
       this.win.webContents.send('copilot:expanded-changed', {
-        expanded: true,
+        expanded: true
       });
     } else {
       const x = this.collapsedPos?.x ?? bounds.x;
@@ -222,14 +222,14 @@ export class CopilotWindow {
         x,
         y,
         width: COLLAPSED_SIZE,
-        height: COLLAPSED_SIZE,
+        height: COLLAPSED_SIZE
       };
       log.info('collapsing to', newBounds);
       this.win.setBounds(newBounds);
       this.win.setAlwaysOnTop(true, 'floating');
 
       this.win.webContents.send('copilot:expanded-changed', {
-        expanded: false,
+        expanded: false
       });
     }
   }
@@ -255,7 +255,7 @@ export class CopilotWindow {
     const primary = screen.getPrimaryDisplay();
     return {
       x: primary.bounds.x + primary.bounds.width - COLLAPSED_SIZE - 20,
-      y: primary.bounds.y + 60,
+      y: primary.bounds.y + 60
     };
   }
 }

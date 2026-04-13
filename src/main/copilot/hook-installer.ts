@@ -5,7 +5,7 @@ import {
   existsSync,
   mkdirSync,
   chmodSync,
-  unlinkSync,
+  unlinkSync
 } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -61,12 +61,12 @@ type ClaudeSettings = {
 
 function buildHookEntries(command: string): Record<string, HookEntry[]> {
   const simpleHook = (timeout?: number): HookEntry => ({
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   const matcherHook = (matcher: string, timeout?: number): HookEntry => ({
     matcher,
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   return {
@@ -79,7 +79,7 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
     SubagentStop: [simpleHook()],
     SessionStart: [simpleHook()],
     SessionEnd: [simpleHook()],
-    PreCompact: [matcherHook('auto'), matcherHook('manual')],
+    PreCompact: [matcherHook('auto'), matcherHook('manual')]
   };
 }
 

@@ -100,13 +100,19 @@ export class AnnotateService extends EventEmitter {
       return this.captureScreenshot();
     });
 
-    ipcMain.handle(IPC_CHANNELS.ANNOTATE_SNAPSHOT_ELEMENT, async (_event, data: {
-      index: number;
-      viewportRect: ElementRect;
-      dpr: number;
-    }) => {
-      await this.captureElementSnapshot(data.index, data.viewportRect, data.dpr);
-    });
+    ipcMain.handle(
+      IPC_CHANNELS.ANNOTATE_SNAPSHOT_ELEMENT,
+      async (
+        _event,
+        data: {
+          index: number;
+          viewportRect: ElementRect;
+          dpr: number;
+        }
+      ) => {
+        await this.captureElementSnapshot(data.index, data.viewportRect, data.dpr);
+      }
+    );
   }
 
   private async captureElementSnapshot(
@@ -143,9 +149,10 @@ export class AnnotateService extends EventEmitter {
 
     if (!fullPng) return;
 
-    const viewport = this.window && !this.window.isDestroyed()
-      ? this.window.getBounds()
-      : { width: 1440, height: 900 };
+    const viewport =
+      this.window && !this.window.isDestroyed()
+        ? this.window.getBounds()
+        : { width: 1440, height: 900 };
 
     const cssCrop = cropRect(viewportRect, SCREENSHOT_PADDING, viewport);
     const scaledCrop = {
@@ -248,17 +255,14 @@ export class AnnotateService extends EventEmitter {
     }
   }
 
-  private async compositeOverlay(
-    pagePng: Buffer,
-    overlayDataURL: string
-  ): Promise<Buffer> {
+  private async compositeOverlay(pagePng: Buffer, overlayDataURL: string): Promise<Buffer> {
     if (!this.window || this.window.isDestroyed()) return pagePng;
 
     try {
       const pageImage = nativeImage.createFromBuffer(pagePng);
       const pageDataURL = pageImage.toDataURL();
 
-      const compositedDataURL = await this.window.webContents.executeJavaScript(`
+      const compositedDataURL = (await this.window.webContents.executeJavaScript(`
         (function() {
           return new Promise(function(resolve) {
             var base = new Image();
@@ -281,7 +285,7 @@ export class AnnotateService extends EventEmitter {
             base.src = ${JSON.stringify(pageDataURL)};
           });
         })()
-      `) as string | null;
+      `)) as string | null;
 
       if (!compositedDataURL) return pagePng;
 
@@ -330,7 +334,7 @@ export class AnnotateService extends EventEmitter {
           }
 
           // Scroll element into view, wait for repaint, then get fresh viewport-relative rect
-          const freshInfo = await this.window.webContents.executeJavaScript(`
+          const freshInfo = (await this.window.webContents.executeJavaScript(`
             (() => {
               const el = document.querySelector(${JSON.stringify(el.selector)});
               if (!el) return Promise.resolve(null);
@@ -342,7 +346,7 @@ export class AnnotateService extends EventEmitter {
                 });
               });
             })()
-          `) as (ElementRect & { dpr: number }) | null;
+          `)) as (ElementRect & { dpr: number }) | null;
           await new Promise((r) => setTimeout(r, 150));
 
           if (!freshInfo) continue;

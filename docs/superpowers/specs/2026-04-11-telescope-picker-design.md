@@ -89,9 +89,9 @@ type TelescopeMode = {
   onSelect: (item: TelescopeItem) => void;
   onAltSelect?: (item: TelescopeItem) => void;
   // Browse mode extensions (optional, only used by browse-mode)
-  breadcrumbs?: string[];            // current path segments for breadcrumb display
+  breadcrumbs?: string[]; // current path segments for breadcrumb display
   onNavigate?: (dir: string) => void; // drill into directory or jump to breadcrumb
-  onNavigateUp?: () => void;          // go up one directory (Backspace on empty query)
+  onNavigateUp?: () => void; // go up one directory (Backspace on empty query)
 };
 ```
 
@@ -141,7 +141,7 @@ type FileGrepRequest = {
   requestId: number;
   query: string;
   cwd: string;
-  limit?: number;        // default 50
+  limit?: number; // default 50
 };
 
 // Response
@@ -153,10 +153,10 @@ type FileGrepResponse = {
 };
 
 type FileGrepResult = {
-  file: string;          // absolute path
-  relativePath: string;  // relative to cwd
-  line: number;          // 1-based line number
-  text: string;          // the matching line content
+  file: string; // absolute path
+  relativePath: string; // relative to cwd
+  line: number; // 1-based line number
+  text: string; // the matching line content
   contextBefore?: string[];
   contextAfter?: string[];
 };
@@ -164,8 +164,8 @@ type FileGrepResult = {
 
 ### Cross-Platform Strategy
 
-| Platform | Primary | Fallback |
-|----------|---------|----------|
+| Platform | Primary        | Fallback                                        |
+| -------- | -------------- | ----------------------------------------------- |
 | All      | `rg` (ripgrep) | `grep -rn` (macOS/Linux) or `findstr` (Windows) |
 
 Implementation follows the same pattern as `src/main/file-search.ts`: try primary tool, catch ENOENT, spawn fallback. Results normalized to the same shape regardless of tool.
@@ -179,17 +179,17 @@ Implementation follows the same pattern as `src/main/file-search.ts`: try primar
 
 ### Inside the Modal
 
-| Key | Action |
-|-----|--------|
-| `Cmd+1` / `Ctrl+1` | Files mode |
-| `Cmd+2` / `Ctrl+2` | Grep mode |
-| `Cmd+3` / `Ctrl+3` | Browse mode |
-| `Cmd+4` / `Ctrl+4` | Panes mode |
-| `↑` / `↓` | Move selection |
-| `Enter` | Primary action (context-dependent) |
-| `Shift+Enter` | Paste path into terminal |
-| `Escape` | Close modal |
-| `Backspace` (empty query, Browse) | Navigate up one directory |
+| Key                               | Action                             |
+| --------------------------------- | ---------------------------------- |
+| `Cmd+1` / `Ctrl+1`                | Files mode                         |
+| `Cmd+2` / `Ctrl+2`                | Grep mode                          |
+| `Cmd+3` / `Ctrl+3`                | Browse mode                        |
+| `Cmd+4` / `Ctrl+4`                | Panes mode                         |
+| `↑` / `↓`                         | Move selection                     |
+| `Enter`                           | Primary action (context-dependent) |
+| `Shift+Enter`                     | Paste path into terminal           |
+| `Escape`                          | Close modal                        |
+| `Backspace` (empty query, Browse) | Navigate up one directory          |
 
 ### Event Wiring
 

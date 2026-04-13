@@ -75,9 +75,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     autoStart: false,
     claudeConfigDir: '',
     workspaceOverrides: {},
-    showAllWorkspaces: false,
+    showAllWorkspaces: false
   },
   annotate: {
     retentionDays: 3
-  },
+  }
 };

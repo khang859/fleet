@@ -13,9 +13,9 @@ Allow users to choose from different animated mascot sprites in the copilot sett
 
 ```typescript
 type MascotDefinition = {
-  id: string;            // matches CopilotSettings.spriteSheet value
-  name: string;          // display name, e.g. "Spaceship"
-  description: string;   // short flavor text
+  id: string; // matches CopilotSettings.spriteSheet value
+  name: string; // display name, e.g. "Spaceship"
+  description: string; // short flavor text
   thumbnailFrame: number; // frame index to show as preview in settings
 };
 ```
@@ -45,6 +45,7 @@ Each mascot has a base64-encoded `.ts` file in `src/renderer/copilot/src/assets/
 - `sprites-cat.ts`
 
 All sprite sheets follow the existing format: 9 frames at 128px each (1152×128px total), with the same state mapping:
+
 - idle: frames 0, 1
 - processing: frames 2, 3, 4
 - permission: frames 5, 6
@@ -85,6 +86,7 @@ Replace the placeholder text in `CopilotSettings.tsx` (lines 82-90) with a visua
 ### Layout
 
 A horizontal row of clickable mascot cards. Each card contains:
+
 - A 64px sprite preview showing the mascot's idle frame (using CSS `background-position` and `background-size` to render the thumbnail frame, scaled down from 128px)
 - The mascot name below the preview
 - A visual selected state (e.g., ring/border highlight on the active mascot)
@@ -102,18 +104,21 @@ No explicit migration needed. The `getSpriteSheet()` fallback handles the old `'
 ## Files to Create/Modify
 
 ### Create
+
 - `src/renderer/copilot/src/assets/sprites-spaceship.ts` — renamed/copied from `copilot-sprites.ts`
 - `src/renderer/copilot/src/assets/sprites-robot.ts` — new mascot sprite sheet
 - `src/renderer/copilot/src/assets/sprites-cat.ts` — new mascot sprite sheet
 - `src/renderer/copilot/src/assets/sprite-loader.ts` — sprite sheet loader module
 
 ### Modify
+
 - `src/shared/constants.ts` — add `MASCOT_REGISTRY`, update default `spriteSheet` value
 - `src/shared/types.ts` — add `MascotDefinition` type
 - `src/renderer/copilot/src/components/SpaceshipSprite.tsx` — use `getSpriteSheet()` with settings
 - `src/renderer/copilot/src/components/CopilotSettings.tsx` — replace placeholder with mascot grid
 
 ### Delete
+
 - `src/renderer/copilot/src/assets/copilot-sprites.ts` — replaced by `sprites-spaceship.ts`
 
 ## Future Considerations

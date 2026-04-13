@@ -21,6 +21,7 @@ Make the Annotate tab a first-class special tab in the sidebar, matching the tre
 A new component in `Sidebar.tsx` alongside `ImagesTabCard`.
 
 **Visual design:**
+
 - Same structural pattern as `ImagesTabCard`: card container with icon + label
 - **Teal accent color** when active:
   - Border: `rgba(45,212,191,0.35)`
@@ -42,6 +43,7 @@ In `Sidebar.tsx` tab rendering section (~line 1000):
 3. Add `t.type !== 'annotate'` to the `regularTabs` filter (line 1013-1017) so Annotate no longer renders as a `TabItem`.
 
 **Rendering order:**
+
 ```
 [ImagesTabCard]
 [AnnotateTabCard]
@@ -60,6 +62,7 @@ Add a `## fleet annotate` section to `resources/skills/fleet.md` between `fleet 
 ### 4. No Other Changes
 
 The following already work correctly and need no modification:
+
 - `ensureAnnotateTab()` in workspace-store.ts — auto-creates the tab
 - `getNormalTabs()` in use-pane-navigation.ts — already excludes `annotate`
 - Tab type definition in types.ts — `'annotate'` already a valid type
@@ -69,7 +72,7 @@ The following already work correctly and need no modification:
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
+| File                                      | Change                                                                                             |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------- |
 | `src/renderer/src/components/Sidebar.tsx` | Add `AnnotateTabCard` component; render it after Images card; filter `annotate` from `regularTabs` |
-| `resources/skills/fleet.md` | Add `## fleet annotate` documentation section |
+| `resources/skills/fleet.md`               | Add `## fleet annotate` documentation section                                                      |

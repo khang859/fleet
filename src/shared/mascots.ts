@@ -4,7 +4,7 @@ export const DEFAULT_ANIMATIONS: SpriteAnimations = {
   idle: { frames: [0, 1], fps: 2 },
   processing: { frames: [2, 3, 4], fps: 4 },
   permission: { frames: [5, 6], fps: 3 },
-  complete: { frames: [7, 8], fps: 2 },
+  complete: { frames: [7, 8], fps: 2 }
 };
 
 export const MASCOT_REGISTRY: MascotDefinition[] = [
@@ -15,12 +15,15 @@ export const MASCOT_REGISTRY: MascotDefinition[] = [
   { id: 'kraken', name: 'Kraken', description: 'An astral space kraken', thumbnailFrame: 0 },
   { id: 'owl', name: 'Owl', description: 'A bioluminescent clockwork owl', thumbnailFrame: 0 },
   {
-    id: 'dragon', name: 'Dragon', description: 'An armored cybernetic dragon', thumbnailFrame: 0,
+    id: 'dragon',
+    name: 'Dragon',
+    description: 'An armored cybernetic dragon',
+    thumbnailFrame: 0,
     animations: {
       idle: { frames: [0, 1, 2, 3], fps: 3 },
       processing: { frames: [4, 5, 6, 5], fps: 4 },
       permission: { frames: [7, 8], fps: 3 },
-      complete: { frames: [9, 10], fps: 2 },
-    },
-  },
+      complete: { frames: [9, 10], fps: 2 }
+    }
+  }
 ];

@@ -13,6 +13,7 @@
 ### Task 1: Add workspace fields to CopilotSession and showAllWorkspaces to CopilotSettings
 
 **Files:**
+
 - Modify: `src/shared/types.ts:153-163` (CopilotSession type)
 - Modify: `src/shared/types.ts:170-179` (CopilotSettings type)
 - Modify: `src/shared/constants.ts:70-79` (DEFAULT_SETTINGS.copilot)
@@ -90,6 +91,7 @@ git commit -m "feat(copilot): add workspace fields to session type and showAllWo
 ### Task 2: Add workspace lookup to layout store
 
 **Files:**
+
 - Modify: `src/main/layout-store.ts`
 
 - [ ] **Step 1: Add findWorkspaceForPane method**
@@ -138,6 +140,7 @@ git commit -m "feat(copilot): add findWorkspaceForPane to layout store"
 ### Task 3: Tag sessions with workspace info in the socket server flow
 
 **Files:**
+
 - Modify: `src/main/copilot/session-store.ts:65-86` (processHookEvent)
 - Modify: `src/main/copilot/socket-server.ts:134-175` (handleConnection)
 - Modify: `src/main/copilot/ipc-handlers.ts:58-67` (registerCopilotIpcHandlers signature)
@@ -210,10 +213,8 @@ export class CopilotSocketServer {
 Then in `handleConnection`, after parsing the event JSON, resolve workspace and pass it through. Replace the line `this.sessionStore.processHookEvent(event);` (line 158) with:
 
 ```typescript
-      const workspaceInfo = event.pid && this.resolveWorkspace
-        ? this.resolveWorkspace(event.pid)
-        : null;
-      this.sessionStore.processHookEvent(event, workspaceInfo ?? undefined);
+const workspaceInfo = event.pid && this.resolveWorkspace ? this.resolveWorkspace(event.pid) : null;
+this.sessionStore.processHookEvent(event, workspaceInfo ?? undefined);
 ```
 
 - [ ] **Step 3: Wire up the workspace resolver in registerCopilotIpcHandlers**
@@ -243,12 +244,12 @@ export function registerCopilotIpcHandlers(
 Then at the start of the function body, after the existing `log.info('IPC handlers registered')` line... Actually, set up the resolver right at the start of the function, before the IPC handler registrations:
 
 ```typescript
-  // Wire up workspace resolution: PID → paneId → workspaceId
-  socketServer.setWorkspaceResolver((pid: number) => {
-    const paneId = findPaneForPid(ptyManager, pid);
-    if (!paneId) return null;
-    return layoutStore.findWorkspaceForPane(paneId);
-  });
+// Wire up workspace resolution: PID → paneId → workspaceId
+socketServer.setWorkspaceResolver((pid: number) => {
+  const paneId = findPaneForPid(ptyManager, pid);
+  if (!paneId) return null;
+  return layoutStore.findWorkspaceForPane(paneId);
+});
 ```
 
 - [ ] **Step 4: Pass layoutStore in copilot/index.ts**
@@ -273,7 +274,17 @@ export async function initCopilot(
 Update the `registerCopilotIpcHandlers` call to pass `layoutStore`:
 
 ```typescript
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, layoutStore, getMainWindow, onCopilotSettingsChanged);
+registerCopilotIpcHandlers(
+  sessionStore,
+  socketServer,
+  copilotWindow,
+  settingsStore,
+  conversationReader,
+  ptyManager,
+  layoutStore,
+  getMainWindow,
+  onCopilotSettingsChanged
+);
 ```
 
 - [ ] **Step 5: Update the initCopilot call site in the main app**
@@ -281,11 +292,13 @@ Update the `registerCopilotIpcHandlers` call to pass `layoutStore`:
 Find where `initCopilot` is called (likely in `src/main/index.ts` or similar) and pass `layoutStore`. Search for `initCopilot(` to find the call site.
 
 The call likely looks like:
+
 ```typescript
 await initCopilot(settingsStore, ptyManager, getMainWindow);
 ```
 
 Update it to:
+
 ```typescript
 await initCopilot(settingsStore, ptyManager, layoutStore, getMainWindow);
 ```
@@ -307,6 +320,7 @@ git commit -m "feat(copilot): resolve workspace from PID and tag sessions"
 ### Task 4: Add active workspace IPC channel and push from main renderer
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/main/copilot/ipc-handlers.ts`
 - Modify: `src/main/copilot/copilot-window.ts`
@@ -330,21 +344,21 @@ In `src/shared/ipc-channels.ts`, add two channels after the `COPILOT_SERVICE_STA
 In `src/main/copilot/ipc-handlers.ts`, add a variable at the top of `registerCopilotIpcHandlers` to cache the last-known active workspace, then add both handlers inside the function:
 
 ```typescript
-  let lastActiveWorkspace: { workspaceId: string; workspaceName: string } | null = null;
+let lastActiveWorkspace: { workspaceId: string; workspaceName: string } | null = null;
 
-  // Push: main renderer notifies active workspace change → forward to copilot window
-  ipcMain.on(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, (
-    _event,
-    payload: { workspaceId: string; workspaceName: string }
-  ) => {
+// Push: main renderer notifies active workspace change → forward to copilot window
+ipcMain.on(
+  IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE,
+  (_event, payload: { workspaceId: string; workspaceName: string }) => {
     lastActiveWorkspace = payload;
     copilotWindow.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, payload);
-  });
+  }
+);
 
-  // Pull: copilot window fetches current active workspace on init
-  ipcMain.handle(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE, () => {
-    return lastActiveWorkspace;
-  });
+// Pull: copilot window fetches current active workspace on init
+ipcMain.handle(IPC_CHANNELS.COPILOT_GET_ACTIVE_WORKSPACE, () => {
+  return lastActiveWorkspace;
+});
 ```
 
 - [ ] **Step 3: Expose notifyActiveWorkspace in main preload**
@@ -413,6 +427,7 @@ git commit -m "feat(copilot): add active workspace IPC communication"
 ### Task 5: Add workspace state and filtering to copilot store
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts`
 - Modify: `src/renderer/copilot/src/App.tsx`
 
@@ -450,7 +465,11 @@ type CopilotStoreState = {
   filteredSessions: () => CopilotSession[];
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
-  respondPermission: (toolUseId: string, decision: 'allow' | 'deny', reason?: string) => Promise<void>;
+  respondPermission: (
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string
+  ) => Promise<void>;
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
   uninstallHooks: () => Promise<void>;
@@ -526,27 +545,30 @@ In `src/renderer/copilot/src/App.tsx`, add the active workspace subscription in 
 After the existing subscriptions inside the `useEffect` (after `const cleanupExpanded = ...`), add:
 
 ```typescript
-    const setActiveWorkspace = useCopilotStore.getState().setActiveWorkspace;
+const setActiveWorkspace = useCopilotStore.getState().setActiveWorkspace;
 
-    // Load initial active workspace
-    window.copilot.getActiveWorkspace().then((ws) => {
-      if (ws) setActiveWorkspace(ws.workspaceId, ws.workspaceName);
-    }).catch(() => {});
+// Load initial active workspace
+window.copilot
+  .getActiveWorkspace()
+  .then((ws) => {
+    if (ws) setActiveWorkspace(ws.workspaceId, ws.workspaceName);
+  })
+  .catch(() => {});
 
-    // Subscribe to active workspace changes
-    const cleanupWorkspace = window.copilot.onActiveWorkspace((payload) => {
-      setActiveWorkspace(payload.workspaceId, payload.workspaceName);
-    });
+// Subscribe to active workspace changes
+const cleanupWorkspace = window.copilot.onActiveWorkspace((payload) => {
+  setActiveWorkspace(payload.workspaceId, payload.workspaceName);
+});
 ```
 
 Update the cleanup return:
 
 ```typescript
-    return () => {
-      cleanupSessions();
-      cleanupExpanded();
-      cleanupWorkspace();
-    };
+return () => {
+  cleanupSessions();
+  cleanupExpanded();
+  cleanupWorkspace();
+};
 ```
 
 - [ ] **Step 5: Verify typecheck**
@@ -566,6 +588,7 @@ git commit -m "feat(copilot): add workspace state, filtering, and active workspa
 ### Task 6: Add workspace filter toggle and labels to SessionList
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx`
 
 - [ ] **Step 1: Add filter toggle and workspace labels**
@@ -594,44 +617,44 @@ export function SessionList(): React.JSX.Element {
 Replace the header section (the `{/* Header */}` div, lines 72-86) with:
 
 ```tsx
-        {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
-          <span className="text-sm font-medium text-neutral-300">
-            Sessions ({sessions.length})
-          </span>
-          <div className="flex items-center gap-1">
-            <div className="flex items-center bg-neutral-800 rounded text-xs">
-              <button
-                onClick={() => void setShowAllWorkspaces(false)}
-                className={`px-2 py-0.5 rounded transition-colors ${
-                  !showAllWorkspaces
-                    ? 'bg-neutral-600 text-neutral-200'
-                    : 'text-neutral-500 hover:text-neutral-400'
-                }`}
-              >
-                Active
-              </button>
-              <button
-                onClick={() => void setShowAllWorkspaces(true)}
-                className={`px-2 py-0.5 rounded transition-colors ${
-                  showAllWorkspaces
-                    ? 'bg-neutral-600 text-neutral-200'
-                    : 'text-neutral-500 hover:text-neutral-400'
-                }`}
-              >
-                All
-              </button>
-            </div>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
-                  <PawPrint size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Mascots</TooltipContent>
-            </Tooltip>
-          </div>
-        </div>
+{
+  /* Header */
+}
+<div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
+  <span className="text-sm font-medium text-neutral-300">Sessions ({sessions.length})</span>
+  <div className="flex items-center gap-1">
+    <div className="flex items-center bg-neutral-800 rounded text-xs">
+      <button
+        onClick={() => void setShowAllWorkspaces(false)}
+        className={`px-2 py-0.5 rounded transition-colors ${
+          !showAllWorkspaces
+            ? 'bg-neutral-600 text-neutral-200'
+            : 'text-neutral-500 hover:text-neutral-400'
+        }`}
+      >
+        Active
+      </button>
+      <button
+        onClick={() => void setShowAllWorkspaces(true)}
+        className={`px-2 py-0.5 rounded transition-colors ${
+          showAllWorkspaces
+            ? 'bg-neutral-600 text-neutral-200'
+            : 'text-neutral-500 hover:text-neutral-400'
+        }`}
+      >
+        All
+      </button>
+    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
+          <PawPrint size={14} />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Mascots</TooltipContent>
+    </Tooltip>
+  </div>
+</div>;
 ```
 
 - [ ] **Step 3: Add workspace name subtitle to each session**
@@ -641,62 +664,54 @@ In the session item rendering (inside the `sorted.map()` callback), after the pr
 Find the existing block:
 
 ```tsx
-                  <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {/* Multi-signal badge (Baymard: shape+size+color+animation) */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge status={status} />
-                        </TooltipTrigger>
-                        <TooltipContent>{statusLabel(status)}</TooltipContent>
-                      </Tooltip>
+<div className="flex items-center justify-between py-2">
+  <div className="flex items-center gap-2 min-w-0">
+    {/* Multi-signal badge (Baymard: shape+size+color+animation) */}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge status={status} />
+      </TooltipTrigger>
+      <TooltipContent>{statusLabel(status)}</TooltipContent>
+    </Tooltip>
 
-                      {/* Project name with truncation + tooltip (Baymard) */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="text-sm text-neutral-200 truncate">
-                            {session.projectName}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent>{session.projectName}</TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-2 shrink-0">
-                      {elapsed(session.createdAt)}
-                    </span>
-                  </div>
+    {/* Project name with truncation + tooltip (Baymard) */}
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-sm text-neutral-200 truncate">{session.projectName}</span>
+      </TooltipTrigger>
+      <TooltipContent>{session.projectName}</TooltipContent>
+    </Tooltip>
+  </div>
+  <span className="text-xs text-neutral-500 ml-2 shrink-0">{elapsed(session.createdAt)}</span>
+</div>
 ```
 
 Replace with:
 
 ```tsx
-                  <div className="flex items-center justify-between py-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Badge status={status} />
-                        </TooltipTrigger>
-                        <TooltipContent>{statusLabel(status)}</TooltipContent>
-                      </Tooltip>
+<div className="flex items-center justify-between py-2">
+  <div className="flex items-center gap-2 min-w-0">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge status={status} />
+      </TooltipTrigger>
+      <TooltipContent>{statusLabel(status)}</TooltipContent>
+    </Tooltip>
 
-                      <div className="min-w-0">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="text-sm text-neutral-200 truncate block">
-                              {session.projectName}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>{session.projectName}</TooltipContent>
-                        </Tooltip>
-                        <span className="text-xs text-neutral-500 truncate block">
-                          {session.workspaceName ?? 'Unknown'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="text-xs text-neutral-500 ml-2 shrink-0">
-                      {elapsed(session.createdAt)}
-                    </span>
-                  </div>
+    <div className="min-w-0">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="text-sm text-neutral-200 truncate block">{session.projectName}</span>
+        </TooltipTrigger>
+        <TooltipContent>{session.projectName}</TooltipContent>
+      </Tooltip>
+      <span className="text-xs text-neutral-500 truncate block">
+        {session.workspaceName ?? 'Unknown'}
+      </span>
+    </div>
+  </div>
+  <span className="text-xs text-neutral-500 ml-2 shrink-0">{elapsed(session.createdAt)}</span>
+</div>
 ```
 
 - [ ] **Step 4: Verify typecheck**
@@ -716,6 +731,7 @@ git commit -m "feat(copilot): add workspace filter toggle and labels to session 
 ### Task 7: Add workspace label to SessionDetail header
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionDetail.tsx:81-100`
 
 - [ ] **Step 1: Add workspace subtitle to detail header**
@@ -723,56 +739,54 @@ git commit -m "feat(copilot): add workspace filter toggle and labels to session 
 In `src/renderer/copilot/src/components/SessionDetail.tsx`, update the header section. Find the existing header (lines 81-100):
 
 ```tsx
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
-          <Button variant="ghost" size="sm" onClick={backToList}>
-            <ChevronLeft size={14} />
-          </Button>
-          <Badge status={status} />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-sm font-medium text-neutral-200 truncate">
-                {session.projectName}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>{session.projectName}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-xs text-neutral-500 ml-auto">{session.phase}</span>
-            </TooltipTrigger>
-            <TooltipContent>Current phase: {session.phase}</TooltipContent>
-          </Tooltip>
-        </div>
+<div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
+  <Button variant="ghost" size="sm" onClick={backToList}>
+    <ChevronLeft size={14} />
+  </Button>
+  <Badge status={status} />
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <span className="text-sm font-medium text-neutral-200 truncate">{session.projectName}</span>
+    </TooltipTrigger>
+    <TooltipContent>{session.projectName}</TooltipContent>
+  </Tooltip>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <span className="text-xs text-neutral-500 ml-auto">{session.phase}</span>
+    </TooltipTrigger>
+    <TooltipContent>Current phase: {session.phase}</TooltipContent>
+  </Tooltip>
+</div>
 ```
 
 Replace with:
 
 ```tsx
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
-          <Button variant="ghost" size="sm" onClick={backToList}>
-            <ChevronLeft size={14} />
-          </Button>
-          <Badge status={status} />
-          <div className="min-w-0 flex-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="text-sm font-medium text-neutral-200 truncate block">
-                  {session.projectName}
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{session.projectName}</TooltipContent>
-            </Tooltip>
-            <span className="text-xs text-neutral-500 truncate block">
-              {session.workspaceName ?? 'Unknown'}
-            </span>
-          </div>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className="text-xs text-neutral-500 ml-auto shrink-0">{session.phase}</span>
-            </TooltipTrigger>
-            <TooltipContent>Current phase: {session.phase}</TooltipContent>
-          </Tooltip>
-        </div>
+<div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
+  <Button variant="ghost" size="sm" onClick={backToList}>
+    <ChevronLeft size={14} />
+  </Button>
+  <Badge status={status} />
+  <div className="min-w-0 flex-1">
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="text-sm font-medium text-neutral-200 truncate block">
+          {session.projectName}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{session.projectName}</TooltipContent>
+    </Tooltip>
+    <span className="text-xs text-neutral-500 truncate block">
+      {session.workspaceName ?? 'Unknown'}
+    </span>
+  </div>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <span className="text-xs text-neutral-500 ml-auto shrink-0">{session.phase}</span>
+    </TooltipTrigger>
+    <TooltipContent>Current phase: {session.phase}</TooltipContent>
+  </Tooltip>
+</div>
 ```
 
 - [ ] **Step 2: Verify typecheck**
@@ -792,6 +806,7 @@ git commit -m "feat(copilot): add workspace label to session detail header"
 ### Task 8: Add showAllWorkspaces toggle to settings page
 
 **Files:**
+
 - Modify: `src/renderer/src/components/settings/CopilotSection.tsx`
 
 - [ ] **Step 1: Add toggle in settings UI**
@@ -799,21 +814,23 @@ git commit -m "feat(copilot): add workspace label to session detail header"
 In `src/renderer/src/components/settings/CopilotSection.tsx`, add a "Show All Workspaces" toggle after the "Claude Code Hooks" section and before the "Workspace Overrides" section. Find the `{/* Workspace Overrides */}` comment and add this block before it:
 
 ```tsx
-      {/* Show All Workspaces */}
-      <div>
-        <SettingRow label="Show All Workspaces">
-          <input
-            type="checkbox"
-            checked={copilot.showAllWorkspaces}
-            onChange={(e) => updateCopilot({ showAllWorkspaces: e.target.checked })}
-            className="accent-blue-500"
-          />
-        </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">
-          Show sessions from all workspaces in the Copilot overlay. When off, only the active
-          workspace&apos;s sessions are shown.
-        </p>
-      </div>
+{
+  /* Show All Workspaces */
+}
+<div>
+  <SettingRow label="Show All Workspaces">
+    <input
+      type="checkbox"
+      checked={copilot.showAllWorkspaces}
+      onChange={(e) => updateCopilot({ showAllWorkspaces: e.target.checked })}
+      className="accent-blue-500"
+    />
+  </SettingRow>
+  <p className="text-xs text-neutral-500 mt-1">
+    Show sessions from all workspaces in the Copilot overlay. When off, only the active
+    workspace&apos;s sessions are shown.
+  </p>
+</div>;
 ```
 
 - [ ] **Step 2: Verify typecheck**
@@ -850,6 +867,7 @@ Expected: PASS
 - [ ] **Step 4: Manual testing checklist**
 
 Run `npm run dev` and verify:
+
 1. Global hooks section shows correct installed/not-installed status
 2. Start a Claude session in a workspace — the copilot session list should show the workspace name under the project name
 3. The "Active / All" toggle at the top of the session list switches filtering
@@ -861,14 +879,14 @@ Run `npm run dev` and verify:
 
 ## Build Order Summary
 
-| Task | What it does | Dependencies |
-|------|-------------|-------------|
-| 1 | Types + setting default | None |
-| 2 | Layout store lookup | None |
-| 3 | Tag sessions with workspace | Tasks 1, 2 |
-| 4 | Active workspace IPC | Task 1 |
-| 5 | Copilot store filtering | Tasks 1, 4 |
-| 6 | Session list UI | Tasks 1, 5 |
-| 7 | Session detail UI | Task 1 |
-| 8 | Settings toggle | Task 1 |
-| 9 | Final verification | All |
+| Task | What it does                | Dependencies |
+| ---- | --------------------------- | ------------ |
+| 1    | Types + setting default     | None         |
+| 2    | Layout store lookup         | None         |
+| 3    | Tag sessions with workspace | Tasks 1, 2   |
+| 4    | Active workspace IPC        | Task 1       |
+| 5    | Copilot store filtering     | Tasks 1, 4   |
+| 6    | Session list UI             | Tasks 1, 5   |
+| 7    | Session detail UI           | Task 1       |
+| 8    | Settings toggle             | Task 1       |
+| 9    | Final verification          | All          |

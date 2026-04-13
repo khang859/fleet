@@ -88,10 +88,10 @@ The `reason` string is returned to the LLM in the tool result, giving it feedbac
 
 Registered via `pi.registerTool()` with this schema:
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
+| Parameter | Type   | Description                                                                                                          |
+| --------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
 | `plan`    | string | The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths. |
-| `topic`   | string | Short kebab-case topic, e.g. `pi-plan-mode` or `fix-pty-leak`. Used in the filename. |
+| `topic`   | string | Short kebab-case topic, e.g. `pi-plan-mode` or `fix-pty-leak`. Used in the filename.                                 |
 
 Execution flow:
 

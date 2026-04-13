@@ -103,9 +103,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
             placeholder="https://example.com"
             className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-sm text-white placeholder-neutral-500 focus:outline-none focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500"
           />
-          <p className="mt-1 text-xs text-neutral-500">
-            Leave empty to open a blank page
-          </p>
+          <p className="mt-1 text-xs text-neutral-500">Leave empty to open a blank page</p>
         </div>
 
         {/* Mode selection */}

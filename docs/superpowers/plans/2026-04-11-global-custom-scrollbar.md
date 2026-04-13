@@ -13,6 +13,7 @@
 ### Task 1: Replace scoped scrollbar class with universal scrollbar rules
 
 **Files:**
+
 - Modify: `src/renderer/src/index.css:55-68`
 
 - [ ] **Step 1: Replace the `.scrollbar-sc` class with universal scrollbar rules**
@@ -65,6 +66,7 @@ Expected: Clean build, no errors.
 Run: `npm run dev`
 
 Check these scrollable areas:
+
 1. Telescope modal (Cmd+K) — results list and preview panel
 2. Markdown preview pane — scroll long content
 3. Settings panel — scroll if content overflows

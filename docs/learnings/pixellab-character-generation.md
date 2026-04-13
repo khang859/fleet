@@ -18,6 +18,7 @@ PixelLab MCP tools can generate pixel art characters with directional views and 
 ## Sprite Sheet Assembly
 
 PixelLab ZIP structure:
+
 ```
 rotations/south.png, east.png, north.png, west.png
 animations/<name>/south/frame_000.png, frame_001.png, ...
@@ -25,6 +26,7 @@ metadata.json
 ```
 
 To assemble into a horizontal sprite strip for the copilot (which expects 128x128px frames):
+
 1. Pick specific frame indices from each animation (animations often have more frames than needed)
 2. Use Pillow to paste frames into a single RGBA image
 3. Generate base64 data URI for the `.ts` asset file: `export default 'data:image/png;base64,...';`

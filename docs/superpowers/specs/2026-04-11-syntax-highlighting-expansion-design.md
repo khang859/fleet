@@ -20,8 +20,8 @@ A single module that maps file extensions to language metadata:
 
 ```ts
 interface LanguageInfo {
-  id: string       // canonical language ID (e.g. "typescript", "bash")
-  label: string    // display label (e.g. "TypeScript", "Bash")
+  id: string; // canonical language ID (e.g. "typescript", "bash")
+  label: string; // display label (e.g. "TypeScript", "Bash")
 }
 ```
 
@@ -29,39 +29,39 @@ Exports a function `getLanguageForPath(filePath: string): LanguageInfo | null` t
 
 **Supported languages (initial set):**
 
-| Language | Extensions |
-|----------|-----------|
-| Bash/Shell | .sh, .bash, .zsh |
-| C | .c, .h |
-| C++ | .cpp, .hpp, .cc, .cxx |
-| CSS | .css |
-| Dockerfile | Dockerfile |
-| Go | .go |
-| HTML | .html, .htm |
-| Java | .java |
-| JavaScript | .js, .mjs, .cjs |
-| JSX | .jsx |
-| JSON | .json |
-| Kotlin | .kt, .kts |
-| Less | .less |
-| Lua | .lua |
-| Makefile | Makefile, .mk |
-| Markdown | .md, .markdown |
-| PHP | .php |
-| Python | .py |
-| Ruby | .rb |
-| Rust | .rs |
-| SCSS | .scss |
-| SQL | .sql |
-| Swift | .swift |
-| TOML | .toml |
-| TypeScript | .ts |
-| TSX | .tsx |
-| Vue | .vue |
-| Svelte | .svelte |
-| XML | .xml, .svg, .plist |
-| YAML | .yml, .yaml |
-| Zig | .zig |
+| Language   | Extensions            |
+| ---------- | --------------------- |
+| Bash/Shell | .sh, .bash, .zsh      |
+| C          | .c, .h                |
+| C++        | .cpp, .hpp, .cc, .cxx |
+| CSS        | .css                  |
+| Dockerfile | Dockerfile            |
+| Go         | .go                   |
+| HTML       | .html, .htm           |
+| Java       | .java                 |
+| JavaScript | .js, .mjs, .cjs       |
+| JSX        | .jsx                  |
+| JSON       | .json                 |
+| Kotlin     | .kt, .kts             |
+| Less       | .less                 |
+| Lua        | .lua                  |
+| Makefile   | Makefile, .mk         |
+| Markdown   | .md, .markdown        |
+| PHP        | .php                  |
+| Python     | .py                   |
+| Ruby       | .rb                   |
+| Rust       | .rs                   |
+| SCSS       | .scss                 |
+| SQL        | .sql                  |
+| Swift      | .swift                |
+| TOML       | .toml                 |
+| TypeScript | .ts                   |
+| TSX        | .tsx                  |
+| Vue        | .vue                  |
+| Svelte     | .svelte               |
+| XML        | .xml, .svg, .plist    |
+| YAML       | .yml, .yaml           |
+| Zig        | .zig                  |
 
 Fallback: returns `null` for unrecognized extensions (consumers render as plain text).
 
@@ -98,11 +98,13 @@ async function loadLanguage(id: string): Promise<LanguageSupport | null> {
   switch (id) {
     case 'typescript':
     case 'tsx':
-      return import('@codemirror/lang-javascript').then(m => m.javascript({ typescript: true, jsx: id === 'tsx' }))
+      return import('@codemirror/lang-javascript').then((m) =>
+        m.javascript({ typescript: true, jsx: id === 'tsx' })
+      );
     case 'bash': {
-      const { StreamLanguage } = await import('@codemirror/language')
-      const { shell } = await import('@codemirror/legacy-modes/mode/shell')
-      return new LanguageSupport(StreamLanguage.define(shell))
+      const { StreamLanguage } = await import('@codemirror/language');
+      const { shell } = await import('@codemirror/legacy-modes/mode/shell');
+      return new LanguageSupport(StreamLanguage.define(shell));
     }
     // etc.
   }
@@ -150,13 +152,13 @@ This ensures any language added to the shared registry automatically works in di
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `src/shared/languages.ts` | New — shared language registry |
-| `src/renderer/src/components/FileEditorPane.tsx` | Expand language support, consume shared registry |
+| File                                                       | Change                                            |
+| ---------------------------------------------------------- | ------------------------------------------------- |
+| `src/shared/languages.ts`                                  | New — shared language registry                    |
+| `src/renderer/src/components/FileEditorPane.tsx`           | Expand language support, consume shared registry  |
 | `src/renderer/src/components/Telescope/TelescopeModal.tsx` | Add Shiki preview (or extract `ShikiPreview.tsx`) |
-| `src/renderer/src/components/GitChangesModal.tsx` | Replace local lang map with shared registry |
-| `package.json` | Add ~10 new `@codemirror/lang-*` packages |
+| `src/renderer/src/components/GitChangesModal.tsx`          | Replace local lang map with shared registry       |
+| `package.json`                                             | Add ~10 new `@codemirror/lang-*` packages         |
 
 ## Out of Scope
 

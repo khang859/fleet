@@ -19,9 +19,11 @@
 ## File Structure
 
 **Create:**
+
 - `resources/pi-extensions/fleet-plan-mode.ts` — single-file extension. Module-scope `planMode` flag, command registration, event handlers, and the `exit_plan_mode` tool. Kept in one file because all logic is tightly coupled around the shared flag and the extension stays under ~200 lines.
 
 **Modify:**
+
 - `src/main/pi-agent-manager.ts:83` — add `'fleet-plan-mode.ts'` to the bundled extensions list.
 - `CHANGELOG.md:3-7` — add a bullet under `## [Unreleased]` → `### Added`.
 
@@ -32,6 +34,7 @@ No changes to the renderer, preload, or shared layers — this iteration is Pi-T
 ## Task 1: Extension skeleton + /plan command + registration
 
 **Files:**
+
 - Create: `resources/pi-extensions/fleet-plan-mode.ts`
 - Modify: `src/main/pi-agent-manager.ts:83`
 
@@ -50,54 +53,51 @@ Create `resources/pi-extensions/fleet-plan-mode.ts`:
  * approves it.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 
-const PLAN_MODE_STATUS_KEY = "plan-mode";
-const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
+const PLAN_MODE_STATUS_KEY = 'plan-mode';
+const PLAN_MODE_STATUS_LABEL = '📋 Plan Mode';
 
 let planMode = false;
 
 export default function (pi: ExtensionAPI): void {
-  pi.registerCommand("plan", {
+  pi.registerCommand('plan', {
     description:
-      "Enter plan mode (read-only investigation, ends with an approved markdown plan). Use `/plan cancel` to exit without a plan.",
+      'Enter plan mode (read-only investigation, ends with an approved markdown plan). Use `/plan cancel` to exit without a plan.',
     handler: async (args, ctx) => {
-      const subcommand = (args ?? "").trim();
+      const subcommand = (args ?? '').trim();
 
-      if (subcommand === "cancel") {
+      if (subcommand === 'cancel') {
         if (!planMode) {
-          ctx.ui.notify("Plan mode is not active.", "info");
+          ctx.ui.notify('Plan mode is not active.', 'info');
           return;
         }
         planMode = false;
         ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
-        ctx.ui.notify("Plan mode cancelled. No plan was written.", "info");
+        ctx.ui.notify('Plan mode cancelled. No plan was written.', 'info');
         return;
       }
 
       if (subcommand.length > 0) {
         ctx.ui.notify(
           `Unknown subcommand '${subcommand}'. Use '/plan' or '/plan cancel'.`,
-          "warning",
+          'warning'
         );
         return;
       }
 
       if (planMode) {
-        ctx.ui.notify("Plan mode is already on.", "info");
+        ctx.ui.notify('Plan mode is already on.', 'info');
         return;
       }
 
       planMode = true;
       ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, PLAN_MODE_STATUS_LABEL);
-      ctx.ui.notify(
-        "Plan mode on — read-only until you approve the plan.",
-        "info",
-      );
-    },
+      ctx.ui.notify('Plan mode on — read-only until you approve the plan.', 'info');
+    }
   });
 
-  pi.on("session_start", async (_event, _ctx) => {
+  pi.on('session_start', async (_event, _ctx) => {
     planMode = false;
   });
 }
@@ -108,13 +108,13 @@ export default function (pi: ExtensionAPI): void {
 Open `src/main/pi-agent-manager.ts` and change line 83 from:
 
 ```typescript
-    const extensions = ['fleet-bridge.ts', 'fleet-files.ts', 'fleet-terminal.ts'];
+const extensions = ['fleet-bridge.ts', 'fleet-files.ts', 'fleet-terminal.ts'];
 ```
 
 to:
 
 ```typescript
-    const extensions = ['fleet-bridge.ts', 'fleet-files.ts', 'fleet-terminal.ts', 'fleet-plan-mode.ts'];
+const extensions = ['fleet-bridge.ts', 'fleet-files.ts', 'fleet-terminal.ts', 'fleet-plan-mode.ts'];
 ```
 
 - [ ] **Step 3: Typecheck and lint**
@@ -163,6 +163,7 @@ EOF
 ## Task 2: Inject system-prompt addendum while plan mode is on
 
 **Files:**
+
 - Modify: `resources/pi-extensions/fleet-plan-mode.ts`
 
 - [ ] **Step 1: Add the addendum constant**
@@ -196,12 +197,12 @@ When you have enough that another engineer could execute without asking question
 Inside the default-exported function, after the `pi.on("session_start", ...)` handler, add:
 
 ```typescript
-  pi.on("before_agent_start", async (event, _ctx) => {
-    if (!planMode) return;
-    return {
-      systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`,
-    };
-  });
+pi.on('before_agent_start', async (event, _ctx) => {
+  if (!planMode) return;
+  return {
+    systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`
+  };
+});
 ```
 
 - [ ] **Step 3: Typecheck and lint**
@@ -246,6 +247,7 @@ EOF
 ## Task 3: Block write/exec tools while plan mode is on
 
 **Files:**
+
 - Modify: `resources/pi-extensions/fleet-plan-mode.ts`
 
 - [ ] **Step 1: Add the blocked-tools set**
@@ -253,9 +255,9 @@ EOF
 Below `PLAN_MODE_ADDENDUM` (top-of-file constants section), add:
 
 ```typescript
-const BLOCKED_TOOLS = new Set<string>(["write", "edit", "bash", "fleet_run"]);
+const BLOCKED_TOOLS = new Set<string>(['write', 'edit', 'bash', 'fleet_run']);
 const PLAN_MODE_BLOCK_REASON =
-  "Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.";
+  'Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.';
 ```
 
 - [ ] **Step 2: Register the tool_call handler**
@@ -263,11 +265,11 @@ const PLAN_MODE_BLOCK_REASON =
 Inside the default-exported function, after the `pi.on("before_agent_start", ...)` handler, add:
 
 ```typescript
-  pi.on("tool_call", async (event, _ctx) => {
-    if (!planMode) return;
-    if (!BLOCKED_TOOLS.has(event.toolName)) return;
-    return { block: true, reason: PLAN_MODE_BLOCK_REASON };
-  });
+pi.on('tool_call', async (event, _ctx) => {
+  if (!planMode) return;
+  if (!BLOCKED_TOOLS.has(event.toolName)) return;
+  return { block: true, reason: PLAN_MODE_BLOCK_REASON };
+});
 ```
 
 - [ ] **Step 3: Typecheck and lint**
@@ -311,6 +313,7 @@ EOF
 ## Task 4: exit_plan_mode tool (writes plan + approval dialog)
 
 **Files:**
+
 - Modify: `resources/pi-extensions/fleet-plan-mode.ts`
 
 - [ ] **Step 1: Add imports**
@@ -318,9 +321,9 @@ EOF
 At the top of the file, below `import type { ExtensionAPI } ...`, add:
 
 ```typescript
-import { Type } from "@sinclair/typebox";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { Type } from '@sinclair/typebox';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 ```
 
 - [ ] **Step 2: Add schema + helper constants**
@@ -334,12 +337,12 @@ const PLAN_PREVIEW_LINES = 60;
 const ExitPlanModeParams = Type.Object({
   plan: Type.String({
     description:
-      "The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths.",
+      'The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths.'
   }),
   topic: Type.String({
     description:
-      "Short kebab-case topic used in the filename, e.g. 'pi-plan-mode' or 'fix-pty-leak'. Must match /^[a-z0-9][a-z0-9-]*$/.",
-  }),
+      "Short kebab-case topic used in the filename, e.g. 'pi-plan-mode' or 'fix-pty-leak'. Must match /^[a-z0-9][a-z0-9-]*$/."
+  })
 });
 ```
 
@@ -350,13 +353,13 @@ Below the constants and above the default-exported function, add:
 ```typescript
 function formatDate(d: Date): string {
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
 function resolvePlanPath(cwd: string, topic: string): string {
-  const dir = join(cwd, "docs", "plans");
+  const dir = join(cwd, 'docs', 'plans');
   const date = formatDate(new Date());
   let candidate = join(dir, `${date}-${topic}.md`);
   let counter = 2;
@@ -368,10 +371,10 @@ function resolvePlanPath(cwd: string, topic: string): string {
 }
 
 function previewPlan(plan: string): string {
-  const split = plan.split("\n");
+  const split = plan.split('\n');
   if (split.length <= PLAN_PREVIEW_LINES) return plan;
   const remaining = split.length - PLAN_PREVIEW_LINES;
-  return `${split.slice(0, PLAN_PREVIEW_LINES).join("\n")}\n\n…(${remaining} more lines)`;
+  return `${split.slice(0, PLAN_PREVIEW_LINES).join('\n')}\n\n…(${remaining} more lines)`;
 }
 ```
 
@@ -380,72 +383,72 @@ function previewPlan(plan: string): string {
 Inside the default-exported function, after the `pi.on("tool_call", ...)` handler, add:
 
 ```typescript
-  pi.registerTool({
-    name: "exit_plan_mode",
-    label: "Exit Plan Mode",
-    description:
-      "Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.",
-    parameters: ExitPlanModeParams,
+pi.registerTool({
+  name: 'exit_plan_mode',
+  label: 'Exit Plan Mode',
+  description:
+    'Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.',
+  parameters: ExitPlanModeParams,
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (!planMode) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "Plan mode is not active. exit_plan_mode can only be called while in plan mode.",
-            },
-          ],
-          details: undefined,
-        };
-      }
-
-      if (!TOPIC_PATTERN.test(params.topic)) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Invalid topic '${params.topic}'. Must be kebab-case matching /^[a-z0-9][a-z0-9-]*$/ (e.g. 'pi-plan-mode').`,
-            },
-          ],
-          details: undefined,
-        };
-      }
-
-      const planPath = resolvePlanPath(ctx.cwd, params.topic);
-      const body = `Path: ${planPath}\n\n---\n\n${previewPlan(params.plan)}`;
-      const approved = await ctx.ui.confirm("Approve plan?", body);
-
-      if (!approved) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: "User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.",
-            },
-          ],
-          details: undefined,
-        };
-      }
-
-      const dir = join(ctx.cwd, "docs", "plans");
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(planPath, params.plan, "utf-8");
-
-      planMode = false;
-      ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
-
+  async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    if (!planMode) {
       return {
         content: [
           {
-            type: "text" as const,
-            text: `Plan approved and written to ${planPath}. Plan mode is off — you may now execute the plan.`,
-          },
+            type: 'text' as const,
+            text: 'Plan mode is not active. exit_plan_mode can only be called while in plan mode.'
+          }
         ],
-        details: undefined,
+        details: undefined
       };
-    },
-  });
+    }
+
+    if (!TOPIC_PATTERN.test(params.topic)) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: `Invalid topic '${params.topic}'. Must be kebab-case matching /^[a-z0-9][a-z0-9-]*$/ (e.g. 'pi-plan-mode').`
+          }
+        ],
+        details: undefined
+      };
+    }
+
+    const planPath = resolvePlanPath(ctx.cwd, params.topic);
+    const body = `Path: ${planPath}\n\n---\n\n${previewPlan(params.plan)}`;
+    const approved = await ctx.ui.confirm('Approve plan?', body);
+
+    if (!approved) {
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: 'User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.'
+          }
+        ],
+        details: undefined
+      };
+    }
+
+    const dir = join(ctx.cwd, 'docs', 'plans');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    writeFileSync(planPath, params.plan, 'utf-8');
+
+    planMode = false;
+    ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
+
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: `Plan approved and written to ${planPath}. Plan mode is off — you may now execute the plan.`
+        }
+      ],
+      details: undefined
+    };
+  }
+});
 ```
 
 - [ ] **Step 5: Typecheck and lint**
@@ -465,6 +468,7 @@ npm run dev
 Open a Pi tab. Enable plan mode (`/plan`). Ask Pi to "plan how to add a hello-world CLI flag to this repo". Wait for Pi to call `exit_plan_mode`.
 
 Expected:
+
 - A confirm dialog appears titled "Approve plan?" showing the target path (e.g. `/Users/khangnguyen/Development/fleet/docs/plans/2026-04-13-hello-world.md`) and a preview of the plan.
 - Approve the dialog. The file is written to disk at the shown path. Footer clears. Pi's next turn shows the "Plan approved and written to …" message.
 - Verify the file exists: `ls docs/plans/2026-04-13-hello-world*.md` (adjust date). Contents should be the markdown Pi generated.
@@ -475,6 +479,7 @@ Expected:
 In the same session (or a fresh one): `/plan`, ask for a different plan, and when the confirm dialog appears, **reject** it.
 
 Expected:
+
 - No file is written under `docs/plans/`.
 - Footer still shows "📋 Plan Mode".
 - Pi's next turn shows the "User rejected the plan. Revise …" message and stays in plan mode.
@@ -522,6 +527,7 @@ EOF
 ## Task 5: Changelog entry + end-to-end verification
 
 **Files:**
+
 - Modify: `CHANGELOG.md`
 
 - [ ] **Step 1: Add changelog entry**

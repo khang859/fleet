@@ -567,16 +567,13 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER,
-    async (_event, id: string) => {
-      try {
-        await piConfigManager.deleteProvider(id);
-      } catch (err) {
-        throw toPiConfigError(err);
-      }
+  ipcMain.handle(IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER, async (_event, id: string) => {
+    try {
+      await piConfigManager.deleteProvider(id);
+    } catch (err) {
+      throw toPiConfigError(err);
     }
-  );
+  });
 
   ipcMain.handle(
     IPC_CHANNELS.PI_CONFIG_RENAME_PROVIDER,

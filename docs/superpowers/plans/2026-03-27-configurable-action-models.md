@@ -13,6 +13,7 @@
 ### Task 1: Add `ImageActionSettings` type to shared types
 
 **Files:**
+
 - Modify: `src/shared/types.ts:178-184`
 
 - [ ] **Step 1: Add the type and extend `ImageProviderSettings`**
@@ -51,6 +52,7 @@ git commit -m "feat(images): add ImageActionSettings type for configurable actio
 ### Task 2: Store settings in `FalAiProvider` and apply model overrides in `getActions()`
 
 **Files:**
+
 - Modify: `src/main/image-providers/fal-ai.ts:9-111`
 
 - [ ] **Step 1: Store settings on configure and use in getActions**
@@ -135,6 +137,7 @@ git commit -m "feat(images): apply action model overrides from provider settings
 ### Task 3: Handle `--action` and `--model` flags in CLI config command
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts:1246-1288` (images config section)
 
 - [ ] **Step 1: Add `--action` and `--model` to the set-flag detection**
@@ -142,18 +145,18 @@ git commit -m "feat(images): apply action model overrides from provider settings
 In `src/main/fleet-cli.ts`, find the `images config` handler (around line 1246). Update the `hasSetFlags` check to include `'action'` and `'model'`:
 
 ```ts
-    const hasSetFlags = Object.keys(configArgs).some((k) =>
-      [
-        'api-key',
-        'default-model',
-        'default-resolution',
-        'default-output-format',
-        'default-aspect-ratio',
-        'provider',
-        'action',
-        'model'
-      ].includes(k)
-    );
+const hasSetFlags = Object.keys(configArgs).some((k) =>
+  [
+    'api-key',
+    'default-model',
+    'default-resolution',
+    'default-output-format',
+    'default-aspect-ratio',
+    'provider',
+    'action',
+    'model'
+  ].includes(k)
+);
 ```
 
 - [ ] **Step 2: Run typecheck**
@@ -173,6 +176,7 @@ git commit -m "feat(images): recognize --action and --model flags in CLI config 
 ### Task 4: Handle action settings in `image.config.set` socket handler
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts:1186-1205`
 
 - [ ] **Step 1: Add action settings handling to `image.config.set`**
@@ -231,6 +235,7 @@ git commit -m "feat(images): handle action model override in image.config.set"
 ### Task 5: Display action settings in `image.config.get` output and update help text
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts:1266-1282` (config display section)
 - Modify: `src/main/fleet-cli.ts` (help text section around lines 1130-1150)
 
@@ -239,28 +244,28 @@ git commit -m "feat(images): handle action model override in image.config.set"
 In `src/main/fleet-cli.ts`, update the config display loop (around line 1271) to render `actions` nested under each provider. Replace the provider rendering block:
 
 ```ts
-        if (isRecord(providers)) {
-          for (const [name, val] of Object.entries(providers)) {
-            lines.push(`${name}:`);
-            if (isRecord(val)) {
-              for (const [k, v] of Object.entries(val)) {
-                if (k === 'actions' && isRecord(v)) {
-                  lines.push(`  actions:`);
-                  for (const [actionName, actionVal] of Object.entries(v)) {
-                    lines.push(`    ${actionName}:`);
-                    if (isRecord(actionVal)) {
-                      for (const [ak, av] of Object.entries(actionVal)) {
-                        lines.push(`      ${ak}: ${toStr(av)}`);
-                      }
-                    }
-                  }
-                } else {
-                  lines.push(`  ${k}: ${toStr(v)}`);
-                }
+if (isRecord(providers)) {
+  for (const [name, val] of Object.entries(providers)) {
+    lines.push(`${name}:`);
+    if (isRecord(val)) {
+      for (const [k, v] of Object.entries(val)) {
+        if (k === 'actions' && isRecord(v)) {
+          lines.push(`  actions:`);
+          for (const [actionName, actionVal] of Object.entries(v)) {
+            lines.push(`    ${actionName}:`);
+            if (isRecord(actionVal)) {
+              for (const [ak, av] of Object.entries(actionVal)) {
+                lines.push(`      ${ak}: ${toStr(av)}`);
               }
             }
           }
+        } else {
+          lines.push(`  ${k}: ${toStr(v)}`);
         }
+      }
+    }
+  }
+}
 ```
 
 - [ ] **Step 2: Update the help text**
@@ -294,6 +299,7 @@ git commit -m "feat(images): display action settings in config output and update
 ### Task 6: Display action config in `image.config.get` socket handler
 
 **Files:**
+
 - Modify: `src/main/socket-server.ts:1173-1184`
 
 - [ ] **Step 1: Include actions in the redacted config output**

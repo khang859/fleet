@@ -13,6 +13,7 @@
 ### Task 1: Replace emoji icons in badge.tsx with Lucide React
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/ui/badge.tsx`
 
 - [ ] **Step 1: Update badge.tsx to use Lucide icons**
@@ -27,36 +28,37 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '../../lib/utils';
 import { Circle, CircleDot, Triangle, Square, Check } from 'lucide-react';
 
-const badgeVariants = cva(
-  'inline-flex items-center justify-center',
-  {
-    variants: {
-      status: {
-        idle: 'text-neutral-500',
-        running: 'text-blue-400 animate-pulse',
-        permission: 'text-amber-400 animate-pulse-amber',
-        error: 'text-red-400',
-        complete: 'text-green-400 animate-flash-green',
-      },
-    },
-    defaultVariants: {
-      status: 'idle',
-    },
+const badgeVariants = cva('inline-flex items-center justify-center', {
+  variants: {
+    status: {
+      idle: 'text-neutral-500',
+      running: 'text-blue-400 animate-pulse',
+      permission: 'text-amber-400 animate-pulse-amber',
+      error: 'text-red-400',
+      complete: 'text-green-400 animate-flash-green'
+    }
+  },
+  defaultVariants: {
+    status: 'idle'
   }
-);
+});
 
-export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> &
-  VariantProps<typeof badgeVariants>;
+export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>;
 
 function StatusIcon({ status }: { status: BadgeProps['status'] }): React.JSX.Element {
   const size = 10;
   switch (status) {
-    case 'running': return <CircleDot size={size} />;
-    case 'permission': return <Triangle size={size} />;
-    case 'error': return <Square size={size} />;
-    case 'complete': return <Check size={size} />;
+    case 'running':
+      return <CircleDot size={size} />;
+    case 'permission':
+      return <Triangle size={size} />;
+    case 'error':
+      return <Square size={size} />;
+    case 'complete':
+      return <Check size={size} />;
     case 'idle':
-    default: return <Circle size={size} />;
+    default:
+      return <Circle size={size} />;
   }
 }
 
@@ -95,6 +97,7 @@ git commit -m "refactor(copilot): replace emoji status icons with Lucide React i
 ### Task 2: Replace emoji icons in SessionList, SessionDetail, and CopilotSettings
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx`
 - Modify: `src/renderer/copilot/src/components/SessionDetail.tsx`
 - Modify: `src/renderer/copilot/src/components/CopilotSettings.tsx`
@@ -181,6 +184,7 @@ git commit -m "refactor(copilot): replace emoji icons with Lucide React in sessi
 ### Task 3: Add 'mascots' view to store and App routing
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts`
 - Modify: `src/renderer/copilot/src/App.tsx`
 
@@ -206,10 +210,18 @@ import { MascotPicker } from './components/MascotPicker';
 Add the routing line after the settings line (after line 70):
 
 ```tsx
-{view === 'sessions' && <SessionList />}
-{view === 'detail' && <SessionDetail />}
-{view === 'settings' && <CopilotSettings />}
-{view === 'mascots' && <MascotPicker />}
+{
+  view === 'sessions' && <SessionList />;
+}
+{
+  view === 'detail' && <SessionDetail />;
+}
+{
+  view === 'settings' && <CopilotSettings />;
+}
+{
+  view === 'mascots' && <MascotPicker />;
+}
 ```
 
 - [ ] **Step 3: Verify typecheck passes** (will fail until MascotPicker exists — that's expected, just confirm the store type change is clean)
@@ -222,6 +234,7 @@ Expected: Only error should be about missing `MascotPicker` module
 ### Task 4: Create MascotPicker component and remove mascot section from settings
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/MascotPicker.tsx`
 - Modify: `src/renderer/copilot/src/components/CopilotSettings.tsx`
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx`
@@ -283,7 +296,7 @@ export function MascotPicker(): React.JSX.Element {
                       backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
                       backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
                       backgroundRepeat: 'no-repeat',
-                      imageRendering: 'pixelated',
+                      imageRendering: 'pixelated'
                     }}
                   />
                   <span className="text-[10px] text-neutral-300">{mascot.name}</span>
@@ -312,42 +325,42 @@ import { getSpriteSheet } from '../assets/sprite-loader';
 Remove the entire `{/* Mascot */}` block (lines 84-119):
 
 ```tsx
-            {/* Mascot */}
-            <div>
-              <label className="text-[10px] text-neutral-400 block mb-1">
-                Mascot
-              </label>
-              <div className="flex gap-2">
-                {MASCOT_REGISTRY.map((mascot) => {
-                  const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
-                  const sheet = getSpriteSheet(mascot.id);
-                  return (
-                    <button
-                      key={mascot.id}
-                      onClick={() => void updateSettings({ spriteSheet: mascot.id })}
-                      className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-colors ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-500/10'
-                          : 'border-neutral-700 hover:border-neutral-500'
-                      }`}
-                    >
-                      <div
-                        style={{
-                          width: 48,
-                          height: 48,
-                          backgroundImage: `url(${sheet})`,
-                          backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
-                          backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
-                          backgroundRepeat: 'no-repeat',
-                          imageRendering: 'pixelated',
-                        }}
-                      />
-                      <span className="text-[10px] text-neutral-300">{mascot.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+{
+  /* Mascot */
+}
+<div>
+  <label className="text-[10px] text-neutral-400 block mb-1">Mascot</label>
+  <div className="flex gap-2">
+    {MASCOT_REGISTRY.map((mascot) => {
+      const isSelected = (settings?.spriteSheet ?? 'officer') === mascot.id;
+      const sheet = getSpriteSheet(mascot.id);
+      return (
+        <button
+          key={mascot.id}
+          onClick={() => void updateSettings({ spriteSheet: mascot.id })}
+          className={`flex flex-col items-center gap-1 p-1.5 rounded border transition-colors ${
+            isSelected
+              ? 'border-blue-500 bg-blue-500/10'
+              : 'border-neutral-700 hover:border-neutral-500'
+          }`}
+        >
+          <div
+            style={{
+              width: 48,
+              height: 48,
+              backgroundImage: `url(${sheet})`,
+              backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
+              backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
+              backgroundRepeat: 'no-repeat',
+              imageRendering: 'pixelated'
+            }}
+          />
+          <span className="text-[10px] text-neutral-300">{mascot.name}</span>
+        </button>
+      );
+    })}
+  </div>
+</div>;
 ```
 
 - [ ] **Step 3: Add mascot button to SessionList.tsx header**
@@ -361,24 +374,24 @@ import { Settings, PawPrint } from 'lucide-react';
 Replace the header's right side (the single settings Tooltip block, lines 73-81) with two buttons:
 
 ```tsx
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
-                  <PawPrint size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Mascots</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
-                  <Settings size={14} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Settings</TooltipContent>
-            </Tooltip>
-          </div>
+<div className="flex items-center gap-1">
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button variant="ghost" size="icon" onClick={() => setView('mascots')}>
+        <PawPrint size={14} />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Mascots</TooltipContent>
+  </Tooltip>
+  <Tooltip>
+    <TooltipTrigger asChild>
+      <Button variant="ghost" size="icon" onClick={() => setView('settings')}>
+        <Settings size={14} />
+      </Button>
+    </TooltipTrigger>
+    <TooltipContent>Settings</TooltipContent>
+  </Tooltip>
+</div>
 ```
 
 - [ ] **Step 4: Verify typecheck passes**

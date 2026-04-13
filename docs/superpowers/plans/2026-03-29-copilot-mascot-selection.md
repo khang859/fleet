@@ -13,6 +13,7 @@
 ### Task 1: Add MascotDefinition Type and Registry
 
 **Files:**
+
 - Modify: `src/shared/types.ts:165-170`
 - Modify: `src/shared/constants.ts:69-74`
 
@@ -41,9 +42,14 @@ Add the registry before `DEFAULT_SETTINGS`:
 
 ```typescript
 export const MASCOT_REGISTRY: MascotDefinition[] = [
-  { id: 'spaceship', name: 'Spaceship', description: 'The classic Fleet vessel', thumbnailFrame: 0 },
+  {
+    id: 'spaceship',
+    name: 'Spaceship',
+    description: 'The classic Fleet vessel',
+    thumbnailFrame: 0
+  },
   { id: 'robot', name: 'Robot', description: 'A friendly automaton', thumbnailFrame: 0 },
-  { id: 'cat', name: 'Cat', description: 'A curious space cat', thumbnailFrame: 0 },
+  { id: 'cat', name: 'Cat', description: 'A curious space cat', thumbnailFrame: 0 }
 ];
 ```
 
@@ -75,6 +81,7 @@ git commit -m "feat(copilot): add MascotDefinition type and MASCOT_REGISTRY"
 ### Task 2: Create Sprite Assets and Loader
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/assets/sprites-spaceship.ts`
 - Create: `src/renderer/copilot/src/assets/sprites-robot.ts`
 - Create: `src/renderer/copilot/src/assets/sprites-cat.ts`
@@ -94,6 +101,7 @@ cp src/renderer/copilot/src/assets/copilot-sprites.ts src/renderer/copilot/src/a
 For now, create `sprites-robot.ts` and `sprites-cat.ts` that re-export the spaceship sprite as placeholders (the actual pixel art will be generated separately via PixelLab or created manually):
 
 `src/renderer/copilot/src/assets/sprites-robot.ts`:
+
 ```typescript
 // Placeholder: re-exports spaceship sprite until robot sprite sheet is created
 // Replace this default export with a base64 data URL of the robot sprite sheet
@@ -102,6 +110,7 @@ export { default } from './sprites-spaceship';
 ```
 
 `src/renderer/copilot/src/assets/sprites-cat.ts`:
+
 ```typescript
 // Placeholder: re-exports spaceship sprite until cat sprite sheet is created
 // Replace this default export with a base64 data URL of the cat sprite sheet
@@ -112,6 +121,7 @@ export { default } from './sprites-spaceship';
 - [ ] **Step 3: Create sprite-loader.ts**
 
 `src/renderer/copilot/src/assets/sprite-loader.ts`:
+
 ```typescript
 import spaceship from './sprites-spaceship';
 import robot from './sprites-robot';
@@ -151,6 +161,7 @@ git commit -m "feat(copilot): add sprite sheet assets and loader module"
 ### Task 3: Update SpaceshipSprite to Use Sprite Loader
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/SpaceshipSprite.tsx`
 
 - [ ] **Step 1: Update SpaceshipSprite to read mascot from settings and use the loader**
@@ -160,16 +171,19 @@ Replace the hardcoded sprite import with the loader. The component needs to read
 In `src/renderer/copilot/src/components/SpaceshipSprite.tsx`:
 
 Replace:
+
 ```typescript
 import spriteSheet from '../assets/copilot-sprites';
 ```
 
 With:
+
 ```typescript
 import { getSpriteSheet } from '../assets/sprite-loader';
 ```
 
 Add a settings read inside the `SpaceshipSprite` component (alongside the existing `useCopilotStore` call):
+
 ```typescript
 const settings = useCopilotStore((s) => s.settings);
 const spriteSheet = getSpriteSheet(settings?.spriteSheet ?? 'spaceship');
@@ -194,6 +208,7 @@ git commit -m "feat(copilot): use sprite loader for dynamic mascot selection"
 ### Task 4: Build Mascot Selection Grid in Settings UI
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/components/CopilotSettings.tsx`
 
 - [ ] **Step 1: Replace the sprite placeholder with a mascot selection grid**
@@ -201,31 +216,32 @@ git commit -m "feat(copilot): use sprite loader for dynamic mascot selection"
 In `src/renderer/copilot/src/components/CopilotSettings.tsx`:
 
 Add imports at the top:
+
 ```typescript
 import { MASCOT_REGISTRY } from '../../../../shared/constants';
 import { getSpriteSheet } from '../assets/sprite-loader';
 ```
 
 Replace the placeholder sprite section (lines 82-90):
+
 ```tsx
-{/* Sprite */}
+{
+  /* Sprite */
+}
 <div>
-  <label className="text-[10px] text-neutral-400 block mb-1">
-    Sprite
-  </label>
-  <div className="text-[10px] text-neutral-500">
-    Default spaceship (more sprites coming soon)
-  </div>
-</div>
+  <label className="text-[10px] text-neutral-400 block mb-1">Sprite</label>
+  <div className="text-[10px] text-neutral-500">Default spaceship (more sprites coming soon)</div>
+</div>;
 ```
 
 With the mascot selection grid:
+
 ```tsx
-{/* Mascot */}
+{
+  /* Mascot */
+}
 <div>
-  <label className="text-[10px] text-neutral-400 block mb-1">
-    Mascot
-  </label>
+  <label className="text-[10px] text-neutral-400 block mb-1">Mascot</label>
   <div className="flex gap-2">
     {MASCOT_REGISTRY.map((mascot) => {
       const isSelected = (settings?.spriteSheet ?? 'spaceship') === mascot.id;
@@ -248,7 +264,7 @@ With the mascot selection grid:
               backgroundPosition: `-${mascot.thumbnailFrame * 128 * (48 / 128)}px 0`,
               backgroundSize: `${128 * 9 * (48 / 128)}px ${48}px`,
               backgroundRepeat: 'no-repeat',
-              imageRendering: 'pixelated',
+              imageRendering: 'pixelated'
             }}
           />
           <span className="text-[10px] text-neutral-300">{mascot.name}</span>
@@ -256,7 +272,7 @@ With the mascot selection grid:
       );
     })}
   </div>
-</div>
+</div>;
 ```
 
 The thumbnail scaling works by using the ratio `48 / 128` (display size / sprite size) to scale the background. For `thumbnailFrame: 0`, `backgroundPosition` is `0px 0` which shows the first idle frame.
@@ -274,6 +290,7 @@ Expected: PASS
 - [ ] **Step 4: Manual verification**
 
 Run: `npm run dev`
+
 1. Open the copilot window
 2. Navigate to Settings
 3. Verify the mascot grid shows 3 cards (Spaceship, Robot, Cat)

@@ -14,6 +14,7 @@ Inspired by screenshot markup tools. Cursor's Design Mode was reviewed but only 
 **Canvas Overlay** — a full-viewport `<canvas>` element layered between the page content and the picker UI. When a draw tool is active, the canvas captures mouse events. When in Pick mode, the canvas has `pointer-events: none` so clicks pass through to the page for element selection.
 
 Alternatives considered:
+
 - **SVG Drawing Layer:** Extends existing SVG connectors. Rejected because freehand SVG paths cause DOM bloat/jank and rasterizing SVG to PNG requires extra work.
 - **Offscreen Canvas + DOM Preview:** Over-engineered for this use case, harder to debug, manual hit-testing needed.
 
@@ -21,22 +22,24 @@ Alternatives considered:
 
 The bottom panel (`#fleet-annotate-panel`) gains a tool selector with these modes:
 
-| Mode | Behavior | Shortcut |
-|------|----------|----------|
-| **Pick** (default) | Existing element selection — highlight, badges, notes | Esc |
-| **Pen** | Freehand strokes | P |
-| **Line** | Straight lines; hold Shift for arrow tip | L |
-| **Shape** | Rectangles / ellipses; sub-toggle between them | S |
-| **Text** | Click to place, type inline | T |
+| Mode               | Behavior                                              | Shortcut |
+| ------------------ | ----------------------------------------------------- | -------- |
+| **Pick** (default) | Existing element selection — highlight, badges, notes | Esc      |
+| **Pen**            | Freehand strokes                                      | P        |
+| **Line**           | Straight lines; hold Shift for arrow tip              | L        |
+| **Shape**          | Rectangles / ellipses; sub-toggle between them        | S        |
+| **Text**           | Click to place, type inline                           | T        |
 
 Active tool is visually highlighted in the toolbar.
 
 When any draw tool is active:
+
 - Canvas overlay captures mouse events
 - Element picker highlight/tooltip is disabled
 - Existing annotations (badges, notes, connectors) remain visible underneath
 
 When Pick is active:
+
 - Canvas has `pointer-events: none`
 - All existing picker behavior works unchanged
 
@@ -64,10 +67,23 @@ An array of drawing operations:
 ```typescript
 type DrawOp =
   | { type: 'freehand'; points: [number, number][]; color: string; width: number }
-  | { type: 'line'; start: [number, number]; end: [number, number]; color: string; width: number; arrow: boolean }
+  | {
+      type: 'line';
+      start: [number, number];
+      end: [number, number];
+      color: string;
+      width: number;
+      arrow: boolean;
+    }
   | { type: 'rect'; origin: [number, number]; size: [number, number]; color: string; width: number }
-  | { type: 'ellipse'; center: [number, number]; radii: [number, number]; color: string; width: number }
-  | { type: 'text'; position: [number, number]; content: string; color: string; fontSize: number }
+  | {
+      type: 'ellipse';
+      center: [number, number];
+      radii: [number, number];
+      color: string;
+      width: number;
+    }
+  | { type: 'text'; position: [number, number]; content: string; color: string; fontSize: number };
 ```
 
 ### Rendering
@@ -97,19 +113,24 @@ The main process receives the final composited screenshot — no changes to `ann
 ## Edge Cases
 
 ### Scroll
+
 Canvas is viewport-fixed. Drawings are in viewport coordinates — they don't track with page content on scroll. This matches "marking up a view" rather than "annotating DOM nodes." A subtle cue when entering draw mode could communicate this.
 
 ### Window Resize
+
 Canvas resizes with viewport. Existing drawings re-render at original coordinates. Off-screen operations remain in the array (visible if resized back). Canvas is re-scaled for DPR on resize.
 
 ### Interaction with Existing Features
+
 - Multi-select, debug mode, note cards — all work as before in Pick mode
 - Switching Draw to Pick doesn't clear drawings — they persist for the session
 - Cancel discards everything (drawings + selections) as today
 - Submit captures both element selections and drawings
 
 ### Undo Scope
+
 Undo only affects drawing operations, not element selections. Element deselection uses existing badge-click behavior. Two concerns stay separate.
 
 ### No Persistence
+
 Drawings live only in the current annotation session. No save/reopen. Matches existing picker behavior.

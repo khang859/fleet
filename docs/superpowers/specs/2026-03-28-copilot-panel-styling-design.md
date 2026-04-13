@@ -33,15 +33,15 @@ Source: `sprites-raw/star-command/chrome/crt-*.png` (512x512 raw sprites)
 
 Copied and cropped to: `src/renderer/copilot/src/assets/crt/`
 
-| Asset | Raw Size | Content Bounds | Cropped Target |
-|-------|----------|----------------|----------------|
-| `crt-corner-tl.png` | 512x512 | y=45-511, x=45-511 (467x467) | 32x32 |
-| `crt-corner-tr.png` | 512x512 | ~467x467 | 32x32 |
-| `crt-corner-bl.png` | 512x512 | ~467x467 | 32x32 |
-| `crt-corner-br.png` | 512x512 | ~467x467 | 32x32 |
-| `crt-edge-v.png` | 512x512 | x=127-384 (258x512) | 16x(tiled) |
-| `crt-edge-h.png` | 512x512 | y=163-307 (512x145) | (tiled)x16 |
-| `crt-scanline.png` | 32x32 | full | 32x32 (repeating) |
+| Asset               | Raw Size | Content Bounds               | Cropped Target    |
+| ------------------- | -------- | ---------------------------- | ----------------- |
+| `crt-corner-tl.png` | 512x512  | y=45-511, x=45-511 (467x467) | 32x32             |
+| `crt-corner-tr.png` | 512x512  | ~467x467                     | 32x32             |
+| `crt-corner-bl.png` | 512x512  | ~467x467                     | 32x32             |
+| `crt-corner-br.png` | 512x512  | ~467x467                     | 32x32             |
+| `crt-edge-v.png`    | 512x512  | x=127-384 (258x512)          | 16x(tiled)        |
+| `crt-edge-h.png`    | 512x512  | y=163-307 (512x145)          | (tiled)x16        |
+| `crt-scanline.png`  | 32x32    | full                         | 32x32 (repeating) |
 
 ### Component: `CrtFrame`
 
@@ -55,23 +55,31 @@ Copied and cropped to: `src/renderer/copilot/src/assets/crt/`
   <img src={cornerBR} className="absolute bottom-0 right-0 w-8 h-8 pixelated" />
 
   {/* Edge strips - tiled via background-repeat */}
-  <div className="absolute top-0 left-8 right-8 h-4 bg-repeat-x pixelated"
-       style={{ backgroundImage: `url(${edgeH})` }} />
-  <div className="absolute bottom-0 left-8 right-8 h-4 bg-repeat-x pixelated"
-       style={{ backgroundImage: `url(${edgeH})`, transform: 'scaleY(-1)' }} />
-  <div className="absolute left-0 top-8 bottom-8 w-4 bg-repeat-y pixelated"
-       style={{ backgroundImage: `url(${edgeV})` }} />
-  <div className="absolute right-0 top-8 bottom-8 w-4 bg-repeat-y pixelated"
-       style={{ backgroundImage: `url(${edgeV})`, transform: 'scaleX(-1)' }} />
+  <div
+    className="absolute top-0 left-8 right-8 h-4 bg-repeat-x pixelated"
+    style={{ backgroundImage: `url(${edgeH})` }}
+  />
+  <div
+    className="absolute bottom-0 left-8 right-8 h-4 bg-repeat-x pixelated"
+    style={{ backgroundImage: `url(${edgeH})`, transform: 'scaleY(-1)' }}
+  />
+  <div
+    className="absolute left-0 top-8 bottom-8 w-4 bg-repeat-y pixelated"
+    style={{ backgroundImage: `url(${edgeV})` }}
+  />
+  <div
+    className="absolute right-0 top-8 bottom-8 w-4 bg-repeat-y pixelated"
+    style={{ backgroundImage: `url(${edgeV})`, transform: 'scaleX(-1)' }}
+  />
 
   {/* Scanline overlay */}
-  <div className="absolute inset-8 pointer-events-none opacity-[0.05] bg-repeat"
-       style={{ backgroundImage: `url(${scanline})` }} />
+  <div
+    className="absolute inset-8 pointer-events-none opacity-[0.05] bg-repeat"
+    style={{ backgroundImage: `url(${scanline})` }}
+  />
 
   {/* Content with padding to clear frame */}
-  <div className="p-8 overflow-hidden">
-    {children}
-  </div>
+  <div className="p-8 overflow-hidden">{children}</div>
 </div>
 ```
 
@@ -100,15 +108,15 @@ This makes the copilot assets independent of the star-command directory (which i
 
 ### Components
 
-| Component | Replaces | Used In |
-|-----------|----------|---------|
-| `Button` | Custom `<button>` elements | SessionList, SessionDetail, CopilotSettings |
-| `Input` | Custom `<input>` | SessionDetail (chat input) |
-| `ScrollArea` | `overflow-y-auto` divs | SessionList, SessionDetail (chat area) |
-| `Tooltip` | None (new) | All views — status indicators, truncated names, settings |
-| `Card` | Custom styled divs | SessionDetail (permission blocks, message bubbles) |
-| `DropdownMenu` | Custom `<select>` | CopilotSettings (notification sound) |
-| `Badge` | Custom status dots | SessionList (session status) |
+| Component      | Replaces                   | Used In                                                  |
+| -------------- | -------------------------- | -------------------------------------------------------- |
+| `Button`       | Custom `<button>` elements | SessionList, SessionDetail, CopilotSettings              |
+| `Input`        | Custom `<input>`           | SessionDetail (chat input)                               |
+| `ScrollArea`   | `overflow-y-auto` divs     | SessionList, SessionDetail (chat area)                   |
+| `Tooltip`      | None (new)                 | All views — status indicators, truncated names, settings |
+| `Card`         | Custom styled divs         | SessionDetail (permission blocks, message bubbles)       |
+| `DropdownMenu` | Custom `<select>`          | CopilotSettings (notification sound)                     |
+| `Badge`        | Custom status dots         | SessionList (session status)                             |
 
 ### Implementation Notes
 
@@ -132,13 +140,13 @@ This makes the copilot assets independent of the star-command directory (which i
 
 Session status indicators use shape + size + color + animation — color is never the sole signal.
 
-| Status | Shape | Size | Color | Animation |
-|--------|-------|------|-------|-----------|
-| Idle | Circle dot | Small (6px) | `neutral-500` | None |
-| Running | Ring | Medium (8px) | `blue-400` | Pulse |
-| Permission | Triangle | Large (10px) | `amber-400` | Pulse-amber |
-| Error | Square | Large (10px) | `red-400` | None |
-| Complete | Checkmark | Medium (8px) | `green-400` | Flash-green |
+| Status     | Shape      | Size         | Color         | Animation   |
+| ---------- | ---------- | ------------ | ------------- | ----------- |
+| Idle       | Circle dot | Small (6px)  | `neutral-500` | None        |
+| Running    | Ring       | Medium (8px) | `blue-400`    | Pulse       |
+| Permission | Triangle   | Large (10px) | `amber-400`   | Pulse-amber |
+| Error      | Square     | Large (10px) | `red-400`     | None        |
+| Complete   | Checkmark  | Medium (8px) | `green-400`   | Flash-green |
 
 Implemented via shadcn `Badge` component with `status` variant.
 
@@ -193,30 +201,30 @@ Implemented via shadcn `Badge` component with `status` variant.
 
 ### New Files
 
-| File | Purpose |
-|------|---------|
-| `src/renderer/copilot/src/components/CrtFrame.tsx` | CRT bezel wrapper component |
-| `src/renderer/copilot/src/components/ui/button.tsx` | shadcn Button |
-| `src/renderer/copilot/src/components/ui/input.tsx` | shadcn Input |
-| `src/renderer/copilot/src/components/ui/scroll-area.tsx` | shadcn ScrollArea |
-| `src/renderer/copilot/src/components/ui/tooltip.tsx` | shadcn Tooltip |
-| `src/renderer/copilot/src/components/ui/card.tsx` | shadcn Card |
-| `src/renderer/copilot/src/components/ui/dropdown-menu.tsx` | shadcn DropdownMenu |
-| `src/renderer/copilot/src/components/ui/badge.tsx` | shadcn Badge with status variants |
-| `src/renderer/copilot/src/lib/utils.ts` | `cn()` utility (clsx + tailwind-merge) |
-| `src/renderer/copilot/src/assets/crt/*.png` | Cropped CRT frame sprites (7 files) |
+| File                                                       | Purpose                                |
+| ---------------------------------------------------------- | -------------------------------------- |
+| `src/renderer/copilot/src/components/CrtFrame.tsx`         | CRT bezel wrapper component            |
+| `src/renderer/copilot/src/components/ui/button.tsx`        | shadcn Button                          |
+| `src/renderer/copilot/src/components/ui/input.tsx`         | shadcn Input                           |
+| `src/renderer/copilot/src/components/ui/scroll-area.tsx`   | shadcn ScrollArea                      |
+| `src/renderer/copilot/src/components/ui/tooltip.tsx`       | shadcn Tooltip                         |
+| `src/renderer/copilot/src/components/ui/card.tsx`          | shadcn Card                            |
+| `src/renderer/copilot/src/components/ui/dropdown-menu.tsx` | shadcn DropdownMenu                    |
+| `src/renderer/copilot/src/components/ui/badge.tsx`         | shadcn Badge with status variants      |
+| `src/renderer/copilot/src/lib/utils.ts`                    | `cn()` utility (clsx + tailwind-merge) |
+| `src/renderer/copilot/src/assets/crt/*.png`                | Cropped CRT frame sprites (7 files)    |
 
 ### Modified Files
 
-| File | Changes |
-|------|---------|
-| `App.tsx` | Wrap expanded panel content in `CrtFrame`; remove old border styling |
-| `SessionList.tsx` | Use ScrollArea, Badge, Tooltip, Button; unified hit-areas; 44px rows; truncation+tooltip; focus indicators |
-| `SessionDetail.tsx` | Use ScrollArea, Button, Input, Card, Tooltip; permission blocks as Cards; focus ring on input |
-| `ChatMessage.tsx` | Use Card for message bubbles; Tooltip on tool names |
-| `CopilotSettings.tsx` | Use Button, DropdownMenu, Tooltip for "what's this?" hints |
-| `index.css` | Add `.pixelated` utility; focus-visible utilities; CSS custom properties for palette |
-| `package.json` | Add `class-variance-authority`, `@radix-ui/react-scroll-area`, `clsx`, `tailwind-merge` |
+| File                  | Changes                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `App.tsx`             | Wrap expanded panel content in `CrtFrame`; remove old border styling                                       |
+| `SessionList.tsx`     | Use ScrollArea, Badge, Tooltip, Button; unified hit-areas; 44px rows; truncation+tooltip; focus indicators |
+| `SessionDetail.tsx`   | Use ScrollArea, Button, Input, Card, Tooltip; permission blocks as Cards; focus ring on input              |
+| `ChatMessage.tsx`     | Use Card for message bubbles; Tooltip on tool names                                                        |
+| `CopilotSettings.tsx` | Use Button, DropdownMenu, Tooltip for "what's this?" hints                                                 |
+| `index.css`           | Add `.pixelated` utility; focus-visible utilities; CSS custom properties for palette                       |
+| `package.json`        | Add `class-variance-authority`, `@radix-ui/react-scroll-area`, `clsx`, `tailwind-merge`                    |
 
 ### Unchanged
 

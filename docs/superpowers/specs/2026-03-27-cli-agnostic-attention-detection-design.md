@@ -25,14 +25,14 @@ Add CLI-agnostic attention detection to Fleet's tab sidebar so users can answer 
 
 ### Industry Approaches
 
-| Tool | Approach | Strengths |
-|------|----------|-----------|
-| **tmux** | `monitor-silence` (timer), `monitor-activity` (any output), `monitor-bell` | Battle-tested, simple, universal |
-| **cmux** | Shell hooks (`preexec`/`precmd`) + Claude hooks + OSC detection | Most accurate, but requires shell/agent integration |
-| **Warp** | 5-state model (working/done/attention/idle/error) with 3-tier notifications | Best UX design, proprietary detection |
-| **amux** | ANSI-stripped tmux output parsing, no hooks | Fully generic, no dependencies |
-| **pixel-agents** | JSONL transcript parsing + timer-based permission detection | Claude-specific |
-| **iTerm2** | OSC 133 shell integration + triggers + idle alerts | Standards-based, mature |
+| Tool             | Approach                                                                    | Strengths                                           |
+| ---------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| **tmux**         | `monitor-silence` (timer), `monitor-activity` (any output), `monitor-bell`  | Battle-tested, simple, universal                    |
+| **cmux**         | Shell hooks (`preexec`/`precmd`) + Claude hooks + OSC detection             | Most accurate, but requires shell/agent integration |
+| **Warp**         | 5-state model (working/done/attention/idle/error) with 3-tier notifications | Best UX design, proprietary detection               |
+| **amux**         | ANSI-stripped tmux output parsing, no hooks                                 | Fully generic, no dependencies                      |
+| **pixel-agents** | JSONL transcript parsing + timer-based permission detection                 | Claude-specific                                     |
+| **iTerm2**       | OSC 133 shell integration + triggers + idle alerts                          | Standards-based, mature                             |
 
 ### UX Research (Baymard + NNG)
 
@@ -53,13 +53,13 @@ Key principles applied to this design:
 
 Five states, three visual urgency tiers:
 
-| State | Urgency Tier | Meaning |
-|-------|-------------|---------|
-| `working` | Low (quiet) | Output flowing, command running |
-| `idle` | None | At shell prompt, nothing happening |
-| `done` | Info | Command finished, unread output to review |
-| `needs_me` | Action needed | Agent waiting for input/permission |
-| `error` | Error | Process exited non-zero |
+| State      | Urgency Tier  | Meaning                                   |
+| ---------- | ------------- | ----------------------------------------- |
+| `working`  | Low (quiet)   | Output flowing, command running           |
+| `idle`     | None          | At shell prompt, nothing happening        |
+| `done`     | Info          | Command finished, unread output to review |
+| `needs_me` | Action needed | Agent waiting for input/permission        |
+| `error`    | Error         | Process exited non-zero                   |
 
 ## Detection Layers
 
@@ -94,7 +94,7 @@ const PERMISSION_PATTERNS = [
   /Approve\?\s*$/i,
   /Press Enter to continue/i,
   /Are you sure\?/i,
-  /\(yes\/no\)\s*$/i,
+  /\(yes\/no\)\s*$/i
 ];
 ```
 
@@ -131,12 +131,12 @@ needs_me (pattern match) > error (exit code) > done (exit/OSC 133) > working (ou
 
 ### Badge Config
 
-| State | Color | Size | Animation | Label | Shown when |
-|-------|-------|------|-----------|-------|------------|
-| `working` | `bg-green-400` | `w-1.5 h-1.5` | None | — | Non-focused tabs only |
-| `done` | `bg-blue-400` | `w-2 h-2` | None | — | Non-focused tabs with unread output |
-| `needs_me` | `bg-amber-400` | `w-2.5 h-2.5` | Pulse 3x then static | `?` | Always until tab focused |
-| `error` | `bg-red-400` | `w-2.5 h-2.5` | None | `!` | Always until tab focused |
+| State      | Color          | Size          | Animation            | Label | Shown when                          |
+| ---------- | -------------- | ------------- | -------------------- | ----- | ----------------------------------- |
+| `working`  | `bg-green-400` | `w-1.5 h-1.5` | None                 | —     | Non-focused tabs only               |
+| `done`     | `bg-blue-400`  | `w-2 h-2`     | None                 | —     | Non-focused tabs with unread output |
+| `needs_me` | `bg-amber-400` | `w-2.5 h-2.5` | Pulse 3x then static | `?`   | Always until tab focused            |
+| `error`    | `bg-red-400`   | `w-2.5 h-2.5` | None                 | `!`   | Always until tab focused            |
 
 Badges clear when the user focuses the tab (existing `clearPane` behavior).
 

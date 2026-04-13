@@ -125,7 +125,7 @@ Add to `FleetSettings`:
 
 ```typescript
 annotate: {
-  retentionDays: 3  // default
+  retentionDays: 3; // default
 }
 ```
 

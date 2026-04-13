@@ -70,7 +70,8 @@ export function PiSection(): React.JSX.Element {
     <div className="space-y-8">
       <h1 className="text-xl text-neutral-100 font-semibold">Pi Agent</h1>
       <p className="text-sm text-neutral-500">
-        Configure pi-coding-agent. Writes to <code>~/.pi/agent/</code>; changes apply to both Fleet&apos;s pi tabs and your CLI pi.
+        Configure pi-coding-agent. Writes to <code>~/.pi/agent/</code>; changes apply to both
+        Fleet&apos;s pi tabs and your CLI pi.
       </p>
 
       <PiDefaultsForm
@@ -98,7 +99,9 @@ export function PiSection(): React.JSX.Element {
       />
 
       <footer className="pt-4 border-t border-neutral-800 text-xs text-neutral-500 flex justify-between">
-        <span>Pi CLI writes the same files. If <code>pi</code> is open, save from one side at a time.</span>
+        <span>
+          Pi CLI writes the same files. If <code>pi</code> is open, save from one side at a time.
+        </span>
         <button
           onClick={() => void window.fleet.piConfig.openConfigFolder()}
           className="underline hover:text-neutral-300"

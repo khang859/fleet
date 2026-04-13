@@ -19,24 +19,26 @@ worktreeDisabledReason?: string | null; // null = enabled, string = disabled wit
 
 ## Disabled Reason Logic (Sidebar.tsx)
 
-| Condition | `worktreeDisabledReason` |
-|---|---|
-| Terminal tab, git repo, standalone | `null` (enabled) |
-| Terminal tab, not a git repo | `"Not a git repository"` |
-| Worktree child tab | `"Already a worktree"` |
-| Parent tab already in a group | `"Worktrees already created"` |
-| Non-terminal tab (file, settings, etc.) | Item not rendered at all |
+| Condition                               | `worktreeDisabledReason`      |
+| --------------------------------------- | ----------------------------- |
+| Terminal tab, git repo, standalone      | `null` (enabled)              |
+| Terminal tab, not a git repo            | `"Not a git repository"`      |
+| Worktree child tab                      | `"Already a worktree"`        |
+| Parent tab already in a group           | `"Worktrees already created"` |
+| Non-terminal tab (file, settings, etc.) | Item not rendered at all      |
 
 ## Context Menu Rendering (TabItem.tsx)
 
 The item always renders for terminal tabs (when `worktreeDisabledReason !== undefined`).
 
 **Enabled state** (`worktreeDisabledReason === null`):
+
 - `GitBranch` icon from lucide-react + "Create Worktree" text
 - Normal interactive styling (hover highlight, cursor pointer)
 - Calls `onCreateWorktree` on select
 
 **Disabled state** (`worktreeDisabledReason` is a string):
+
 - `GitBranch` icon + "Create Worktree" text, both dimmed (`text-neutral-500`)
 - No hover highlight, no pointer cursor
 - Subtitle line below in smaller dimmer text showing the reason

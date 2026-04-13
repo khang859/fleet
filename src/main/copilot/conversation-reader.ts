@@ -22,10 +22,7 @@ function sessionFilePath(sessionId: string, cwd: string): string {
   return join(homedir(), '.claude', 'projects', projectDir, `${sessionId}.jsonl`);
 }
 
-function formatToolInputPreview(
-  toolName: string,
-  input: Record<string, unknown>
-): string {
+function formatToolInputPreview(toolName: string, input: Record<string, unknown>): string {
   switch (toolName) {
     case 'Read':
     case 'Write':
@@ -184,7 +181,7 @@ function parseMessageLine(
             type: 'tool_use',
             id: toolId ?? '',
             name,
-            inputPreview: formatToolInputPreview(name, input),
+            inputPreview: formatToolInputPreview(name, input)
           };
           // Include full input for interactive tools so the UI can render options
           if (name === 'AskUserQuestion') {
@@ -213,7 +210,7 @@ function parseMessageLine(
     id: uuid,
     role: type as 'user' | 'assistant',
     timestamp,
-    blocks,
+    blocks
   };
 }
 
@@ -253,7 +250,10 @@ export class ConversationReader {
       const prevCount = state.messages.length;
       this.parseNewLines(state);
       if (state.messages.length !== prevCount) {
-        log.debug('new messages detected via watcher', { sessionId, count: state.messages.length - prevCount });
+        log.debug('new messages detected via watcher', {
+          sessionId,
+          count: state.messages.length - prevCount
+        });
         this.onChange?.(sessionId, state.messages);
       }
     });
@@ -278,7 +278,10 @@ export class ConversationReader {
     const prevCount = state.messages.length;
     this.parseNewLines(state);
     if (state.messages.length !== prevCount) {
-      log.debug('new messages detected via refresh', { sessionId, count: state.messages.length - prevCount });
+      log.debug('new messages detected via refresh', {
+        sessionId,
+        count: state.messages.length - prevCount
+      });
       this.onChange?.(sessionId, state.messages);
     }
   }
@@ -331,8 +334,10 @@ export class ConversationReader {
       }
 
       if (
-        !line.includes('"type":"user"') && !line.includes('"type": "user"') &&
-        !line.includes('"type":"assistant"') && !line.includes('"type": "assistant"')
+        !line.includes('"type":"user"') &&
+        !line.includes('"type": "user"') &&
+        !line.includes('"type":"assistant"') &&
+        !line.includes('"type": "assistant"')
       ) {
         continue;
       }

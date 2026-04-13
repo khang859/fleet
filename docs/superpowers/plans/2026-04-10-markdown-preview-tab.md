@@ -12,21 +12,22 @@
 
 ## File Map
 
-| File | Action | Responsibility |
-|------|--------|---------------|
-| `src/shared/types.ts` | Modify | Add `'markdown'` to `Tab.type` and `PaneLeaf.paneType` unions |
-| `src/main/fleet-cli.ts` | Modify | Route `.md`/`.markdown` files to `paneType: 'markdown'` |
-| `src/renderer/src/store/workspace-store.ts` | Modify | Map `'markdown'` paneType to `'markdown'` tab type in `openFileInTab` signature and body |
-| `src/renderer/src/components/FileEditorPane.tsx` | Modify | Add optional `onContentChange` callback prop |
-| `src/renderer/src/components/MarkdownPane.tsx` | Create | New component: sub-tab bar + preview + raw views |
-| `src/renderer/src/components/PaneGrid.tsx` | Modify | Add `'markdown'` rendering branch |
-| `package.json` | Modify | Add `rehype-highlight` dependency |
+| File                                             | Action | Responsibility                                                                           |
+| ------------------------------------------------ | ------ | ---------------------------------------------------------------------------------------- |
+| `src/shared/types.ts`                            | Modify | Add `'markdown'` to `Tab.type` and `PaneLeaf.paneType` unions                            |
+| `src/main/fleet-cli.ts`                          | Modify | Route `.md`/`.markdown` files to `paneType: 'markdown'`                                  |
+| `src/renderer/src/store/workspace-store.ts`      | Modify | Map `'markdown'` paneType to `'markdown'` tab type in `openFileInTab` signature and body |
+| `src/renderer/src/components/FileEditorPane.tsx` | Modify | Add optional `onContentChange` callback prop                                             |
+| `src/renderer/src/components/MarkdownPane.tsx`   | Create | New component: sub-tab bar + preview + raw views                                         |
+| `src/renderer/src/components/PaneGrid.tsx`       | Modify | Add `'markdown'` rendering branch                                                        |
+| `package.json`                                   | Modify | Add `rehype-highlight` dependency                                                        |
 
 ---
 
 ### Task 1: Install `rehype-highlight` dependency
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install the package**
@@ -52,6 +53,7 @@ git commit -m "chore: add rehype-highlight for markdown code block highlighting"
 ### Task 2: Add `'markdown'` to type unions
 
 **Files:**
+
 - Modify: `src/shared/types.ts:15` (Tab.type)
 - Modify: `src/shared/types.ts:41` (PaneLeaf.paneType)
 
@@ -100,6 +102,7 @@ git commit -m "feat: add 'markdown' to Tab.type and PaneLeaf.paneType unions"
 ### Task 3: Route markdown files in CLI and store
 
 **Files:**
+
 - Modify: `src/main/fleet-cli.ts:7-16,553,574`
 - Modify: `src/renderer/src/store/workspace-store.ts:155-157,856`
 
@@ -192,6 +195,7 @@ git commit -m "feat: route markdown files to 'markdown' pane type in CLI and sto
 ### Task 4: Add `onContentChange` prop to `FileEditorPane`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/FileEditorPane.tsx:95-100,196-207`
 
 - [ ] **Step 1: Update the Props type**
@@ -282,6 +286,7 @@ git commit -m "feat: add optional onContentChange callback to FileEditorPane"
 ### Task 5: Create `MarkdownPane` component
 
 **Files:**
+
 - Create: `src/renderer/src/components/MarkdownPane.tsx`
 
 - [ ] **Step 1: Create the component file**
@@ -352,15 +357,12 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
   }, []);
 
   // Refresh preview content when switching to preview tab
-  const handleTabSwitch = useCallback(
-    (view: ViewMode) => {
-      if (view === 'preview') {
-        setPreviewContent(contentRef.current);
-      }
-      setActiveView(view);
-    },
-    []
-  );
+  const handleTabSwitch = useCallback((view: ViewMode) => {
+    if (view === 'preview') {
+      setPreviewContent(contentRef.current);
+    }
+    setActiveView(view);
+  }, []);
 
   // Custom link renderer for Fleet-aware navigation
   const baseDir = useMemo(() => dirname(filePath), [filePath]);
@@ -549,17 +551,48 @@ Add these styles to the app's main CSS file (likely `src/renderer/src/assets/mai
 ```css
 /* ── Markdown Preview Prose Styles ──────────────────────────────────── */
 
-.markdown-preview h1 { font-size: 1.5rem; font-weight: 700; color: rgb(245 245 245); margin-top: 1.5rem; margin-bottom: 0.75rem; }
-.markdown-preview h2 { font-size: 1.25rem; font-weight: 600; color: rgb(245 245 245); margin-top: 1.25rem; margin-bottom: 0.5rem; }
-.markdown-preview h3 { font-size: 1.125rem; font-weight: 600; color: rgb(245 245 245); margin-top: 1rem; margin-bottom: 0.5rem; }
+.markdown-preview h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: rgb(245 245 245);
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.markdown-preview h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: rgb(245 245 245);
+  margin-top: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.markdown-preview h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: rgb(245 245 245);
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
 .markdown-preview h4,
 .markdown-preview h5,
-.markdown-preview h6 { font-size: 1rem; font-weight: 600; color: rgb(229 229 229); margin-top: 0.75rem; margin-bottom: 0.5rem; }
+.markdown-preview h6 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: rgb(229 229 229);
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
 
-.markdown-preview p { margin-bottom: 0.75rem; }
+.markdown-preview p {
+  margin-bottom: 0.75rem;
+}
 
-.markdown-preview a { color: rgb(96 165 250); cursor: pointer; }
-.markdown-preview a:hover { text-decoration: underline; }
+.markdown-preview a {
+  color: rgb(96 165 250);
+  cursor: pointer;
+}
+.markdown-preview a:hover {
+  text-decoration: underline;
+}
 
 .markdown-preview code:not(pre code) {
   background: rgb(38 38 38);
@@ -586,18 +619,52 @@ Add these styles to the app's main CSS file (likely `src/renderer/src/assets/mai
   margin-bottom: 0.75rem;
 }
 
-.markdown-preview ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
-.markdown-preview ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
-.markdown-preview li { margin-bottom: 0.25rem; }
+.markdown-preview ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.markdown-preview ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.markdown-preview li {
+  margin-bottom: 0.25rem;
+}
 
-.markdown-preview table { border-collapse: collapse; width: 100%; margin-bottom: 0.75rem; }
-.markdown-preview th { border: 1px solid rgb(64 64 64); padding: 0.5rem; text-align: left; font-weight: 600; color: rgb(229 229 229); background: rgb(38 38 38); }
-.markdown-preview td { border: 1px solid rgb(64 64 64); padding: 0.5rem; }
-.markdown-preview tr:nth-child(even) { background: rgba(38, 38, 38, 0.5); }
+.markdown-preview table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 0.75rem;
+}
+.markdown-preview th {
+  border: 1px solid rgb(64 64 64);
+  padding: 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: rgb(229 229 229);
+  background: rgb(38 38 38);
+}
+.markdown-preview td {
+  border: 1px solid rgb(64 64 64);
+  padding: 0.5rem;
+}
+.markdown-preview tr:nth-child(even) {
+  background: rgba(38, 38, 38, 0.5);
+}
 
-.markdown-preview hr { border: none; border-top: 1px solid rgb(64 64 64); margin: 1.5rem 0; }
+.markdown-preview hr {
+  border: none;
+  border-top: 1px solid rgb(64 64 64);
+  margin: 1.5rem 0;
+}
 
-.markdown-preview img { max-width: 100%; border-radius: 0.375rem; margin-bottom: 0.75rem; }
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 0.375rem;
+  margin-bottom: 0.75rem;
+}
 ```
 
 - [ ] **Step 4: Import highlight.js dark theme CSS**
@@ -631,6 +698,7 @@ git commit -m "feat: create MarkdownPane with preview/raw sub-tabs"
 ### Task 6: Wire `MarkdownPane` into `PaneGrid`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneGrid.tsx:1-6,149-156`
 
 - [ ] **Step 1: Add import**

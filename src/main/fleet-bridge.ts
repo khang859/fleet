@@ -88,7 +88,7 @@ export class FleetBridgeServer {
         ws.on('error', (err) => {
           log.error('Bridge connection error', {
             paneId,
-            error: err.message,
+            error: err.message
           });
         });
       });
@@ -165,7 +165,7 @@ export class FleetBridgeServer {
     } catch (err) {
       const response: BridgeResponse = {
         id: msg.id,
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : String(err)
       };
       ws.send(JSON.stringify(response));
     }

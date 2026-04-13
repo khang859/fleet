@@ -337,8 +337,7 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_SETTINGS),
     writeSettings: async (patch: Partial<PiSettings>): Promise<void> =>
       typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_SETTINGS, patch),
-    readModels: async (): Promise<PiModelsFile> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_MODELS),
+    readModels: async (): Promise<PiModelsFile> => typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_MODELS),
     writeProvider: async (id: string, provider: PiProvider): Promise<void> =>
       typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_PROVIDER, { id, provider }),
     deleteProvider: async (id: string): Promise<void> =>
@@ -349,8 +348,7 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PI_CONFIG_BUILT_IN_STATUS),
     listAvailableModels: async (): Promise<ModelEntry[]> =>
       typedInvoke(IPC_CHANNELS.PI_CONFIG_LIST_MODELS),
-    openConfigFolder: async (): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER)
+    openConfigFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER)
   }
 };
 

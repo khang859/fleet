@@ -12,32 +12,33 @@
 
 ## File Map
 
-| Action | File | Responsibility |
-|--------|------|---------------|
-| Create | `src/renderer/src/logger.ts` | Renderer logger module with IPC batching |
-| Create | `src/renderer/src/__tests__/logger.test.ts` | Tests for renderer logger |
-| Modify | `src/shared/ipc-channels.ts` | Add `LOG_BATCH` channel |
-| Modify | `src/shared/ipc-api.ts` | Add `LogEntry` type |
-| Modify | `src/preload/index.ts` | Expose `log.batch` bridge |
-| Modify | `src/renderer/src/env.d.ts` | FleetApi type picks up new `log` property automatically |
-| Modify | `src/main/ipc-handlers.ts` | Handle `LOG_BATCH` on main side |
-| Modify | `src/renderer/src/store/workspace-store.ts` | Add logging to all store actions |
-| Modify | `src/renderer/src/store/cwd-store.ts` | Add logging to setCwd/removeCwd |
-| Modify | `src/renderer/src/store/notification-store.ts` | Add logging to setNotification/clearPane |
-| Modify | `src/renderer/src/store/settings-store.ts` | Add logging to load/update |
-| Modify | `src/renderer/src/components/Sidebar.tsx` | Add logging to drag-and-drop handlers |
-| Modify | `src/renderer/src/components/TabItem.tsx` | Add logging to drag events |
-| Modify | `src/renderer/src/components/PaneGrid.tsx` | Add logging to resize/layout |
-| Modify | `src/renderer/src/hooks/use-terminal.ts` | Add logging to terminal lifecycle |
-| Modify | `src/main/pty-manager.ts` | Add more debug logging |
-| Modify | `src/main/ipc-handlers.ts` | Add IPC dispatch logging |
-| Modify | `src/main/layout-store.ts` | Add logging to save/load |
+| Action | File                                           | Responsibility                                          |
+| ------ | ---------------------------------------------- | ------------------------------------------------------- |
+| Create | `src/renderer/src/logger.ts`                   | Renderer logger module with IPC batching                |
+| Create | `src/renderer/src/__tests__/logger.test.ts`    | Tests for renderer logger                               |
+| Modify | `src/shared/ipc-channels.ts`                   | Add `LOG_BATCH` channel                                 |
+| Modify | `src/shared/ipc-api.ts`                        | Add `LogEntry` type                                     |
+| Modify | `src/preload/index.ts`                         | Expose `log.batch` bridge                               |
+| Modify | `src/renderer/src/env.d.ts`                    | FleetApi type picks up new `log` property automatically |
+| Modify | `src/main/ipc-handlers.ts`                     | Handle `LOG_BATCH` on main side                         |
+| Modify | `src/renderer/src/store/workspace-store.ts`    | Add logging to all store actions                        |
+| Modify | `src/renderer/src/store/cwd-store.ts`          | Add logging to setCwd/removeCwd                         |
+| Modify | `src/renderer/src/store/notification-store.ts` | Add logging to setNotification/clearPane                |
+| Modify | `src/renderer/src/store/settings-store.ts`     | Add logging to load/update                              |
+| Modify | `src/renderer/src/components/Sidebar.tsx`      | Add logging to drag-and-drop handlers                   |
+| Modify | `src/renderer/src/components/TabItem.tsx`      | Add logging to drag events                              |
+| Modify | `src/renderer/src/components/PaneGrid.tsx`     | Add logging to resize/layout                            |
+| Modify | `src/renderer/src/hooks/use-terminal.ts`       | Add logging to terminal lifecycle                       |
+| Modify | `src/main/pty-manager.ts`                      | Add more debug logging                                  |
+| Modify | `src/main/ipc-handlers.ts`                     | Add IPC dispatch logging                                |
+| Modify | `src/main/layout-store.ts`                     | Add logging to save/load                                |
 
 ---
 
 ### Task 1: Add LogEntry Type and IPC Channel
 
 **Files:**
+
 - Modify: `src/shared/ipc-api.ts`
 - Modify: `src/shared/ipc-channels.ts`
 
@@ -60,7 +61,7 @@ export interface LogEntry {
 Add to the `IPC_CHANNELS` object in `src/shared/ipc-channels.ts`, after the existing entries:
 
 ```typescript
-LOG_BATCH: 'log:batch'
+LOG_BATCH: 'log:batch';
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -80,6 +81,7 @@ git commit -m "feat(logger): add LogEntry type and LOG_BATCH IPC channel"
 ### Task 2: Create Renderer Logger Module
 
 **Files:**
+
 - Create: `src/renderer/src/logger.ts`
 - Create: `src/renderer/src/__tests__/logger.test.ts`
 
@@ -291,15 +293,17 @@ function createDevLogger(tag: string): RendererLogger {
     const timestamp = new Date().toISOString();
 
     // Console output (human-readable)
-    const metaStr = resolved && Object.keys(resolved).length > 0
-      ? ` ${JSON.stringify(resolved)}`
-      : '';
+    const metaStr =
+      resolved && Object.keys(resolved).length > 0 ? ` ${JSON.stringify(resolved)}` : '';
     console[CONSOLE_METHOD[level]](
       `%c${timestamp.slice(11, 23)} [${tag}] ${level}: ${message}${metaStr}`,
-      level === 'error' ? 'color: #f87171' :
-      level === 'warn' ? 'color: #fbbf24' :
-      level === 'debug' ? 'color: #9ca3af' :
-      'color: #60a5fa'
+      level === 'error'
+        ? 'color: #f87171'
+        : level === 'warn'
+          ? 'color: #fbbf24'
+          : level === 'debug'
+            ? 'color: #9ca3af'
+            : 'color: #60a5fa'
     );
 
     // Enqueue for IPC batch
@@ -341,6 +345,7 @@ git commit -m "feat(logger): add renderer logger with IPC batching and dev-only 
 ### Task 3: Wire IPC Bridge (Preload + Main Handler)
 
 **Files:**
+
 - Modify: `src/preload/index.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
@@ -359,7 +364,7 @@ Then add to the `fleetApi` object, before the closing `};`:
 
 ```typescript
 log: {
-  batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
+  batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries);
 }
 ```
 
@@ -444,6 +449,7 @@ git commit -m "feat(logger): wire renderer→main IPC log bridge"
 ### Task 4: Add Debug Logging to Workspace Store
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add logger import**
@@ -466,6 +472,7 @@ const logLayout = createLogger('layout:state');
 Add debug logs to each store action. Here are the specific additions:
 
 In `addTab`:
+
 ```typescript
 addTab: (label, cwd) => {
   const resolvedLabel = label || cwdBasename(cwd);
@@ -482,6 +489,7 @@ addTab: (label, cwd) => {
 ```
 
 In `closeTab`:
+
 ```typescript
 closeTab: (tabId, serializedPanes) => {
   logTabs.debug('closeTab', { tabId });
@@ -489,6 +497,7 @@ closeTab: (tabId, serializedPanes) => {
 ```
 
 In `undoCloseTab`:
+
 ```typescript
 undoCloseTab: () => {
   logTabs.debug('undoCloseTab');
@@ -496,6 +505,7 @@ undoCloseTab: () => {
 ```
 
 In `renameTab`:
+
 ```typescript
 renameTab: (tabId, label) => {
   logTabs.debug('renameTab', { tabId, label });
@@ -503,6 +513,7 @@ renameTab: (tabId, label) => {
 ```
 
 In `setActiveTab`:
+
 ```typescript
 setActiveTab: (tabId) => {
   logTabs.debug('setActiveTab', { tabId });
@@ -510,6 +521,7 @@ setActiveTab: (tabId) => {
 ```
 
 In `reorderTab`:
+
 ```typescript
 reorderTab: (fromIndex, toIndex) => {
   logTabs.debug('reorderTab', { fromIndex, toIndex, tabCount: get().workspace.tabs.length });
@@ -525,17 +537,20 @@ reorderTab: (fromIndex, toIndex) => {
 ```
 
 In `splitPane`:
+
 ```typescript
 splitPane: (paneId, direction) => {
   logLayout.debug('splitPane', { paneId, direction });
 ```
 
 After `set(...)` and before `return newLeaf.id;`:
+
 ```typescript
-  logLayout.debug('splitPane created', { newPaneId: newLeaf.id });
+logLayout.debug('splitPane created', { newPaneId: newLeaf.id });
 ```
 
 In `closePane`:
+
 ```typescript
 closePane: (paneId) => {
   logLayout.debug('closePane', { paneId });
@@ -543,12 +558,14 @@ closePane: (paneId) => {
 ```
 
 In `loadWorkspace`:
+
 ```typescript
 loadWorkspace: (workspace) => {
   logLayout.debug('loadWorkspace', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
 ```
 
 In `switchWorkspace`:
+
 ```typescript
 switchWorkspace: (ws) => {
   logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
@@ -572,6 +589,7 @@ git commit -m "feat(logger): add debug logging to workspace store actions"
 ### Task 5: Add Debug Logging to Sidebar Drag-and-Drop
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 - Modify: `src/renderer/src/components/TabItem.tsx`
 
@@ -587,14 +605,19 @@ const logDnd = createLogger('sidebar:dnd');
 Then update the drag handlers (around line 325):
 
 In `handleDragStart`:
+
 ```typescript
-const handleDragStart = useCallback((index: number) => {
-  logDnd.debug('dragStart', { index, tabId: workspace.tabs[index]?.id });
-  setDragIndex(index);
-}, [workspace.tabs]);
+const handleDragStart = useCallback(
+  (index: number) => {
+    logDnd.debug('dragStart', { index, tabId: workspace.tabs[index]?.id });
+    setDragIndex(index);
+  },
+  [workspace.tabs]
+);
 ```
 
 In `handleDragOver`:
+
 ```typescript
 const handleDragOver = useCallback(
   (e: React.DragEvent, index: number) => {
@@ -604,7 +627,13 @@ const handleDragOver = useCallback(
     const rect = target.getBoundingClientRect();
     const midY = rect.top + rect.height / 2;
     const position = e.clientY < midY ? 'above' : 'below';
-    logDnd.debug('dragOver', { dragIndex, targetIndex: index, position, clientY: e.clientY, midY: Math.round(midY) });
+    logDnd.debug('dragOver', {
+      dragIndex,
+      targetIndex: index,
+      position,
+      clientY: e.clientY,
+      midY: Math.round(midY)
+    });
     setDropTarget({ index, position });
   },
   [dragIndex]
@@ -612,6 +641,7 @@ const handleDragOver = useCallback(
 ```
 
 In `handleDrop`:
+
 ```typescript
 const handleDrop = useCallback(() => {
   if (dragIndex === null || !dropTarget) {
@@ -636,6 +666,7 @@ const handleDrop = useCallback(() => {
 ```
 
 In the `dragend` handler (useEffect around line 355):
+
 ```typescript
 const handleDragEnd = (): void => {
   logDnd.debug('dragEnd', { hadDragIndex: dragIndex !== null });
@@ -691,6 +722,7 @@ git commit -m "feat(logger): add debug logging to sidebar drag-and-drop"
 ### Task 6: Add Debug Logging to Remaining Renderer Stores
 
 **Files:**
+
 - Modify: `src/renderer/src/store/cwd-store.ts`
 - Modify: `src/renderer/src/store/notification-store.ts`
 - Modify: `src/renderer/src/store/settings-store.ts`
@@ -747,6 +779,7 @@ const log = createLogger('store:notifications');
 ```
 
 In `setNotification`:
+
 ```typescript
 setNotification: (record) => {
   log.debug('setNotification', { paneId: record.paneId, level: record.level });
@@ -754,6 +787,7 @@ setNotification: (record) => {
 ```
 
 In `clearPane`:
+
 ```typescript
 clearPane: (paneId) => {
   log.debug('clearPane', { paneId });
@@ -770,6 +804,7 @@ const log = createLogger('store:settings');
 ```
 
 In `loadSettings`:
+
 ```typescript
 loadSettings: async () => {
   log.debug('loadSettings');
@@ -780,6 +815,7 @@ loadSettings: async () => {
 ```
 
 In `updateSettings`:
+
 ```typescript
 updateSettings: async (partial) => {
   log.debug('updateSettings', { keys: Object.keys(partial) });
@@ -806,6 +842,7 @@ git commit -m "feat(logger): add debug logging to cwd, notification, and setting
 ### Task 7: Add Debug Logging to Terminal Lifecycle
 
 **Files:**
+
 - Modify: `src/renderer/src/hooks/use-terminal.ts`
 
 - [ ] **Step 1: Add logger import**
@@ -822,41 +859,49 @@ const log = createLogger('terminal:lifecycle');
 Add logging to these locations inside the file. Find each function/callback and add the log line at the top or relevant point:
 
 In `createTerminal()` (around line 44):
+
 ```typescript
 log.debug('createTerminal', { paneId, cwd });
 ```
 
 After `term.open(container)` (around line 115):
+
 ```typescript
 log.debug('xterm mounted', { paneId });
 ```
 
 In the `registerPaneData` callback (around line 214):
+
 ```typescript
 log.debug('registerPaneData', { paneId });
 ```
 
 At the PTY create call (around line 237):
+
 ```typescript
 log.debug('pty.create', { paneId, cwd });
 ```
 
 At the PTY attach call (around line 231):
+
 ```typescript
 log.debug('pty.attach', { paneId, bufferedBytes: result.data.length });
 ```
 
 In the `debouncedPtyResize` callback (around line 360):
+
 ```typescript
 log.debug('pty.resize', { paneId, cols, rows });
 ```
 
 In the cleanup/dispose logic (around line 497):
+
 ```typescript
 log.debug('terminal dispose', { paneId });
 ```
 
 In the `fitPreservingScroll` function (around line 276):
+
 ```typescript
 log.debug('fit', { paneId, cols: term.cols, rows: term.rows });
 ```
@@ -878,6 +923,7 @@ git commit -m "feat(logger): add debug logging to terminal lifecycle"
 ### Task 8: Add Debug Logging to PaneGrid
 
 **Files:**
+
 - Modify: `src/renderer/src/components/PaneGrid.tsx`
 
 - [ ] **Step 1: Add logger import and logging**
@@ -890,17 +936,20 @@ const log = createLogger('layout:panes');
 ```
 
 Add logging in the resize handle `onMouseDown` handler (around line 214):
+
 ```typescript
 log.debug('resize start', { splitNodePath });
 ```
 
 Add logging in the `onMouseMove` handler (around line 229):
+
 ```typescript
 // Only log on significant ratio changes to avoid flooding
 log.debug('resize', { splitNodePath, ratio: Math.round(ratio * 100) / 100 });
 ```
 
 Actually, `onMouseMove` fires very frequently. Instead, log only on mouse up (resize complete). Find the `onMouseUp` handler and add:
+
 ```typescript
 log.debug('resize complete', { splitNodePath });
 ```
@@ -922,6 +971,7 @@ git commit -m "feat(logger): add debug logging to PaneGrid resize"
 ### Task 9: Enhance Main Process Debug Logging
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts`
 - Modify: `src/main/ipc-handlers.ts`
 - Modify: `src/main/layout-store.ts`
@@ -931,6 +981,7 @@ git commit -m "feat(logger): add debug logging to PaneGrid resize"
 The file already has a `log` instance. Add debug logs to these methods:
 
 In `resize()`:
+
 ```typescript
 resize(paneId: string, cols: number, rows: number): void {
   const entry = this.ptys.get(paneId);
@@ -942,6 +993,7 @@ resize(paneId: string, cols: number, rows: number): void {
 ```
 
 In `kill()`:
+
 ```typescript
 kill(paneId: string): void {
   const entry = this.ptys.get(paneId);
@@ -951,6 +1003,7 @@ kill(paneId: string): void {
 ```
 
 In `resume()`:
+
 ```typescript
 resume(paneId: string): void {
   const entry = this.ptys.get(paneId);
@@ -960,6 +1013,7 @@ resume(paneId: string): void {
 ```
 
 In the data callback overflow path (around line 98-102):
+
 ```typescript
 if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
   log.debug('backpressure pause', { paneId: opts.paneId, bufferBytes: entry.outputBuffer.length });
@@ -967,6 +1021,7 @@ if (entry.outputBuffer.length > BUFFER_OVERFLOW_BYTES) {
 ```
 
 In `onExit` callback:
+
 ```typescript
 entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
   log.debug('exit', { paneId, exitCode, pid: entry.process.pid });
@@ -977,31 +1032,40 @@ entry.exitDisposable = entry.process.onExit(({ exitCode }) => {
 Add a debug log at the start of every `ipcMain.handle` to trace incoming IPC calls. The most efficient approach: add logging to the high-value PTY and layout handlers. Add these at the top of their respective handlers:
 
 In `PTY_CREATE` handler:
+
 ```typescript
 log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
 ```
 
 In `PTY_KILL` handler:
+
 ```typescript
 log.debug('ipc:pty:kill', { paneId });
 ```
 
 In `LAYOUT_SAVE` handler:
+
 ```typescript
-log.debug('ipc:layout:save', { workspaceId: req.workspace.id, tabCount: req.workspace.tabs.length });
+log.debug('ipc:layout:save', {
+  workspaceId: req.workspace.id,
+  tabCount: req.workspace.tabs.length
+});
 ```
 
 In `LAYOUT_LOAD` handler:
+
 ```typescript
 log.debug('ipc:layout:load', { workspaceId });
 ```
 
 In `LAYOUT_LIST` handler:
+
 ```typescript
 log.debug('ipc:layout:list');
 ```
 
 In `LAYOUT_DELETE` handler:
+
 ```typescript
 log.debug('ipc:layout:delete', { workspaceId });
 ```
@@ -1016,6 +1080,7 @@ const log = createLogger('layout:persistence');
 ```
 
 In `save()`:
+
 ```typescript
 save(workspace: Workspace): void {
   log.debug('save', { id: workspace.id, label: workspace.label, tabCount: workspace.tabs.length });
@@ -1023,6 +1088,7 @@ save(workspace: Workspace): void {
 ```
 
 In `load()`:
+
 ```typescript
 load(workspaceId: string): Workspace | undefined {
   const workspaces = this.store.get('workspaces', {});
@@ -1033,6 +1099,7 @@ load(workspaceId: string): Workspace | undefined {
 ```
 
 In `delete()`:
+
 ```typescript
 delete(workspaceId: string): void {
   log.debug('delete', { workspaceId });
@@ -1083,6 +1150,7 @@ Expected: PASS — confirms renderer logger tree-shakes properly and IPC bridge 
 - [ ] **Step 5: Manual smoke test**
 
 Start the app with `npm run dev` and:
+
 1. Check terminal output for colored debug logs with tags
 2. Open DevTools — verify renderer logs appear with `[tag]` formatting
 3. Drag a sidebar tab — verify `sidebar:dnd` logs show in both console and DevTools

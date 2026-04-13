@@ -38,11 +38,16 @@ const PRIORITY: Record<NotificationLevel, number> = {
 /** Map activity states to notification badge levels for the tab sidebar. */
 function activityToBadge(state: ActivityState): NotificationLevel | null {
   switch (state) {
-    case 'needs_me': return 'permission';
-    case 'error': return 'error';
-    case 'done': return 'info';
-    case 'working': return 'subtle';
-    case 'idle': return null;
+    case 'needs_me':
+      return 'permission';
+    case 'error':
+      return 'error';
+    case 'done':
+      return 'info';
+    case 'working':
+      return 'subtle';
+    case 'idle':
+      return null;
   }
 }
 
@@ -123,5 +128,5 @@ export const useNotificationStore = create<NotificationStore>((set, get) => ({
       }
     }
     return latest;
-  },
+  }
 }));

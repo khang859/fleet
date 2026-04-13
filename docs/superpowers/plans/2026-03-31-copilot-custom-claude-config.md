@@ -12,26 +12,27 @@
 
 ## File Structure
 
-| File | Action | Responsibility |
-|------|--------|----------------|
-| `src/shared/types.ts` | Modify | Add new fields to `CopilotSettings` |
-| `src/shared/constants.ts` | Modify | Add defaults for new fields |
-| `src/main/settings-store.ts` | Modify | Deep-merge `workspaceOverrides` in get/set |
-| `src/main/copilot/hook-installer.ts` | Modify | Accept custom config dir parameter |
-| `src/main/copilot/ipc-handlers.ts` | Modify | Add IPC for workspace list, hook install per-dir |
-| `src/main/ipc-handlers.ts` | Modify | Clean up workspace overrides on workspace delete |
-| `src/main/pty-manager.ts` | Modify | Resolve and inject `CLAUDE_CONFIG_DIR` + custom binary |
+| File                                                      | Action | Responsibility                                            |
+| --------------------------------------------------------- | ------ | --------------------------------------------------------- |
+| `src/shared/types.ts`                                     | Modify | Add new fields to `CopilotSettings`                       |
+| `src/shared/constants.ts`                                 | Modify | Add defaults for new fields                               |
+| `src/main/settings-store.ts`                              | Modify | Deep-merge `workspaceOverrides` in get/set                |
+| `src/main/copilot/hook-installer.ts`                      | Modify | Accept custom config dir parameter                        |
+| `src/main/copilot/ipc-handlers.ts`                        | Modify | Add IPC for workspace list, hook install per-dir          |
+| `src/main/ipc-handlers.ts`                                | Modify | Clean up workspace overrides on workspace delete          |
+| `src/main/pty-manager.ts`                                 | Modify | Resolve and inject `CLAUDE_CONFIG_DIR` + custom binary    |
 | `src/renderer/src/components/settings/CopilotSection.tsx` | Modify | Full rewrite — all copilot settings + workspace overrides |
-| `src/renderer/copilot/src/App.tsx` | Modify | Remove settings view |
-| `src/renderer/copilot/src/store/copilot-store.ts` | Modify | Remove settings view from CopilotView type |
-| `src/renderer/copilot/src/components/SessionList.tsx` | Modify | Remove settings gear button |
-| `src/renderer/copilot/src/components/CopilotSettings.tsx` | Delete | No longer needed |
+| `src/renderer/copilot/src/App.tsx`                        | Modify | Remove settings view                                      |
+| `src/renderer/copilot/src/store/copilot-store.ts`         | Modify | Remove settings view from CopilotView type                |
+| `src/renderer/copilot/src/components/SessionList.tsx`     | Modify | Remove settings gear button                               |
+| `src/renderer/copilot/src/components/CopilotSettings.tsx` | Delete | No longer needed                                          |
 
 ---
 
 ### Task 1: Extend CopilotSettings type and defaults
 
 **Files:**
+
 - Modify: `src/shared/types.ts:165-171`
 - Modify: `src/shared/constants.ts:70-76`
 
@@ -99,6 +100,7 @@ git commit -m "feat(copilot): add claudeBinaryPath, claudeConfigDir, workspaceOv
 ### Task 2: Refactor hook-installer to accept custom config dir
 
 **Files:**
+
 - Modify: `src/main/copilot/hook-installer.ts`
 
 - [ ] **Step 1: Add configDir parameter to all exported functions**
@@ -113,7 +115,7 @@ import {
   existsSync,
   mkdirSync,
   chmodSync,
-  unlinkSync,
+  unlinkSync
 } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
@@ -132,7 +134,12 @@ Keep `getHookBinaryName()` and `getHookBinarySourcePath()` unchanged.
 Add a helper to resolve paths for a given config dir:
 
 ```typescript
-function resolvePaths(configDir?: string): { claudeDir: string; hooksDir: string; settingsPath: string; hookDest: string } {
+function resolvePaths(configDir?: string): {
+  claudeDir: string;
+  hooksDir: string;
+  settingsPath: string;
+  hookDest: string;
+} {
   const claudeDir = configDir || DEFAULT_CLAUDE_DIR;
   const hooksDir = join(claudeDir, 'hooks');
   const settingsPath = join(claudeDir, 'settings.json');
@@ -340,6 +347,7 @@ git commit -m "refactor(copilot): parameterize hook-installer to accept custom c
 ### Task 3: Update IPC handlers for custom config dir hooks
 
 **Files:**
+
 - Modify: `src/main/copilot/ipc-handlers.ts`
 - Modify: `src/shared/ipc-channels.ts`
 
@@ -417,6 +425,7 @@ git commit -m "feat(copilot): add IPC handlers for custom config dir hook instal
 ### Task 4: Update preload API
 
 **Files:**
+
 - Modify: `src/preload/copilot.ts`
 
 - [ ] **Step 1: Add new methods to CopilotApi**
@@ -450,6 +459,7 @@ git commit -m "feat(copilot): expose installHooksTo and hookStatusFor in preload
 ### Task 5: Wire PTY spawning to use resolved config
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts`
 
 - [ ] **Step 1: Add a method to resolve Claude config for a workspace**
@@ -507,7 +517,7 @@ type PtyCreateOptions = {
   rows?: number;
   env?: Record<string, string>;
   exitOnComplete?: boolean;
-  workspaceId?: string;  // For resolving per-workspace Claude config
+  workspaceId?: string; // For resolving per-workspace Claude config
 };
 ```
 
@@ -538,6 +548,7 @@ git commit -m "feat(copilot): inject CLAUDE_CONFIG_DIR into PTY env based on wor
 ### Task 6: Clean up workspace overrides on workspace delete
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts:186-189`
 
 - [ ] **Step 1: Update LAYOUT_DELETE handler**
@@ -579,6 +590,7 @@ git commit -m "feat(copilot): clean up workspace overrides on workspace delete"
 ### Task 7: Expand CopilotSection in main Settings
 
 **Files:**
+
 - Modify: `src/renderer/src/components/settings/CopilotSection.tsx`
 
 This is the largest UI task. The current file is 35 lines with just an enabled checkbox. It needs to become a full settings panel.
@@ -594,8 +606,20 @@ import { SettingRow } from './SettingRow';
 import type { Workspace } from '../../../../shared/types';
 
 const SYSTEM_SOUNDS = [
-  'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
-  'Funk', 'Hero', 'Morse', 'Purr', 'Sosumi', 'Submarine', 'Basso',
+  'Pop',
+  'Ping',
+  'Tink',
+  'Glass',
+  'Blow',
+  'Bottle',
+  'Frog',
+  'Funk',
+  'Hero',
+  'Morse',
+  'Purr',
+  'Sosumi',
+  'Submarine',
+  'Basso'
 ];
 
 export function CopilotSection(): React.JSX.Element | null {
@@ -613,19 +637,31 @@ export function CopilotSection(): React.JSX.Element | null {
 
   // Load workspaces and hook status
   useEffect(() => {
-    window.fleet.layout.list().then((res) => setWorkspaces(res.workspaces)).catch(() => {});
+    window.fleet.layout
+      .list()
+      .then((res) => setWorkspaces(res.workspaces))
+      .catch(() => {});
     if (window.copilot) {
-      window.copilot.hookStatus().then(setHookInstalled).catch(() => {});
-      window.copilot.serviceStatus().then((st) => {
-        setHookInstalled(st.hookInstalled);
-        setClaudeDetected(st.claudeDetected);
-      }).catch(() => {});
+      window.copilot
+        .hookStatus()
+        .then(setHookInstalled)
+        .catch(() => {});
+      window.copilot
+        .serviceStatus()
+        .then((st) => {
+          setHookInstalled(st.hookInstalled);
+          setClaudeDetected(st.claudeDetected);
+        })
+        .catch(() => {});
     }
   }, []);
 
-  const updateCopilot = useCallback((patch: Partial<typeof copilot>) => {
-    void updateSettings({ copilot: { ...copilot, ...patch } });
-  }, [copilot, updateSettings]);
+  const updateCopilot = useCallback(
+    (patch: Partial<typeof copilot>) => {
+      void updateSettings({ copilot: { ...copilot, ...patch } });
+    },
+    [copilot, updateSettings]
+  );
 
   const handleBrowseBinary = async (): Promise<void> => {
     const paths = await window.fleet.file.openDialog({});
@@ -653,7 +689,10 @@ export function CopilotSection(): React.JSX.Element | null {
     setHookInstalled(false);
   };
 
-  const updateWorkspaceOverride = (wsId: string, patch: { claudeBinaryPath?: string; claudeConfigDir?: string }) => {
+  const updateWorkspaceOverride = (
+    wsId: string,
+    patch: { claudeBinaryPath?: string; claudeConfigDir?: string }
+  ) => {
     const current = copilot.workspaceOverrides[wsId] ?? {};
     const updated = { ...current, ...patch };
     // Remove override entirely if both fields are empty
@@ -714,13 +753,13 @@ export function CopilotSection(): React.JSX.Element | null {
           >
             <option value="">None</option>
             {SYSTEM_SOUNDS.map((sound) => (
-              <option key={sound} value={sound}>{sound}</option>
+              <option key={sound} value={sound}>
+                {sound}
+              </option>
             ))}
           </select>
         </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">
-          Sound played when an agent needs attention.
-        </p>
+        <p className="text-xs text-neutral-500 mt-1">Sound played when an agent needs attention.</p>
       </div>
 
       {/* Claude Code Binary Path */}
@@ -781,7 +820,9 @@ export function CopilotSection(): React.JSX.Element | null {
           </div>
         )}
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${hookInstalled ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span
+            className={`w-2 h-2 rounded-full ${hookInstalled ? 'bg-green-500' : 'bg-red-500'}`}
+          />
           <span className="text-sm text-neutral-300">
             {hookInstalled ? 'Installed' : 'Not installed'}
           </span>
@@ -829,12 +870,16 @@ export function CopilotSection(): React.JSX.Element | null {
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3 border-t border-neutral-700/50">
                       <div className="pt-2">
-                        <label className="text-xs text-neutral-400 block mb-1">Claude Code Binary</label>
+                        <label className="text-xs text-neutral-400 block mb-1">
+                          Claude Code Binary
+                        </label>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             value={override.claudeBinaryPath ?? ''}
-                            onChange={(e) => updateWorkspaceOverride(ws.id, { claudeBinaryPath: e.target.value })}
+                            onChange={(e) =>
+                              updateWorkspaceOverride(ws.id, { claudeBinaryPath: e.target.value })
+                            }
                             placeholder="Use global default"
                             className="flex-1 bg-neutral-800 text-xs text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
                           />
@@ -847,12 +892,16 @@ export function CopilotSection(): React.JSX.Element | null {
                         </div>
                       </div>
                       <div>
-                        <label className="text-xs text-neutral-400 block mb-1">Config Directory</label>
+                        <label className="text-xs text-neutral-400 block mb-1">
+                          Config Directory
+                        </label>
                         <div className="flex gap-2">
                           <input
                             type="text"
                             value={override.claudeConfigDir ?? ''}
-                            onChange={(e) => updateWorkspaceOverride(ws.id, { claudeConfigDir: e.target.value })}
+                            onChange={(e) =>
+                              updateWorkspaceOverride(ws.id, { claudeConfigDir: e.target.value })
+                            }
                             placeholder="Use global default"
                             className="flex-1 bg-neutral-800 text-xs text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
                           />
@@ -894,6 +943,7 @@ git commit -m "feat(copilot): expand CopilotSection with all settings and worksp
 ### Task 8: Remove settings from copilot floating window
 
 **Files:**
+
 - Modify: `src/renderer/copilot/src/App.tsx`
 - Modify: `src/renderer/copilot/src/store/copilot-store.ts`
 - Modify: `src/renderer/copilot/src/components/SessionList.tsx`
@@ -918,11 +968,13 @@ type CopilotView = 'sessions' | 'detail' | 'mascots';
 In `src/renderer/copilot/src/App.tsx`:
 
 Remove the import:
+
 ```typescript
 import { CopilotSettings } from './components/CopilotSettings';
 ```
 
 Remove the settings view from the render:
+
 ```typescript
 {view === 'settings' && <CopilotSettings />}
 ```

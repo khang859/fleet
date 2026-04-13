@@ -46,6 +46,7 @@ electron.vite.config.ts             — Add copilot renderer entry point
 ### Task 1: Shared Types and IPC Channels
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts`
 - Modify: `src/shared/types.ts`
 - Modify: `src/shared/constants.ts`
@@ -126,7 +127,7 @@ export type CopilotPosition = {
 In `src/shared/types.ts`, add to the `FleetSettings` type:
 
 ```typescript
-  copilot: CopilotSettings;
+copilot: CopilotSettings;
 ```
 
 In `src/shared/constants.ts`, add to `DEFAULT_SETTINGS`:
@@ -169,6 +170,7 @@ git commit -m "feat(copilot): add shared types, IPC channels, and settings"
 ### Task 2: Python Hook Script
 
 **Files:**
+
 - Create: `hooks/fleet-copilot.py`
 
 - [ ] **Step 1: Create the Python hook script**
@@ -368,6 +370,7 @@ git commit -m "feat(copilot): add Python hook script for Claude Code integration
 ### Task 3: Session Store (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/session-store.ts`
 
 - [ ] **Step 1: Create the session store**
@@ -380,7 +383,7 @@ import type {
   CopilotSession,
   CopilotSessionPhase,
   CopilotPendingPermission,
-  CopilotToolInfo,
+  CopilotToolInfo
 } from '../../shared/types';
 
 const log = createLogger('copilot:session-store');
@@ -458,7 +461,7 @@ export class CopilotSessionStore {
         tty,
         pendingPermissions: [],
         lastActivity: now,
-        createdAt: now,
+        createdAt: now
       };
       this.sessions.set(session_id, session);
       log.info('session created', { sessionId: session_id, cwd });
@@ -482,13 +485,13 @@ export class CopilotSessionStore {
       const toolInfo: CopilotToolInfo = {
         toolName: tool,
         toolInput: tool_input ?? {},
-        toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input),
+        toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input)
       };
       const pending: CopilotPendingPermission = {
         sessionId: session_id,
         toolUseId: toolInfo.toolUseId ?? `unknown-${now}`,
         tool: toolInfo,
-        receivedAt: now,
+        receivedAt: now
       };
       session.pendingPermissions.push(pending);
       log.info('permission requested', { sessionId: session_id, tool });
@@ -567,6 +570,7 @@ git commit -m "feat(copilot): add session store with phase state machine"
 ### Task 4: Unix Socket Server (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/socket-server.ts`
 
 - [ ] **Step 1: Create the copilot socket server**
@@ -656,11 +660,7 @@ export class CopilotSocketServer {
   }
 
   /** Send permission decision back to the waiting hook script */
-  respondToPermission(
-    toolUseId: string,
-    decision: 'allow' | 'deny',
-    reason?: string
-  ): boolean {
+  respondToPermission(toolUseId: string, decision: 'allow' | 'deny', reason?: string): boolean {
     const pending = this.pendingSockets.get(toolUseId);
     if (!pending) {
       log.warn('no pending socket for toolUseId', { toolUseId });
@@ -704,7 +704,7 @@ export class CopilotSocketServer {
       log.debug('hook event received', {
         sessionId: event.session_id,
         event: event.event,
-        status: event.status,
+        status: event.status
       });
 
       // Process the event into session state
@@ -718,10 +718,10 @@ export class CopilotSocketServer {
           this.pendingSockets.set(lastPermission.toolUseId, {
             sessionId: event.session_id,
             toolUseId: lastPermission.toolUseId,
-            socket: client,
+            socket: client
           });
           log.debug('holding socket for permission', {
-            toolUseId: lastPermission.toolUseId,
+            toolUseId: lastPermission.toolUseId
           });
           // Don't destroy the socket — we need it for the response
           return;
@@ -753,6 +753,7 @@ git commit -m "feat(copilot): add Unix socket server for hook communication"
 ### Task 5: Hook Installer (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/hook-installer.ts`
 
 - [ ] **Step 1: Create the hook installer**
@@ -804,12 +805,12 @@ type ClaudeSettings = {
 /** Build the hook entries to merge into settings.json */
 function buildHookEntries(command: string): Record<string, HookEntry[]> {
   const simpleHook = (timeout?: number): HookEntry => ({
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   const matcherHook = (matcher: string, timeout?: number): HookEntry => ({
     matcher,
-    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }],
+    hooks: [{ type: 'command', command, ...(timeout != null ? { timeout } : {}) }]
   });
 
   return {
@@ -822,15 +823,13 @@ function buildHookEntries(command: string): Record<string, HookEntry[]> {
     SubagentStop: [simpleHook()],
     SessionStart: [simpleHook()],
     SessionEnd: [simpleHook()],
-    PreCompact: [matcherHook('auto'), matcherHook('manual')],
+    PreCompact: [matcherHook('auto'), matcherHook('manual')]
   };
 }
 
 /** Check if our hook is already registered for a given event */
 function hasFleetHook(entries: HookEntry[]): boolean {
-  return entries.some((entry) =>
-    entry.hooks.some((h) => h.command.includes(HOOK_SCRIPT_NAME))
-  );
+  return entries.some((entry) => entry.hooks.some((h) => h.command.includes(HOOK_SCRIPT_NAME)));
 }
 
 export function getHookScriptSourcePath(): string {
@@ -948,32 +947,40 @@ export function uninstall(): void {
 The `uninstall` function has a `require('fs')` which should use the top-level `import`. Replace the `try` block inside `if (existsSync(HOOK_DEST))` with:
 
 ```typescript
-  if (existsSync(HOOK_DEST)) {
-    try {
-      const fs = await import('fs');
-      fs.unlinkSync(HOOK_DEST);
-    } catch {
-      log.warn('failed to remove hook script');
-    }
+if (existsSync(HOOK_DEST)) {
+  try {
+    const fs = await import('fs');
+    fs.unlinkSync(HOOK_DEST);
+  } catch {
+    log.warn('failed to remove hook script');
   }
+}
 ```
 
 Actually, `unlinkSync` is already imported at the top. Just use it directly:
 
 ```typescript
-import { readFileSync, writeFileSync, copyFileSync, existsSync, mkdirSync, chmodSync, unlinkSync } from 'fs';
+import {
+  readFileSync,
+  writeFileSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  chmodSync,
+  unlinkSync
+} from 'fs';
 ```
 
 And in `uninstall()`:
 
 ```typescript
-  if (existsSync(HOOK_DEST)) {
-    try {
-      unlinkSync(HOOK_DEST);
-    } catch {
-      log.warn('failed to remove hook script');
-    }
+if (existsSync(HOOK_DEST)) {
+  try {
+    unlinkSync(HOOK_DEST);
+  } catch {
+    log.warn('failed to remove hook script');
   }
+}
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -993,6 +1000,7 @@ git commit -m "feat(copilot): add hook installer for ~/.claude/ integration"
 ### Task 6: Copilot Window (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/copilot-window.ts`
 
 - [ ] **Step 1: Create the copilot window manager**
@@ -1024,7 +1032,7 @@ export class CopilotWindow {
   constructor() {
     this.positionStore = new Store<CopilotWindowStore>({
       name: 'fleet-copilot-position',
-      defaults: { position: null },
+      defaults: { position: null }
     });
   }
 
@@ -1061,8 +1069,8 @@ export class CopilotWindow {
         preload: preloadPath,
         contextIsolation: true,
         sandbox: false,
-        nodeIntegration: false,
-      },
+        nodeIntegration: false
+      }
     });
 
     this.win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -1131,12 +1139,7 @@ export class CopilotWindow {
       const targetDisplay = displays.find((d) => d.id === saved.displayId);
       if (targetDisplay) {
         const { x: dx, y: dy, width, height } = targetDisplay.bounds;
-        if (
-          saved.x >= dx &&
-          saved.x < dx + width &&
-          saved.y >= dy &&
-          saved.y < dy + height
-        ) {
+        if (saved.x >= dx && saved.x < dx + width && saved.y >= dy && saved.y < dy + height) {
           return { x: saved.x, y: saved.y };
         }
       }
@@ -1146,7 +1149,7 @@ export class CopilotWindow {
     const primary = screen.getPrimaryDisplay();
     return {
       x: primary.bounds.x + primary.bounds.width - SPRITE_SIZE - 20,
-      y: primary.bounds.y + 40,
+      y: primary.bounds.y + 40
     };
   }
 }
@@ -1169,6 +1172,7 @@ git commit -m "feat(copilot): add copilot window manager with position persisten
 ### Task 7: Copilot IPC Handlers (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/ipc-handlers.ts`
 
 - [ ] **Step 1: Create copilot IPC handlers**
@@ -1209,12 +1213,9 @@ export function registerCopilotIpcHandlers(
     return settingsStore.get().copilot;
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_SET_SETTINGS,
-    (_event, partial: Record<string, unknown>) => {
-      settingsStore.set({ copilot: { ...settingsStore.get().copilot, ...partial } });
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.COPILOT_SET_SETTINGS, (_event, partial: Record<string, unknown>) => {
+    settingsStore.set({ copilot: { ...settingsStore.get().copilot, ...partial } });
+  });
 
   ipcMain.handle(IPC_CHANNELS.COPILOT_INSTALL_HOOKS, () => {
     hookInstaller.install();
@@ -1234,12 +1235,9 @@ export function registerCopilotIpcHandlers(
     return copilotWindow.getPosition();
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.COPILOT_POSITION_SET,
-    (_event, pos: { x: number; y: number }) => {
-      copilotWindow.setPosition(pos.x, pos.y);
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.COPILOT_POSITION_SET, (_event, pos: { x: number; y: number }) => {
+    copilotWindow.setPosition(pos.x, pos.y);
+  });
 
   ipcMain.on('copilot:set-expanded', (_event, expanded: boolean) => {
     copilotWindow.setExpanded(expanded);
@@ -1266,6 +1264,7 @@ git commit -m "feat(copilot): add IPC handlers for renderer communication"
 ### Task 8: Copilot Orchestrator (Main Process)
 
 **Files:**
+
 - Create: `src/main/copilot/index.ts`
 - Modify: `src/main/index.ts`
 
@@ -1369,14 +1368,14 @@ import { initCopilot, stopCopilot } from './copilot/index';
 In the `app.whenReady()` block, after the socket supervisor start and other service init, add:
 
 ```typescript
-    // Start copilot (macOS only, gated internally)
-    await initCopilot(settingsStore);
+// Start copilot (macOS only, gated internally)
+await initCopilot(settingsStore);
 ```
 
 In the `shutdownAll()` function, add before the existing cleanup:
 
 ```typescript
-  await stopCopilot();
+await stopCopilot();
 ```
 
 - [ ] **Step 3: Run typecheck**
@@ -1396,6 +1395,7 @@ git commit -m "feat(copilot): add orchestrator and wire into Fleet startup"
 ### Task 9: Copilot Preload Bridge
 
 **Files:**
+
 - Create: `src/preload/copilot.ts`
 
 - [ ] **Step 1: Create copilot preload script**
@@ -1405,15 +1405,10 @@ Create `src/preload/copilot.ts`:
 ```typescript
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
-import type {
-  CopilotSession,
-  CopilotSettings,
-  CopilotPosition,
-} from '../shared/types';
+import type { CopilotSession, CopilotSettings, CopilotPosition } from '../shared/types';
 
 const copilotApi = {
-  getSessions: (): Promise<CopilotSession[]> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SESSIONS),
+  getSessions: (): Promise<CopilotSession[]> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SESSIONS),
 
   onSessions: (cb: (sessions: CopilotSession[]) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, sessions: CopilotSession[]): void => {
@@ -1431,7 +1426,7 @@ const copilotApi = {
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_RESPOND_PERMISSION, {
       toolUseId,
       decision,
-      reason,
+      reason
     }),
 
   getSettings: (): Promise<CopilotSettings> =>
@@ -1440,14 +1435,11 @@ const copilotApi = {
   setSettings: (partial: Partial<CopilotSettings>): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_SET_SETTINGS, partial),
 
-  installHooks: (): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
+  installHooks: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
 
-  uninstallHooks: (): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
+  uninstallHooks: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
 
-  hookStatus: (): Promise<boolean> =>
-    ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
+  hookStatus: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.COPILOT_HOOK_STATUS),
 
   getPosition: (): Promise<CopilotPosition | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_GET),
@@ -1455,8 +1447,7 @@ const copilotApi = {
   setPosition: (x: number, y: number): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.COPILOT_POSITION_SET, { x, y }),
 
-  setExpanded: (expanded: boolean): void =>
-    ipcRenderer.send('copilot:set-expanded', expanded),
+  setExpanded: (expanded: boolean): void => ipcRenderer.send('copilot:set-expanded', expanded)
 };
 
 contextBridge.exposeInMainWorld('copilot', copilotApi);
@@ -1499,6 +1490,7 @@ git commit -m "feat(copilot): add preload bridge and build config"
 ### Task 10: Copilot Renderer Entry Point
 
 **Files:**
+
 - Create: `src/renderer/copilot/index.html`
 - Create: `src/renderer/copilot/src/main.tsx`
 - Create: `src/renderer/copilot/src/copilot-logger.ts`
@@ -1517,7 +1509,9 @@ Create `src/renderer/copilot/index.html`:
     <title>Fleet Copilot</title>
     <style>
       /* Transparent background for the spaceship overlay */
-      html, body, #root {
+      html,
+      body,
+      #root {
         margin: 0;
         padding: 0;
         background: transparent;
@@ -1551,7 +1545,7 @@ export function createLogger(tag: string) {
     warn: (msg: string, meta?: Record<string, unknown>) =>
       console.warn(fullPrefix, STYLE, tagStyle, msg, meta ?? ''),
     error: (msg: string, meta?: Record<string, unknown>) =>
-      console.error(fullPrefix, STYLE, tagStyle, msg, meta ?? ''),
+      console.error(fullPrefix, STYLE, tagStyle, msg, meta ?? '')
   };
 }
 ```
@@ -1595,7 +1589,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: 'src/preload/index.ts',
-          copilot: 'src/preload/copilot.ts',
+          copilot: 'src/preload/copilot.ts'
         },
         output: { format: 'cjs' }
       }
@@ -1605,14 +1599,14 @@ export default defineConfig({
     resolve: {
       alias: {
         '@renderer': resolve('src/renderer/src'),
-        '@copilot': resolve('src/renderer/copilot/src'),
+        '@copilot': resolve('src/renderer/copilot/src')
       }
     },
     build: {
       rollupOptions: {
         input: {
           index: 'src/renderer/index.html',
-          copilot: 'src/renderer/copilot/index.html',
+          copilot: 'src/renderer/copilot/index.html'
         }
       }
     },
@@ -1638,6 +1632,7 @@ git commit -m "feat(copilot): add renderer entry point, logger, and build config
 ### Task 11: Copilot Zustand Store
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/store/copilot-store.ts`
 
 - [ ] **Step 1: Create the copilot store**
@@ -1647,11 +1642,7 @@ Create `src/renderer/copilot/src/store/copilot-store.ts`:
 ```typescript
 import { create } from 'zustand';
 import { createLogger } from '../copilot-logger';
-import type {
-  CopilotSession,
-  CopilotSettings,
-  CopilotPosition,
-} from '../../../../shared/types';
+import type { CopilotSession, CopilotSettings, CopilotPosition } from '../../../../shared/types';
 
 const log = createLogger('store');
 
@@ -1685,7 +1676,11 @@ type CopilotStoreState = {
   setSessions: (sessions: CopilotSession[]) => void;
   loadSettings: () => Promise<void>;
   updateSettings: (partial: Partial<CopilotSettings>) => Promise<void>;
-  respondPermission: (toolUseId: string, decision: 'allow' | 'deny', reason?: string) => Promise<void>;
+  respondPermission: (
+    toolUseId: string,
+    decision: 'allow' | 'deny',
+    reason?: string
+  ) => Promise<void>;
   checkHookStatus: () => Promise<void>;
   installHooks: () => Promise<void>;
   uninstallHooks: () => Promise<void>;
@@ -1756,7 +1751,7 @@ export const useCopilotStore = create<CopilotStoreState>((set, get) => ({
   uninstallHooks: async () => {
     await window.copilot.uninstallHooks();
     set({ hookInstalled: false });
-  },
+  }
 }));
 ```
 
@@ -1777,6 +1772,7 @@ git commit -m "feat(copilot): add Zustand store for copilot UI state"
 ### Task 12: Spaceship Sprite Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/SpaceshipSprite.tsx`
 
 - [ ] **Step 1: Create the spaceship sprite component**
@@ -1817,52 +1813,52 @@ export function SpaceshipSprite(): React.JSX.Element {
   const windowStartPos = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    isDragging.current = true;
-    hasMoved.current = false;
-    dragStartPos.current = { x: e.screenX, y: e.screenY };
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isDragging.current = true;
+      hasMoved.current = false;
+      dragStartPos.current = { x: e.screenX, y: e.screenY };
 
-    // Get current window position
-    window.copilot.getPosition().then((pos) => {
-      if (pos) {
-        windowStartPos.current = { x: pos.x, y: pos.y };
-      }
-    });
+      // Get current window position
+      window.copilot.getPosition().then((pos) => {
+        if (pos) {
+          windowStartPos.current = { x: pos.x, y: pos.y };
+        }
+      });
 
-    const handleMouseMove = (ev: MouseEvent): void => {
-      if (!isDragging.current) return;
-      const dx = ev.screenX - dragStartPos.current.x;
-      const dy = ev.screenY - dragStartPos.current.y;
+      const handleMouseMove = (ev: MouseEvent): void => {
+        if (!isDragging.current) return;
+        const dx = ev.screenX - dragStartPos.current.x;
+        const dy = ev.screenY - dragStartPos.current.y;
 
-      if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
-        hasMoved.current = true;
-        window.copilot.setPosition(
-          windowStartPos.current.x + dx,
-          windowStartPos.current.y + dy
-        );
-      }
-    };
+        if (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD) {
+          hasMoved.current = true;
+          window.copilot.setPosition(windowStartPos.current.x + dx, windowStartPos.current.y + dy);
+        }
+      };
 
-    const handleMouseUp = (): void => {
-      isDragging.current = false;
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      const handleMouseUp = (): void => {
+        isDragging.current = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
 
-      if (!hasMoved.current) {
-        toggleExpanded();
-      }
-    };
+        if (!hasMoved.current) {
+          toggleExpanded();
+        }
+      };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  }, [toggleExpanded]);
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [toggleExpanded]
+  );
 
   // Sprite animation class based on state
   const animationClass = {
     idle: 'animate-bob',
     processing: 'animate-thrust',
     permission: 'animate-pulse-amber',
-    complete: 'animate-flash-green',
+    complete: 'animate-flash-green'
   }[spriteState];
 
   return (
@@ -1876,7 +1872,7 @@ export function SpaceshipSprite(): React.JSX.Element {
         // Replace with background-image sprite sheet when available
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: 'center'
       }}
     >
       {/* Placeholder emoji until sprite sheet is ready */}
@@ -1898,6 +1894,7 @@ git commit -m "feat(copilot): add spaceship sprite component with drag and anima
 ### Task 13: Session List Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/SessionList.tsx`
 
 - [ ] **Step 1: Create the session list component**
@@ -2000,12 +1997,8 @@ export function SessionList(): React.JSX.Element {
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-sm ${phaseColor(session)}`}>
-                    {phaseIcon(session)}
-                  </span>
-                  <span className="text-xs text-neutral-200 truncate">
-                    {session.projectName}
-                  </span>
+                  <span className={`text-sm ${phaseColor(session)}`}>{phaseIcon(session)}</span>
+                  <span className="text-xs text-neutral-200 truncate">{session.projectName}</span>
                 </div>
                 <span className="text-[10px] text-neutral-500 ml-2 shrink-0">
                   {elapsed(session.createdAt)}
@@ -2057,6 +2050,7 @@ git commit -m "feat(copilot): add session list component with permission control
 ### Task 14: Session Detail Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/SessionDetail.tsx`
 
 - [ ] **Step 1: Create the session detail component**
@@ -2078,10 +2072,7 @@ export function SessionDetail(): React.JSX.Element | null {
     return (
       <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700">
         <div className="flex items-center px-3 py-2 border-b border-neutral-700">
-          <button
-            onClick={backToList}
-            className="text-xs text-neutral-400 hover:text-neutral-200"
-          >
+          <button onClick={backToList} className="text-xs text-neutral-400 hover:text-neutral-200">
             ← Back
           </button>
         </div>
@@ -2096,15 +2087,10 @@ export function SessionDetail(): React.JSX.Element | null {
     <div className="flex flex-col h-full bg-neutral-900/95 rounded-lg border border-neutral-700 overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-700">
-        <button
-          onClick={backToList}
-          className="text-xs text-neutral-400 hover:text-neutral-200"
-        >
+        <button onClick={backToList} className="text-xs text-neutral-400 hover:text-neutral-200">
           ←
         </button>
-        <span className="text-xs font-medium text-neutral-200 truncate">
-          {session.projectName}
-        </span>
+        <span className="text-xs font-medium text-neutral-200 truncate">{session.projectName}</span>
       </div>
 
       {/* Session info */}
@@ -2117,17 +2103,13 @@ export function SessionDetail(): React.JSX.Element | null {
       {/* Pending permissions */}
       {session.pendingPermissions.length > 0 && (
         <div className="px-3 py-2 border-b border-neutral-800">
-          <div className="text-[10px] font-medium text-amber-400 mb-1">
-            Pending Permissions
-          </div>
+          <div className="text-[10px] font-medium text-amber-400 mb-1">Pending Permissions</div>
           {session.pendingPermissions.map((perm) => (
             <div
               key={perm.toolUseId}
               className="mb-2 p-2 bg-neutral-800/50 rounded border border-amber-500/20"
             >
-              <div className="text-xs text-neutral-200 font-medium">
-                {perm.tool.toolName}
-              </div>
+              <div className="text-xs text-neutral-200 font-medium">{perm.tool.toolName}</div>
               {Object.keys(perm.tool.toolInput).length > 0 && (
                 <pre className="mt-1 text-[10px] text-neutral-400 overflow-x-auto max-h-24 overflow-y-auto">
                   {JSON.stringify(perm.tool.toolInput, null, 2)}
@@ -2175,6 +2157,7 @@ git commit -m "feat(copilot): add session detail component with permission appro
 ### Task 15: Copilot Settings Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/components/CopilotSettings.tsx`
 
 - [ ] **Step 1: Create the copilot settings component**
@@ -2186,8 +2169,20 @@ import { useEffect } from 'react';
 import { useCopilotStore } from '../store/copilot-store';
 
 const SYSTEM_SOUNDS = [
-  'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
-  'Funk', 'Hero', 'Morse', 'Purr', 'Sosumi', 'Submarine', 'Basso',
+  'Pop',
+  'Ping',
+  'Tink',
+  'Glass',
+  'Blow',
+  'Bottle',
+  'Frog',
+  'Funk',
+  'Hero',
+  'Morse',
+  'Purr',
+  'Sosumi',
+  'Submarine',
+  'Basso'
 ];
 
 export function CopilotSettings(): React.JSX.Element {
@@ -2219,9 +2214,7 @@ export function CopilotSettings(): React.JSX.Element {
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
         {/* Notification Sound */}
         <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Notification Sound
-          </label>
+          <label className="text-[10px] text-neutral-400 block mb-1">Notification Sound</label>
           <select
             value={settings?.notificationSound ?? 'Pop'}
             onChange={(e) => updateSettings({ notificationSound: e.target.value })}
@@ -2229,16 +2222,16 @@ export function CopilotSettings(): React.JSX.Element {
           >
             <option value="">None</option>
             {SYSTEM_SOUNDS.map((sound) => (
-              <option key={sound} value={sound}>{sound}</option>
+              <option key={sound} value={sound}>
+                {sound}
+              </option>
             ))}
           </select>
         </div>
 
         {/* Sprite selector */}
         <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Sprite
-          </label>
+          <label className="text-[10px] text-neutral-400 block mb-1">Sprite</label>
           <div className="text-[10px] text-neutral-500">
             Default spaceship (more sprites coming soon)
           </div>
@@ -2246,9 +2239,7 @@ export function CopilotSettings(): React.JSX.Element {
 
         {/* Hook status */}
         <div>
-          <label className="text-[10px] text-neutral-400 block mb-1">
-            Claude Code Hooks
-          </label>
+          <label className="text-[10px] text-neutral-400 block mb-1">Claude Code Hooks</label>
           <div className="flex items-center gap-2">
             <span className={`text-xs ${hookInstalled ? 'text-green-400' : 'text-red-400'}`}>
               {hookInstalled ? '● Installed' : '● Not installed'}
@@ -2279,6 +2270,7 @@ git commit -m "feat(copilot): add copilot settings component"
 ### Task 16: Copilot App Root Component
 
 **Files:**
+
 - Create: `src/renderer/copilot/src/App.tsx`
 - Create: `src/renderer/copilot/src/index.css`
 
@@ -2291,30 +2283,59 @@ Create `src/renderer/copilot/src/index.css`:
 
 /* Sprite animations */
 @keyframes bob {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-3px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 @keyframes thrust {
-  0%, 100% { transform: translateY(0) scale(1); }
-  50% { transform: translateY(-2px) scale(1.05); }
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-2px) scale(1.05);
+  }
 }
 
 @keyframes pulse-amber {
-  0%, 100% { filter: drop-shadow(0 0 4px #f59e0b00); }
-  50% { filter: drop-shadow(0 0 8px #f59e0b99); }
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px #f59e0b00);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px #f59e0b99);
+  }
 }
 
 @keyframes flash-green {
-  0% { filter: drop-shadow(0 0 0px #22c55e00); }
-  50% { filter: drop-shadow(0 0 12px #22c55eff); }
-  100% { filter: drop-shadow(0 0 0px #22c55e00); }
+  0% {
+    filter: drop-shadow(0 0 0px #22c55e00);
+  }
+  50% {
+    filter: drop-shadow(0 0 12px #22c55eff);
+  }
+  100% {
+    filter: drop-shadow(0 0 0px #22c55e00);
+  }
 }
 
-.animate-bob { animation: bob 2s ease-in-out infinite; }
-.animate-thrust { animation: thrust 0.6s ease-in-out infinite; }
-.animate-pulse-amber { animation: pulse-amber 1.5s ease-in-out infinite; }
-.animate-flash-green { animation: flash-green 1s ease-in-out; }
+.animate-bob {
+  animation: bob 2s ease-in-out infinite;
+}
+.animate-thrust {
+  animation: thrust 0.6s ease-in-out infinite;
+}
+.animate-pulse-amber {
+  animation: pulse-amber 1.5s ease-in-out infinite;
+}
+.animate-flash-green {
+  animation: flash-green 1s ease-in-out;
+}
 ```
 
 - [ ] **Step 2: Create the copilot App root**
@@ -2366,10 +2387,7 @@ export function App(): React.JSX.Element {
 
       {/* Expanded panel */}
       {expanded && (
-        <div
-          className="absolute top-[52px] right-0 w-[350px] h-[450px]"
-          style={{ zIndex: 10 }}
-        >
+        <div className="absolute top-[52px] right-0 w-[350px] h-[450px]" style={{ zIndex: 10 }}>
           {view === 'sessions' && <SessionList />}
           {view === 'detail' && <SessionDetail />}
           {view === 'settings' && <CopilotSettings />}
@@ -2415,6 +2433,7 @@ git commit -m "feat(copilot): add copilot App root with view routing and animati
 ### Task 17: Bundle Python Hook in Build
 
 **Files:**
+
 - Modify: `electron-builder.yml` or `package.json` (builder config)
 
 - [ ] **Step 1: Find the electron-builder config**
@@ -2434,6 +2453,7 @@ extraResources:
 ```
 
 Or if in `package.json`:
+
 ```json
 "build": {
   "extraResources": [
@@ -2454,6 +2474,7 @@ git commit -m "build: bundle Python hook script in app resources"
 ### Task 18: Add Copilot Toggle to Fleet Settings UI
 
 **Files:**
+
 - Modify: Fleet's existing settings page/component (wherever settings UI lives)
 
 - [ ] **Step 1: Find the settings UI component**
@@ -2465,21 +2486,25 @@ Run: `grep -r "Settings" src/renderer/src/components/ --include="*.tsx" -l` to f
 In the settings component, add a section gated by platform check. The preload already exposes `window.fleet.platform`:
 
 ```tsx
-{window.fleet.platform === 'darwin' && (
-  <div className="space-y-2">
-    <h3 className="text-sm font-medium text-neutral-200">Copilot</h3>
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-neutral-400">Enable Claude Code Copilot</span>
-      <Switch
-        checked={settings.copilot.enabled}
-        onCheckedChange={(checked) => updateSettings({ copilot: { ...settings.copilot, enabled: checked } })}
-      />
+{
+  window.fleet.platform === 'darwin' && (
+    <div className="space-y-2">
+      <h3 className="text-sm font-medium text-neutral-200">Copilot</h3>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-neutral-400">Enable Claude Code Copilot</span>
+        <Switch
+          checked={settings.copilot.enabled}
+          onCheckedChange={(checked) =>
+            updateSettings({ copilot: { ...settings.copilot, enabled: checked } })
+          }
+        />
+      </div>
+      <p className="text-[10px] text-neutral-500">
+        Floating spaceship overlay that monitors Claude Code sessions
+      </p>
     </div>
-    <p className="text-[10px] text-neutral-500">
-      Floating spaceship overlay that monitors Claude Code sessions
-    </p>
-  </div>
-)}
+  );
+}
 ```
 
 - [ ] **Step 3: Run typecheck and build**
@@ -2542,24 +2567,24 @@ git commit -m "feat(copilot): integration fixes from manual testing"
 
 ## Summary
 
-| Task | Description | Key Files |
-|------|-------------|-----------|
-| 1 | Shared types, IPC channels, settings | `shared/` |
-| 2 | Python hook script | `hooks/fleet-copilot.py` |
-| 3 | Session store | `main/copilot/session-store.ts` |
-| 4 | Unix socket server | `main/copilot/socket-server.ts` |
-| 5 | Hook installer | `main/copilot/hook-installer.ts` |
-| 6 | Copilot window | `main/copilot/copilot-window.ts` |
-| 7 | IPC handlers | `main/copilot/ipc-handlers.ts` |
-| 8 | Orchestrator + wiring | `main/copilot/index.ts` + `main/index.ts` |
-| 9 | Preload bridge | `preload/copilot.ts` |
-| 10 | Renderer entry point | `renderer/copilot/` |
-| 11 | Zustand store | `renderer/copilot/src/store/` |
-| 12 | Spaceship sprite | `SpaceshipSprite.tsx` |
-| 13 | Session list | `SessionList.tsx` |
-| 14 | Session detail | `SessionDetail.tsx` |
-| 15 | Copilot settings | `CopilotSettings.tsx` |
-| 16 | App root + CSS | `App.tsx` + `index.css` |
-| 17 | Build bundling | `electron-builder.yml` |
-| 18 | Fleet settings toggle | Settings page |
-| 19 | Manual integration test | — |
+| Task | Description                          | Key Files                                 |
+| ---- | ------------------------------------ | ----------------------------------------- |
+| 1    | Shared types, IPC channels, settings | `shared/`                                 |
+| 2    | Python hook script                   | `hooks/fleet-copilot.py`                  |
+| 3    | Session store                        | `main/copilot/session-store.ts`           |
+| 4    | Unix socket server                   | `main/copilot/socket-server.ts`           |
+| 5    | Hook installer                       | `main/copilot/hook-installer.ts`          |
+| 6    | Copilot window                       | `main/copilot/copilot-window.ts`          |
+| 7    | IPC handlers                         | `main/copilot/ipc-handlers.ts`            |
+| 8    | Orchestrator + wiring                | `main/copilot/index.ts` + `main/index.ts` |
+| 9    | Preload bridge                       | `preload/copilot.ts`                      |
+| 10   | Renderer entry point                 | `renderer/copilot/`                       |
+| 11   | Zustand store                        | `renderer/copilot/src/store/`             |
+| 12   | Spaceship sprite                     | `SpaceshipSprite.tsx`                     |
+| 13   | Session list                         | `SessionList.tsx`                         |
+| 14   | Session detail                       | `SessionDetail.tsx`                       |
+| 15   | Copilot settings                     | `CopilotSettings.tsx`                     |
+| 16   | App root + CSS                       | `App.tsx` + `index.css`                   |
+| 17   | Build bundling                       | `electron-builder.yml`                    |
+| 18   | Fleet settings toggle                | Settings page                             |
+| 19   | Manual integration test              | —                                         |

@@ -30,7 +30,12 @@ function inferPresetId(id: string, provider: PiProvider): PiPresetId {
   return 'custom';
 }
 
-export function PiCustomProvidersList({ models, onWrite, onDelete, onReload }: Props): React.JSX.Element {
+export function PiCustomProvidersList({
+  models,
+  onWrite,
+  onDelete,
+  onReload
+}: Props): React.JSX.Element {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -136,7 +141,9 @@ export function PiCustomProvidersList({ models, onWrite, onDelete, onReload }: P
                   <span className="text-xs text-neutral-500 rounded bg-neutral-800 px-1.5 py-0.5">
                     {presetLabel}
                   </span>
-                  <span className="text-xs text-neutral-500">{modelCount} model{modelCount === 1 ? '' : 's'}</span>
+                  <span className="text-xs text-neutral-500">
+                    {modelCount} model{modelCount === 1 ? '' : 's'}
+                  </span>
                 </div>
                 <div className="flex gap-2">
                   {!draft && (
@@ -171,7 +178,9 @@ export function PiCustomProvidersList({ models, onWrite, onDelete, onReload }: P
             <div key={draftKey} className="border border-blue-700/50 rounded">
               <div className="px-3 py-2 text-sm text-neutral-200 flex items-center gap-2">
                 <span className="font-mono">{draft.id}</span>
-                <span className="text-xs text-blue-400 rounded bg-blue-900/30 px-1.5 py-0.5">new</span>
+                <span className="text-xs text-blue-400 rounded bg-blue-900/30 px-1.5 py-0.5">
+                  new
+                </span>
               </div>
               <PiProviderForm
                 initialId={draft.id}
@@ -186,9 +195,7 @@ export function PiCustomProvidersList({ models, onWrite, onDelete, onReload }: P
           ))}
       </div>
 
-      {pickerOpen && (
-        <PiPresetPicker onPick={startAdd} onClose={() => setPickerOpen(false)} />
-      )}
+      {pickerOpen && <PiPresetPicker onPick={startAdd} onClose={() => setPickerOpen(false)} />}
     </section>
   );
 }

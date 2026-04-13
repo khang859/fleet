@@ -38,12 +38,12 @@ if (!gotTheLock) {
 
 ### Behavior
 
-| Scenario | Result |
-|---|---|
-| User opens Fleet while it's already running | Existing window focuses; second process quits |
-| User runs `fleet` CLI while app is running | Works as before (single socket, no conflict) |
-| User runs `fleet` CLI with no app running | CLI retry logic handles `ECONNREFUSED` as before |
-| First instance crashes | Lock auto-cleaned by OS; next launch starts fresh |
+| Scenario                                    | Result                                            |
+| ------------------------------------------- | ------------------------------------------------- |
+| User opens Fleet while it's already running | Existing window focuses; second process quits     |
+| User runs `fleet` CLI while app is running  | Works as before (single socket, no conflict)      |
+| User runs `fleet` CLI with no app running   | CLI retry logic handles `ECONNREFUSED` as before  |
+| First instance crashes                      | Lock auto-cleaned by OS; next launch starts fresh |
 
 ### What does NOT change
 

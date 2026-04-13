@@ -26,22 +26,23 @@ The settings page mixes configuration (sound, hooks) with personalization (masco
 
 ### 2. Icon replacements (Lucide React)
 
-| Location | File | Current | Lucide Replacement |
-|----------|------|---------|--------------------|
-| SessionList settings button | `SessionList.tsx` | `⚙` | `<Settings />` |
-| SessionList mascot button | `SessionList.tsx` | (new) | `<PawPrint />` |
-| CopilotSettings back button | `CopilotSettings.tsx` | `←` | `<ChevronLeft />` |
-| SessionDetail back button | `SessionDetail.tsx` | `←` | `<ChevronLeft />` |
-| MascotPicker back button | `MascotPicker.tsx` | (new) | `<ChevronLeft />` |
-| Badge: idle | `badge.tsx` | `○` | `<Circle />` |
-| Badge: running | `badge.tsx` | `◎` | `<CircleDot />` |
-| Badge: permission | `badge.tsx` | `△` | `<Triangle />` |
-| Badge: error | `badge.tsx` | `■` | `<Square />` |
-| Badge: complete | `badge.tsx` | `✓` | `<Check />` |
+| Location                    | File                  | Current | Lucide Replacement |
+| --------------------------- | --------------------- | ------- | ------------------ |
+| SessionList settings button | `SessionList.tsx`     | `⚙`     | `<Settings />`     |
+| SessionList mascot button   | `SessionList.tsx`     | (new)   | `<PawPrint />`     |
+| CopilotSettings back button | `CopilotSettings.tsx` | `←`     | `<ChevronLeft />`  |
+| SessionDetail back button   | `SessionDetail.tsx`   | `←`     | `<ChevronLeft />`  |
+| MascotPicker back button    | `MascotPicker.tsx`    | (new)   | `<ChevronLeft />`  |
+| Badge: idle                 | `badge.tsx`           | `○`     | `<Circle />`       |
+| Badge: running              | `badge.tsx`           | `◎`     | `<CircleDot />`    |
+| Badge: permission           | `badge.tsx`           | `△`     | `<Triangle />`     |
+| Badge: error                | `badge.tsx`           | `■`     | `<Square />`       |
+| Badge: complete             | `badge.tsx`           | `✓`     | `<Check />`        |
 
 ### 3. Settings page (after extraction)
 
 Remains with:
+
 - Notification sound dropdown
 - Claude Code installation status alert
 - Hooks management toggle

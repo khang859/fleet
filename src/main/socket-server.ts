@@ -52,7 +52,7 @@ export class SocketServer extends EventEmitter {
   constructor(
     private socketPath: string,
     private imageService?: ImageService,
-    private annotateService?: AnnotateService,
+    private annotateService?: AnnotateService
   ) {
     super();
   }
@@ -331,8 +331,14 @@ export class SocketServer extends EventEmitter {
 
       case 'image.action': {
         if (!this.imageService) throw new CodedError('Image service not available', 'UNAVAILABLE');
-        const actionType = typeof args.action === 'string' ? args.action : typeof args.id === 'string' ? args.id : undefined;
-        if (!actionType) throw new CodedError('image.action requires an action type', 'BAD_REQUEST');
+        const actionType =
+          typeof args.action === 'string'
+            ? args.action
+            : typeof args.id === 'string'
+              ? args.id
+              : undefined;
+        if (!actionType)
+          throw new CodedError('image.action requires an action type', 'BAD_REQUEST');
         const source = typeof args.source === 'string' ? args.source : undefined;
         if (!source) throw new CodedError('image.action requires a source image', 'BAD_REQUEST');
         const actionResult = this.imageService.runAction({
@@ -353,13 +359,15 @@ export class SocketServer extends EventEmitter {
 
       // ── Annotate ──────────────────────────────────────────────────────────────
       case 'annotate.start': {
-        if (!this.annotateService) throw new CodedError('Annotate service not available', 'UNAVAILABLE');
+        if (!this.annotateService)
+          throw new CodedError('Annotate service not available', 'UNAVAILABLE');
         const url = typeof args.url === 'string' ? args.url : undefined;
-        const timeout = typeof args.timeout === 'number'
-          ? args.timeout
-          : typeof args.timeout === 'string'
-            ? Number(args.timeout)
-            : undefined;
+        const timeout =
+          typeof args.timeout === 'number'
+            ? args.timeout
+            : typeof args.timeout === 'string'
+              ? Number(args.timeout)
+              : undefined;
         const resultPath = await this.annotateService.start({ url, timeout });
         return { resultPath };
       }

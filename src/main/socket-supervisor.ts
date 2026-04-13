@@ -21,7 +21,7 @@ export class SocketSupervisor extends EventEmitter {
   constructor(
     private socketPath: string,
     private imageService?: ImageService,
-    private annotateService?: AnnotateService,
+    private annotateService?: AnnotateService
   ) {
     super();
   }

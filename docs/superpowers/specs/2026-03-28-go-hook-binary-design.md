@@ -28,12 +28,12 @@ hooks/
 
 ## Build Targets
 
-| Platform      | Binary Name                        | GOOS/GOARCH    |
-|---------------|------------------------------------|----------------|
-| macOS arm64   | `fleet-copilot-darwin-arm64`       | darwin/arm64   |
-| macOS x64     | `fleet-copilot-darwin-amd64`       | darwin/amd64   |
-| Windows x64   | `fleet-copilot-windows-amd64.exe`  | windows/amd64  |
-| Linux x64     | `fleet-copilot-linux-amd64`        | linux/amd64    |
+| Platform    | Binary Name                       | GOOS/GOARCH   |
+| ----------- | --------------------------------- | ------------- |
+| macOS arm64 | `fleet-copilot-darwin-arm64`      | darwin/arm64  |
+| macOS x64   | `fleet-copilot-darwin-amd64`      | darwin/amd64  |
+| Windows x64 | `fleet-copilot-windows-amd64.exe` | windows/amd64 |
+| Linux x64   | `fleet-copilot-linux-amd64`       | linux/amd64   |
 
 ## Go Binary Behavior
 

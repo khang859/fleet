@@ -13,15 +13,16 @@ The list view in `src/renderer/src/components/AnnotateTab.tsx` (lines 204-260) r
 ### Layout Change
 
 Each list item changes from a single `<button>` to a `<div>` wrapper:
+
 - **Left (clickable area):** URL + timestamp info — clicking navigates to detail view
 - **Right (action buttons):** Two icon buttons with `stopPropagation` to prevent navigation
 
 ### Buttons
 
-| Action | Icon | Size | Hover Style | Behavior |
-|--------|------|------|-------------|----------|
-| Copy Path | `ClipboardCopy` | 14px | `text-neutral-400 → text-white` | Copies `ann.dirPath` to clipboard, shows toast |
-| Delete | `Trash2` | 14px | `text-neutral-400 → text-red-400` | Calls `deleteAnnotation(ann.id)` |
+| Action    | Icon            | Size | Hover Style                       | Behavior                                       |
+| --------- | --------------- | ---- | --------------------------------- | ---------------------------------------------- |
+| Copy Path | `ClipboardCopy` | 14px | `text-neutral-400 → text-white`   | Copies `ann.dirPath` to clipboard, shows toast |
+| Delete    | `Trash2`        | 14px | `text-neutral-400 → text-red-400` | Calls `deleteAnnotation(ann.id)`               |
 
 ### Styling
 

@@ -27,18 +27,11 @@ type AnnotationDetail = Awaited<
 >;
 
 export function AnnotateTab(): React.JSX.Element {
-  const {
-    annotations,
-    isLoaded,
-    loadAnnotations,
-    getDetail,
-    deleteAnnotation
-  } = useAnnotationStore();
+  const { annotations, isLoaded, loadAnnotations, getDetail, deleteAnnotation } =
+    useAnnotationStore();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<AnnotationDetail>(null);
-  const [expandedElements, setExpandedElements] = useState<Set<number>>(
-    new Set()
-  );
+  const [expandedElements, setExpandedElements] = useState<Set<number>>(new Set());
   const showToast = useToastStore((s) => s.show);
 
   useEffect(() => {
@@ -86,13 +79,10 @@ export function AnnotateTab(): React.JSX.Element {
             <ArrowLeft size={16} />
           </button>
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium truncate">
-              {detail.url ?? 'Unknown URL'}
-            </div>
+            <div className="text-sm font-medium truncate">{detail.url ?? 'Unknown URL'}</div>
             <div className="text-xs text-neutral-500">
               {detail.elements?.length ?? 0} elements
-              {detail.viewport &&
-                ` \u00b7 ${detail.viewport.width}\u00d7${detail.viewport.height}`}
+              {detail.viewport && ` \u00b7 ${detail.viewport.width}\u00d7${detail.viewport.height}`}
             </div>
           </div>
           <button
@@ -151,9 +141,7 @@ export function AnnotateTab(): React.JSX.Element {
                 ) : (
                   <ChevronRight size={12} className="text-neutral-500" />
                 )}
-                <code className="text-xs text-neutral-300 truncate flex-1">
-                  {el.selector}
-                </code>
+                <code className="text-xs text-neutral-300 truncate flex-1">{el.selector}</code>
                 <span className="text-xs text-neutral-600">{el.tag}</span>
               </button>
 
@@ -161,14 +149,11 @@ export function AnnotateTab(): React.JSX.Element {
               {expandedElements.has(i) && (
                 <div className="px-3 pb-3 pl-10 space-y-1.5">
                   {el.comment && (
-                    <div className="text-sm text-amber-300">
-                      &ldquo;{el.comment}&rdquo;
-                    </div>
+                    <div className="text-sm text-amber-300">&ldquo;{el.comment}&rdquo;</div>
                   )}
                   {el.text && (
                     <div className="text-xs text-neutral-400">
-                      Text:{' '}
-                      <span className="text-neutral-300">{el.text}</span>
+                      Text: <span className="text-neutral-300">{el.text}</span>
                     </div>
                   )}
                   {el.boxModel && (
@@ -182,20 +167,18 @@ export function AnnotateTab(): React.JSX.Element {
                   {el.accessibility && (
                     <div className="text-xs text-neutral-400">
                       A11y: role={el.accessibility.role ?? 'none'}
-                      {el.accessibility.name &&
-                        ` name="${el.accessibility.name}"`}
+                      {el.accessibility.name && ` name="${el.accessibility.name}"`}
                       {el.accessibility.focusable && ' focusable'}
                     </div>
                   )}
-                  {el.keyStyles &&
-                    Object.keys(el.keyStyles).length > 0 && (
-                      <div className="text-xs text-neutral-400">
-                        Styles:{' '}
-                        {Object.entries(el.keyStyles)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(', ')}
-                      </div>
-                    )}
+                  {el.keyStyles && Object.keys(el.keyStyles).length > 0 && (
+                    <div className="text-xs text-neutral-400">
+                      Styles:{' '}
+                      {Object.entries(el.keyStyles)
+                        .map(([k, v]) => `${k}: ${v}`)
+                        .join(', ')}
+                    </div>
+                  )}
                   {el.screenshotPath && (
                     <img
                       src={`fleet-image://${el.screenshotPath}`}
@@ -208,7 +191,6 @@ export function AnnotateTab(): React.JSX.Element {
             </div>
           ))}
         </div>
-
       </div>
     );
   }
@@ -263,9 +245,7 @@ export function AnnotateTab(): React.JSX.Element {
               }}
             >
               <div className="flex-1 min-w-0 text-left">
-                <div className="text-sm text-neutral-200 truncate">
-                  {ann.url}
-                </div>
+                <div className="text-sm text-neutral-200 truncate">{ann.url}</div>
                 <div className="text-xs text-neutral-500">
                   {timeAgo(ann.timestamp)} &middot; {ann.elementCount} element
                   {ann.elementCount !== 1 ? 's' : ''}
@@ -298,7 +278,6 @@ export function AnnotateTab(): React.JSX.Element {
           ))}
         </div>
       )}
-
     </div>
   );
 }

@@ -110,10 +110,7 @@ describe('AnnotationStore', () => {
   });
 
   it('emits changed event on delete', () => {
-    const meta = store.add(
-      { success: true, url: 'https://example.com', elements: [] },
-      []
-    );
+    const meta = store.add({ success: true, url: 'https://example.com', elements: [] }, []);
     let emitted = false;
     store.on('changed', () => {
       emitted = true;

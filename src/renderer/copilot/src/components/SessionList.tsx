@@ -27,12 +27,17 @@ function sessionStatus(session: CopilotSession): BadgeStatus {
 
 function statusLabel(status: BadgeStatus): string {
   switch (status) {
-    case 'running': return 'Processing';
-    case 'permission': return 'Waiting for permission';
-    case 'error': return 'Error';
-    case 'complete': return 'Completed';
+    case 'running':
+      return 'Processing';
+    case 'permission':
+      return 'Waiting for permission';
+    case 'error':
+      return 'Error';
+    case 'complete':
+      return 'Completed';
     case 'idle':
-    default: return 'Idle';
+    default:
+      return 'Idle';
   }
 }
 
@@ -73,9 +78,7 @@ export function SessionList(): React.JSX.Element {
       <div className="flex flex-col h-full overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
-          <span className="text-sm font-medium text-neutral-300">
-            Sessions ({sessions.length})
-          </span>
+          <span className="text-sm font-medium text-neutral-300">Sessions ({sessions.length})</span>
           <div className="flex items-center gap-1">
             <div className="flex items-center bg-neutral-800 rounded text-xs">
               <button
@@ -131,9 +134,7 @@ export function SessionList(): React.JSX.Element {
               ) : (
                 <>
                   <span>No active Claude Code sessions.</span>
-                  <span className="text-xs text-neutral-600">
-                    Start a session to see it here.
-                  </span>
+                  <span className="text-xs text-neutral-600">Start a session to see it here.</span>
                 </>
               )}
             </div>

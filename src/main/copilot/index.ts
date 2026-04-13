@@ -41,10 +41,23 @@ export async function initCopilot(
   socketServer = new CopilotSocketServer(sessionStore);
   copilotWindow = new CopilotWindow();
   conversationReader = new ConversationReader();
-  registerCopilotIpcHandlers(sessionStore, socketServer, copilotWindow, settingsStore, conversationReader, ptyManager, layoutStore, getMainWindow, onCopilotSettingsChanged);
+  registerCopilotIpcHandlers(
+    sessionStore,
+    socketServer,
+    copilotWindow,
+    settingsStore,
+    conversationReader,
+    ptyManager,
+    layoutStore,
+    getMainWindow,
+    onCopilotSettingsChanged
+  );
 
   const settings = settingsStore.get();
-  log.info('copilot settings', { enabled: settings.copilot.enabled, autoStart: settings.copilot.autoStart });
+  log.info('copilot settings', {
+    enabled: settings.copilot.enabled,
+    autoStart: settings.copilot.autoStart
+  });
 
   if (!settings.copilot.enabled) {
     log.info('copilot disabled by settings (IPC handlers registered for settings UI)');
@@ -93,7 +106,7 @@ async function startCopilotServices(): Promise<void> {
     log.error('startCopilotServices: missing dependencies', {
       hasSessionStore: !!sessionStore,
       hasSocketServer: !!socketServer,
-      hasCopilotWindow: !!copilotWindow,
+      hasCopilotWindow: !!copilotWindow
     });
     return;
   }
@@ -110,7 +123,7 @@ async function startCopilotServices(): Promise<void> {
 
     if (conversationReader) {
       const activeSessions = sessionStore!.getSessions();
-      const activeIds = new Set(activeSessions.map(s => s.sessionId));
+      const activeIds = new Set(activeSessions.map((s) => s.sessionId));
 
       for (const watchedId of conversationReader.getWatchedSessionIds()) {
         if (activeIds.has(watchedId)) {

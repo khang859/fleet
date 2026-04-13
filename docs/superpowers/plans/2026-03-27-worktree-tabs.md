@@ -13,9 +13,11 @@
 ## File Structure
 
 ### New files
+
 - `src/main/worktree-service.ts` — Git worktree create/remove/list operations
 
 ### Modified files
+
 - `src/shared/types.ts` — Add group fields to `Tab` type
 - `src/shared/ipc-channels.ts` — Add `WORKTREE_CREATE`, `WORKTREE_REMOVE` channels
 - `src/shared/ipc-api.ts` — Add request/response types for worktree IPC
@@ -30,6 +32,7 @@
 ### Task 1: Extend Tab type and add IPC channels
 
 **Files:**
+
 - Modify: `src/shared/types.ts:9-17`
 - Modify: `src/shared/ipc-channels.ts:1-103`
 - Modify: `src/shared/ipc-api.ts`
@@ -100,6 +103,7 @@ git commit -m "feat(worktree): add Tab group fields and IPC channel definitions"
 ### Task 2: Create WorktreeService
 
 **Files:**
+
 - Create: `src/main/worktree-service.ts`
 
 - [ ] **Step 1: Create the worktree service**
@@ -220,6 +224,7 @@ git commit -m "feat(worktree): add WorktreeService for git worktree lifecycle"
 ### Task 3: Wire IPC handlers and preload bridge
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts:63-77` (add worktreeService parameter)
 - Modify: `src/main/ipc-handlers.ts` (add handlers at end of function)
 - Modify: `src/preload/index.ts` (add worktree namespace)
@@ -250,20 +255,14 @@ Add `worktreeService: WorktreeService` as the last parameter of `registerIpcHand
 At the end of the `registerIpcHandlers` function body (before the closing `}`), add:
 
 ```ts
-  // Worktree handlers
-  ipcMain.handle(
-    IPC_CHANNELS.WORKTREE_CREATE,
-    async (_event, req: WorktreeCreateRequest) => {
-      return worktreeService.create(req.repoPath);
-    }
-  );
+// Worktree handlers
+ipcMain.handle(IPC_CHANNELS.WORKTREE_CREATE, async (_event, req: WorktreeCreateRequest) => {
+  return worktreeService.create(req.repoPath);
+});
 
-  ipcMain.handle(
-    IPC_CHANNELS.WORKTREE_REMOVE,
-    async (_event, req: WorktreeRemoveRequest) => {
-      return worktreeService.remove(req.worktreePath);
-    }
-  );
+ipcMain.handle(IPC_CHANNELS.WORKTREE_REMOVE, async (_event, req: WorktreeRemoveRequest) => {
+  return worktreeService.remove(req.worktreePath);
+});
 ```
 
 - [ ] **Step 3: Instantiate WorktreeService in main/index.ts**
@@ -323,6 +322,7 @@ git commit -m "feat(worktree): wire IPC handlers and preload bridge"
 ### Task 4: Add workspace store actions
 
 **Files:**
+
 - Modify: `src/renderer/src/store/workspace-store.ts`
 
 - [ ] **Step 1: Add collapsedGroups state and group actions to the store type**
@@ -560,6 +560,7 @@ git commit -m "feat(worktree): add workspace store group actions and collapsed s
 ### Task 5: Add "Create Worktree" to TabItem context menu
 
 **Files:**
+
 - Modify: `src/renderer/src/components/TabItem.tsx`
 
 - [ ] **Step 1: Add new props to TabItemProps**
@@ -662,6 +663,7 @@ git commit -m "feat(worktree): add Create Worktree context menu and group visual
 ### Task 6: Update Sidebar with group headers, grouping logic, and worktree creation flow
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx`
 
 - [ ] **Step 1: Add imports and group helper**
@@ -739,49 +741,49 @@ function GroupHeader({
 In the `Sidebar` component, update the `useWorkspaceStore` selector to include:
 
 ```ts
-  const {
-    workspace,
-    activeTabId,
-    activePaneId,
-    setActiveTab,
-    closeTab,
-    renameTab,
-    resetTabLabel,
-    addTab,
-    reorderTab,
-    renameWorkspace,
-    isDirty,
-    markClean,
-    collapsedGroups,
-    toggleGroupCollapsed,
-    createWorktreeGroup,
-    closeWorktreeTab,
-    closeWorktreeGroup,
-    reorderWithinGroup,
-    reorderGroup,
-  } = useWorkspaceStore(
-    useShallow((s) => ({
-      workspace: s.workspace,
-      activeTabId: s.activeTabId,
-      activePaneId: s.activePaneId,
-      setActiveTab: s.setActiveTab,
-      closeTab: s.closeTab,
-      renameTab: s.renameTab,
-      resetTabLabel: s.resetTabLabel,
-      addTab: s.addTab,
-      reorderTab: s.reorderTab,
-      renameWorkspace: s.renameWorkspace,
-      isDirty: s.isDirty,
-      markClean: s.markClean,
-      collapsedGroups: s.collapsedGroups,
-      toggleGroupCollapsed: s.toggleGroupCollapsed,
-      createWorktreeGroup: s.createWorktreeGroup,
-      closeWorktreeTab: s.closeWorktreeTab,
-      closeWorktreeGroup: s.closeWorktreeGroup,
-      reorderWithinGroup: s.reorderWithinGroup,
-      reorderGroup: s.reorderGroup,
-    }))
-  );
+const {
+  workspace,
+  activeTabId,
+  activePaneId,
+  setActiveTab,
+  closeTab,
+  renameTab,
+  resetTabLabel,
+  addTab,
+  reorderTab,
+  renameWorkspace,
+  isDirty,
+  markClean,
+  collapsedGroups,
+  toggleGroupCollapsed,
+  createWorktreeGroup,
+  closeWorktreeTab,
+  closeWorktreeGroup,
+  reorderWithinGroup,
+  reorderGroup
+} = useWorkspaceStore(
+  useShallow((s) => ({
+    workspace: s.workspace,
+    activeTabId: s.activeTabId,
+    activePaneId: s.activePaneId,
+    setActiveTab: s.setActiveTab,
+    closeTab: s.closeTab,
+    renameTab: s.renameTab,
+    resetTabLabel: s.resetTabLabel,
+    addTab: s.addTab,
+    reorderTab: s.reorderTab,
+    renameWorkspace: s.renameWorkspace,
+    isDirty: s.isDirty,
+    markClean: s.markClean,
+    collapsedGroups: s.collapsedGroups,
+    toggleGroupCollapsed: s.toggleGroupCollapsed,
+    createWorktreeGroup: s.createWorktreeGroup,
+    closeWorktreeTab: s.closeWorktreeTab,
+    closeWorktreeGroup: s.closeWorktreeGroup,
+    reorderWithinGroup: s.reorderWithinGroup,
+    reorderGroup: s.reorderGroup
+  }))
+);
 ```
 
 - [ ] **Step 3: Add worktree creation handler**
@@ -789,39 +791,39 @@ In the `Sidebar` component, update the `useWorkspaceStore` selector to include:
 Add inside the `Sidebar` component, after the drag handlers:
 
 ```ts
-  // --- Worktree creation ---
-  const handleCreateWorktree = useCallback(
-    async (tabId: string, cwd: string) => {
+// --- Worktree creation ---
+const handleCreateWorktree = useCallback(
+  async (tabId: string, cwd: string) => {
+    try {
+      const result = await window.fleet.worktree.create({ repoPath: cwd });
+      createWorktreeGroup(tabId, result.worktreePath, result.branchName);
+    } catch (err) {
+      // TODO: show toast notification
+      console.error('Failed to create worktree:', err);
+    }
+  },
+  [createWorktreeGroup]
+);
+
+// Track which tabs are in git repos (for showing "Create Worktree" in context menu)
+const [gitRepoTabs, setGitRepoTabs] = useState<Set<string>>(new Set());
+
+useEffect(() => {
+  const checkGitRepos = async (): Promise<void> => {
+    const newSet = new Set<string>();
+    for (const tab of workspace.tabs) {
+      if (tab.type && tab.type !== 'terminal') continue;
       try {
-        const result = await window.fleet.worktree.create({ repoPath: cwd });
-        createWorktreeGroup(tabId, result.worktreePath, result.branchName);
-      } catch (err) {
-        // TODO: show toast notification
-        console.error('Failed to create worktree:', err);
+        const result = await window.fleet.git.isRepo(tab.cwd);
+        if (result.isRepo) newSet.add(tab.id);
+      } catch {
+        // ignore
       }
-    },
-    [createWorktreeGroup]
-  );
-
-  // Track which tabs are in git repos (for showing "Create Worktree" in context menu)
-  const [gitRepoTabs, setGitRepoTabs] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    const checkGitRepos = async (): Promise<void> => {
-      const newSet = new Set<string>();
-      for (const tab of workspace.tabs) {
-        if (tab.type && tab.type !== 'terminal') continue;
-        try {
-          const result = await window.fleet.git.isRepo(tab.cwd);
-          if (result.isRepo) newSet.add(tab.id);
-        } catch {
-          // ignore
-        }
-      }
-      setGitRepoTabs(newSet);
-    };
-    void checkGitRepos();
-  }, [workspace.tabs.length]);
+    }
+    setGitRepoTabs(newSet);
+  };
+  void checkGitRepos();
+}, [workspace.tabs.length]);
 ```
 
 - [ ] **Step 4: Add worktree group close confirmation state**
@@ -829,10 +831,10 @@ Add inside the `Sidebar` component, after the drag handlers:
 Add alongside the existing `fileCloseConfirm` state:
 
 ```ts
-  const [worktreeGroupCloseConfirm, setWorktreeGroupCloseConfirm] = useState<{
-    groupId: string;
-    tabCount: number;
-  } | null>(null);
+const [worktreeGroupCloseConfirm, setWorktreeGroupCloseConfirm] = useState<{
+  groupId: string;
+  tabCount: number;
+} | null>(null);
 ```
 
 - [ ] **Step 5: Update handleCloseTab for worktree tabs**
@@ -840,41 +842,41 @@ Add alongside the existing `fileCloseConfirm` state:
 Update `handleCloseTab` to handle worktree parent tabs with confirmation:
 
 ```ts
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
-      const tab = workspace.tabs.find((t) => t.id === tabId);
-      if (!tab) return;
+const handleCloseTab = useCallback(
+  (tabId: string) => {
+    const tab = workspace.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
 
-      // Parent tab with worktree children: confirm before closing entire group
-      if (tab.groupRole === 'parent' && tab.groupId) {
-        const groupTabs = workspace.tabs.filter((t) => t.groupId === tab.groupId);
-        if (groupTabs.length > 1) {
-          setWorktreeGroupCloseConfirm({ groupId: tab.groupId, tabCount: groupTabs.length });
-          return;
-        }
-      }
-
-      // Worktree child tab: clean up worktree on disk
-      if (tab.groupRole === 'worktree' && tab.worktreePath) {
-        void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
-        closeWorktreeTab(tabId);
+    // Parent tab with worktree children: confirm before closing entire group
+    if (tab.groupRole === 'parent' && tab.groupId) {
+      const groupTabs = workspace.tabs.filter((t) => t.groupId === tab.groupId);
+      if (groupTabs.length > 1) {
+        setWorktreeGroupCloseConfirm({ groupId: tab.groupId, tabCount: groupTabs.length });
         return;
       }
+    }
 
-      // File tabs: check for dirty panes before closing
-      if (tab.type === 'file') {
-        const dirtyPaneId = getFirstDirtyPaneId(tab);
-        if (dirtyPaneId) {
-          const leaf = getFirstLeaf(tab);
-          const filename = leaf?.filePath?.split('/').pop() ?? tab.label;
-          setFileCloseConfirm({ tabId, label: filename, paneId: dirtyPaneId });
-          return;
-        }
+    // Worktree child tab: clean up worktree on disk
+    if (tab.groupRole === 'worktree' && tab.worktreePath) {
+      void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
+      closeWorktreeTab(tabId);
+      return;
+    }
+
+    // File tabs: check for dirty panes before closing
+    if (tab.type === 'file') {
+      const dirtyPaneId = getFirstDirtyPaneId(tab);
+      if (dirtyPaneId) {
+        const leaf = getFirstLeaf(tab);
+        const filename = leaf?.filePath?.split('/').pop() ?? tab.label;
+        setFileCloseConfirm({ tabId, label: filename, paneId: dirtyPaneId });
+        return;
       }
-      doCloseTab(tabId);
-    },
-    [workspace.tabs, doCloseTab, closeWorktreeTab]
-  );
+    }
+    doCloseTab(tabId);
+  },
+  [workspace.tabs, doCloseTab, closeWorktreeTab]
+);
 ```
 
 - [ ] **Step 6: Update tab rendering to support groups**
@@ -884,138 +886,138 @@ Replace the regular tabs rendering block (the one that filters out star-command,
 Replace it with:
 
 ```tsx
-          {(() => {
-            const regularTabs = workspace.tabs.filter(
-              (t) =>
-                t.type !== 'star-command' &&
-                t.type !== 'crew' &&
-                t.type !== 'images' &&
-                t.type !== 'settings'
-            );
+{
+  (() => {
+    const regularTabs = workspace.tabs.filter(
+      (t) =>
+        t.type !== 'star-command' &&
+        t.type !== 'crew' &&
+        t.type !== 'images' &&
+        t.type !== 'settings'
+    );
 
-            // Build render items: group headers + tabs
-            const rendered: React.ReactNode[] = [];
-            const seenGroups = new Set<string>();
+    // Build render items: group headers + tabs
+    const rendered: React.ReactNode[] = [];
+    const seenGroups = new Set<string>();
 
-            for (const tab of regularTabs) {
-              // If tab is in a group, render group header first (once)
-              if (tab.groupId && !seenGroups.has(tab.groupId)) {
-                seenGroups.add(tab.groupId);
-                const groupTabs = regularTabs.filter((t) => t.groupId === tab.groupId);
-                const parentTab = groupTabs.find((t) => t.groupRole === 'parent');
-                const isCollapsed = collapsedGroups.has(tab.groupId);
-                const groupId = tab.groupId;
+    for (const tab of regularTabs) {
+      // If tab is in a group, render group header first (once)
+      if (tab.groupId && !seenGroups.has(tab.groupId)) {
+        seenGroups.add(tab.groupId);
+        const groupTabs = regularTabs.filter((t) => t.groupId === tab.groupId);
+        const parentTab = groupTabs.find((t) => t.groupRole === 'parent');
+        const isCollapsed = collapsedGroups.has(tab.groupId);
+        const groupId = tab.groupId;
 
-                rendered.push(
-                  <GroupHeader
-                    key={`group-${groupId}`}
-                    label={parentTab?.label ?? 'Worktree Group'}
-                    tabCount={groupTabs.length}
-                    isCollapsed={isCollapsed}
-                    onToggle={() => toggleGroupCollapsed(groupId)}
-                    onDragStart={() => handleDragStart(realIndex(groupTabs[0].id))}
-                    onDragOver={(e) => handleDragOver(e, realIndex(groupTabs[0].id))}
-                    onDrop={() => handleDrop()}
-                    isDragOver={
-                      dropTarget?.index === realIndex(groupTabs[0].id)
-                        ? dropTarget.position
-                        : null
-                    }
-                  />
-                );
-
-                // If collapsed, skip rendering group tabs
-                if (isCollapsed) continue;
-              }
-
-              // Skip grouped tabs if their group is collapsed
-              if (tab.groupId && collapsedGroups.has(tab.groupId)) continue;
-
-              // Skip if we already rendered this as part of a group scan
-              // (the for loop hits grouped tabs individually, but we handle them after header)
-              if (tab.groupId && seenGroups.has(tab.groupId) && tab !== regularTabs.find(
-                (t) => t.groupId === tab.groupId
-              )) {
-                // This tab is part of a group we've already started rendering
-                // Only skip if we need to re-find it below
-              }
-
-              const paneIds = collectPaneIds(tab.splitRoot);
-              const isFile = tab.type === 'file' || tab.type === 'image';
-              const idx = realIndex(tab.id);
-
-              let displayCwd: string;
-              let drivingPaneId: string | undefined;
-              if (isFile) {
-                const leafs = collectPaneLeafs(tab.splitRoot);
-                const filePath = leafs[0]?.filePath ?? '';
-                displayCwd = filePath ? filePath.split('/').slice(0, -1).join('/') || '/' : '/';
-              } else {
-                drivingPaneId =
-                  tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
-                    ? activePaneId
-                    : paneIds[0];
-                displayCwd = tab.cwd;
-              }
-
-              const isFileDirty =
-                isFile && collectPaneLeafs(tab.splitRoot).some((l) => l.isDirty === true);
-              const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
-
-              let icon: React.ReactNode;
-              if (isFile) {
-                const leafs2 = collectPaneLeafs(tab.splitRoot);
-                const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
-                icon =
-                  tab.type === 'image' ? <ImageIcon size={14} /> : getFileIcon(fileBasename, 14);
-              } else {
-                icon = <Terminal size={14} />;
-              }
-
-              rendered.push(
-                <TabItem
-                  key={tab.id}
-                  id={tab.id}
-                  label={displayLabel}
-                  labelIsCustom={tab.labelIsCustom ?? false}
-                  cwd={displayCwd}
-                  drivingPaneId={drivingPaneId}
-                  isActive={tab.id === activeTabId}
-                  badge={getTabBadge(paneIds)}
-                  icon={icon}
-                  disableReset={isFile}
-                  index={idx}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                  isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
-                  indentLevel={tab.groupId ? 1 : 0}
-                  worktreeBranch={tab.worktreeBranch}
-                  isWorktreeChild={tab.groupRole === 'worktree'}
-                  isWorktreeParent={tab.groupRole === 'parent'}
-                  onCreateWorktree={
-                    !isFile && gitRepoTabs.has(tab.id) && tab.groupRole !== 'worktree'
-                      ? () => void handleCreateWorktree(tab.id, tab.cwd)
-                      : undefined
-                  }
-                  onClick={() => {
-                    setActiveTab(tab.id);
-                    if (!isFile) {
-                      for (const paneId of paneIds) {
-                        useNotificationStore.getState().clearPane(paneId);
-                        window.fleet.notifications.paneFocused({ paneId });
-                      }
-                    }
-                  }}
-                  onClose={() => handleCloseTab(tab.id)}
-                  onRename={(newLabel) => renameTab(tab.id, newLabel)}
-                  onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
-                />
-              );
+        rendered.push(
+          <GroupHeader
+            key={`group-${groupId}`}
+            label={parentTab?.label ?? 'Worktree Group'}
+            tabCount={groupTabs.length}
+            isCollapsed={isCollapsed}
+            onToggle={() => toggleGroupCollapsed(groupId)}
+            onDragStart={() => handleDragStart(realIndex(groupTabs[0].id))}
+            onDragOver={(e) => handleDragOver(e, realIndex(groupTabs[0].id))}
+            onDrop={() => handleDrop()}
+            isDragOver={
+              dropTarget?.index === realIndex(groupTabs[0].id) ? dropTarget.position : null
             }
+          />
+        );
 
-            return rendered;
-          })()}
+        // If collapsed, skip rendering group tabs
+        if (isCollapsed) continue;
+      }
+
+      // Skip grouped tabs if their group is collapsed
+      if (tab.groupId && collapsedGroups.has(tab.groupId)) continue;
+
+      // Skip if we already rendered this as part of a group scan
+      // (the for loop hits grouped tabs individually, but we handle them after header)
+      if (
+        tab.groupId &&
+        seenGroups.has(tab.groupId) &&
+        tab !== regularTabs.find((t) => t.groupId === tab.groupId)
+      ) {
+        // This tab is part of a group we've already started rendering
+        // Only skip if we need to re-find it below
+      }
+
+      const paneIds = collectPaneIds(tab.splitRoot);
+      const isFile = tab.type === 'file' || tab.type === 'image';
+      const idx = realIndex(tab.id);
+
+      let displayCwd: string;
+      let drivingPaneId: string | undefined;
+      if (isFile) {
+        const leafs = collectPaneLeafs(tab.splitRoot);
+        const filePath = leafs[0]?.filePath ?? '';
+        displayCwd = filePath ? filePath.split('/').slice(0, -1).join('/') || '/' : '/';
+      } else {
+        drivingPaneId =
+          tab.id === activeTabId && activePaneId && paneIds.includes(activePaneId)
+            ? activePaneId
+            : paneIds[0];
+        displayCwd = tab.cwd;
+      }
+
+      const isFileDirty = isFile && collectPaneLeafs(tab.splitRoot).some((l) => l.isDirty === true);
+      const displayLabel = isFile && isFileDirty ? tab.label + ' *' : tab.label;
+
+      let icon: React.ReactNode;
+      if (isFile) {
+        const leafs2 = collectPaneLeafs(tab.splitRoot);
+        const fileBasename = leafs2[0]?.filePath?.split('/').pop() ?? tab.label;
+        icon = tab.type === 'image' ? <ImageIcon size={14} /> : getFileIcon(fileBasename, 14);
+      } else {
+        icon = <Terminal size={14} />;
+      }
+
+      rendered.push(
+        <TabItem
+          key={tab.id}
+          id={tab.id}
+          label={displayLabel}
+          labelIsCustom={tab.labelIsCustom ?? false}
+          cwd={displayCwd}
+          drivingPaneId={drivingPaneId}
+          isActive={tab.id === activeTabId}
+          badge={getTabBadge(paneIds)}
+          icon={icon}
+          disableReset={isFile}
+          index={idx}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+          isDragOver={dropTarget?.index === idx ? dropTarget.position : null}
+          indentLevel={tab.groupId ? 1 : 0}
+          worktreeBranch={tab.worktreeBranch}
+          isWorktreeChild={tab.groupRole === 'worktree'}
+          isWorktreeParent={tab.groupRole === 'parent'}
+          onCreateWorktree={
+            !isFile && gitRepoTabs.has(tab.id) && tab.groupRole !== 'worktree'
+              ? () => void handleCreateWorktree(tab.id, tab.cwd)
+              : undefined
+          }
+          onClick={() => {
+            setActiveTab(tab.id);
+            if (!isFile) {
+              for (const paneId of paneIds) {
+                useNotificationStore.getState().clearPane(paneId);
+                window.fleet.notifications.paneFocused({ paneId });
+              }
+            }
+          }}
+          onClose={() => handleCloseTab(tab.id)}
+          onRename={(newLabel) => renameTab(tab.id, newLabel)}
+          onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}
+        />
+      );
+    }
+
+    return rendered;
+  })();
+}
 ```
 
 - [ ] **Step 7: Add worktree group close confirmation dialog**
@@ -1023,52 +1025,54 @@ Replace it with:
 Add a second `Dialog.Root` after the existing file close confirmation dialog (before the closing `</div>` of the Sidebar component):
 
 ```tsx
-      {/* Worktree group close confirmation dialog */}
-      <Dialog.Root
-        open={!!worktreeGroupCloseConfirm}
-        onOpenChange={(open) => {
-          if (!open) setWorktreeGroupCloseConfirm(null);
-        }}
-      >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
-            <Dialog.Title className="text-base font-semibold text-white mb-1">
-              Close worktree group?
-            </Dialog.Title>
-            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
-              This will close all {worktreeGroupCloseConfirm?.tabCount ?? 0} tabs in this group and
-              remove their worktrees from disk.
-            </Dialog.Description>
-            <div className="flex justify-end gap-2">
-              <button
-                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
-                onClick={() => setWorktreeGroupCloseConfirm(null)}
-              >
-                Cancel
-              </button>
-              <button
-                className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
-                onClick={() => {
-                  if (!worktreeGroupCloseConfirm) return;
-                  const { groupId } = worktreeGroupCloseConfirm;
-                  // Remove worktrees from disk
-                  const groupTabs = workspace.tabs.filter((t) => t.groupId === groupId);
-                  for (const tab of groupTabs) {
-                    if (tab.worktreePath) {
-                      void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
-                    }
-                  }
-                  closeWorktreeGroup(groupId);
-                  setWorktreeGroupCloseConfirm(null);
-                }}
-              >
-                Close All
-              </button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+{
+  /* Worktree group close confirmation dialog */
+}
+<Dialog.Root
+  open={!!worktreeGroupCloseConfirm}
+  onOpenChange={(open) => {
+    if (!open) setWorktreeGroupCloseConfirm(null);
+  }}
+>
+  <Dialog.Portal>
+    <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
+    <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
+      <Dialog.Title className="text-base font-semibold text-white mb-1">
+        Close worktree group?
+      </Dialog.Title>
+      <Dialog.Description className="text-neutral-400 mb-5 text-xs">
+        This will close all {worktreeGroupCloseConfirm?.tabCount ?? 0} tabs in this group and remove
+        their worktrees from disk.
+      </Dialog.Description>
+      <div className="flex justify-end gap-2">
+        <button
+          className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+          onClick={() => setWorktreeGroupCloseConfirm(null)}
+        >
+          Cancel
+        </button>
+        <button
+          className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
+          onClick={() => {
+            if (!worktreeGroupCloseConfirm) return;
+            const { groupId } = worktreeGroupCloseConfirm;
+            // Remove worktrees from disk
+            const groupTabs = workspace.tabs.filter((t) => t.groupId === groupId);
+            for (const tab of groupTabs) {
+              if (tab.worktreePath) {
+                void window.fleet.worktree.remove({ worktreePath: tab.worktreePath });
+              }
+            }
+            closeWorktreeGroup(groupId);
+            setWorktreeGroupCloseConfirm(null);
+          }}
+        >
+          Close All
+        </button>
+      </div>
+    </Dialog.Content>
+  </Dialog.Portal>
+</Dialog.Root>;
 ```
 
 - [ ] **Step 8: Run typecheck**
@@ -1093,6 +1097,7 @@ git commit -m "feat(worktree): add group headers, worktree creation flow, and cl
 ### Task 7: Persist collapsedGroups in layout store
 
 **Files:**
+
 - Modify: `src/shared/types.ts` (add collapsedGroups to Workspace)
 - Modify: `src/renderer/src/store/workspace-store.ts` (serialize/deserialize)
 
@@ -1116,19 +1121,19 @@ export type Workspace = {
 In `Sidebar.tsx`, find the auto-save debounce block where `workspaceWithCwds` is built (around line 453). Update to include `collapsedGroups`:
 
 ```ts
-      const state = useWorkspaceStore.getState();
-      const workspaceWithCwds = {
-        ...state.workspace,
-        activeTabId: state.activeTabId ?? undefined,
-        activePaneId: state.activePaneId ?? undefined,
-        collapsedGroups: Array.from(state.collapsedGroups),
-        tabs: state.workspace.tabs
-          .filter((tab) => tab.type !== 'settings')
-          .map((tab) => ({
-            ...tab,
-            splitRoot: injectLiveCwd(tab.splitRoot)
-          }))
-      };
+const state = useWorkspaceStore.getState();
+const workspaceWithCwds = {
+  ...state.workspace,
+  activeTabId: state.activeTabId ?? undefined,
+  activePaneId: state.activePaneId ?? undefined,
+  collapsedGroups: Array.from(state.collapsedGroups),
+  tabs: state.workspace.tabs
+    .filter((tab) => tab.type !== 'settings')
+    .map((tab) => ({
+      ...tab,
+      splitRoot: injectLiveCwd(tab.splitRoot)
+    }))
+};
 ```
 
 Do the same for the `doSwitchWorkspace` and `commitNewWorkspace` save calls — add `collapsedGroups: Array.from(useWorkspaceStore.getState().collapsedGroups)` to the workspace object.
@@ -1140,19 +1145,19 @@ In `workspace-store.ts`, update `loadWorkspace` to restore collapsedGroups:
 In the `loadWorkspace` action, after migrating tabs, add:
 
 ```ts
-    const restoredCollapsed = new Set(workspace.collapsedGroups ?? []);
+const restoredCollapsed = new Set(workspace.collapsedGroups ?? []);
 ```
 
 And update the `set()` call to include:
 
 ```ts
-    set({
-      workspace: migrated,
-      activeTabId: restoredTab?.id ?? null,
-      activePaneId: restoredPane,
-      collapsedGroups: restoredCollapsed,
-      isDirty: false
-    });
+set({
+  workspace: migrated,
+  activeTabId: restoredTab?.id ?? null,
+  activePaneId: restoredPane,
+  collapsedGroups: restoredCollapsed,
+  isDirty: false
+});
 ```
 
 Do the same in `switchWorkspace`.

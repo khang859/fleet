@@ -22,15 +22,15 @@ The first action shipped is **Remove Background** via fal.ai's BRIA RMBG 2.0 mod
 // src/main/image-providers/action-types.ts
 
 type ImageActionConfig = {
-  id: string;              // unique per provider: 'fal-ai:remove-background'
-  actionType: string;      // shared across providers: 'remove-background'
-  provider: string;        // 'fal-ai'
-  name: string;            // 'Remove Background'
+  id: string; // unique per provider: 'fal-ai:remove-background'
+  actionType: string; // shared across providers: 'remove-background'
+  provider: string; // 'fal-ai'
+  name: string; // 'Remove Background'
   description: string;
-  endpoint: string;        // 'https://fal.run/fal-ai/bria/background/remove'
+  endpoint: string; // 'https://fal.run/fal-ai/bria/background/remove'
   inputMapping: (imageUrl: string) => Record<string, unknown>;
   outputMapping: (response: unknown) => { url: string; width: number; height: number };
-  outputFormat: string;    // 'png'
+  outputFormat: string; // 'png'
 };
 ```
 
@@ -96,7 +96,7 @@ export type ImageGenerationMode = 'generate' | 'edit' | `action:${string}`;
 // Add to ImageGenerationMeta:
 export type ImageGenerationMeta = {
   // ...existing fields...
-  sourceImage: string | null;  // path, URL, or generationId/filename reference
+  sourceImage: string | null; // path, URL, or generationId/filename reference
 };
 ```
 
@@ -115,6 +115,7 @@ Both surfaces create a new generation entry — result appears in the gallery au
 ## IPC
 
 New channels:
+
 - `images:runAction` — args: `{ actionType, source, provider? }` → returns `{ id: string }`
 - `images:listActions` — args: `{ provider? }` → returns serializable action info (id, actionType, provider, name, description) — the `inputMapping`/`outputMapping` functions stay server-side only
 
@@ -123,6 +124,7 @@ New channels:
 Command: `fleet images action <action-type> <source> [--provider <id>]`
 
 Examples:
+
 ```
 fleet images action remove-background ./photo.png
 fleet images action remove-background ./photo.png --provider fal-ai
@@ -130,6 +132,7 @@ fleet images action remove-background <generation-id>/image-001.png
 ```
 
 Wiring:
+
 - `fleet-cli.ts`: map `images.action` → `image.action`, validate action type and source
 - `socket-server.ts`: handle `image.action`, call `imageService.runAction()`
 - Add `image.actions.list` command for listing available actions

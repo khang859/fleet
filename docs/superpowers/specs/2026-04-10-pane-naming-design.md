@@ -23,8 +23,8 @@ Add two optional fields to `PaneLeaf` in `src/shared/types.ts`:
 ```typescript
 type PaneLeaf = {
   // ... existing fields ...
-  label?: string;           // custom pane name (undefined = use live CWD)
-  labelIsCustom?: boolean;  // true when user has set a custom name
+  label?: string; // custom pane name (undefined = use live CWD)
+  labelIsCustom?: boolean; // true when user has set a custom name
 };
 ```
 

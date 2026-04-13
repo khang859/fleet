@@ -1,13 +1,6 @@
 import { z } from 'zod';
 
-export const PiThinkingLevelSchema = z.enum([
-  'off',
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh'
-]);
+export const PiThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 export type PiThinkingLevel = z.infer<typeof PiThinkingLevelSchema>;
 
 export const PiSettingsSchema = z

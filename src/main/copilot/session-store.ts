@@ -3,7 +3,7 @@ import type {
   CopilotSession,
   CopilotSessionPhase,
   CopilotPendingPermission,
-  CopilotToolInfo,
+  CopilotToolInfo
 } from '../../shared/types';
 
 const log = createLogger('copilot:session-store');
@@ -84,7 +84,7 @@ export class CopilotSessionStore {
         lastActivity: now,
         createdAt: now,
         workspaceId: workspaceInfo?.workspaceId,
-        workspaceName: workspaceInfo?.workspaceName,
+        workspaceName: workspaceInfo?.workspaceName
       };
       this.sessions.set(session_id, session);
       log.info('session created', { sessionId: session_id, cwd });
@@ -115,13 +115,13 @@ export class CopilotSessionStore {
         const toolInfo: CopilotToolInfo = {
           toolName: tool,
           toolInput: tool_input ?? {},
-          toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input),
+          toolUseId: tool_use_id ?? this.popCachedToolUseId(session_id, tool, tool_input)
         };
         const pending: CopilotPendingPermission = {
           sessionId: session_id,
           toolUseId: toolInfo.toolUseId ?? `unknown-${now}`,
           tool: toolInfo,
-          receivedAt: now,
+          receivedAt: now
         };
         session.pendingPermissions.push(pending);
         log.info('permission requested', { sessionId: session_id, tool });

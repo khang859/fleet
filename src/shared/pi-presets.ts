@@ -32,8 +32,7 @@ export const PI_PRESETS: PiPreset[] = [
       api: 'anthropic-messages'
     },
     skipApiKey: true,
-    hint:
-      'Bedrock uses the AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE (or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) in your shell. Custom models here are added alongside pi\'s built-in Bedrock models.'
+    hint: "Bedrock uses the AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE (or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) in your shell. Custom models here are added alongside pi's built-in Bedrock models."
   },
   {
     id: 'ollama',
@@ -106,17 +105,55 @@ export const PI_BUILT_IN_PROVIDERS: Array<{
   supportsOAuth?: boolean;
   hint?: string;
 }> = [
-  { id: 'anthropic', label: 'Anthropic', envVar: 'ANTHROPIC_API_KEY', supportsOAuth: true, hint: 'Run `pi` and `/login` to authenticate with a Claude Pro/Max subscription.' },
-  { id: 'openai', label: 'OpenAI', envVar: 'OPENAI_API_KEY', supportsOAuth: true, hint: 'Run `pi` and `/login` for ChatGPT Plus/Pro (Codex) subscription.' },
-  { id: 'google', label: 'Google Gemini', envVar: 'GOOGLE_API_KEY', supportsOAuth: true, hint: 'Run `pi` and `/login` for Gemini CLI subscription.' },
-  { id: 'bedrock', label: 'Amazon Bedrock', envVar: 'AWS_REGION', hint: 'Uses AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE.' },
-  { id: 'azure', label: 'Azure OpenAI', envVar: 'AZURE_OPENAI_API_KEY', hint: 'Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.' },
-  { id: 'vertex', label: 'Google Vertex', envVar: 'GOOGLE_APPLICATION_CREDENTIALS', hint: 'Set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON path.' },
+  {
+    id: 'anthropic',
+    label: 'Anthropic',
+    envVar: 'ANTHROPIC_API_KEY',
+    supportsOAuth: true,
+    hint: 'Run `pi` and `/login` to authenticate with a Claude Pro/Max subscription.'
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    envVar: 'OPENAI_API_KEY',
+    supportsOAuth: true,
+    hint: 'Run `pi` and `/login` for ChatGPT Plus/Pro (Codex) subscription.'
+  },
+  {
+    id: 'google',
+    label: 'Google Gemini',
+    envVar: 'GOOGLE_API_KEY',
+    supportsOAuth: true,
+    hint: 'Run `pi` and `/login` for Gemini CLI subscription.'
+  },
+  {
+    id: 'bedrock',
+    label: 'Amazon Bedrock',
+    envVar: 'AWS_REGION',
+    hint: 'Uses AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE.'
+  },
+  {
+    id: 'azure',
+    label: 'Azure OpenAI',
+    envVar: 'AZURE_OPENAI_API_KEY',
+    hint: 'Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT.'
+  },
+  {
+    id: 'vertex',
+    label: 'Google Vertex',
+    envVar: 'GOOGLE_APPLICATION_CREDENTIALS',
+    hint: 'Set GOOGLE_APPLICATION_CREDENTIALS to a service-account JSON path.'
+  },
   { id: 'mistral', label: 'Mistral', envVar: 'MISTRAL_API_KEY' },
   { id: 'groq', label: 'Groq', envVar: 'GROQ_API_KEY' },
   { id: 'cerebras', label: 'Cerebras', envVar: 'CEREBRAS_API_KEY' },
   { id: 'xai', label: 'xAI', envVar: 'XAI_API_KEY' },
   { id: 'openrouter', label: 'OpenRouter', envVar: 'OPENROUTER_API_KEY' },
   { id: 'huggingface', label: 'Hugging Face', envVar: 'HF_TOKEN' },
-  { id: 'copilot', label: 'GitHub Copilot', supportsOAuth: true, hint: 'Run `pi` and `/login` for GitHub Copilot.' }
+  {
+    id: 'copilot',
+    label: 'GitHub Copilot',
+    supportsOAuth: true,
+    hint: 'Run `pi` and `/login` for GitHub Copilot.'
+  }
 ];

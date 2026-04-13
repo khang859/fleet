@@ -6,7 +6,13 @@ export type FleetEvent =
   | { type: 'pane-created'; paneId: string }
   | { type: 'pane-closed'; paneId: string }
   | { type: 'pty-exit'; paneId: string; exitCode: number }
-  | { type: 'activity-state-change'; paneId: string; state: ActivityState; lastOutputAt: number; timestamp: number }
+  | {
+      type: 'activity-state-change';
+      paneId: string;
+      state: ActivityState;
+      lastOutputAt: number;
+      timestamp: number;
+    }
   | { type: 'command-started'; paneId: string; timestamp: number }
   | { type: 'workspace-loaded'; workspaceId: string }
   | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' };

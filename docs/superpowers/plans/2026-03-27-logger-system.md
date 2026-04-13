@@ -15,6 +15,7 @@
 ### Task 1: Install Dependencies
 
 **Files:**
+
 - Modify: `package.json`
 
 - [ ] **Step 1: Install winston and winston-daily-rotate-file**
@@ -43,6 +44,7 @@ git commit -m "feat(logger): add winston and winston-daily-rotate-file dependenc
 ### Task 2: Create Logger Module with Tests
 
 **Files:**
+
 - Create: `src/main/logger.ts`
 - Create: `src/main/__tests__/logger.test.ts`
 
@@ -197,6 +199,7 @@ git commit -m "feat(logger): add Winston logger module with child logger factory
 This is the largest file with ~25 console calls spanning multiple tags (`fleet-main`, `starbase`, `renderer`, `socket-supervisor`, `admiral`, `auto-updater`).
 
 **Files:**
+
 - Modify: `src/main/index.ts`
 
 - [ ] **Step 1: Add logger import and create child loggers at the top of the file**
@@ -211,35 +214,35 @@ const starbaseLog = createLogger('starbase');
 const updaterLog = createLogger('auto-updater');
 ```
 
-- [ ] **Step 2: Replace all console.* calls**
+- [ ] **Step 2: Replace all console.\* calls**
 
 Apply these replacements throughout the file:
 
-| Line | Before | After |
-|------|--------|-------|
-| 70 | `console.log('[fleet-main] startup marker...')` | `log.info('startup marker runtime=spawn-ipc preload=out/preload/index.js')` |
-| 202 | `console.log(\`[renderer] ${event.message}\`)` | `log.info(event.message, { source: 'renderer' })` |
-| 210 | `console.error(\`[renderer] Failed to load...\`)` | `log.error('failed to load', { source: 'renderer', errorCode, errorDescription })` |
-| 248 | `console.log('[debug DOM]', r)` | `log.debug('DOM debug', { result: r })` |
-| 250 | `console.log('[debug err]', e)` | `log.debug('DOM debug error', { error: e })` |
-| 298 | `console.error('[child-process-gone]', details)` | `log.error('child process gone', { details })` |
-| 323 | `console.error('[fleet-cli] Failed to install...')` | `log.error('failed to install CLI binary', { error: err })` |
-| 373 | `console.log('[starbase] bootstrap: got admiral...')` | `starbaseLog.info('bootstrap: got admiral bootstrap data', { ... })` |
-| 387 | `console.log('[starbase] bootstrap: admiral process...')` | `starbaseLog.info('bootstrap: admiral process created')` |
-| 411 | `console.log('[starbase] bootstrap: socket supervisor...')` | `starbaseLog.info('bootstrap: socket supervisor created', { socketPath: SOCKET_PATH })` |
-| 440 | `console.error('[socket-supervisor] Failed to start...')` | `starbaseLog.error('socket supervisor failed to start', { error: err })` |
-| 446 | `console.log('[starbase] bootstrap: socket supervisor start...')` | `starbaseLog.info('bootstrap: socket supervisor start requested')` |
-| 451 | `console.log('[starbase] bootstrap: runtime client...')` | `starbaseLog.info('bootstrap: runtime client bound to command handler')` |
-| 457 | `console.log('[starbase] bootstrap: unread comms...')` | `starbaseLog.info('bootstrap: unread comms fetched', { lastUnreadCommsCount })` |
-| 471 | `console.log('[starbase] bootstrap: unread memos...')` | `starbaseLog.info('bootstrap: unread memos fetched', { lastUnreadMemosCount })` |
-| 478 | `console.log('[starbase] bootstrap: ensured star...')` | `starbaseLog.info('bootstrap: ensured star command tab')` |
-| 484 | `console.log('[starbase] bootstrap: initial snapshot...')` | `starbaseLog.info('bootstrap: initial snapshot handled')` |
-| 488 | `console.log('[starbase] bootstrap: ready')` | `starbaseLog.info('bootstrap: ready')` |
-| 494 | `console.error('[starbase] Failed to initialize...')` | `starbaseLog.error('failed to initialize Star Command database', { error: err })` |
-| 576 | `console.error('[admiral] Failed to start...')` | `starbaseLog.error('admiral failed to start', { error: err })` |
-| 794 | `console.log('[auto-updater] status:...')` | `updaterLog.info('status', { state: status.state })` |
-| 903 | `console.error('Auto-update check failed:...')` | `updaterLog.error('auto-update check failed', { error: err })` |
-| 917 | `console.error('[socket-supervisor] stop error:...')` | `starbaseLog.error('socket supervisor stop error', { error: err })` |
+| Line | Before                                                            | After                                                                                   |
+| ---- | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 70   | `console.log('[fleet-main] startup marker...')`                   | `log.info('startup marker runtime=spawn-ipc preload=out/preload/index.js')`             |
+| 202  | `console.log(\`[renderer] ${event.message}\`)`                    | `log.info(event.message, { source: 'renderer' })`                                       |
+| 210  | `console.error(\`[renderer] Failed to load...\`)`                 | `log.error('failed to load', { source: 'renderer', errorCode, errorDescription })`      |
+| 248  | `console.log('[debug DOM]', r)`                                   | `log.debug('DOM debug', { result: r })`                                                 |
+| 250  | `console.log('[debug err]', e)`                                   | `log.debug('DOM debug error', { error: e })`                                            |
+| 298  | `console.error('[child-process-gone]', details)`                  | `log.error('child process gone', { details })`                                          |
+| 323  | `console.error('[fleet-cli] Failed to install...')`               | `log.error('failed to install CLI binary', { error: err })`                             |
+| 373  | `console.log('[starbase] bootstrap: got admiral...')`             | `starbaseLog.info('bootstrap: got admiral bootstrap data', { ... })`                    |
+| 387  | `console.log('[starbase] bootstrap: admiral process...')`         | `starbaseLog.info('bootstrap: admiral process created')`                                |
+| 411  | `console.log('[starbase] bootstrap: socket supervisor...')`       | `starbaseLog.info('bootstrap: socket supervisor created', { socketPath: SOCKET_PATH })` |
+| 440  | `console.error('[socket-supervisor] Failed to start...')`         | `starbaseLog.error('socket supervisor failed to start', { error: err })`                |
+| 446  | `console.log('[starbase] bootstrap: socket supervisor start...')` | `starbaseLog.info('bootstrap: socket supervisor start requested')`                      |
+| 451  | `console.log('[starbase] bootstrap: runtime client...')`          | `starbaseLog.info('bootstrap: runtime client bound to command handler')`                |
+| 457  | `console.log('[starbase] bootstrap: unread comms...')`            | `starbaseLog.info('bootstrap: unread comms fetched', { lastUnreadCommsCount })`         |
+| 471  | `console.log('[starbase] bootstrap: unread memos...')`            | `starbaseLog.info('bootstrap: unread memos fetched', { lastUnreadMemosCount })`         |
+| 478  | `console.log('[starbase] bootstrap: ensured star...')`            | `starbaseLog.info('bootstrap: ensured star command tab')`                               |
+| 484  | `console.log('[starbase] bootstrap: initial snapshot...')`        | `starbaseLog.info('bootstrap: initial snapshot handled')`                               |
+| 488  | `console.log('[starbase] bootstrap: ready')`                      | `starbaseLog.info('bootstrap: ready')`                                                  |
+| 494  | `console.error('[starbase] Failed to initialize...')`             | `starbaseLog.error('failed to initialize Star Command database', { error: err })`       |
+| 576  | `console.error('[admiral] Failed to start...')`                   | `starbaseLog.error('admiral failed to start', { error: err })`                          |
+| 794  | `console.log('[auto-updater] status:...')`                        | `updaterLog.info('status', { state: status.state })`                                    |
+| 903  | `console.error('Auto-update check failed:...')`                   | `updaterLog.error('auto-update check failed', { error: err })`                          |
+| 917  | `console.error('[socket-supervisor] stop error:...')`             | `starbaseLog.error('socket supervisor stop error', { error: err })`                     |
 
 - [ ] **Step 3: Remove any `// eslint-disable-next-line no-console` comments that precede migrated lines**
 
@@ -261,6 +264,7 @@ git commit -m "refactor(logger): migrate src/main/index.ts from console.* to Win
 ### Task 4: Migrate `src/main/pty-manager.ts` and `src/main/ipc-handlers.ts`
 
 **Files:**
+
 - Modify: `src/main/pty-manager.ts`
 - Modify: `src/main/ipc-handlers.ts`
 
@@ -274,8 +278,9 @@ const log = createLogger('pty');
 ```
 
 Replace console calls:
-- Line 49-51: `console.log(\`[pty] ${opts.paneId} already exists...\`)` → `log.debug('already exists, returning existing', { paneId: opts.paneId, pid: existing.process.pid })`
-- Line 69-71: `console.log(\`[pty] shell="${shell}"...\`)` → `log.debug('spawning', { shell, cwd: opts.cwd, path: process.env.PATH?.substring(0, 80) })`
+
+- Line 49-51: `console.log(\`[pty] ${opts.paneId} already exists...\`)`→`log.debug('already exists, returning existing', { paneId: opts.paneId, pid: existing.process.pid })`
+- Line 69-71: `console.log(\`[pty] shell="${shell}"...\`)`→`log.debug('spawning', { shell, cwd: opts.cwd, path: process.env.PATH?.substring(0, 80) })`
 - Line 195: `console.warn(...)` → `log.warn(...)` with structured metadata
 
 Remove associated `// eslint-disable-next-line no-console` comments.
@@ -290,7 +295,8 @@ const log = createLogger('ipc');
 ```
 
 Replace console calls:
-- Line 152: `console.log(\`[pty-gc] killed ${killed.length}...\`)` → `log.info('killed orphaned PTYs', { count: killed.length, paneIds: killed })`
+
+- Line 152: `console.log(\`[pty-gc] killed ${killed.length}...\`)`→`log.info('killed orphaned PTYs', { count: killed.length, paneIds: killed })`
 - Line 166: `console.error('[layout-save] Failed...')` → `log.error('failed to save workspace', { error: err })`
 
 Remove associated `// eslint-disable-next-line no-console` comments.
@@ -313,6 +319,7 @@ git commit -m "refactor(logger): migrate pty-manager and ipc-handlers to Winston
 ### Task 5: Migrate `src/main/socket-supervisor.ts` and `src/main/starbase-runtime-client.ts`
 
 **Files:**
+
 - Modify: `src/main/socket-supervisor.ts`
 - Modify: `src/main/starbase-runtime-client.ts`
 
@@ -326,6 +333,7 @@ const log = createLogger('socket-supervisor');
 ```
 
 Replace all console calls (8 total):
+
 - Line 48: `console.error('[socket-supervisor] Max restarts...')` → `log.error('max restarts exceeded in 5-minute window, giving up')`
 - Line 62: `console.error('[socket-supervisor] Error stopping...')` → `log.error('error stopping server during restart', { error: err })`
 - Line 72: `console.log('[socket-supervisor] Server restarted...')` → `log.info('server restarted successfully')`
@@ -347,9 +355,10 @@ const log = createLogger('starbase-runtime');
 ```
 
 Replace all console calls (13 total):
-- Line 77: `console.log(\`[starbase-runtime] spawned...\`)` → `log.info('spawned', { pid: child.pid ?? 'unknown' })`
-- Line 85: `console.log(\`[starbase-runtime:stdout]...\`)` → `log.debug('child stdout', { text })`
-- Line 92: `console.error(\`[starbase-runtime:stderr]...\`)` → `log.warn('child stderr', { text })`
+
+- Line 77: `console.log(\`[starbase-runtime] spawned...\`)`→`log.info('spawned', { pid: child.pid ?? 'unknown' })`
+- Line 85: `console.log(\`[starbase-runtime:stdout]...\`)`→`log.debug('child stdout', { text })`
+- Line 92: `console.error(\`[starbase-runtime:stderr]...\`)`→`log.warn('child stderr', { text })`
 - Line 97: `console.error('[starbase-runtime] child process error...')` → `log.error('child process error', { error })`
 - Line 104: `console.log('[starbase-runtime] parent received message...')` → `log.debug('parent received message', { ... })`
 - Line 118: `console.error('[starbase-runtime] exited...')` → `log.error('exited', { code })`
@@ -379,6 +388,7 @@ git commit -m "refactor(logger): migrate socket-supervisor and starbase-runtime-
 ### Task 6: Migrate `src/main/shell-env.ts` and `src/main/install-fleet-cli.ts`
 
 **Files:**
+
 - Modify: `src/main/shell-env.ts`
 - Modify: `src/main/install-fleet-cli.ts`
 
@@ -392,9 +402,10 @@ const log = createLogger('shell-env');
 ```
 
 Replace console calls (3 total):
-- Line 34: `console.log(\`[shell-env] Resolved PATH...\`)` → `log.debug('resolved PATH', { path: process.env.PATH?.substring(0, 120) })`
+
+- Line 34: `console.log(\`[shell-env] Resolved PATH...\`)`→`log.debug('resolved PATH', { path: process.env.PATH?.substring(0, 120) })`
 - Line 36: `console.warn('[shell-env] Failed to resolve...')` → `log.warn('failed to resolve shell env, falling back to path probing', { error: err })`
-- Line 102: `console.log(\`[shell-env] Fallback PATH...\`)` → `log.debug('fallback PATH', { path: process.env.PATH?.substring(0, 120) })`
+- Line 102: `console.log(\`[shell-env] Fallback PATH...\`)`→`log.debug('fallback PATH', { path: process.env.PATH?.substring(0, 120) })`
 
 - [ ] **Step 2: Migrate install-fleet-cli.ts**
 
@@ -406,9 +417,10 @@ const log = createLogger('fleet-cli');
 ```
 
 Replace console calls (3 total):
+
 - Line 150: `console.warn('[fleet-cli] Could not update...')` → `log.warn('could not update shell profile', { error: err })`
-- Line 154: `console.log(\`[fleet-cli] Installed fleet CLI...\`)` → `log.info('installed fleet CLI', { path: wrapperPath })`
-- Line 197: `console.log(\`[fleet-cli] Added ~/.fleet/bin...\`)` → `log.info('added ~/.fleet/bin to shell profile', { profilePath })`
+- Line 154: `console.log(\`[fleet-cli] Installed fleet CLI...\`)`→`log.info('installed fleet CLI', { path: wrapperPath })`
+- Line 197: `console.log(\`[fleet-cli] Added ~/.fleet/bin...\`)`→`log.info('added ~/.fleet/bin to shell profile', { profilePath })`
 
 - [ ] **Step 3: Run typecheck and lint**
 
@@ -428,6 +440,7 @@ git commit -m "refactor(logger): migrate shell-env and install-fleet-cli to Wins
 ### Task 7: Migrate Starbase Modules (`src/main/starbase/`)
 
 **Files:**
+
 - Modify: `src/main/starbase/sentinel.ts`
 - Modify: `src/main/starbase/hull.ts`
 - Modify: `src/main/starbase/first-officer.ts`
@@ -447,13 +460,14 @@ const log = createLogger('sentinel');
 ```
 
 Replace all console calls (10 total). Pattern: strip `[sentinel]` prefix, use structured metadata for errors. Examples:
+
 - `console.error('[sentinel] Sweep failed:', err)` → `log.error('sweep failed', { error: err })`
-- `console.warn(\`[sentinel] Socket ping failed...\`)` → `log.warn('socket ping failed', { failures: this.consecutivePingFailures })`
-- `console.error(\`[sentinel] Guidance dispatch error for crew ${row.crew_id}:\`, err)` → `log.error('guidance dispatch error', { crewId: row.crew_id, error: err })`
-- `console.error(\`[sentinel] FO dispatch error for mission ${row.mid}:\`, err)` → `log.error('FO dispatch error', { missionId: row.mid, error: err })`
-- `console.error(\`[sentinel] Review crew deploy failed...\`)` → `log.error('review crew deploy failed', { missionId: mission.id, error: err })`
-- `console.error(\`[sentinel] Fix crew deploy failed...\`)` → `log.error('fix crew deploy failed', { missionId: mission.id, error: err })`
-- `console.error(\`[sentinel] prMonitorSweep error...\`)` → `log.error('prMonitorSweep error', { missionId: mission.id, error: err })`
+- `console.warn(\`[sentinel] Socket ping failed...\`)`→`log.warn('socket ping failed', { failures: this.consecutivePingFailures })`
+- `console.error(\`[sentinel] Guidance dispatch error for crew ${row.crew_id}:\`, err)`→`log.error('guidance dispatch error', { crewId: row.crew_id, error: err })`
+- `console.error(\`[sentinel] FO dispatch error for mission ${row.mid}:\`, err)`→`log.error('FO dispatch error', { missionId: row.mid, error: err })`
+- `console.error(\`[sentinel] Review crew deploy failed...\`)`→`log.error('review crew deploy failed', { missionId: mission.id, error: err })`
+- `console.error(\`[sentinel] Fix crew deploy failed...\`)`→`log.error('fix crew deploy failed', { missionId: mission.id, error: err })`
+- `console.error(\`[sentinel] prMonitorSweep error...\`)`→`log.error('prMonitorSweep error', { missionId: mission.id, error: err })`
 - Remaining calls follow the same pattern.
 
 - [ ] **Step 2: Migrate hull.ts**
@@ -466,10 +480,11 @@ const log = createLogger('hull');
 ```
 
 Replace all console calls (9 total, skip the string template on line 350). Pattern:
-- `console.error(\`[hull:${crewId}] stderr:\`, ...)` → `log.warn('crew stderr', { crewId, text: chunk.toString().trim() })`
+
+- `console.error(\`[hull:${crewId}] stderr:\`, ...)`→`log.warn('crew stderr', { crewId, text: chunk.toString().trim() })`
 - `console.error('[hull] cleanup error:', ...)` → `log.error('cleanup error', { error: ... })`
-- `console.error(\`[hull:${crewId}] cargo file write failed:\`, ...)` → `log.error('cargo file write failed', { crewId, error: fileErr })`
-- `console.error(\`[hull] Failed to remove worktree: ${worktreePath}\`)` → `log.error('failed to remove worktree', { worktreePath })`
+- `console.error(\`[hull:${crewId}] cargo file write failed:\`, ...)`→`log.error('cargo file write failed', { crewId, error: fileErr })`
+- `console.error(\`[hull] Failed to remove worktree: ${worktreePath}\`)`→`log.error('failed to remove worktree', { worktreePath })`
 - Remaining `console.error('[hull] ...')` calls follow the same pattern.
 
 - [ ] **Step 3: Migrate first-officer.ts**
@@ -482,8 +497,9 @@ const log = createLogger('first-officer');
 ```
 
 Replace console calls (2 total):
-- `console.error(\`[first-officer:${event.crewId}] stderr:\`, ...)` → `log.warn('crew stderr', { crewId: event.crewId, text: chunk.toString().trim() })`
-- `console.warn(\`[first-officer] Timeout for ${k}, killing\`)` → `log.warn('timeout, killing', { key: k })`
+
+- `console.error(\`[first-officer:${event.crewId}] stderr:\`, ...)`→`log.warn('crew stderr', { crewId: event.crewId, text: chunk.toString().trim() })`
+- `console.warn(\`[first-officer] Timeout for ${k}, killing\`)`→`log.warn('timeout, killing', { key: k })`
 
 - [ ] **Step 4: Migrate navigator.ts**
 
@@ -495,8 +511,9 @@ const log = createLogger('navigator');
 ```
 
 Replace console calls (2 total):
-- `console.error(\`[navigator:${event.executionId}] stderr:\`, ...)` → `log.warn('stderr', { executionId: event.executionId, text: chunk.toString().trim() })`
-- `console.warn(\`[navigator] Timeout for ${event.executionId}, killing\`)` → `log.warn('timeout, killing', { executionId: event.executionId })`
+
+- `console.error(\`[navigator:${event.executionId}] stderr:\`, ...)`→`log.warn('stderr', { executionId: event.executionId, text: chunk.toString().trim() })`
+- `console.warn(\`[navigator] Timeout for ${event.executionId}, killing\`)`→`log.warn('timeout, killing', { executionId: event.executionId })`
 
 - [ ] **Step 5: Migrate reconciliation.ts**
 
@@ -508,7 +525,8 @@ const log = createLogger('reconciliation');
 ```
 
 Replace console calls (2 total):
-- `console.error(\`[reconciliation] Failed to remove orphaned worktree: ${fullPath}\`)` → `log.error('failed to remove orphaned worktree', { path: fullPath })`
+
+- `console.error(\`[reconciliation] Failed to remove orphaned worktree: ${fullPath}\`)`→`log.error('failed to remove orphaned worktree', { path: fullPath })`
 - `console.error(...)` (line 225) → `log.error(...)` with structured metadata
 
 - [ ] **Step 6: Migrate worktree-manager.ts**
@@ -521,8 +539,9 @@ const log = createLogger('worktree');
 ```
 
 Replace console calls (2 total):
-- `console.error(\`[worktree] Failed to remove worktree: ${worktreePath}\`)` → `log.error('failed to remove worktree', { path: worktreePath })`
-- `console.error(\`[worktree] Failed to prune worktrees for: ${sectorPath}\`)` → `log.error('failed to prune worktrees', { sectorPath })`
+
+- `console.error(\`[worktree] Failed to remove worktree: ${worktreePath}\`)`→`log.error('failed to remove worktree', { path: worktreePath })`
+- `console.error(\`[worktree] Failed to prune worktrees for: ${sectorPath}\`)`→`log.error('failed to prune worktrees', { sectorPath })`
 
 - [ ] **Step 7: Run typecheck and lint**
 
@@ -575,7 +594,7 @@ npm run build
 
 Expected: Build succeeds. Winston is bundled into the main process output.
 
-- [ ] **Step 5: Verify no remaining console.* in migrated files**
+- [ ] **Step 5: Verify no remaining console.\* in migrated files**
 
 Search for any straggling `console.` calls in migrated files (excluding `starbase-runtime-process.ts` and string templates):
 
@@ -592,6 +611,7 @@ npm run dev
 ```
 
 Verify:
+
 - Colorized log output appears in terminal with `[tag] level: message` format
 - Log file is created at `~/.fleet/logs/fleet-YYYY-MM-DD.log`
 - Log file contains JSON-formatted entries

@@ -12,6 +12,6 @@ export function createLogger(tag: string) {
     warn: (msg: string, meta?: Record<string, unknown>) =>
       console.warn(fullPrefix, STYLE, tagStyle, msg, meta ?? ''),
     error: (msg: string, meta?: Record<string, unknown>) =>
-      console.error(fullPrefix, STYLE, tagStyle, msg, meta ?? ''),
+      console.error(fullPrefix, STYLE, tagStyle, msg, meta ?? '')
   };
 }

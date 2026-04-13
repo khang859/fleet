@@ -8,8 +8,20 @@ import { SettingRow } from './SettingRow';
 import type { Workspace } from '../../../../shared/types';
 
 const SYSTEM_SOUNDS = [
-  'Pop', 'Ping', 'Tink', 'Glass', 'Blow', 'Bottle', 'Frog',
-  'Funk', 'Hero', 'Morse', 'Purr', 'Sosumi', 'Submarine', 'Basso',
+  'Pop',
+  'Ping',
+  'Tink',
+  'Glass',
+  'Blow',
+  'Bottle',
+  'Frog',
+  'Funk',
+  'Hero',
+  'Morse',
+  'Purr',
+  'Sosumi',
+  'Submarine',
+  'Basso'
 ];
 
 export function CopilotSection(): React.JSX.Element | null {
@@ -22,11 +34,17 @@ export function CopilotSection(): React.JSX.Element | null {
   const [wsHookStatus, setWsHookStatus] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    window.fleet.layout.list().then((res) => setWorkspaces(res.workspaces)).catch(() => {});
-    window.fleet.copilot.serviceStatus().then((st) => {
-      setHookInstalled(st.hookInstalled);
-      setClaudeDetected(st.claudeDetected);
-    }).catch(() => {});
+    window.fleet.layout
+      .list()
+      .then((res) => setWorkspaces(res.workspaces))
+      .catch(() => {});
+    window.fleet.copilot
+      .serviceStatus()
+      .then((st) => {
+        setHookInstalled(st.hookInstalled);
+        setClaudeDetected(st.claudeDetected);
+      })
+      .catch(() => {});
   }, []);
 
   if (!settings) return null;
@@ -55,7 +73,7 @@ export function CopilotSection(): React.JSX.Element | null {
     configToastTimer.current = setTimeout(() => {
       showToast('Config updated — open new terminals to apply', {
         duration: 6000,
-        action: { label: 'Restart Terminals', onClick: restartAllTerminals },
+        action: { label: 'Restart Terminals', onClick: restartAllTerminals }
       });
     }, 800);
   }, [showToast, restartAllTerminals]);
@@ -114,9 +132,12 @@ export function CopilotSection(): React.JSX.Element | null {
       });
       return;
     }
-    window.fleet.copilot.hookStatusFor(configDir).then((installed) => {
-      setWsHookStatus((prev) => ({ ...prev, [wsId]: installed }));
-    }).catch(() => {});
+    window.fleet.copilot
+      .hookStatusFor(configDir)
+      .then((installed) => {
+        setWsHookStatus((prev) => ({ ...prev, [wsId]: installed }));
+      })
+      .catch(() => {});
   };
 
   const handleWsExpandToggle = (wsId: string): void => {
@@ -171,13 +192,13 @@ export function CopilotSection(): React.JSX.Element | null {
           >
             <option value="">None</option>
             {SYSTEM_SOUNDS.map((sound) => (
-              <option key={sound} value={sound}>{sound}</option>
+              <option key={sound} value={sound}>
+                {sound}
+              </option>
             ))}
           </select>
         </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">
-          Sound played when an agent needs attention.
-        </p>
+        <p className="text-xs text-neutral-500 mt-1">Sound played when an agent needs attention.</p>
       </div>
 
       {/* Config Directory */}
@@ -220,7 +241,9 @@ export function CopilotSection(): React.JSX.Element | null {
           </div>
         )}
         <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full ${hookInstalled ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span
+            className={`w-2 h-2 rounded-full ${hookInstalled ? 'bg-green-500' : 'bg-red-500'}`}
+          />
           <span className="text-sm text-neutral-300">
             {hookInstalled ? 'Installed' : 'Not installed'}
           </span>
@@ -284,7 +307,9 @@ export function CopilotSection(): React.JSX.Element | null {
                   {isExpanded && (
                     <div className="px-3 pb-3 space-y-3 border-t border-neutral-700/50">
                       <div className="pt-2">
-                        <label className="text-xs text-neutral-400 block mb-1">Config Directory</label>
+                        <label className="text-xs text-neutral-400 block mb-1">
+                          Config Directory
+                        </label>
                         <div className="flex gap-2">
                           <input
                             type="text"
@@ -315,14 +340,18 @@ export function CopilotSection(): React.JSX.Element | null {
                           <div>
                             <label className="text-xs text-neutral-400 block mb-1">Hooks</label>
                             <div className="flex items-center gap-2">
-                              <span className={`w-1.5 h-1.5 rounded-full ${installed ? 'bg-green-500' : 'bg-red-500'}`} />
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${installed ? 'bg-green-500' : 'bg-red-500'}`}
+                              />
                               <span className="text-xs text-neutral-300">
                                 {installed ? 'Installed' : 'Not installed'}
                               </span>
                               <button
-                                onClick={() => void (installed
-                                  ? handleWsUninstallHooks(ws.id, wsConfigDir)
-                                  : handleWsInstallHooks(ws.id, wsConfigDir))}
+                                onClick={() =>
+                                  void (installed
+                                    ? handleWsUninstallHooks(ws.id, wsConfigDir)
+                                    : handleWsInstallHooks(ws.id, wsConfigDir))
+                                }
                                 className="px-2 py-0.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
                               >
                                 {installed ? 'Uninstall' : 'Install'}

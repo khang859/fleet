@@ -126,9 +126,7 @@ describe('NotificationDetector', () => {
 
     detector.scan('pane-1', '\x1b]133;C\x1b\\');
 
-    expect(callback).toHaveBeenCalledWith(
-      expect.objectContaining({ paneId: 'pane-1' })
-    );
+    expect(callback).toHaveBeenCalledWith(expect.objectContaining({ paneId: 'pane-1' }));
   });
 
   it('does not emit notification for tmux DCS sequences', () => {

@@ -31,6 +31,7 @@
 ### Task 1: Add `settings` to the Tab type
 
 **Files:**
+
 - Modify: `src/shared/types.ts:14`
 
 - [ ] **Step 1: Update the Tab type union**
@@ -66,6 +67,7 @@ git commit -m "feat(settings): add settings to Tab type union"
 ### Task 2: Create the debounce hook
 
 **Files:**
+
 - Create: `src/renderer/src/hooks/use-debounced-callback.ts`
 
 - [ ] **Step 1: Create the hook**
@@ -116,6 +118,7 @@ git commit -m "feat(settings): add useDebouncedCallback hook"
 ### Task 3: Create shared SettingRow component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/SettingRow.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -156,6 +159,7 @@ git commit -m "feat(settings): extract shared SettingRow component"
 ### Task 4: Create GeneralSection component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/GeneralSection.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -391,6 +395,7 @@ git commit -m "feat(settings): create GeneralSection with debounced text inputs"
 ### Task 5: Create NotificationsSection component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/NotificationsSection.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -482,6 +487,7 @@ git commit -m "feat(settings): create NotificationsSection component"
 ### Task 6: Create SocketSection component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/SocketSection.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -538,6 +544,7 @@ git commit -m "feat(settings): create SocketSection component"
 ### Task 7: Create VisualizerSection component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/VisualizerSection.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -687,6 +694,7 @@ git commit -m "feat(settings): create VisualizerSection component"
 ### Task 8: Create UpdatesSection component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/UpdatesSection.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -801,6 +809,7 @@ git commit -m "feat(settings): create UpdatesSection component"
 ### Task 9: Create SettingsNav component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/SettingsNav.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -863,6 +872,7 @@ git commit -m "feat(settings): create SettingsNav sidebar component"
 ### Task 10: Create SettingsTab component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/SettingsTab.tsx`
 
 - [ ] **Step 1: Create the component**
@@ -919,6 +929,7 @@ git commit -m "feat(settings): create SettingsTab two-column layout"
 ### Task 11: Wire up settings tab in App.tsx and remove modal
 
 **Files:**
+
 - Modify: `src/renderer/src/App.tsx`
 - Delete: `src/renderer/src/components/SettingsModal.tsx`
 
@@ -1080,6 +1091,7 @@ git commit -m "feat(settings): wire up settings tab and remove modal"
 ### Task 12: Update Sidebar settings icon for active state
 
 **Files:**
+
 - Modify: `src/renderer/src/components/Sidebar.tsx:979`
 
 - [ ] **Step 1: Update the full Sidebar settings button**
@@ -1105,12 +1117,11 @@ Then apply active styling to the button, similar to how other active tabs are st
 In `App.tsx`, the mini sidebar settings button (around line 649-656) also needs the active state. Compute `isSettingsActive` similarly and apply styling:
 
 ```typescript
-const isSettingsActive = workspace.tabs.some(
-  (t) => t.type === 'settings' && t.id === activeTabId
-);
+const isSettingsActive = workspace.tabs.some((t) => t.type === 'settings' && t.id === activeTabId);
 ```
 
 Apply to the button class:
+
 ```typescript
 className={`p-2 rounded transition-colors ${
   isSettingsActive
@@ -1143,7 +1154,7 @@ tabs: state.workspace.tabs
   .map((tab) => ({
     ...tab,
     splitRoot: injectLiveCwd(tab.splitRoot)
-  }))
+  }));
 ```
 
 Apply the same filter for background workspace saving in the same function.
@@ -1172,6 +1183,7 @@ Expected: PASS
 - [ ] **Step 2: Manual testing checklist**
 
 Verify in the running app:
+
 1. Click settings button in sidebar — opens a Settings tab
 2. Settings tab shows left nav with 5 sections
 3. Click each section — content swaps correctly

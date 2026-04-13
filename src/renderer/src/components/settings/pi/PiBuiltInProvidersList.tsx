@@ -7,7 +7,8 @@ export function PiBuiltInProvidersList({ items }: Props): React.JSX.Element {
     <section className="space-y-2">
       <h2 className="text-sm font-semibold text-neutral-200">Built-in Providers</h2>
       <p className="text-xs text-neutral-500">
-        Status is read-only. Run <code>pi</code> and use <code>/login</code> for OAuth providers, or set env vars for API-key providers.
+        Status is read-only. Run <code>pi</code> and use <code>/login</code> for OAuth providers, or
+        set env vars for API-key providers.
       </p>
       <ul className="divide-y divide-neutral-800 border border-neutral-800 rounded">
         {items.map((p) => (
@@ -22,7 +23,9 @@ export function PiBuiltInProvidersList({ items }: Props): React.JSX.Element {
               {p.method === 'oauth' && 'Authenticated via OAuth'}
               {p.method === 'env-var' && p.envVarName && `${p.envVarName} set`}
               {p.method === 'none' &&
-                (p.envVarName ? `Not configured (set ${p.envVarName} or run /login)` : 'Not configured')}
+                (p.envVarName
+                  ? `Not configured (set ${p.envVarName} or run /login)`
+                  : 'Not configured')}
             </span>
             {p.hint && (
               <span className="text-xs text-neutral-600" title={p.hint}>

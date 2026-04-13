@@ -7,7 +7,7 @@ The Pi extension `resources/pi-extensions/fleet-files.ts` sends a bridge request
 On the Fleet side, `src/main/index.ts` handled that `file.open` bridge request by hard-coding:
 
 ```ts
-paneType: 'file'
+paneType: 'file';
 ```
 
 So every file opened through the Pi bridge was treated as a text file, even when the path was an image or markdown file. That is why images could show up as plain text instead of opening in the image viewer.

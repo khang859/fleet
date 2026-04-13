@@ -9,6 +9,7 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 ### Files to Delete
 
 **Frontend components (`src/renderer/src/components/star-command/`)** — 18 files:
+
 - `Avatar.tsx`, `CrtFrame.tsx`, `StationHub.tsx`, `StatusBar.tsx`, `LogsPanel.tsx`
 - `CrewPanel.tsx`, `CrewChips.tsx`, `CommsPanel.tsx`, `MemoPanel.tsx`, `MissionsPanel.tsx`
 - `AdmiralSidebar.tsx`, `StarCommandScene.tsx`, `DependencyCheckScreen.tsx`
@@ -16,11 +17,13 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 - `__tests__/scene-utils.test.ts`, `__tests__/LogsPanel.test.ts`
 
 **Frontend top-level star command files:**
+
 - `src/renderer/src/components/StarCommandTab.tsx`
 - `src/renderer/src/components/StarCommandConfig.tsx`
 - `src/renderer/src/store/star-command-store.ts`
 
 **Backend starbase directory (`src/main/starbase/`)** — 36 files:
+
 - All services: `db.ts`, `sector-service.ts`, `crew-service.ts`, `mission-service.ts`, `comms-service.ts`, `cargo-service.ts`, `protocol-service.ts`, `config-service.ts`, `retention-service.ts`, `supply-route-service.ts`, `ships-log.ts`
 - Agents: `navigator.ts`, `first-officer.ts`, `hull.ts`, `admiral-state-detector.ts`, `admiral-process.ts`, `analyst.ts`, `sentinel.ts`
 - Infra: `migrations.ts`, `lockfile.ts`, `reconciliation.ts`, `worktree-manager.ts`, `error-fingerprint.ts`, `available-memory.ts`, `conventional-commits.ts`
@@ -28,12 +31,14 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 - `workspace-templates.ts`
 
 **Backend starbase runtime files (`src/main/`):**
+
 - `starbase-runtime-core.ts`
 - `starbase-runtime-socket-services.ts`
 - `starbase-runtime-client.ts`
 - `starbase-runtime-process.ts`
 
 **Tests:**
+
 - `src/main/__tests__/conventional-commits.test.ts`
 - `src/main/__tests__/workspace-templates.test.ts`
 - `src/main/__tests__/runtime-message-shape.test.ts`
@@ -41,9 +46,11 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 - `src/renderer/src/components/star-command/__tests__/LogsPanel.test.ts`
 
 **Scripts:**
+
 - `scripts/assemble-star-command-sprites.ts`
 
 **Docs (all star-command-related):**
+
 - `docs/star-command.md`
 - `docs/star-command-visual-prompts.md`
 - `docs/star-command-chart-prompts.md`
@@ -57,6 +64,7 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 **`src/shared/types.ts`** — Remove star command types (StarCommand tab type, starbase-related interfaces)
 
 **`src/main/index.ts`** — Remove:
+
 - Starbase imports and initialization
 - Admiral process creation
 - Starbase bootstrap logic
@@ -69,6 +77,7 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 **`src/main/layout-store.ts`** — Remove star command tab type handling
 
 **`src/main/socket-command-handler.ts`** — Remove:
+
 - All starbase service imports and fields
 - `setStarbaseServices()`, `setPhase2Services()`, `setRuntimeClient()`
 - All starbase command cases (`sectors`, `add-sector`, `config-get`, `config-set`, `deploy`, `recall`, `crew`, `missions`)
@@ -76,6 +85,7 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 **`src/main/socket-server.ts`** — Remove admiral-related handling
 
 **`src/main/event-bus.ts`** — Remove:
+
 - `admiral-state-change` event type
 - `starbase-changed` event type
 
@@ -100,6 +110,7 @@ Completely remove the Star Command system (starbase, crews, missions, sectors, c
 **Keep CLI command groups:** images, open
 
 **Clean up:**
+
 - `COMMAND_MAP` — remove all entries except `images.*`
 - `validateCommand()` — remove all cases except image-related
 - `HELP_TOP` — rewrite to only reference images and open
