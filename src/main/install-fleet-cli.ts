@@ -1,11 +1,55 @@
-import { mkdir, writeFile, chmod, readFile, appendFile } from 'node:fs/promises';
-import { join, dirname } from 'node:path';
+import {
+  mkdir,
+  writeFile,
+  chmod,
+  readFile,
+  appendFile,
+  copyFile,
+  readdir,
+  rm
+} from 'node:fs/promises';
+import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 
 import { createLogger } from './logger';
 const log = createLogger('fleet-cli');
+
+async function copyDirectoryRecursive(sourceDir: string, destDir: string): Promise<void> {
+  await mkdir(destDir, { recursive: true });
+  const entries = await readdir(sourceDir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const sourcePath = join(sourceDir, entry.name);
+    const destPath = join(destDir, entry.name);
+
+    if (entry.isDirectory()) {
+      await copyDirectoryRecursive(sourcePath, destPath);
+      continue;
+    }
+
+    if (entry.isFile()) {
+      await copyFile(sourcePath, destPath);
+    }
+  }
+}
+
+async function installBundledCliArtifacts(compiledPath: string, libDir: string): Promise<string> {
+  const cliEntrypoint = join(libDir, basename(compiledPath));
+  await copyFile(compiledPath, cliEntrypoint);
+
+  const chunksSourceDir = join(dirname(compiledPath), 'chunks');
+  const chunksDestDir = join(libDir, 'chunks');
+  if (existsSync(chunksSourceDir)) {
+    await rm(chunksDestDir, { recursive: true, force: true });
+    await copyDirectoryRecursive(chunksSourceDir, chunksDestDir);
+  } else {
+    await rm(chunksDestDir, { recursive: true, force: true });
+  }
+
+  return cliEntrypoint;
+}
 
 // ── installFleetCLI ───────────────────────────────────────────────────────────
 //
@@ -88,18 +132,15 @@ fi
       ? join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.mjs')
       : join(dirname(fileURLToPath(import.meta.url)), 'fleet-cli.js');
 
-    // Copy the compiled CLI to ~/.fleet/lib/fleet-cli.mjs
-    // Must use .mjs extension so Node loads it as ESM (it contains import statements)
-    const { readFile } = await import('node:fs/promises');
-    const compiledSource = await readFile(compiledPath, 'utf8');
-    cliEntrypoint = join(libDir, 'fleet-cli.mjs');
-    await writeFile(cliEntrypoint, compiledSource, 'utf8');
+    // Copy the compiled CLI plus any emitted Rollup chunks to ~/.fleet/lib.
+    // The CLI is ESM and may import ./chunks/*.mjs helper files.
+    cliEntrypoint = await installBundledCliArtifacts(compiledPath, libDir);
 
     wrapperContent = `#!/bin/bash
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
-exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
+exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
 `;
   } else {
     // Dev mode: resolve the TypeScript source file
@@ -136,7 +177,7 @@ process.exit(result.status ?? 1);
 # Fleet CLI — connects to running Fleet app via Unix socket
 ${nodeResolverScript}
 FLEET_DIR="$(dirname "$(dirname "$0")")"
-exec node "$FLEET_DIR/lib/fleet-cli.mjs" "$@"
+exec node "$FLEET_DIR/lib/${basename(cliEntrypoint)}" "$@"
 `;
   }
 
