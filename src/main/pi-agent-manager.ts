@@ -31,8 +31,40 @@ export class PiAgentManager {
     }
   }
 
+  private refreshVersion(): string | null {
+    try {
+      const scopedPkg = join(
+        PI_INSTALL_DIR,
+        'node_modules',
+        '@mariozechner',
+        'pi-coding-agent',
+        'package.json'
+      );
+      const parsed: unknown = JSON.parse(readFileSync(scopedPkg, 'utf-8'));
+      if (!parsed || typeof parsed !== 'object' || !('version' in parsed)) {
+        throw new Error('pi-coding-agent package.json missing version field');
+      }
+      const version = parsed.version;
+      if (typeof version !== 'string') {
+        throw new Error('pi-coding-agent version is not a string');
+      }
+      this.installedVersion = version;
+      writeFileSync(VERSION_FILE, version);
+      return version;
+    } catch (err) {
+      log.warn('Could not read pi agent version', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+      return this.installedVersion;
+    }
+  }
+
   isInstalled(): boolean {
     return this.installedVersion !== null && existsSync(this.getBinPath());
+  }
+
+  getVersion(): string | null {
+    return this.installedVersion;
   }
 
   getBinPath(): string {
@@ -95,43 +127,56 @@ export class PiAgentManager {
 
     const pkgJsonPath = join(PI_INSTALL_DIR, 'package.json');
     if (!existsSync(pkgJsonPath)) {
-      writeFileSync(pkgJsonPath, JSON.stringify({ name: 'fleet-pi-agent', private: true }, null, 2));
+      writeFileSync(
+        pkgJsonPath,
+        JSON.stringify({ name: 'fleet-pi-agent', private: true }, null, 2)
+      );
     }
 
-    const { stdout } = await execFileAsync('npm', ['install', PI_PACKAGE, '--prefix', PI_INSTALL_DIR], {
-      timeout: 120_000,
-    });
+    const { stdout } = await execFileAsync(
+      'npm',
+      ['install', PI_PACKAGE, '--prefix', PI_INSTALL_DIR],
+      {
+        timeout: 120_000
+      }
+    );
     log.info('Pi agent installed', { output: stdout.slice(0, 200) });
 
-    try {
-      const scopedPkg = join(PI_INSTALL_DIR, 'node_modules', '@mariozechner', 'pi-coding-agent', 'package.json');
-      const pkg = JSON.parse(readFileSync(scopedPkg, 'utf-8')) as { version: string };
-      this.installedVersion = pkg.version;
-      writeFileSync(VERSION_FILE, this.installedVersion);
-      log.info('Pi agent version', { version: this.installedVersion });
-    } catch (err) {
-      this.installedVersion = 'unknown';
-      writeFileSync(VERSION_FILE, this.installedVersion);
-      log.warn('Could not read pi agent version', {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
+    this.refreshVersion();
+    log.info('Pi agent version', { version: this.installedVersion });
   }
 
-  async checkForUpdates(): Promise<void> {
-    if (!this.isInstalled()) return;
+  async checkForUpdates(): Promise<PiUpdateResult> {
+    if (!this.isInstalled()) {
+      return { previousVersion: null, currentVersion: null, updated: false, installed: false };
+    }
 
+    const previousVersion = this.installedVersion;
     try {
       log.info('Checking for pi-coding-agent updates');
-      await execFileAsync('npm', ['update', PI_PACKAGE, '--prefix', PI_INSTALL_DIR], {
-        timeout: 60_000,
+      await execFileAsync('npm', ['install', `${PI_PACKAGE}@latest`, '--prefix', PI_INSTALL_DIR], {
+        timeout: 120_000
       });
-      this.loadVersion();
-      log.info('Pi agent update check complete', { version: this.installedVersion });
+      const currentVersion = this.refreshVersion();
+      const updated = currentVersion !== null && currentVersion !== previousVersion;
+      log.info('Pi agent update check complete', {
+        previousVersion,
+        currentVersion,
+        updated
+      });
+      return { previousVersion, currentVersion, updated, installed: true };
     } catch (err) {
       log.warn('Pi agent update check failed', {
-        error: err instanceof Error ? err.message : String(err),
+        error: err instanceof Error ? err.message : String(err)
       });
+      throw err;
     }
   }
+}
+
+export interface PiUpdateResult {
+  previousVersion: string | null;
+  currentVersion: string | null;
+  updated: boolean;
+  installed: boolean;
 }

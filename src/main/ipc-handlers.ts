@@ -87,8 +87,7 @@ export function registerIpcHandlers(
     const wsOverride = req.workspaceId
       ? settings.copilot.workspaceOverrides[req.workspaceId]
       : undefined;
-    const claudeConfigDir =
-      wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
+    const claudeConfigDir = wsOverride?.claudeConfigDir || settings.copilot.claudeConfigDir || '';
 
     const extraEnv: Record<string, string> = {};
     if (claudeConfigDir) {
@@ -98,9 +97,7 @@ export function registerIpcHandlers(
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
-      env: Object.keys(extraEnv).length > 0
-        ? { ...process.env, ...extraEnv }
-        : undefined
+      env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined
     });
 
     // Skip re-registering listeners on idempotent path (HMR reloads) to prevent
@@ -448,9 +445,7 @@ export function registerIpcHandlers(
     searchFiles(req)
   );
 
-  ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) =>
-    grepFiles(req)
-  );
+  ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) => grepFiles(req));
 
   ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());
 
@@ -462,19 +457,13 @@ export function registerIpcHandlers(
   startClipboardMonitor();
 
   // Worktree handlers
-  ipcMain.handle(
-    IPC_CHANNELS.WORKTREE_CREATE,
-    async (_event, req: WorktreeCreateRequest) => {
-      return worktreeService.create(req.repoPath);
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.WORKTREE_CREATE, async (_event, req: WorktreeCreateRequest) => {
+    return worktreeService.create(req.repoPath);
+  });
 
-  ipcMain.handle(
-    IPC_CHANNELS.WORKTREE_REMOVE,
-    async (_event, req: WorktreeRemoveRequest) => {
-      return worktreeService.remove(req.worktreePath);
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.WORKTREE_REMOVE, async (_event, req: WorktreeRemoveRequest) => {
+    return worktreeService.remove(req.worktreePath);
+  });
 
   // ── Annotate ────────────────────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.ANNOTATE_LIST, () => {
@@ -507,6 +496,15 @@ export function registerIpcHandlers(
     const port = fleetBridge.getPort();
     const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId);
     return { cmd };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PI_VERSION, () => ({
+    version: piAgentManager.getVersion(),
+    installed: piAgentManager.isInstalled()
+  }));
+
+  ipcMain.handle(IPC_CHANNELS.PI_CHECK_UPDATES, async () => {
+    return piAgentManager.checkForUpdates();
   });
 }
 

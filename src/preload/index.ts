@@ -127,11 +127,11 @@ const fleetApi = {
     paneFocused: (payload: PaneFocusedPayload): void =>
       ipcRenderer.send(IPC_CHANNELS.PANE_FOCUSED, payload),
     onFocusPane: (callback: (payload: { paneId: string }) => void): Unsubscribe =>
-      onChannel('fleet:focus-pane', callback),
+      onChannel('fleet:focus-pane', callback)
   },
   activity: {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
-      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback),
+      onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback)
   },
   homeDir: getHomeDir(),
   platform: ((): HostPlatform => {
@@ -157,7 +157,7 @@ const fleetApi = {
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
       typedInvoke(IPC_CHANNELS.WORKTREE_CREATE, req),
     remove: async (req: WorktreeRemoveRequest): Promise<void> =>
-      typedInvoke(IPC_CHANNELS.WORKTREE_REMOVE, req),
+      typedInvoke(IPC_CHANNELS.WORKTREE_REMOVE, req)
   },
   showFolderPicker: async (): Promise<string | null> =>
     typedInvoke(IPC_CHANNELS.SHOW_FOLDER_PICKER),
@@ -261,14 +261,18 @@ const fleetApi = {
       source: string;
       provider?: string;
     }): Promise<{ id: string }> => typedInvoke(IPC_CHANNELS.IMAGES_RUN_ACTION, opts),
-    listActions: async (provider?: string): Promise<Array<{
-      id: string;
-      actionType: string;
-      provider: string;
-      name: string;
-      description: string;
-      model: string;
-    }>> => typedInvoke(IPC_CHANNELS.IMAGES_LIST_ACTIONS, provider)
+    listActions: async (
+      provider?: string
+    ): Promise<
+      Array<{
+        id: string;
+        actionType: string;
+        provider: string;
+        name: string;
+        description: string;
+        model: string;
+      }>
+    > => typedInvoke(IPC_CHANNELS.IMAGES_LIST_ACTIONS, provider)
   },
   shell: {
     openExternal: async (url: string): Promise<void> =>
@@ -280,10 +284,8 @@ const fleetApi = {
   copilot: {
     serviceStatus: async (): Promise<{ hookInstalled: boolean; claudeDetected: boolean }> =>
       typedInvoke(IPC_CHANNELS.COPILOT_SERVICE_STATUS),
-    installHooks: async (): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
-    uninstallHooks: async (): Promise<boolean> =>
-      typedInvoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
+    installHooks: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS),
+    uninstallHooks: async (): Promise<boolean> => typedInvoke(IPC_CHANNELS.COPILOT_UNINSTALL_HOOKS),
     installHooksTo: async (configDir: string): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.COPILOT_INSTALL_HOOKS_TO, configDir),
     uninstallHooksFrom: async (configDir: string): Promise<boolean> =>
@@ -291,7 +293,7 @@ const fleetApi = {
     hookStatusFor: async (configDir: string): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.COPILOT_HOOK_STATUS_FOR, configDir),
     notifyActiveWorkspace: (workspaceId: string, workspaceName: string): void =>
-      ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName }),
+      ipcRenderer.send(IPC_CHANNELS.COPILOT_ACTIVE_WORKSPACE, { workspaceId, workspaceName })
   },
   annotate: {
     list: async (): Promise<AnnotationMeta[]> =>
@@ -300,7 +302,11 @@ const fleetApi = {
       typedInvoke<unknown>(IPC_CHANNELS.ANNOTATE_GET, id),
     delete: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.ANNOTATE_DELETE, id),
-    start: async (args: { url?: string; timeout?: number; mode?: string }): Promise<{ resultPath: string }> =>
+    start: async (args: {
+      url?: string;
+      timeout?: number;
+      mode?: string;
+    }): Promise<{ resultPath: string }> =>
       typedInvoke<{ resultPath: string }>(IPC_CHANNELS.ANNOTATE_UI_START, args),
     onCompleted: (callback: () => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
@@ -310,7 +316,15 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.PI_OPEN, callback),
     getLaunchConfig: async (paneId: string): Promise<PiLaunchConfig> =>
       typedInvoke(IPC_CHANNELS.PI_LAUNCH_CONFIG, { paneId }),
-  },
+    getVersion: async (): Promise<{ version: string | null; installed: boolean }> =>
+      typedInvoke(IPC_CHANNELS.PI_VERSION),
+    checkForUpdates: async (): Promise<{
+      previousVersion: string | null;
+      currentVersion: string | null;
+      updated: boolean;
+      installed: boolean;
+    }> => typedInvoke(IPC_CHANNELS.PI_CHECK_UPDATES)
+  }
 };
 
 contextBridge.exposeInMainWorld('fleet', fleetApi);

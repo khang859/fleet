@@ -49,7 +49,7 @@ const notificationState = new NotificationStateManager(eventBus);
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
-  getProcessName: (paneId) => ptyManager.getProcessName(paneId),
+  getProcessName: (paneId) => ptyManager.getProcessName(paneId)
 });
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const imageService = new ImageService();
@@ -209,7 +209,10 @@ if (!IS_FLEET_DEV) {
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
-  { scheme: 'fleet-asset', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } }
+  {
+    scheme: 'fleet-asset',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  }
 ]);
 
 void app.whenReady().then(async () => {
@@ -237,9 +240,15 @@ void app.whenReady().then(async () => {
     try {
       const data = await readFile(filePath);
       const ext = relativePath.split('.').pop()?.toLowerCase() ?? '';
-      const mime: Record<string, string> = { webp: 'image/webp', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', svg: 'image/svg+xml' };
+      const mime: Record<string, string> = {
+        webp: 'image/webp',
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        svg: 'image/svg+xml'
+      };
       return new Response(data, {
-        headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream' },
+        headers: { 'Content-Type': mime[ext] ?? 'application/octet-stream' }
       });
     } catch {
       return new Response('Not Found', { status: 404 });
@@ -256,7 +265,9 @@ void app.whenReady().then(async () => {
   });
   void enrichProcessEnv();
   void installSkillFile().catch((err) => {
-    log.warn('failed to install skill file', { error: err instanceof Error ? err.message : String(err) });
+    log.warn('failed to install skill file', {
+      error: err instanceof Error ? err.message : String(err)
+    });
   });
   void installFleetCLI()
     .catch((err: unknown) => {
@@ -330,7 +341,9 @@ void app.whenReady().then(async () => {
         if (!filePath) throw new Error('file.open requires a path');
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
-            files: [{ path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }],
+            files: [
+              { path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }
+            ]
           });
         }
         return { ok: true };
@@ -341,7 +354,7 @@ void app.whenReady().then(async () => {
   });
   fleetBridge.start().catch((err: unknown) => {
     log.error('Fleet bridge failed to start', {
-      error: err instanceof Error ? err.message : String(err),
+      error: err instanceof Error ? err.message : String(err)
     });
   });
 
@@ -425,7 +438,7 @@ void app.whenReady().then(async () => {
         paneId: event.paneId,
         state: event.state,
         lastOutputAt: event.lastOutputAt,
-        timestamp: event.timestamp,
+        timestamp: event.timestamp
       });
     }
   });
@@ -628,6 +641,12 @@ void app.whenReady().then(async () => {
   if (app.isPackaged) {
     autoUpdater.checkForUpdates().catch((err: unknown) => {
       updaterLog.error('auto-update check failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
+    });
+
+    piAgentManager.checkForUpdates().catch((err: unknown) => {
+      log.warn('pi agent update check failed', {
         error: err instanceof Error ? err.message : String(err)
       });
     });

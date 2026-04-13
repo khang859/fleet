@@ -93,4 +93,6 @@ export const IPC_CHANNELS = {
   // Pi Agent
   PI_OPEN: 'pi:open',
   PI_LAUNCH_CONFIG: 'pi:launch-config',
+  PI_VERSION: 'pi:version',
+  PI_CHECK_UPDATES: 'pi:check-updates'
 } as const;
