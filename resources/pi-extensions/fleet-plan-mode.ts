@@ -8,7 +8,12 @@
  * approves it.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import {
+  findToolDefinition,
+  grepToolDefinition,
+  lsToolDefinition,
+  type ExtensionAPI,
+} from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -105,6 +110,10 @@ function previewPlan(plan: string): string {
 let planMode = false;
 
 export default function (pi: ExtensionAPI): void {
+  pi.registerTool(grepToolDefinition);
+  pi.registerTool(findToolDefinition);
+  pi.registerTool(lsToolDefinition);
+
   pi.registerCommand("plan", {
     description:
       "Enter plan mode (read-only investigation, ends with an approved markdown plan). Use `/plan cancel` to exit without a plan.",
