@@ -8,6 +8,7 @@ import type {
 import { PI_BUILT_IN_PROVIDERS } from '../../../../../shared/pi-presets';
 import { PiDefaultsForm } from './PiDefaultsForm';
 import { PiBuiltInProvidersList } from './PiBuiltInProvidersList';
+import { PiCustomProvidersList } from './PiCustomProvidersList';
 
 type LoadState =
   | { kind: 'loading' }
@@ -85,6 +86,16 @@ export function PiSection(): React.JSX.Element {
       />
 
       <PiBuiltInProvidersList items={state.builtIn} />
+
+      <PiCustomProvidersList
+        models={state.models}
+        onWrite={async (id, provider) => window.fleet.piConfig.writeProvider(id, provider)}
+        onDelete={async (id) => window.fleet.piConfig.deleteProvider(id)}
+        onReload={async () => {
+          const next = await window.fleet.piConfig.readModels();
+          setState((s) => (s.kind === 'ready' ? { ...s, models: next } : s));
+        }}
+      />
 
       <footer className="pt-4 border-t border-neutral-800 text-xs text-neutral-500 flex justify-between">
         <span>Pi CLI writes the same files. If <code>pi</code> is open, save from one side at a time.</span>
