@@ -94,5 +94,14 @@ export const IPC_CHANNELS = {
   PI_OPEN: 'pi:open',
   PI_LAUNCH_CONFIG: 'pi:launch-config',
   PI_VERSION: 'pi:version',
-  PI_CHECK_UPDATES: 'pi:check-updates'
+  PI_CHECK_UPDATES: 'pi:check-updates',
+  PI_CONFIG_READ_SETTINGS: 'pi:config:read-settings',
+  PI_CONFIG_WRITE_SETTINGS: 'pi:config:write-settings',
+  PI_CONFIG_READ_MODELS: 'pi:config:read-models',
+  PI_CONFIG_WRITE_PROVIDER: 'pi:config:write-provider',
+  PI_CONFIG_DELETE_PROVIDER: 'pi:config:delete-provider',
+  PI_CONFIG_RENAME_PROVIDER: 'pi:config:rename-provider',
+  PI_CONFIG_BUILT_IN_STATUS: 'pi:config:built-in-status',
+  PI_CONFIG_LIST_MODELS: 'pi:config:list-models',
+  PI_CONFIG_OPEN_FOLDER: 'pi:config:open-folder'
 } as const;
