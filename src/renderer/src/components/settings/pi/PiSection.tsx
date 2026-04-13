@@ -7,6 +7,7 @@ import type {
 } from '../../../../../shared/pi-config-types';
 import { PI_BUILT_IN_PROVIDERS } from '../../../../../shared/pi-presets';
 import { PiDefaultsForm } from './PiDefaultsForm';
+import { PiBuiltInProvidersList } from './PiBuiltInProvidersList';
 
 type LoadState =
   | { kind: 'loading' }
@@ -82,6 +83,8 @@ export function PiSection(): React.JSX.Element {
           setState((s) => (s.kind === 'ready' ? { ...s, settings: next } : s));
         }}
       />
+
+      <PiBuiltInProvidersList items={state.builtIn} />
 
       <footer className="pt-4 border-t border-neutral-800 text-xs text-neutral-500 flex justify-between">
         <span>Pi CLI writes the same files. If <code>pi</code> is open, save from one side at a time.</span>
