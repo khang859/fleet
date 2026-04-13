@@ -33,6 +33,10 @@ You are in plan mode. Only read-only tools are available until you call exit_pla
 
 When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
 
+const BLOCKED_TOOLS = new Set<string>(["write", "edit", "bash", "fleet_run"]);
+const PLAN_MODE_BLOCK_REASON =
+  "Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.";
+
 let planMode = false;
 
 export default function (pi: ExtensionAPI): void {
@@ -84,5 +88,11 @@ export default function (pi: ExtensionAPI): void {
     return {
       systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`,
     };
+  });
+
+  pi.on("tool_call", async (event, _ctx) => {
+    if (!planMode) return;
+    if (!BLOCKED_TOOLS.has(event.toolName)) return;
+    return { block: true, reason: PLAN_MODE_BLOCK_REASON };
   });
 }
