@@ -39,6 +39,13 @@ import type {
   ImageSettings,
   AnnotationMeta
 } from '../shared/types';
+import type {
+  PiSettings,
+  PiProvider,
+  PiModelsFile,
+  BuiltInProviderStatus,
+  ModelEntry
+} from '../shared/pi-config-types';
 
 type Unsubscribe = () => void;
 
@@ -324,6 +331,26 @@ const fleetApi = {
       updated: boolean;
       installed: boolean;
     }> => typedInvoke(IPC_CHANNELS.PI_CHECK_UPDATES)
+  },
+  piConfig: {
+    readSettings: async (): Promise<PiSettings> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_SETTINGS),
+    writeSettings: async (patch: Partial<PiSettings>): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_SETTINGS, patch),
+    readModels: async (): Promise<PiModelsFile> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_READ_MODELS),
+    writeProvider: async (id: string, provider: PiProvider): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_WRITE_PROVIDER, { id, provider }),
+    deleteProvider: async (id: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_DELETE_PROVIDER, id),
+    renameProvider: async (oldId: string, newId: string): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_RENAME_PROVIDER, { oldId, newId }),
+    getBuiltInStatus: async (): Promise<BuiltInProviderStatus[]> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_BUILT_IN_STATUS),
+    listAvailableModels: async (): Promise<ModelEntry[]> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_LIST_MODELS),
+    openConfigFolder: async (): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER)
   }
 };
 
