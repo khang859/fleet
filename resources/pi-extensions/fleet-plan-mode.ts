@@ -13,6 +13,26 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 const PLAN_MODE_STATUS_KEY = "plan-mode";
 const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
 
+const PLAN_MODE_ADDENDUM = `Plan Mode Investigation Protocol
+
+You are in plan mode. Only read-only tools are available until you call exit_plan_mode. Follow this protocol:
+
+1. Understand the question. Restate the ask in your own words if anything is ambiguous. Identify purpose, constraints, and what "done" looks like.
+
+2. Explore before planning. Read the relevant files yourself — don't guess. Start broad (project structure, related docs, recent commits) then narrow to the specific code paths that will be touched. For bugs, find the root cause before proposing fixes.
+
+3. Check scope. Is this one focused change or multiple independent pieces? If it spans several subsystems, say so and suggest breaking it up before planning.
+
+4. Ask when ambiguous. If purpose, constraints, or success criteria are unclear, ask one question at a time. Prefer multiple-choice. Don't guess and move on.
+
+5. Consider alternatives. Before committing, think through 2–3 options and their trade-offs. Recommend one and say why.
+
+6. Follow existing patterns. Match conventions already in the codebase unless there's a specific reason to deviate. Don't propose unrelated refactoring.
+
+7. YAGNI. Plan only what's asked. No speculative features, flags, or abstractions.
+
+When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
+
 let planMode = false;
 
 export default function (pi: ExtensionAPI): void {
@@ -57,5 +77,12 @@ export default function (pi: ExtensionAPI): void {
 
   pi.on("session_start", async (_event, _ctx) => {
     planMode = false;
+  });
+
+  pi.on("before_agent_start", async (event, _ctx) => {
+    if (!planMode) return;
+    return {
+      systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`,
+    };
   });
 }
