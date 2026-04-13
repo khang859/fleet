@@ -52,13 +52,11 @@
 
 ## v2.26.1
 
-- 
-
+-
 
 ## v2.26.0
 
-- 
-
+-
 
 ## v2.25.2
 
@@ -296,6 +294,7 @@
 - **Activity Detection**: Real-time tracking of terminal activity with visual badges, silence timers, and foreground process detection to identify when agents are working
 - **Activity Indicators**: Tabs now show activity status with reduced-motion support and off-screen summary badges in the sidebar
 - **Image Protocol**: Improved image loading performance with `fleet-image://` protocol replacing base64 IPC
+
 ### Fixes
 
 - Fixed file search overlay scroll jumping when opening

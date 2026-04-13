@@ -16,14 +16,14 @@ import {
   grepToolDefinition,
   lsToolDefinition,
   type ExtensionAPI,
-  type ExtensionContext,
-} from "@mariozechner/pi-coding-agent";
-import { Type } from "@sinclair/typebox";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+  type ExtensionContext
+} from '@mariozechner/pi-coding-agent';
+import { Type } from '@sinclair/typebox';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
-const PLAN_MODE_STATUS_KEY = "plan-mode";
-const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
+const PLAN_MODE_STATUS_KEY = 'plan-mode';
+const PLAN_MODE_STATUS_LABEL = '📋 Plan Mode';
 
 const PLAN_MODE_ADDENDUM = `Plan Mode Investigation Protocol
 
@@ -45,30 +45,30 @@ You are in plan mode. Only read-only tools are available (write, edit, bash, fle
 
 When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
 
-const BLOCKED_IN_PLAN = new Set<string>(["write", "edit", "bash", "fleet_run"]);
+const BLOCKED_IN_PLAN = new Set<string>(['write', 'edit', 'bash', 'fleet_run']);
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
 const ExitPlanModeParams = Type.Object({
   plan: Type.String({
     description:
-      "The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths.",
+      'The implementation plan as markdown. Include a short title, brief context, and step-by-step actions with file paths.'
   }),
   topic: Type.String({
     description:
-      "Short kebab-case topic used in the filename, e.g. 'pi-plan-mode' or 'fix-pty-leak'. Must match /^[a-z0-9][a-z0-9-]*$/.",
-  }),
+      "Short kebab-case topic used in the filename, e.g. 'pi-plan-mode' or 'fix-pty-leak'. Must match /^[a-z0-9][a-z0-9-]*$/."
+  })
 });
 
 function formatDate(d: Date): string {
   const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
 function resolvePlanPath(cwd: string, topic: string): string {
-  const dir = join(cwd, "docs", "plans");
+  const dir = join(cwd, 'docs', 'plans');
   const date = formatDate(new Date());
   let candidate = join(dir, `${date}-${topic}.md`);
   let counter = 2;
@@ -104,60 +104,57 @@ export default function (pi: ExtensionAPI): void {
     ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
   }
 
-  pi.registerCommand("plan", {
+  pi.registerCommand('plan', {
     description:
-      "Enter plan mode (read-only investigation, ends with an approved markdown plan). Use `/plan cancel` to exit without a plan.",
+      'Enter plan mode (read-only investigation, ends with an approved markdown plan). Use `/plan cancel` to exit without a plan.',
     handler: async (args, ctx) => {
-      const subcommand = (args ?? "").trim();
+      const subcommand = (args ?? '').trim();
 
-      if (subcommand === "cancel") {
+      if (subcommand === 'cancel') {
         if (!planMode) {
-          ctx.ui.notify("Plan mode is not active.", "info");
+          ctx.ui.notify('Plan mode is not active.', 'info');
           return;
         }
         leavePlanMode(ctx);
-        ctx.ui.notify("Plan mode cancelled. No plan was written.", "info");
+        ctx.ui.notify('Plan mode cancelled. No plan was written.', 'info');
         return;
       }
 
       if (subcommand.length > 0) {
         ctx.ui.notify(
           `Unknown subcommand '${subcommand}'. Use '/plan' or '/plan cancel'.`,
-          "warning",
+          'warning'
         );
         return;
       }
 
       if (planMode) {
-        ctx.ui.notify("Plan mode is already on.", "info");
+        ctx.ui.notify('Plan mode is already on.', 'info');
         return;
       }
 
       enterPlanMode(ctx);
-      ctx.ui.notify(
-        "Plan mode on — read-only until you approve the plan.",
-        "info",
-      );
-    },
+      ctx.ui.notify('Plan mode on — read-only until you approve the plan.', 'info');
+    }
   });
 
-  pi.on("session_start", async (_event, _ctx) => {
+  pi.on('session_start', async (_event, _ctx) => {
     planMode = false;
     savedActiveTools = null;
   });
 
-  pi.on("before_agent_start", async (event, _ctx) => {
+  pi.on('before_agent_start', async (event, _ctx) => {
     if (!planMode) return;
     return {
-      systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`,
+      systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`
     };
   });
 
   pi.registerTool({
-    name: "exit_plan_mode",
-    label: "Exit Plan Mode",
+    name: 'exit_plan_mode',
+    label: 'Exit Plan Mode',
     description:
-      "Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.",
+      'Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.',
     parameters: ExitPlanModeParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -165,11 +162,11 @@ export default function (pi: ExtensionAPI): void {
         return {
           content: [
             {
-              type: "text" as const,
-              text: "Plan mode is not active. exit_plan_mode can only be called while in plan mode.",
-            },
+              type: 'text' as const,
+              text: 'Plan mode is not active. exit_plan_mode can only be called while in plan mode.'
+            }
           ],
-          details: undefined,
+          details: undefined
         };
       }
 
@@ -177,47 +174,44 @@ export default function (pi: ExtensionAPI): void {
         return {
           content: [
             {
-              type: "text" as const,
-              text: `Invalid topic '${params.topic}'. Must be kebab-case matching /^[a-z0-9][a-z0-9-]*$/ (e.g. 'pi-plan-mode').`,
-            },
+              type: 'text' as const,
+              text: `Invalid topic '${params.topic}'. Must be kebab-case matching /^[a-z0-9][a-z0-9-]*$/ (e.g. 'pi-plan-mode').`
+            }
           ],
-          details: undefined,
+          details: undefined
         };
       }
 
       const planPath = resolvePlanPath(ctx.cwd, params.topic);
-      const approved = await ctx.ui.confirm(
-        "Approve plan?",
-        `Write to ${planPath}?`,
-      );
+      const approved = await ctx.ui.confirm('Approve plan?', `Write to ${planPath}?`);
 
       if (!approved) {
         return {
           content: [
             {
-              type: "text" as const,
-              text: "User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.",
-            },
+              type: 'text' as const,
+              text: 'User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.'
+            }
           ],
-          details: undefined,
+          details: undefined
         };
       }
 
-      const dir = join(ctx.cwd, "docs", "plans");
+      const dir = join(ctx.cwd, 'docs', 'plans');
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(planPath, params.plan, "utf-8");
+      writeFileSync(planPath, params.plan, 'utf-8');
 
       leavePlanMode(ctx);
 
       return {
         content: [
           {
-            type: "text" as const,
-            text: `Plan approved and written to ${planPath}. Plan mode is off — you may now execute the plan.`,
-          },
+            type: 'text' as const,
+            text: `Plan approved and written to ${planPath}. Plan mode is off — you may now execute the plan.`
+          }
         ],
-        details: undefined,
+        details: undefined
       };
-    },
+    }
   });
 }
