@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.32.0
+
+- Auto-update Pi coding agent to the latest version on packaged launch
+- Add Pi agent version display and manual update check in Settings → Updates
+
 ## v2.31.0
 
 - Add dashboard empty state with ASCII art header, recent files, and recent folders
