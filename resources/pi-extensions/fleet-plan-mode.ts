@@ -18,7 +18,15 @@ const PLAN_MODE_STATUS_LABEL = "📋 Plan Mode";
 
 const PLAN_MODE_ADDENDUM = `Plan Mode Investigation Protocol
 
-You are in plan mode. Only read-only tools are available until you call exit_plan_mode. Follow this protocol:
+You are in plan mode. Write/exec tools (write, edit, bash, fleet_run) are disabled until you call exit_plan_mode. Use the available read-only tools to investigate:
+
+- read — read a file (with offset/limit for big files)
+- grep — search file contents by regex
+- find — find files by name/glob
+- ls — list a directory
+- fleet_open — open a file in the Fleet editor for the user to see
+
+Follow this protocol:
 
 1. Understand the question. Restate the ask in your own words if anything is ambiguous. Identify purpose, constraints, and what "done" looks like.
 
