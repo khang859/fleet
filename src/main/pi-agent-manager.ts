@@ -80,7 +80,12 @@ export class PiAgentManager {
 
   getExtensionPaths(): string[] {
     const dir = this.getExtensionsDir();
-    const extensions = ['fleet-bridge.ts', 'fleet-files.ts', 'fleet-terminal.ts'];
+    const extensions = [
+      'fleet-bridge.ts',
+      'fleet-files.ts',
+      'fleet-terminal.ts',
+      'fleet-plan-mode.ts'
+    ];
     return extensions.map((e) => join(dir, e));
   }
 
