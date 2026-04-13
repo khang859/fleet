@@ -68,7 +68,6 @@ const PLAN_MODE_BLOCK_REASON_FALLBACK =
   "Plan mode is active — this tool is disabled. Use read-only tools (ls, find, grep, read) to investigate, then call exit_plan_mode with your plan.";
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-const PLAN_PREVIEW_LINES = 60;
 
 const ExitPlanModeParams = Type.Object({
   plan: Type.String({
@@ -98,13 +97,6 @@ function resolvePlanPath(cwd: string, topic: string): string {
     counter++;
   }
   return candidate;
-}
-
-function previewPlan(plan: string): string {
-  const split = plan.split("\n");
-  if (split.length <= PLAN_PREVIEW_LINES) return plan;
-  const remaining = split.length - PLAN_PREVIEW_LINES;
-  return `${split.slice(0, PLAN_PREVIEW_LINES).join("\n")}\n\n…(${remaining} more lines)`;
 }
 
 let planMode = false;
@@ -205,8 +197,10 @@ export default function (pi: ExtensionAPI): void {
       }
 
       const planPath = resolvePlanPath(ctx.cwd, params.topic);
-      const body = `Path: ${planPath}\n\n---\n\n${previewPlan(params.plan)}`;
-      const approved = await ctx.ui.confirm("Approve plan?", body);
+      const approved = await ctx.ui.confirm(
+        "Approve plan?",
+        `Write to ${planPath}?`,
+      );
 
       if (!approved) {
         return {
