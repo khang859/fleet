@@ -1,60 +1,9 @@
 import { createConnection } from 'node:net';
 import { randomUUID } from 'node:crypto';
-import { join, resolve, extname } from 'node:path';
+import { join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { existsSync, statSync } from 'node:fs';
-
-const IMAGE_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg',
-  '.bmp',
-  '.ico'
-]);
-
-const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
-
-const BINARY_BLOCKLIST = new Set([
-  '.zip',
-  '.tar',
-  '.gz',
-  '.7z',
-  '.rar',
-  '.exe',
-  '.dmg',
-  '.pkg',
-  '.deb',
-  '.rpm',
-  '.iso',
-  '.bin',
-  '.dll',
-  '.so',
-  '.dylib',
-  '.o',
-  '.a',
-  '.wasm',
-  '.class',
-  '.jar',
-  '.war',
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.xls',
-  '.xlsx',
-  '.ppt',
-  '.pptx',
-  '.mp3',
-  '.mp4',
-  '.mov',
-  '.avi',
-  '.mkv',
-  '.flac',
-  '.wav',
-  '.aac'
-]);
+import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -567,18 +516,12 @@ export async function runCLI(
         continue;
       }
 
-      const ext = extname(resolved).toLowerCase();
-      if (BINARY_BLOCKLIST.has(ext)) {
+      if (isBinaryBlockedFilePath(resolved)) {
         errors.push(`Error: unsupported binary file: ${p}`);
         continue;
       }
 
-      const paneType = IMAGE_EXTENSIONS.has(ext)
-        ? ('image' as const)
-        : MARKDOWN_EXTENSIONS.has(ext)
-          ? ('markdown' as const)
-          : ('file' as const);
-      files.push({ path: resolved, paneType });
+      files.push({ path: resolved, paneType: getPaneTypeForFilePath(resolved) });
     }
 
     if (files.length === 0) {

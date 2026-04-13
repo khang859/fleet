@@ -2,10 +2,10 @@ import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol }
 import { safeOpenExternal } from './safe-external';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { existsSync } from 'fs';
+import { existsSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath } from 'url';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
 import { PtyManager } from './pty-manager';
 import { LayoutStore } from './layout-store';
@@ -30,6 +30,7 @@ import { enrichProcessEnv } from './shell-env';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
+import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import pkg from 'electron-updater';
@@ -337,16 +338,25 @@ void app.whenReady().then(async () => {
   fleetBridge.onRequest(async (type, payload, _paneId) => {
     switch (type) {
       case 'file.open': {
-        const filePath = typeof payload.path === 'string' ? payload.path : '';
-        if (!filePath) throw new Error('file.open requires a path');
+        const rawPath = typeof payload.path === 'string' ? payload.path : '';
+        if (!rawPath) throw new Error('file.open requires a path');
+
+        const filePath = resolve(rawPath);
+        if (!existsSync(filePath)) throw new Error(`file not found: ${filePath}`);
+        if (statSync(filePath).isDirectory()) {
+          throw new Error(`directories not supported, use a file path: ${filePath}`);
+        }
+        if (isBinaryBlockedFilePath(filePath)) {
+          throw new Error(`unsupported binary file: ${filePath}`);
+        }
+
+        const paneType = getPaneTypeForFilePath(filePath);
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, {
-            files: [
-              { path: filePath, paneType: 'file', label: filePath.split('/').pop() ?? filePath }
-            ]
+            files: [{ path: filePath, paneType, label: filePath.split('/').pop() ?? filePath }]
           });
         }
-        return { ok: true };
+        return { ok: true, paneType };
       }
       default:
         throw new Error(`Unknown bridge command: ${type}`);
