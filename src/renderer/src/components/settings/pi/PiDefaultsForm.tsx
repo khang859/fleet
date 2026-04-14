@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { SettingRow } from '../SettingRow';
 import type {
   PiSettings,
@@ -28,10 +28,6 @@ export function PiDefaultsForm({
   builtInProviderIds,
   onChange
 }: Props): React.JSX.Element {
-  const [enabledModelsText, setEnabledModelsText] = useState(
-    (settings.enabledModels ?? []).join('\n')
-  );
-
   const providerIds = useMemo(() => {
     const customIds = Object.keys(models.providers);
     return [...new Set([...builtInProviderIds, ...customIds])].sort();
@@ -47,17 +43,12 @@ export function PiDefaultsForm({
     return [...fromCustom, ...fromCatalog];
   }, [modelCatalog, models, settings.defaultProvider]);
 
-  const commitEnabledModels = (): void => {
-    const lines = enabledModelsText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
-    void onChange({ enabledModels: lines.length ? lines : undefined });
-  };
-
   return (
     <section className="space-y-4">
       <h2 className="text-sm font-semibold text-neutral-200">Defaults</h2>
+      <p className="text-xs text-neutral-500 -mt-3">
+        Used when you open a new Pi tab without specifying otherwise.
+      </p>
 
       <div>
         <SettingRow label="Default provider">
@@ -127,32 +118,6 @@ export function PiDefaultsForm({
         </SettingRow>
       </div>
 
-      <div>
-        <SettingRow label="Theme">
-          <input
-            type="text"
-            value={settings.theme ?? ''}
-            onChange={(e) => void onChange({ theme: e.target.value || undefined })}
-            placeholder="dark"
-            className="bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700 w-40"
-          />
-        </SettingRow>
-      </div>
-
-      <div>
-        <label className="text-sm text-neutral-300 block mb-1">Model cycling (Ctrl+P)</label>
-        <textarea
-          value={enabledModelsText}
-          onChange={(e) => setEnabledModelsText(e.target.value)}
-          onBlur={commitEnabledModels}
-          rows={4}
-          placeholder={'claude-*\ngpt-4o\ngemini-2*'}
-          className="w-full bg-neutral-800 text-xs font-mono text-neutral-200 rounded px-2 py-1 border border-neutral-700"
-        />
-        <p className="text-xs text-neutral-500 mt-1">
-          One pattern per line. Matches model ids or names.
-        </p>
-      </div>
     </section>
   );
 }
