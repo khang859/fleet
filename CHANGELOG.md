@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Pi Agent settings page redesigned: unified Providers list (built-in + custom in one place), zero-state welcome strip with three starter options, trimmed Defaults section, and a collapsed Advanced accordion for theme/model cycling/config folder.
+- Amazon Bedrock has a first-class configuration panel. Set AWS region, profile, access keys, and session token in Fleet; secrets are encrypted via the OS keychain (`safeStorage`) and injected into every Pi tab Fleet spawns. Values never cross the IPC boundary to the renderer and do not affect the `pi` CLI in your terminal.
+- Removed the Bedrock "custom provider" preset from the Add-Provider picker. Existing `providers.bedrock` entries surface a one-time inline migration prompt inside the new Bedrock panel.
+
 ## v2.33.0
 
 - Settings → Pi Agent tab: configure default provider/model/thinking level/theme, view built-in provider auth status, and add/edit/delete custom providers (Amazon Bedrock, Ollama, LM Studio, OpenRouter, Vercel AI Gateway, generic OpenAI-compatible) backed by `~/.pi/agent/{settings,models}.json`. Writes preserve unknown fields via Zod passthrough.
