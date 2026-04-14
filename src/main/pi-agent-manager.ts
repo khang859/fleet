@@ -9,6 +9,11 @@ import { app } from 'electron';
 const execFileAsync = promisify(execFile);
 const log = createLogger('pi-agent-manager');
 
+/** POSIX-safe single-quote wrapping. Any internal `'` becomes `'\''`. */
+export function posixShellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
 const PI_INSTALL_DIR = join(homedir(), '.fleet', 'agents', 'pi');
 const PI_PACKAGE = '@mariozechner/pi-coding-agent';
 const VERSION_FILE = join(PI_INSTALL_DIR, '.fleet-version');
@@ -89,9 +94,18 @@ export class PiAgentManager {
     return extensions.map((e) => join(dir, e));
   }
 
-  buildLaunchCommand(bridgePort: number, bridgeToken: string, paneId: string): string {
+  buildLaunchCommand(
+    bridgePort: number,
+    bridgeToken: string,
+    paneId: string,
+    envOverrides: Record<string, string> = {}
+  ): string {
     const extensionPaths = this.getExtensionPaths();
     const parts: string[] = [];
+
+    for (const [key, value] of Object.entries(envOverrides)) {
+      parts.push(`${key}=${posixShellQuote(value)}`);
+    }
 
     parts.push(`FLEET_BRIDGE_PORT=${bridgePort}`);
     parts.push(`FLEET_BRIDGE_TOKEN=${bridgeToken}`);

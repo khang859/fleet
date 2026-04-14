@@ -7,7 +7,13 @@ vi.mock('electron', () => ({
     getPath: (name: string) => {
       if (name === 'home') return '/tmp/fleet-test';
       return '/tmp';
-    }
+    },
+    getAppPath: () => '/tmp/fleet-test-app'
+  },
+  safeStorage: {
+    isEncryptionAvailable: () => false,
+    encryptString: (s: string) => Buffer.from(s),
+    decryptString: (b: Buffer) => b.toString('utf-8')
   }
 }));
 

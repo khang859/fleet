@@ -1,0 +1,47 @@
+import { describe, it, expect } from 'vitest';
+import { PiAgentManager, posixShellQuote } from '../pi-agent-manager';
+
+describe('posixShellQuote', () => {
+  it('single-quotes simple values', () => {
+    expect(posixShellQuote('hello')).toBe(`'hello'`);
+  });
+
+  it("escapes single quotes via the standard '\\'' sequence", () => {
+    expect(posixShellQuote(`it's`)).toBe(`'it'\\''s'`);
+  });
+
+  it('passes through values with spaces, $, backticks without interpretation', () => {
+    expect(posixShellQuote('$HOME `whoami`')).toBe(`'$HOME \`whoami\`'`);
+  });
+
+  it('quotes an empty string to preserve it', () => {
+    expect(posixShellQuote('')).toBe(`''`);
+  });
+});
+
+describe('PiAgentManager.buildLaunchCommand', () => {
+  const mgr = new PiAgentManager();
+
+  it('produces an empty envOverrides path starting with FLEET_BRIDGE_PORT', () => {
+    const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {});
+    expect(cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')).toBe(
+      true
+    );
+  });
+
+  it('prepends envOverrides with POSIX shell-quoting before FLEET_BRIDGE_PORT', () => {
+    const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {
+      AWS_REGION: 'us-east-1',
+      AWS_SECRET_ACCESS_KEY: `it's/a/secret`
+    });
+    expect(cmd).toMatch(
+      /^AWS_REGION='us-east-1' AWS_SECRET_ACCESS_KEY='it'\\''s\/a\/secret' FLEET_BRIDGE_PORT=/
+    );
+  });
+
+  it('serializes envOverrides in stable insertion order', () => {
+    const cmd = mgr.buildLaunchCommand(0, '', '', { A: '1', B: '2', C: '3' });
+    expect(cmd.indexOf(`A='1'`)).toBeLessThan(cmd.indexOf(`B='2'`));
+    expect(cmd.indexOf(`B='2'`)).toBeLessThan(cmd.indexOf(`C='3'`));
+  });
+});
