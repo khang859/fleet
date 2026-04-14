@@ -71,9 +71,9 @@ Defaults
 
 **Section intros.** One-line descriptions under each `h2`:
 
-- Providers: *"Each provider needs credentials or an auth method. Click a row to configure."*
-- Defaults: *"Used when you open a new Pi tab without specifying otherwise."*
-- Advanced: *"Rarely-changed settings and tools."*
+- Providers: _"Each provider needs credentials or an auth method. Click a row to configure."_
+- Defaults: _"Used when you open a new Pi tab without specifying otherwise."_
+- Advanced: _"Rarely-changed settings and tools."_
 
 ## Unified Providers List
 
@@ -102,12 +102,12 @@ Ordering is computed once per `PiSection` load and on window-focus refresh; it d
 
 ### Row (expanded) — dispatched by provider kind
 
-| Provider kind | Expanded content |
-|---|---|
-| OAuth-capable built-in (Anthropic, OpenAI, Google, Copilot) | Current auth state (OAuth token present / not); callout `Run pi and /login in a terminal to authenticate` with a copy-command button. Read-only. |
-| Env-var built-in with managed injection (v1: **Bedrock only**) | `PiBedrockPanel` — see next section. |
-| Other env-var built-ins (Azure, Vertex, Mistral, Groq, Cerebras, xAI, HuggingFace, OpenRouter built-in tier) | Status row for the expected env var + "Set `X` in your shell" hint. No editable fields in v1. |
-| Custom provider | Existing `PiProviderForm` (id, baseUrl, api, `PiApiKeyInput`, compat JSON, `PiModelsEditor`). No internal changes. |
+| Provider kind                                                                                                | Expanded content                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| OAuth-capable built-in (Anthropic, OpenAI, Google, Copilot)                                                  | Current auth state (OAuth token present / not); callout `Run pi and /login in a terminal to authenticate` with a copy-command button. Read-only. |
+| Env-var built-in with managed injection (v1: **Bedrock only**)                                               | `PiBedrockPanel` — see next section.                                                                                                             |
+| Other env-var built-ins (Azure, Vertex, Mistral, Groq, Cerebras, xAI, HuggingFace, OpenRouter built-in tier) | Status row for the expected env var + "Set `X` in your shell" hint. No editable fields in v1.                                                    |
+| Custom provider                                                                                              | Existing `PiProviderForm` (id, baseUrl, api, `PiApiKeyInput`, compat JSON, `PiModelsEditor`). No internal changes.                               |
 
 ### Add flow
 
@@ -144,11 +144,11 @@ Models                                        [+ Add model]
 
 ### Credential modes
 
-| Mode | Env vars written on spawn |
-|---|---|
-| `profile` (default) | `AWS_PROFILE`, `AWS_REGION` (if set) |
-| `keys` | `AWS_REGION` (if set), `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (if set) |
-| `chain` | `AWS_REGION` (if set), nothing else — inherits everything from the parent shell (matches today's behavior) |
+| Mode                | Env vars written on spawn                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `profile` (default) | `AWS_PROFILE`, `AWS_REGION` (if set)                                                                       |
+| `keys`              | `AWS_REGION` (if set), `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` (if set)          |
+| `chain`             | `AWS_REGION` (if set), nothing else — inherits everything from the parent shell (matches today's behavior) |
 
 Only fields relevant to the active mode are shown.
 
@@ -176,13 +176,15 @@ const PiBedrockInjectionSchema = z.object({
   region: z.string().optional(),
   profile: z.string().optional(),
   accessKeyId: z.string().optional(),
-  secretAccessKeyEnc: z.string().optional(),   // base64 of safeStorage.encryptString output
-  sessionTokenEnc: z.string().optional()       // base64 of safeStorage.encryptString output
+  secretAccessKeyEnc: z.string().optional(), // base64 of safeStorage.encryptString output
+  sessionTokenEnc: z.string().optional() // base64 of safeStorage.encryptString output
 });
 
-const PiEnvInjectionSchema = z.object({
-  bedrock: PiBedrockInjectionSchema.optional()
-}).passthrough();
+const PiEnvInjectionSchema = z
+  .object({
+    bedrock: PiBedrockInjectionSchema.optional()
+  })
+  .passthrough();
 ```
 
 `passthrough()` lets us add more providers (`azure`, `mistral`, …) later without migrating the file.
@@ -198,7 +200,7 @@ class PiEnvInjectionManager {
   // IPC-safe. Secrets are represented as { present: boolean }, never plaintext.
   getRedactedConfig(): { bedrock?: RedactedBedrock };
 
-  writeBedrock(patch: Partial<BedrockWritePatch>): void;  // accepts plaintext secret; encrypts inside
+  writeBedrock(patch: Partial<BedrockWritePatch>): void; // accepts plaintext secret; encrypts inside
   clearBedrockSecret(field: 'secretAccessKey' | 'sessionToken'): void;
 }
 ```
@@ -254,7 +256,7 @@ ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: stri
   await piAgentManager.ensureInstalled();
   const token = fleetBridge.generateToken();
   const port = fleetBridge.getPort();
-  const env = piEnvInjectionManager.getInjectedEnv();  // decrypts here, main-only
+  const env = piEnvInjectionManager.getInjectedEnv(); // decrypts here, main-only
   const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env);
   return { cmd };
 });
@@ -351,16 +353,16 @@ No silent rewrites.
 
 ## Error Handling
 
-| Scenario | Behavior |
-|---|---|
-| `safeStorage.isEncryptionAvailable()` returns false | "Use access keys" mode hidden from picker; inline banner in `PiBedrockPanel`; shell-command reference pattern suggested. |
-| Decryption fails at launch time (keychain wiped, different macOS user, corrupted ciphertext) | Skip the unreadable var; launch proceeds with what we can decrypt. Next open of `PiBedrockPanel` shows red banner: *"Stored secret unreadable — re-enter."* |
-| User's shell exports `AWS_REGION=...` already | Inline-assigned value wins for the pi child process. Tooltip on Region field: *"Overrides any value in your shell for Fleet's Pi tabs."* |
-| Region left blank in `keys` mode | Non-blocking warning row: *"Without AWS_REGION, Bedrock defaults to us-east-1."* No error. |
-| POSIX-quoting edge cases (value with `$`, spaces, quotes, backticks) | Handled by `posixShellQuote`; covered by unit tests. |
-| Welcome strip visibility | Pure function of `configuredProviderCount`; unit-tested. |
-| Legacy `providers.bedrock` in `models.json` | Inline migration banner (see Migration section). No silent rewrite. |
-| `PiBedrockPanel` open while migration banner present + user opens Bedrock preset via old path | Not reachable — preset card is hidden from `PiPresetPicker`. |
+| Scenario                                                                                      | Behavior                                                                                                                                                    |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `safeStorage.isEncryptionAvailable()` returns false                                           | "Use access keys" mode hidden from picker; inline banner in `PiBedrockPanel`; shell-command reference pattern suggested.                                    |
+| Decryption fails at launch time (keychain wiped, different macOS user, corrupted ciphertext)  | Skip the unreadable var; launch proceeds with what we can decrypt. Next open of `PiBedrockPanel` shows red banner: _"Stored secret unreadable — re-enter."_ |
+| User's shell exports `AWS_REGION=...` already                                                 | Inline-assigned value wins for the pi child process. Tooltip on Region field: _"Overrides any value in your shell for Fleet's Pi tabs."_                    |
+| Region left blank in `keys` mode                                                              | Non-blocking warning row: _"Without AWS_REGION, Bedrock defaults to us-east-1."_ No error.                                                                  |
+| POSIX-quoting edge cases (value with `$`, spaces, quotes, backticks)                          | Handled by `posixShellQuote`; covered by unit tests.                                                                                                        |
+| Welcome strip visibility                                                                      | Pure function of `configuredProviderCount`; unit-tested.                                                                                                    |
+| Legacy `providers.bedrock` in `models.json`                                                   | Inline migration banner (see Migration section). No silent rewrite.                                                                                         |
+| `PiBedrockPanel` open while migration banner present + user opens Bedrock preset via old path | Not reachable — preset card is hidden from `PiPresetPicker`.                                                                                                |
 
 ## Testing
 

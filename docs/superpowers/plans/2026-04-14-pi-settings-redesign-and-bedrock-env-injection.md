@@ -11,6 +11,7 @@
 **Spec:** `docs/superpowers/specs/2026-04-14-pi-settings-redesign-and-bedrock-env-injection.md`.
 
 **Verification commands used throughout:**
+
 - Tests: `npm test -- <file>` (Vitest)
 - Typecheck: `npm run typecheck`
 - Lint: `npm run lint`
@@ -59,6 +60,7 @@
 ## Task 1: Zod schemas for Bedrock env injection
 
 **Files:**
+
 - Create: `src/shared/pi-env-injection-types.ts`
 - Create: `src/main/__tests__/pi-env-injection-manager.test.ts` (will be extended in later tasks; Task 1 only adds schema round-trip tests)
 
@@ -68,7 +70,10 @@ Create `src/main/__tests__/pi-env-injection-manager.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { PiBedrockInjectionSchema, PiEnvInjectionSchema } from '../../shared/pi-env-injection-types';
+import {
+  PiBedrockInjectionSchema,
+  PiEnvInjectionSchema
+} from '../../shared/pi-env-injection-types';
 
 describe('PiBedrockInjectionSchema', () => {
   it('defaults mode to "chain"', () => {
@@ -167,6 +172,7 @@ git commit -m "feat(pi): zod schema for Bedrock env-injection config"
 ## Task 2: `posixShellQuote` helper + `buildLaunchCommand` envOverrides param
 
 **Files:**
+
 - Modify: `src/main/pi-agent-manager.ts` (lines 92-107, `buildLaunchCommand`)
 - Create: `src/main/__tests__/pi-agent-manager.test.ts`
 
@@ -183,7 +189,7 @@ describe('posixShellQuote', () => {
     expect(posixShellQuote('hello')).toBe(`'hello'`);
   });
 
-  it('escapes single quotes via the standard \'\\\'\' sequence', () => {
+  it("escapes single quotes via the standard '\\'' sequence", () => {
     expect(posixShellQuote(`it's`)).toBe(`'it'\\''s'`);
   });
 
@@ -202,9 +208,9 @@ describe('PiAgentManager.buildLaunchCommand', () => {
   it('produces an empty envOverrides path identical to the 3-arg form', () => {
     // Compare shape: no env assignments before FLEET_BRIDGE_PORT.
     const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {});
-    expect(cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')).toBe(
-      true
-    );
+    expect(
+      cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')
+    ).toBe(true);
   });
 
   it('prepends envOverrides with POSIX shell-quoting before FLEET_BRIDGE_PORT', () => {
@@ -212,7 +218,9 @@ describe('PiAgentManager.buildLaunchCommand', () => {
       AWS_REGION: 'us-east-1',
       AWS_SECRET_ACCESS_KEY: `it's/a/secret`
     });
-    expect(cmd).toMatch(/^AWS_REGION='us-east-1' AWS_SECRET_ACCESS_KEY='it'\\''s\/a\/secret' FLEET_BRIDGE_PORT=/);
+    expect(cmd).toMatch(
+      /^AWS_REGION='us-east-1' AWS_SECRET_ACCESS_KEY='it'\\''s\/a\/secret' FLEET_BRIDGE_PORT=/
+    );
   });
 
   it('serializes envOverrides in stable insertion order', () => {
@@ -286,6 +294,7 @@ git commit -m "feat(pi): posixShellQuote + envOverrides param on buildLaunchComm
 ## Task 3: `PiEnvInjectionManager` — write/read/redact/clear
 
 **Files:**
+
 - Create: `src/main/pi-env-injection-manager.ts`
 - Extend: `src/main/__tests__/pi-env-injection-manager.test.ts`
 
@@ -385,7 +394,9 @@ describe('PiEnvInjectionManager — writeBedrock/getRedactedConfig', () => {
       safeStorage: { ...fakeSafeStorage, isEncryptionAvailable: () => false }
     });
 
-    expect(() => mgr.writeBedrock({ mode: 'profile', profile: 'dev', region: 'us-east-1' })).not.toThrow();
+    expect(() =>
+      mgr.writeBedrock({ mode: 'profile', profile: 'dev', region: 'us-east-1' })
+    ).not.toThrow();
   });
 });
 ```
@@ -538,9 +549,7 @@ export class PiEnvInjectionManager {
       }
       if (b.sessionTokenEnc) {
         try {
-          out.AWS_SESSION_TOKEN = this.safe.decryptString(
-            Buffer.from(b.sessionTokenEnc, 'base64')
-          );
+          out.AWS_SESSION_TOKEN = this.safe.decryptString(Buffer.from(b.sessionTokenEnc, 'base64'));
         } catch (err) {
           log.warn('Failed to decrypt AWS_SESSION_TOKEN; skipping', {
             error: err instanceof Error ? err.message : String(err)
@@ -576,6 +585,7 @@ git commit -m "feat(pi): PiEnvInjectionManager with safeStorage-backed Bedrock c
 ## Task 4: `getInjectedEnv` decryption + mode behavior tests
 
 **Files:**
+
 - Extend: `src/main/__tests__/pi-env-injection-manager.test.ts`
 
 - [ ] **Step 1: Add behavior tests**
@@ -657,6 +667,7 @@ git commit -m "test(pi): behavior coverage for PiEnvInjectionManager.getInjected
 ## Task 5: IPC channels + preload surface
 
 **Files:**
+
 - Modify: `src/shared/ipc-channels.ts` (end of Pi Agent section, around line 106)
 - Modify: `src/preload/index.ts` (after `piConfig`, around line 352)
 
@@ -695,10 +706,7 @@ Edit `src/preload/index.ts`. Add after the `piConfig: { ... }` block (before the
 Add the two type imports near the other pi-config type imports (around line 42 in `src/preload/index.ts`):
 
 ```ts
-import type {
-  RedactedBedrock,
-  BedrockWritePatch
-} from '../shared/pi-env-injection-types';
+import type { RedactedBedrock, BedrockWritePatch } from '../shared/pi-env-injection-types';
 ```
 
 - [ ] **Step 3: Typecheck**
@@ -718,6 +726,7 @@ git commit -m "feat(pi): PI_ENV_* IPC channels + preload surface"
 ## Task 6: Wire IPC handlers + inject env into `PI_LAUNCH_CONFIG`
 
 **Files:**
+
 - Modify: `src/main/ipc-handlers.ts` (handler registration around line 499; module signature around line 73)
 - Modify: `src/main/index.ts` (around line 62)
 
@@ -740,27 +749,27 @@ const piEnvInjectionManager = new PiEnvInjectionManager();
 Extend the `registerIpcHandlers(...)` call (around lines 303–322). It currently ends with `piAuthInspector` as the last positional arg. Add `piEnvInjectionManager` as the new last positional arg:
 
 ```ts
-  registerIpcHandlers(
-    ptyManager,
-    layoutStore,
-    eventBus,
-    notificationDetector,
-    notificationState,
-    settingsStore,
-    cwdPoller,
-    gitService,
-    () => mainWindow,
-    workspacePath,
-    activityTracker,
-    new WorktreeService(),
-    annotationStore,
-    annotateService,
-    piAgentManager,
-    fleetBridge,
-    piConfigManager,
-    piAuthInspector,
-    piEnvInjectionManager
-  );
+registerIpcHandlers(
+  ptyManager,
+  layoutStore,
+  eventBus,
+  notificationDetector,
+  notificationState,
+  settingsStore,
+  cwdPoller,
+  gitService,
+  () => mainWindow,
+  workspacePath,
+  activityTracker,
+  new WorktreeService(),
+  annotationStore,
+  annotateService,
+  piAgentManager,
+  fleetBridge,
+  piConfigManager,
+  piAuthInspector,
+  piEnvInjectionManager
+);
 ```
 
 - [ ] **Step 2: Extend the handlers signature and wire the new channels**
@@ -778,40 +787,40 @@ In the `registerIpcHandlers` function signature (parameter list starting around 
 Replace the existing `PI_LAUNCH_CONFIG` handler (around line 499) with:
 
 ```ts
-  ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
-    await piAgentManager.ensureInstalled();
-    const token = fleetBridge.generateToken();
-    const port = fleetBridge.getPort();
-    const env = piEnvInjectionManager.getInjectedEnv();
-    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env);
-    return { cmd };
-  });
+ipcMain.handle(IPC_CHANNELS.PI_LAUNCH_CONFIG, async (_event, req: { paneId: string }) => {
+  await piAgentManager.ensureInstalled();
+  const token = fleetBridge.generateToken();
+  const port = fleetBridge.getPort();
+  const env = piEnvInjectionManager.getInjectedEnv();
+  const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env);
+  return { cmd };
+});
 ```
 
 Then, after the last `piConfig` handler (search for `PI_CONFIG_OPEN_FOLDER`), register the four new `piEnv` handlers:
 
 ```ts
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_READ_BEDROCK, () => {
-    return piEnvInjectionManager.getRedactedConfig();
-  });
+ipcMain.handle(IPC_CHANNELS.PI_ENV_READ_BEDROCK, () => {
+  return piEnvInjectionManager.getRedactedConfig();
+});
 
-  ipcMain.handle(
-    IPC_CHANNELS.PI_ENV_WRITE_BEDROCK,
-    (_event, patch: import('../shared/pi-env-injection-types').BedrockWritePatch) => {
-      piEnvInjectionManager.writeBedrock(patch);
-    }
-  );
+ipcMain.handle(
+  IPC_CHANNELS.PI_ENV_WRITE_BEDROCK,
+  (_event, patch: import('../shared/pi-env-injection-types').BedrockWritePatch) => {
+    piEnvInjectionManager.writeBedrock(patch);
+  }
+);
 
-  ipcMain.handle(
-    IPC_CHANNELS.PI_ENV_CLEAR_SECRET,
-    (_event, field: 'secretAccessKey' | 'sessionToken') => {
-      piEnvInjectionManager.clearBedrockSecret(field);
-    }
-  );
+ipcMain.handle(
+  IPC_CHANNELS.PI_ENV_CLEAR_SECRET,
+  (_event, field: 'secretAccessKey' | 'sessionToken') => {
+    piEnvInjectionManager.clearBedrockSecret(field);
+  }
+);
 
-  ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
-    return piEnvInjectionManager.isEncryptionAvailable();
-  });
+ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
+  return piEnvInjectionManager.isEncryptionAvailable();
+});
 ```
 
 - [ ] **Step 3: Typecheck + lint**
@@ -831,6 +840,7 @@ git commit -m "feat(pi): wire env-injection handlers and apply env to Pi launch"
 ## Task 7: `pi-presets.ts` — remove Bedrock preset, add `managedEnv` flag
 
 **Files:**
+
 - Modify: `src/shared/pi-presets.ts`
 
 - [ ] **Step 1: Remove `bedrock` from `PI_PRESETS` and remove the `'bedrock'` preset id**
@@ -902,6 +912,7 @@ git commit -m "refactor(pi): remove Bedrock from custom-provider preset, mark as
 ## Task 8: Provider-row ordering — pure function + unit tests
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/lib/provider-ordering.ts`
 - Create: `src/renderer/src/components/settings/pi/__tests__/provider-ordering.test.ts`
 
@@ -913,7 +924,11 @@ Create `src/renderer/src/components/settings/pi/__tests__/provider-ordering.test
 import { describe, it, expect } from 'vitest';
 import { orderProviderRows, type ProviderRowInput } from '../lib/provider-ordering';
 
-const row = (id: string, kind: ProviderRowInput['kind'], configured: boolean): ProviderRowInput => ({
+const row = (
+  id: string,
+  kind: ProviderRowInput['kind'],
+  configured: boolean
+): ProviderRowInput => ({
   id,
   label: id,
   kind,
@@ -1000,7 +1015,14 @@ export type OrderedProviderRows<T extends ProviderRowInput> = {
   secondary: T[];
 };
 
-const PRIMARY_BUILTIN_IDS = new Set(['anthropic', 'bedrock', 'google', 'ollama', 'openai', 'openrouter']);
+const PRIMARY_BUILTIN_IDS = new Set([
+  'anthropic',
+  'bedrock',
+  'google',
+  'ollama',
+  'openai',
+  'openrouter'
+]);
 
 export function orderProviderRows<T extends ProviderRowInput>(rows: T[]): OrderedProviderRows<T> {
   const primary: T[] = [];
@@ -1041,6 +1063,7 @@ git commit -m "feat(pi): unified provider row ordering as a pure function"
 ## Task 9: `PiWelcomeStrip` component
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/PiWelcomeStrip.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1115,6 +1138,7 @@ git commit -m "feat(pi): PiWelcomeStrip zero-state onboarding component"
 ## Task 10: `PiBedrockPanel` component — form for managed env injection
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/PiBedrockPanel.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1193,7 +1217,9 @@ export function PiBedrockPanel({
   }
   if (state.kind === 'error') {
     return (
-      <div className="text-xs text-red-400 px-3 py-2">Failed to load Bedrock settings: {state.message}</div>
+      <div className="text-xs text-red-400 px-3 py-2">
+        Failed to load Bedrock settings: {state.message}
+      </div>
     );
   }
 
@@ -1224,8 +1250,8 @@ export function PiBedrockPanel({
       {legacyCustomProviderPresent && !legacyBannerDismissed && (
         <div className="rounded border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 space-y-2">
           <p>
-            We detected an existing <code>bedrock</code> entry under custom providers. Move its custom
-            model ids into this panel?
+            We detected an existing <code>bedrock</code> entry under custom providers. Move its
+            custom model ids into this panel?
           </p>
           <div className="flex gap-2">
             <button
@@ -1276,7 +1302,9 @@ export function PiBedrockPanel({
             />
             Use AWS profile (recommended)
           </label>
-          <label className={`flex items-center gap-2 ${state.encryptionAvailable ? '' : 'opacity-50'}`}>
+          <label
+            className={`flex items-center gap-2 ${state.encryptionAvailable ? '' : 'opacity-50'}`}
+          >
             <input
               type="radio"
               name="bedrock-mode"
@@ -1329,8 +1357,7 @@ export function PiBedrockPanel({
           </div>
           <div>
             <label className="text-xs text-neutral-400 block mb-1">
-              Secret Access Key{' '}
-              <span className="text-neutral-600">🔒 stored in OS keychain</span>
+              Secret Access Key <span className="text-neutral-600">🔒 stored in OS keychain</span>
             </label>
             {state.secretAccessKeyPresent ? (
               <div className="flex items-center gap-2">
@@ -1373,8 +1400,7 @@ export function PiBedrockPanel({
           </div>
           <div>
             <label className="text-xs text-neutral-400 block mb-1">
-              Session Token{' '}
-              <span className="text-neutral-600">optional · STS · 🔒 encrypted</span>
+              Session Token <span className="text-neutral-600">optional · STS · 🔒 encrypted</span>
             </label>
             {state.sessionTokenPresent ? (
               <div className="flex items-center gap-2">
@@ -1410,8 +1436,8 @@ export function PiBedrockPanel({
       )}
 
       <p className="text-xs text-neutral-500">
-        These values are injected into Pi tabs Fleet opens. They do not affect the <code>pi</code> CLI
-        you run in a terminal.
+        These values are injected into Pi tabs Fleet opens. They do not affect the <code>pi</code>{' '}
+        CLI you run in a terminal.
       </p>
     </div>
   );
@@ -1435,6 +1461,7 @@ git commit -m "feat(pi): PiBedrockPanel with keychain-backed AWS credentials"
 ## Task 11: `PiProviderRow` — row chrome + expansion dispatcher
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/PiProviderRow.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1537,29 +1564,21 @@ function OAuthPanel({ label }: { label: string }): React.JSX.Element {
   return (
     <div className="px-3 py-3 text-sm text-neutral-300 space-y-2">
       <p>{label} uses OAuth. Sign in via the pi CLI:</p>
-      <code className="block rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-200">
-        pi
-      </code>
+      <code className="block rounded bg-neutral-900 px-2 py-1 text-xs text-neutral-200">pi</code>
       <p className="text-xs text-neutral-500">
-        Then type <code>/login</code> and follow the prompts. Come back here afterwards — auth status
-        refreshes on window focus.
+        Then type <code>/login</code> and follow the prompts. Come back here afterwards — auth
+        status refreshes on window focus.
       </p>
     </div>
   );
 }
 
-function ReadonlyEnvPanel({
-  envVar,
-  label
-}: {
-  envVar: string;
-  label: string;
-}): React.JSX.Element {
+function ReadonlyEnvPanel({ envVar, label }: { envVar: string; label: string }): React.JSX.Element {
   return (
     <div className="px-3 py-3 text-sm text-neutral-300 space-y-2">
       <p>
-        {label} uses an environment variable. Set <code>{envVar}</code> in the shell you launch Fleet
-        from.
+        {label} uses an environment variable. Set <code>{envVar}</code> in the shell you launch
+        Fleet from.
       </p>
       <p className="text-xs text-neutral-500">
         Fleet-managed injection for this provider isn&apos;t available yet.
@@ -1586,6 +1605,7 @@ git commit -m "feat(pi): PiProviderRow with kind-dispatched expansion panel"
 ## Task 12: `PiProvidersList` — unified list composition
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/PiProvidersList.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1824,6 +1844,7 @@ git commit -m "feat(pi): unified PiProvidersList merging built-in and custom row
 ## Task 13: `PiAdvancedAccordion` — collapsed advanced region
 
 **Files:**
+
 - Create: `src/renderer/src/components/settings/pi/PiAdvancedAccordion.tsx`
 
 - [ ] **Step 1: Implement**
@@ -1904,8 +1925,8 @@ export function PiAdvancedAccordion({
             </button>
           </div>
           <p className="text-xs text-neutral-500">
-            Pi CLI writes the same files. If <code>pi</code> is open in a terminal, save from one side
-            at a time.
+            Pi CLI writes the same files. If <code>pi</code> is open in a terminal, save from one
+            side at a time.
           </p>
         </div>
       )}
@@ -1931,6 +1952,7 @@ git commit -m "feat(pi): PiAdvancedAccordion for theme/cycling/config-folder"
 ## Task 14: Trim `PiDefaultsForm` — drop theme + model cycling
 
 **Files:**
+
 - Modify: `src/renderer/src/components/settings/pi/PiDefaultsForm.tsx` (remove the theme and model-cycling blocks; lines approximately 131-155)
 
 - [ ] **Step 1: Remove theme + cycling fields**
@@ -1981,9 +2003,9 @@ And remove the `useState` import if it becomes unused. Keep the `useMemo` import
 Update the subtitle. After the `<h2>` (currently `Defaults`), add:
 
 ```tsx
-      <p className="text-xs text-neutral-500 -mt-3 mb-1">
-        Used when you open a new Pi tab without specifying otherwise.
-      </p>
+<p className="text-xs text-neutral-500 -mt-3 mb-1">
+  Used when you open a new Pi tab without specifying otherwise.
+</p>
 ```
 
 - [ ] **Step 2: Typecheck + lint**
@@ -2003,6 +2025,7 @@ git commit -m "refactor(pi): trim PiDefaultsForm to provider/model/thinking only
 ## Task 15: `PiPresetPicker` — never show Bedrock card
 
 **Files:**
+
 - Modify: `src/renderer/src/components/settings/pi/PiPresetPicker.tsx`
 
 - [ ] **Step 1: Filter out the Bedrock preset**
@@ -2034,6 +2057,7 @@ git commit -m "chore(pi): guard PiPresetPicker against Bedrock preset"
 ## Task 16: Wire the new top-level `PiSection`
 
 **Files:**
+
 - Modify: `src/renderer/src/components/settings/pi/PiSection.tsx` (full rewrite)
 
 - [ ] **Step 1: Rewrite `PiSection`**
@@ -2123,7 +2147,9 @@ export function PiSection(): React.JSX.Element {
       : 0;
     const customCount = Object.keys(state.models.providers).filter((id) => id !== 'bedrock').length;
     return (
-      builtInCount + customCount + Math.max(0, managedBedrockConfigured - bedrockAlreadyCountedFromBuiltIn)
+      builtInCount +
+      customCount +
+      Math.max(0, managedBedrockConfigured - bedrockAlreadyCountedFromBuiltIn)
     );
   }, [state, bedrockHasEnvConfig]);
 
@@ -2330,6 +2356,7 @@ No commit for this task.
 ## Task 18: Changelog entry
 
 **Files:**
+
 - Modify: `CHANGELOG.md`
 
 - [ ] **Step 1: Add a changelog entry**
@@ -2340,10 +2367,12 @@ Edit `CHANGELOG.md`. Above the most recent entry, add:
 ## Unreleased
 
 ### Added
+
 - Pi Agent settings page redesigned around a unified Providers list with a welcome strip for first-time users and an Advanced accordion for rarely-changed knobs.
 - Amazon Bedrock now has a first-class configuration panel. AWS region, profile, access keys, and session token can be entered in Fleet; secrets are encrypted via the OS keychain (`safeStorage`) and injected into Pi tabs Fleet launches.
 
 ### Changed
+
 - Removed the Bedrock "custom provider" preset from the Add-Provider picker. Existing `providers.bedrock` entries get a one-time inline migration prompt inside the new Bedrock panel.
 ```
 
