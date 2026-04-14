@@ -46,6 +46,10 @@ import type {
   BuiltInProviderStatus,
   ModelEntry
 } from '../shared/pi-config-types';
+import type {
+  RedactedBedrock,
+  BedrockWritePatch
+} from '../shared/pi-env-injection-types';
 
 type Unsubscribe = () => void;
 
@@ -349,6 +353,16 @@ const fleetApi = {
     listAvailableModels: async (): Promise<ModelEntry[]> =>
       typedInvoke(IPC_CHANNELS.PI_CONFIG_LIST_MODELS),
     openConfigFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER)
+  },
+  piEnv: {
+    readBedrock: async (): Promise<RedactedBedrock | undefined> =>
+      (await typedInvoke<{ bedrock?: RedactedBedrock }>(IPC_CHANNELS.PI_ENV_READ_BEDROCK)).bedrock,
+    writeBedrock: async (patch: BedrockWritePatch): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_ENV_WRITE_BEDROCK, patch),
+    clearSecret: async (field: 'secretAccessKey' | 'sessionToken'): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, field),
+    isEncryptionAvailable: async (): Promise<boolean> =>
+      typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)
   }
 };
 

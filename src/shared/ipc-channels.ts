@@ -103,5 +103,10 @@ export const IPC_CHANNELS = {
   PI_CONFIG_RENAME_PROVIDER: 'pi:config:rename-provider',
   PI_CONFIG_BUILT_IN_STATUS: 'pi:config:built-in-status',
   PI_CONFIG_LIST_MODELS: 'pi:config:list-models',
-  PI_CONFIG_OPEN_FOLDER: 'pi:config:open-folder'
+  PI_CONFIG_OPEN_FOLDER: 'pi:config:open-folder',
+  // Pi Env Injection
+  PI_ENV_READ_BEDROCK: 'pi:env:read-bedrock',
+  PI_ENV_WRITE_BEDROCK: 'pi:env:write-bedrock',
+  PI_ENV_CLEAR_SECRET: 'pi:env:clear-secret',
+  PI_ENV_IS_ENCRYPTION_AVAILABLE: 'pi:env:is-encryption-available'
 } as const;
