@@ -46,10 +46,7 @@ import type {
   BuiltInProviderStatus,
   ModelEntry
 } from '../shared/pi-config-types';
-import type {
-  RedactedBedrock,
-  BedrockWritePatch
-} from '../shared/pi-env-injection-types';
+import type { RedactedBedrock, BedrockWritePatch } from '../shared/pi-env-injection-types';
 
 type Unsubscribe = () => void;
 

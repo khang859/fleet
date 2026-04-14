@@ -46,6 +46,8 @@ import type { FleetBridgeServer } from './fleet-bridge';
 import type { PiConfigManager } from './pi-config-manager';
 import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
 import type { PiAuthInspector } from './pi-auth-inspector';
+import type { PiEnvInjectionManager } from './pi-env-injection-manager';
+import type { BedrockWritePatch } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
@@ -73,7 +75,8 @@ export function registerIpcHandlers(
   piAgentManager: PiAgentManager,
   fleetBridge: FleetBridgeServer,
   piConfigManager: PiConfigManager,
-  piAuthInspector: PiAuthInspector
+  piAuthInspector: PiAuthInspector,
+  piEnvInjectionManager: PiEnvInjectionManager
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -500,7 +503,8 @@ export function registerIpcHandlers(
     await piAgentManager.ensureInstalled();
     const token = fleetBridge.generateToken();
     const port = fleetBridge.getPort();
-    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId);
+    const env = piEnvInjectionManager.getInjectedEnv();
+    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env);
     return { cmd };
   });
 
@@ -596,6 +600,25 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.PI_CONFIG_OPEN_FOLDER, async () => {
     await piConfigManager.openConfigFolder();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PI_ENV_READ_BEDROCK, () => {
+    return piEnvInjectionManager.getRedactedConfig();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.PI_ENV_WRITE_BEDROCK, (_event, patch: BedrockWritePatch) => {
+    piEnvInjectionManager.writeBedrock(patch);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.PI_ENV_CLEAR_SECRET,
+    (_event, field: 'secretAccessKey' | 'sessionToken') => {
+      piEnvInjectionManager.clearBedrockSecret(field);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
+    return piEnvInjectionManager.isEncryptionAvailable();
   });
 }
 

@@ -24,6 +24,7 @@ import { ImageService } from './image-service';
 import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
 import { PiAgentManager } from './pi-agent-manager';
+import { PiEnvInjectionManager } from './pi-env-injection-manager';
 import { PiConfigManager } from './pi-config-manager';
 import { PiAuthInspector } from './pi-auth-inspector';
 import { FleetBridgeServer } from './fleet-bridge';
@@ -61,6 +62,7 @@ const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
 const piAgentManager = new PiAgentManager();
 const piConfigManager = new PiConfigManager();
+const piEnvInjectionManager = new PiEnvInjectionManager();
 const piAuthInspector = new PiAuthInspector({
   modelCatalogPath: join(
     homedir(),
@@ -318,7 +320,8 @@ void app.whenReady().then(async () => {
     piAgentManager,
     fleetBridge,
     piConfigManager,
-    piAuthInspector
+    piAuthInspector,
+    piEnvInjectionManager
   );
 
   imageService.resumeInterrupted();

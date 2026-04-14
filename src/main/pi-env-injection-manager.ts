@@ -136,9 +136,7 @@ export class PiEnvInjectionManager {
       }
       if (b.sessionTokenEnc) {
         try {
-          out.AWS_SESSION_TOKEN = this.safe.decryptString(
-            Buffer.from(b.sessionTokenEnc, 'base64')
-          );
+          out.AWS_SESSION_TOKEN = this.safe.decryptString(Buffer.from(b.sessionTokenEnc, 'base64'));
         } catch (err) {
           log.warn('Failed to decrypt AWS_SESSION_TOKEN; skipping', {
             error: err instanceof Error ? err.message : String(err)

@@ -24,9 +24,9 @@ describe('PiAgentManager.buildLaunchCommand', () => {
 
   it('produces an empty envOverrides path starting with FLEET_BRIDGE_PORT', () => {
     const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {});
-    expect(cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')).toBe(
-      true
-    );
+    expect(
+      cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')
+    ).toBe(true);
   });
 
   it('prepends envOverrides with POSIX shell-quoting before FLEET_BRIDGE_PORT', () => {

@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { PiBedrockInjectionSchema, PiEnvInjectionSchema } from '../../shared/pi-env-injection-types';
+import {
+  PiBedrockInjectionSchema,
+  PiEnvInjectionSchema
+} from '../../shared/pi-env-injection-types';
 import type { PiEnvInjection } from '../../shared/pi-env-injection-types';
 import { PiEnvInjectionManager } from '../pi-env-injection-manager';
 
