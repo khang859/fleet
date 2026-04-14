@@ -1,12 +1,6 @@
 import type { PiProvider } from './pi-config-types';
 
-export type PiPresetId =
-  | 'bedrock'
-  | 'ollama'
-  | 'lm-studio'
-  | 'openrouter'
-  | 'vercel-gateway'
-  | 'custom';
+export type PiPresetId = 'ollama' | 'lm-studio' | 'openrouter' | 'vercel-gateway' | 'custom';
 
 export type PiPreset = {
   id: PiPresetId;
@@ -23,17 +17,6 @@ export type PiPreset = {
 };
 
 export const PI_PRESETS: PiPreset[] = [
-  {
-    id: 'bedrock',
-    label: 'Amazon Bedrock',
-    description: 'AWS-hosted Anthropic, Meta, Mistral models via the Bedrock API.',
-    defaultProviderId: 'bedrock',
-    defaults: {
-      api: 'anthropic-messages'
-    },
-    skipApiKey: true,
-    hint: "Bedrock uses the AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE (or AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY) in your shell. Custom models here are added alongside pi's built-in Bedrock models."
-  },
   {
     id: 'ollama',
     label: 'Ollama (local)',
@@ -97,12 +80,14 @@ export function getPreset(id: PiPresetId): PiPreset {
   return found;
 }
 
-/** Known built-in providers pi supports (read-only in the UI). Keep synced with pi's catalog. */
+/** Known built-in providers pi supports. Some are read-only in the UI. Keep synced with pi's catalog. */
 export const PI_BUILT_IN_PROVIDERS: Array<{
   id: string;
   label: string;
   envVar?: string;
   supportsOAuth?: boolean;
+  /** When true, Fleet stores env vars for this provider and injects them into Pi tab spawns. */
+  managedEnv?: boolean;
   hint?: string;
 }> = [
   {
@@ -130,7 +115,8 @@ export const PI_BUILT_IN_PROVIDERS: Array<{
     id: 'bedrock',
     label: 'Amazon Bedrock',
     envVar: 'AWS_REGION',
-    hint: 'Uses AWS SDK credential chain. Set AWS_REGION and AWS_PROFILE.'
+    managedEnv: true,
+    hint: 'Configured in Fleet: credentials are stored in the OS keychain and injected into Pi tabs Fleet opens.'
   },
   {
     id: 'azure',

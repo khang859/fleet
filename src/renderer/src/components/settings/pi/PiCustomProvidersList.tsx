@@ -18,10 +18,7 @@ type Props = {
   onReload: () => Promise<void>;
 };
 
-function inferPresetId(id: string, provider: PiProvider): PiPresetId {
-  if (id === 'bedrock' || (provider.api === 'anthropic-messages' && id.includes('bedrock'))) {
-    return 'bedrock';
-  }
+function inferPresetId(_id: string, provider: PiProvider): PiPresetId {
   const url = provider.baseUrl ?? '';
   if (url.includes('11434')) return 'ollama';
   if (url.includes('1234')) return 'lm-studio';
