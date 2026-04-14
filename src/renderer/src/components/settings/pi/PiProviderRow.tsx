@@ -102,13 +102,7 @@ function OAuthPanel({ label }: { label: string }): React.JSX.Element {
   );
 }
 
-function ReadonlyEnvPanel({
-  envVar,
-  label
-}: {
-  envVar: string;
-  label: string;
-}): React.JSX.Element {
+function ReadonlyEnvPanel({ envVar, label }: { envVar: string; label: string }): React.JSX.Element {
   return (
     <div className="px-3 py-3 text-sm text-neutral-300 space-y-2">
       <p>

@@ -117,7 +117,6 @@ export function PiDefaultsForm({
           </select>
         </SettingRow>
       </div>
-
     </section>
   );
 }

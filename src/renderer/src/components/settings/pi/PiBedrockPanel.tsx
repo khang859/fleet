@@ -102,8 +102,8 @@ export function PiBedrockPanel({
       {legacyCustomProviderPresent && !legacyBannerDismissed && (
         <div className="rounded border border-amber-800/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-200 space-y-2">
           <p>
-            We detected an existing <code>bedrock</code> entry under custom providers. Move its custom
-            model ids into this panel?
+            We detected an existing <code>bedrock</code> entry under custom providers. Move its
+            custom model ids into this panel?
           </p>
           <div className="flex gap-2">
             <button
@@ -252,8 +252,7 @@ export function PiBedrockPanel({
           </div>
           <div>
             <label className="text-xs text-neutral-400 block mb-1">
-              Session Token{' '}
-              <span className="text-neutral-600">optional · STS · 🔒 encrypted</span>
+              Session Token <span className="text-neutral-600">optional · STS · 🔒 encrypted</span>
             </label>
             {state.sessionTokenPresent ? (
               <div className="flex items-center gap-2">

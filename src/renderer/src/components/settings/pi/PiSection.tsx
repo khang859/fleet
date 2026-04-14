@@ -1,23 +1,37 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   PiSettings,
   PiModelsFile,
   BuiltInProviderStatus,
-  ModelEntry
+  ModelEntry,
+  PiProvider
 } from '../../../../../shared/pi-config-types';
-import { PI_BUILT_IN_PROVIDERS } from '../../../../../shared/pi-presets';
+import type { RedactedBedrock } from '../../../../../shared/pi-env-injection-types';
+import {
+  PI_BUILT_IN_PROVIDERS,
+  getPreset,
+  type PiPresetId
+} from '../../../../../shared/pi-presets';
 import { PiDefaultsForm } from './PiDefaultsForm';
-import { PiBuiltInProvidersList } from './PiBuiltInProvidersList';
-import { PiCustomProvidersList } from './PiCustomProvidersList';
+import { PiProvidersList } from './PiProvidersList';
+import { PiWelcomeStrip } from './PiWelcomeStrip';
+import { PiAdvancedAccordion } from './PiAdvancedAccordion';
 
 type LoadState =
   | { kind: 'loading' }
-  | { kind: 'ready'; settings: PiSettings; models: PiModelsFile; builtIn: BuiltInProviderStatus[] }
+  | {
+      kind: 'ready';
+      settings: PiSettings;
+      models: PiModelsFile;
+      builtIn: BuiltInProviderStatus[];
+      bedrockEnv: RedactedBedrock | undefined;
+    }
   | { kind: 'error'; message: string };
 
 export function PiSection(): React.JSX.Element {
   const [state, setState] = useState<LoadState>({ kind: 'loading' });
   const [modelCatalog, setModelCatalog] = useState<ModelEntry[]>([]);
+  const [autoExpandId, setAutoExpandId] = useState<string | null>(null);
 
   useEffect(() => {
     void window.fleet.piConfig.listAvailableModels().then(setModelCatalog);
@@ -27,17 +41,17 @@ export function PiSection(): React.JSX.Element {
     let alive = true;
     const load = async (): Promise<void> => {
       try {
-        const [settings, models, builtIn] = await Promise.all([
+        const [settings, models, builtIn, bedrockEnv] = await Promise.all([
           window.fleet.piConfig.readSettings(),
           window.fleet.piConfig.readModels(),
-          window.fleet.piConfig.getBuiltInStatus()
+          window.fleet.piConfig.getBuiltInStatus(),
+          window.fleet.piEnv.readBedrock()
         ]);
         if (!alive) return;
-        setState({ kind: 'ready', settings, models, builtIn });
+        setState({ kind: 'ready', settings, models, builtIn, bedrockEnv });
       } catch (err) {
         if (!alive) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setState({ kind: 'error', message });
+        setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
       }
     };
     void load();
@@ -48,6 +62,35 @@ export function PiSection(): React.JSX.Element {
       window.removeEventListener('focus', onFocus);
     };
   }, []);
+
+  const reload = async (): Promise<void> => {
+    try {
+      const [settings, models, builtIn, bedrockEnv] = await Promise.all([
+        window.fleet.piConfig.readSettings(),
+        window.fleet.piConfig.readModels(),
+        window.fleet.piConfig.getBuiltInStatus(),
+        window.fleet.piEnv.readBedrock()
+      ]);
+      setState({ kind: 'ready', settings, models, builtIn, bedrockEnv });
+    } catch (err) {
+      setState({ kind: 'error', message: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  const bedrockHasEnvConfig = useMemo(() => {
+    if (state.kind !== 'ready' || !state.bedrockEnv) return false;
+    const b = state.bedrockEnv;
+    return Boolean(b.region || b.profile || b.accessKeyId || b.secretAccessKeyPresent);
+  }, [state]);
+
+  const configuredCount = useMemo(() => {
+    if (state.kind !== 'ready') return 0;
+    const builtInAuthed = state.builtIn.filter((s) => s.authenticated).length;
+    const customCount = Object.keys(state.models.providers).filter((id) => id !== 'bedrock').length;
+    const bedrockBuiltInAuthed = state.builtIn.some((s) => s.id === 'bedrock' && s.authenticated);
+    const managedBedrockOnly = bedrockHasEnvConfig && !bedrockBuiltInAuthed ? 1 : 0;
+    return builtInAuthed + customCount + managedBedrockOnly;
+  }, [state, bedrockHasEnvConfig]);
 
   if (state.kind === 'loading') {
     return <div className="text-sm text-neutral-400">Loading pi configuration…</div>;
@@ -66,13 +109,74 @@ export function PiSection(): React.JSX.Element {
     );
   }
 
+  const handleWelcomePick = (id: 'anthropic' | 'bedrock' | 'ollama'): void => {
+    if (id === 'ollama') {
+      // Ollama is a preset in PI_PRESETS — create a custom provider entry via handleAddCustom.
+      handleAddCustom('ollama');
+      return;
+    }
+    // Anthropic and Bedrock are built-ins; scrolling to + auto-expanding is handled by the list.
+    setAutoExpandId(id);
+  };
+
+  const handleAddCustom = (presetId: PiPresetId): void => {
+    const preset = getPreset(presetId);
+    let id = preset.defaultProviderId;
+    let i = 1;
+    while (id in state.models.providers) id = `${preset.defaultProviderId}-${i++}`;
+    void window.fleet.piConfig.writeProvider(id, { ...preset.defaults }).then(async () => {
+      await reload();
+      setAutoExpandId(id);
+    });
+  };
+
+  const handleLegacyMigrate = async (): Promise<void> => {
+    const legacy = state.models.providers['bedrock'];
+    if (!legacy) return;
+    const next: PiProvider = { ...legacy };
+    delete next.baseUrl;
+    delete next.api;
+    delete next.apiKey;
+    delete next.compat;
+    await window.fleet.piConfig.writeProvider('bedrock', next);
+    await reload();
+  };
+
+  const handleLegacyKeepAsCustom = (): void => {
+    // Banner is session-dismissed inside PiBedrockPanel; parent has nothing to persist.
+  };
+
   return (
-    <div className="space-y-8">
-      <h1 className="text-xl text-neutral-100 font-semibold">Pi Agent</h1>
-      <p className="text-sm text-neutral-500">
-        Configure pi-coding-agent. Writes to <code>~/.pi/agent/</code>; changes apply to both
-        Fleet&apos;s pi tabs and your CLI pi.
-      </p>
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-xl text-neutral-100 font-semibold">Pi Agent</h1>
+        <p className="text-sm text-neutral-500">
+          Configure which models pi can use. Pi shares this config with your CLI.
+        </p>
+      </header>
+
+      {configuredCount === 0 && (
+        <PiWelcomeStrip onPick={handleWelcomePick} onShowMore={() => setAutoExpandId(null)} />
+      )}
+
+      <PiProvidersList
+        builtIn={state.builtIn}
+        models={state.models}
+        bedrockHasEnvConfig={bedrockHasEnvConfig}
+        autoExpandId={autoExpandId}
+        onExpandConsumed={() => setAutoExpandId(null)}
+        onAddCustom={handleAddCustom}
+        onSaveCustom={async (id, provider) => {
+          await window.fleet.piConfig.writeProvider(id, provider);
+          await reload();
+        }}
+        onDeleteCustom={async (id) => {
+          await window.fleet.piConfig.deleteProvider(id);
+          await reload();
+        }}
+        onLegacyMigrate={handleLegacyMigrate}
+        onLegacyKeepAsCustom={handleLegacyKeepAsCustom}
+      />
 
       <PiDefaultsForm
         settings={state.settings}
@@ -81,34 +185,18 @@ export function PiSection(): React.JSX.Element {
         builtInProviderIds={PI_BUILT_IN_PROVIDERS.map((p) => p.id)}
         onChange={async (patch) => {
           await window.fleet.piConfig.writeSettings(patch);
-          const next = await window.fleet.piConfig.readSettings();
-          setState((s) => (s.kind === 'ready' ? { ...s, settings: next } : s));
+          await reload();
         }}
       />
 
-      <PiBuiltInProvidersList items={state.builtIn} />
-
-      <PiCustomProvidersList
-        models={state.models}
-        onWrite={async (id, provider) => window.fleet.piConfig.writeProvider(id, provider)}
-        onDelete={async (id) => window.fleet.piConfig.deleteProvider(id)}
-        onReload={async () => {
-          const next = await window.fleet.piConfig.readModels();
-          setState((s) => (s.kind === 'ready' ? { ...s, models: next } : s));
+      <PiAdvancedAccordion
+        settings={state.settings}
+        onChange={async (patch) => {
+          await window.fleet.piConfig.writeSettings(patch);
+          await reload();
         }}
+        onOpenConfigFolder={async () => window.fleet.piConfig.openConfigFolder()}
       />
-
-      <footer className="pt-4 border-t border-neutral-800 text-xs text-neutral-500 flex justify-between">
-        <span>
-          Pi CLI writes the same files. If <code>pi</code> is open, save from one side at a time.
-        </span>
-        <button
-          onClick={() => void window.fleet.piConfig.openConfigFolder()}
-          className="underline hover:text-neutral-300"
-        >
-          Open config folder
-        </button>
-      </footer>
     </div>
   );
 }
