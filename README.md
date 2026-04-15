@@ -15,12 +15,6 @@ Download the latest release for your platform:
 
 ## Features
 
-### Pi Agent
-
-A built-in AI coding agent tab with Fleet-specific extensions. Pi runs as its own tab type (no external terminal required), supports plan mode (`/plan` for read-only investigation with write/exec tools blocked; approved plans are written to `docs/plans/YYYY-MM-DD-<topic>.md`), auto-updates on launch, and can be configured from **Settings → Pi Agent**.
-
-Supported providers: Anthropic, OpenAI, Amazon Bedrock (first-class panel with AWS region/profile/keys encrypted via OS keychain), Ollama, LM Studio, OpenRouter, Vercel AI Gateway, and any generic OpenAI-compatible endpoint. Settings are backed by `~/.pi/agent/{settings,models}.json`.
-
 ### Tabs & Workspaces
 
 Vertical sidebar with draggable tabs. Organize sessions into named workspaces that persist across restarts. Rename tabs with F2 (or Shift+F2 to rename a pane), undo a closed tab within 5 seconds, and switch workspaces without losing state. Collapse the sidebar to a mini icon-only view for more screen space.
