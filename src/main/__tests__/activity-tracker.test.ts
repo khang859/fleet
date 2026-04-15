@@ -5,12 +5,12 @@ import { EventBus } from '../event-bus';
 describe('ActivityTracker', () => {
   let eventBus: EventBus;
   let tracker: ActivityTracker;
-  let getProcessName: ReturnType<typeof vi.fn>;
+  let getProcessName: ReturnType<typeof vi.fn<(paneId: string) => string | undefined>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     eventBus = new EventBus();
-    getProcessName = vi.fn().mockReturnValue('zsh');
+    getProcessName = vi.fn<(paneId: string) => string | undefined>().mockReturnValue('zsh');
     tracker = new ActivityTracker(eventBus, {
       silenceThresholdMs: 5000,
       processPollingIntervalMs: 2000,

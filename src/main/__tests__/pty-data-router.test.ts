@@ -7,7 +7,7 @@ describe('PtyDataRouter', () => {
     const cb = vi.fn();
     router.register('pane-1', cb);
 
-    router.dispatch({ paneId: 'pane-1', data: 'hello' });
+    router.dispatch({ paneId: 'pane-1', data: 'hello', paused: false });
 
     expect(cb).toHaveBeenCalledWith('hello');
   });
@@ -19,7 +19,7 @@ describe('PtyDataRouter', () => {
     router.register('pane-1', cb1);
     router.register('pane-2', cb2);
 
-    router.dispatch({ paneId: 'pane-1', data: 'hello' });
+    router.dispatch({ paneId: 'pane-1', data: 'hello', paused: false });
 
     expect(cb1).toHaveBeenCalledWith('hello');
     expect(cb2).not.toHaveBeenCalled();
@@ -31,7 +31,7 @@ describe('PtyDataRouter', () => {
     const unsubscribe = router.register('pane-1', cb);
 
     unsubscribe();
-    router.dispatch({ paneId: 'pane-1', data: 'hello' });
+    router.dispatch({ paneId: 'pane-1', data: 'hello', paused: false });
 
     expect(cb).not.toHaveBeenCalled();
   });
@@ -40,7 +40,7 @@ describe('PtyDataRouter', () => {
     const router = new PtyDataRouter();
 
     // Should not throw
-    router.dispatch({ paneId: 'unknown', data: 'hello' });
+    router.dispatch({ paneId: 'unknown', data: 'hello', paused: false });
   });
 
   it('replaces the callback when registering the same pane twice', () => {
@@ -50,7 +50,7 @@ describe('PtyDataRouter', () => {
     router.register('pane-1', cb1);
     router.register('pane-1', cb2);
 
-    router.dispatch({ paneId: 'pane-1', data: 'hello' });
+    router.dispatch({ paneId: 'pane-1', data: 'hello', paused: false });
 
     expect(cb1).not.toHaveBeenCalled();
     expect(cb2).toHaveBeenCalledWith('hello');
@@ -68,7 +68,7 @@ describe('PtyDataRouter', () => {
     }
 
     // Dispatch to pane-50
-    router.dispatch({ paneId: 'pane-50', data: 'targeted' });
+    router.dispatch({ paneId: 'pane-50', data: 'targeted', paused: false });
 
     // Only pane-50 should receive data
     for (const [id, cb] of callbacks) {

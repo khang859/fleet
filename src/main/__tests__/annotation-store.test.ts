@@ -79,7 +79,7 @@ describe('AnnotationStore', () => {
       url: 'https://example.com',
       elements: []
     };
-    const meta = store.add(result, []);
+    store.add(result, []);
     // Manually backdate the timestamp
     const index = store.list();
     index[0].timestamp = Date.now() - 5 * 24 * 60 * 60 * 1000; // 5 days ago

@@ -14,12 +14,12 @@ function makeEvent(overrides: Partial<HookEvent> = {}): HookEvent {
 
 describe('CopilotSessionStore', () => {
   let store: CopilotSessionStore;
-  let onChange: ReturnType<typeof vi.fn>;
+  let onChange: ReturnType<typeof vi.fn<() => void>>;
 
   beforeEach(() => {
     vi.useFakeTimers();
     store = new CopilotSessionStore();
-    onChange = vi.fn();
+    onChange = vi.fn<() => void>();
     store.setOnChange(onChange);
   });
 

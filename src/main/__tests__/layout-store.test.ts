@@ -39,6 +39,7 @@ describe('LayoutStore', () => {
         {
           id: 'tab-1',
           label: 'Shell',
+          labelIsCustom: false,
           cwd: '/tmp',
           splitRoot: { type: 'leaf' as const, id: 'pane-1', cwd: '/tmp' }
         }

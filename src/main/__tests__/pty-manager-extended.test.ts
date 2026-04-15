@@ -2,7 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PtyManager } from '../pty-manager';
 
 // Track mock instances so we can inspect calls on each PTY
-const mockInstances: Array<Record<string, ReturnType<typeof vi.fn>>> = [];
+const mockInstances: Array<{
+  pid: number;
+  onData: ReturnType<typeof vi.fn>;
+  onExit: ReturnType<typeof vi.fn>;
+  write: ReturnType<typeof vi.fn>;
+  resize: ReturnType<typeof vi.fn>;
+  kill: ReturnType<typeof vi.fn>;
+}> = [];
 
 vi.mock('node-pty', () => ({
   spawn: vi.fn(() => {

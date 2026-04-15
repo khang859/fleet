@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 
 // Redirect homedir to a temp directory so tests don't pollute ~/.fleet/images/
 // vi.hoisted runs before imports are hoisted, so we inline path/os calls
