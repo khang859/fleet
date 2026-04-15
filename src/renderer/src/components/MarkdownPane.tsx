@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import { FileEditorPane } from './FileEditorPane';
+import { PathChromeHeader } from './PathChromeHeader';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { dirname, resolve } from '../lib/path-utils';
 
@@ -170,6 +171,8 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden bg-[#282c34]">
+      <PathChromeHeader filePath={filePath} />
+
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 flex items-center gap-0 border-b border-neutral-800 bg-neutral-950/60 px-2">
         <button
@@ -212,8 +215,16 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
             paneId={paneId}
             filePath={filePath}
             onContentChange={handleContentChange}
+            showPathChrome={false}
           />
         </div>
+      </div>
+
+      {/* Footer with path */}
+      <div className="flex-shrink-0 flex items-center px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-500">
+        <span className="font-mono truncate min-w-0" title={filePath}>
+          {filePath}
+        </span>
       </div>
     </div>
   );

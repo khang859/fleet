@@ -1128,7 +1128,8 @@ export function Sidebar({
               if (tab.groupId && collapsedGroups.has(tab.groupId)) continue;
 
               const paneIds = collectPaneIds(tab.splitRoot);
-              const isFile = tab.type === 'file' || tab.type === 'image';
+              const isFile =
+                tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown';
               const idx = realIndex(tab.id);
 
               let displayCwd: string;

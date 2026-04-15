@@ -16,6 +16,7 @@ import { oneDark } from '@codemirror/theme-one-dark';
 import { getLanguageForPath } from '../../../shared/languages';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
+import { PathChromeHeader } from './PathChromeHeader';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
@@ -117,9 +118,16 @@ type Props = {
   paneId: string;
   filePath: string;
   onContentChange?: (content: string) => void;
+  /** When false, hides the built-in path header + footer path — used when the host pane renders its own chrome. */
+  showPathChrome?: boolean;
 };
 
-export function FileEditorPane({ paneId, filePath, onContentChange }: Props): React.JSX.Element {
+export function FileEditorPane({
+  paneId,
+  filePath,
+  onContentChange,
+  showPathChrome = true
+}: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tooLarge, setTooLarge] = useState(false);
@@ -320,13 +328,21 @@ export function FileEditorPane({ paneId, filePath, onContentChange }: Props): Re
 
   return (
     <div className="h-full w-full flex flex-col overflow-hidden">
+      {showPathChrome && <PathChromeHeader filePath={filePath} />}
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
-        <span className="text-neutral-300">{langLabel}</span>
-        <span className="text-neutral-500">
+        <span className="text-neutral-300 shrink-0">{langLabel}</span>
+        <span className="text-neutral-500 shrink-0">
           Ln {cursorPos.line}, Col {cursorPos.col}
         </span>
-        <span className={`ml-auto flex items-center gap-1.5 ${saveStatus.className}`}>
+        {showPathChrome && (
+          <span className="text-neutral-500 font-mono truncate min-w-0 flex-1" title={filePath}>
+            {filePath}
+          </span>
+        )}
+        <span
+          className={`flex items-center gap-1.5 shrink-0 ${showPathChrome ? '' : 'ml-auto'} ${saveStatus.className}`}
+        >
           {saveStatus.label === 'Modified' && (
             <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400" />
           )}
