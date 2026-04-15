@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.35.0
+
+- Editor chrome and the markdown preview sidebar now display the full file path instead of just the filename, making it easier to distinguish files with the same name across different directories.
+
 ## v2.34.1
 
 - Telescope (file/grep/browse modes) and the Cmd+O open-file dialog now route markdown files through the markdown preview pane, matching the behavior of the `fleet open` CLI.
