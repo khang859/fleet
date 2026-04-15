@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
+import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
@@ -55,22 +56,6 @@ function saveRecentFolders(folders: string[]): void {
 
 function generateId(): string {
   return crypto.randomUUID();
-}
-
-const IMAGE_EXTENSIONS = new Set([
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.svg',
-  '.bmp',
-  '.ico'
-]);
-
-function getFileExt(filePath: string): string {
-  const idx = filePath.lastIndexOf('.');
-  return idx >= 0 ? filePath.slice(idx).toLowerCase() : '';
 }
 
 function createLeaf(cwd: string): PaneLeaf {
@@ -909,9 +894,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   openFile: (filePath) => {
-    const ext = getFileExt(filePath);
-    const paneType = IMAGE_EXTENSIONS.has(ext) ? 'image' : 'file';
-    const tabType = paneType === 'image' ? 'image' : 'file';
+    const paneType = getPaneTypeForFilePath(filePath);
+    const tabType = paneType;
     const fileName = filePath.split('/').pop() ?? filePath;
     const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd: '/', paneType, filePath };
     const tab: Tab = {
