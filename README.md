@@ -15,9 +15,19 @@ Download the latest release for your platform:
 
 ## Features
 
+### Pi Agent
+
+A built-in AI coding agent tab with Fleet-specific extensions. Pi runs as its own tab type (no external terminal required), supports plan mode (`/plan` for read-only investigation with write/exec tools blocked; approved plans are written to `docs/plans/YYYY-MM-DD-<topic>.md`), auto-updates on launch, and can be configured from **Settings → Pi Agent**.
+
+Supported providers: Anthropic, OpenAI, Amazon Bedrock (first-class panel with AWS region/profile/keys encrypted via OS keychain), Ollama, LM Studio, OpenRouter, Vercel AI Gateway, and any generic OpenAI-compatible endpoint. Settings are backed by `~/.pi/agent/{settings,models}.json`.
+
 ### Tabs & Workspaces
 
-Vertical sidebar with draggable tabs. Organize sessions into named workspaces that persist across restarts. Rename tabs with F2, undo a closed tab within 5 seconds, and switch workspaces without losing state. Collapse the sidebar to a mini icon-only view for more screen space.
+Vertical sidebar with draggable tabs. Organize sessions into named workspaces that persist across restarts. Rename tabs with F2 (or Shift+F2 to rename a pane), undo a closed tab within 5 seconds, and switch workspaces without losing state. Collapse the sidebar to a mini icon-only view for more screen space.
+
+### Dashboard
+
+When no tab is active, Fleet shows a dashboard with an ASCII header, recent files, and recent folders — a quick way to jump back into recent work or switch workspaces.
 
 ### Split Panes
 
@@ -36,13 +46,13 @@ Notifications are forwarded to your OS (macOS/Windows) and batched to prevent al
 
 ### Copilot (macOS)
 
-A floating overlay panel that monitors active Claude Code sessions across all your panes. Surfaces permission requests, tracks session activity, and displays conversation threads — so you can keep an eye on multiple agents without switching tabs. Comes with selectable animated mascots (Officer, Robot, Cat, Bear, Kraken).
+A floating overlay panel that monitors active Claude Code sessions across all your panes. Surfaces permission requests, tracks session activity, and displays conversation threads — so you can keep an eye on multiple agents without switching tabs. Comes with selectable animated mascots (Officer, Robot, Cat, Bear, Kraken, Dragon, Owl).
 
 ### Agent Visualizer
 
 A space-themed canvas (`Cmd+Shift+V`) that shows each agent as an animated ship. Ships change color based on activity — green when writing code, blue when reading, amber when waiting for permission. Sub-agents appear as smaller ships near their parent. Hover for details, click to focus the pane.
 
-18 toggleable visual effects across five categories: ambient (nebula clouds, aurora bands, shooting stars, constellations, day/night cycle), ships (engine trails, idle animations, uptime badges, V-formation), environment (distant planets, space station, asteroids, space weather), interactive (click-to-follow camera, scroll zoom), and audio (ambient soundscape with volume control).
+20 toggleable visual effects across five categories: ambient (nebula clouds, aurora bands, shooting stars, twinkling/colored stars, constellations, day/night cycle, bloom glow, depth of field), ships (engine trails, idle animations, uptime badges, V-formation), environment (distant planets, space station, asteroids, space weather), interactive (click-to-follow camera, scroll zoom), and audio (ambient soundscape with volume control).
 
 ### Command Palette
 
@@ -58,13 +68,25 @@ Create, list, and remove git worktrees directly from Fleet. Worktree tabs are au
 
 ### File Editor & Viewer
 
-Open files in a built-in editor with syntax highlighting (JavaScript, TypeScript, HTML, CSS, JSON, Markdown, Python, and more). CodeMirror-powered with undo/redo, line numbers, and auto-save. Image files open in an inline viewer.
+Open files in a built-in editor with syntax highlighting (JavaScript, TypeScript, HTML, CSS, JSON, Markdown, Python, Go, Rust, Java, PHP, Vue, SQL, YAML, and more). CodeMirror-powered with undo/redo, line numbers, and auto-save. Editor chrome and the markdown preview sidebar show the full file path so same-named files stay distinguishable. Image files open in an inline viewer.
+
+### Markdown Preview
+
+Markdown files open in a dedicated preview pane with preview and raw sub-tabs — GFM, syntax-highlighted code blocks, and the same rendering whether you open them from the sidebar, `Cmd+O`, or `fleet open`.
+
+### Telescope Finder
+
+A multi-mode fuzzy finder (`Cmd+Shift+T`) with file, grep, symbol, browse, and panes modes. Preview images inline, navigate directories, and see gitignored entries dimmed. Markdown files open in the markdown preview pane; the `fleet open` CLI uses the same routing.
 
 ### File Search & Quick Open
 
 - **Quick Open** (`Cmd+P`) — fast fuzzy file finder
 - **Search files on disk** (`Cmd+Shift+O`) — deep file search across directories
 - **Search in pane** (`Cmd+F`) — search terminal output
+
+### Annotate
+
+Annotate live webpages with an element picker or free-draw canvas, then hand the annotated screenshot to an AI agent. Move/drag tool (V) repositions drawn elements; picker UI is hidden from the saved capture.
 
 ### Clipboard History
 
@@ -76,17 +98,17 @@ Generate and edit images using FAL AI directly from Fleet. A dedicated image gal
 
 ### Socket API
 
-Control Fleet programmatically over a Unix socket (macOS/Linux) or named pipe (Windows):
+Control Fleet programmatically over a Unix socket at `~/.fleet/fleet.sock` (macOS/Linux) or a named pipe `\\.\pipe\fleet` (Windows):
 
 ```bash
 # List all panes
-echo '{"command":"list-panes"}' | nc -U /tmp/fleet.sock
+echo '{"command":"list-panes"}' | nc -U ~/.fleet/fleet.sock
 
 # Send input to a pane
-echo '{"command":"send-input","paneId":"abc123","input":"ls\n"}' | nc -U /tmp/fleet.sock
+echo '{"command":"send-input","paneId":"abc123","input":"ls\n"}' | nc -U ~/.fleet/fleet.sock
 
 # Subscribe to events
-echo '{"command":"subscribe"}' | nc -U /tmp/fleet.sock
+echo '{"command":"subscribe"}' | nc -U ~/.fleet/fleet.sock
 ```
 
 ### Fleet CLI
@@ -115,6 +137,7 @@ Fleet checks GitHub Releases on launch and prompts you to install new versions.
 | Previous tab         | `Ctrl+Shift+Tab` | `Ctrl+Shift+Tab`   |
 | Command palette      | `Cmd+Shift+P`    | `Ctrl+Shift+P`     |
 | Quick open           | `Cmd+P`          | `Ctrl+P`           |
+| Telescope finder     | `Cmd+Shift+T`    | `Ctrl+Shift+T`     |
 | Search files on disk | `Cmd+Shift+O`    | `Ctrl+Shift+O`     |
 | Search in pane       | `Cmd+F`          | `Ctrl+Shift+F`     |
 | Git changes          | `Cmd+Shift+G`    | `Ctrl+Shift+G`     |
@@ -122,6 +145,7 @@ Fleet checks GitHub Releases on launch and prompts you to install new versions.
 | Toggle visualizer    | `Cmd+Shift+V`    | `Ctrl+Shift+V`     |
 | Open file            | `Cmd+O`          | `Ctrl+O`           |
 | Rename tab           | `F2`             | `F2`               |
+| Rename pane          | `Shift+F2`       | `Shift+F2`         |
 | Settings             | `Cmd+,`          | `Ctrl+,`           |
 | Show shortcuts       | `Cmd+/`          | `Ctrl+/`           |
 | Switch to tab 1–9    | `Cmd+1`–`Cmd+9`  | `Ctrl+1`–`Ctrl+9`  |
