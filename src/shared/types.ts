@@ -5,6 +5,8 @@ export type Workspace = {
   activeTabId?: string;
   activePaneId?: string;
   collapsedGroups?: string[];
+  /** Pixel width of the expanded sidebar. Undefined = use DEFAULT_SIDEBAR_WIDTH. */
+  sidebarWidth?: number;
 };
 
 export type Tab = {
