@@ -19,7 +19,7 @@ import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { getFileSave } from '../lib/file-save-registry';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 import { SidebarResizeHandle } from './SidebarResizeHandle';
-import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-constants';
+import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-constants';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -700,6 +700,18 @@ export function Sidebar({
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
   }, [isDirty, workspace.tabs, workspace.label, markClean]);
+
+  // Clamp sidebar width when window shrinks below 2× sidebar width
+  useEffect(() => {
+    const handleWindowResize = (): void => {
+      const max = window.innerWidth * MAX_SIDEBAR_WIDTH_RATIO;
+      if (currentSidebarWidth > max) {
+        setSidebarWidth(max);
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, [currentSidebarWidth, setSidebarWidth]);
 
   // --- New workspace creation ---
   const [showNewWsInput, setShowNewWsInput] = useState(false);
