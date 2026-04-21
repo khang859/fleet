@@ -18,6 +18,8 @@ import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { getFileSave } from '../lib/file-save-registry';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
+import { SidebarResizeHandle } from './SidebarResizeHandle';
+import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-constants';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -400,7 +402,8 @@ export function Sidebar({
     closeWorktreeTab,
     renameWorktreeGroup,
     worktreeCloseConfirm,
-    setWorktreeCloseConfirm
+    setWorktreeCloseConfirm,
+    setSidebarWidth
   } = useWorkspaceStore(
     useShallow((s) => ({
       workspace: s.workspace,
@@ -422,10 +425,13 @@ export function Sidebar({
       closeWorktreeTab: s.closeWorktreeTab,
       renameWorktreeGroup: s.renameWorktreeGroup,
       worktreeCloseConfirm: s.worktreeCloseConfirm,
-      setWorktreeCloseConfirm: s.setWorktreeCloseConfirm
+      setWorktreeCloseConfirm: s.setWorktreeCloseConfirm,
+      setSidebarWidth: s.setSidebarWidth
     }))
   );
   const { getTabBadge } = useNotificationStore();
+
+  const currentSidebarWidth = workspace.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
 
   // --- Drag-and-drop state ---
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -819,6 +825,7 @@ export function Sidebar({
 
   // --- Tab list scroll state ---
   const tabListRef = useRef<HTMLDivElement>(null);
+  const sidebarRootRef = useRef<HTMLDivElement>(null);
   const [hasScrollOverflow, setHasScrollOverflow] = useState(false);
 
   // Auto-scroll active tab into view
@@ -961,7 +968,11 @@ export function Sidebar({
   }, [worktreeCloseConfirm, workspace.tabs, closeWorktreeTab, setWorktreeCloseConfirm]);
 
   return (
-    <div className="flex flex-col h-full w-56 bg-neutral-900 border-r border-neutral-800">
+    <div
+      ref={sidebarRootRef}
+      className="relative flex flex-col h-full bg-neutral-900 border-r border-neutral-800 shrink-0"
+      style={{ width: currentSidebarWidth }}
+    >
       {/* Drag region + workspace label with add button */}
       <div className="px-3 pt-2 pb-3 flex items-center justify-between">
         <div style={{ WebkitAppRegion: 'no-drag' }} className="flex-1 min-w-0 mr-2">
@@ -1478,6 +1489,12 @@ export function Sidebar({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+      {/* Right-edge drag handle for resizing */}
+      <SidebarResizeHandle
+        sidebarRef={sidebarRootRef}
+        onResize={setSidebarWidth}
+        onReset={() => setSidebarWidth(DEFAULT_SIDEBAR_WIDTH)}
+      />
     </div>
   );
 }
