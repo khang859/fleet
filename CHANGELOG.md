@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.36.0
+
+- The expanded sidebar is now resizable. Drag its right edge to adjust width (min 180px, max 90% of the window). Double-click the drag handle to reset to the default width. Each workspace remembers its own sidebar width.
+
 ## v2.35.0
 
 - Editor chrome and the markdown preview sidebar now display the full file path instead of just the filename, making it easier to distinguish files with the same name across different directories.
