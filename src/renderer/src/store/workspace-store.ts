@@ -4,6 +4,7 @@ import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
+import { clampSidebarWidth } from '../components/sidebar-constants';
 
 const logTabs = createLogger('sidebar:tabs');
 const logLayout = createLogger('layout:state');
@@ -162,6 +163,7 @@ type WorkspaceStore = {
   removeBackgroundWorkspace: (workspaceId: string) => void;
   setWorkspace: (workspace: Workspace) => void;
   renameWorkspace: (label: string) => void;
+  setSidebarWidth: (width: number) => void;
   markClean: () => void;
 
   ensureImagesTab: () => void;
@@ -874,6 +876,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: { ...state.workspace, label },
       isDirty: true
     }));
+  },
+
+  setSidebarWidth: (width) => {
+    const clamped = clampSidebarWidth(width, window.innerWidth);
+    set((state) => {
+      if (state.workspace.sidebarWidth === clamped) return state;
+      return {
+        workspace: { ...state.workspace, sidebarWidth: clamped },
+        isDirty: true
+      };
+    });
   },
 
   markClean: () => set({ isDirty: false }),
