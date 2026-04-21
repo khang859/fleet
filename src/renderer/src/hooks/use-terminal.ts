@@ -249,6 +249,26 @@ function createTerminal(
     window.fleet.pty.input({ paneId: options.paneId, data });
   });
 
+  // Shift+Enter → Meta+Enter (\x1b\r). Terminals can't natively distinguish
+  // Shift+Enter from Enter (both are \r), but TUIs like Claude Code treat
+  // Meta+Enter as "insert newline" vs. plain \r as "submit". Mirror the
+  // behavior users get from Opt+Enter on macOS.
+  term.attachCustomKeyEventHandler((event) => {
+    if (
+      event.type === 'keydown' &&
+      event.key === 'Enter' &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      !event.altKey
+    ) {
+      window.fleet.pty.input({ paneId: options.paneId, data: '\x1b\r' });
+      event.preventDefault();
+      return false;
+    }
+    return true;
+  });
+
   if (options.attachOnly) {
     // attachOnly mode: always call attach to drain any buffered output and resume a paused PTY.
     // This is critical after hard refresh where the PTY may have accumulated

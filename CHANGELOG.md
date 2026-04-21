@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.36.1
+
+- Shift+Enter now inserts a newline in terminal panes, matching Opt+Enter (macOS) and Alt+Enter (Windows/Linux). Terminals can't natively distinguish Shift+Enter from Enter, so xterm.js was falling through to plain Enter; the custom key handler now translates it to Meta+Enter (`\x1b\r`).
+
 ## v2.36.0
 
 - The expanded sidebar is now resizable. Drag its right edge to adjust width (min 180px, max 90% of the window). Double-click the drag handle to reset to the default width. Each workspace remembers its own sidebar width.
