@@ -12,9 +12,9 @@
  */
 
 import {
-  findToolDefinition,
-  grepToolDefinition,
-  lsToolDefinition,
+  createFindToolDefinition,
+  createGrepToolDefinition,
+  createLsToolDefinition,
   type ExtensionAPI,
   type ExtensionContext
 } from '@mariozechner/pi-coding-agent';
@@ -83,9 +83,10 @@ let planMode = false;
 let savedActiveTools: string[] | null = null;
 
 export default function (pi: ExtensionAPI): void {
-  pi.registerTool(grepToolDefinition);
-  pi.registerTool(findToolDefinition);
-  pi.registerTool(lsToolDefinition);
+  const cwd = process.cwd();
+  pi.registerTool(createGrepToolDefinition(cwd));
+  pi.registerTool(createFindToolDefinition(cwd));
+  pi.registerTool(createLsToolDefinition(cwd));
 
   function enterPlanMode(ctx: ExtensionContext): void {
     savedActiveTools = pi.getActiveTools();
