@@ -254,8 +254,9 @@ function createTerminal(
   // Meta+Enter as "insert newline" vs. plain \r as "submit". Mirror the
   // behavior users get from Opt+Enter on macOS.
   term.attachCustomKeyEventHandler((event) => {
+    if (event.type !== 'keydown') return true;
+
     if (
-      event.type === 'keydown' &&
       event.key === 'Enter' &&
       event.shiftKey &&
       !event.ctrlKey &&
@@ -266,8 +267,75 @@ function createTerminal(
       event.preventDefault();
       return false;
     }
+
+    // Ctrl+Shift+C / Ctrl+Shift+V on Windows/Linux for copy/paste.
+    // macOS users use Cmd+C/V via Electron's default Edit menu; we don't
+    // intercept those here so the native menu role continues to handle them.
+    if (
+      event.ctrlKey &&
+      event.shiftKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === 'c'
+    ) {
+      if (term.hasSelection()) {
+        void navigator.clipboard.writeText(term.getSelection());
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+      }
+    }
+
+    if (
+      event.ctrlKey &&
+      event.shiftKey &&
+      !event.metaKey &&
+      !event.altKey &&
+      event.key.toLowerCase() === 'v'
+    ) {
+      void navigator.clipboard.readText().then((text) => {
+        // Normalize CRLF — Windows clipboard uses \r\n, and a bare \r in
+        // bash/zsh submits the line before the rest of the paste arrives.
+        term.paste(text.replace(/\r\n/g, '\n'));
+      });
+      event.preventDefault();
+      event.stopPropagation();
+      return false;
+    }
+
     return true;
   });
+
+  // Right-click: show native context menu (Copy / Paste / Select All / Clear).
+  // Note: "Cut" and "Replace highlighted" are intentionally omitted — terminal
+  // output is not an editable text field, so there's no buffer position for the
+  // shell to delete-then-insert. Copy + Paste is the only coherent mapping.
+  const contextMenuHandler = (e: MouseEvent): void => {
+    e.preventDefault();
+    const hasSelection = term.hasSelection();
+    void window.fleet.terminal.showContextMenu({ hasSelection }).then(({ action }) => {
+      if (!action) return;
+      switch (action) {
+        case 'copy':
+          if (term.hasSelection()) {
+            void navigator.clipboard.writeText(term.getSelection());
+          }
+          break;
+        case 'paste':
+          void navigator.clipboard.readText().then((text) => {
+            term.paste(text.replace(/\r\n/g, '\n'));
+          });
+          break;
+        case 'selectAll':
+          term.selectAll();
+          break;
+        case 'clear':
+          term.clear();
+          break;
+      }
+    });
+  };
+  container.addEventListener('contextmenu', contextMenuHandler);
 
   if (options.attachOnly) {
     // attachOnly mode: always call attach to drain any buffered output and resume a paused PTY.
@@ -442,6 +510,7 @@ function createTerminal(
   const scrollCleanup = (): void => {
     container.removeEventListener('wheel', wheelHandler);
     container.removeEventListener('keydown', keyScrollHandler);
+    container.removeEventListener('contextmenu', contextMenuHandler);
     xtermViewport?.removeEventListener('scroll', viewportScrollHandler);
   };
 

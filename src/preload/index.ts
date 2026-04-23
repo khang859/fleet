@@ -286,6 +286,12 @@ const fleetApi = {
     openExternal: async (url: string): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, url)
   },
+  terminal: {
+    showContextMenu: async (params: {
+      hasSelection: boolean;
+    }): Promise<{ action: string | null }> =>
+      typedInvoke(IPC_CHANNELS.TERMINAL_CONTEXT_MENU, params)
+  },
   log: {
     batch: (entries: LogEntry[]): void => ipcRenderer.send(IPC_CHANNELS.LOG_BATCH, entries)
   },

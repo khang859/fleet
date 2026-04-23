@@ -1,4 +1,5 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, Menu, dialog } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { createLogger, logger } from './logger';
 
@@ -267,6 +268,40 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.SHELL_OPEN_EXTERNAL, async (_event, url: string) => {
     await safeOpenExternal(url);
   });
+
+  // Native right-click context menu for terminal panes.
+  // Renderer passes { hasSelection } so Copy is disabled when nothing is selected;
+  // we resolve with the chosen action id (or null on dismissal) and the renderer
+  // performs the operation against its xterm instance.
+  ipcMain.handle(
+    IPC_CHANNELS.TERMINAL_CONTEXT_MENU,
+    async (event, { hasSelection }: { hasSelection: boolean }) => {
+      return new Promise<{ action: string | null }>((resolve) => {
+        let resolved = false;
+        const done = (action: string | null): void => {
+          if (resolved) return;
+          resolved = true;
+          resolve({ action });
+        };
+        const template: MenuItemConstructorOptions[] = [
+          { label: 'Copy', enabled: hasSelection, click: () => done('copy') },
+          { label: 'Paste', click: () => done('paste') },
+          { type: 'separator' },
+          { label: 'Select All', click: () => done('selectAll') },
+          { label: 'Clear', click: () => done('clear') }
+        ];
+        const window = BrowserWindow.fromWebContents(event.sender);
+        if (!window) {
+          done(null);
+          return;
+        }
+        Menu.buildFromTemplate(template).popup({
+          window,
+          callback: () => done(null)
+        });
+      });
+    }
+  );
 
   // Folder picker
   ipcMain.handle(IPC_CHANNELS.SHOW_FOLDER_PICKER, async (event) => {
