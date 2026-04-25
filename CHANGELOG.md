@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.37.0
+
+- Added terminal tab duplication so an existing terminal pane can be cloned into a new tab.
+- Fixed Pi provider config and plan-mode tool policy hardening.
+- Fixed copy/paste handling on Windows/Linux terminals and added a right-click menu.
+
 ## v2.36.2
 
 - Fixed Pi agent tab closing instantly when opened via `fleet pi`. `@mariozechner/pi-coding-agent` v0.68.0 replaced prebuilt tool exports with cwd-bound factories, and the `fleet-plan-mode` extension still imported the removed names, causing pi to abort on startup. The extension now uses `createGrepToolDefinition(cwd)`, `createFindToolDefinition(cwd)`, and `createLsToolDefinition(cwd)`.
