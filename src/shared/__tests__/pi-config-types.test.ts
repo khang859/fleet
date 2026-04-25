@@ -48,6 +48,20 @@ describe('PiModelsFileSchema', () => {
     expect(out.providers.ollama).toMatchObject({ unknownField: 42 });
     expect(out.providers.ollama.models?.[0]).toMatchObject({ extra: 'keep' });
   });
+
+  it('accepts Pi API identifiers Fleet does not explicitly model', () => {
+    const out = PiModelsFileSchema.parse({
+      providers: {
+        bedrock: { api: 'bedrock-converse-stream' },
+        mistral: { api: 'mistral-conversations' },
+        future: { api: 'future-api-added-by-pi' }
+      }
+    });
+
+    expect(out.providers.bedrock.api).toBe('bedrock-converse-stream');
+    expect(out.providers.mistral.api).toBe('mistral-conversations');
+    expect(out.providers.future.api).toBe('future-api-added-by-pi');
+  });
 });
 
 describe('parseApiKeyString', () => {

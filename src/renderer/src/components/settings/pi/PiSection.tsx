@@ -17,6 +17,8 @@ import { PiProvidersList } from './PiProvidersList';
 import { PiWelcomeStrip } from './PiWelcomeStrip';
 import { PiAdvancedAccordion } from './PiAdvancedAccordion';
 
+const BEDROCK_PROVIDER_ID = 'amazon-bedrock';
+
 type LoadState =
   | { kind: 'loading' }
   | {
@@ -80,14 +82,20 @@ export function PiSection(): React.JSX.Element {
   const bedrockHasEnvConfig = useMemo(() => {
     if (state.kind !== 'ready' || !state.bedrockEnv) return false;
     const b = state.bedrockEnv;
-    return Boolean(b.region || b.profile || b.accessKeyId || b.secretAccessKeyPresent);
+    return Boolean(
+      b.region || b.profile || b.accessKeyId || b.secretAccessKeyPresent || b.bearerTokenPresent
+    );
   }, [state]);
 
   const configuredCount = useMemo(() => {
     if (state.kind !== 'ready') return 0;
     const builtInAuthed = state.builtIn.filter((s) => s.authenticated).length;
-    const customCount = Object.keys(state.models.providers).filter((id) => id !== 'bedrock').length;
-    const bedrockBuiltInAuthed = state.builtIn.some((s) => s.id === 'bedrock' && s.authenticated);
+    const customCount = Object.keys(state.models.providers).filter(
+      (id) => id !== BEDROCK_PROVIDER_ID
+    ).length;
+    const bedrockBuiltInAuthed = state.builtIn.some(
+      (s) => s.id === BEDROCK_PROVIDER_ID && s.authenticated
+    );
     const managedBedrockOnly = bedrockHasEnvConfig && !bedrockBuiltInAuthed ? 1 : 0;
     return builtInAuthed + customCount + managedBedrockOnly;
   }, [state, bedrockHasEnvConfig]);
@@ -109,7 +117,7 @@ export function PiSection(): React.JSX.Element {
     );
   }
 
-  const handleWelcomePick = (id: 'anthropic' | 'bedrock' | 'ollama'): void => {
+  const handleWelcomePick = (id: 'anthropic' | 'amazon-bedrock' | 'ollama'): void => {
     if (id === 'ollama') {
       // Ollama is a preset in PI_PRESETS — create a custom provider entry via handleAddCustom.
       handleAddCustom('ollama');
@@ -131,14 +139,14 @@ export function PiSection(): React.JSX.Element {
   };
 
   const handleLegacyMigrate = async (): Promise<void> => {
-    const legacy = state.models.providers['bedrock'];
+    const legacy = state.models.providers[BEDROCK_PROVIDER_ID];
     if (!legacy) return;
     const next: PiProvider = { ...legacy };
     delete next.baseUrl;
     delete next.api;
     delete next.apiKey;
     delete next.compat;
-    await window.fleet.piConfig.writeProvider('bedrock', next);
+    await window.fleet.piConfig.writeProvider(BEDROCK_PROVIDER_ID, next);
     await reload();
   };
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type {
   BedrockWritePatch,
+  BedrockSecretField,
   PiBedrockCredentialMode,
   RedactedBedrock
 } from '../../../../../shared/pi-env-injection-types';
@@ -19,6 +20,7 @@ type Loaded = {
   accessKeyId: string;
   secretAccessKeyPresent: boolean;
   sessionTokenPresent: boolean;
+  bearerTokenPresent: boolean;
   encryptionAvailable: boolean;
 };
 
@@ -32,6 +34,7 @@ export function PiBedrockPanel({
   const [state, setState] = useState<State>({ kind: 'loading' });
   const [secretDraft, setSecretDraft] = useState('');
   const [sessionDraft, setSessionDraft] = useState('');
+  const [bearerDraft, setBearerDraft] = useState('');
   const [legacyBannerDismissed, setLegacyBannerDismissed] = useState(false);
 
   const load = async (): Promise<void> => {
@@ -43,7 +46,8 @@ export function PiBedrockPanel({
       const r: RedactedBedrock = redacted ?? {
         mode: 'chain',
         secretAccessKeyPresent: false,
-        sessionTokenPresent: false
+        sessionTokenPresent: false,
+        bearerTokenPresent: false
       };
       setState({
         kind: 'loaded',
@@ -53,6 +57,7 @@ export function PiBedrockPanel({
         accessKeyId: r.accessKeyId ?? '',
         secretAccessKeyPresent: r.secretAccessKeyPresent,
         sessionTokenPresent: r.sessionTokenPresent,
+        bearerTokenPresent: r.bearerTokenPresent,
         encryptionAvailable
       });
     } catch (err) {
@@ -81,21 +86,23 @@ export function PiBedrockPanel({
   };
 
   const writeSecret = async (
-    field: 'secretAccessKey' | 'sessionToken',
+    field: BedrockSecretField,
     value: string
   ): Promise<void> => {
     await writePatch({ [field]: value });
     if (field === 'secretAccessKey') setSecretDraft('');
-    else setSessionDraft('');
+    else if (field === 'sessionToken') setSessionDraft('');
+    else setBearerDraft('');
   };
 
-  const clearSecret = async (field: 'secretAccessKey' | 'sessionToken'): Promise<void> => {
+  const clearSecret = async (field: BedrockSecretField): Promise<void> => {
     await window.fleet.piEnv.clearSecret(field);
     await load();
   };
 
   const showKeysFields = state.mode === 'keys';
   const showProfileField = state.mode === 'profile';
+  const showBearerFields = state.mode === 'bearer';
 
   return (
     <div className="space-y-3 px-3 py-3">
@@ -169,6 +176,21 @@ export function PiBedrockPanel({
               <span className="text-xs text-neutral-500">(OS keychain unavailable)</span>
             )}
           </label>
+          <label
+            className={`flex items-center gap-2 ${state.encryptionAvailable ? '' : 'opacity-50'}`}
+          >
+            <input
+              type="radio"
+              name="bedrock-mode"
+              disabled={!state.encryptionAvailable}
+              checked={state.mode === 'bearer'}
+              onChange={() => void writePatch({ mode: 'bearer' })}
+            />
+            Use bearer token
+            {!state.encryptionAvailable && (
+              <span className="text-xs text-neutral-500">(OS keychain unavailable)</span>
+            )}
+          </label>
           <label className="flex items-center gap-2">
             <input
               type="radio"
@@ -192,6 +214,52 @@ export function PiBedrockPanel({
             placeholder="default"
             className="w-64 bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700"
           />
+        </div>
+      )}
+
+      {showBearerFields && (
+        <div>
+          <label className="text-xs text-neutral-400 block mb-1">
+            Bedrock Bearer Token <span className="text-neutral-600">encrypted</span>
+          </label>
+          {state.bearerTokenPresent ? (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-neutral-300">●●●●●●●● (set)</span>
+              <button
+                type="button"
+                onClick={() => void clearSecret('bearerToken')}
+                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setState({ ...state, bearerTokenPresent: false });
+                }}
+                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+              >
+                Replace
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="password"
+                value={bearerDraft}
+                onChange={(e) => setBearerDraft(e.target.value)}
+                className="w-80 bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700"
+              />
+              <button
+                type="button"
+                disabled={!bearerDraft}
+                onClick={() => void writeSecret('bearerToken', bearerDraft)}
+                className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500"
+              >
+                Save
+              </button>
+            </div>
+          )}
         </div>
       )}
 

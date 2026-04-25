@@ -13,6 +13,8 @@ import {
 import { PiProviderRow } from './PiProviderRow';
 import { PiPresetPicker } from './PiPresetPicker';
 
+const BEDROCK_PROVIDER_ID = 'amazon-bedrock';
+
 type Props = {
   builtIn: BuiltInProviderStatus[];
   models: PiModelsFile;
@@ -58,10 +60,10 @@ export function PiProvidersList({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [secondaryOpen, setSecondaryOpen] = useState(false);
 
-  const legacyBedrockProvider: PiProvider | undefined = models.providers['bedrock'];
+  const legacyBedrockProvider: PiProvider | undefined = models.providers[BEDROCK_PROVIDER_ID];
 
   const customIds = useMemo(() => {
-    return Object.keys(models.providers).filter((id) => id !== 'bedrock');
+    return Object.keys(models.providers).filter((id) => id !== BEDROCK_PROVIDER_ID);
   }, [models]);
 
   const rows: ProviderRowInput[] = useMemo(() => {
@@ -75,7 +77,7 @@ export function PiProvidersList({
         id: meta.id,
         label: meta.label,
         kind: inferKind(meta.id),
-        configured: meta.id === 'bedrock' ? authed || bedrockHasEnvConfig : authed
+        configured: meta.id === BEDROCK_PROVIDER_ID ? authed || bedrockHasEnvConfig : authed
       };
     });
 

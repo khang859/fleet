@@ -5,13 +5,33 @@ import {
   type PiEnvInjection,
   type PiBedrockInjection,
   type RedactedBedrock,
-  type BedrockWritePatch
+  type BedrockWritePatch,
+  type BedrockSecretField
 } from '../shared/pi-env-injection-types';
 import { createLogger } from './logger';
 
 const log = createLogger('pi-env-injection');
 
 export type { BedrockWritePatch };
+
+export type InjectedEnv = {
+  set: Record<string, string>;
+  unset: string[];
+};
+
+const PROFILE_MODE_UNSETS = [
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN',
+  'AWS_BEARER_TOKEN_BEDROCK'
+];
+const KEYS_MODE_UNSETS = ['AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK'];
+const BEARER_MODE_UNSETS = [
+  'AWS_PROFILE',
+  'AWS_ACCESS_KEY_ID',
+  'AWS_SECRET_ACCESS_KEY',
+  'AWS_SESSION_TOKEN'
+];
 
 interface EnvInjectionStore {
   get(): PiEnvInjection;
@@ -52,22 +72,25 @@ export class PiEnvInjectionManager {
   getRedactedConfig(): { bedrock?: RedactedBedrock } {
     const raw = PiEnvInjectionSchema.parse(this.store.get());
     if (!raw.bedrock) return {};
+    const bedrock: RedactedBedrock = {
+      mode: raw.bedrock.mode,
+      secretAccessKeyPresent: Boolean(raw.bedrock.secretAccessKeyEnc),
+      sessionTokenPresent: Boolean(raw.bedrock.sessionTokenEnc),
+      bearerTokenPresent: Boolean(raw.bedrock.bearerTokenEnc)
+    };
+    if (raw.bedrock.region) bedrock.region = raw.bedrock.region;
+    if (raw.bedrock.profile) bedrock.profile = raw.bedrock.profile;
+    if (raw.bedrock.accessKeyId) bedrock.accessKeyId = raw.bedrock.accessKeyId;
     return {
-      bedrock: {
-        mode: raw.bedrock.mode,
-        region: raw.bedrock.region,
-        profile: raw.bedrock.profile,
-        accessKeyId: raw.bedrock.accessKeyId,
-        secretAccessKeyPresent: Boolean(raw.bedrock.secretAccessKeyEnc),
-        sessionTokenPresent: Boolean(raw.bedrock.sessionTokenEnc)
-      }
+      bedrock
     };
   }
 
   writeBedrock(patch: BedrockWritePatch): void {
     const suppliesSecret =
       (patch.secretAccessKey !== undefined && patch.secretAccessKey !== '') ||
-      (patch.sessionToken !== undefined && patch.sessionToken !== '');
+      (patch.sessionToken !== undefined && patch.sessionToken !== '') ||
+      (patch.bearerToken !== undefined && patch.bearerToken !== '');
     if (suppliesSecret && !this.safe.isEncryptionAvailable()) {
       throw new Error('OS keychain encryption is unavailable; cannot store AWS secret.');
     }
@@ -82,7 +105,8 @@ export class PiEnvInjectionManager {
       accessKeyId:
         patch.accessKeyId !== undefined ? patch.accessKeyId || undefined : current.accessKeyId,
       secretAccessKeyEnc: current.secretAccessKeyEnc,
-      sessionTokenEnc: current.sessionTokenEnc
+      sessionTokenEnc: current.sessionTokenEnc,
+      bearerTokenEnc: current.bearerTokenEnc
     };
 
     if (patch.secretAccessKey !== undefined) {
@@ -97,35 +121,44 @@ export class PiEnvInjectionManager {
           ? undefined
           : this.safe.encryptString(patch.sessionToken).toString('base64');
     }
+    if (patch.bearerToken !== undefined) {
+      next.bearerTokenEnc =
+        patch.bearerToken === ''
+          ? undefined
+          : this.safe.encryptString(patch.bearerToken).toString('base64');
+    }
 
     this.store.set({ ...raw, bedrock: next });
   }
 
-  clearBedrockSecret(field: 'secretAccessKey' | 'sessionToken'): void {
+  clearBedrockSecret(field: BedrockSecretField): void {
     const raw = PiEnvInjectionSchema.parse(this.store.get());
     if (!raw.bedrock) return;
     const next: PiBedrockInjection = { ...raw.bedrock };
     if (field === 'secretAccessKey') next.secretAccessKeyEnc = undefined;
     if (field === 'sessionToken') next.sessionTokenEnc = undefined;
+    if (field === 'bearerToken') next.bearerTokenEnc = undefined;
     this.store.set({ ...raw, bedrock: next });
   }
 
   /** Main-process only. Decrypts on demand; skips fields that fail to decrypt. */
-  getInjectedEnv(): Record<string, string> {
+  getInjectedEnv(): InjectedEnv {
     const raw = PiEnvInjectionSchema.parse(this.store.get());
-    const out: Record<string, string> = {};
+    const out: InjectedEnv = { set: {}, unset: [] };
     const b = raw.bedrock;
     if (!b) return out;
 
-    if (b.region) out.AWS_REGION = b.region;
+    if (b.region) out.set.AWS_REGION = b.region;
 
     if (b.mode === 'profile') {
-      if (b.profile) out.AWS_PROFILE = b.profile;
+      out.unset = PROFILE_MODE_UNSETS;
+      if (b.profile) out.set.AWS_PROFILE = b.profile;
     } else if (b.mode === 'keys') {
-      if (b.accessKeyId) out.AWS_ACCESS_KEY_ID = b.accessKeyId;
+      out.unset = KEYS_MODE_UNSETS;
+      if (b.accessKeyId) out.set.AWS_ACCESS_KEY_ID = b.accessKeyId;
       if (b.secretAccessKeyEnc) {
         try {
-          out.AWS_SECRET_ACCESS_KEY = this.safe.decryptString(
+          out.set.AWS_SECRET_ACCESS_KEY = this.safe.decryptString(
             Buffer.from(b.secretAccessKeyEnc, 'base64')
           );
         } catch (err) {
@@ -136,9 +169,24 @@ export class PiEnvInjectionManager {
       }
       if (b.sessionTokenEnc) {
         try {
-          out.AWS_SESSION_TOKEN = this.safe.decryptString(Buffer.from(b.sessionTokenEnc, 'base64'));
+          out.set.AWS_SESSION_TOKEN = this.safe.decryptString(
+            Buffer.from(b.sessionTokenEnc, 'base64')
+          );
         } catch (err) {
           log.warn('Failed to decrypt AWS_SESSION_TOKEN; skipping', {
+            error: err instanceof Error ? err.message : String(err)
+          });
+        }
+      }
+    } else if (b.mode === 'bearer') {
+      out.unset = BEARER_MODE_UNSETS;
+      if (b.bearerTokenEnc) {
+        try {
+          out.set.AWS_BEARER_TOKEN_BEDROCK = this.safe.decryptString(
+            Buffer.from(b.bearerTokenEnc, 'base64')
+          );
+        } catch (err) {
+          log.warn('Failed to decrypt AWS_BEARER_TOKEN_BEDROCK; skipping', {
             error: err instanceof Error ? err.message : String(err)
           });
         }

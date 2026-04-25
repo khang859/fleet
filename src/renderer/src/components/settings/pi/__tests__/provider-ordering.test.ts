@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { orderProviderRows, type ProviderRowInput } from '../lib/provider-ordering';
+import { PI_BUILT_IN_PROVIDERS } from '../../../../../../shared/pi-presets';
 
 const row = (
   id: string,
@@ -17,24 +18,29 @@ describe('orderProviderRows', () => {
     const out = orderProviderRows([
       row('zeta-custom', 'custom', true),
       row('anthropic', 'oauth-builtin', true),
-      row('bedrock', 'managed-builtin', false),
+      row('amazon-bedrock', 'managed-builtin', false),
       row('ollama', 'env-builtin-readonly', false)
     ]);
-    expect(out.primary.map((r) => r.id)).toEqual(['anthropic', 'bedrock', 'ollama', 'zeta-custom']);
+    expect(out.primary.map((r) => r.id)).toEqual([
+      'amazon-bedrock',
+      'anthropic',
+      'ollama',
+      'zeta-custom'
+    ]);
   });
 
   it('adds primary unconfigured built-ins after configured rows, alphabetical', () => {
     const out = orderProviderRows([
       row('anthropic', 'oauth-builtin', true),
-      row('bedrock', 'managed-builtin', false),
+      row('amazon-bedrock', 'managed-builtin', false),
       row('ollama', 'env-builtin-readonly', false),
       row('openai', 'oauth-builtin', false),
       row('google', 'oauth-builtin', false),
       row('openrouter', 'env-builtin-readonly', false)
     ]);
     expect(out.primary.map((r) => r.id)).toEqual([
+      'amazon-bedrock',
       'anthropic',
-      'bedrock',
       'google',
       'ollama',
       'openai',
@@ -60,5 +66,12 @@ describe('orderProviderRows', () => {
     ]);
     expect(out.primary.map((r) => r.id)).toEqual(['anthropic', 'azure']);
     expect(out.secondary).toEqual([]);
+  });
+});
+
+describe('PI_BUILT_IN_PROVIDERS', () => {
+  it('uses Pi canonical Amazon Bedrock provider id', () => {
+    expect(PI_BUILT_IN_PROVIDERS.some((p) => p.id === 'amazon-bedrock')).toBe(true);
+    expect(PI_BUILT_IN_PROVIDERS.some((p) => p.id === 'bedrock')).toBe(false);
   });
 });

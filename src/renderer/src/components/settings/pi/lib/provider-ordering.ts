@@ -18,7 +18,7 @@ export type OrderedProviderRows<T extends ProviderRowInput> = {
 
 const PRIMARY_BUILTIN_IDS = new Set([
   'anthropic',
-  'bedrock',
+  'amazon-bedrock',
   'google',
   'ollama',
   'openai',

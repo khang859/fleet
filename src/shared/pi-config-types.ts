@@ -14,12 +14,7 @@ export const PiSettingsSchema = z
   .passthrough();
 export type PiSettings = z.infer<typeof PiSettingsSchema>;
 
-export const PiApiSchema = z.enum([
-  'openai-completions',
-  'openai-responses',
-  'anthropic-messages',
-  'google-generative-ai'
-]);
+export const PiApiSchema = z.string();
 export type PiApi = z.infer<typeof PiApiSchema>;
 
 export const PiModelSchema = z
