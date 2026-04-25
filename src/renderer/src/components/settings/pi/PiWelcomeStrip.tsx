@@ -1,5 +1,5 @@
 type Props = {
-  onPick: (providerId: 'anthropic' | 'bedrock' | 'ollama') => void;
+  onPick: (providerId: 'anthropic' | 'amazon-bedrock' | 'ollama') => void;
   onShowMore: () => void;
 };
 
@@ -21,7 +21,7 @@ export function PiWelcomeStrip({ onPick, onShowMore }: Props): React.JSX.Element
         </button>
         <button
           type="button"
-          onClick={() => onPick('bedrock')}
+          onClick={() => onPick('amazon-bedrock')}
           className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px]"
         >
           <div className="font-medium">Amazon Bedrock</div>

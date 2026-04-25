@@ -48,7 +48,7 @@ import type { PiConfigManager } from './pi-config-manager';
 import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
 import type { PiAuthInspector } from './pi-auth-inspector';
 import type { PiEnvInjectionManager } from './pi-env-injection-manager';
-import type { BedrockWritePatch } from '../shared/pi-env-injection-types';
+import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettings } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
@@ -539,7 +539,7 @@ export function registerIpcHandlers(
     const token = fleetBridge.generateToken();
     const port = fleetBridge.getPort();
     const env = piEnvInjectionManager.getInjectedEnv();
-    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env);
+    const cmd = piAgentManager.buildLaunchCommand(port, token, req.paneId, env.set, env.unset);
     return { cmd };
   });
 
@@ -647,7 +647,7 @@ export function registerIpcHandlers(
 
   ipcMain.handle(
     IPC_CHANNELS.PI_ENV_CLEAR_SECRET,
-    (_event, field: 'secretAccessKey' | 'sessionToken') => {
+    (_event, field: BedrockSecretField) => {
       piEnvInjectionManager.clearBedrockSecret(field);
     }
   );

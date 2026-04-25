@@ -112,7 +112,7 @@ export const PI_BUILT_IN_PROVIDERS: Array<{
     hint: 'Run `pi` and `/login` for Gemini CLI subscription.'
   },
   {
-    id: 'bedrock',
+    id: 'amazon-bedrock',
     label: 'Amazon Bedrock',
     envVar: 'AWS_REGION',
     managedEnv: true,

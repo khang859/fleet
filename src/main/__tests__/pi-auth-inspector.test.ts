@@ -77,3 +77,39 @@ describe('PiAuthInspector.getBuiltInStatus', () => {
     expect(list.every((p) => !p.authenticated || p.method === 'env-var')).toBe(true);
   });
 });
+
+describe('PiAuthInspector.listAvailableModels', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = makeDir();
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('loads models from Pi public getProviders/getModels exports', async () => {
+    const modulePath = join(dir, 'pi-ai.mjs');
+    writeFileSync(
+      modulePath,
+      `export function getProviders() { return ['anthropic', 'amazon-bedrock']; }
+export function getModels(provider) {
+  if (provider === 'anthropic') return [{ id: 'claude-sonnet-4-5', name: 'Claude Sonnet 4.5' }];
+  if (provider === 'amazon-bedrock') return [{ id: 'amazon.nova-pro-v1:0', name: 'Nova Pro' }];
+  return [];
+}
+`
+    );
+
+    const insp = new PiAuthInspector({
+      authPath: join(dir, 'auth.json'),
+      modelCatalogPath: modulePath
+    });
+
+    await expect(insp.listAvailableModels()).resolves.toEqual([
+      { providerId: 'anthropic', modelId: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+      { providerId: 'amazon-bedrock', modelId: 'amazon.nova-pro-v1:0', label: 'Nova Pro' }
+    ]);
+  });
+});

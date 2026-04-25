@@ -72,8 +72,8 @@ const piAuthInspector = new PiAuthInspector({
     'node_modules',
     '@mariozechner',
     'pi-ai',
-    'src',
-    'models.generated.ts'
+    'dist',
+    'index.js'
   )
 });
 const fleetBridge = new FleetBridgeServer();

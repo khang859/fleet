@@ -22,10 +22,10 @@ describe('posixShellQuote', () => {
 describe('PiAgentManager.buildLaunchCommand', () => {
   const mgr = new PiAgentManager();
 
-  it('produces an empty envOverrides path starting with FLEET_BRIDGE_PORT', () => {
+  it('produces an empty envOverrides path starting with quoted Fleet env vars', () => {
     const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {});
     expect(
-      cmd.startsWith('FLEET_BRIDGE_PORT=8123 FLEET_BRIDGE_TOKEN=tok FLEET_PANE_ID=pane-1 ')
+      cmd.startsWith("FLEET_BRIDGE_PORT='8123' FLEET_BRIDGE_TOKEN='tok' FLEET_PANE_ID='pane-1' ")
     ).toBe(true);
   });
 
@@ -35,13 +35,34 @@ describe('PiAgentManager.buildLaunchCommand', () => {
       AWS_SECRET_ACCESS_KEY: `it's/a/secret`
     });
     expect(cmd).toMatch(
-      /^AWS_REGION='us-east-1' AWS_SECRET_ACCESS_KEY='it'\\''s\/a\/secret' FLEET_BRIDGE_PORT=/
+      /^AWS_REGION='us-east-1' AWS_SECRET_ACCESS_KEY='it'\\''s\/a\/secret' FLEET_BRIDGE_PORT='8123'/
     );
+  });
+
+  it('quotes shell-sensitive Fleet vars and command paths for shell -c', () => {
+    const cmd = mgr.buildLaunchCommand(8123, "tok'; $(touch nope)", 'pane;`id`', {});
+
+    expect(cmd).toContain("FLEET_BRIDGE_TOKEN='tok'\\''; $(touch nope)'");
+    expect(cmd).toContain("FLEET_PANE_ID='pane;`id`'");
+    expect(cmd).toContain(posixShellQuote(mgr.getBinPath()));
+    expect(cmd).toContain(" -e '");
+    expect(cmd).not.toContain('"');
   });
 
   it('serializes envOverrides in stable insertion order', () => {
     const cmd = mgr.buildLaunchCommand(0, '', '', { A: '1', B: '2', C: '3' });
     expect(cmd.indexOf(`A='1'`)).toBeLessThan(cmd.indexOf(`B='2'`));
     expect(cmd.indexOf(`B='2'`)).toBeLessThan(cmd.indexOf(`C='3'`));
+  });
+
+  it('prepends unset directives before env assignments', () => {
+    const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', { AWS_PROFILE: 'dev' }, [
+      'AWS_ACCESS_KEY_ID',
+      'AWS_SECRET_ACCESS_KEY'
+    ]);
+
+    expect(cmd.startsWith("unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; AWS_PROFILE='dev' ")).toBe(
+      true
+    );
   });
 });

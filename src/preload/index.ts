@@ -46,7 +46,11 @@ import type {
   BuiltInProviderStatus,
   ModelEntry
 } from '../shared/pi-config-types';
-import type { RedactedBedrock, BedrockWritePatch } from '../shared/pi-env-injection-types';
+import type {
+  RedactedBedrock,
+  BedrockWritePatch,
+  BedrockSecretField
+} from '../shared/pi-env-injection-types';
 
 type Unsubscribe = () => void;
 
@@ -362,7 +366,7 @@ const fleetApi = {
       (await typedInvoke<{ bedrock?: RedactedBedrock }>(IPC_CHANNELS.PI_ENV_READ_BEDROCK)).bedrock,
     writeBedrock: async (patch: BedrockWritePatch): Promise<void> =>
       typedInvoke(IPC_CHANNELS.PI_ENV_WRITE_BEDROCK, patch),
-    clearSecret: async (field: 'secretAccessKey' | 'sessionToken'): Promise<void> =>
+    clearSecret: async (field: BedrockSecretField): Promise<void> =>
       typedInvoke(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, field),
     isEncryptionAvailable: async (): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PiBedrockCredentialModeSchema = z.enum(['profile', 'keys', 'chain']);
+export const PiBedrockCredentialModeSchema = z.enum(['profile', 'keys', 'bearer', 'chain']);
 export type PiBedrockCredentialMode = z.infer<typeof PiBedrockCredentialModeSchema>;
 
 export const PiBedrockInjectionSchema = z.object({
@@ -9,7 +9,8 @@ export const PiBedrockInjectionSchema = z.object({
   profile: z.string().optional(),
   accessKeyId: z.string().optional(),
   secretAccessKeyEnc: z.string().optional(),
-  sessionTokenEnc: z.string().optional()
+  sessionTokenEnc: z.string().optional(),
+  bearerTokenEnc: z.string().optional()
 });
 export type PiBedrockInjection = z.infer<typeof PiBedrockInjectionSchema>;
 
@@ -28,6 +29,7 @@ export type RedactedBedrock = {
   accessKeyId?: string;
   secretAccessKeyPresent: boolean;
   sessionTokenPresent: boolean;
+  bearerTokenPresent: boolean;
 };
 
 /**
@@ -43,4 +45,7 @@ export type BedrockWritePatch = {
   /** Plaintext; encrypted on write. Empty string clears the stored secret. */
   secretAccessKey?: string;
   sessionToken?: string;
+  bearerToken?: string;
 };
+
+export type BedrockSecretField = 'secretAccessKey' | 'sessionToken' | 'bearerToken';

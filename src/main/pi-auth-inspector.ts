@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+import { pathToFileURL } from 'url';
 import { homedir } from 'os';
 import { z } from 'zod';
 import { createLogger } from './logger';
@@ -10,12 +11,15 @@ const log = createLogger('pi-auth-inspector');
 
 const AuthMapSchema = z.record(z.string(), z.unknown());
 
-const ModelCatalogItemSchema = z.object({
-  provider: z.string(),
+const PublicModelSchema = z.object({
   id: z.string(),
   name: z.string().optional()
 });
-const ModelCatalogSchema = z.array(z.unknown());
+
+type PiModelCatalogModule = {
+  getProviders?: unknown;
+  getModels?: unknown;
+};
 
 type PiAuthInspectorOptions = {
   authPath?: string;
@@ -70,19 +74,28 @@ export class PiAuthInspector {
   async listAvailableModels(): Promise<ModelEntry[]> {
     if (!this.modelCatalogPath) return [];
     try {
-      const text = await readFile(this.modelCatalogPath, 'utf-8');
-      const match = text.match(/MODELS\s*=\s*(\[[\s\S]*?\]);/);
-      if (!match) return [];
-      const rawArray = ModelCatalogSchema.parse(JSON.parse(match[1]));
+      const module = (await import(pathToFileURL(this.modelCatalogPath).href)) as PiModelCatalogModule;
+      if (typeof module.getProviders !== 'function' || typeof module.getModels !== 'function') {
+        return [];
+      }
+
+      const providersRaw: unknown = module.getProviders();
+      if (!Array.isArray(providersRaw)) return [];
+
       const results: ModelEntry[] = [];
-      for (const raw of rawArray) {
-        const item = ModelCatalogItemSchema.safeParse(raw);
-        if (!item.success) continue;
-        results.push({
-          providerId: item.data.provider,
-          modelId: item.data.id,
-          label: item.data.name ?? item.data.id
-        });
+      for (const provider of providersRaw) {
+        if (typeof provider !== 'string') continue;
+        const modelsRaw: unknown = module.getModels(provider);
+        if (!Array.isArray(modelsRaw)) continue;
+        for (const raw of modelsRaw) {
+          const item = PublicModelSchema.safeParse(raw);
+          if (!item.success) continue;
+          results.push({
+            providerId: provider,
+            modelId: item.data.id,
+            label: item.data.name ?? item.data.id
+          });
+        }
       }
       return results;
     } catch (err) {

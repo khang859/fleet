@@ -34,8 +34,8 @@ describe('PiBedrockInjectionSchema', () => {
     expect(parsed.mode).toBe('chain');
   });
 
-  it('accepts all three modes', () => {
-    for (const mode of ['profile', 'keys', 'chain'] as const) {
+  it('accepts all credential modes', () => {
+    for (const mode of ['profile', 'keys', 'bearer', 'chain'] as const) {
       expect(PiBedrockInjectionSchema.parse({ mode }).mode).toBe(mode);
     }
   });
@@ -67,8 +67,19 @@ describe('PiEnvInjectionManager — writeBedrock/getRedactedConfig', () => {
       region: 'us-west-2',
       accessKeyId: 'AKIA…',
       secretAccessKeyPresent: true,
-      sessionTokenPresent: false
+      sessionTokenPresent: false,
+      bearerTokenPresent: false
     });
+  });
+
+  it('round-trips bearer token presence without exposing plaintext', () => {
+    const store = new FakeStore();
+    const mgr = new PiEnvInjectionManager({ store, safeStorage: fakeSafeStorage });
+
+    mgr.writeBedrock({ mode: 'bearer', bearerToken: 'bearer-secret' });
+
+    expect(mgr.getRedactedConfig().bedrock?.bearerTokenPresent).toBe(true);
+    expect(JSON.stringify(store.get())).not.toContain('bearer-secret');
   });
 
   it('encrypts secrets before persisting', () => {
@@ -98,6 +109,16 @@ describe('PiEnvInjectionManager — writeBedrock/getRedactedConfig', () => {
     expect(redacted?.sessionTokenPresent).toBe(true);
   });
 
+  it('clearBedrockSecret removes bearer token only when requested', () => {
+    const store = new FakeStore();
+    const mgr = new PiEnvInjectionManager({ store, safeStorage: fakeSafeStorage });
+
+    mgr.writeBedrock({ mode: 'bearer', bearerToken: 'bt' });
+    mgr.clearBedrockSecret('bearerToken');
+
+    expect(mgr.getRedactedConfig().bedrock?.bearerTokenPresent).toBe(false);
+  });
+
   it('write with safeStorage unavailable throws when secrets are supplied', () => {
     const store = new FakeStore();
     const mgr = new PiEnvInjectionManager({
@@ -106,6 +127,7 @@ describe('PiEnvInjectionManager — writeBedrock/getRedactedConfig', () => {
     });
 
     expect(() => mgr.writeBedrock({ mode: 'keys', secretAccessKey: 'x' })).toThrow(/encryption/i);
+    expect(() => mgr.writeBedrock({ mode: 'bearer', bearerToken: 'x' })).toThrow(/encryption/i);
   });
 
   it('write with safeStorage unavailable succeeds when no secrets are supplied', () => {
@@ -130,20 +152,28 @@ describe('PiEnvInjectionManager.getInjectedEnv', () => {
 
   it('mode=chain writes only AWS_REGION when present', () => {
     const mgr = buildMgr({ mode: 'chain', region: 'eu-central-1' });
-    expect(mgr.getInjectedEnv()).toEqual({ AWS_REGION: 'eu-central-1' });
+    expect(mgr.getInjectedEnv()).toEqual({ set: { AWS_REGION: 'eu-central-1' }, unset: [] });
   });
 
   it('mode=chain with no region writes nothing', () => {
     const mgr = buildMgr({ mode: 'chain' });
-    expect(mgr.getInjectedEnv()).toEqual({});
+    expect(mgr.getInjectedEnv()).toEqual({ set: {}, unset: [] });
   });
 
-  it('mode=profile writes AWS_PROFILE + AWS_REGION', () => {
+  it('mode=profile writes AWS_PROFILE + AWS_REGION and unsets key credentials', () => {
     const mgr = buildMgr({ mode: 'profile', profile: 'dev', region: 'us-east-1' });
-    expect(mgr.getInjectedEnv()).toEqual({ AWS_PROFILE: 'dev', AWS_REGION: 'us-east-1' });
+    expect(mgr.getInjectedEnv()).toEqual({
+      set: { AWS_PROFILE: 'dev', AWS_REGION: 'us-east-1' },
+      unset: [
+        'AWS_ACCESS_KEY_ID',
+        'AWS_SECRET_ACCESS_KEY',
+        'AWS_SESSION_TOKEN',
+        'AWS_BEARER_TOKEN_BEDROCK'
+      ]
+    });
   });
 
-  it('mode=keys decrypts secretAccessKey and sessionToken', () => {
+  it('mode=keys decrypts secretAccessKey and sessionToken and unsets profile/bearer', () => {
     const store = new FakeStore();
     const mgr = new PiEnvInjectionManager({ store, safeStorage: fakeSafeStorage });
     mgr.writeBedrock({
@@ -154,10 +184,24 @@ describe('PiEnvInjectionManager.getInjectedEnv', () => {
       sessionToken: 'tok'
     });
     expect(mgr.getInjectedEnv()).toEqual({
-      AWS_REGION: 'us-east-1',
-      AWS_ACCESS_KEY_ID: 'AKIA',
-      AWS_SECRET_ACCESS_KEY: 'shh',
-      AWS_SESSION_TOKEN: 'tok'
+      set: {
+        AWS_REGION: 'us-east-1',
+        AWS_ACCESS_KEY_ID: 'AKIA',
+        AWS_SECRET_ACCESS_KEY: 'shh',
+        AWS_SESSION_TOKEN: 'tok'
+      },
+      unset: ['AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK']
+    });
+  });
+
+  it('mode=bearer decrypts AWS_BEARER_TOKEN_BEDROCK and unsets profile/key credentials', () => {
+    const store = new FakeStore();
+    const mgr = new PiEnvInjectionManager({ store, safeStorage: fakeSafeStorage });
+    mgr.writeBedrock({ mode: 'bearer', region: 'us-east-1', bearerToken: 'bt' });
+
+    expect(mgr.getInjectedEnv()).toEqual({
+      set: { AWS_REGION: 'us-east-1', AWS_BEARER_TOKEN_BEDROCK: 'bt' },
+      unset: ['AWS_PROFILE', 'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']
     });
   });
 
@@ -172,6 +216,9 @@ describe('PiEnvInjectionManager.getInjectedEnv', () => {
       }
     });
     const mgr = new PiEnvInjectionManager({ store, safeStorage: fakeSafeStorage });
-    expect(mgr.getInjectedEnv()).toEqual({ AWS_REGION: 'us-east-1', AWS_ACCESS_KEY_ID: 'AKIA' });
+    expect(mgr.getInjectedEnv()).toEqual({
+      set: { AWS_REGION: 'us-east-1', AWS_ACCESS_KEY_ID: 'AKIA' },
+      unset: ['AWS_PROFILE', 'AWS_BEARER_TOKEN_BEDROCK']
+    });
   });
 });

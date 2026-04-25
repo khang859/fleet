@@ -98,30 +98,31 @@ export class PiAgentManager {
     bridgePort: number,
     bridgeToken: string,
     paneId: string,
-    envOverrides: Record<string, string> = {}
+    envOverrides: Record<string, string> = {},
+    envUnsets: string[] = []
   ): string {
     const extensionPaths = this.getExtensionPaths();
     const parts: string[] = [];
+
+    if (envUnsets.length > 0) {
+      parts.push(`unset ${envUnsets.join(' ')};`);
+    }
 
     for (const [key, value] of Object.entries(envOverrides)) {
       parts.push(`${key}=${posixShellQuote(value)}`);
     }
 
-    parts.push(`FLEET_BRIDGE_PORT=${bridgePort}`);
-    parts.push(`FLEET_BRIDGE_TOKEN=${bridgeToken}`);
-    parts.push(`FLEET_PANE_ID=${paneId}`);
+    parts.push(`FLEET_BRIDGE_PORT=${posixShellQuote(String(bridgePort))}`);
+    parts.push(`FLEET_BRIDGE_TOKEN=${posixShellQuote(bridgeToken)}`);
+    parts.push(`FLEET_PANE_ID=${posixShellQuote(paneId)}`);
 
-    parts.push(this.quoteArg(this.getBinPath()));
+    parts.push(posixShellQuote(this.getBinPath()));
 
     for (const ext of extensionPaths) {
-      parts.push('-e', this.quoteArg(ext));
+      parts.push('-e', posixShellQuote(ext));
     }
 
     return parts.join(' ');
-  }
-
-  private quoteArg(arg: string): string {
-    return arg.includes(' ') ? `"${arg}"` : arg;
   }
 
   async ensureInstalled(): Promise<void> {
