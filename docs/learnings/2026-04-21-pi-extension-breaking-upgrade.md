@@ -44,3 +44,10 @@ export default function (pi: ExtensionAPI): void {
 The Fleet PiTerminal uses `exitOnComplete: true`, which hides pi's stderr from the user when it crashes at startup. When debugging "flash and close" symptoms, reproduce by running the same command Fleet builds (`pi-agent-manager.ts: buildLaunchCommand`) directly in a shell — the error will be visible.
 
 The `resources/pi-extensions/` files are not part of Fleet's TypeScript build (pi compiles them at runtime), so `npm run typecheck` will not catch breakages from pi-coding-agent major version bumps. Before bumping the pinned pi version, smoke-test each extension with `pi -e path/to/ext.ts --print`.
+
+For policy-style extensions such as plan mode, prefer both layers:
+
+- `pi.setActiveTools(...)` to hide unavailable tools from the model and rebuild the prompt for future turns.
+- `pi.on('tool_call', ...)` blocking as the final enforcement point before execution, especially for stale or unexpected tool calls.
+
+When a Pi extension asks for user approval before writing an artifact, include the target path and enough preview text in `ctx.ui.confirm(...)` for the user to make an informed decision. A prompt that only says "Write to path?" is not enough for plan approval.

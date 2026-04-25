@@ -3,7 +3,8 @@
  *
  * Adds a "plan mode" to Pi. While active, Pi follows an investigation
  * protocol injected into the system prompt; the active toolset is
- * swapped to hide write/exec tools via pi.setActiveTools. The LLM
+ * swapped to hide write/exec tools via pi.setActiveTools, with a
+ * tool_call blocker as a final policy gate. The LLM
  * produces a markdown plan via the exit_plan_mode tool; the plan is
  * written to docs/plans/YYYY-MM-DD-<topic>.md after the user approves.
  *
@@ -21,6 +22,11 @@ import {
 import { Type } from '@sinclair/typebox';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  buildPlanApprovalMessage,
+  getPlanModeActiveTools,
+  shouldBlockPlanModeTool
+} from './fleet-plan-mode-policy.ts';
 
 const PLAN_MODE_STATUS_KEY = 'plan-mode';
 const PLAN_MODE_STATUS_LABEL = '📋 Plan Mode';
@@ -45,7 +51,8 @@ You are in plan mode. Only read-only tools are available (write, edit, bash, fle
 
 When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
 
-const BLOCKED_IN_PLAN = new Set<string>(['write', 'edit', 'bash', 'fleet_run']);
+const PLAN_MODE_BLOCK_REASON =
+  'Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.';
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
@@ -89,9 +96,9 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool(createLsToolDefinition(cwd));
 
   function enterPlanMode(ctx: ExtensionContext): void {
-    savedActiveTools = pi.getActiveTools();
-    const next = savedActiveTools.filter((t) => !BLOCKED_IN_PLAN.has(t));
-    pi.setActiveTools(next);
+    const activeTools = pi.getActiveTools();
+    savedActiveTools = activeTools;
+    pi.setActiveTools(getPlanModeActiveTools(activeTools));
     planMode = true;
     ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, PLAN_MODE_STATUS_LABEL);
   }
@@ -139,9 +146,12 @@ export default function (pi: ExtensionAPI): void {
     }
   });
 
-  pi.on('session_start', async (_event, _ctx) => {
-    planMode = false;
-    savedActiveTools = null;
+  pi.on('session_start', async (_event, ctx) => {
+    if (planMode || savedActiveTools) leavePlanMode(ctx);
+  });
+
+  pi.on('session_shutdown', async (_event, ctx) => {
+    if (planMode || savedActiveTools) leavePlanMode(ctx);
   });
 
   pi.on('before_agent_start', async (event, _ctx) => {
@@ -149,6 +159,12 @@ export default function (pi: ExtensionAPI): void {
     return {
       systemPrompt: `${event.systemPrompt}\n\n${PLAN_MODE_ADDENDUM}`
     };
+  });
+
+  pi.on('tool_call', async (event, _ctx) => {
+    if (!planMode) return;
+    if (!shouldBlockPlanModeTool(event.toolName)) return;
+    return { block: true, reason: PLAN_MODE_BLOCK_REASON };
   });
 
   pi.registerTool({
@@ -184,7 +200,10 @@ export default function (pi: ExtensionAPI): void {
       }
 
       const planPath = resolvePlanPath(ctx.cwd, params.topic);
-      const approved = await ctx.ui.confirm('Approve plan?', `Write to ${planPath}?`);
+      const approved = await ctx.ui.confirm(
+        'Approve plan?',
+        buildPlanApprovalMessage(planPath, params.plan)
+      );
 
       if (!approved) {
         return {
