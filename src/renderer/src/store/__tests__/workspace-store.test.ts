@@ -398,3 +398,115 @@ describe('splitPane — live CWD', () => {
     expect(newLeaf?.cwd).toBe('/tmp'); // WS_A's tab cwd
   });
 });
+
+describe('duplicateTab — live CWD', () => {
+  it('opens a new terminal tab at the active pane live CWD', () => {
+    const ws: Workspace = {
+      id: 'ws-dup',
+      label: 'Duplicate',
+      tabs: [
+        {
+          id: 'tab-dup',
+          label: 'Shell',
+          labelIsCustom: false,
+          cwd: '/stored/tab',
+          splitRoot: {
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { type: 'leaf', id: 'pane-left', cwd: '/stored/left' },
+              { type: 'leaf', id: 'pane-right', cwd: '/stored/right' }
+            ]
+          }
+        }
+      ]
+    };
+    useWorkspaceStore.setState({
+      workspace: ws,
+      activeTabId: 'tab-dup',
+      activePaneId: 'pane-right'
+    });
+    useCwdStore.setState({ cwds: new Map([['pane-right', '/live/right']]) });
+
+    const newPaneId = useWorkspaceStore.getState().duplicateTab('tab-dup');
+
+    const state = useWorkspaceStore.getState();
+    const duplicated = state.workspace.tabs.at(-1)!;
+    expect(newPaneId).toBe(state.activePaneId);
+    expect(duplicated.cwd).toBe('/live/right');
+    expect(duplicated.splitRoot).toMatchObject({ type: 'leaf', id: newPaneId, cwd: '/live/right' });
+  });
+
+  it('falls back to the active pane stored CWD when no live CWD is available', () => {
+    const ws: Workspace = {
+      id: 'ws-dup',
+      label: 'Duplicate',
+      tabs: [
+        {
+          id: 'tab-dup',
+          label: 'Shell',
+          labelIsCustom: false,
+          cwd: '/stored/tab',
+          splitRoot: {
+            type: 'split',
+            direction: 'horizontal',
+            ratio: 0.5,
+            children: [
+              { type: 'leaf', id: 'pane-left', cwd: '/stored/left' },
+              { type: 'leaf', id: 'pane-right', cwd: '/stored/right' }
+            ]
+          }
+        }
+      ]
+    };
+    useWorkspaceStore.setState({
+      workspace: ws,
+      activeTabId: 'tab-dup',
+      activePaneId: 'pane-right'
+    });
+    useCwdStore.setState({ cwds: new Map() });
+
+    useWorkspaceStore.getState().duplicateTab('tab-dup');
+
+    const duplicated = useWorkspaceStore.getState().workspace.tabs.at(-1)!;
+    expect(duplicated.cwd).toBe('/stored/right');
+    expect(duplicated.splitRoot).toMatchObject({ type: 'leaf', cwd: '/stored/right' });
+  });
+
+  it('does not duplicate file tabs', () => {
+    const ws: Workspace = {
+      id: 'ws-file',
+      label: 'File Workspace',
+      tabs: [
+        {
+          id: 'tab-file',
+          label: 'notes.md',
+          labelIsCustom: true,
+          cwd: '/project',
+          type: 'file',
+          splitRoot: {
+            type: 'leaf',
+            id: 'pane-file',
+            cwd: '/project',
+            paneType: 'file',
+            filePath: '/project/notes.md'
+          }
+        }
+      ]
+    };
+    useWorkspaceStore.setState({
+      workspace: ws,
+      activeTabId: 'tab-file',
+      activePaneId: 'pane-file'
+    });
+
+    const newPaneId = useWorkspaceStore.getState().duplicateTab('tab-file');
+
+    const state = useWorkspaceStore.getState();
+    expect(newPaneId).toBeNull();
+    expect(state.workspace.tabs).toHaveLength(1);
+    expect(state.activeTabId).toBe('tab-file');
+    expect(state.activePaneId).toBe('pane-file');
+  });
+});

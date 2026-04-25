@@ -123,6 +123,7 @@ type WorkspaceStore = {
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
+  duplicateTab: (tabId: string) => string | null;
   addPiTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
@@ -239,6 +240,11 @@ function getFirstLeafCwd(node: PaneNode | undefined): string | undefined {
   return getFirstLeafCwd(node.children[0]) ?? getFirstLeafCwd(node.children[1]);
 }
 
+function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
+  if (node.type === 'leaf') return node.id === paneId ? node : null;
+  return findLeaf(node.children[0], paneId) ?? findLeaf(node.children[1], paneId);
+}
+
 export function collectPaneIds(node: PaneNode): string[] {
   if (node.type === 'leaf') return [node.id];
   return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];
@@ -301,6 +307,28 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true
     }));
     return leaf.id;
+  },
+
+  duplicateTab: (tabId) => {
+    const state = get();
+    const sourceTab = state.workspace.tabs.find((t) => t.id === tabId);
+    if (
+      !sourceTab ||
+      (sourceTab.type && sourceTab.type !== 'terminal' && sourceTab.type !== 'pi')
+    ) {
+      return null;
+    }
+
+    const paneIds = collectPaneIds(sourceTab.splitRoot);
+    const sourcePaneId =
+      state.activeTabId === tabId && state.activePaneId && paneIds.includes(state.activePaneId)
+        ? state.activePaneId
+        : paneIds[0];
+    if (!sourcePaneId) return null;
+
+    const sourceLeaf = findLeaf(sourceTab.splitRoot, sourcePaneId);
+    const cwd = useCwdStore.getState().cwds.get(sourcePaneId) ?? sourceLeaf?.cwd ?? sourceTab.cwd;
+    return get().addTab(undefined, cwd);
   },
 
   addPiTab: (cwd) => {

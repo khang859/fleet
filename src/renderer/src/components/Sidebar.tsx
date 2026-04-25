@@ -391,6 +391,7 @@ export function Sidebar({
     renameTab,
     resetTabLabel,
     addTab,
+    duplicateTab,
     reorderTab,
     reorderGroup,
     renameWorkspace,
@@ -414,6 +415,7 @@ export function Sidebar({
       renameTab: s.renameTab,
       resetTabLabel: s.resetTabLabel,
       addTab: s.addTab,
+      duplicateTab: s.duplicateTab,
       reorderTab: s.reorderTab,
       reorderGroup: s.reorderGroup,
       renameWorkspace: s.renameWorkspace,
@@ -1151,8 +1153,7 @@ export function Sidebar({
               if (tab.groupId && collapsedGroups.has(tab.groupId)) continue;
 
               const paneIds = collectPaneIds(tab.splitRoot);
-              const isFile =
-                tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown';
+              const isFile = tab.type === 'file' || tab.type === 'image' || tab.type === 'markdown';
               const idx = realIndex(tab.id);
 
               let displayCwd: string;
@@ -1237,6 +1238,11 @@ export function Sidebar({
                       }
                     }
                   }}
+                  onDuplicate={
+                    !isFile && (!tab.type || tab.type === 'terminal' || tab.type === 'pi')
+                      ? () => duplicateTab(tab.id)
+                      : undefined
+                  }
                   onClose={() => handleCloseTab(tab.id)}
                   onRename={(newLabel) => renameTab(tab.id, newLabel)}
                   onResetLabel={(liveCwd) => resetTabLabel(tab.id, liveCwd)}

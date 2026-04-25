@@ -23,6 +23,7 @@ type TabItemProps = {
   badge: NotificationLevel | null;
   icon?: React.ReactNode;
   onClick: () => void;
+  onDuplicate?: () => void;
   onClose: () => void;
   onRename: (newLabel: string) => void;
   onResetLabel: (liveCwd: string) => void;
@@ -81,6 +82,7 @@ export function TabItem({
   badge,
   icon,
   onClick,
+  onDuplicate,
   onClose,
   onRename,
   onResetLabel,
@@ -274,6 +276,14 @@ export function TabItem({
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
         <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+          {onDuplicate && (
+            <ContextMenu.Item
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+              onSelect={onDuplicate}
+            >
+              Duplicate Tab
+            </ContextMenu.Item>
+          )}
           <ContextMenu.Item
             className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
             onSelect={() => {
