@@ -44,7 +44,7 @@ describe('PiAgentManager.buildLaunchCommand', () => {
 
     expect(cmd).toContain("FLEET_BRIDGE_TOKEN='tok'\\''; $(touch nope)'");
     expect(cmd).toContain("FLEET_PANE_ID='pane;`id`'");
-    expect(cmd).toContain("'/Users/");
+    expect(cmd).toContain(posixShellQuote(mgr.getBinPath()));
     expect(cmd).toContain(" -e '");
     expect(cmd).not.toContain('"');
   });
