@@ -7,13 +7,19 @@ import type { PiPlanAction, PiPlanOpenPayload } from '../../../shared/ipc-api';
 
 type PiPlanModalProps = {
   plan: PiPlanOpenPayload | null;
+  contentKey?: string;
   onClose: () => void;
 };
 
-export function PiPlanModal({ plan, onClose }: PiPlanModalProps): React.JSX.Element | null {
+export function PiPlanModal({
+  plan,
+  contentKey,
+  onClose
+}: PiPlanModalProps): React.JSX.Element | null {
   const modalRef = useRef<HTMLDivElement>(null);
   const paneIdRef = useRef(`pi-plan-modal-${crypto.randomUUID()}`);
   const [feedback, setFeedback] = useState('');
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<PiPlanAction | null>(null);
   const openFileInTab = useWorkspaceStore((s) => s.openFileInTab);
 
@@ -23,6 +29,7 @@ export function PiPlanModal({ plan, onClose }: PiPlanModalProps): React.JSX.Elem
   useEffect(() => {
     if (!filePath) return;
     setFeedback('');
+    setSubmitError(null);
     setSubmittingAction(null);
     modalRef.current?.focus();
   }, [filePath, plan?.requestId]);
@@ -35,6 +42,7 @@ export function PiPlanModal({ plan, onClose }: PiPlanModalProps): React.JSX.Elem
       }
 
       setSubmittingAction(action);
+      setSubmitError(null);
       try {
         await window.fleet.pi.respondToPlan({
           paneId: plan.paneId,
@@ -42,9 +50,11 @@ export function PiPlanModal({ plan, onClose }: PiPlanModalProps): React.JSX.Elem
           action,
           feedback: feedback.trim() || undefined
         });
+        onClose();
+      } catch (err) {
+        setSubmitError(err instanceof Error ? err.message : String(err));
       } finally {
         setSubmittingAction(null);
-        onClose();
       }
     },
     [feedback, onClose, plan?.paneId, plan?.requestId]
@@ -121,12 +131,21 @@ export function PiPlanModal({ plan, onClose }: PiPlanModalProps): React.JSX.Elem
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          <MarkdownPane key={filePath} paneId={paneIdRef.current} filePath={filePath} />
+          <MarkdownPane
+            key={`${filePath}:${plan?.requestId ?? contentKey ?? ''}`}
+            paneId={paneIdRef.current}
+            filePath={filePath}
+          />
         </div>
         <div className="shrink-0 border-t border-neutral-800 bg-neutral-950/90 p-3 space-y-2">
           <div className="text-xs text-neutral-500">{footerHint}</div>
           {canRespond && (
             <>
+              {submitError && (
+                <div className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-xs text-red-300">
+                  {submitError}
+                </div>
+              )}
               <textarea
                 value={feedback}
                 onChange={(event) => setFeedback(event.target.value)}

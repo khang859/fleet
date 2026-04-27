@@ -550,7 +550,7 @@ export function registerIpcHandlers(
   }));
 
   ipcMain.handle(IPC_CHANNELS.PI_PLAN_RESPOND, (_event, req: PiPlanResponseRequest) => {
-    fleetBridge.sendEvent(req.paneId, {
+    const delivered = fleetBridge.sendEvent(req.paneId, {
       type: 'pi.plan_response',
       payload: {
         requestId: req.requestId,
@@ -558,6 +558,9 @@ export function registerIpcHandlers(
         feedback: req.feedback ?? ''
       }
     });
+    if (!delivered) {
+      throw new Error('Pi plan response could not be delivered. The Pi bridge is disconnected.');
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.PI_CHECK_UPDATES, async () => {
