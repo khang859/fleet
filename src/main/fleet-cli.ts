@@ -356,6 +356,7 @@ Manage images and open files from the terminal.
 | images | Generate, edit, and transform AI images. |
 | open | Open files or images in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
+| pi | Open Pi agent tabs and Pi plan documents. |
 
 ## Examples
 
@@ -391,6 +392,27 @@ Supports code files and common image formats (png, jpg, gif, webp, svg).
 fleet open src/main.ts
 fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
+\`\`\``,
+
+  pi: `# fleet pi
+
+Open Pi agent tabs and Pi plan documents.
+
+## Usage
+
+  fleet pi
+  fleet pi plan_open <path>
+
+## Commands
+
+  fleet pi                  Open a Pi agent tab for the current directory.
+  fleet pi plan_open <path> Open a markdown plan in Fleet's plan modal.
+
+## Examples
+
+\`\`\`bash
+fleet pi
+fleet pi plan_open docs/plans/2026-04-27-my-plan.md
 \`\`\``,
 
   annotate: `# fleet annotate
@@ -583,9 +605,29 @@ export async function runCLI(
 
   // ── Top-level "pi" command ───────────────────────────────────────────────
   if (group === 'pi') {
-    const cwd = process.cwd();
-    const command = 'pi.open';
-    const args: Record<string, unknown> = { cwd };
+    const command = action === 'plan_open' ? 'pi.plan_open' : 'pi.open';
+    const args: Record<string, unknown> = {};
+    let successMessage = 'Opening Pi agent in Fleet';
+
+    if (command === 'pi.plan_open') {
+      const rawPath = rest[0];
+      if (!rawPath) return 'Usage: fleet pi plan_open <path>';
+
+      const resolved = resolve(rawPath);
+      if (!existsSync(resolved)) return `Error: file not found: ${rawPath}`;
+      if (statSync(resolved).isDirectory()) {
+        return `Error: directories not supported, use a file path: ${rawPath}`;
+      }
+      if (isBinaryBlockedFilePath(resolved)) {
+        return `Error: unsupported binary file: ${rawPath}`;
+      }
+
+      args.path = resolved;
+      successMessage = `Opened plan in Fleet: ${resolved}`;
+    } else {
+      if (action) return `Unknown pi command: ${action}\n\nUsage: fleet pi [plan_open <path>]`;
+      args.cwd = process.cwd();
+    }
 
     const cli = new FleetCLI(sockPath);
     try {
@@ -595,7 +637,7 @@ export async function runCLI(
       if (!response.ok) {
         return `Error: ${response.error ?? 'Unknown error'}`;
       }
-      return 'Opening Pi agent in Fleet';
+      return successMessage;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('ECONNREFUSED') || msg.includes('ENOENT')) {

@@ -26,6 +26,10 @@ export type PiOpenPayload = {
   cwd: string;
 };
 
+export type PiPlanOpenPayload = {
+  path: string;
+};
+
 export type PiLaunchConfig = {
   cmd: string;
 };

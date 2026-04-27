@@ -93,6 +93,7 @@ export const IPC_CHANNELS = {
   ANNOTATE_DELETE: 'annotate:delete',
   // Pi Agent
   PI_OPEN: 'pi:open',
+  PI_PLAN_OPEN: 'pi:plan-open',
   PI_LAUNCH_CONFIG: 'pi:launch-config',
   PI_VERSION: 'pi:version',
   PI_CHECK_UPDATES: 'pi:check-updates',

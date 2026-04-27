@@ -28,6 +28,7 @@ import { TelescopeModal } from './components/Telescope/TelescopeModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
+import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 
@@ -130,6 +131,7 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
+  const [planModalPath, setPlanModalPath] = useState<string | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -260,6 +262,16 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     const cleanup = window.fleet.pi.onOpen((payload) => {
       useWorkspaceStore.getState().addPiTab(payload.cwd);
+    });
+    return () => {
+      cleanup();
+    };
+  }, []);
+
+  // Open Pi plan document in modal via IPC (fleet pi plan_open / Pi extension bridge)
+  useEffect(() => {
+    const cleanup = window.fleet.pi.onPlanOpen((payload) => {
+      setPlanModalPath(payload.path);
     });
     return () => {
       cleanup();
@@ -859,6 +871,7 @@ export function App(): React.JSX.Element {
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
       <AnnotateModal open={false} onClose={() => {}} />
+      <PiPlanModal filePath={planModalPath} onClose={() => setPlanModalPath(null)} />
       <ToastContainer />
     </div>
   );

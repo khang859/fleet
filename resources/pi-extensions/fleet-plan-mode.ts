@@ -6,7 +6,7 @@
  * swapped to hide write/exec tools via pi.setActiveTools, with a
  * tool_call blocker as a final policy gate. The LLM
  * produces a markdown plan via the exit_plan_mode tool; the plan is
- * written to docs/plans/YYYY-MM-DD-<topic>.md after the user approves.
+ * written to docs/plans/YYYY-MM-DD-<topic>.md and opened in Fleet's plan modal.
  *
  * Also registers pi's built-in grep/find/ls tools, which are not in
  * the default toolset.
@@ -27,6 +27,16 @@ import {
   getPlanModeActiveTools,
   shouldBlockPlanModeTool
 } from './fleet-plan-mode-policy.ts';
+
+type FleetBridgeClient = {
+  send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
+  onEvent: (handler: (type: string, payload: Record<string, unknown>) => void) => void;
+  isConnected: () => boolean;
+};
+
+declare global {
+  var __fleetBridge: FleetBridgeClient | null; // eslint-disable-line no-var
+}
 
 const PLAN_MODE_STATUS_KEY = 'plan-mode';
 const PLAN_MODE_STATUS_LABEL = '📋 Plan Mode';
@@ -49,7 +59,7 @@ You are in plan mode. Only read-only tools are available (write, edit, bash, fle
 
 7. YAGNI. Plan only what's asked. No speculative features, flags, or abstractions.
 
-When you have enough that another engineer could execute without asking questions, call exit_plan_mode.`;
+When you have enough that another engineer could execute without asking questions, call exit_plan_mode. The plan will be written to a markdown file and opened in Fleet for review; do not include the full plan in a normal assistant message.`;
 
 const PLAN_MODE_BLOCK_REASON =
   'Plan mode is active — this tool is disabled. Use read-only tools to investigate, then call exit_plan_mode with your plan.';
@@ -171,7 +181,7 @@ export default function (pi: ExtensionAPI): void {
     name: 'exit_plan_mode',
     label: 'Exit Plan Mode',
     description:
-      'Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md after the user approves it, then exits plan mode so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.',
+      'Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md, opens it in Fleet for review, then exits plan mode after approval so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.',
     parameters: ExitPlanModeParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -200,26 +210,37 @@ export default function (pi: ExtensionAPI): void {
       }
 
       const planPath = resolvePlanPath(ctx.cwd, params.topic);
-      const approved = await ctx.ui.confirm(
-        'Approve plan?',
-        buildPlanApprovalMessage(planPath, params.plan)
-      );
+      const dir = join(ctx.cwd, 'docs', 'plans');
+      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+      writeFileSync(planPath, params.plan, 'utf-8');
+
+      const bridge = globalThis.__fleetBridge;
+      if (bridge?.isConnected()) {
+        try {
+          await bridge.send('pi.plan_open', { path: planPath });
+        } catch (err) {
+          ctx.ui.notify(
+            `Plan written, but Fleet could not open it: ${err instanceof Error ? err.message : String(err)}`,
+            'warning'
+          );
+        }
+      } else {
+        ctx.ui.notify('Plan written, but Fleet bridge is not connected.', 'warning');
+      }
+
+      const approved = await ctx.ui.confirm('Approve plan?', buildPlanApprovalMessage(planPath));
 
       if (!approved) {
         return {
           content: [
             {
               type: 'text' as const,
-              text: 'User rejected the plan. Revise based on their feedback and call exit_plan_mode again when ready.'
+              text: `User rejected the plan written to ${planPath}. Revise based on their feedback and call exit_plan_mode again when ready.`
             }
           ],
           details: undefined
         };
       }
-
-      const dir = join(ctx.cwd, 'docs', 'plans');
-      if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-      writeFileSync(planPath, params.plan, 'utf-8');
 
       leavePlanMode(ctx);
 

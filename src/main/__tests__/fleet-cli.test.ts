@@ -204,6 +204,23 @@ describe('--help via runCLI', () => {
   });
 });
 
+// ── fleet pi plan_open tests ─────────────────────────────────────────────────
+
+describe('fleet pi plan_open', () => {
+  it('requires a path before opening the socket', async () => {
+    const out = await runCLI(['pi', 'plan_open'], '/tmp/no-socket.sock');
+    expect(out).toBe('Usage: fleet pi plan_open <path>');
+  });
+
+  it('validates the plan file exists before opening the socket', async () => {
+    const out = await runCLI(
+      ['pi', 'plan_open', '/tmp/fleet-missing-plan.md'],
+      '/tmp/no-socket.sock'
+    );
+    expect(out).toContain('file not found');
+  });
+});
+
 // ── FleetCLI.send basic tests ─────────────────────────────────────────────────
 
 describe('FleetCLI.send', () => {
