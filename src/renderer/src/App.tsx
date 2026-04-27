@@ -31,6 +31,7 @@ import { PiTab } from './components/PiTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
+import type { PiPlanOpenPayload } from '../../shared/ipc-api';
 
 function MiniSidebarTooltip({
   label,
@@ -131,7 +132,7 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
-  const [planModalPath, setPlanModalPath] = useState<string | null>(null);
+  const [planModal, setPlanModal] = useState<PiPlanOpenPayload | null>(null);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -271,7 +272,7 @@ export function App(): React.JSX.Element {
   // Open Pi plan document in modal via IPC (fleet pi plan_open / Pi extension bridge)
   useEffect(() => {
     const cleanup = window.fleet.pi.onPlanOpen((payload) => {
-      setPlanModalPath(payload.path);
+      setPlanModal(payload);
     });
     return () => {
       cleanup();
@@ -871,7 +872,7 @@ export function App(): React.JSX.Element {
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
       <AnnotateModal open={false} onClose={() => {}} />
-      <PiPlanModal filePath={planModalPath} onClose={() => setPlanModalPath(null)} />
+      <PiPlanModal plan={planModal} onClose={() => setPlanModal(null)} />
       <ToastContainer />
     </div>
   );

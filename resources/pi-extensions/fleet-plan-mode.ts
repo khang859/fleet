@@ -20,6 +20,7 @@ import {
   type ExtensionContext
 } from '@mariozechner/pi-coding-agent';
 import { Type } from '@sinclair/typebox';
+import { randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -66,6 +67,51 @@ const PLAN_MODE_BLOCK_REASON =
 
 const TOPIC_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 
+type PlanReviewAction = 'approve' | 'reject' | 'continue';
+
+type PlanReviewResponse = {
+  action: PlanReviewAction;
+  feedback?: string;
+};
+
+type PendingPlanResponse = {
+  resolve: (response: PlanReviewResponse) => void;
+};
+
+const pendingPlanResponses = new Map<string, PendingPlanResponse>();
+
+function isPlanReviewAction(value: unknown): value is PlanReviewAction {
+  return value === 'approve' || value === 'reject' || value === 'continue';
+}
+
+function createPlanResponseWaiter(requestId: string, signal: AbortSignal | undefined) {
+  let abortHandler: (() => void) | undefined;
+  let cleanup = () => {
+    pendingPlanResponses.delete(requestId);
+  };
+
+  const promise = new Promise<PlanReviewResponse>((resolve) => {
+    cleanup = () => {
+      pendingPlanResponses.delete(requestId);
+      if (abortHandler) signal?.removeEventListener('abort', abortHandler);
+    };
+    const finish = (response: PlanReviewResponse) => {
+      cleanup();
+      resolve(response);
+    };
+    abortHandler = () => finish({ action: 'continue' });
+
+    pendingPlanResponses.set(requestId, { resolve: finish });
+    if (signal?.aborted) {
+      abortHandler();
+      return;
+    }
+    signal?.addEventListener('abort', abortHandler, { once: true });
+  });
+
+  return { promise, cancel: cleanup };
+}
+
 const ExitPlanModeParams = Type.Object({
   plan: Type.String({
     description:
@@ -104,6 +150,18 @@ export default function (pi: ExtensionAPI): void {
   pi.registerTool(createGrepToolDefinition(cwd));
   pi.registerTool(createFindToolDefinition(cwd));
   pi.registerTool(createLsToolDefinition(cwd));
+
+  globalThis.__fleetBridge?.onEvent((type, payload) => {
+    if (type !== 'pi.plan_response') return;
+    const requestId = typeof payload.requestId === 'string' ? payload.requestId : '';
+    const action = payload.action;
+    if (!requestId || !isPlanReviewAction(action)) return;
+
+    pendingPlanResponses.get(requestId)?.resolve({
+      action,
+      feedback: typeof payload.feedback === 'string' ? payload.feedback : undefined
+    });
+  });
 
   function enterPlanMode(ctx: ExtensionContext): void {
     const activeTools = pi.getActiveTools();
@@ -161,6 +219,10 @@ export default function (pi: ExtensionAPI): void {
   });
 
   pi.on('session_shutdown', async (_event, ctx) => {
+    for (const pending of pendingPlanResponses.values()) {
+      pending.resolve({ action: 'continue' });
+    }
+    pendingPlanResponses.clear();
     if (planMode || savedActiveTools) leavePlanMode(ctx);
   });
 
@@ -184,7 +246,7 @@ export default function (pi: ExtensionAPI): void {
       'Call this when you have a complete plan ready for the user. Writes the plan to docs/plans/YYYY-MM-DD-<topic>.md, opens it in Fleet for review, then exits plan mode after approval so you can begin executing. Pass the plan as markdown in `plan` and a short kebab-case topic in `topic`.',
     parameters: ExitPlanModeParams,
 
-    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (!planMode) {
         return {
           content: [
@@ -214,11 +276,16 @@ export default function (pi: ExtensionAPI): void {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(planPath, params.plan, 'utf-8');
 
+      let review: PlanReviewResponse | null = null;
       const bridge = globalThis.__fleetBridge;
       if (bridge?.isConnected()) {
+        const requestId = randomUUID();
+        const responseWaiter = createPlanResponseWaiter(requestId, signal);
         try {
-          await bridge.send('pi.plan_open', { path: planPath });
+          await bridge.send('pi.plan_open', { path: planPath, requestId });
+          review = await responseWaiter.promise;
         } catch (err) {
+          responseWaiter.cancel();
           ctx.ui.notify(
             `Plan written, but Fleet could not open it: ${err instanceof Error ? err.message : String(err)}`,
             'warning'
@@ -228,14 +295,20 @@ export default function (pi: ExtensionAPI): void {
         ctx.ui.notify('Plan written, but Fleet bridge is not connected.', 'warning');
       }
 
-      const approved = await ctx.ui.confirm('Approve plan?', buildPlanApprovalMessage(planPath));
+      if (!review) {
+        const approved = await ctx.ui.confirm('Approve plan?', buildPlanApprovalMessage(planPath));
+        review = { action: approved ? 'approve' : 'reject' };
+      }
 
-      if (!approved) {
+      if (review.action !== 'approve') {
+        const feedback = review.feedback?.trim();
+        const actionText =
+          review.action === 'reject' ? 'rejected the plan' : 'requested more planning';
         return {
           content: [
             {
               type: 'text' as const,
-              text: `User rejected the plan written to ${planPath}. Revise based on their feedback and call exit_plan_mode again when ready.`
+              text: `User ${actionText} for ${planPath}.${feedback ? ` Feedback: ${feedback}` : ''} Revise based on their feedback and call exit_plan_mode again when ready.`
             }
           ],
           details: undefined

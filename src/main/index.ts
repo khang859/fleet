@@ -361,7 +361,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start Fleet bridge for Pi agent extensions
-  fleetBridge.onRequest(async (type, payload) => {
+  fleetBridge.onRequest(async (type, payload, paneId) => {
     await Promise.resolve();
     switch (type) {
       case 'file.open': {
@@ -387,6 +387,7 @@ void app.whenReady().then(async () => {
       }
       case 'pi.plan_open': {
         const rawPath = typeof payload.path === 'string' ? payload.path : '';
+        const requestId = typeof payload.requestId === 'string' ? payload.requestId : undefined;
         if (!rawPath) throw new Error('pi.plan_open requires a path');
 
         const planPath = resolve(rawPath);
@@ -399,7 +400,11 @@ void app.whenReady().then(async () => {
         }
 
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, { path: planPath });
+          mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, {
+            path: planPath,
+            paneId,
+            requestId
+          });
         }
         return { ok: true };
       }
