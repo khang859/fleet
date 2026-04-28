@@ -27,14 +27,11 @@ describe('fleet plan mode extension helpers', () => {
     expect(shouldBlockPlanModeTool('read')).toBe(false);
   });
 
-  it('builds approval text with target path and a 60-line plan preview', () => {
-    const plan = Array.from({ length: 62 }, (_, index) => `Line ${index + 1}`).join('\n');
-    const message = buildPlanApprovalMessage('/repo/docs/plans/2026-04-25-demo.md', plan);
+  it('builds approval text with target path but no plan body', () => {
+    const message = buildPlanApprovalMessage('/repo/docs/plans/2026-04-25-demo.md');
 
-    expect(message).toContain('Path: /repo/docs/plans/2026-04-25-demo.md');
-    expect(message).toContain('Line 1');
-    expect(message).toContain('Line 60');
-    expect(message).not.toContain('Line 61');
-    expect(message).toContain('(2 more lines)');
+    expect(message).toContain('/repo/docs/plans/2026-04-25-demo.md');
+    expect(message).toContain('Review it in the Fleet plan modal');
+    expect(message).not.toContain('Line 1');
   });
 });

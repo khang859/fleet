@@ -349,6 +349,11 @@ void app.whenReady().then(async () => {
       mainWindow.webContents.send(IPC_CHANNELS.PI_OPEN, payload);
     }
   });
+  socketSupervisor.on('pi-plan-open', (payload: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, payload);
+    }
+  });
   socketSupervisor.start().catch((err: unknown) => {
     log.error('socket-supervisor failed to start', {
       error: err instanceof Error ? err.message : String(err)
@@ -356,7 +361,8 @@ void app.whenReady().then(async () => {
   });
 
   // Start Fleet bridge for Pi agent extensions
-  fleetBridge.onRequest(async (type, payload, _paneId) => {
+  fleetBridge.onRequest(async (type, payload, paneId) => {
+    await Promise.resolve();
     switch (type) {
       case 'file.open': {
         const rawPath = typeof payload.path === 'string' ? payload.path : '';
@@ -378,6 +384,29 @@ void app.whenReady().then(async () => {
           });
         }
         return { ok: true, paneType };
+      }
+      case 'pi.plan_open': {
+        const rawPath = typeof payload.path === 'string' ? payload.path : '';
+        const requestId = typeof payload.requestId === 'string' ? payload.requestId : undefined;
+        if (!rawPath) throw new Error('pi.plan_open requires a path');
+
+        const planPath = resolve(rawPath);
+        if (!existsSync(planPath)) throw new Error(`file not found: ${planPath}`);
+        if (statSync(planPath).isDirectory()) {
+          throw new Error(`directories not supported, use a file path: ${planPath}`);
+        }
+        if (isBinaryBlockedFilePath(planPath)) {
+          throw new Error(`unsupported binary file: ${planPath}`);
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.PI_PLAN_OPEN, {
+            path: planPath,
+            paneId,
+            requestId
+          });
+        }
+        return { ok: true };
       }
       default:
         throw new Error(`Unknown bridge command: ${type}`);

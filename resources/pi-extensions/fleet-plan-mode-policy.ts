@@ -1,5 +1,3 @@
-const PLAN_PREVIEW_LINES = 60;
-
 const BLOCKED_IN_PLAN = new Set<string>(['write', 'edit', 'bash', 'fleet_run']);
 const REQUIRED_PLAN_MODE_TOOLS = ['read', 'grep', 'find', 'ls', 'fleet_open', 'exit_plan_mode'];
 
@@ -15,13 +13,6 @@ export function getPlanModeActiveTools(currentActiveTools: string[]): string[] {
   return next;
 }
 
-function previewPlan(plan: string): string {
-  const lines = plan.split('\n');
-  if (lines.length <= PLAN_PREVIEW_LINES) return plan;
-  const remaining = lines.length - PLAN_PREVIEW_LINES;
-  return `${lines.slice(0, PLAN_PREVIEW_LINES).join('\n')}\n\n(${remaining} more lines)`;
-}
-
-export function buildPlanApprovalMessage(planPath: string, plan: string): string {
-  return `Path: ${planPath}\n\n---\n\n${previewPlan(plan)}`;
+export function buildPlanApprovalMessage(planPath: string): string {
+  return `Plan written to:\n${planPath}\n\nReview it in the Fleet plan modal, then approve when ready.`;
 }

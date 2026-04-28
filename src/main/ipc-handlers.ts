@@ -26,7 +26,8 @@ import type {
   FileGrepRequest,
   LogEntry,
   WorktreeCreateRequest,
-  WorktreeRemoveRequest
+  WorktreeRemoveRequest,
+  PiPlanResponseRequest
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -547,6 +548,20 @@ export function registerIpcHandlers(
     version: piAgentManager.getVersion(),
     installed: piAgentManager.isInstalled()
   }));
+
+  ipcMain.handle(IPC_CHANNELS.PI_PLAN_RESPOND, (_event, req: PiPlanResponseRequest) => {
+    const delivered = fleetBridge.sendEvent(req.paneId, {
+      type: 'pi.plan_response',
+      payload: {
+        requestId: req.requestId,
+        action: req.action,
+        feedback: req.feedback ?? ''
+      }
+    });
+    if (!delivered) {
+      throw new Error('Pi plan response could not be delivered. The Pi bridge is disconnected.');
+    }
+  });
 
   ipcMain.handle(IPC_CHANNELS.PI_CHECK_UPDATES, async () => {
     return piAgentManager.checkForUpdates();

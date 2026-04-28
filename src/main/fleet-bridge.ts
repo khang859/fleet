@@ -125,11 +125,11 @@ export class FleetBridgeServer {
     }
   }
 
-  sendEvent(paneId: string, event: BridgeEvent): void {
+  sendEvent(paneId: string, event: BridgeEvent): boolean {
     const ws = this.connections.get(paneId);
-    if (ws && ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify(event));
-    }
+    if (!ws || ws.readyState !== ws.OPEN) return false;
+    ws.send(JSON.stringify(event));
+    return true;
   }
 
   broadcast(event: BridgeEvent): void {

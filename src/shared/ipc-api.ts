@@ -26,6 +26,21 @@ export type PiOpenPayload = {
   cwd: string;
 };
 
+export type PiPlanAction = 'approve' | 'reject' | 'continue';
+
+export type PiPlanOpenPayload = {
+  path: string;
+  paneId?: string;
+  requestId?: string;
+};
+
+export type PiPlanResponseRequest = {
+  paneId: string;
+  requestId: string;
+  action: PiPlanAction;
+  feedback?: string;
+};
+
 export type PiLaunchConfig = {
   cmd: string;
 };
