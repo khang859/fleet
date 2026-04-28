@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.38.0
+
+- Pi plan mode now opens approved plans in a Fleet modal with approve/reject actions, replacing the silent write-to-disk flow.
+- New bundled `code-review` Pi skill: reviews the current branch's diff against a base ref and writes findings to `docs/reviews/YYYY-MM-DD-<topic>.md`. Mounted via a new `--skill` launch flag and shipped in packaged builds via `extraResources`.
+
 ## v2.37.0
 
 - Added terminal tab duplication so an existing terminal pane can be cloned into a new tab.
