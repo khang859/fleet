@@ -61,12 +61,12 @@ export function PiPlanModal({
   );
 
   const closeOrContinue = useCallback(() => {
-    if (canRespond) {
+    if (canRespond && !submitError) {
       void respond('continue');
       return;
     }
     onClose();
-  }, [canRespond, onClose, respond]);
+  }, [canRespond, onClose, respond, submitError]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent) => {
@@ -142,8 +142,14 @@ export function PiPlanModal({
           {canRespond && (
             <>
               {submitError && (
-                <div className="rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-xs text-red-300">
-                  {submitError}
+                <div className="flex items-center justify-between gap-3 rounded border border-red-900/60 bg-red-950/30 px-2 py-1.5 text-xs text-red-300">
+                  <span>{submitError}</span>
+                  <button
+                    onClick={onClose}
+                    className="shrink-0 rounded px-2 py-0.5 text-red-200 hover:bg-red-900/40"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               )}
               <textarea
