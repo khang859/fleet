@@ -1,6 +1,7 @@
 ---
 name: code-review
-description: Review the current branch's diff for bugs, logic errors, broken edge cases, and project-rule violations. Writes findings to docs/reviews/YYYY-MM-DD-<topic>.md. Use when the user asks to "review", "code review", "check my changes", or "look at my work" before opening a PR. Pass an optional base git ref as argument; defaults to main. Examples: /skill:code-review, /skill:code-review release-1.2, /skill:code-review HEAD~5.
+description: >-
+  Review the current branch's diff for bugs, logic errors, broken edge cases, and project-rule violations. Writes findings to docs/reviews/YYYY-MM-DD-<topic>.md. Use when the user asks to "review", "code review", "check my changes", or "look at my work" before opening a PR. Pass an optional base git ref as argument; defaults to main. Examples: /skill:code-review, /skill:code-review release-1.2, /skill:code-review HEAD~5.
 ---
 
 # Code Review
