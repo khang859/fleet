@@ -31,6 +31,9 @@ import { PiTab } from './components/PiTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
+import type { PiPlanOpenPayload } from '../../shared/ipc-api';
+
+type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
 function MiniSidebarTooltip({
   label,
@@ -131,7 +134,7 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
-  const [planModalPath, setPlanModalPath] = useState<string | null>(null);
+  const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
   // Load settings on startup
@@ -271,11 +274,16 @@ export function App(): React.JSX.Element {
   // Open Pi plan document in modal via IPC (fleet pi plan_open / Pi extension bridge)
   useEffect(() => {
     const cleanup = window.fleet.pi.onPlanOpen((payload) => {
-      setPlanModalPath(payload.path);
+      setPlanModalQueue((queue) => [...queue, { ...payload, modalId: crypto.randomUUID() }]);
     });
     return () => {
       cleanup();
     };
+  }, []);
+
+  const activePlanModal = planModalQueue[0] ?? null;
+  const closeActivePlanModal = useCallback(() => {
+    setPlanModalQueue((queue) => queue.slice(1));
   }, []);
 
   // Auto-updater
@@ -871,7 +879,11 @@ export function App(): React.JSX.Element {
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
       />
       <AnnotateModal open={false} onClose={() => {}} />
-      <PiPlanModal filePath={planModalPath} onClose={() => setPlanModalPath(null)} />
+      <PiPlanModal
+        plan={activePlanModal}
+        contentKey={activePlanModal ? activePlanModal.modalId : undefined}
+        onClose={closeActivePlanModal}
+      />
       <ToastContainer />
     </div>
   );

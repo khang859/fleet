@@ -30,6 +30,7 @@ import type {
   WorktreeRemoveRequest,
   PiOpenPayload,
   PiPlanOpenPayload,
+  PiPlanResponseRequest,
   PiLaunchConfig
 } from '../shared/ipc-api';
 import type {
@@ -335,6 +336,8 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.PI_OPEN, callback),
     onPlanOpen: (callback: (payload: PiPlanOpenPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.PI_PLAN_OPEN, callback),
+    respondToPlan: async (req: PiPlanResponseRequest): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.PI_PLAN_RESPOND, req),
     getLaunchConfig: async (paneId: string): Promise<PiLaunchConfig> =>
       typedInvoke(IPC_CHANNELS.PI_LAUNCH_CONFIG, { paneId }),
     getVersion: async (): Promise<{ version: string | null; installed: boolean }> =>

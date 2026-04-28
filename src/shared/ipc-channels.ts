@@ -94,6 +94,7 @@ export const IPC_CHANNELS = {
   // Pi Agent
   PI_OPEN: 'pi:open',
   PI_PLAN_OPEN: 'pi:plan-open',
+  PI_PLAN_RESPOND: 'pi:plan-respond',
   PI_LAUNCH_CONFIG: 'pi:launch-config',
   PI_VERSION: 'pi:version',
   PI_CHECK_UPDATES: 'pi:check-updates',

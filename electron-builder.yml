@@ -19,6 +19,8 @@ extraResources:
     to: resources/mascots/
   - from: resources/pi-extensions/
     to: pi-extensions/
+  - from: resources/pi-skills/
+    to: pi-skills/
 asarUnpack:
   - resources/**
 mac:
