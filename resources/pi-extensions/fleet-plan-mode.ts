@@ -32,6 +32,7 @@ import {
 type FleetBridgeClient = {
   send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
   onEvent: (handler: (type: string, payload: Record<string, unknown>) => void) => void;
+  onDisconnect: (handler: () => void) => () => void;
   isConnected: () => boolean;
 };
 
@@ -84,8 +85,13 @@ function isPlanReviewAction(value: unknown): value is PlanReviewAction {
   return value === 'approve' || value === 'reject' || value === 'continue';
 }
 
-function createPlanResponseWaiter(requestId: string, signal: AbortSignal | undefined) {
+function createPlanResponseWaiter(
+  requestId: string,
+  signal: AbortSignal | undefined,
+  bridge: FleetBridgeClient
+) {
   let abortHandler: (() => void) | undefined;
+  let unsubscribeDisconnect: (() => void) | undefined;
   let cleanup = () => {
     pendingPlanResponses.delete(requestId);
   };
@@ -94,15 +100,17 @@ function createPlanResponseWaiter(requestId: string, signal: AbortSignal | undef
     cleanup = () => {
       pendingPlanResponses.delete(requestId);
       if (abortHandler) signal?.removeEventListener('abort', abortHandler);
+      unsubscribeDisconnect?.();
     };
     const finish = (response: PlanReviewResponse) => {
       cleanup();
       resolve(response);
     };
     abortHandler = () => finish({ action: 'continue' });
+    unsubscribeDisconnect = bridge.onDisconnect(() => finish({ action: 'continue' }));
 
     pendingPlanResponses.set(requestId, { resolve: finish });
-    if (signal?.aborted) {
+    if (signal?.aborted || !bridge.isConnected()) {
       abortHandler();
       return;
     }
@@ -280,7 +288,7 @@ export default function (pi: ExtensionAPI): void {
       const bridge = globalThis.__fleetBridge;
       if (bridge?.isConnected()) {
         const requestId = randomUUID();
-        const responseWaiter = createPlanResponseWaiter(requestId, signal);
+        const responseWaiter = createPlanResponseWaiter(requestId, signal, bridge);
         try {
           await bridge.send('pi.plan_open', { path: planPath, requestId });
           review = await responseWaiter.promise;

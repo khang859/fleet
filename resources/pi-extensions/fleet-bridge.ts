@@ -16,6 +16,7 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 export type BridgeClient = {
   send: (type: string, payload: Record<string, unknown>) => Promise<unknown>;
   onEvent: (handler: (type: string, payload: Record<string, unknown>) => void) => void;
+  onDisconnect: (handler: () => void) => () => void;
   isConnected: () => boolean;
 };
 
@@ -37,6 +38,7 @@ export default function (_pi: ExtensionAPI): void {
   let requestId = 0;
   const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   const eventHandlers: Array<(type: string, payload: Record<string, unknown>) => void> = [];
+  const disconnectHandlers: Array<() => void> = [];
 
   function connect(): void {
     try {
@@ -73,6 +75,9 @@ export default function (_pi: ExtensionAPI): void {
 
       ws.onclose = () => {
         ws = null;
+        for (const handler of [...disconnectHandlers]) {
+          handler();
+        }
         if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
           reconnectAttempts++;
           setTimeout(connect, RECONNECT_DELAY_MS);
@@ -108,6 +113,13 @@ export default function (_pi: ExtensionAPI): void {
     },
     onEvent(handler) {
       eventHandlers.push(handler);
+    },
+    onDisconnect(handler) {
+      disconnectHandlers.push(handler);
+      return () => {
+        const index = disconnectHandlers.indexOf(handler);
+        if (index >= 0) disconnectHandlers.splice(index, 1);
+      };
     },
     isConnected() {
       return ws !== null && ws.readyState === WebSocket.OPEN;
