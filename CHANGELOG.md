@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.38.1
+
+- Fixed the bundled Pi `code-review` skill frontmatter so packaged Pi startup no longer reports a YAML skill conflict.
+
 ## v2.38.0
 
 - Pi plan mode now opens approved plans in a Fleet modal with approve/reject actions, replacing the silent write-to-disk flow.
