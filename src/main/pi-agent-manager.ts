@@ -94,6 +94,19 @@ export class PiAgentManager {
     return extensions.map((e) => join(dir, e));
   }
 
+  getSkillsDir(): string {
+    const resourcesPath = app.isPackaged
+      ? join(process.resourcesPath, 'pi-skills')
+      : join(app.getAppPath(), 'resources', 'pi-skills');
+    return resourcesPath;
+  }
+
+  getSkillPaths(): string[] {
+    const dir = this.getSkillsDir();
+    const skills = ['code-review'];
+    return skills.map((s) => join(dir, s));
+  }
+
   buildLaunchCommand(
     bridgePort: number,
     bridgeToken: string,
@@ -120,6 +133,10 @@ export class PiAgentManager {
 
     for (const ext of extensionPaths) {
       parts.push('-e', posixShellQuote(ext));
+    }
+
+    for (const skill of this.getSkillPaths()) {
+      parts.push('--skill', posixShellQuote(skill));
     }
 
     return parts.join(' ');

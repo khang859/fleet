@@ -61,8 +61,20 @@ describe('PiAgentManager.buildLaunchCommand', () => {
       'AWS_SECRET_ACCESS_KEY'
     ]);
 
-    expect(cmd.startsWith("unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; AWS_PROFILE='dev' ")).toBe(
-      true
-    );
+    expect(
+      cmd.startsWith("unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; AWS_PROFILE='dev' ")
+    ).toBe(true);
+  });
+
+  it('appends --skill flags with POSIX-quoted absolute paths to bundled skills', () => {
+    const cmd = mgr.buildLaunchCommand(8123, 'tok', 'pane-1', {});
+    // The skills dir resolves via app.getAppPath() in tests (mocked to /tmp/fleet-test-app).
+    expect(cmd).toContain("--skill '/tmp/fleet-test-app/resources/pi-skills/code-review'");
+    // --skill flags must come after the extension -e flags (the binary path
+    // separates them; --skill is part of pi's own argv).
+    const dashEIdx = cmd.indexOf(" -e '");
+    const dashSkillIdx = cmd.indexOf(" --skill '");
+    expect(dashEIdx).toBeGreaterThan(-1);
+    expect(dashSkillIdx).toBeGreaterThan(dashEIdx);
   });
 });
