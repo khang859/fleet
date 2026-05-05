@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.39.0
+
+- Linux releases now ship as `.deb` (Debian/Ubuntu) and `.rpm` (Fedora/RHEL) in addition to `.AppImage`. The `.deb` postinstall installs an AppArmor profile so the Chromium sandbox works on Ubuntu 24.04+ without `--no-sandbox`. Recommended install: `sudo apt install ./fleet_<version>_amd64.deb`.
+
 ## v2.38.1
 
 - Fixed the bundled Pi `code-review` skill frontmatter so packaged Pi startup no longer reports a YAML skill conflict.
