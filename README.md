@@ -11,7 +11,25 @@ Download the latest release for your platform:
 - [macOS (Apple Silicon)](https://github.com/khang859/fleet/releases/latest) — `.dmg`
 - [macOS (Intel)](https://github.com/khang859/fleet/releases/latest) — `.dmg`
 - [Windows](https://github.com/khang859/fleet/releases/latest) — `.exe`
-- [Linux](https://github.com/khang859/fleet/releases/latest) — `.AppImage` / `.deb`
+- [Linux](https://github.com/khang859/fleet/releases/latest) — `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (universal)
+
+### Linux install
+
+**Debian / Ubuntu / Mint:**
+
+```bash
+sudo apt install ./fleet_<version>_amd64.deb
+```
+
+Use `apt install` rather than `dpkg -i` so system dependencies (`libxss1`, etc.) are auto-resolved. The package installs to `/opt/Fleet`, registers a desktop entry, and ships an AppArmor profile so the Chromium sandbox works on Ubuntu 24.04+ without `--no-sandbox`.
+
+**Fedora / RHEL:**
+
+```bash
+sudo dnf install ./fleet-<version>.x86_64.rpm
+```
+
+**Other distros:** download the `.AppImage`, `chmod +x`, and run. On distros with `apparmor_restrict_unprivileged_userns=1` (Ubuntu 24.04+), prefer the `.deb` — AppImages don't ship an AppArmor profile and may need `--no-sandbox` to launch.
 
 ## Features
 

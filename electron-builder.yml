@@ -57,13 +57,27 @@ dmg:
   artifactName: ${name}-${version}-${arch}.${ext}
 linux:
   target:
+    - target: deb
+      arch:
+        - x64
+    - target: rpm
+      arch:
+        - x64
     - target: AppImage
       arch:
         - x64
-  maintainer: electronjs.org
+  maintainer: Khang Nguyen <khang859@users.noreply.github.com>
+  vendor: Fleet
+  synopsis: Terminal multiplexer for AI coding agents
+  description: A lightweight, cross-platform terminal multiplexer desktop app for developers running multiple AI coding agents simultaneously.
   category: Development
+  executableName: fleet
 appImage:
   artifactName: ${name}-${version}.${ext}
+deb:
+  artifactName: ${name}_${version}_${arch}.${ext}
+rpm:
+  artifactName: ${name}-${version}.${arch}.${ext}
 npmRebuild: true
 publish:
   provider: github
