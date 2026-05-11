@@ -9,6 +9,8 @@ const mockInstances: Array<{
   write: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   kill: ReturnType<typeof vi.fn>;
+  pause: ReturnType<typeof vi.fn>;
+  resume: ReturnType<typeof vi.fn>;
 }> = [];
 
 vi.mock('node-pty', () => ({
@@ -19,7 +21,9 @@ vi.mock('node-pty', () => ({
       onExit: vi.fn(),
       write: vi.fn(),
       resize: vi.fn(),
-      kill: vi.fn()
+      kill: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn()
     };
     mockInstances.push(instance);
     return instance;
@@ -121,6 +125,62 @@ describe('PtyManager — extended', () => {
 
   it('kill() on non-existent pane is a no-op', () => {
     manager.kill('ghost'); // should not throw
+  });
+
+  it('kill() twice is safe and only kills the process once', () => {
+    manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+
+    manager.kill('p1');
+    manager.kill('p1');
+
+    expect(mockInstances[0].kill).toHaveBeenCalledTimes(1);
+  });
+
+  it('write() after natural exit is ignored', () => {
+    manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: {
+      exitCode: number;
+    }) => void;
+
+    registeredHandler({ exitCode: 0 });
+    manager.write('p1', 'after exit');
+
+    expect(mockInstances[0].write).not.toHaveBeenCalled();
+  });
+
+  it('resize() after natural exit is ignored', () => {
+    manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+    const registeredHandler = mockInstances[0].onExit.mock.calls[0][0] as (e: {
+      exitCode: number;
+    }) => void;
+
+    registeredHandler({ exitCode: 0 });
+    manager.resize('p1', 120, 40);
+
+    expect(mockInstances[0].resize).not.toHaveBeenCalled();
+  });
+
+  it('resize() after kill is ignored', () => {
+    manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+
+    manager.kill('p1');
+    manager.resize('p1', 120, 40);
+
+    expect(mockInstances[0].resize).not.toHaveBeenCalled();
+  });
+
+  it('gc() does not kill protected PTYs', () => {
+    manager.create({ paneId: 'p1', cwd: '/tmp', shell: '/bin/sh' });
+    manager.create({ paneId: 'p2', cwd: '/tmp', shell: '/bin/sh' });
+    manager.protect('p1');
+
+    const killed = manager.gc(new Set());
+
+    expect(killed).toEqual(['p2']);
+    expect(mockInstances[0].kill).not.toHaveBeenCalled();
+    expect(mockInstances[1].kill).toHaveBeenCalledTimes(1);
+    expect(manager.has('p1')).toBe(true);
+    expect(manager.has('p2')).toBe(false);
   });
 
   it('uses provided cols and rows when creating PTY', async () => {

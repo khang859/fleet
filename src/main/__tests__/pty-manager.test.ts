@@ -155,34 +155,21 @@ describe('PtyManager batching and cleanup', () => {
     expect(secondCallback).not.toHaveBeenCalled();
   });
 
-  it('disposes previous exitDisposable when onExit is called again', () => {
+  it('registers one internal exit listener even when onExit is re-registered', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
 
-    const firstDispose = vi.fn();
-    const secondDispose = vi.fn();
-    mockPty.onExit
-      .mockReturnValueOnce({ dispose: firstDispose })
-      .mockReturnValueOnce({ dispose: secondDispose });
-
     manager.onExit('pane-1', vi.fn());
-    // Second registration should dispose the first listener
     manager.onExit('pane-1', vi.fn());
 
-    expect(firstDispose).toHaveBeenCalledTimes(1);
-    expect(secondDispose).not.toHaveBeenCalled();
+    expect(mockPty.onExit).toHaveBeenCalledTimes(1);
   });
 
   it('does not fire duplicate exit callbacks when onExit is re-registered', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
 
-    // Track which callbacks get registered on the mock PTY
-    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
-    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
-      registeredCallbacks.push(cb);
-      return { dispose: vi.fn() };
-    });
+    const registeredCallback = mockPty.onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
 
     const firstCallback = vi.fn();
     const secondCallback = vi.fn();
@@ -190,11 +177,11 @@ describe('PtyManager batching and cleanup', () => {
     manager.onExit('pane-1', firstCallback);
     manager.onExit('pane-1', secondCallback);
 
-    // Simulate PTY exit on the second (active) listener
-    registeredCallbacks[1]({ exitCode: 0 });
+    // Simulate PTY exit on the single internal listener
+    registeredCallback({ exitCode: 0 });
 
     expect(secondCallback).toHaveBeenCalledWith(0);
-    // First callback should NOT have been called (its listener was disposed)
+    // First callback should NOT have been called (it was replaced)
     expect(firstCallback).not.toHaveBeenCalled();
   });
 
@@ -203,17 +190,12 @@ describe('PtyManager batching and cleanup', () => {
     const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
     const dataDisposable = mockPty.onData.mock.results[0].value;
 
-    // Register an exit handler that captures the onExit callback
-    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
-    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
-      registeredCallbacks.push(cb);
-      return { dispose: vi.fn() };
-    });
+    const registeredCallback = mockPty.onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
 
     manager.onExit('pane-1', vi.fn());
 
     // Simulate natural PTY exit
-    registeredCallbacks[0]({ exitCode: 0 });
+    registeredCallback({ exitCode: 0 });
 
     expect(dataDisposable.dispose).toHaveBeenCalled();
   });
@@ -260,15 +242,21 @@ describe('PtyManager batching and cleanup', () => {
     expect(pausedFlush).toBeDefined();
   });
 
+  it('removes pane on natural PTY exit even without an external exit callback', () => {
+    manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
+    const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
+    const registeredCallback = mockPty.onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
+
+    registeredCallback({ exitCode: 0 });
+
+    expect(manager.has('pane-1')).toBe(false);
+  });
+
   it('clears flush timer on natural PTY exit when it is the last PTY', () => {
     manager.create({ paneId: 'pane-1', cwd: '/tmp', shell: '/bin/zsh' });
     const mockPty = (ptyModule.spawn as ReturnType<typeof vi.fn>).mock.results[0].value;
 
-    const registeredCallbacks: Array<(e: { exitCode: number }) => void> = [];
-    mockPty.onExit.mockImplementation((cb: (e: { exitCode: number }) => void) => {
-      registeredCallbacks.push(cb);
-      return { dispose: vi.fn() };
-    });
+    const registeredCallback = mockPty.onExit.mock.calls[0][0] as (e: { exitCode: number }) => void;
 
     manager.onData('pane-1', vi.fn());
     manager.onExit('pane-1', vi.fn());
@@ -276,7 +264,7 @@ describe('PtyManager batching and cleanup', () => {
     expect(vi.getTimerCount()).toBeGreaterThan(0);
 
     // Simulate natural exit
-    registeredCallbacks[0]({ exitCode: 0 });
+    registeredCallback({ exitCode: 0 });
 
     expect(vi.getTimerCount()).toBe(0);
   });
