@@ -170,16 +170,14 @@ export function registerIpcHandlers(
   // Attach to a pre-created PTY: drain its buffered output so the renderer
   // can replay what arrived before the terminal component mounted.
   ipcMain.handle(IPC_CHANNELS.PTY_ATTACH, (_event, { paneId }: { paneId: string }) => {
-    const entry = ptyManager.get(paneId);
-    if (!entry) return { data: '' };
-    const data = entry.outputBuffer;
-    entry.outputBuffer = '';
+    const drained = ptyManager.drainBuffer(paneId);
+    if (!drained) return { data: '' };
     // Resume the PTY if it was paused due to buffer overflow (e.g. during
     // a hard refresh when the renderer wasn't consuming data).
-    if (entry.paused) {
+    if (drained.wasPaused) {
       ptyManager.resume(paneId);
     }
-    return { data };
+    return { data: drained.data };
   });
 
   // Garbage-collect orphaned PTYs: renderer sends list of active pane IDs,
