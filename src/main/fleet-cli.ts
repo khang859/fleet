@@ -284,7 +284,10 @@ const COMMAND_MAP: Record<string, string> = {
   'images.action': 'image.action',
   'images.actions': 'image.actions.list',
   // Annotate
-  'annotate.start': 'annotate.start'
+  'annotate.start': 'annotate.start',
+  // Pane
+  'pane.report-agent': 'pane.report-agent',
+  'pane.release-agent': 'pane.release-agent'
 };
 
 function mapCommand(group: string, action: string): string {
@@ -333,6 +336,18 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       return null;
     }
 
+    case 'pane.report-agent':
+      if (!args.pane_id) return 'Error: pane report-agent requires --pane.';
+      if (!args.agent) return 'Error: pane report-agent requires --agent.';
+      if (!args.state) return 'Error: pane report-agent requires --state.';
+      if (!args.source) return 'Error: pane report-agent requires --source.';
+      return null;
+
+    case 'pane.release-agent':
+      if (!args.pane_id) return 'Error: pane release-agent requires --pane.';
+      if (!args.source) return 'Error: pane release-agent requires --source.';
+      return null;
+
     default:
       return null;
   }
@@ -357,6 +372,7 @@ Manage images and open files from the terminal.
 | open | Open files or images in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
 | pi | Open Pi agent tabs and Pi plan documents. |
+| pane | Report or release agent state for hook scripts. |
 
 ## Examples
 
@@ -442,6 +458,31 @@ fleet annotate https://localhost:3000
 fleet annotate https://example.com --timeout 600
 fleet annotate
 \`\`\``,
+
+  pane: `# fleet pane
+
+Report or release agent state for a Fleet pane.
+
+## Usage
+
+  fleet pane report-agent --pane <id> --agent <claude|codex|opencode|pi> \\
+                          --state <working|idle|needs_me|error|done> \\
+                          --source <string> [--seq <integer>]
+
+  fleet pane release-agent --pane <id> --source <string> [--seq <integer>]
+
+## When to use
+
+Used by per-agent hook scripts installed via \`fleet integration install\`.
+You usually do not call this directly.
+
+## Arguments
+
+  --pane     Pane ID (set in PTY env as FLEET_PANE_ID).
+  --agent    Coding agent identifier.
+  --state    Activity state (needs_me corresponds to "blocked/waiting on user").
+  --source   Hook source identifier, e.g. "fleet:claude".
+  --seq      Monotonic sequence number. Stale reports are silently dropped.`,
 
   images: `
 # fleet images
@@ -763,6 +804,14 @@ export async function runCLI(
       } else {
         args.source = src;
       }
+    }
+  }
+
+  // ── pane commands: normalize --pane to pane_id ──────────────────────────
+  if (command === 'pane.report-agent' || command === 'pane.release-agent') {
+    if (args.pane !== undefined) {
+      args.pane_id = args.pane;
+      delete args.pane;
     }
   }
 
