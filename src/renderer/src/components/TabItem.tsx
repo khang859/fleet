@@ -170,6 +170,9 @@ export function TabItem({
     [commitRename]
   );
 
+  const tooltipBase = labelIsCustom ? `${label} — ${cwd}` : cwd;
+  const tooltip = activity?.agent ? `${tooltipBase} · ${activity.agent}` : tooltipBase;
+
   return (
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
@@ -185,7 +188,7 @@ export function TabItem({
             }
           `}
           onClick={onClick}
-          title={labelIsCustom ? `${label} — ${cwd}` : cwd}
+          title={tooltip}
           draggable
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = 'move';

@@ -101,8 +101,7 @@ describe('AgentDetector (pi)', () => {
 });
 
 describe('AgentDetector (claude)', () => {
-  const newDet = () =>
-    new AgentDetector({ getProcessName: () => 'claude' });
+  const newDet = (): AgentDetector => new AgentDetector({ getProcessName: () => 'claude' });
 
   it('reports working when "esc to interrupt" appears', () => {
     const det = newDet();
@@ -148,8 +147,7 @@ describe('AgentDetector (claude)', () => {
 });
 
 describe('AgentDetector (codex)', () => {
-  const newDet = () =>
-    new AgentDetector({ getProcessName: () => 'codex' });
+  const newDet = (): AgentDetector => new AgentDetector({ getProcessName: () => 'codex' });
 
   it('reports blocked on "press enter to confirm or esc to cancel"', () => {
     const det = newDet();
