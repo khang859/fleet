@@ -281,3 +281,28 @@ describe('PtyManager batching and cleanup', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('PtyManager.buildPtyEnv', () => {
+  let manager: PtyManager;
+
+  beforeEach(() => {
+    manager = new PtyManager();
+  });
+
+  it('injects FLEET_PANE_ID and FLEET_SESSION', () => {
+    const env = manager.buildPtyEnv('pane_xyz');
+    expect(env.FLEET_PANE_ID).toBe('pane_xyz');
+    expect(env.FLEET_SESSION).toBe('1');
+  });
+
+  it('merges extra env, with FLEET_PANE_ID winning on conflict', () => {
+    const env = manager.buildPtyEnv('pane_xyz', { FLEET_PANE_ID: 'wrong', CUSTOM: 'x' });
+    expect(env.FLEET_PANE_ID).toBe('pane_xyz');
+    expect(env.CUSTOM).toBe('x');
+  });
+
+  it('preserves process.env values', () => {
+    const env = manager.buildPtyEnv('pane_xyz');
+    expect(env.PATH).toBe(process.env.PATH);
+  });
+});

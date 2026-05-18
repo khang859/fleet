@@ -80,7 +80,7 @@ export class PtyManager {
       cols: opts.cols ?? 80,
       rows: opts.rows ?? 24,
       cwd: opts.cwd,
-      env: { ...(opts.env ?? process.env), FLEET_SESSION: '1' }
+      env: this.buildPtyEnv(opts.paneId, opts.env)
     });
 
     const entry: PtyEntry = {
@@ -245,6 +245,16 @@ export class PtyManager {
         callback(exitCode);
       });
     }
+  }
+
+  /** @internal Exposed for testing. Fleet owns FLEET_PANE_ID — it always wins over extra. */
+  public buildPtyEnv(paneId: string, extra?: Record<string, string | undefined>): Record<string, string> {
+    return {
+      ...process.env,
+      ...(extra ?? {}),
+      FLEET_SESSION: '1',
+      FLEET_PANE_ID: paneId
+    } as Record<string, string>;
   }
 
   private clearFlushTimerIfEmpty(): void {
