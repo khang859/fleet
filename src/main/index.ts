@@ -13,6 +13,7 @@ import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { ActivityTracker } from './activity-tracker';
 import { AgentDetector } from './agent-detector';
+import { SeqTracker } from './seq-tracker';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
@@ -51,6 +52,7 @@ const eventBus = new EventBus();
 const settingsStore = new SettingsStore();
 const notificationDetector = new NotificationDetector(eventBus);
 const notificationState = new NotificationStateManager(eventBus);
+const seqTracker = new SeqTracker();
 const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
@@ -351,7 +353,7 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);
+  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService, seqTracker, activityTracker);
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -459,6 +461,7 @@ void app.whenReady().then(async () => {
     cwdPoller.stopPolling(event.paneId);
     activityTracker.untrackPane(event.paneId);
     agentDetector.untrackPane(event.paneId);
+    seqTracker.reset(event.paneId);
     // Give child processes time to die after PTY shell is killed, then prune
     setTimeout(() => pruneDeadCopilotSessions(), 500);
   });

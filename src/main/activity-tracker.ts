@@ -135,7 +135,7 @@ export class ActivityTracker {
     }
   }
 
-  private setState(paneId: string, newState: ActivityState): void {
+  setState(paneId: string, newState: ActivityState): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
     if (pane.state === newState) return;

@@ -4,8 +4,10 @@ import { dirname } from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { ImageService } from './image-service';
 import type { AnnotateService } from './annotate-service';
-import type { ImageProviderSettings } from '../shared/types';
+import type { ImageProviderSettings, AgentId, ActivityState } from '../shared/types';
 import { CodedError } from './errors';
+import { SeqTracker } from './seq-tracker';
+import type { ActivityTracker } from './activity-tracker';
 
 type Request = {
   id?: string;
@@ -52,7 +54,9 @@ export class SocketServer extends EventEmitter {
   constructor(
     private socketPath: string,
     private imageService?: ImageService,
-    private annotateService?: AnnotateService
+    private annotateService?: AnnotateService,
+    private seqTracker?: SeqTracker,
+    private activityTracker?: ActivityTracker
   ) {
     super();
   }
@@ -384,6 +388,71 @@ export class SocketServer extends EventEmitter {
         if (!planPath) throw new CodedError('pi.plan_open requires a path', 'BAD_REQUEST');
         this.emit('pi-plan-open', { path: planPath });
         return { ok: true };
+      }
+
+      // ── Agent Reporting ───────────────────────────────────────────────────────
+      case 'pane.report-agent': {
+        const paneId = typeof args.pane_id === 'string' ? args.pane_id : undefined;
+        if (!paneId) throw new CodedError('pane.report-agent requires pane_id', 'BAD_REQUEST');
+        const source = typeof args.source === 'string' ? args.source : undefined;
+        if (!source) throw new CodedError('pane.report-agent requires source', 'BAD_REQUEST');
+        const agentRaw = typeof args.agent === 'string' ? args.agent : undefined;
+        const validAgents: readonly AgentId[] = ['claude', 'pi', 'codex', 'opencode'];
+        if (!agentRaw || !validAgents.includes(agentRaw as AgentId)) {
+          throw new CodedError('pane.report-agent requires valid agent', 'BAD_REQUEST');
+        }
+        const agent = agentRaw as AgentId;
+        const stateRaw = typeof args.state === 'string' ? args.state : undefined;
+        const validStates: readonly ActivityState[] = ['working', 'idle', 'needs_me', 'error', 'done'];
+        if (!stateRaw || !validStates.includes(stateRaw as ActivityState)) {
+          throw new CodedError('pane.report-agent requires valid state', 'BAD_REQUEST');
+        }
+        const state = stateRaw as ActivityState;
+        let seq: bigint | undefined;
+        if (args.seq !== undefined) {
+          try {
+            seq = typeof args.seq === 'bigint' ? args.seq : BigInt(args.seq as string | number);
+          } catch {
+            throw new CodedError('pane.report-agent seq must be a non-negative integer', 'BAD_REQUEST');
+          }
+          if (seq < 0n) throw new CodedError('pane.report-agent seq must be non-negative', 'BAD_REQUEST');
+        }
+        if (!this.seqTracker || !this.activityTracker) {
+          throw new CodedError('pane.report-agent not available', 'UNAVAILABLE');
+        }
+        if (!this.seqTracker.accept(paneId, source, seq)) {
+          return { accepted: false, reason: 'stale-seq' };
+        }
+        this.activityTracker.setAgent(paneId, agent);
+        if (state === 'needs_me') {
+          this.activityTracker.onNeedsMe(paneId);
+        } else {
+          this.activityTracker.setState(paneId, state);
+        }
+        return { accepted: true };
+      }
+
+      case 'pane.release-agent': {
+        const paneId = typeof args.pane_id === 'string' ? args.pane_id : undefined;
+        if (!paneId) throw new CodedError('pane.release-agent requires pane_id', 'BAD_REQUEST');
+        const source = typeof args.source === 'string' ? args.source : undefined;
+        if (!source) throw new CodedError('pane.release-agent requires source', 'BAD_REQUEST');
+        let seq: bigint | undefined;
+        if (args.seq !== undefined) {
+          try {
+            seq = typeof args.seq === 'bigint' ? args.seq : BigInt(args.seq as string | number);
+          } catch {
+            throw new CodedError('pane.release-agent seq must be a non-negative integer', 'BAD_REQUEST');
+          }
+        }
+        if (!this.seqTracker || !this.activityTracker) {
+          throw new CodedError('pane.release-agent not available', 'UNAVAILABLE');
+        }
+        if (!this.seqTracker.accept(paneId, source, seq)) {
+          return { accepted: false, reason: 'stale-seq' };
+        }
+        this.activityTracker.setAgent(paneId, null);
+        return { accepted: true };
       }
 
       default: {

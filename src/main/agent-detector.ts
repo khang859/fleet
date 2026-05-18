@@ -99,6 +99,8 @@ function detectState(agent: AgentId, content: string): AgentDetectionState {
       return detectClaude(content);
     case 'codex':
       return detectCodex(content);
+    case 'opencode':
+      return 'idle';
   }
 }
 
