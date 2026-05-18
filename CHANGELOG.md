@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- New `fleet integration install <claude|codex|opencode>` command installs a per-agent state-reporting hook into the agent's config dir (and patches its settings file). Hooks coexist with existing setups.
+- New `pane.report-agent` / `pane.release-agent` socket commands with sequence-based ordering reject stale or out-of-order reports.
+- Every PTY now exports `FLEET_PANE_ID` in its environment so hook scripts know which pane they're running in.
+
 ## v2.39.0
 
 - Linux releases now ship as `.deb` (Debian/Ubuntu) and `.rpm` (Fedora/RHEL) in addition to `.AppImage`. The `.deb` postinstall installs an AppArmor profile so the Chromium sandbox works on Ubuntu 24.04+ without `--no-sandbox`. Recommended install: `sudo apt install ./fleet_<version>_amd64.deb`.

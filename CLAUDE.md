@@ -58,6 +58,7 @@ All `fleet images` commands are async — use `fleet images status <id>` to poll
 - **node-pty macOS bug:** `spawn-helper` needs `chmod +x` — handled by postinstall script.
 - **xterm.js + StrictMode:** Track PTY creation in a module-level Set to prevent duplicates. Use Canvas addon (not WebGL) to avoid disposal errors.
 - **xterm.js container sizing:** Mount xterm into an inner div, put padding on an outer wrapper div. Otherwise `fit` addon miscalculates dimensions.
+- **Agent integration installer:** `fleet integration install <claude|codex|opencode>` drops a hook script into the agent's config dir and patches its settings to report state to Fleet via the `pane.report-agent` socket command. Hooks coexist with the existing `fleet-copilot` permission hook (different file, different concern). All PTYs export `FLEET_PANE_ID` so hooks know their pane. See `src/main/integration/` and the Phase 2 plan at `docs/superpowers/plans/2026-05-18-agent-integration-installer.md`.
 
 ## Behavioral Guidelines
 
