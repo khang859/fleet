@@ -1,4 +1,4 @@
-import type { Workspace, NotificationEvent, ActivityState } from './types';
+import type { Workspace, NotificationEvent, ActivityState, AgentId } from './types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -82,6 +82,8 @@ export type ActivityStatePayload = {
   state: ActivityState;
   lastOutputAt: number;
   timestamp: number;
+  /** Detected agent running in this pane, if any. */
+  agent?: AgentId;
 };
 
 export type PaneFocusedPayload = {
