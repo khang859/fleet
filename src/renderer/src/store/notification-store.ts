@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { NotificationLevel, ActivityState } from '../../../shared/types';
+import type { NotificationLevel, ActivityState, AgentId } from '../../../shared/types';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:notifications');
@@ -15,6 +15,7 @@ type ActivityRecord = {
   state: ActivityState;
   lastOutputAt: number;
   timestamp: number;
+  agent?: AgentId;
 };
 
 type NotificationStore = {

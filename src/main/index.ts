@@ -512,7 +512,8 @@ void app.whenReady().then(async () => {
         paneId: event.paneId,
         state: event.state,
         lastOutputAt: event.lastOutputAt,
-        timestamp: event.timestamp
+        timestamp: event.timestamp,
+        ...(event.agent ? { agent: event.agent } : {})
       });
     }
   });
