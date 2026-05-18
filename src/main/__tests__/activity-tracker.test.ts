@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ActivityTracker } from '../activity-tracker';
 import { EventBus } from '../event-bus';
+import type { AgentId } from '../../shared/types';
 
 describe('ActivityTracker', () => {
   let eventBus: EventBus;
@@ -181,5 +182,70 @@ describe('ActivityTracker', () => {
     vi.advanceTimersByTime(3000); // total 5s silence
 
     expect(callback).toHaveBeenCalledWith(expect.objectContaining({ state: 'idle' }));
+  });
+});
+
+describe('ActivityTracker agent forwarding', () => {
+  it('includes agent in emitted events when setAgent has been called', () => {
+    const bus = new EventBus();
+    const getProcessName = vi.fn<(paneId: string) => string | undefined>().mockReturnValue('zsh');
+    const tracker = new ActivityTracker(bus, {
+      silenceThresholdMs: 5000,
+      processPollingIntervalMs: 10_000,
+      getProcessName
+    });
+    const callback = vi.fn();
+    bus.on('activity-state-change', callback);
+
+    tracker.trackPane('p1');
+    tracker.setAgent('p1', 'claude' satisfies AgentId);
+    tracker.onData('p1');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'p1', state: 'working', agent: 'claude' })
+    );
+
+    tracker.dispose();
+  });
+
+  it('omits agent when none set', () => {
+    const bus = new EventBus();
+    const getProcessName = vi.fn<(paneId: string) => string | undefined>().mockReturnValue('zsh');
+    const tracker = new ActivityTracker(bus, {
+      silenceThresholdMs: 5000,
+      processPollingIntervalMs: 10_000,
+      getProcessName
+    });
+    const callback = vi.fn();
+    bus.on('activity-state-change', callback);
+
+    tracker.trackPane('p1');
+    tracker.onData('p1');
+
+    const arg = callback.mock.calls[0][0];
+    expect(arg.agent).toBeUndefined();
+
+    tracker.dispose();
+  });
+
+  it('setAgent emits a state-change with the current state when agent changes', () => {
+    const bus = new EventBus();
+    const getProcessName = vi.fn<(paneId: string) => string | undefined>().mockReturnValue('zsh');
+    const tracker = new ActivityTracker(bus, {
+      silenceThresholdMs: 5000,
+      processPollingIntervalMs: 10_000,
+      getProcessName
+    });
+    const callback = vi.fn();
+    bus.on('activity-state-change', callback);
+
+    tracker.trackPane('p1');
+    tracker.setAgent('p1', 'pi');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'p1', state: 'idle', agent: 'pi' })
+    );
+
+    tracker.dispose();
   });
 });

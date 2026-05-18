@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import type { NotificationLevel, ActivityState } from '../shared/types';
+import type { NotificationLevel, ActivityState, AgentId } from '../shared/types';
 
 export type FleetEvent =
   | { type: 'notification'; paneId: string; level: NotificationLevel; timestamp: number }
@@ -12,6 +12,7 @@ export type FleetEvent =
       state: ActivityState;
       lastOutputAt: number;
       timestamp: number;
+      agent?: AgentId;
     }
   | { type: 'command-started'; paneId: string; timestamp: number }
   | { type: 'workspace-loaded'; workspaceId: string }

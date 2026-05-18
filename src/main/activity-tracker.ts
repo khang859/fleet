@@ -1,5 +1,5 @@
 import type { EventBus } from './event-bus';
-import type { ActivityState } from '../shared/types';
+import type { ActivityState, AgentId } from '../shared/types';
 import { createLogger } from './logger';
 
 const log = createLogger('activity-tracker');
@@ -11,6 +11,7 @@ type PaneState = {
   silenceTimer: ReturnType<typeof setTimeout> | null;
   lastOutputAt: number;
   exited: boolean;
+  agent: AgentId | null;
 };
 
 export type ActivityTrackerOptions = {
@@ -38,8 +39,18 @@ export class ActivityTracker {
       state: 'idle',
       silenceTimer: null,
       lastOutputAt: 0,
-      exited: false
+      exited: false,
+      agent: null
     });
+  }
+
+  setAgent(paneId: string, agent: AgentId | null): void {
+    const pane = this.panes.get(paneId);
+    if (!pane) return;
+    if (pane.agent === agent) return;
+    pane.agent = agent;
+    // Re-emit current state so listeners learn about the agent.
+    this.emitChange(paneId, pane.state);
   }
 
   untrackPane(paneId: string): void {
@@ -127,24 +138,25 @@ export class ActivityTracker {
   private setState(paneId: string, newState: ActivityState): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
-
-    // Dedup — don't emit if state hasn't changed
     if (pane.state === newState) return;
-
-    // State priority: needs_me can only be cleared by new data or exit
     if (pane.state === 'needs_me' && newState === 'idle') return;
 
     const prevState = pane.state;
     pane.state = newState;
-
     log.debug('state change', { paneId, from: prevState, to: newState });
+    this.emitChange(paneId, newState);
+  }
 
+  private emitChange(paneId: string, state: ActivityState): void {
+    const pane = this.panes.get(paneId);
+    if (!pane) return;
     this.eventBus.emit('activity-state-change', {
       type: 'activity-state-change',
       paneId,
-      state: newState,
+      state,
       lastOutputAt: pane.lastOutputAt,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      ...(pane.agent ? { agent: pane.agent } : {})
     });
   }
 }
