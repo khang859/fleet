@@ -36,3 +36,66 @@ describe('stripAnsi', () => {
     expect(stripAnsi('hello world')).toBe('hello world');
   });
 });
+
+import { AgentDetector } from '../agent-detector';
+
+describe('AgentDetector (pi)', () => {
+  it('returns null detection when no process name is known yet', () => {
+    const det = new AgentDetector({ getProcessName: () => undefined });
+    det.trackPane('p1');
+    det.onData('p1', 'some output\n');
+    expect(det.getDetection('p1')).toEqual({ agent: null, state: null });
+  });
+
+  it('identifies pi from process name', () => {
+    const det = new AgentDetector({ getProcessName: () => 'pi' });
+    det.trackPane('p1');
+    det.onData('p1', 'arbitrary output\n');
+    expect(det.getDetection('p1').agent).toBe('pi');
+  });
+
+  it('reports pi as working when "Working..." appears', () => {
+    const det = new AgentDetector({ getProcessName: () => 'pi' });
+    det.trackPane('p1');
+    det.onData('p1', 'Working...\n');
+    expect(det.getDetection('p1')).toEqual({ agent: 'pi', state: 'working' });
+  });
+
+  it('reports pi as idle when no working marker is present', () => {
+    const det = new AgentDetector({ getProcessName: () => 'pi' });
+    det.trackPane('p1');
+    det.onData('p1', '> ready\n');
+    expect(det.getDetection('p1')).toEqual({ agent: 'pi', state: 'idle' });
+  });
+
+  it('untrackPane clears state', () => {
+    const det = new AgentDetector({ getProcessName: () => 'pi' });
+    det.trackPane('p1');
+    det.onData('p1', 'Working...\n');
+    det.untrackPane('p1');
+    expect(det.getDetection('p1')).toEqual({ agent: null, state: null });
+  });
+
+  it('emits a state-change signal to onSignal callback', () => {
+    const signals: Array<{ paneId: string; agent: string | null; state: string | null }> = [];
+    const det = new AgentDetector({
+      getProcessName: () => 'pi',
+      onSignal: (paneId, agent, state) => signals.push({ paneId, agent, state })
+    });
+    det.trackPane('p1');
+    det.onData('p1', 'Working...\n');
+    expect(signals).toContainEqual({ paneId: 'p1', agent: 'pi', state: 'working' });
+  });
+
+  it('does not emit duplicate signals when state is unchanged', () => {
+    const signals: Array<{ paneId: string; agent: string | null; state: string | null }> = [];
+    const det = new AgentDetector({
+      getProcessName: () => 'pi',
+      onSignal: (paneId, agent, state) => signals.push({ paneId, agent, state })
+    });
+    det.trackPane('p1');
+    det.onData('p1', 'Working...\n');
+    det.onData('p1', 'Working...\n');
+    expect(signals.length).toBe(1);
+  });
+});

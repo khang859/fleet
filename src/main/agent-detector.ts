@@ -26,3 +26,83 @@ const ANSI_OTHER = /\x1b[@-Z\\-_]/g;
 export function stripAnsi(input: string): string {
   return input.replace(ANSI_OSC, '').replace(ANSI_CSI, '').replace(ANSI_OTHER, '');
 }
+
+/** Maximum ANSI-stripped bytes kept per pane buffer. */
+const BUFFER_LIMIT_BYTES = 8 * 1024;
+
+export type AgentDetectionState = 'working' | 'blocked' | 'idle';
+
+export type AgentDetection = {
+  agent: AgentId | null;
+  state: AgentDetectionState | null;
+};
+
+export type AgentDetectorOptions = {
+  /** Resolve the current foreground process name for a pane. */
+  getProcessName: (paneId: string) => string | undefined;
+  /** Called whenever a pane's (agent, state) tuple changes. */
+  onSignal?: (paneId: string, agent: AgentId | null, state: AgentDetectionState | null) => void;
+};
+
+type PaneEntry = {
+  buffer: string;
+  lastAgent: AgentId | null;
+  lastState: AgentDetectionState | null;
+};
+
+export class AgentDetector {
+  private panes = new Map<string, PaneEntry>();
+  private opts: AgentDetectorOptions;
+
+  constructor(opts: AgentDetectorOptions) {
+    this.opts = opts;
+  }
+
+  trackPane(paneId: string): void {
+    if (this.panes.has(paneId)) return;
+    this.panes.set(paneId, { buffer: '', lastAgent: null, lastState: null });
+  }
+
+  untrackPane(paneId: string): void {
+    this.panes.delete(paneId);
+  }
+
+  onData(paneId: string, data: string): void {
+    const entry = this.panes.get(paneId);
+    if (!entry) return;
+
+    entry.buffer = (entry.buffer + stripAnsi(data)).slice(-BUFFER_LIMIT_BYTES);
+
+    const processName = this.opts.getProcessName(paneId);
+    const agent = processName ? identifyAgent(processName) : null;
+    const state = agent ? detectState(agent, entry.buffer) : null;
+
+    if (agent !== entry.lastAgent || state !== entry.lastState) {
+      entry.lastAgent = agent;
+      entry.lastState = state;
+      this.opts.onSignal?.(paneId, agent, state);
+    }
+  }
+
+  getDetection(paneId: string): AgentDetection {
+    const entry = this.panes.get(paneId);
+    if (!entry) return { agent: null, state: null };
+    return { agent: entry.lastAgent, state: entry.lastState };
+  }
+}
+
+function detectState(agent: AgentId, content: string): AgentDetectionState {
+  switch (agent) {
+    case 'pi':
+      return detectPi(content);
+    case 'claude':
+    case 'codex':
+      // Implemented in later tasks.
+      return 'idle';
+  }
+}
+
+function detectPi(content: string): AgentDetectionState {
+  if (content.includes('Working...')) return 'working';
+  return 'idle';
+}
