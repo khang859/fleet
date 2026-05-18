@@ -98,8 +98,7 @@ function detectState(agent: AgentId, content: string): AgentDetectionState {
     case 'claude':
       return detectClaude(content);
     case 'codex':
-      // Implemented in later tasks.
-      return 'idle';
+      return detectCodex(content);
   }
 }
 
@@ -142,6 +141,40 @@ function hasClaudeYesNoChoice(content: string): boolean {
     if (line.startsWith('1. yes') || line === 'yes') sawYes = true;
     if (line.startsWith('2. no') || line === 'no') sawNo = true;
     if (sawYes && sawNo) return true;
+  }
+  return false;
+}
+
+const CODEX_BLOCKED_PHRASES = [
+  'press enter to confirm or esc to cancel',
+  'enter to submit answer',
+  'allow command?',
+  '[y/n]',
+  'yes (y)'
+];
+
+const CODEX_INTERRUPT_PHRASES = ['esc to interrupt', 'ctrl+c to interrupt'];
+
+function detectCodex(content: string): AgentDetectionState {
+  const lower = content.toLowerCase();
+
+  for (const phrase of CODEX_BLOCKED_PHRASES) {
+    if (lower.includes(phrase)) return 'blocked';
+  }
+
+  for (const phrase of CODEX_INTERRUPT_PHRASES) {
+    if (lower.includes(phrase)) return 'working';
+  }
+
+  if (hasCodexWorkingHeader(content)) return 'working';
+
+  return 'idle';
+}
+
+function hasCodexWorkingHeader(content: string): boolean {
+  for (const line of content.split('\n')) {
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith('•') && trimmed.includes('Working (')) return true;
   }
   return false;
 }

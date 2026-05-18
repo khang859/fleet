@@ -146,3 +146,50 @@ describe('AgentDetector (claude)', () => {
     expect(det.getDetection('p1').state).toBe('blocked');
   });
 });
+
+describe('AgentDetector (codex)', () => {
+  const newDet = () =>
+    new AgentDetector({ getProcessName: () => 'codex' });
+
+  it('reports blocked on "press enter to confirm or esc to cancel"', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'Press Enter to confirm or Esc to cancel\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+
+  it('reports blocked on "Allow command?"', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'Allow command? [y/n]\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+
+  it('reports blocked on "[y/n]" prompt', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'continue [y/n]\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+
+  it('reports working when an interrupt hint is present', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'thinking...\nesc to interrupt\n');
+    expect(det.getDetection('p1').state).toBe('working');
+  });
+
+  it('reports working on a codex working header line', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', '• Working (32s · esc to interrupt)\n');
+    expect(det.getDetection('p1').state).toBe('working');
+  });
+
+  it('reports idle when neither blocked nor working markers appear', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'user > ');
+    expect(det.getDetection('p1').state).toBe('idle');
+  });
+});
