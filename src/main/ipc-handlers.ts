@@ -38,6 +38,7 @@ import type { NotificationStateManager } from './notification-state';
 import type { SettingsStore } from './settings-store';
 import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
+import type { AgentDetector } from './agent-detector';
 import { toError } from './errors';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
@@ -78,7 +79,8 @@ export function registerIpcHandlers(
   fleetBridge: FleetBridgeServer,
   piConfigManager: PiConfigManager,
   piAuthInspector: PiAuthInspector,
-  piEnvInjectionManager: PiEnvInjectionManager
+  piEnvInjectionManager: PiEnvInjectionManager,
+  agentDetector: AgentDetector
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -115,9 +117,11 @@ export function registerIpcHandlers(
     // duplicate onExit/onData callbacks stacking up
     if (!alreadyExisted) {
       activityTracker.trackPane(req.paneId);
+      agentDetector.trackPane(req.paneId);
       ptyManager.onData(req.paneId, (data, paused) => {
         notificationDetector.scan(req.paneId, data);
         activityTracker.onData(req.paneId);
+        agentDetector.onData(req.paneId, data);
         const w = getWindow();
         if (w && !w.isDestroyed()) {
           w.webContents.send(IPC_CHANNELS.PTY_DATA, {

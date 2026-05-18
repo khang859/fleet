@@ -12,6 +12,7 @@ import { LayoutStore } from './layout-store';
 import { EventBus } from './event-bus';
 import { NotificationDetector } from './notification-detector';
 import { ActivityTracker } from './activity-tracker';
+import { AgentDetector } from './agent-detector';
 import { NotificationStateManager } from './notification-state';
 import { registerIpcHandlers } from './ipc-handlers';
 import { GitService } from './git-service';
@@ -54,6 +55,17 @@ const activityTracker = new ActivityTracker(eventBus, {
   silenceThresholdMs: 5000,
   processPollingIntervalMs: 2000,
   getProcessName: (paneId) => ptyManager.getProcessName(paneId)
+});
+const agentDetector = new AgentDetector({
+  getProcessName: (paneId) => ptyManager.getProcessName(paneId),
+  onSignal: (paneId, agent, state) => {
+    activityTracker.setAgent(paneId, agent);
+    if (state === 'blocked') {
+      activityTracker.onNeedsMe(paneId);
+    }
+    // 'working' is already implied by the existing onData callback running on every byte.
+    // 'idle' is handled by the silence timer.
+  }
 });
 const cwdPoller = new CwdPoller(eventBus, ptyManager);
 const imageService = new ImageService();
@@ -321,7 +333,8 @@ void app.whenReady().then(async () => {
     fleetBridge,
     piConfigManager,
     piAuthInspector,
-    piEnvInjectionManager
+    piEnvInjectionManager,
+    agentDetector
   );
 
   imageService.resumeInterrupted();
@@ -445,6 +458,7 @@ void app.whenReady().then(async () => {
   eventBus.on('pane-closed', (event) => {
     cwdPoller.stopPolling(event.paneId);
     activityTracker.untrackPane(event.paneId);
+    agentDetector.untrackPane(event.paneId);
     // Give child processes time to die after PTY shell is killed, then prune
     setTimeout(() => pruneDeadCopilotSessions(), 500);
   });
