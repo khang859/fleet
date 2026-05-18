@@ -373,6 +373,7 @@ Manage images and open files from the terminal.
 | annotate | Visually annotate web page elements for AI agents. |
 | pi | Open Pi agent tabs and Pi plan documents. |
 | pane | Report or release agent state for hook scripts. |
+| integration | Install or remove per-agent state-reporting hooks. |
 
 ## Examples
 
@@ -483,6 +484,22 @@ You usually do not call this directly.
   --state    Activity state (needs_me corresponds to "blocked/waiting on user").
   --source   Hook source identifier, e.g. "fleet:claude".
   --seq      Monotonic sequence number. Stale reports are silently dropped.`,
+
+  integration: `# fleet integration
+
+Install or remove per-agent state-reporting hooks.
+
+## Usage
+
+  fleet integration install <claude|codex|opencode>
+  fleet integration uninstall <claude|codex|opencode>
+  fleet integration status <claude|codex|opencode>
+
+## What it does
+
+Drops a hook script into the agent's config directory and patches its settings
+to report state to Fleet via the running app's socket. Hooks coexist with any
+other hooks you have installed.`,
 
   images: `
 # fleet images
@@ -685,6 +702,43 @@ export async function runCLI(
         return 'Fleet is not running';
       }
       return `Error: ${msg}`;
+    }
+  }
+
+  // ── Top-level "integration" command ─────────────────────────────────────
+  if (group === 'integration') {
+    const { install, uninstall, status, isSupportedAgent, SUPPORTED_AGENTS } =
+      await import('./integration/index');
+    const sub = action;
+    const agent = rest[0];
+
+    if (!sub || !['install', 'uninstall', 'status'].includes(sub)) {
+      process.stdout.write(
+        `Usage: fleet integration <install|uninstall|status> <${SUPPORTED_AGENTS.join('|')}>\n`
+      );
+      process.exit(sub ? 1 : 0);
+    }
+    if (!agent || !isSupportedAgent(agent)) {
+      process.stderr.write(
+        `Error: unknown agent '${agent ?? ''}'. Supported: ${SUPPORTED_AGENTS.join(', ')}\n`
+      );
+      process.exit(1);
+    }
+    try {
+      if (sub === 'install') {
+        await install(agent);
+        process.stdout.write(`✓ ${agent} integration installed.\n`);
+      } else if (sub === 'uninstall') {
+        await uninstall(agent);
+        process.stdout.write(`✓ ${agent} integration uninstalled.\n`);
+      } else {
+        const s = await status(agent);
+        process.stdout.write(JSON.stringify(s, null, 2) + '\n');
+      }
+      process.exit(0);
+    } catch (err) {
+      process.stderr.write(`Error: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.exit(1);
     }
   }
 
