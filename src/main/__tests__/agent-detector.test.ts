@@ -99,3 +99,50 @@ describe('AgentDetector (pi)', () => {
     expect(signals.length).toBe(1);
   });
 });
+
+describe('AgentDetector (claude)', () => {
+  const newDet = () =>
+    new AgentDetector({ getProcessName: () => 'claude' });
+
+  it('reports working when "esc to interrupt" appears', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', '   running tool...\n   esc to interrupt\n');
+    expect(det.getDetection('p1').state).toBe('working');
+  });
+
+  it('reports working when "ctrl+c to interrupt" appears', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', '   thinking...\n   ctrl+c to interrupt\n');
+    expect(det.getDetection('p1').state).toBe('working');
+  });
+
+  it('reports blocked when "Do you want to proceed?" appears', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'Run command? Do you want to proceed?\n  ❯ 1. Yes\n    2. No\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+
+  it('reports blocked on "waiting for permission"', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'waiting for permission\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+
+  it('reports idle on a quiescent prompt', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', '─────────\n❯ \n─────────\n');
+    expect(det.getDetection('p1').state).toBe('idle');
+  });
+
+  it('blocked takes precedence over working signals on same screen', () => {
+    const det = newDet();
+    det.trackPane('p1');
+    det.onData('p1', 'esc to interrupt\n\nDo you want to proceed?\n  ❯ 1. Yes\n    2. No\n');
+    expect(det.getDetection('p1').state).toBe('blocked');
+  });
+});

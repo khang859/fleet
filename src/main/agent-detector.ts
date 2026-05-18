@@ -96,6 +96,7 @@ function detectState(agent: AgentId, content: string): AgentDetectionState {
     case 'pi':
       return detectPi(content);
     case 'claude':
+      return detectClaude(content);
     case 'codex':
       // Implemented in later tasks.
       return 'idle';
@@ -105,4 +106,42 @@ function detectState(agent: AgentId, content: string): AgentDetectionState {
 function detectPi(content: string): AgentDetectionState {
   if (content.includes('Working...')) return 'working';
   return 'idle';
+}
+
+const CLAUDE_BLOCKED_PHRASES = [
+  'do you want to proceed?',
+  'would you like to proceed?',
+  'waiting for permission',
+  'do you want to allow this connection?'
+];
+
+const CLAUDE_WORKING_PHRASES = ['esc to interrupt', 'ctrl+c to interrupt'];
+
+function detectClaude(content: string): AgentDetectionState {
+  const lower = content.toLowerCase();
+
+  // Blocked first — confirmation prompts always win over working markers on the same screen.
+  for (const phrase of CLAUDE_BLOCKED_PHRASES) {
+    if (lower.includes(phrase)) return 'blocked';
+  }
+  if (hasClaudeYesNoChoice(content)) return 'blocked';
+
+  for (const phrase of CLAUDE_WORKING_PHRASES) {
+    if (lower.includes(phrase)) return 'working';
+  }
+
+  return 'idle';
+}
+
+function hasClaudeYesNoChoice(content: string): boolean {
+  // Claude renders "❯ 1. Yes" / "  2. No" for permission selects.
+  let sawYes = false;
+  let sawNo = false;
+  for (const rawLine of content.split('\n')) {
+    const line = rawLine.trim().replace(/^❯\s*/, '').toLowerCase();
+    if (line.startsWith('1. yes') || line === 'yes') sawYes = true;
+    if (line.startsWith('2. no') || line === 'no') sawNo = true;
+    if (sawYes && sawNo) return true;
+  }
+  return false;
 }
