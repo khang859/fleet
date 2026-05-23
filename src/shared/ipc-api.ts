@@ -1,4 +1,5 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
+import type { ShellProfile, WslDistroState } from './shell-profiles';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -217,4 +218,33 @@ export type WorktreeCreateResponse = {
 
 export type WorktreeRemoveRequest = {
   worktreePath: string;
+};
+
+export type ShellProfilesListResponse = {
+  profiles: ShellProfile[];
+};
+
+export type WslStatusRequest = {
+  distro: string;
+};
+
+export type WslStatusResponse = {
+  state: WslDistroState;
+};
+
+export type WslPathRequest = {
+  distro: string;
+  path: string;
+};
+
+export type WslPathResponse = {
+  translated: string;
+};
+
+export type WslHomeDirRequest = {
+  distro: string;
+};
+
+export type WslHomeDirResponse = {
+  homeDir: string;
 };
