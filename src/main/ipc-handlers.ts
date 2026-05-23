@@ -101,8 +101,8 @@ export function registerIpcHandlers(
   });
 
   // PTY handlers
-  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, (_event, req: PtyCreateRequest) => {
-    log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd });
+  ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
+    log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd, shellProfileId: req.shellProfileId });
 
     // Resolve Claude config: workspace override → global → default
     const settings = settingsStore.get();
@@ -116,9 +116,15 @@ export function registerIpcHandlers(
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
     }
 
+    // Resolve the ShellProfile (defaulting to the registry's default if not provided).
+    const profileId = req.shellProfileId ?? (await shellProfileRegistry.getDefaultProfileId());
+    const profiles = await shellProfileRegistry.enumerate();
+    const profile = profiles.find((p) => p.id === profileId);
+
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
       ...req,
+      profile,
       env: Object.keys(extraEnv).length > 0 ? { ...process.env, ...extraEnv } : undefined
     });
 
@@ -151,8 +157,9 @@ export function registerIpcHandlers(
         eventBus.emit('pty-exit', { type: 'pty-exit', paneId: req.paneId, exitCode });
       });
 
-      // Start CWD polling fallback for shells that don't emit OSC 7
-      cwdPoller.startPolling(req.paneId, result.pid);
+      // Start CWD polling fallback. For WSL panes the poller no-ops — Phase 3's
+      // OSC 7 hook will drive cwd updates once the shell sources ~/.fleetrc.sh.
+      cwdPoller.startPolling(req.paneId, result.pid, profile?.pathContext ?? 'posix');
 
       eventBus.emit('pane-created', { type: 'pane-created', paneId: req.paneId });
     }
