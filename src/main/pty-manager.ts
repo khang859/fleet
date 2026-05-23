@@ -1,6 +1,7 @@
 import * as pty from 'node-pty';
 import { getDefaultShell } from './shell-detection';
 import { createLogger } from './logger';
+import type { ShellProfile } from '../shared/shell-profiles';
 
 const log = createLogger('pty');
 
@@ -17,6 +18,8 @@ export type PtyCreateOptions = {
   exitOnComplete?: boolean;
   /** For resolving per-workspace Claude config (e.g. CLAUDE_CONFIG_DIR). */
   workspaceId?: string;
+  /** Optional resolved profile. When present, drives WSL arg construction. */
+  profile?: ShellProfile;
 };
 
 export type PtyCreateResult = {

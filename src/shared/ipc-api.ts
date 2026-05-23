@@ -9,6 +9,8 @@ export type PtyCreateRequest = {
   workspaceId?: string;
   /** If true, PTY exits when cmd finishes instead of falling back to shell. */
   exitOnComplete?: boolean;
+  /** Resolved on the main side to a ShellProfile via ShellProfileRegistry. Optional for legacy callers. */
+  shellProfileId?: string;
 };
 
 export type HostPlatform = 'darwin' | 'linux' | 'win32';
