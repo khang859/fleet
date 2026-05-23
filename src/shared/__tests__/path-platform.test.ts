@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isWindowsPath, isWslPath, basename, join } from '../path-platform';
+import { isWindowsPath, isWslPath, basename, join, displayPath } from '../path-platform';
 
 describe('isWindowsPath', () => {
   it('matches drive-letter paths with backslash', () => {
@@ -75,5 +75,33 @@ describe('join', () => {
   });
   it('ignores empty segments', () => {
     expect(join('posix', '/home', '', 'khang')).toBe('/home/khang');
+  });
+});
+
+describe('displayPath', () => {
+  const homes = { homeDir: 'C:\\Users\\khang', wslHomeByDistro: { Ubuntu: '/home/khang' } };
+
+  it('collapses Windows home to ~', () => {
+    expect(displayPath('C:\\Users\\khang\\dev', 'win32', homes)).toBe('~\\dev');
+  });
+  it('collapses POSIX home to ~', () => {
+    expect(displayPath('/Users/khang/dev', 'posix', { homeDir: '/Users/khang', wslHomeByDistro: {} })).toBe('~/dev');
+  });
+  it('collapses WSL home to ~ when distro home is known', () => {
+    expect(displayPath('/home/khang/dev', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~/dev');
+  });
+  it('collapses /mnt/c/Users/khang/... to ~/... when win-home is C:\\Users\\khang', () => {
+    expect(displayPath('/mnt/c/Users/khang/dev', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~/dev');
+  });
+  it('leaves /mnt/c/... uncollapsed when not under win-home', () => {
+    expect(displayPath('/mnt/c/Program Files', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('/mnt/c/Program Files');
+  });
+  it('returns path unchanged when no rule matches', () => {
+    expect(displayPath('D:\\Other', 'win32', homes)).toBe('D:\\Other');
+    expect(displayPath('/etc/hosts', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('/etc/hosts');
+  });
+  it('handles exact home (no trailing path)', () => {
+    expect(displayPath('C:\\Users\\khang', 'win32', homes)).toBe('~');
+    expect(displayPath('/home/khang', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~');
   });
 });
