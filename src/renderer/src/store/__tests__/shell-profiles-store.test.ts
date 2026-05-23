@@ -6,7 +6,9 @@ const listMock = vi.fn();
 beforeEach(() => {
   listMock.mockReset();
   // Stub the preload bridge before importing the store
-  (globalThis as unknown as { window: { fleet: { shellProfiles: { list: typeof listMock } } } }).window = {
+  (
+    globalThis as unknown as { window: { fleet: { shellProfiles: { list: typeof listMock } } } }
+  ).window = {
     fleet: { shellProfiles: { list: listMock } }
   };
 });

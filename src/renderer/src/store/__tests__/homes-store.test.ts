@@ -15,7 +15,8 @@ beforeEach(() => {
 async function freshStore() {
   const mod = await import('../homes-store');
   mod.useHomesStore.setState({
-    hostHomeDir: (globalThis as unknown as { window: { fleet: { homeDir: string } } }).window.fleet.homeDir,
+    hostHomeDir: (globalThis as unknown as { window: { fleet: { homeDir: string } } }).window.fleet
+      .homeDir,
     wslHomeByDistro: {}
   });
   return mod;

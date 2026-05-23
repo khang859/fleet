@@ -102,7 +102,11 @@ export function registerIpcHandlers(
 
   // PTY handlers
   ipcMain.handle(IPC_CHANNELS.PTY_CREATE, async (_event, req: PtyCreateRequest) => {
-    log.debug('ipc:pty:create', { paneId: req.paneId, cwd: req.cwd, shellProfileId: req.shellProfileId });
+    log.debug('ipc:pty:create', {
+      paneId: req.paneId,
+      cwd: req.cwd,
+      shellProfileId: req.shellProfileId
+    });
 
     // Resolve Claude config: workspace override → global → default
     const settings = settingsStore.get();
@@ -678,12 +682,9 @@ export function registerIpcHandlers(
     piEnvInjectionManager.writeBedrock(patch);
   });
 
-  ipcMain.handle(
-    IPC_CHANNELS.PI_ENV_CLEAR_SECRET,
-    (_event, field: BedrockSecretField) => {
-      piEnvInjectionManager.clearBedrockSecret(field);
-    }
-  );
+  ipcMain.handle(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, (_event, field: BedrockSecretField) => {
+    piEnvInjectionManager.clearBedrockSecret(field);
+  });
 
   ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
     return piEnvInjectionManager.isEncryptionAvailable();

@@ -336,7 +336,11 @@ describe('PtyManager profile-aware spawn', () => {
       cwd: '/tmp',
       shell: '/bin/zsh'
     });
-    expect(ptyModule.spawn).toHaveBeenCalledWith('/bin/zsh', [], expect.objectContaining({ cwd: '/tmp' }));
+    expect(ptyModule.spawn).toHaveBeenCalledWith(
+      '/bin/zsh',
+      [],
+      expect.objectContaining({ cwd: '/tmp' })
+    );
   });
 
   it('combines profile.args with cmd when both are present', () => {

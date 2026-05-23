@@ -74,7 +74,11 @@ function resolveDefaultProfile(): { id: string | undefined; pathContext: PathCon
   };
 }
 
-function createLeafWithProfile(cwd: string, profileId: string | undefined, pathContext: PathContext): PaneLeaf {
+function createLeafWithProfile(
+  cwd: string,
+  profileId: string | undefined,
+  pathContext: PathContext
+): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd, shellProfileId: profileId, pathContext };
 }
 
@@ -442,7 +446,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: {
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd, t.pathContext ?? 'posix'), labelIsCustom: false } : t
+          t.id === tabId
+            ? {
+                ...t,
+                label: cwdBasename(liveCwd ?? t.cwd, t.pathContext ?? 'posix'),
+                labelIsCustom: false
+              }
+            : t
         )
       },
       isDirty: true
@@ -487,7 +497,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const effectiveGroupId = sourceTab.groupId ?? newGroupId;
 
       // Derive group label from the repo path (live CWD), not the stale tab cwd
-      const groupLabel = sourceTab.groupLabel ?? cwdBasename(repoPath, sourceTab.pathContext ?? 'posix');
+      const groupLabel =
+        sourceTab.groupLabel ?? cwdBasename(repoPath, sourceTab.pathContext ?? 'posix');
 
       const tabs = state.workspace.tabs.map((t) => {
         if (t.id !== tabId) return t;

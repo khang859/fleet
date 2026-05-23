@@ -151,9 +151,9 @@ describe('ShellProfileRegistry.getDefaultProfileId', () => {
       platform: 'win32',
       env: {},
       wslService: {
-        listDistros: vi.fn().mockResolvedValue([
-          { name: 'Alpine', version: 2, isDefault: false, state: 'stopped' }
-        ])
+        listDistros: vi
+          .fn()
+          .mockResolvedValue([{ name: 'Alpine', version: 2, isDefault: false, state: 'stopped' }])
       } as unknown as WslService,
       fileExists: vi.fn().mockReturnValue(false)
     });

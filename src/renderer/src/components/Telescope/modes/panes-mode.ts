@@ -37,7 +37,11 @@ export function createPanesMode(): TelescopeMode {
             className: isActive ? 'text-green-400' : 'text-neutral-500'
           }),
           title: leaf.label ?? leaf.paneType ?? 'terminal',
-          subtitle: displayPath(leaf.cwd, leaf.pathContext ?? 'posix', useHomesStore.getState().snapshot()),
+          subtitle: displayPath(
+            leaf.cwd,
+            leaf.pathContext ?? 'posix',
+            useHomesStore.getState().snapshot()
+          ),
           meta: isActive ? 'active' : undefined,
           data: { paneId: leaf.id, cwd: leaf.cwd, paneType: leaf.paneType ?? 'terminal' }
         };
