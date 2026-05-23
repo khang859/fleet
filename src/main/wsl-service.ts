@@ -151,4 +151,10 @@ export class WslService {
       return [];
     }
   }
+
+  warmUp(distro: string): void {
+    void this.exec('wsl.exe', ['-d', distro, '--exec', 'true'], {}).catch(() => {
+      // Intentional: warmUp is best-effort
+    });
+  }
 }

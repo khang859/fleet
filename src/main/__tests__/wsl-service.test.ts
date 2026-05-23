@@ -153,3 +153,25 @@ describe('WslService.status', () => {
     expect(await svc.status('Ubuntu')).toBe('error');
   });
 });
+
+describe('WslService.warmUp', () => {
+  it('spawns wsl -d <distro> --exec true and swallows errors', async () => {
+    const exec = vi.fn().mockResolvedValue({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    svc.warmUp('Ubuntu');
+    // Allow microtask queue to drain
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(exec).toHaveBeenCalledWith('wsl.exe', ['-d', 'Ubuntu', '--exec', 'true'], expect.anything());
+  });
+
+  it('does not throw when exec rejects', async () => {
+    const exec = vi.fn().mockRejectedValue(new Error('cold start failed'));
+    const svc = new WslService({ exec });
+
+    expect(() => svc.warmUp('Ubuntu')).not.toThrow();
+    await Promise.resolve();
+  });
+});
