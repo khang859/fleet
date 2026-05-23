@@ -6,7 +6,7 @@ import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
-import { joinPath } from '../lib/shell-utils';
+import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 
 type TerminalPaneProps = {
   paneId: string;
@@ -135,9 +135,8 @@ export function TerminalPane({
           document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
         }
         onInjectSkills={() => {
-          window.fleet.pty.input({
-            paneId,
-            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
+          void getFleetSkillContentInput().then((data) => {
+            window.fleet.pty.input({ paneId, data });
           });
           focus();
         }}

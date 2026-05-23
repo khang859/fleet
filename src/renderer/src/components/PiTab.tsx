@@ -5,7 +5,7 @@ import { useWorkspaceStore } from '../store/workspace-store';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
-import { joinPath } from '../lib/shell-utils';
+import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 import type { Tab } from '../../../shared/types';
 
 type PiTabProps = {
@@ -157,9 +157,8 @@ function PiTerminal({
           document.dispatchEvent(new CustomEvent('fleet:toggle-clipboard-history'))
         }
         onInjectSkills={() => {
-          window.fleet.pty.input({
-            paneId,
-            data: `Read ${joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md')} to learn the Fleet terminal commands available to you.\n`
+          void getFleetSkillContentInput().then((data) => {
+            window.fleet.pty.input({ paneId, data });
           });
           focus();
         }}
