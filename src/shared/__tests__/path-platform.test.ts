@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isWindowsPath, isWslPath } from '../path-platform';
+import { isWindowsPath, isWslPath, basename } from '../path-platform';
 
 describe('isWindowsPath', () => {
   it('matches drive-letter paths with backslash', () => {
@@ -32,5 +32,29 @@ describe('isWslPath', () => {
   });
   it('rejects relative paths', () => {
     expect(isWslPath('home/khang')).toBe(false);
+  });
+});
+
+describe('basename', () => {
+  it('returns last segment of POSIX path', () => {
+    expect(basename('/home/khang/dev/fleet', 'posix')).toBe('fleet');
+  });
+  it('returns last segment of Windows path with backslashes', () => {
+    expect(basename('C:\\Users\\khang\\dev', 'win32')).toBe('dev');
+  });
+  it('returns last segment of Windows path with forward slashes', () => {
+    expect(basename('C:/Users/khang/dev', 'win32')).toBe('dev');
+  });
+  it('returns last segment for WSL context (POSIX semantics)', () => {
+    expect(basename('/home/khang/dev', { kind: 'wsl', distro: 'Ubuntu' })).toBe('dev');
+  });
+  it('strips trailing slashes', () => {
+    expect(basename('/home/khang/', 'posix')).toBe('khang');
+    expect(basename('C:\\Users\\', 'win32')).toBe('Users');
+  });
+  it('returns "Shell" for empty or root-only paths', () => {
+    expect(basename('/', 'posix')).toBe('Shell');
+    expect(basename('', 'posix')).toBe('Shell');
+    expect(basename('C:\\', 'win32')).toBe('Shell');
   });
 });
