@@ -14,6 +14,7 @@ import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
+import { useShellProfilesStore } from './store/shell-profiles-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
@@ -140,6 +141,11 @@ export function App(): React.JSX.Element {
   // Load settings on startup
   useEffect(() => {
     void loadSettings();
+  }, []);
+
+  // Load shell profiles on startup
+  useEffect(() => {
+    void useShellProfilesStore.getState().load();
   }, []);
 
   // Subscribe to live CWD updates from main process

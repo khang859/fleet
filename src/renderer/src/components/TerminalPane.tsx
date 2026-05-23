@@ -19,6 +19,7 @@ type TerminalPaneProps = {
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onClose?: () => void;
+  shellProfileId?: string;
 };
 
 export function TerminalPane({
@@ -31,7 +32,8 @@ export function TerminalPane({
   fontSize,
   onSplitHorizontal,
   onSplitVertical,
-  onClose
+  onClose,
+  shellProfileId
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -44,6 +46,7 @@ export function TerminalPane({
     fontFamily,
     fontSize,
     workspaceId,
+    shellProfileId,
     onScrollStateChange: setIsScrolledUp
   });
   const [searchOpen, setSearchOpen] = useState(false);

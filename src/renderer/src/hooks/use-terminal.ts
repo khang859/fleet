@@ -29,6 +29,8 @@ export type UseTerminalOptions = {
   cursorHidden?: boolean;
   /** Workspace ID for resolving per-workspace Claude config. */
   workspaceId?: string;
+  /** ShellProfile id used to spawn the PTY. Read from PaneLeaf by callers. */
+  shellProfileId?: string;
 };
 
 // Track which panes already have PTYs created (survives StrictMode remounts)
@@ -59,7 +61,8 @@ export function markPtyCreated(paneId: string): void {
 export async function restartPane(
   paneId: string,
   cwd: string,
-  workspaceId?: string
+  workspaceId?: string,
+  shellProfileId?: string
 ): Promise<void> {
   restartingPanes.add(paneId);
   window.fleet.pty.kill(paneId);
@@ -76,7 +79,7 @@ export async function restartPane(
   await new Promise((r) => setTimeout(r, 100));
 
   createdPtys.add(paneId);
-  await window.fleet.pty.create({ paneId, cwd, workspaceId });
+  await window.fleet.pty.create({ paneId, cwd, workspaceId, shellProfileId });
   // Don't delete from restartingPanes here — the onExit handler consumes it
   // when the kill's async IPC event arrives (may be after this point).
 }
@@ -369,7 +372,8 @@ function createTerminal(
         cwd: options.cwd,
         cmd: options.cmd,
         exitOnComplete: options.exitOnComplete,
-        workspaceId: options.workspaceId
+        workspaceId: options.workspaceId,
+        shellProfileId: options.shellProfileId
       })
       .then(() => {
         // After hard refresh, createdPtys is reset so we hit this path even

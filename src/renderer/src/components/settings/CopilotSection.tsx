@@ -63,7 +63,7 @@ export function CopilotSection(): React.JSX.Element | null {
 
     for (const leaf of terminalLeafs) {
       const cwd = cwds.get(leaf.id) ?? leaf.cwd;
-      void restartPane(leaf.id, cwd, wsId);
+      void restartPane(leaf.id, cwd, wsId, leaf.shellProfileId);
     }
   }, []);
 
