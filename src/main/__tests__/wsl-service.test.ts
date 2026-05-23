@@ -138,7 +138,7 @@ describe('WslService.status', () => {
     const runningOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('There are no running distributions.\r\n', 'utf16le')]);
     const verboseOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('  NAME    STATE     VERSION\r\n  Ubuntu  Stopped   2\r\n', 'utf16le')]);
 
-    const exec = vi.fn().mockImplementation((cmd: string, args: string[]) => {
+    const exec = vi.fn().mockImplementation((_cmd: string, args: string[]) => {
       if (args.includes('--running')) return Promise.resolve({ stdout: runningOut, stderr: Buffer.alloc(0) });
       return Promise.resolve({ stdout: verboseOut, stderr: Buffer.alloc(0) });
     });
