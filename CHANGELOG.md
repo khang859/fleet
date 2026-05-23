@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.41.0
+
+- Rune running inside Fleet is now detected automatically and receives Fleet's terminal command skill context by pasting the bundled `fleet.md` skill into the session. The ready marker is stripped from terminal output and handled across PTY chunk boundaries.
+
 ## v2.40.0
 
 - First-class Windows + WSL support. New WSL panes now launch in `$HOME` instead of the Windows-mounted path Electron's cwd resolves to. Tab titles collapse to `~` on Windows and WSL just like macOS/Linux, and native Windows panes (PowerShell/cmd) now track `cd` changes via `pid-cwd`. macOS and Linux behavior is unchanged.
