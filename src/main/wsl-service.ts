@@ -97,6 +97,39 @@ export class WslService {
     return home;
   }
 
+  private toWslPathCache = new Map<string, string>();
+  private toWinPathCache = new Map<string, string>();
+
+  async toWslPath(distro: string, winPath: string): Promise<string> {
+    const key = `${distro}:${winPath}`;
+    const cached = this.toWslPathCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const { stdout } = await this.exec(
+      'wsl.exe',
+      ['-d', distro, '--exec', 'wslpath', '-u', winPath],
+      {}
+    );
+    const out = stdout.toString('utf-8').trim();
+    this.toWslPathCache.set(key, out);
+    return out;
+  }
+
+  async toWinPath(distro: string, wslPath: string): Promise<string> {
+    const key = `${distro}:${wslPath}`;
+    const cached = this.toWinPathCache.get(key);
+    if (cached !== undefined) return cached;
+
+    const { stdout } = await this.exec(
+      'wsl.exe',
+      ['-d', distro, '--exec', 'wslpath', '-w', wslPath],
+      {}
+    );
+    const out = stdout.toString('utf-8').trim();
+    this.toWinPathCache.set(key, out);
+    return out;
+  }
+
   async listDistros(): Promise<WslDistro[]> {
     try {
       const { stdout } = await this.exec('wsl.exe', ['--list', '--verbose'], {});

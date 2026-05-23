@@ -83,3 +83,42 @@ describe('WslService.homeDir', () => {
     );
   });
 });
+
+describe('WslService path translation', () => {
+  it('toWslPath shells out to wslpath -u and caches', async () => {
+    const exec = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: Buffer.from('/mnt/c/Users/khang\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    expect(await svc.toWslPath('Ubuntu', 'C:\\Users\\khang')).toBe('/mnt/c/Users/khang');
+    expect(await svc.toWslPath('Ubuntu', 'C:\\Users\\khang')).toBe('/mnt/c/Users/khang');
+
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['-d', 'Ubuntu', '--exec', 'wslpath', '-u', 'C:\\Users\\khang'],
+      expect.anything()
+    );
+  });
+
+  it('toWinPath shells out to wslpath -w', async () => {
+    const exec = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: Buffer.from('C:\\Users\\khang\r\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    expect(await svc.toWinPath('Ubuntu', '/mnt/c/Users/khang')).toBe('C:\\Users\\khang');
+    expect(exec).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['-d', 'Ubuntu', '--exec', 'wslpath', '-w', '/mnt/c/Users/khang'],
+      expect.anything()
+    );
+  });
+
+  it('throws on wslpath failure (caller decides what to do)', async () => {
+    const exec = vi.fn().mockRejectedValue(new Error('wslpath: ENOENT'));
+    const svc = new WslService({ exec });
+    await expect(svc.toWslPath('Ubuntu', 'C:\\nope')).rejects.toThrow('wslpath');
+  });
+});
