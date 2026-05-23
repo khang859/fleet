@@ -31,8 +31,13 @@ import type {
   PiOpenPayload,
   PiPlanOpenPayload,
   PiPlanResponseRequest,
-  PiLaunchConfig
+  PiLaunchConfig,
+  ShellProfilesListResponse,
+  WslStatusResponse,
+  WslPathResponse,
+  WslHomeDirResponse
 } from '../shared/ipc-api';
+import type { ShellProfile, WslDistroState } from '../shared/shell-profiles';
 import type {
   Workspace,
   FleetSettings,
@@ -376,6 +381,30 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PI_ENV_CLEAR_SECRET, field),
     isEncryptionAvailable: async (): Promise<boolean> =>
       typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)
+  },
+  shellProfiles: {
+    list: async (): Promise<ShellProfile[]> => {
+      const res = await typedInvoke<ShellProfilesListResponse>(IPC_CHANNELS.SHELL_PROFILES_LIST);
+      return res.profiles;
+    }
+  },
+  wsl: {
+    status: async (distro: string): Promise<WslDistroState> => {
+      const res = await typedInvoke<WslStatusResponse>(IPC_CHANNELS.WSL_STATUS, { distro });
+      return res.state;
+    },
+    toWslPath: async (distro: string, path: string): Promise<string> => {
+      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WSL_PATH, { distro, path });
+      return res.translated;
+    },
+    toWinPath: async (distro: string, path: string): Promise<string> => {
+      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WIN_PATH, { distro, path });
+      return res.translated;
+    },
+    homeDir: async (distro: string): Promise<string> => {
+      const res = await typedInvoke<WslHomeDirResponse>(IPC_CHANNELS.WSL_HOME_DIR, { distro });
+      return res.homeDir;
+    }
   }
 };
 
