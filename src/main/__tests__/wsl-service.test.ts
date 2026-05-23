@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { parseListVerbose } from '../wsl-service';
+import { describe, it, expect, vi } from 'vitest';
+import { parseListVerbose, WslService } from '../wsl-service';
 
 describe('parseListVerbose', () => {
   it('parses a real-world wsl --list --verbose output (UTF-16LE)', () => {
@@ -39,5 +39,28 @@ describe('parseListVerbose', () => {
     const utf16le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(utf8, 'utf16le')]);
     const distros = parseListVerbose(utf16le);
     expect(distros[0].state).toBe('installing');
+  });
+});
+
+describe('WslService.listDistros', () => {
+  it('invokes wsl.exe --list --verbose and parses output', async () => {
+    const utf8 = '  NAME      STATE     VERSION\r\n* Ubuntu    Running   2\r\n';
+    const utf16le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(utf8, 'utf16le')]);
+
+    const exec = vi.fn().mockResolvedValue({ stdout: utf16le, stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    const distros = await svc.listDistros();
+
+    expect(exec).toHaveBeenCalledWith('wsl.exe', ['--list', '--verbose'], expect.anything());
+    expect(distros).toEqual([
+      { name: 'Ubuntu', version: 2, isDefault: true, state: 'running' }
+    ]);
+  });
+
+  it('returns empty array when wsl.exe exits non-zero', async () => {
+    const exec = vi.fn().mockRejectedValue(new Error('wsl not installed'));
+    const svc = new WslService({ exec });
+    expect(await svc.listDistros()).toEqual([]);
   });
 });

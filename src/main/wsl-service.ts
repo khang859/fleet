@@ -1,3 +1,5 @@
+import { spawn } from 'child_process';
+import type { SpawnOptions } from 'child_process';
 import iconv from 'iconv-lite';
 import type { WslDistro, WslDistroState } from '../shared/shell-profiles';
 
@@ -45,4 +47,46 @@ export function parseListVerbose(buf: Buffer): WslDistro[] {
   }
 
   return distros;
+}
+
+/** Minimal exec contract — allows mocking in tests without pulling in execa. */
+export type WslExec = (
+  command: string,
+  args: string[],
+  options?: SpawnOptions
+) => Promise<{ stdout: Buffer; stderr: Buffer }>;
+
+const defaultExec: WslExec = (command, args, options) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout?.on('data', (c: Buffer) => stdout.push(c));
+    child.stderr?.on('data', (c: Buffer) => stderr.push(c));
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) resolve({ stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
+      else reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(stderr).toString('utf-8')}`));
+    });
+  });
+
+export type WslServiceOptions = {
+  exec?: WslExec;
+};
+
+export class WslService {
+  private exec: WslExec;
+
+  constructor(opts: WslServiceOptions = {}) {
+    this.exec = opts.exec ?? defaultExec;
+  }
+
+  async listDistros(): Promise<WslDistro[]> {
+    try {
+      const { stdout } = await this.exec('wsl.exe', ['--list', '--verbose'], {});
+      return parseListVerbose(stdout);
+    } catch {
+      return [];
+    }
+  }
 }
