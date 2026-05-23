@@ -1209,6 +1209,7 @@ export function Sidebar({
                   }
                   indentLevel={tab.groupId ? 1 : 0}
                   worktreeBranch={tab.worktreeBranch}
+                  pathContext={tab.pathContext}
                   worktreeDisabledReason={
                     isFile
                       ? undefined

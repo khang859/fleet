@@ -5,6 +5,7 @@ import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
 import type { NotificationLevel } from '../../../shared/types';
+import type { PathContext } from '../../../shared/shell-profiles';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useNotificationStore } from '../store/notification-store';
@@ -42,6 +43,8 @@ type TabItemProps = {
   worktreeDisabledReason?: string | null;
   /** Branch name to show as subtitle for worktree tabs */
   worktreeBranch?: string;
+  /** Path semantics for rendering the auto-label. Undefined = treat as POSIX. */
+  pathContext?: PathContext;
   /** Indentation level (0 = normal, 1 = inside a group) */
   indentLevel?: number;
 };
@@ -96,6 +99,7 @@ export function TabItem({
   onCreateWorktree,
   worktreeDisabledReason,
   worktreeBranch,
+  pathContext,
   indentLevel = 0
 }: TabItemProps): React.JSX.Element {
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
@@ -246,7 +250,7 @@ export function TabItem({
           ) : (
             <div className="flex-1 min-w-0" onDoubleClick={handleDoubleClick}>
               <div className="truncate text-sm leading-tight">
-                {labelIsCustom ? label : cwdBasename(cwd)}
+                {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
               </div>
               <div className="truncate text-xs leading-tight text-neutral-400">
                 {worktreeBranch ? (
