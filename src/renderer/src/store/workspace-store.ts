@@ -7,6 +7,7 @@ import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
 import { basename as pathBasename } from '../../../shared/path-platform';
 import type { PathContext } from '../../../shared/shell-profiles';
+import { useShellProfilesStore } from './shell-profiles-store';
 
 const logTabs = createLogger('sidebar:tabs');
 const logLayout = createLogger('layout:state');
@@ -63,6 +64,18 @@ function generateId(): string {
 
 function createLeaf(cwd: string): PaneLeaf {
   return { type: 'leaf', id: generateId(), cwd };
+}
+
+function resolveDefaultProfile(): { id: string | undefined; pathContext: PathContext } {
+  const def = useShellProfilesStore.getState().defaultProfile;
+  return {
+    id: def?.id,
+    pathContext: def?.pathContext ?? (window.fleet.platform === 'win32' ? 'win32' : 'posix')
+  };
+}
+
+function createLeafWithProfile(cwd: string, profileId: string | undefined, pathContext: PathContext): PaneLeaf {
+  return { type: 'leaf', id: generateId(), cwd, shellProfileId: profileId, pathContext };
 }
 
 /** Ensure workspace has a pinned Images tab; mutates and returns the workspace */
@@ -288,14 +301,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   addTab: (label, cwd) => {
-    const resolvedLabel = label || cwdBasename(cwd);
-    const leaf = createLeaf(cwd);
+    const { id: profileId, pathContext } = resolveDefaultProfile();
+    const resolvedLabel = label || cwdBasename(cwd, pathContext);
+    const leaf = createLeafWithProfile(cwd, profileId, pathContext);
     const tab: Tab = {
       id: generateId(),
       label: resolvedLabel,
       labelIsCustom: !!label,
       cwd,
-      splitRoot: leaf
+      splitRoot: leaf,
+      shellProfileId: profileId,
+      pathContext
     };
     logTabs.debug('addTab', { tabId: tab.id, label: resolvedLabel, cwd, paneId: leaf.id });
     set((state) => ({
@@ -333,14 +349,24 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   addPiTab: (cwd) => {
-    const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd, paneType: 'pi' };
+    const { id: profileId, pathContext } = resolveDefaultProfile();
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd,
+      paneType: 'pi',
+      shellProfileId: profileId,
+      pathContext
+    };
     const tab: Tab = {
       id: generateId(),
       label: 'Pi Agent',
       labelIsCustom: true,
       cwd,
       type: 'pi',
-      splitRoot: leaf
+      splitRoot: leaf,
+      shellProfileId: profileId,
+      pathContext
     };
     logTabs.debug('addPiTab', { tabId: tab.id, cwd, paneId: leaf.id });
     set((state) => ({
