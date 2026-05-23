@@ -56,17 +56,22 @@ export type WslExec = (
   options?: SpawnOptions
 ) => Promise<{ stdout: Buffer; stderr: Buffer }>;
 
-const defaultExec: WslExec = (command, args, options) =>
+const defaultExec: WslExec = async (command, args, options) =>
   new Promise((resolve, reject) => {
     const child = spawn(command, args, { ...options, stdio: ['ignore', 'pipe', 'pipe'] });
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
-    child.stdout?.on('data', (c: Buffer) => stdout.push(c));
-    child.stderr?.on('data', (c: Buffer) => stderr.push(c));
+    child.stdout.on('data', (c: Buffer) => stdout.push(c));
+    child.stderr.on('data', (c: Buffer) => stderr.push(c));
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) resolve({ stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
-      else reject(new Error(`${command} exited with code ${code}: ${Buffer.concat(stderr).toString('utf-8')}`));
+      else
+        reject(
+          new Error(
+            `${command} exited with code ${code}: ${Buffer.concat(stderr).toString('utf-8')}`
+          )
+        );
     });
   });
 

@@ -85,16 +85,22 @@ describe('displayPath', () => {
     expect(displayPath('C:\\Users\\khang\\dev', 'win32', homes)).toBe('~\\dev');
   });
   it('collapses POSIX home to ~', () => {
-    expect(displayPath('/Users/khang/dev', 'posix', { homeDir: '/Users/khang', wslHomeByDistro: {} })).toBe('~/dev');
+    expect(
+      displayPath('/Users/khang/dev', 'posix', { homeDir: '/Users/khang', wslHomeByDistro: {} })
+    ).toBe('~/dev');
   });
   it('collapses WSL home to ~ when distro home is known', () => {
     expect(displayPath('/home/khang/dev', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~/dev');
   });
   it('collapses /mnt/c/Users/khang/... to ~/... when win-home is C:\\Users\\khang', () => {
-    expect(displayPath('/mnt/c/Users/khang/dev', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~/dev');
+    expect(displayPath('/mnt/c/Users/khang/dev', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe(
+      '~/dev'
+    );
   });
   it('leaves /mnt/c/... uncollapsed when not under win-home', () => {
-    expect(displayPath('/mnt/c/Program Files', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('/mnt/c/Program Files');
+    expect(displayPath('/mnt/c/Program Files', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe(
+      '/mnt/c/Program Files'
+    );
   });
   it('returns path unchanged when no rule matches', () => {
     expect(displayPath('D:\\Other', 'win32', homes)).toBe('D:\\Other');

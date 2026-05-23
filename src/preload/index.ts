@@ -65,7 +65,7 @@ type Unsubscribe = () => void;
 // The cast is safe: callers declare the return type, and main process implements it.
 // eslint-disable-next-line @typescript-eslint/promise-function-async
 function typedInvoke<T>(channel: string, ...args: unknown[]): Promise<T> {
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-return, @typescript-eslint/no-unsafe-type-assertion
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   return ipcRenderer.invoke(channel, ...args) as Promise<T>;
 }
 
@@ -394,11 +394,17 @@ const fleetApi = {
       return res.state;
     },
     toWslPath: async (distro: string, path: string): Promise<string> => {
-      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WSL_PATH, { distro, path });
+      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WSL_PATH, {
+        distro,
+        path
+      });
       return res.translated;
     },
     toWinPath: async (distro: string, path: string): Promise<string> => {
-      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WIN_PATH, { distro, path });
+      const res = await typedInvoke<WslPathResponse>(IPC_CHANNELS.WSL_TO_WIN_PATH, {
+        distro,
+        path
+      });
       return res.translated;
     },
     homeDir: async (distro: string): Promise<string> => {

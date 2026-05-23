@@ -5,7 +5,12 @@ import type { WslService } from '../wsl-service';
 function fakeWsl(distros: Array<{ name: string; isDefault?: boolean }>): Partial<WslService> {
   return {
     listDistros: vi.fn().mockResolvedValue(
-      distros.map((d) => ({ name: d.name, version: 2 as const, isDefault: !!d.isDefault, state: 'stopped' as const }))
+      distros.map((d) => ({
+        name: d.name,
+        version: 2 as const,
+        isDefault: !!d.isDefault,
+        state: 'stopped' as const
+      }))
     )
   };
 }
@@ -55,7 +60,7 @@ describe('ShellProfileRegistry', () => {
     const fileExists = vi.fn().mockImplementation((p: string) => p.includes('Git\\bin\\bash.exe'));
     const reg = new ShellProfileRegistry({
       platform: 'win32',
-      env: { 'ProgramFiles': 'C:\\Program Files' },
+      env: { ProgramFiles: 'C:\\Program Files' },
       wslService: fakeWsl([]) as WslService,
       fileExists
     });
@@ -66,7 +71,7 @@ describe('ShellProfileRegistry', () => {
   it('does not include Git Bash when the binary is absent', async () => {
     const reg = new ShellProfileRegistry({
       platform: 'win32',
-      env: { 'ProgramFiles': 'C:\\Program Files' },
+      env: { ProgramFiles: 'C:\\Program Files' },
       wslService: fakeWsl([]) as WslService,
       fileExists: vi.fn().mockReturnValue(false)
     });

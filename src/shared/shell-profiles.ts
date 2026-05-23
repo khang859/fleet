@@ -11,7 +11,7 @@ export type PathContext = 'posix' | 'win32' | { kind: 'wsl'; distro: string };
 export type WslDistroState = 'running' | 'stopped' | 'installing' | 'error';
 
 export type WslDistro = {
-  name: string;        // e.g. 'Ubuntu-22.04'
+  name: string; // e.g. 'Ubuntu-22.04'
   version: 1 | 2;
   isDefault: boolean;
   state: WslDistroState;

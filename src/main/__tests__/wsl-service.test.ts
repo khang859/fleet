@@ -53,9 +53,7 @@ describe('WslService.listDistros', () => {
     const distros = await svc.listDistros();
 
     expect(exec).toHaveBeenCalledWith('wsl.exe', ['--list', '--verbose'], expect.anything());
-    expect(distros).toEqual([
-      { name: 'Ubuntu', version: 2, isDefault: true, state: 'running' }
-    ]);
+    expect(distros).toEqual([{ name: 'Ubuntu', version: 2, isDefault: true, state: 'running' }]);
   });
 
   it('returns empty array when wsl.exe exits non-zero', async () => {
@@ -67,9 +65,10 @@ describe('WslService.listDistros', () => {
 
 describe('WslService.homeDir', () => {
   it('runs sh -c "echo $HOME" inside the distro and caches', async () => {
-    const exec = vi
-      .fn()
-      .mockResolvedValueOnce({ stdout: Buffer.from('/home/khang\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const exec = vi.fn().mockResolvedValueOnce({
+      stdout: Buffer.from('/home/khang\n', 'utf-8'),
+      stderr: Buffer.alloc(0)
+    });
     const svc = new WslService({ exec });
 
     expect(await svc.homeDir('Ubuntu')).toBe('/home/khang');
@@ -86,9 +85,10 @@ describe('WslService.homeDir', () => {
 
 describe('WslService path translation', () => {
   it('toWslPath shells out to wslpath -u and caches', async () => {
-    const exec = vi
-      .fn()
-      .mockResolvedValueOnce({ stdout: Buffer.from('/mnt/c/Users/khang\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const exec = vi.fn().mockResolvedValueOnce({
+      stdout: Buffer.from('/mnt/c/Users/khang\n', 'utf-8'),
+      stderr: Buffer.alloc(0)
+    });
     const svc = new WslService({ exec });
 
     expect(await svc.toWslPath('Ubuntu', 'C:\\Users\\khang')).toBe('/mnt/c/Users/khang');
@@ -103,9 +103,10 @@ describe('WslService path translation', () => {
   });
 
   it('toWinPath shells out to wslpath -w', async () => {
-    const exec = vi
-      .fn()
-      .mockResolvedValueOnce({ stdout: Buffer.from('C:\\Users\\khang\r\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const exec = vi.fn().mockResolvedValueOnce({
+      stdout: Buffer.from('C:\\Users\\khang\r\n', 'utf-8'),
+      stderr: Buffer.alloc(0)
+    });
     const svc = new WslService({ exec });
 
     expect(await svc.toWinPath('Ubuntu', '/mnt/c/Users/khang')).toBe('C:\\Users\\khang');
@@ -131,15 +132,26 @@ describe('WslService.status', () => {
     const svc = new WslService({ exec });
 
     expect(await svc.status('Ubuntu')).toBe('running');
-    expect(exec).toHaveBeenCalledWith('wsl.exe', ['--list', '--running', '--verbose'], expect.anything());
+    expect(exec).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['--list', '--running', '--verbose'],
+      expect.anything()
+    );
   });
 
   it('returns stopped when distro is not in running list but is registered', async () => {
-    const runningOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('There are no running distributions.\r\n', 'utf16le')]);
-    const verboseOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('  NAME    STATE     VERSION\r\n  Ubuntu  Stopped   2\r\n', 'utf16le')]);
+    const runningOut = Buffer.concat([
+      Buffer.from([0xff, 0xfe]),
+      Buffer.from('There are no running distributions.\r\n', 'utf16le')
+    ]);
+    const verboseOut = Buffer.concat([
+      Buffer.from([0xff, 0xfe]),
+      Buffer.from('  NAME    STATE     VERSION\r\n  Ubuntu  Stopped   2\r\n', 'utf16le')
+    ]);
 
-    const exec = vi.fn().mockImplementation((_cmd: string, args: string[]) => {
-      if (args.includes('--running')) return Promise.resolve({ stdout: runningOut, stderr: Buffer.alloc(0) });
+    const exec = vi.fn().mockImplementation(async (_cmd: string, args: string[]) => {
+      if (args.includes('--running'))
+        return Promise.resolve({ stdout: runningOut, stderr: Buffer.alloc(0) });
       return Promise.resolve({ stdout: verboseOut, stderr: Buffer.alloc(0) });
     });
     const svc = new WslService({ exec });
@@ -164,7 +176,11 @@ describe('WslService.warmUp', () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(exec).toHaveBeenCalledWith('wsl.exe', ['-d', 'Ubuntu', '--exec', 'true'], expect.anything());
+    expect(exec).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['-d', 'Ubuntu', '--exec', 'true'],
+      expect.anything()
+    );
   });
 
   it('does not throw when exec rejects', async () => {
