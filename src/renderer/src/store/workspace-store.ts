@@ -5,6 +5,8 @@ import { useCwdStore } from './cwd-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
+import { basename as pathBasename } from '../../../shared/path-platform';
+import type { PathContext } from '../../../shared/shell-profiles';
 
 const logTabs = createLogger('sidebar:tabs');
 const logLayout = createLogger('layout:state');
@@ -98,10 +100,9 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs };
 }
 
-/** Extract basename from a path for auto-labeling tabs */
-export function cwdBasename(cwd: string): string {
-  const parts = cwd.replace(/\/+$/, '').split('/');
-  return parts[parts.length - 1] || 'Shell';
+/** Extract basename from a path for auto-labeling tabs. ctx defaults to 'posix'. */
+export function cwdBasename(cwd: string, ctx: PathContext = 'posix'): string {
+  return pathBasename(cwd, ctx);
 }
 
 type ClosedTabRecord = {
@@ -415,7 +416,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       workspace: {
         ...state.workspace,
         tabs: state.workspace.tabs.map((t) =>
-          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd), labelIsCustom: false } : t
+          t.id === tabId ? { ...t, label: cwdBasename(liveCwd ?? t.cwd, t.pathContext ?? 'posix'), labelIsCustom: false } : t
         )
       },
       isDirty: true
@@ -460,7 +461,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       const effectiveGroupId = sourceTab.groupId ?? newGroupId;
 
       // Derive group label from the repo path (live CWD), not the stale tab cwd
-      const groupLabel = sourceTab.groupLabel ?? cwdBasename(repoPath);
+      const groupLabel = sourceTab.groupLabel ?? cwdBasename(repoPath, sourceTab.pathContext ?? 'posix');
 
       const tabs = state.workspace.tabs.map((t) => {
         if (t.id !== tabId) return t;
