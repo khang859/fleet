@@ -64,3 +64,22 @@ describe('WslService.listDistros', () => {
     expect(await svc.listDistros()).toEqual([]);
   });
 });
+
+describe('WslService.homeDir', () => {
+  it('runs sh -c "echo $HOME" inside the distro and caches', async () => {
+    const exec = vi
+      .fn()
+      .mockResolvedValueOnce({ stdout: Buffer.from('/home/khang\n', 'utf-8'), stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    expect(await svc.homeDir('Ubuntu')).toBe('/home/khang');
+    expect(await svc.homeDir('Ubuntu')).toBe('/home/khang'); // cached, no second exec
+
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(exec).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['-d', 'Ubuntu', '--exec', 'sh', '-c', 'printf %s "$HOME"'],
+      expect.anything()
+    );
+  });
+});

@@ -81,6 +81,22 @@ export class WslService {
     this.exec = opts.exec ?? defaultExec;
   }
 
+  private homeDirCache = new Map<string, string>();
+
+  async homeDir(distro: string): Promise<string> {
+    const cached = this.homeDirCache.get(distro);
+    if (cached !== undefined) return cached;
+
+    const { stdout } = await this.exec(
+      'wsl.exe',
+      ['-d', distro, '--exec', 'sh', '-c', 'printf %s "$HOME"'],
+      {}
+    );
+    const home = stdout.toString('utf-8').trim();
+    this.homeDirCache.set(distro, home);
+    return home;
+  }
+
   async listDistros(): Promise<WslDistro[]> {
     try {
       const { stdout } = await this.exec('wsl.exe', ['--list', '--verbose'], {});
