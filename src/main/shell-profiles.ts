@@ -11,9 +11,36 @@ export type RegistryDeps = {
 };
 
 export class ShellProfileRegistry {
+  private cachedProfiles: Promise<ShellProfile[]> | null = null;
+  private cachedDistros: Array<{ name: string; isDefault: boolean }> = [];
+
   constructor(private deps: RegistryDeps) {}
 
   async enumerate(): Promise<ShellProfile[]> {
+    if (!this.cachedProfiles) {
+      this.cachedProfiles = this.doEnumerate();
+    }
+    return this.cachedProfiles;
+  }
+
+  refresh(): void {
+    this.cachedProfiles = null;
+    this.cachedDistros = [];
+  }
+
+  async getDefaultProfileId(): Promise<string> {
+    const profiles = await this.enumerate();
+    if (this.deps.platform !== 'win32') {
+      return profiles[0]?.id ?? 'posix.unknown';
+    }
+    const defaultDistro = this.cachedDistros.find((d) => d.isDefault);
+    if (defaultDistro) return `wsl.${defaultDistro.name}`;
+    const firstWsl = profiles.find((p) => p.kind === 'wsl');
+    if (firstWsl) return firstWsl.id;
+    return 'windows.powershell';
+  }
+
+  private async doEnumerate(): Promise<ShellProfile[]> {
     if (this.deps.platform === 'win32') {
       return this.enumerateWindows();
     }
@@ -71,6 +98,7 @@ export class ShellProfileRegistry {
     }
 
     const distros = await this.deps.wslService.listDistros();
+    this.cachedDistros = distros.map((d) => ({ name: d.name, isDefault: d.isDefault }));
     for (const d of distros) {
       profiles.push({
         id: `wsl.${d.name}`,

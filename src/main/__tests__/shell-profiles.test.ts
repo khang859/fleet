@@ -79,3 +79,84 @@ describe('ShellProfileRegistry', () => {
     expect(profiles.some((p) => p.id === 'windows.git-bash')).toBe(false);
   });
 });
+
+describe('ShellProfileRegistry caching', () => {
+  it('only enumerates once across multiple calls', async () => {
+    const listDistros = vi.fn().mockResolvedValue([]);
+    const reg = new ShellProfileRegistry({
+      platform: 'win32',
+      env: {},
+      wslService: { listDistros } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    await reg.enumerate();
+    await reg.enumerate();
+    await reg.enumerate();
+    expect(listDistros).toHaveBeenCalledTimes(1);
+  });
+
+  it('refresh() invalidates the cache', async () => {
+    const listDistros = vi.fn().mockResolvedValue([]);
+    const reg = new ShellProfileRegistry({
+      platform: 'win32',
+      env: {},
+      wslService: { listDistros } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    await reg.enumerate();
+    reg.refresh();
+    await reg.enumerate();
+    expect(listDistros).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ShellProfileRegistry.getDefaultProfileId', () => {
+  it('returns the first profile id on darwin', async () => {
+    const reg = new ShellProfileRegistry({
+      platform: 'darwin',
+      env: { SHELL: '/bin/zsh' },
+      wslService: { listDistros: vi.fn().mockResolvedValue([]) } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    expect(await reg.getDefaultProfileId()).toBe('posix.zsh');
+  });
+
+  it('returns wsl.<default distro> on win32 when a default WSL distro exists', async () => {
+    const reg = new ShellProfileRegistry({
+      platform: 'win32',
+      env: {},
+      wslService: {
+        listDistros: vi.fn().mockResolvedValue([
+          { name: 'Debian', version: 2, isDefault: false, state: 'stopped' },
+          { name: 'Ubuntu-22.04', version: 2, isDefault: true, state: 'running' }
+        ])
+      } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    expect(await reg.getDefaultProfileId()).toBe('wsl.Ubuntu-22.04');
+  });
+
+  it('returns windows.powershell on win32 when no WSL distros exist', async () => {
+    const reg = new ShellProfileRegistry({
+      platform: 'win32',
+      env: {},
+      wslService: { listDistros: vi.fn().mockResolvedValue([]) } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    expect(await reg.getDefaultProfileId()).toBe('windows.powershell');
+  });
+
+  it('returns the first WSL profile on win32 when WSL distros exist but none are default', async () => {
+    const reg = new ShellProfileRegistry({
+      platform: 'win32',
+      env: {},
+      wslService: {
+        listDistros: vi.fn().mockResolvedValue([
+          { name: 'Alpine', version: 2, isDefault: false, state: 'stopped' }
+        ])
+      } as unknown as WslService,
+      fileExists: vi.fn().mockReturnValue(false)
+    });
+    expect(await reg.getDefaultProfileId()).toBe('wsl.Alpine');
+  });
+});
