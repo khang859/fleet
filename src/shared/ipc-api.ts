@@ -222,6 +222,7 @@ export type WorktreeRemoveRequest = {
 
 export type ShellProfilesListResponse = {
   profiles: ShellProfile[];
+  defaultProfileId: string;
 };
 
 export type WslStatusRequest = {

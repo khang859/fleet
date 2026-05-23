@@ -684,7 +684,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.SHELL_PROFILES_LIST, async (): Promise<ShellProfilesListResponse> => {
     const profiles = await shellProfileRegistry.enumerate();
-    return { profiles };
+    const defaultProfileId = await shellProfileRegistry.getDefaultProfileId();
+    return { profiles, defaultProfileId };
   });
 
   ipcMain.handle(

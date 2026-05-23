@@ -383,9 +383,9 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)
   },
   shellProfiles: {
-    list: async (): Promise<ShellProfile[]> => {
+    list: async (): Promise<{ profiles: ShellProfile[]; defaultProfileId: string }> => {
       const res = await typedInvoke<ShellProfilesListResponse>(IPC_CHANNELS.SHELL_PROFILES_LIST);
-      return res.profiles;
+      return { profiles: res.profiles, defaultProfileId: res.defaultProfileId };
     }
   },
   wsl: {
