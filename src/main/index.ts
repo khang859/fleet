@@ -30,6 +30,8 @@ import { PiAuthInspector } from './pi-auth-inspector';
 import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
+import { WslService } from './wsl-service';
+import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
@@ -77,6 +79,13 @@ const piAuthInspector = new PiAuthInspector({
   )
 });
 const fleetBridge = new FleetBridgeServer();
+const wslService = new WslService();
+const shellProfileRegistry = new ShellProfileRegistry({
+  platform: process.platform,
+  env: process.env,
+  wslService,
+  fileExists: defaultFileExists
+});
 imageService.on('changed', (id: string) => {
   const windowRef = mainWindow;
   if (windowRef && !windowRef.isDestroyed()) {
@@ -321,7 +330,9 @@ void app.whenReady().then(async () => {
     fleetBridge,
     piConfigManager,
     piAuthInspector,
-    piEnvInjectionManager
+    piEnvInjectionManager,
+    shellProfileRegistry,
+    wslService
   );
 
   imageService.resumeInterrupted();

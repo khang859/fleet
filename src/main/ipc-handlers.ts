@@ -27,7 +27,14 @@ import type {
   LogEntry,
   WorktreeCreateRequest,
   WorktreeRemoveRequest,
-  PiPlanResponseRequest
+  PiPlanResponseRequest,
+  ShellProfilesListResponse,
+  WslHomeDirRequest,
+  WslHomeDirResponse,
+  WslPathRequest,
+  WslPathResponse,
+  WslStatusRequest,
+  WslStatusResponse
 } from '../shared/ipc-api';
 import type { Workspace } from '../shared/types';
 import type { PtyManager } from './pty-manager';
@@ -49,6 +56,8 @@ import type { PiConfigManager } from './pi-config-manager';
 import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
 import type { PiAuthInspector } from './pi-auth-inspector';
 import type { PiEnvInjectionManager } from './pi-env-injection-manager';
+import type { ShellProfileRegistry } from './shell-profiles';
+import type { WslService } from './wsl-service';
 import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettings } from '../shared/types';
@@ -78,7 +87,9 @@ export function registerIpcHandlers(
   fleetBridge: FleetBridgeServer,
   piConfigManager: PiConfigManager,
   piAuthInspector: PiAuthInspector,
-  piEnvInjectionManager: PiEnvInjectionManager
+  piEnvInjectionManager: PiEnvInjectionManager,
+  shellProfileRegistry: ShellProfileRegistry,
+  wslService: WslService
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -670,6 +681,43 @@ export function registerIpcHandlers(
   ipcMain.handle(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE, () => {
     return piEnvInjectionManager.isEncryptionAvailable();
   });
+
+  ipcMain.handle(IPC_CHANNELS.SHELL_PROFILES_LIST, async (): Promise<ShellProfilesListResponse> => {
+    const profiles = await shellProfileRegistry.enumerate();
+    return { profiles };
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.WSL_STATUS,
+    async (_event, req: WslStatusRequest): Promise<WslStatusResponse> => {
+      const state = await wslService.status(req.distro);
+      return { state };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WSL_TO_WSL_PATH,
+    async (_event, req: WslPathRequest): Promise<WslPathResponse> => {
+      const translated = await wslService.toWslPath(req.distro, req.path);
+      return { translated };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WSL_TO_WIN_PATH,
+    async (_event, req: WslPathRequest): Promise<WslPathResponse> => {
+      const translated = await wslService.toWinPath(req.distro, req.path);
+      return { translated };
+    }
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.WSL_HOME_DIR,
+    async (_event, req: WslHomeDirRequest): Promise<WslHomeDirResponse> => {
+      const homeDir = await wslService.homeDir(req.distro);
+      return { homeDir };
+    }
+  );
 }
 
 // Exported for testing
