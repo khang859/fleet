@@ -78,3 +78,42 @@ describe('CwdPoller', () => {
     expect(pidCwd).not.toHaveBeenCalled();
   });
 });
+
+describe('CwdPoller on win32', () => {
+  const originalPlatform = process.platform;
+  let eventBus: EventBus;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    eventBus = new EventBus();
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+  });
+
+  it('uses pid-cwd to resolve cwd for win32 panes', async () => {
+    const ptyManager = makeMockPtyManager('C:\\old');
+    const poller = new CwdPoller(eventBus, ptyManager);
+    poller.startPolling('pane-1', 999, 'win32');
+
+    await vi.advanceTimersByTimeAsync(5001);
+
+    expect(pidCwd).toHaveBeenCalledWith(999);
+    poller.stopAll();
+  });
+
+  it('does not poll WSL panes (waits for OSC 7)', async () => {
+    const ptyManager = makeMockPtyManager('C:\\old');
+    const poller = new CwdPoller(eventBus, ptyManager);
+    poller.startPolling('pane-wsl', 999, { kind: 'wsl', distro: 'Ubuntu' });
+
+    await vi.advanceTimersByTimeAsync(10000);
+
+    expect(pidCwd).not.toHaveBeenCalled();
+    poller.stopAll();
+  });
+});

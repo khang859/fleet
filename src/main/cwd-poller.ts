@@ -2,6 +2,7 @@ import { readlink } from 'fs/promises';
 import pidCwd from 'pid-cwd';
 import type { EventBus } from './event-bus';
 import type { PtyManager } from './pty-manager';
+import type { PathContext } from '../shared/shell-profiles';
 
 const POLL_INTERVAL_MS = 5000;
 
@@ -14,8 +15,14 @@ export class CwdPoller {
     private ptyManager: PtyManager
   ) {}
 
-  startPolling(paneId: string, pid: number): void {
+  startPolling(paneId: string, pid: number, pathContext: PathContext = 'posix'): void {
     if (this.timers.has(paneId)) return;
+    // WSL panes only update via OSC 7 (installed by Phase 3's ensureFleetCli hook).
+    // Polling the wsl.exe pid on the Windows side returns the wrong cwd because
+    // the Linux-side shell's cwd is invisible to the Windows kernel.
+    if (typeof pathContext === 'object' && pathContext.kind === 'wsl') {
+      return;
+    }
 
     const timer = setInterval(() => {
       if (this.osc7Seen.has(paneId)) {
@@ -66,7 +73,7 @@ async function readProcCwd(pid: number): Promise<string | null> {
     }
   }
 
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' || process.platform === 'win32') {
     try {
       return await pidCwd(pid);
     } catch {
