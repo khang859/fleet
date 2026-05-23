@@ -3,6 +3,8 @@ import { createElement } from 'react';
 import { TerminalSquare } from 'lucide-react';
 import { fuzzyMatch } from '../../../lib/commands';
 import { collectPaneLeafs, useWorkspaceStore } from '../../../store/workspace-store';
+import { displayPath } from '../../../../../shared/path-platform';
+import { useHomesStore } from '../../../store/homes-store';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
 export function createPanesMode(): TelescopeMode {
@@ -35,7 +37,7 @@ export function createPanesMode(): TelescopeMode {
             className: isActive ? 'text-green-400' : 'text-neutral-500'
           }),
           title: leaf.label ?? leaf.paneType ?? 'terminal',
-          subtitle: leaf.cwd.replace(window.fleet.homeDir, '~'),
+          subtitle: displayPath(leaf.cwd, leaf.pathContext ?? 'posix', useHomesStore.getState().snapshot()),
           meta: isActive ? 'active' : undefined,
           data: { paneId: leaf.id, cwd: leaf.cwd, paneType: leaf.paneType ?? 'terminal' }
         };
