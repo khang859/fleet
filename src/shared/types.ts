@@ -1,3 +1,5 @@
+import type { PathContext } from './shell-profiles';
+
 export type Workspace = {
   id: string;
   label: string;
@@ -23,6 +25,10 @@ export type Tab = {
   groupLabel?: string;
   worktreeBranch?: string;
   worktreePath?: string;
+  /** ShellProfile id used when this tab was created. Optional for legacy persisted tabs. */
+  shellProfileId?: string;
+  /** Path semantics for this tab (driven by the chosen shellProfile). Optional for legacy tabs. */
+  pathContext?: PathContext;
 };
 
 export type PaneNode = PaneSplit | PaneLeaf;
@@ -46,6 +52,10 @@ export type PaneLeaf = {
   serializedContent?: string;
   label?: string;
   labelIsCustom?: boolean;
+  /** ShellProfile id used to spawn this pane's PTY. Optional for legacy persisted leaves. */
+  shellProfileId?: string;
+  /** Path semantics for this pane. Drives basename/displayPath rendering. */
+  pathContext?: PathContext;
 };
 
 export type NotificationLevel = 'permission' | 'error' | 'info' | 'subtle';
