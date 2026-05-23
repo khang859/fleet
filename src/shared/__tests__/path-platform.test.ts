@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isWindowsPath, isWslPath, basename } from '../path-platform';
+import { isWindowsPath, isWslPath, basename, join } from '../path-platform';
 
 describe('isWindowsPath', () => {
   it('matches drive-letter paths with backslash', () => {
@@ -56,5 +56,24 @@ describe('basename', () => {
     expect(basename('/', 'posix')).toBe('Shell');
     expect(basename('', 'posix')).toBe('Shell');
     expect(basename('C:\\', 'win32')).toBe('Shell');
+  });
+});
+
+describe('join', () => {
+  it('joins POSIX with forward slash', () => {
+    expect(join('posix', '/home', 'khang', 'dev')).toBe('/home/khang/dev');
+  });
+  it('joins Windows with backslash', () => {
+    expect(join('win32', 'C:\\', 'Users', 'khang')).toBe('C:\\Users\\khang');
+  });
+  it('joins WSL with forward slash', () => {
+    expect(join({ kind: 'wsl', distro: 'Ubuntu' }, '/home', 'khang')).toBe('/home/khang');
+  });
+  it('collapses doubled separators', () => {
+    expect(join('posix', '/home/', '/khang/', 'dev')).toBe('/home/khang/dev');
+    expect(join('win32', 'C:\\Users\\', '\\khang')).toBe('C:\\Users\\khang');
+  });
+  it('ignores empty segments', () => {
+    expect(join('posix', '/home', '', 'khang')).toBe('/home/khang');
   });
 });
