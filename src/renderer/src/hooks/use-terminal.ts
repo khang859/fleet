@@ -3,6 +3,7 @@ import { Terminal } from '@xterm/xterm';
 
 import { FitAddon } from '@xterm/addon-fit';
 import { createLogger } from '../logger';
+import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 
 const log = createLogger('terminal:lifecycle');
 import { SearchAddon } from '@xterm/addon-search';
@@ -33,8 +34,20 @@ export type UseTerminalOptions = {
   shellProfileId?: string;
 };
 
+export const RUNE_READY_MARKER = '\x1b]777;fleet.rune.ready\x07';
+
+export type RuneReadyMarkerState = {
+  pending: string;
+};
+
+const MAX_RUNE_READY_MARKER_PENDING = RUNE_READY_MARKER.length - 1;
+const RUNE_READY_MARKER_FLUSH_DELAY_MS = 100;
+
 // Track which panes already have PTYs created (survives StrictMode remounts)
 const createdPtys = new Set<string>();
+
+// Track which live PTY sessions have already received Fleet skill injection.
+const runeSkillInjectedPanes = new Set<string>();
 
 // Registry for serializing terminal content before close
 const serializeRegistry = new Map<string, SerializeAddon>();
@@ -47,6 +60,7 @@ export const restartingPanes = new Set<string>();
 
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
+  runeSkillInjectedPanes.delete(paneId);
 }
 
 /** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
@@ -67,6 +81,7 @@ export async function restartPane(
   restartingPanes.add(paneId);
   window.fleet.pty.kill(paneId);
   createdPtys.delete(paneId);
+  runeSkillInjectedPanes.delete(paneId);
 
   // Clear xterm buffer so the user sees a fresh terminal
   const term = terminalRegistry.get(paneId);
@@ -88,6 +103,61 @@ export function serializePane(paneId: string, scrollback?: number): string | und
   return serializeRegistry.get(paneId)?.serialize(scrollback != null ? { scrollback } : undefined);
 }
 
+export type RuneReadyMarkerResult = {
+  output: string;
+  readySeen: boolean;
+};
+
+export function stripRuneReadyMarker(
+  state: RuneReadyMarkerState,
+  chunk: string,
+  flush = false
+): RuneReadyMarkerResult {
+  const input = state.pending + chunk;
+  state.pending = '';
+
+  let output = '';
+  let readySeen = false;
+  let index = 0;
+
+  while (index < input.length) {
+    if (input.startsWith(RUNE_READY_MARKER, index)) {
+      readySeen = true;
+      index += RUNE_READY_MARKER.length;
+      continue;
+    }
+
+    if (!flush) {
+      const remaining = input.slice(index);
+      if (RUNE_READY_MARKER.startsWith(remaining)) {
+        state.pending = remaining;
+        break;
+      }
+    }
+
+    output += input[index];
+    index += 1;
+  }
+
+  if (!flush && state.pending.length > MAX_RUNE_READY_MARKER_PENDING) {
+    output += state.pending.slice(0, -MAX_RUNE_READY_MARKER_PENDING);
+    state.pending = state.pending.slice(-MAX_RUNE_READY_MARKER_PENDING);
+  }
+
+  return { output, readySeen };
+}
+
+export function markRuneSkillInjectedForTest(paneId: string, injected: boolean): void {
+  if (injected) runeSkillInjectedPanes.add(paneId);
+  else runeSkillInjectedPanes.delete(paneId);
+}
+
+export function shouldInjectRuneFleetSkill(paneId: string, readySeen: boolean): boolean {
+  if (!readySeen || runeSkillInjectedPanes.has(paneId)) return false;
+  runeSkillInjectedPanes.add(paneId);
+  return true;
+}
+
 function createTerminal(
   container: HTMLElement,
   options: UseTerminalOptions
@@ -103,6 +173,7 @@ function createTerminal(
   resizeObserver: ResizeObserver;
   cleanupResizeTimer: () => void;
   cursorSuppressor: { dispose(): void };
+  flushPendingRuneReadyMarker: () => void;
 } {
   log.debug('createTerminal', { paneId: options.paneId, cwd: options.cwd });
 
@@ -230,13 +301,50 @@ function createTerminal(
   let attachResolved = !isPreCreated || options.attachOnly;
   const pendingLiveData: string[] = [];
 
-  const writeToTerm = (data: string): void => {
-    term.write(data, () => {
+  const runeReadyMarkerState: RuneReadyMarkerState = { pending: '' };
+  let runeReadyMarkerFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const clearRuneReadyMarkerFlushTimer = (): void => {
+    if (runeReadyMarkerFlushTimer !== null) {
+      clearTimeout(runeReadyMarkerFlushTimer);
+      runeReadyMarkerFlushTimer = null;
+    }
+  };
+
+  const writeToTerm = (data: string, flushRuneReadyMarker = false): void => {
+    clearRuneReadyMarkerFlushTimer();
+    const processed = stripRuneReadyMarker(runeReadyMarkerState, data, flushRuneReadyMarker);
+    if (shouldInjectRuneFleetSkill(options.paneId, processed.readySeen)) {
+      void getFleetSkillContentInput().then((input) => {
+        window.fleet.pty.input({ paneId: options.paneId, data: input });
+      });
+    }
+
+    if (runeReadyMarkerState.pending) {
+      runeReadyMarkerFlushTimer = setTimeout(() => {
+        runeReadyMarkerFlushTimer = null;
+        writeToTerm('', true);
+      }, RUNE_READY_MARKER_FLUSH_DELAY_MS);
+    }
+
+    if (!processed.output) {
+      window.fleet.ptyDrain(options.paneId);
+      return;
+    }
+
+    term.write(processed.output, () => {
       if (pinnedToBottom) {
         term.scrollToBottom();
       }
       window.fleet.ptyDrain(options.paneId);
     });
+  };
+
+  const flushPendingRuneReadyMarker = (): void => {
+    clearRuneReadyMarkerFlushTimer();
+    if (runeReadyMarkerState.pending) {
+      writeToTerm('', true);
+    }
   };
 
   log.debug('registerPaneData', { paneId: options.paneId });
@@ -609,7 +717,8 @@ function createTerminal(
     scrollCleanup,
     resizeObserver,
     cleanupResizeTimer,
-    cursorSuppressor
+    cursorSuppressor,
+    flushPendingRuneReadyMarker
   };
 }
 
@@ -649,7 +758,8 @@ export function useTerminal(
       scrollCleanup,
       resizeObserver,
       cleanupResizeTimer,
-      cursorSuppressor
+      cursorSuppressor,
+      flushPendingRuneReadyMarker
     } = createTerminal(container, options);
 
     termRef.current = term;
@@ -667,6 +777,7 @@ export function useTerminal(
       scrollToBottomRef.current = null;
       serializeRegistry.delete(options.paneId);
       terminalRegistry.delete(options.paneId);
+      flushPendingRuneReadyMarker();
       cleanupResizeTimer();
       cursorSuppressor.dispose();
       ipcCleanup();
