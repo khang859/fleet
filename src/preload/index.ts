@@ -37,7 +37,7 @@ import type {
   WslPathResponse,
   WslHomeDirResponse
 } from '../shared/ipc-api';
-import type { ShellProfile, WslDistroState } from '../shared/shell-profiles';
+import type { WslDistroState } from '../shared/shell-profiles';
 import type {
   Workspace,
   FleetSettings,
@@ -383,10 +383,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.PI_ENV_IS_ENCRYPTION_AVAILABLE)
   },
   shellProfiles: {
-    list: async (): Promise<{ profiles: ShellProfile[]; defaultProfileId: string }> => {
-      const res = await typedInvoke<ShellProfilesListResponse>(IPC_CHANNELS.SHELL_PROFILES_LIST);
-      return { profiles: res.profiles, defaultProfileId: res.defaultProfileId };
-    }
+    list: async (): Promise<ShellProfilesListResponse> =>
+      typedInvoke<ShellProfilesListResponse>(IPC_CHANNELS.SHELL_PROFILES_LIST)
   },
   wsl: {
     status: async (distro: string): Promise<WslDistroState> => {
