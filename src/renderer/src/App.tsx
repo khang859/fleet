@@ -15,6 +15,7 @@ import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-ter
 import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
+import { useHomesStore } from './store/homes-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
@@ -143,9 +144,19 @@ export function App(): React.JSX.Element {
     void loadSettings();
   }, []);
 
-  // Load shell profiles on startup
+  // Load shell profiles on startup; warm the WSL home cache so displayPath
+  // can collapse `/home/<user>` to `~` in Telescope subtitles.
   useEffect(() => {
-    void useShellProfilesStore.getState().load();
+    void useShellProfilesStore
+      .getState()
+      .load()
+      .then(() => {
+        for (const p of useShellProfilesStore.getState().profiles) {
+          if (typeof p.pathContext === 'object' && p.pathContext.kind === 'wsl') {
+            void useHomesStore.getState().ensureWslHome(p.pathContext.distro);
+          }
+        }
+      });
   }, []);
 
   // Subscribe to live CWD updates from main process
