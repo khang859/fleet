@@ -122,3 +122,34 @@ describe('WslService path translation', () => {
     await expect(svc.toWslPath('Ubuntu', 'C:\\nope')).rejects.toThrow('wslpath');
   });
 });
+
+describe('WslService.status', () => {
+  it('returns running when distro is in --list --running output', async () => {
+    const utf8 = '  NAME      STATE     VERSION\r\n* Ubuntu    Running   2\r\n';
+    const utf16le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(utf8, 'utf16le')]);
+    const exec = vi.fn().mockResolvedValue({ stdout: utf16le, stderr: Buffer.alloc(0) });
+    const svc = new WslService({ exec });
+
+    expect(await svc.status('Ubuntu')).toBe('running');
+    expect(exec).toHaveBeenCalledWith('wsl.exe', ['--list', '--running', '--verbose'], expect.anything());
+  });
+
+  it('returns stopped when distro is not in running list but is registered', async () => {
+    const runningOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('There are no running distributions.\r\n', 'utf16le')]);
+    const verboseOut = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('  NAME    STATE     VERSION\r\n  Ubuntu  Stopped   2\r\n', 'utf16le')]);
+
+    const exec = vi.fn().mockImplementation((cmd: string, args: string[]) => {
+      if (args.includes('--running')) return Promise.resolve({ stdout: runningOut, stderr: Buffer.alloc(0) });
+      return Promise.resolve({ stdout: verboseOut, stderr: Buffer.alloc(0) });
+    });
+    const svc = new WslService({ exec });
+
+    expect(await svc.status('Ubuntu')).toBe('stopped');
+  });
+
+  it('returns error when wsl.exe fails', async () => {
+    const exec = vi.fn().mockRejectedValue(new Error('service down'));
+    const svc = new WslService({ exec });
+    expect(await svc.status('Ubuntu')).toBe('error');
+  });
+});

@@ -130,6 +130,19 @@ export class WslService {
     return out;
   }
 
+  async status(distro: string): Promise<WslDistroState> {
+    try {
+      const { stdout } = await this.exec('wsl.exe', ['--list', '--running', '--verbose'], {});
+      const running = parseListVerbose(stdout);
+      if (running.some((d) => d.name === distro)) return 'running';
+      const all = await this.listDistros();
+      const found = all.find((d) => d.name === distro);
+      return found ? found.state : 'error';
+    } catch {
+      return 'error';
+    }
+  }
+
   async listDistros(): Promise<WslDistro[]> {
     try {
       const { stdout } = await this.exec('wsl.exe', ['--list', '--verbose'], {});
