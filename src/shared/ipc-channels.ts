@@ -111,5 +111,11 @@ export const IPC_CHANNELS = {
   PI_ENV_READ_BEDROCK: 'pi:env:read-bedrock',
   PI_ENV_WRITE_BEDROCK: 'pi:env:write-bedrock',
   PI_ENV_CLEAR_SECRET: 'pi:env:clear-secret',
-  PI_ENV_IS_ENCRYPTION_AVAILABLE: 'pi:env:is-encryption-available'
+  PI_ENV_IS_ENCRYPTION_AVAILABLE: 'pi:env:is-encryption-available',
+  // Shell profiles & WSL
+  SHELL_PROFILES_LIST: 'shell:profiles:list',
+  WSL_STATUS: 'wsl:status',
+  WSL_TO_WSL_PATH: 'wsl:to-wsl-path',
+  WSL_TO_WIN_PATH: 'wsl:to-win-path',
+  WSL_HOME_DIR: 'wsl:home-dir'
 } as const;
