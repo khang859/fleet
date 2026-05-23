@@ -60,22 +60,42 @@ export class PtyManager {
       return { paneId: opts.paneId, pid: existing.process.pid };
     }
 
-    const shell = opts.shell ?? getDefaultShell();
-    const args: string[] = [];
+    let shell: string;
+    let baseArgs: string[];
+
+    if (opts.profile?.kind === 'wsl') {
+      const distro =
+        opts.profile.pathContext === 'win32' || opts.profile.pathContext === 'posix'
+          ? ''
+          : opts.profile.pathContext.distro;
+      shell = opts.profile.command;
+      // Trailing `~` forces the WSL shell to land in $HOME, overriding the
+      // Windows cwd that node-pty passes to wsl.exe. Microsoft documents this
+      // pattern as `wsl ~`.
+      baseArgs = ['-d', distro, '~'];
+    } else if (opts.profile?.kind === 'system') {
+      shell = opts.profile.command;
+      baseArgs = [...opts.profile.args];
+    } else {
+      shell = opts.shell ?? getDefaultShell();
+      baseArgs = [];
+    }
+
+    const args: string[] = [...baseArgs];
 
     if (opts.cmd) {
       if (opts.exitOnComplete) {
-        // PTY exits when command finishes — used for crew agents where onExit triggers cleanup
         args.push('-c', opts.cmd);
       } else {
-        // Default: fall back to shell after command exits — keeps terminal alive for user
         args.push('-c', `${opts.cmd}; exec ${shell}`);
       }
     }
 
     log.debug('spawning PTY', {
       shell,
+      args,
       cwd: opts.cwd,
+      profileId: opts.profile?.id,
       pathPrefix: process.env.PATH?.substring(0, 80)
     });
     const proc = pty.spawn(shell, args, {

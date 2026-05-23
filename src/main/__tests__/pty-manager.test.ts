@@ -281,3 +281,83 @@ describe('PtyManager batching and cleanup', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+describe('PtyManager profile-aware spawn', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('spawns wsl.exe with [-d <distro> ~] when given a WSL profile', () => {
+    const manager = new PtyManager();
+    manager.create({
+      paneId: 'pane-wsl',
+      cwd: 'C:\\Users\\khang\\dev',
+      profile: {
+        id: 'wsl.Ubuntu-22.04',
+        kind: 'wsl',
+        label: 'Ubuntu-22.04 (WSL)',
+        command: 'wsl.exe',
+        args: ['-d', 'Ubuntu-22.04'],
+        pathContext: { kind: 'wsl', distro: 'Ubuntu-22.04' }
+      }
+    });
+    expect(ptyModule.spawn).toHaveBeenCalledWith(
+      'wsl.exe',
+      ['-d', 'Ubuntu-22.04', '~'],
+      expect.objectContaining({ cwd: 'C:\\Users\\khang\\dev' })
+    );
+  });
+
+  it('spawns profile.command with profile.args for system profiles', () => {
+    const manager = new PtyManager();
+    manager.create({
+      paneId: 'pane-pwsh',
+      cwd: 'C:\\Users\\khang',
+      profile: {
+        id: 'windows.powershell',
+        kind: 'system',
+        label: 'PowerShell',
+        command: 'powershell.exe',
+        args: [],
+        pathContext: 'win32'
+      }
+    });
+    expect(ptyModule.spawn).toHaveBeenCalledWith(
+      'powershell.exe',
+      [],
+      expect.objectContaining({ cwd: 'C:\\Users\\khang' })
+    );
+  });
+
+  it('falls back to opts.shell when no profile is provided (legacy path)', () => {
+    const manager = new PtyManager();
+    manager.create({
+      paneId: 'pane-legacy',
+      cwd: '/tmp',
+      shell: '/bin/zsh'
+    });
+    expect(ptyModule.spawn).toHaveBeenCalledWith('/bin/zsh', [], expect.objectContaining({ cwd: '/tmp' }));
+  });
+
+  it('combines profile.args with cmd when both are present', () => {
+    const manager = new PtyManager();
+    manager.create({
+      paneId: 'pane-cmd',
+      cwd: '/tmp',
+      cmd: 'echo hello',
+      profile: {
+        id: 'posix.zsh',
+        kind: 'system',
+        label: 'zsh',
+        command: '/bin/zsh',
+        args: [],
+        pathContext: 'posix'
+      }
+    });
+    expect(ptyModule.spawn).toHaveBeenCalledWith(
+      '/bin/zsh',
+      ['-c', 'echo hello; exec /bin/zsh'],
+      expect.objectContaining({ cwd: '/tmp' })
+    );
+  });
+});
