@@ -138,4 +138,8 @@ export class SocketSupervisor extends EventEmitter {
   resetBackoff(): void {
     this.backoffMs = INITIAL_BACKOFF_MS;
   }
+
+  broadcastKanbanEvent(event: unknown): void {
+    this.server?.broadcastKanbanEvent(event);
+  }
 }

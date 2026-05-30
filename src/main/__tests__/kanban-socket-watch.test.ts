@@ -68,3 +68,57 @@ describe('SocketServer kanban.* dispatch', () => {
     expect(res.code).toBe('UNAVAILABLE');
   });
 });
+
+describe('SocketServer kanban.watch streaming', () => {
+  let server: SocketServer;
+  let sockPath: string;
+
+  afterEach(async () => {
+    await server.stop();
+    try {
+      unlinkSync(sockPath);
+    } catch {
+      // ignore
+    }
+  });
+
+  it('streams broadcast events to a subscribed socket after an ack', async () => {
+    sockPath = tmpSocket();
+    server = new SocketServer(sockPath, undefined, undefined, () => stubKanban());
+    await server.start();
+
+    const lines = await new Promise<Array<Record<string, unknown>>>((resolve, reject) => {
+      const collected: Array<Record<string, unknown>> = [];
+      const client = createConnection(sockPath, () => {
+        client.write(JSON.stringify({ id: 'w', command: 'kanban.watch', args: {} }) + '\n');
+      });
+      let buffer = '';
+      client.on('data', (chunk) => {
+        buffer += chunk.toString();
+        const parts = buffer.split('\n');
+        buffer = parts.pop() ?? '';
+        for (const p of parts) {
+          if (!p.trim()) continue;
+          collected.push(JSON.parse(p));
+          if (collected.length === 1) {
+            // First line is the ack; now broadcast an event.
+            server.broadcastKanbanEvent({ taskId: 't1', kind: 'task_created' });
+          }
+          if (collected.length >= 2) {
+            client.end();
+            resolve(collected);
+          }
+        }
+      });
+      client.on('error', reject);
+      setTimeout(() => {
+        client.end();
+        reject(new Error('timeout'));
+      }, 3000);
+    });
+
+    expect(lines[0].ok).toBe(true);
+    expect((lines[0].data as { watching: boolean }).watching).toBe(true);
+    expect((lines[1].kanbanEvent as { kind: string }).kind).toBe('task_created');
+  });
+});

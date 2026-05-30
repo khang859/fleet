@@ -49,6 +49,7 @@ type Response = SuccessResponse | ErrorResponse;
 export class SocketServer extends EventEmitter {
   private server: Server | null = null;
   private clients = new Set<Socket>();
+  private kanbanSubscribers = new Set<Socket>();
   private startTime: number | null = null;
 
   constructor(
@@ -89,10 +90,12 @@ export class SocketServer extends EventEmitter {
 
         socket.on('close', () => {
           this.clients.delete(socket);
+          this.kanbanSubscribers.delete(socket);
         });
 
         socket.on('error', () => {
           this.clients.delete(socket);
+          this.kanbanSubscribers.delete(socket);
         });
       });
 
@@ -120,6 +123,7 @@ export class SocketServer extends EventEmitter {
       client.destroy();
     }
     this.clients.clear();
+    this.kanbanSubscribers.clear();
 
     return new Promise((resolve) => {
       if (this.server) {
@@ -153,6 +157,23 @@ export class SocketServer extends EventEmitter {
       return;
     }
 
+    // kanban.watch is a streaming subscription, not a one-shot command.
+    // Keep the socket open and forward future events via broadcastKanbanEvent.
+    if (req.command === 'kanban.watch') {
+      if (!this.getKanban?.()) {
+        this.sendResponse(socket, {
+          id: req.id,
+          ok: false,
+          error: 'Kanban not available',
+          code: 'UNAVAILABLE'
+        });
+        return;
+      }
+      this.kanbanSubscribers.add(socket);
+      this.sendResponse(socket, { id: req.id, ok: true, data: { watching: true } });
+      return;
+    }
+
     try {
       const data = await this.dispatch(req.command, req.args ?? {});
       this.sendResponse(socket, { id: req.id, ok: true, data });
@@ -170,6 +191,15 @@ export class SocketServer extends EventEmitter {
   private sendResponse(socket: Socket, response: Response): void {
     if (!socket.destroyed) {
       socket.write(JSON.stringify(response) + '\n');
+    }
+  }
+
+  broadcastKanbanEvent(event: unknown): void {
+    const line = JSON.stringify({ kanbanEvent: event }) + '\n';
+    for (const socket of this.kanbanSubscribers) {
+      if (!socket.destroyed) {
+        socket.write(line);
+      }
     }
   }
 

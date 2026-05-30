@@ -750,6 +750,7 @@ void app.whenReady().then(async () => {
       if (w && !w.isDestroyed()) {
         w.webContents.send(IPC_CHANNELS.KANBAN_EVENT, event);
       }
+      socketSupervisor?.broadcastKanbanEvent(event);
     }
   });
   kanbanMcp = new KanbanMcpServer(kanbanStore);
