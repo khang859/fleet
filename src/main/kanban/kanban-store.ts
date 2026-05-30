@@ -252,7 +252,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE task_runs SET status='finished', ended_at=?, outcome=?, summary=?, metadata=?, error=?
-         WHERE id=?`
+         WHERE id=? AND status='running'`
       )
       .run(
         ts,
@@ -334,7 +334,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE tasks SET status='done', result=?, claim_lock=NULL, claim_expires=NULL,
-          worker_pid=NULL, consecutive_failures=0, last_failure_error=NULL, updated_at=?
+          worker_pid=NULL, current_run_id=NULL, consecutive_failures=0, last_failure_error=NULL, updated_at=?
          WHERE id=?`
       )
       .run(result, ts, taskId);
@@ -345,7 +345,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE tasks SET status='blocked', result=?, claim_lock=NULL, claim_expires=NULL,
-          worker_pid=NULL, updated_at=?
+          worker_pid=NULL, current_run_id=NULL, updated_at=?
          WHERE id=?`
       )
       .run(reason, ts, taskId);
@@ -366,7 +366,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE tasks SET status='blocked', result=?, claim_lock=NULL, claim_expires=NULL,
-          worker_pid=NULL, last_failure_error=?, updated_at=?
+          worker_pid=NULL, current_run_id=NULL, last_failure_error=?, updated_at=?
          WHERE id=?`
       )
       .run(`gave-up: ${error}`, error, ts, taskId);

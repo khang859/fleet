@@ -160,21 +160,38 @@ describe('KanbanStore', () => {
   it('completeTask sets done, stores result, clears claim, resets failures', () => {
     const t = store.createTask({ title: 'x', status: 'ready' });
     store.claimTask(t.id, 'L', 1000);
+    const run = store.startRun(t.id, null, 1);
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
     store.completeTask(t.id, 'shipped');
     const f = store.getTask(t.id);
     expect(f?.status).toBe('done');
     expect(f?.result).toBe('shipped');
     expect(f?.claimLock).toBeNull();
     expect(f?.consecutiveFailures).toBe(0);
+    expect(f?.currentRunId).toBeNull();
   });
 
   it('blockTask sets blocked and stores reason as result', () => {
     const t = store.createTask({ title: 'x', status: 'ready' });
     store.claimTask(t.id, 'L', 1000);
+    const run = store.startRun(t.id, null, 1);
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
     store.blockTask(t.id, 'needs key');
     const f = store.getTask(t.id);
     expect(f?.status).toBe('blocked');
     expect(f?.result).toBe('needs key');
+    expect(f?.currentRunId).toBeNull();
+  });
+
+  it('finishRun is idempotent — does not overwrite an already-finished run', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const run = store.startRun(t.id, 'r', 1);
+    store.finishRun(run.id, 'completed', { summary: 'done' });
+    // a second finish (e.g. a late reclaim) must NOT clobber the recorded outcome
+    store.finishRun(run.id, 'reclaimed', { error: 'late' });
+    const runs = store.listRuns(t.id);
+    expect(runs[0].outcome).toBe('completed');
+    expect(runs[0].summary).toBe('done');
   });
 
   it('recordFailure increments counter and stores error', () => {

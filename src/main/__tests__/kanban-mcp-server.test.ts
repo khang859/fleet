@@ -130,4 +130,16 @@ describe('KanbanMcpServer', () => {
     const kinds = store.listEvents(t.id).map((e) => e.kind);
     expect(kinds).toContain('comment');
   });
+
+  it('unregisters the run token after kanban_complete (token no longer valid)', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'LOCK', 100000);
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tokX', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    await rpc(`${base}?run=tokX`, 'tools/call', { name: 'kanban_complete', arguments: { summary: 's' } });
+    // token must now be rejected
+    const r = await rpc(`${base}?run=tokX`, 'tools/call', { name: 'kanban_show', arguments: {} });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/run token/i);
+  });
 });

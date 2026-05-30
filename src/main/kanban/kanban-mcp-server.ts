@@ -206,6 +206,7 @@ export class KanbanMcpServer {
           this.store.completeTask(task.id, a.summary);
           this.store.finishRun(scope.runId, 'completed', { summary: a.summary, metadata: a.metadata });
           this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+          this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
         }
         case 'kanban_block': {
@@ -213,6 +214,7 @@ export class KanbanMcpServer {
           this.store.blockTask(task.id, a.reason);
           this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
           this.store.appendEvent(task.id, scope.runId, 'blocked', { reason: a.reason });
+          this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} blocked.`);
         }
         case 'kanban_comment': {
