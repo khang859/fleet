@@ -53,7 +53,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
   }
 
   return (
-    <div className="fixed right-0 top-0 z-40 flex h-full w-[420px] flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl">
+    <div className="fixed bottom-0 right-0 top-9 z-40 flex w-[420px] flex-col border-l border-neutral-800 bg-neutral-900 shadow-2xl">
       <div className="flex items-center justify-between border-b border-neutral-800 px-3 py-2">
         <span className="font-mono text-xs text-neutral-500">
           {t.id} · {t.status}
