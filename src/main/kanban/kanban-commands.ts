@@ -1,11 +1,13 @@
 import type { KanbanStore } from './kanban-store';
 import type { KanbanDispatcher } from './kanban-dispatcher';
+import { CodedError } from '../errors';
 import type {
   CreateTaskInput,
   TaskStatus,
   TaskDetail,
   BoardCard,
   Task,
+  UpdateTaskFields,
   WorkspaceKind
 } from '../../shared/kanban-types';
 
@@ -70,5 +72,73 @@ export class KanbanCommands {
         .map((cid) => this.store.getTask(cid))
         .filter((t): t is Task => t !== null)
     };
+  }
+
+  private requireTask(id: string): Task {
+    const t = this.store.getTask(id);
+    if (!t) throw new CodedError(`task not found: ${id}`, 'NOT_FOUND');
+    return t;
+  }
+
+  update(id: string, fields: UpdateTaskFields): void {
+    this.requireTask(id);
+    this.store.updateTask(id, fields);
+    this.store.appendEvent(id, null, 'task_updated', { fields });
+  }
+
+  assign(id: string, profile: string | null): void {
+    this.update(id, { assignee: profile });
+  }
+
+  setManualStatus(id: string, status: TaskStatus): void {
+    const task = this.requireTask(id);
+    if (task.status === 'running' || status === 'running') {
+      throw new CodedError('cannot manually change a running task', 'BAD_REQUEST');
+    }
+    if (!MANUAL_STATUSES.includes(status)) {
+      throw new CodedError(`invalid status: ${status}`, 'BAD_REQUEST');
+    }
+    this.store.setStatus(id, status);
+    this.store.appendEvent(id, null, 'status_changed', { from: task.status, to: status, by: 'user' });
+  }
+
+  ready(id: string): void {
+    this.setManualStatus(id, 'ready');
+  }
+
+  unblock(id: string): void {
+    this.setManualStatus(id, 'ready');
+  }
+
+  archive(id: string): void {
+    this.setManualStatus(id, 'archived');
+  }
+
+  block(id: string, reason: string): void {
+    const task = this.requireTask(id);
+    if (task.status === 'running') {
+      throw new CodedError('cannot block a running task', 'BAD_REQUEST');
+    }
+    this.store.blockTask(id, reason);
+    this.store.appendEvent(id, null, 'status_changed', {
+      from: task.status,
+      to: 'blocked',
+      by: 'user',
+      reason
+    });
+  }
+
+  complete(id: string, result: string): void {
+    const task = this.requireTask(id);
+    if (task.status === 'running') {
+      throw new CodedError('cannot complete a running task', 'BAD_REQUEST');
+    }
+    this.store.completeTask(id, result);
+    this.store.appendEvent(id, null, 'status_changed', {
+      from: task.status,
+      to: 'done',
+      by: 'user',
+      result
+    });
   }
 }
