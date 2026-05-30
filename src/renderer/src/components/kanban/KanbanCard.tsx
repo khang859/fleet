@@ -27,7 +27,10 @@ export function KanbanCard({ card, onOpen, onDragStart }: Props): React.JSX.Elem
       <div className="flex items-start justify-between gap-2">
         <span className="font-medium leading-snug line-clamp-2">{card.title}</span>
         {card.status === 'running' && (
-          <span className="mt-0.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-400" title="worker running" />
+          <span
+            className="mt-0.5 h-2 w-2 shrink-0 animate-pulse rounded-full bg-blue-400"
+            title="worker running"
+          />
         )}
       </div>
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-neutral-400">

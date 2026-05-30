@@ -219,10 +219,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
         {/* Comments */}
         <section>
           <h3 className="mb-1 font-semibold text-neutral-400">Comments</h3>
-          <CommentThread
-            comments={detail.comments}
-            onPost={(b) => void addComment(t.id, b)}
-          />
+          <CommentThread comments={detail.comments} onPost={(b) => void addComment(t.id, b)} />
         </section>
 
         <p className="text-[10px] text-neutral-600">

@@ -11,9 +11,7 @@ export function CommentThread({ comments, onPost }: Props): React.JSX.Element {
   const [draft, setDraft] = useState('');
   return (
     <div className="flex flex-col gap-2">
-      {comments.length === 0 && (
-        <p className="text-xs text-neutral-500">No comments yet.</p>
-      )}
+      {comments.length === 0 && <p className="text-xs text-neutral-500">No comments yet.</p>}
       {comments.map((c) => (
         <div key={c.id} className="rounded border border-neutral-800 bg-neutral-900 p-2 text-xs">
           <div className="mb-1 flex items-center gap-2 text-[10px] text-neutral-500">
