@@ -41,6 +41,8 @@ import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import { KanbanStore } from './kanban/kanban-store';
 import { KanbanDispatcher } from './kanban/kanban-dispatcher';
+import type { DispatcherConfig } from './kanban/kanban-dispatcher';
+import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
 import { spawnRuneWorker } from './kanban/spawn-worker';
@@ -747,6 +749,15 @@ void app.whenReady().then(async () => {
   const kanbanMcpPort = await kanbanMcp.start(0);
 
   const kanbanMcpRef = kanbanMcp;
+  const buildDispatcherConfig = (): DispatcherConfig => {
+    const d = settingsStore.get().kanban.dispatcher;
+    return {
+      failureLimit: d.failureLimit,
+      claimGraceMs: 30_000, // internal grace window; not user-configurable
+      maxInProgress: d.maxInProgress,
+      claimTtlMs: d.claimTtlMs
+    };
+  };
   kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
     now: Date.now,
     isAlive: (pid) => {
@@ -767,6 +778,9 @@ void app.whenReady().then(async () => {
     spawnWorker: ({ task, runId, lock, workspace }) => {
       const runToken = randomUUID();
       kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, role: 'worker' }, lock);
+      const profile = task.assignee
+        ? (settingsStore.get().kanban.profiles.find((p) => p.name === task.assignee) ?? null)
+        : null;
       return spawnRuneWorker({
         task: {
           id: task.id,
@@ -778,14 +792,24 @@ void app.whenReady().then(async () => {
         workspace,
         mcpPort: kanbanMcpPort,
         runToken,
-        logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`)
+        logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
+        profile
       });
     },
-    config: { failureLimit: 2, claimGraceMs: 30_000, maxInProgress: 3, claimTtlMs: 15 * 60 * 1000 },
-    intervalMs: 5000
+    config: buildDispatcherConfig(),
+    intervalMs: settingsStore.get().kanban.dispatcher.intervalMs
   });
   kanbanDispatcher.start();
-  registerKanbanIpc(kanbanStore, kanbanDispatcher);
+  registerKanbanIpc(kanbanStore, kanbanDispatcher, () => {
+    const d = settingsStore.get().kanban.defaults;
+    return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
+  });
+  setKanbanSettingsApplier(() => {
+    kanbanDispatcher?.reconfigure(
+      buildDispatcherConfig(),
+      settingsStore.get().kanban.dispatcher.intervalMs
+    );
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

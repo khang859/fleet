@@ -7,7 +7,8 @@ import type {
   CreateTaskInput,
   TaskStatus,
   TaskDetail,
-  Task
+  Task,
+  WorkspaceKind
 } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
@@ -27,7 +28,11 @@ const MANUAL_STATUSES: TaskStatus[] = [
   'archived'
 ];
 
-export function registerKanbanIpc(store: KanbanStore, dispatcher: KanbanDispatcher): void {
+export function registerKanbanIpc(
+  store: KanbanStore,
+  dispatcher: KanbanDispatcher,
+  getCreateDefaults: () => { workspaceKind: WorkspaceKind; maxRuntimeSeconds: number | null }
+): void {
   ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARD, () => store.listBoard());
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_GET_TASK, (_e, taskId: string): TaskDetail | null => {
@@ -50,7 +55,12 @@ export function registerKanbanIpc(store: KanbanStore, dispatcher: KanbanDispatch
   });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_CREATE_TASK, (_e, input: CreateTaskInput): Task => {
-    const task = store.createTask(input);
+    const d = getCreateDefaults();
+    const task = store.createTask({
+      ...input,
+      workspaceKind: input.workspaceKind ?? d.workspaceKind,
+      maxRuntimeSeconds: input.maxRuntimeSeconds ?? d.maxRuntimeSeconds
+    });
     store.appendEvent(task.id, null, 'task_created', { title: task.title });
     return task;
   });

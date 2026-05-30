@@ -67,6 +67,7 @@ import { grepFiles } from './file-grep';
 import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
+import { onKanbanSettingsChanged } from './kanban/kanban-settings-bridge';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -270,6 +271,9 @@ export function registerIpcHandlers(
     settingsStore.set(settings);
     if (settings.copilot) {
       await onCopilotSettingsChanged();
+    }
+    if (settings.kanban) {
+      onKanbanSettingsChanged();
     }
   });
 
