@@ -32,5 +32,10 @@ npx electron-rebuild -f -w better-sqlite3
 
 1. **Diagnose `No handler registered` as a bootstrap abort, not a missing handler.** If a handler exists in source and is called in `whenReady`, but is reported missing at runtime, something earlier in that async block threw. Check the startup logs for the real error (here: the native module load). Look for `kanban store opened` (kanban-store.ts) and `kanban IPC handlers registered` (kanban-ipc.ts) — their presence/absence brackets where the abort happened.
 2. **Native modules verified by `npm test` are NOT verified for the Electron runtime.** Tests pass under Node; that says nothing about the Electron ABI. The only check is launching the app.
-3. **The Node↔Electron rebuild is destructive both ways.** Rebuilding for one breaks the other. Worth a `pretest` hook (rebuild for Node) paired with a `predev`/reliance on `postinstall` (rebuild for Electron) so the two workflows stop clobbering each other. Until then: after running tests, re-run the Electron rebuild before `npm run dev`.
+3. **The Node↔Electron rebuild is destructive both ways.** Rebuilding for one breaks the other. **Fixed** with self-healing npm hooks in `package.json`:
+   - `rebuild:node` → `npm rebuild better-sqlite3` and `rebuild:electron` → `electron-builder install-app-deps`
+   - `pretest` / `pretest:watch` run `rebuild:node` automatically before vitest (Node ABI)
+   - `predev` runs `rebuild:electron` automatically before the app (Electron ABI; `install-app-deps` skips already-correct modules, so it's cheap when nothing is stale)
+
+   So `npm test` and `npm run dev` each rebuild for their own ABI on the way in — no manual `electron-rebuild` step, no clobbering.
 4. **Bootstrap ordering is a latent footgun.** Registering IPC handlers as the last line after several `await`/throwable calls means any earlier failure silently strips the whole feature's IPC. Consider registering handlers early / wrapping risky bootstrap steps so one failure doesn't take down unrelated wiring.
