@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Terminal, ImageIcon, Settings, Crosshair } from 'lucide-react';
+import { Terminal, ImageIcon, Settings, Crosshair, KanbanSquare } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
@@ -681,6 +681,11 @@ export function App(): React.JSX.Element {
                         </span>
                       ) : tab.type === 'image' ? (
                         <ImageIcon
+                          size={16}
+                          className={isActive ? 'text-white' : 'text-neutral-500'}
+                        />
+                      ) : tab.type === 'kanban' ? (
+                        <KanbanSquare
                           size={16}
                           className={isActive ? 'text-white' : 'text-neutral-500'}
                         />
