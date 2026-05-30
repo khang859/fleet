@@ -92,4 +92,39 @@ describe('KanbanStore', () => {
     const c = store.createTask({ title: 'orphan', status: 'todo' });
     expect(store.promotableTodoTasks().map((t) => t.id)).toContain(c.id);
   });
+
+  it('claims a ready task and prevents a second claim', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const first = store.claimTask(t.id, 'lock-A', 1000);
+    expect(first).toBe(true);
+    const second = store.claimTask(t.id, 'lock-B', 1000);
+    expect(second).toBe(false);
+    const fetched = store.getTask(t.id);
+    expect(fetched?.status).toBe('running');
+    expect(fetched?.claimLock).toBe('lock-A');
+  });
+
+  it('re-claims a task whose claim has expired', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, 'claim.db'), { now: () => clock });
+    const t = s.createTask({ title: 'x', status: 'ready' });
+    expect(s.claimTask(t.id, 'lock-A', 100)).toBe(true); // expires at 1100
+    clock = 1200; // past expiry
+    // expired claims are reclaimable: pretend the dispatcher returned it to ready
+    s.returnToReady(t.id);
+    expect(s.claimTask(t.id, 'lock-B', 100)).toBe(true);
+    s.close();
+  });
+
+  it('extendClaim pushes claim_expires forward only for the lock holder', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, 'extend.db'), { now: () => clock });
+    const t = s.createTask({ title: 'x', status: 'ready' });
+    s.claimTask(t.id, 'lock-A', 100);
+    clock = 1050;
+    expect(s.extendClaim(t.id, 'lock-A', 100)).toBe(true);
+    expect(s.getTask(t.id)?.claimExpires).toBe(1150);
+    expect(s.extendClaim(t.id, 'wrong-lock', 100)).toBe(false);
+    s.close();
+  });
 });

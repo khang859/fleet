@@ -151,6 +151,47 @@ export class KanbanStore {
     ).map((r) => r.child_id);
   }
 
+  /**
+   * Atomically claim a ready task. Returns true if this caller won the claim.
+   * CAS: only succeeds if status='ready' and (no live lock OR claim expired).
+   */
+  claimTask(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks
+         SET status='running', claim_lock=@lock, claim_expires=@expires,
+             last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='ready'
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  extendClaim(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET claim_expires=@expires, last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND claim_lock=@lock`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Clear claim fields and set status back to 'ready'. */
+  returnToReady(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='ready', claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, current_run_id=NULL, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
   /** Todo tasks whose parents (if any) are all 'done'. */
   promotableTodoTasks(): Task[] {
     const rows = this.db
