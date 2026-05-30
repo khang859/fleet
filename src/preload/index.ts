@@ -35,8 +35,19 @@ import type {
   ShellProfilesListResponse,
   WslStatusResponse,
   WslPathResponse,
-  WslHomeDirResponse
+  WslHomeDirResponse,
+  KanbanUpdateTaskRequest,
+  KanbanSetStatusRequest,
+  KanbanAddCommentRequest,
+  KanbanLinkRequest
 } from '../shared/ipc-api';
+import type {
+  BoardCard,
+  TaskDetail,
+  CreateTaskInput,
+  Task,
+  TaskEvent
+} from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type {
   Workspace,
@@ -409,6 +420,27 @@ const fleetApi = {
       const res = await typedInvoke<WslHomeDirResponse>(IPC_CHANNELS.WSL_HOME_DIR, { distro });
       return res.homeDir;
     }
+  },
+  kanban: {
+    listBoard: async (): Promise<BoardCard[]> =>
+      typedInvoke<BoardCard[]>(IPC_CHANNELS.KANBAN_LIST_BOARD),
+    getTask: async (taskId: string): Promise<TaskDetail | null> =>
+      typedInvoke<TaskDetail | null>(IPC_CHANNELS.KANBAN_GET_TASK, taskId),
+    createTask: async (input: CreateTaskInput): Promise<Task> =>
+      typedInvoke<Task>(IPC_CHANNELS.KANBAN_CREATE_TASK, input),
+    updateTask: async (req: KanbanUpdateTaskRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_UPDATE_TASK, req),
+    setStatus: async (req: KanbanSetStatusRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_STATUS, req),
+    addComment: async (req: KanbanAddCommentRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_ADD_COMMENT, req),
+    addLink: async (req: KanbanLinkRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_ADD_LINK, req),
+    removeLink: async (req: KanbanLinkRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_LINK, req),
+    nudge: async (): Promise<void> => typedInvoke<void>(IPC_CHANNELS.KANBAN_NUDGE),
+    onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
+      onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback)
   }
 };
 
