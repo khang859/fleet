@@ -58,4 +58,12 @@ export class KanbanDispatcher {
       }
     }
   }
+
+  /** Promote todo tasks whose parents are all done to ready. */
+  promote(): void {
+    for (const task of this.store.promotableTodoTasks()) {
+      this.store.setStatus(task.id, 'ready');
+      this.store.appendEvent(task.id, null, 'promoted', {});
+    }
+  }
 }

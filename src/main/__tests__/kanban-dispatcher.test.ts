@@ -73,3 +73,42 @@ describe('KanbanDispatcher.reclaim', () => {
     store.close();
   });
 });
+
+describe('KanbanDispatcher.promote', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('promotes a todo task whose parents are all done', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const p = store.createTask({ title: 'p', status: 'done' });
+    const c = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(p.id, c.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { failureLimit: 2, claimGraceMs: 0 }
+    });
+    disp.promote();
+    expect(store.getTask(c.id)?.status).toBe('ready');
+    store.close();
+  });
+
+  it('leaves a todo task blocked by an unfinished parent', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const p = store.createTask({ title: 'p', status: 'running' });
+    const c = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(p.id, c.id);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { failureLimit: 2, claimGraceMs: 0 }
+    });
+    disp.promote();
+    expect(store.getTask(c.id)?.status).toBe('todo');
+    store.close();
+  });
+});
