@@ -117,5 +117,16 @@ export const IPC_CHANNELS = {
   WSL_STATUS: 'wsl:status',
   WSL_TO_WSL_PATH: 'wsl:to-wsl-path',
   WSL_TO_WIN_PATH: 'wsl:to-win-path',
-  WSL_HOME_DIR: 'wsl:home-dir'
+  WSL_HOME_DIR: 'wsl:home-dir',
+  // Kanban
+  KANBAN_LIST_BOARD: 'kanban:list-board',
+  KANBAN_GET_TASK: 'kanban:get-task',
+  KANBAN_CREATE_TASK: 'kanban:create-task',
+  KANBAN_UPDATE_TASK: 'kanban:update-task',
+  KANBAN_SET_STATUS: 'kanban:set-status',
+  KANBAN_ADD_COMMENT: 'kanban:add-comment',
+  KANBAN_ADD_LINK: 'kanban:add-link',
+  KANBAN_REMOVE_LINK: 'kanban:remove-link',
+  KANBAN_NUDGE: 'kanban:nudge',
+  KANBAN_EVENT: 'kanban:event'
 } as const;

@@ -251,3 +251,23 @@ export type WslHomeDirRequest = {
 export type WslHomeDirResponse = {
   homeDir: string;
 };
+
+export type KanbanUpdateTaskRequest = {
+  id: string;
+  fields: import('./kanban-types').UpdateTaskFields;
+};
+
+export type KanbanSetStatusRequest = {
+  id: string;
+  status: import('./kanban-types').TaskStatus;
+};
+
+export type KanbanAddCommentRequest = {
+  taskId: string;
+  body: string;
+};
+
+export type KanbanLinkRequest = {
+  parentId: string;
+  childId: string;
+};
