@@ -1,0 +1,213 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, rmSync, existsSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { KanbanStore } from '../kanban/kanban-store';
+
+const TEST_DIR = join(tmpdir(), `fleet-kanban-store-test-${Date.now()}`);
+const DB_PATH = join(TEST_DIR, 'kanban.db');
+
+describe('KanbanStore', () => {
+  let store: KanbanStore;
+
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('creates the db file and runs migrations', () => {
+    expect(existsSync(DB_PATH)).toBe(true);
+    expect(store.schemaVersion()).toBe(1);
+  });
+
+  it('creates a task with defaults and reads it back', () => {
+    const task = store.createTask({ title: 'Write docs' });
+    expect(task.id).toMatch(/.+/);
+    expect(task.title).toBe('Write docs');
+    expect(task.status).toBe('todo');
+    expect(task.priority).toBe(0);
+    expect(task.skills).toEqual([]);
+    expect(task.maxRetries).toBe(1);
+
+    const fetched = store.getTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched?.title).toBe('Write docs');
+  });
+
+  it('honors explicit fields and json skills round-trip', () => {
+    const task = store.createTask({
+      title: 'Build',
+      body: 'do it',
+      assignee: 'researcher',
+      status: 'triage',
+      priority: 5,
+      skills: ['a', 'b']
+    });
+    const fetched = store.getTask(task.id);
+    expect(fetched?.assignee).toBe('researcher');
+    expect(fetched?.status).toBe('triage');
+    expect(fetched?.priority).toBe(5);
+    expect(fetched?.skills).toEqual(['a', 'b']);
+  });
+
+  it('lists tasks filtered by status', () => {
+    store.createTask({ title: 'a', status: 'todo' });
+    store.createTask({ title: 'b', status: 'ready' });
+    expect(store.listTasks().length).toBe(2);
+    expect(store.listTasks({ status: 'ready' }).length).toBe(1);
+  });
+
+  it('getTask returns null for unknown id', () => {
+    expect(store.getTask('nope')).toBeNull();
+  });
+
+  it('links parent->child and reads parents/children', () => {
+    const p = store.createTask({ title: 'parent' });
+    const c = store.createTask({ title: 'child' });
+    store.addLink(p.id, c.id);
+    expect(store.parentsOf(c.id)).toEqual([p.id]);
+    expect(store.childrenOf(p.id)).toEqual([c.id]);
+  });
+
+  it('promotableTodoTasks returns todo tasks whose parents are all done', () => {
+    const p = store.createTask({ title: 'parent', status: 'done' });
+    const c = store.createTask({ title: 'child', status: 'todo' });
+    store.addLink(p.id, c.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(c.id);
+  });
+
+  it('does not promote a todo task with an unfinished parent', () => {
+    const p = store.createTask({ title: 'parent', status: 'running' });
+    const c = store.createTask({ title: 'child', status: 'todo' });
+    store.addLink(p.id, c.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).not.toContain(c.id);
+  });
+
+  it('promotes a todo task with no parents', () => {
+    const c = store.createTask({ title: 'orphan', status: 'todo' });
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(c.id);
+  });
+
+  it('claims a ready task and prevents a second claim', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const first = store.claimTask(t.id, 'lock-A', 1000);
+    expect(first).toBe(true);
+    const second = store.claimTask(t.id, 'lock-B', 1000);
+    expect(second).toBe(false);
+    const fetched = store.getTask(t.id);
+    expect(fetched?.status).toBe('running');
+    expect(fetched?.claimLock).toBe('lock-A');
+  });
+
+  it('re-claims a task whose claim has expired', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, 'claim.db'), { now: () => clock });
+    const t = s.createTask({ title: 'x', status: 'ready' });
+    expect(s.claimTask(t.id, 'lock-A', 100)).toBe(true); // expires at 1100
+    clock = 1200; // past expiry
+    // expired claims are reclaimable: pretend the dispatcher returned it to ready
+    s.returnToReady(t.id);
+    expect(s.claimTask(t.id, 'lock-B', 100)).toBe(true);
+    s.close();
+  });
+
+  it('extendClaim pushes claim_expires forward only for the lock holder', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, 'extend.db'), { now: () => clock });
+    const t = s.createTask({ title: 'x', status: 'ready' });
+    s.claimTask(t.id, 'lock-A', 100);
+    clock = 1050;
+    expect(s.extendClaim(t.id, 'lock-A', 100)).toBe(true);
+    expect(s.getTask(t.id)?.claimExpires).toBe(1150);
+    expect(s.extendClaim(t.id, 'wrong-lock', 100)).toBe(false);
+    s.close();
+  });
+
+  it('starts a run, sets it as current, and finishes it', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const run = store.startRun(t.id, 'researcher', 4321);
+    expect(run.status).toBe('running');
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
+    store.finishRun(run.id, 'completed', { summary: 'did it', metadata: { files: 2 } });
+    const runs = store.listRuns(t.id);
+    expect(runs[0].outcome).toBe('completed');
+    expect(runs[0].summary).toBe('did it');
+    expect(runs[0].metadata).toEqual({ files: 2 });
+  });
+
+  it('appends and lists events with json payload', () => {
+    const t = store.createTask({ title: 'x' });
+    store.appendEvent(t.id, null, 'created', { by: 'human' });
+    const events = store.listEvents(t.id);
+    expect(events.length).toBe(1);
+    expect(events[0].kind).toBe('created');
+    expect(events[0].payload).toEqual({ by: 'human' });
+  });
+
+  it('adds and lists comments in order', () => {
+    const t = store.createTask({ title: 'x' });
+    store.addComment(t.id, 'researcher', 'first');
+    store.addComment(t.id, 'human', 'second');
+    const comments = store.listComments(t.id);
+    expect(comments.map((c) => c.body)).toEqual(['first', 'second']);
+  });
+
+  it('completeTask sets done, stores result, clears claim, resets failures', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.claimTask(t.id, 'L', 1000);
+    const run = store.startRun(t.id, null, 1);
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
+    store.completeTask(t.id, 'shipped');
+    const f = store.getTask(t.id);
+    expect(f?.status).toBe('done');
+    expect(f?.result).toBe('shipped');
+    expect(f?.claimLock).toBeNull();
+    expect(f?.consecutiveFailures).toBe(0);
+    expect(f?.currentRunId).toBeNull();
+  });
+
+  it('blockTask sets blocked and stores reason as result', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.claimTask(t.id, 'L', 1000);
+    const run = store.startRun(t.id, null, 1);
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
+    store.blockTask(t.id, 'needs key');
+    const f = store.getTask(t.id);
+    expect(f?.status).toBe('blocked');
+    expect(f?.result).toBe('needs key');
+    expect(f?.currentRunId).toBeNull();
+  });
+
+  it('finishRun is idempotent — does not overwrite an already-finished run', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const run = store.startRun(t.id, 'r', 1);
+    store.finishRun(run.id, 'completed', { summary: 'done' });
+    // a second finish (e.g. a late reclaim) must NOT clobber the recorded outcome
+    store.finishRun(run.id, 'reclaimed', { error: 'late' });
+    const runs = store.listRuns(t.id);
+    expect(runs[0].outcome).toBe('completed');
+    expect(runs[0].summary).toBe('done');
+  });
+
+  it('recordFailure increments counter and stores error', () => {
+    const t = store.createTask({ title: 'x', status: 'running' });
+    store.recordFailure(t.id, 'boom');
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(1);
+    store.recordFailure(t.id, 'boom2');
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(2);
+    expect(store.getTask(t.id)?.lastFailureError).toBe('boom2');
+  });
+
+  it('runningTasks returns only running tasks with claim info', () => {
+    const a = store.createTask({ title: 'a', status: 'ready' });
+    store.createTask({ title: 'b', status: 'todo' });
+    store.claimTask(a.id, 'L', 1000);
+    const running = store.runningTasks();
+    expect(running.map((t) => t.id)).toEqual([a.id]);
+  });
+});

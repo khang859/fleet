@@ -36,8 +36,14 @@ import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
 import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
+import { randomUUID } from 'crypto';
 import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
+import { KanbanStore } from './kanban/kanban-store';
+import { KanbanDispatcher } from './kanban/kanban-dispatcher';
+import { KanbanMcpServer } from './kanban/kanban-mcp-server';
+import { prepareWorkspace } from './kanban/workspace';
+import { spawnRuneWorker } from './kanban/spawn-worker';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -46,6 +52,9 @@ const updaterLog = createLogger('auto-updater');
 
 let mainWindow: BrowserWindow | null = null;
 let socketSupervisor: SocketSupervisor | null = null;
+let kanbanStore: KanbanStore | undefined;
+let kanbanMcp: KanbanMcpServer | undefined;
+let kanbanDispatcher: KanbanDispatcher | undefined;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -723,6 +732,52 @@ void app.whenReady().then(async () => {
     });
   }
 
+  // Bootstrap kanban subsystem
+  const KANBAN_HOME = join(homedir(), '.fleet', 'kanban');
+  kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'));
+  kanbanMcp = new KanbanMcpServer(kanbanStore);
+  const kanbanMcpPort = await kanbanMcp.start(0);
+
+  const kanbanMcpRef = kanbanMcp;
+  kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
+    now: Date.now,
+    isAlive: (pid) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    prepareWorkspaceFn: (task) =>
+      prepareWorkspace({
+        kind: task.workspaceKind,
+        taskId: task.id,
+        workspacesRoot: join(KANBAN_HOME, 'workspaces'),
+        path: task.workspacePath ?? undefined
+      }),
+    spawnWorker: ({ task, runId, lock, workspace }) => {
+      const runToken = randomUUID();
+      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, role: 'worker' }, lock);
+      return spawnRuneWorker({
+        task: {
+          id: task.id,
+          title: task.title,
+          body: task.body,
+          assignee: task.assignee,
+          modelOverride: task.modelOverride
+        },
+        workspace,
+        mcpPort: kanbanMcpPort,
+        runToken,
+        logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`)
+      });
+    },
+    config: { failureLimit: 2, claimGraceMs: 30_000, maxInProgress: 3, claimTtlMs: 15 * 60 * 1000 },
+    intervalMs: 5000
+  });
+  kanbanDispatcher.start();
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
@@ -741,6 +796,9 @@ function shutdownAll(): void {
   );
   imageService.shutdown();
   annotateService.destroy();
+  kanbanDispatcher?.stop();
+  void kanbanMcp?.stop();
+  kanbanStore?.close();
 }
 
 app.on('window-all-closed', () => {
