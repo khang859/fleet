@@ -156,4 +156,41 @@ describe('KanbanStore', () => {
     const comments = store.listComments(t.id);
     expect(comments.map((c) => c.body)).toEqual(['first', 'second']);
   });
+
+  it('completeTask sets done, stores result, clears claim, resets failures', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.claimTask(t.id, 'L', 1000);
+    store.completeTask(t.id, 'shipped');
+    const f = store.getTask(t.id);
+    expect(f?.status).toBe('done');
+    expect(f?.result).toBe('shipped');
+    expect(f?.claimLock).toBeNull();
+    expect(f?.consecutiveFailures).toBe(0);
+  });
+
+  it('blockTask sets blocked and stores reason as result', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.claimTask(t.id, 'L', 1000);
+    store.blockTask(t.id, 'needs key');
+    const f = store.getTask(t.id);
+    expect(f?.status).toBe('blocked');
+    expect(f?.result).toBe('needs key');
+  });
+
+  it('recordFailure increments counter and stores error', () => {
+    const t = store.createTask({ title: 'x', status: 'running' });
+    store.recordFailure(t.id, 'boom');
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(1);
+    store.recordFailure(t.id, 'boom2');
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(2);
+    expect(store.getTask(t.id)?.lastFailureError).toBe('boom2');
+  });
+
+  it('runningTasks returns only running tasks with claim info', () => {
+    const a = store.createTask({ title: 'a', status: 'ready' });
+    store.createTask({ title: 'b', status: 'todo' });
+    store.claimTask(a.id, 'L', 1000);
+    const running = store.runningTasks();
+    expect(running.map((t) => t.id)).toEqual([a.id]);
+  });
 });

@@ -328,4 +328,69 @@ export class KanbanStore {
       createdAt: Number(r.created_at)
     }));
   }
+
+  completeTask(taskId: string, result: string | null): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='done', result=?, claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, consecutive_failures=0, last_failure_error=NULL, updated_at=?
+         WHERE id=?`
+      )
+      .run(result, ts, taskId);
+  }
+
+  blockTask(taskId: string, reason: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='blocked', result=?, claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, updated_at=?
+         WHERE id=?`
+      )
+      .run(reason, ts, taskId);
+  }
+
+  recordFailure(taskId: string, error: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET consecutive_failures = consecutive_failures + 1,
+          last_failure_error=?, updated_at=? WHERE id=?`
+      )
+      .run(error, ts, taskId);
+  }
+
+  giveUp(taskId: string, error: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='blocked', result=?, claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, last_failure_error=?, updated_at=?
+         WHERE id=?`
+      )
+      .run(`gave-up: ${error}`, error, ts, taskId);
+  }
+
+  runningTasks(): Task[] {
+    const rows = this.db
+      .prepare("SELECT * FROM tasks WHERE status='running'")
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  readyTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM tasks WHERE status='ready' AND assignee IS NOT NULL ORDER BY priority DESC, created_at ASC"
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  setStatus(taskId: string, status: TaskStatus): void {
+    this.db
+      .prepare('UPDATE tasks SET status=?, updated_at=? WHERE id=?')
+      .run(status, this.now(), taskId);
+  }
 }
