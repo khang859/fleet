@@ -1,5 +1,6 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState } from './shell-profiles';
+import type { UpdateTaskFields, TaskStatus } from './kanban-types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -254,12 +255,12 @@ export type WslHomeDirResponse = {
 
 export type KanbanUpdateTaskRequest = {
   id: string;
-  fields: import('./kanban-types').UpdateTaskFields;
+  fields: UpdateTaskFields;
 };
 
 export type KanbanSetStatusRequest = {
   id: string;
-  status: import('./kanban-types').TaskStatus;
+  status: TaskStatus;
 };
 
 export type KanbanAddCommentRequest = {
