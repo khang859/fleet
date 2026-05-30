@@ -44,6 +44,7 @@ import { KanbanDispatcher } from './kanban/kanban-dispatcher';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
 import { spawnRuneWorker } from './kanban/spawn-worker';
+import { registerKanbanIpc } from './kanban/kanban-ipc';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -734,7 +735,14 @@ void app.whenReady().then(async () => {
 
   // Bootstrap kanban subsystem
   const KANBAN_HOME = join(homedir(), '.fleet', 'kanban');
-  kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'));
+  kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'), {
+    onEvent: (event) => {
+      const w = mainWindow;
+      if (w && !w.isDestroyed()) {
+        w.webContents.send(IPC_CHANNELS.KANBAN_EVENT, event);
+      }
+    }
+  });
   kanbanMcp = new KanbanMcpServer(kanbanStore);
   const kanbanMcpPort = await kanbanMcp.start(0);
 
@@ -777,6 +785,7 @@ void app.whenReady().then(async () => {
     intervalMs: 5000
   });
   kanbanDispatcher.start();
+  registerKanbanIpc(kanbanStore, kanbanDispatcher);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
