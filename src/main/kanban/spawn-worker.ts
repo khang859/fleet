@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import { mkdirSync, writeFileSync, openSync, closeSync } from 'fs';
 import { join, dirname } from 'path';
 import { createLogger } from '../logger';
+import { renderProfileMarkdown } from './profile-file';
+import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 
 const log = createLogger('kanban-spawn');
 
@@ -19,6 +21,7 @@ export interface BuildWorkerInput {
   mcpPort: number;
   runToken: string;
   logPath: string;
+  profile?: WorkerProfile | null;
 }
 
 export interface WorkerInvocation {
@@ -39,6 +42,20 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     mcpConfigPath,
     JSON.stringify({ servers: { kanban: { type: 'http', url } } }, null, 2)
   );
+
+  if (input.profile) {
+    if (!isValidProfileName(input.profile.name)) {
+      // defense-in-depth: name is only UI-validated; never write a path-traversing filename
+      log.warn(`kanban: skipping profile write, invalid name: ${input.profile.name}`);
+    } else {
+      const profilesDir = join(runeDir, 'profiles');
+      mkdirSync(profilesDir, { recursive: true });
+      writeFileSync(
+        join(profilesDir, `${input.profile.name}.md`),
+        renderProfileMarkdown(input.profile)
+      );
+    }
+  }
 
   const prompt = `work kanban task ${input.task.id}: ${input.task.title}\n\n${input.task.body}`;
   const args = ['--prompt', prompt];

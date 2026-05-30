@@ -53,4 +53,56 @@ describe('buildWorkerInvocation', () => {
     expect(inv.args).toContain('--model');
     expect(inv.args).toContain('gpt-4');
   });
+
+  it('writes the assigned profile to <workspace>/.rune/profiles/<name>.md', () => {
+    const workspace = join(ROOT, 'ws3');
+    mkdirSync(workspace, { recursive: true });
+    buildWorkerInvocation({
+      task: { id: 'p', title: 't', body: '', assignee: 'researcher', modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'p.log'),
+      profile: {
+        name: 'researcher',
+        model: 'claude-opus-4-8',
+        skills: ['docs'],
+        instructions: 'Research.'
+      }
+    });
+    const file = join(workspace, '.rune', 'profiles', 'researcher.md');
+    expect(existsSync(file)).toBe(true);
+    const md = readFileSync(file, 'utf-8');
+    expect(md).toContain('name: researcher');
+    expect(md).toContain('model: claude-opus-4-8');
+    expect(md).toContain('skills: [docs]');
+    expect(md).toContain('Research.');
+  });
+
+  it('writes no profiles dir when no profile is provided', () => {
+    const workspace = join(ROOT, 'ws4');
+    mkdirSync(workspace, { recursive: true });
+    buildWorkerInvocation({
+      task: { id: 'q', title: 't', body: '', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'q.log')
+    });
+    expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
+  });
+
+  it('does not write a profile file when the profile name is invalid (path traversal guard)', () => {
+    const workspace = join(ROOT, 'ws5');
+    mkdirSync(workspace, { recursive: true });
+    buildWorkerInvocation({
+      task: { id: 'r', title: 't', body: '', assignee: 'x', modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'r.log'),
+      profile: { name: '../evil', model: '', skills: [], instructions: 'b' }
+    });
+    expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
+  });
 });
