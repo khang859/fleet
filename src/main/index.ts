@@ -47,6 +47,7 @@ import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
 import { spawnRuneWorker } from './kanban/spawn-worker';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
+import { KanbanCommands } from './kanban/kanban-commands';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -800,10 +801,11 @@ void app.whenReady().then(async () => {
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs
   });
   kanbanDispatcher.start();
-  registerKanbanIpc(kanbanStore, kanbanDispatcher, () => {
+  const kanbanCommands = new KanbanCommands(kanbanStore, kanbanDispatcher, () => {
     const d = settingsStore.get().kanban.defaults;
     return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
   });
+  registerKanbanIpc(kanbanCommands);
   setKanbanSettingsApplier(() => {
     kanbanDispatcher?.reconfigure(
       buildDispatcherConfig(),
