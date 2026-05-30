@@ -9,6 +9,7 @@ import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { AnnotateSection } from './AnnotateSection';
 import { PiSection } from './pi/PiSection';
+import { KanbanSection } from './kanban/KanbanSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   general: GeneralSection,
@@ -18,7 +19,8 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   updates: UpdatesSection,
   copilot: CopilotSection,
   annotate: AnnotateSection,
-  pi: PiSection
+  pi: PiSection,
+  kanban: KanbanSection
 };
 
 export function SettingsTab(): React.JSX.Element {

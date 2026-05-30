@@ -6,7 +6,8 @@ export type SettingsSection =
   | 'updates'
   | 'copilot'
   | 'annotate'
-  | 'pi';
+  | 'pi'
+  | 'kanban';
 
 const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boolean }> = [
   { id: 'general', label: 'General' },
@@ -15,6 +16,7 @@ const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boo
   { id: 'visualizer', label: 'Visualizer' },
   { id: 'copilot', label: 'Copilot', darwinOnly: true },
   { id: 'pi', label: 'Pi Agent' },
+  { id: 'kanban', label: 'Kanban' },
   { id: 'annotate', label: 'Annotate' },
   { id: 'updates', label: 'Updates' } // Always keep at bottom
 ];
