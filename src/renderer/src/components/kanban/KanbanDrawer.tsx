@@ -4,6 +4,7 @@ import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
 import { X } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
+import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
 import { relativeTime, formatDuration } from './kanban-utils';
 import type { TaskStatus } from '../../../../shared/kanban-types';
@@ -19,6 +20,8 @@ const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
 export function KanbanDrawer(): React.JSX.Element | null {
   const { detail, closeTask, updateTask, setStatus, addComment, addLink, removeLink } =
     useKanbanStore();
+  const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
+  const settingsLoaded = useSettingsStore((s) => s.settings !== null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [assignee, setAssignee] = useState('');
@@ -73,13 +76,23 @@ export function KanbanDrawer(): React.JSX.Element | null {
             className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm font-medium outline-none focus:border-blue-500"
           />
           <div className="flex gap-2">
-            <input
+            <select
               value={assignee}
               onChange={(e) => setAssignee(e.target.value)}
               onBlur={save}
-              placeholder="assignee"
+              title="assignee"
               className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
-            />
+            >
+              <option value="">Unassigned</option>
+              {settingsLoaded && assignee !== '' && !profiles.some((p) => p.name === assignee) && (
+                <option value={assignee}>{assignee} (unregistered)</option>
+              )}
+              {profiles.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
             <input
               type="number"
               value={priority}
