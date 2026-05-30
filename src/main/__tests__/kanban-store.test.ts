@@ -65,4 +65,31 @@ describe('KanbanStore', () => {
   it('getTask returns null for unknown id', () => {
     expect(store.getTask('nope')).toBeNull();
   });
+
+  it('links parent->child and reads parents/children', () => {
+    const p = store.createTask({ title: 'parent' });
+    const c = store.createTask({ title: 'child' });
+    store.addLink(p.id, c.id);
+    expect(store.parentsOf(c.id)).toEqual([p.id]);
+    expect(store.childrenOf(p.id)).toEqual([c.id]);
+  });
+
+  it('promotableTodoTasks returns todo tasks whose parents are all done', () => {
+    const p = store.createTask({ title: 'parent', status: 'done' });
+    const c = store.createTask({ title: 'child', status: 'todo' });
+    store.addLink(p.id, c.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(c.id);
+  });
+
+  it('does not promote a todo task with an unfinished parent', () => {
+    const p = store.createTask({ title: 'parent', status: 'running' });
+    const c = store.createTask({ title: 'child', status: 'todo' });
+    store.addLink(p.id, c.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).not.toContain(c.id);
+  });
+
+  it('promotes a todo task with no parents', () => {
+    const c = store.createTask({ title: 'orphan', status: 'todo' });
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(c.id);
+  });
 });

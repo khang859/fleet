@@ -122,4 +122,48 @@ export class KanbanStore {
           .all() as Record<string, unknown>[]);
     return rows.map((r) => this.rowToTask(r));
   }
+
+  addLink(parentId: string, childId: string): void {
+    this.db
+      .prepare('INSERT OR IGNORE INTO task_links (parent_id, child_id) VALUES (?, ?)')
+      .run(parentId, childId);
+  }
+
+  removeLink(parentId: string, childId: string): void {
+    this.db
+      .prepare('DELETE FROM task_links WHERE parent_id = ? AND child_id = ?')
+      .run(parentId, childId);
+  }
+
+  parentsOf(childId: string): string[] {
+    return (
+      this.db.prepare('SELECT parent_id FROM task_links WHERE child_id = ?').all(childId) as {
+        parent_id: string;
+      }[]
+    ).map((r) => r.parent_id);
+  }
+
+  childrenOf(parentId: string): string[] {
+    return (
+      this.db.prepare('SELECT child_id FROM task_links WHERE parent_id = ?').all(parentId) as {
+        child_id: string;
+      }[]
+    ).map((r) => r.child_id);
+  }
+
+  /** Todo tasks whose parents (if any) are all 'done'. */
+  promotableTodoTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT t.* FROM tasks t
+       WHERE t.status = 'todo'
+       AND NOT EXISTS (
+         SELECT 1 FROM task_links l
+         JOIN tasks p ON p.id = l.parent_id
+         WHERE l.child_id = t.id AND p.status != 'done'
+       )`
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowToTask(r));
+  }
 }
