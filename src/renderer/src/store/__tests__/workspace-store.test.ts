@@ -474,6 +474,39 @@ describe('duplicateTab — live CWD', () => {
     expect(duplicated.splitRoot).toMatchObject({ type: 'leaf', cwd: '/stored/right' });
   });
 
+  it('does not duplicate kanban tabs', () => {
+    const ws: Workspace = {
+      id: 'ws-kanban',
+      label: 'Kanban Workspace',
+      tabs: [
+        {
+          id: 'tab-kanban',
+          label: 'Kanban',
+          labelIsCustom: true,
+          cwd: '/project',
+          type: 'kanban',
+          splitRoot: {
+            type: 'leaf',
+            id: 'pane-kanban',
+            cwd: '/project',
+            paneType: 'kanban'
+          }
+        }
+      ]
+    };
+    useWorkspaceStore.setState({
+      workspace: ws,
+      activeTabId: 'tab-kanban',
+      activePaneId: 'pane-kanban'
+    });
+
+    const newPaneId = useWorkspaceStore.getState().duplicateTab('tab-kanban');
+
+    const state = useWorkspaceStore.getState();
+    expect(newPaneId).toBeNull();
+    expect(state.workspace.tabs).toHaveLength(1);
+  });
+
   it('does not duplicate file tabs', () => {
     const ws: Workspace = {
       id: 'ws-file',
@@ -508,5 +541,27 @@ describe('duplicateTab — live CWD', () => {
     expect(state.workspace.tabs).toHaveLength(1);
     expect(state.activeTabId).toBe('tab-file');
     expect(state.activePaneId).toBe('pane-file');
+  });
+});
+
+describe('addKanbanTab', () => {
+  it('addKanbanTab adds a kanban tab and activates it', () => {
+    useWorkspaceStore.setState({
+      workspace: { id: 'ws', label: 'W', tabs: [] },
+      backgroundWorkspaces: new Map(),
+      activeTabId: null,
+      activePaneId: null,
+      isDirty: false,
+      lastClosedTab: null,
+      recentFiles: []
+    });
+    const paneId = useWorkspaceStore.getState().addKanbanTab('/tmp');
+    const state = useWorkspaceStore.getState();
+    const tab = state.workspace.tabs.find((t) => t.type === 'kanban');
+    expect(tab).toBeDefined();
+    expect(tab!.splitRoot.type).toBe('leaf');
+    expect(state.activeTabId).toBe(tab!.id);
+    expect(state.activePaneId).toBe(paneId);
+    expect(typeof paneId).toBe('string');
   });
 });

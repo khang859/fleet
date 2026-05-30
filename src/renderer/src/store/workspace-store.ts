@@ -143,6 +143,7 @@ type WorkspaceStore = {
   addTab: (label: string | undefined, cwd: string) => string;
   duplicateTab: (tabId: string) => string | null;
   addPiTab: (cwd: string) => string;
+  addKanbanTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
@@ -373,6 +374,35 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       pathContext
     };
     logTabs.debug('addPiTab', { tabId: tab.id, cwd, paneId: leaf.id });
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: [...state.workspace.tabs, tab]
+      },
+      activeTabId: tab.id,
+      activePaneId: leaf.id,
+      isDirty: true
+    }));
+    return leaf.id;
+  },
+
+  addKanbanTab: (cwd) => {
+    // Kanban is not a shell — no shellProfileId/pathContext/PTY.
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd,
+      paneType: 'kanban'
+    };
+    const tab: Tab = {
+      id: generateId(),
+      label: 'Kanban',
+      labelIsCustom: true,
+      cwd,
+      type: 'kanban',
+      splitRoot: leaf
+    };
+    logTabs.debug('addKanbanTab', { tabId: tab.id, cwd, paneId: leaf.id });
     set((state) => ({
       workspace: {
         ...state.workspace,
