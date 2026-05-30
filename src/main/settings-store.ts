@@ -28,7 +28,15 @@ export class SettingsStore {
         ...saved.visualizer,
         effects: { ...DEFAULT_SETTINGS.visualizer.effects, ...saved.visualizer?.effects }
       },
-      copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot }
+      copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
+      annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
+      kanban: {
+        ...DEFAULT_SETTINGS.kanban,
+        ...saved.kanban,
+        dispatcher: { ...DEFAULT_SETTINGS.kanban.dispatcher, ...saved.kanban?.dispatcher },
+        defaults: { ...DEFAULT_SETTINGS.kanban.defaults, ...saved.kanban?.defaults },
+        profiles: saved.kanban?.profiles ?? DEFAULT_SETTINGS.kanban.profiles
+      }
     };
   }
 
@@ -45,7 +53,15 @@ export class SettingsStore {
         ...(partial.visualizer ?? {}),
         effects: { ...current.visualizer.effects, ...(partial.visualizer?.effects ?? {}) }
       },
-      copilot: { ...current.copilot, ...(partial.copilot ?? {}) }
+      copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
+      annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
+      kanban: {
+        ...current.kanban,
+        ...(partial.kanban ?? {}),
+        dispatcher: { ...current.kanban.dispatcher, ...(partial.kanban?.dispatcher ?? {}) },
+        defaults: { ...current.kanban.defaults, ...(partial.kanban?.defaults ?? {}) },
+        profiles: partial.kanban?.profiles ?? current.kanban.profiles
+      }
     };
     this.store.set('settings', merged);
   }

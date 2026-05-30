@@ -1,4 +1,5 @@
 import type { PathContext } from './shell-profiles';
+import type { WorkspaceKind } from './kanban-types';
 
 export type Workspace = {
   id: string;
@@ -124,6 +125,37 @@ export type VisualizerEffects = {
   depthOfField: boolean;
 };
 
+// ── Kanban worker profiles & settings ──────────────────────────────────────
+
+/** A named worker role materialized to `<workspace>/.rune/profiles/<name>.md`. */
+export type WorkerProfile = {
+  name: string; // ^[a-z0-9][a-z0-9_-]*$ (rune's validName)
+  model: string; // '' → leave to rune's normal provider resolution
+  skills: string[];
+  instructions: string; // persona / system-prompt body
+};
+
+export type KanbanSettings = {
+  dispatcher: {
+    intervalMs: number;
+    maxInProgress: number;
+    failureLimit: number;
+    claimTtlMs: number;
+  };
+  defaults: {
+    workspaceKind: WorkspaceKind;
+    maxRuntimeSeconds: number | null;
+  };
+  profiles: WorkerProfile[];
+};
+
+const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;
+
+/** Matches rune's profile.validName: lowercase alnum, with - or _ allowed after the first char. */
+export function isValidProfileName(name: string): boolean {
+  return PROFILE_NAME_RE.test(name);
+}
+
 export type FleetSettings = {
   general: {
     defaultShell: string;
@@ -151,6 +183,7 @@ export type FleetSettings = {
   annotate: {
     retentionDays: number;
   };
+  kanban: KanbanSettings;
 };
 
 // ── Annotations ──────────────────────────────────────────────────────────

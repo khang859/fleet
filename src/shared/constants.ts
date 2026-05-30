@@ -79,5 +79,25 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   },
   annotate: {
     retentionDays: 3
+  },
+  kanban: {
+    dispatcher: { intervalMs: 5000, maxInProgress: 3, failureLimit: 2, claimTtlMs: 900_000 },
+    defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
+    profiles: [
+      {
+        name: 'default',
+        model: '',
+        skills: [],
+        instructions:
+          'You are a focused Fleet worker. Complete the assigned kanban task end-to-end, then call kanban_complete with a concise result. If you cannot proceed, call kanban_block with the reason.'
+      },
+      {
+        name: 'orchestrator',
+        model: '',
+        skills: [],
+        instructions:
+          'You are the Fleet kanban orchestrator. Break the assigned task into a graph of smaller child tasks using kanban_create and kanban_link, choosing an appropriate worker profile for each child. Do not implement the work yourself.'
+      }
+    ]
   }
 };
