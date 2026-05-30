@@ -393,4 +393,12 @@ export class KanbanStore {
       .prepare('UPDATE tasks SET status=?, updated_at=? WHERE id=?')
       .run(status, this.now(), taskId);
   }
+
+  setWorkerPid(taskId: string, runId: number, pid: number): void {
+    const ts = this.now();
+    this.db
+      .prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?')
+      .run(pid, ts, taskId);
+    this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
+  }
 }
