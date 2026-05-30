@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -25,9 +25,11 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [priority, setPriority] = useState(0);
   const [tenant, setTenant] = useState('');
   const [linkId, setLinkId] = useState('');
+  const seededIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (detail) {
+    if (detail && detail.task.id !== seededIdRef.current) {
+      seededIdRef.current = detail.task.id;
       setTitle(detail.task.title);
       setBody(detail.task.body);
       setAssignee(detail.task.assignee ?? '');

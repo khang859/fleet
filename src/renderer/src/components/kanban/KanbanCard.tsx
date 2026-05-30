@@ -5,9 +5,10 @@ type Props = {
   card: BoardCard;
   onOpen: (id: string) => void;
   onDragStart: (id: string) => void;
+  onDragEnd: () => void;
 };
 
-export function KanbanCard({ card, onOpen, onDragStart }: Props): React.JSX.Element {
+export function KanbanCard({ card, onOpen, onDragStart, onDragEnd }: Props): React.JSX.Element {
   const draggable = card.status !== 'running';
   return (
     <div
@@ -21,6 +22,7 @@ export function KanbanCard({ card, onOpen, onDragStart }: Props): React.JSX.Elem
         e.dataTransfer.setData('text/plain', card.id);
         onDragStart(card.id);
       }}
+      onDragEnd={() => onDragEnd()}
       onClick={() => onOpen(card.id)}
       className="group cursor-pointer rounded-md border border-neutral-700 bg-neutral-800/60 p-2 text-xs text-neutral-200 hover:border-neutral-500 hover:bg-neutral-800 transition-colors"
     >

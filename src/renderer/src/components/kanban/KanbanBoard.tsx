@@ -130,10 +130,15 @@ export function KanbanBoard(): React.JSX.Element {
             onDragStart={(id) => {
               draggingId.current = id;
             }}
+            onDragEnd={() => {
+              draggingId.current = null;
+            }}
             onDropCard={(status) => {
               const id = draggingId.current;
               draggingId.current = null;
-              if (id) void setStatus(id, status);
+              if (!id) return;
+              const card = cards.find((c) => c.id === id);
+              if (card && card.status !== status) void setStatus(id, status);
             }}
           />
         ))}

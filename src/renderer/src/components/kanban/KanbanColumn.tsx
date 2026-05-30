@@ -9,6 +9,7 @@ type Props = {
   cards: BoardCard[];
   onOpen: (id: string) => void;
   onDragStart: (id: string) => void;
+  onDragEnd: () => void;
   onDropCard: (status: TaskStatus) => void;
 };
 
@@ -18,6 +19,7 @@ export function KanbanColumn({
   cards,
   onOpen,
   onDragStart,
+  onDragEnd,
   onDropCard
 }: Props): React.JSX.Element {
   const [over, setOver] = useState(false);
@@ -46,7 +48,13 @@ export function KanbanColumn({
         }`}
       >
         {cards.map((c) => (
-          <KanbanCard key={c.id} card={c} onOpen={onOpen} onDragStart={onDragStart} />
+          <KanbanCard
+            key={c.id}
+            card={c}
+            onOpen={onOpen}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+          />
         ))}
       </div>
     </div>
