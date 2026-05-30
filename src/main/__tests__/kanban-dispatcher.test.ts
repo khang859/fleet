@@ -28,7 +28,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('ready');
@@ -48,7 +48,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('blocked');
@@ -66,7 +66,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => false, // pid dead
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 30_000 }
+      config: { failureLimit: 2, claimGraceMs: 30_000, maxInProgress: 3, claimTtlMs: 1000 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('ready');
@@ -88,7 +88,7 @@ describe('KanbanDispatcher.promote', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
     });
     disp.promote();
     expect(store.getTask(c.id)?.status).toBe('ready');
@@ -105,7 +105,7 @@ describe('KanbanDispatcher.promote', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
     });
     disp.promote();
     expect(store.getTask(c.id)?.status).toBe('todo');
