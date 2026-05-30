@@ -7,6 +7,8 @@ import type {
   TaskDetail,
   BoardCard,
   Task,
+  TaskComment,
+  TaskEvent,
   UpdateTaskFields,
   WorkspaceKind
 } from '../../shared/kanban-types';
@@ -34,8 +36,7 @@ export interface CreateDefaults {
 export class KanbanCommands {
   constructor(
     private store: KanbanStore,
-    // Retained for Tasks 2-3 (status transitions delegate to the dispatcher).
-    protected dispatcher: KanbanDispatcher,
+    private dispatcher: KanbanDispatcher,
     private getCreateDefaults: () => CreateDefaults
   ) {}
 
@@ -140,5 +141,35 @@ export class KanbanCommands {
       by: 'user',
       result
     });
+  }
+
+  comment(id: string, body: string): TaskComment {
+    this.requireTask(id);
+    const comment = this.store.addComment(id, 'human', body);
+    this.store.appendEvent(id, null, 'comment_added', { author: 'human' });
+    return comment;
+  }
+
+  link(parentId: string, childId: string): void {
+    this.requireTask(parentId);
+    this.requireTask(childId);
+    this.store.addLink(parentId, childId);
+    this.store.appendEvent(childId, null, 'link_added', { parentId });
+  }
+
+  unlink(parentId: string, childId: string): void {
+    this.requireTask(parentId);
+    this.requireTask(childId);
+    this.store.removeLink(parentId, childId);
+    this.store.appendEvent(childId, null, 'link_removed', { parentId });
+  }
+
+  log(id: string): TaskEvent[] {
+    this.requireTask(id);
+    return this.store.listEvents(id);
+  }
+
+  dispatch(): void {
+    this.dispatcher.tick();
   }
 }

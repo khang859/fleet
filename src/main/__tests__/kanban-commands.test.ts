@@ -131,3 +131,73 @@ describe('KanbanCommands status + assign', () => {
     expect(store.listEvents(t.id).map((e) => e.kind)).toContain('task_updated');
   });
 });
+
+describe('KanbanCommands comment/link/log/dispatch', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('comment adds a human comment and logs comment_added', () => {
+    const { store, commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    const c = commands.comment(t.id, 'looks good');
+    expect(c.author).toBe('human');
+    expect(store.listComments(t.id)[0].body).toBe('looks good');
+    expect(store.listEvents(t.id).map((e) => e.kind)).toContain('comment_added');
+  });
+
+  it('link and unlink wire parent/child and log events on the child', () => {
+    const { store, commands } = makeCommands();
+    const parent = commands.create({ title: 'parent' });
+    const child = commands.create({ title: 'child' });
+    commands.link(parent.id, child.id);
+    expect(store.childrenOf(parent.id)).toContain(child.id);
+    expect(store.listEvents(child.id).map((e) => e.kind)).toContain('link_added');
+    commands.unlink(parent.id, child.id);
+    expect(store.childrenOf(parent.id)).not.toContain(child.id);
+    expect(store.listEvents(child.id).map((e) => e.kind)).toContain('link_removed');
+  });
+
+  it('comment/link reject unknown ids', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.comment('nope', 'hi')).toThrowError(/not found/);
+    expect(() => commands.link('nope', 'also-nope')).toThrowError(/not found/);
+    const parent = commands.create({ title: 'p' });
+    expect(() => commands.link(parent.id, 'missing-child')).toThrowError(/not found/);
+    expect(() => commands.link('missing-parent', parent.id)).toThrowError(/not found/);
+  });
+
+  it('log returns the task event list', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    commands.comment(t.id, 'note');
+    const log = commands.log(t.id);
+    expect(log.map((e) => e.kind)).toEqual(expect.arrayContaining(['task_created', 'comment_added']));
+  });
+
+  it('dispatch ticks the dispatcher (claims a ready task)', () => {
+    const store = new KanbanStore(join(TEST_DIR, `disp-${Math.random().toString(36).slice(2)}.db`));
+    const spawned: string[] = [];
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 0,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a.task.id);
+        return 123;
+      },
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    const commands = new KanbanCommands(store, dispatcher, () => ({
+      workspaceKind: 'worktree',
+      maxRuntimeSeconds: null
+    }));
+    const t = commands.create({ title: 'go', status: 'ready', assignee: 'r' });
+    commands.dispatch();
+    expect(spawned).toContain(t.id);
+    store.close();
+  });
+});
