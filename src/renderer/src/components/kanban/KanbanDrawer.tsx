@@ -87,8 +87,8 @@ export function KanbanDrawer(): React.JSX.Element | null {
               {settingsLoaded && assignee !== '' && !profiles.some((p) => p.name === assignee) && (
                 <option value={assignee}>{assignee} (unregistered)</option>
               )}
-              {profiles.map((p) => (
-                <option key={p.name} value={p.name}>
+              {profiles.map((p, i) => (
+                <option key={`${p.name}-${i}`} value={p.name}>
                   {p.name}
                 </option>
               ))}

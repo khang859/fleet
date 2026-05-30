@@ -2,10 +2,12 @@ import { isValidProfileName, type WorkerProfile } from '../../../../../shared/ty
 
 export function ProfileEditor({
   profile,
+  duplicate,
   onChange,
   onDelete
 }: {
   profile: WorkerProfile;
+  duplicate?: boolean;
   onChange: (next: WorkerProfile) => void;
   onDelete: () => void;
 }): React.JSX.Element {
@@ -18,7 +20,7 @@ export function ProfileEditor({
           onChange={(e) => onChange({ ...profile, name: e.target.value })}
           placeholder="name"
           className={`flex-1 rounded bg-neutral-800 px-2 py-1 text-sm border ${
-            nameInvalid ? 'border-red-500' : 'border-neutral-700'
+            nameInvalid || duplicate ? 'border-red-500' : 'border-neutral-700'
           }`}
         />
         <button
@@ -32,6 +34,9 @@ export function ProfileEditor({
         <p className="text-[10px] text-red-400">
           Lowercase letters, digits, - and _ only; must start with a letter or digit.
         </p>
+      )}
+      {duplicate && !nameInvalid && (
+        <p className="text-[10px] text-red-400">Another profile already uses this name.</p>
       )}
       <input
         value={profile.model}

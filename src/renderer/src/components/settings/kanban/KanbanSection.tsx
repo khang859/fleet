@@ -137,16 +137,21 @@ export function KanbanSection(): React.JSX.Element | null {
           </button>
         </div>
         {k.profiles.length === 0 && <p className="text-xs text-neutral-500">No profiles yet.</p>}
-        {k.profiles.map((p, i) => (
-          <ProfileEditor
-            key={p.name || i}
-            profile={p}
-            onChange={(next: WorkerProfile) =>
-              patch({ profiles: k.profiles.map((q, j) => (j === i ? next : q)) })
-            }
-            onDelete={() => patch({ profiles: k.profiles.filter((_, j) => j !== i) })}
-          />
-        ))}
+        {k.profiles.map((p, i) => {
+          const duplicate =
+            p.name !== '' && k.profiles.some((q, j) => j !== i && q.name === p.name);
+          return (
+            <ProfileEditor
+              key={p.name || i}
+              profile={p}
+              duplicate={duplicate}
+              onChange={(next: WorkerProfile) =>
+                patch({ profiles: k.profiles.map((q, j) => (j === i ? next : q)) })
+              }
+              onDelete={() => patch({ profiles: k.profiles.filter((_, j) => j !== i) })}
+            />
+          );
+        })}
       </section>
     </div>
   );
