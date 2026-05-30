@@ -59,6 +59,7 @@ let socketSupervisor: SocketSupervisor | null = null;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
+let kanbanCommands: KanbanCommands | undefined;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -362,7 +363,12 @@ void app.whenReady().then(async () => {
   });
 
   // Start socket server for fleet CLI (images + open commands)
-  socketSupervisor = new SocketSupervisor(SOCKET_PATH, imageService, annotateService);
+  socketSupervisor = new SocketSupervisor(
+    SOCKET_PATH,
+    imageService,
+    annotateService,
+    () => kanbanCommands
+  );
   socketSupervisor.on('file-open', (payload: unknown) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.FILE_OPEN_IN_TAB, payload);
@@ -801,7 +807,7 @@ void app.whenReady().then(async () => {
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs
   });
   kanbanDispatcher.start();
-  const kanbanCommands = new KanbanCommands(kanbanStore, kanbanDispatcher, () => {
+  kanbanCommands = new KanbanCommands(kanbanStore, kanbanDispatcher, () => {
     const d = settingsStore.get().kanban.defaults;
     return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
   });

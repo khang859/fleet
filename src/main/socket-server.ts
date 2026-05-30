@@ -5,6 +5,8 @@ import { EventEmitter } from 'node:events';
 import type { ImageService } from './image-service';
 import type { AnnotateService } from './annotate-service';
 import type { ImageProviderSettings } from '../shared/types';
+import type { KanbanCommands } from './kanban/kanban-commands';
+import type { TaskStatus, CreateTaskInput } from '../shared/kanban-types';
 import { CodedError } from './errors';
 
 type Request = {
@@ -52,7 +54,8 @@ export class SocketServer extends EventEmitter {
   constructor(
     private socketPath: string,
     private imageService?: ImageService,
-    private annotateService?: AnnotateService
+    private annotateService?: AnnotateService,
+    private getKanban?: () => KanbanCommands | undefined
   ) {
     super();
   }
@@ -168,6 +171,12 @@ export class SocketServer extends EventEmitter {
     if (!socket.destroyed) {
       socket.write(JSON.stringify(response) + '\n');
     }
+  }
+
+  private requireKanban(): KanbanCommands {
+    const k = this.getKanban?.();
+    if (!k) throw new CodedError('Kanban not available', 'UNAVAILABLE');
+    return k;
   }
 
   private async dispatch(command: string, args: Record<string, unknown>): Promise<unknown> {
@@ -383,6 +392,112 @@ export class SocketServer extends EventEmitter {
         const planPath = typeof args.path === 'string' ? args.path : undefined;
         if (!planPath) throw new CodedError('pi.plan_open requires a path', 'BAD_REQUEST');
         this.emit('pi-plan-open', { path: planPath });
+        return { ok: true };
+      }
+
+      // ── Kanban ──────────────────────────────────────────────────────────────
+      case 'kanban.create': {
+        const k = this.requireKanban();
+        const title = typeof args.title === 'string' ? args.title : undefined;
+        if (!title) throw new CodedError('kanban create requires --title', 'BAD_REQUEST');
+        const input: CreateTaskInput = { title };
+        if (typeof args.body === 'string') input.body = args.body;
+        if (typeof args.assignee === 'string') input.assignee = args.assignee;
+        if (typeof args.priority === 'string') {
+          const p = Number(args.priority);
+          if (!Number.isNaN(p)) input.priority = p;
+        }
+        const task = k.create(input);
+        this.emit('state-change', 'kanban:changed', { id: task.id });
+        return task;
+      }
+      case 'kanban.list': {
+        const k = this.requireKanban();
+        const status = typeof args.status === 'string' ? (args.status as TaskStatus) : undefined;
+        return k.list(status ? { status } : {});
+      }
+      case 'kanban.show': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        if (!id) throw new CodedError('kanban show requires a task id', 'BAD_REQUEST');
+        const detail = k.show(id);
+        if (!detail) throw new CodedError(`task not found: ${id}`, 'NOT_FOUND');
+        return detail;
+      }
+      case 'kanban.assign': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        const profile = typeof args.profile === 'string' ? args.profile : undefined;
+        if (!id) throw new CodedError('kanban assign requires a task id', 'BAD_REQUEST');
+        if (!profile) throw new CodedError('kanban assign requires --profile', 'BAD_REQUEST');
+        k.assign(id, profile);
+        this.emit('state-change', 'kanban:changed', { id });
+        return { ok: true };
+      }
+      case 'kanban.ready':
+      case 'kanban.unblock':
+      case 'kanban.archive': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        if (!id) throw new CodedError(`${command} requires a task id`, 'BAD_REQUEST');
+        if (command === 'kanban.ready') k.ready(id);
+        else if (command === 'kanban.unblock') k.unblock(id);
+        else k.archive(id);
+        this.emit('state-change', 'kanban:changed', { id });
+        return { ok: true };
+      }
+      case 'kanban.block': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        const reason = typeof args.reason === 'string' ? args.reason : undefined;
+        if (!id) throw new CodedError('kanban block requires a task id', 'BAD_REQUEST');
+        if (!reason) throw new CodedError('kanban block requires --reason', 'BAD_REQUEST');
+        k.block(id, reason);
+        this.emit('state-change', 'kanban:changed', { id });
+        return { ok: true };
+      }
+      case 'kanban.complete': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        const result = typeof args.result === 'string' ? args.result : undefined;
+        if (!id) throw new CodedError('kanban complete requires a task id', 'BAD_REQUEST');
+        if (!result) throw new CodedError('kanban complete requires --result', 'BAD_REQUEST');
+        k.complete(id, result);
+        this.emit('state-change', 'kanban:changed', { id });
+        return { ok: true };
+      }
+      case 'kanban.comment': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        const body = typeof args.body === 'string' ? args.body : undefined;
+        if (!id) throw new CodedError('kanban comment requires a task id', 'BAD_REQUEST');
+        if (!body) throw new CodedError('kanban comment requires a comment body', 'BAD_REQUEST');
+        const comment = k.comment(id, body);
+        this.emit('state-change', 'kanban:changed', { id });
+        return comment;
+      }
+      case 'kanban.link':
+      case 'kanban.unlink': {
+        const k = this.requireKanban();
+        const parentId = typeof args.parentId === 'string' ? args.parentId : undefined;
+        const childId = typeof args.childId === 'string' ? args.childId : undefined;
+        if (!parentId || !childId) {
+          throw new CodedError(`${command} requires parentId and childId`, 'BAD_REQUEST');
+        }
+        if (command === 'kanban.link') k.link(parentId, childId);
+        else k.unlink(parentId, childId);
+        this.emit('state-change', 'kanban:changed', { id: childId });
+        return { ok: true };
+      }
+      case 'kanban.log': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        if (!id) throw new CodedError('kanban log requires a task id', 'BAD_REQUEST');
+        return k.log(id);
+      }
+      case 'kanban.dispatch': {
+        const k = this.requireKanban();
+        k.dispatch();
         return { ok: true };
       }
 

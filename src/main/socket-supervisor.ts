@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { SocketServer } from './socket-server';
 import type { ImageService } from './image-service';
 import type { AnnotateService } from './annotate-service';
+import type { KanbanCommands } from './kanban/kanban-commands';
 import { createLogger } from './logger';
 
 const log = createLogger('socket-supervisor');
@@ -21,7 +22,8 @@ export class SocketSupervisor extends EventEmitter {
   constructor(
     private socketPath: string,
     private imageService?: ImageService,
-    private annotateService?: AnnotateService
+    private annotateService?: AnnotateService,
+    private getKanban?: () => KanbanCommands | undefined
   ) {
     super();
   }
@@ -87,7 +89,12 @@ export class SocketSupervisor extends EventEmitter {
   }
 
   private createServer(): SocketServer {
-    const server = new SocketServer(this.socketPath, this.imageService, this.annotateService);
+    const server = new SocketServer(
+      this.socketPath,
+      this.imageService,
+      this.annotateService,
+      this.getKanban
+    );
 
     server.on('state-change', (...args: unknown[]) => {
       this.emit('state-change', ...args);
