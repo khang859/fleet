@@ -16,8 +16,8 @@ export interface SpawnWorkerArgs {
 export interface DispatcherConfig {
   failureLimit: number; // consecutive failures before gave_up
   claimGraceMs: number; // protect freshly-spawned workers from reclaim
-  maxInProgress?: number; // concurrency cap (used in Task 10)
-  claimTtlMs?: number; // claim lease length (used in Task 10)
+  maxInProgress: number; // concurrency cap
+  claimTtlMs: number; // claim lease length
 }
 
 export interface DispatcherDeps {
@@ -80,8 +80,8 @@ export class KanbanDispatcher {
   }
 
   claimAndSpawn(): void {
-    const cap = this.deps.config.maxInProgress ?? 3;
-    const ttl = this.deps.config.claimTtlMs ?? 15 * 60 * 1000;
+    const cap = this.deps.config.maxInProgress;
+    const ttl = this.deps.config.claimTtlMs;
     let slots = cap - this.store.runningTasks().length;
     if (slots <= 0) return;
 

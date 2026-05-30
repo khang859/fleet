@@ -74,7 +74,6 @@ export class KanbanMcpServer {
   private runs = new Map<string, RunScope>();
   private claimLocks = new Map<string, string>(); // token -> claim lock (for heartbeat)
 
-  // store is used by tool handlers added in Task 12
   private store: KanbanStore;
   constructor(store: KanbanStore) {
     this.store = store;
