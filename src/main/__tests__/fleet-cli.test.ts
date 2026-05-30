@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   parseArgs,
   validateCommand,
@@ -218,6 +218,100 @@ describe('fleet pi plan_open', () => {
       '/tmp/no-socket.sock'
     );
     expect(out).toContain('file not found');
+  });
+});
+
+// ── fleet kanban validation tests ────────────────────────────────────────────
+
+describe('fleet kanban validation', () => {
+  const SOCK = '/tmp/no-socket-kanban.sock';
+
+  it('create without --title errors', async () => {
+    const out = await runCLI(['kanban', 'create'], SOCK);
+    expect(out).toMatch(/requires --title/);
+  });
+
+  it('show without id errors', async () => {
+    const out = await runCLI(['kanban', 'show'], SOCK);
+    expect(out).toMatch(/requires a task id/);
+  });
+
+  it('block without --reason errors', async () => {
+    const out = await runCLI(['kanban', 'block', 't1'], SOCK);
+    expect(out).toMatch(/requires --reason/);
+  });
+
+  it('complete without --result errors', async () => {
+    const out = await runCLI(['kanban', 'complete', 't1'], SOCK);
+    expect(out).toMatch(/requires --result/);
+  });
+
+  it('comment without body errors', async () => {
+    const out = await runCLI(['kanban', 'comment', 't1'], SOCK);
+    expect(out).toMatch(/requires a comment/);
+  });
+
+  it('link without two ids errors', async () => {
+    const out = await runCLI(['kanban', 'link', 't1'], SOCK);
+    expect(out).toMatch(/requires a parent and child/);
+  });
+
+  it('unlink without two ids errors', async () => {
+    const out = await runCLI(['kanban', 'unlink', 't1'], SOCK);
+    expect(out).toMatch(/requires a parent and child/);
+  });
+});
+
+// Drives runCLI's parsing path and intercepts FleetCLI.send to assert the
+// command/args actually SENT — this is the only place the positional fixup
+// (in runCLI) is exercised; validateCommand-only tests do not cover it.
+describe('fleet kanban positional fixup (sent args)', () => {
+  const SOCK = '/tmp/no-socket-kanban.sock';
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('comment maps first positional to id and the rest to a joined body', async () => {
+    const sendSpy = vi
+      .spyOn(FleetCLI.prototype, 'send')
+      .mockResolvedValue({ id: 'x', ok: true, data: 'ok' });
+
+    await runCLI(['kanban', 'comment', 't1', 'hello world'], SOCK);
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [command, args] = sendSpy.mock.calls[0];
+    expect(command).toBe('kanban.comment');
+    expect(args.id).toBe('t1');
+    expect(args.body).toBe('hello world');
+  });
+
+  it('link maps the two positionals to parentId/childId and drops id', async () => {
+    const sendSpy = vi
+      .spyOn(FleetCLI.prototype, 'send')
+      .mockResolvedValue({ id: 'x', ok: true, data: 'ok' });
+
+    await runCLI(['kanban', 'link', 'p1', 'c1'], SOCK);
+
+    expect(sendSpy).toHaveBeenCalledTimes(1);
+    const [command, args] = sendSpy.mock.calls[0];
+    expect(command).toBe('kanban.link');
+    expect(args.parentId).toBe('p1');
+    expect(args.childId).toBe('c1');
+    expect(args.id).toBeUndefined();
+  });
+});
+
+describe('fleet kanban --help', () => {
+  it('shows kanban help', async () => {
+    const out = await runCLI(['kanban', '--help'], '/tmp/no-socket.sock');
+    expect(out).toMatch(/fleet kanban/);
+    expect(out).toMatch(/watch/);
+  });
+
+  it('lists kanban in top-level help', async () => {
+    const out = await runCLI(['--help'], '/tmp/no-socket.sock');
+    expect(out).toMatch(/kanban/);
   });
 });
 

@@ -333,6 +333,59 @@ export function validateCommand(command: string, args: Record<string, unknown>):
       return null;
     }
 
+    // ── Kanban ────────────────────────────────────────────────────────────
+    case 'kanban.create':
+      if (!args.title)
+        return 'Error: kanban create requires --title.\n\nUsage: fleet kanban create --title "..." [--assignee <profile>] [--priority <n>] [--body "..."]';
+      return null;
+
+    case 'kanban.show':
+    case 'kanban.log':
+    case 'kanban.ready':
+    case 'kanban.unblock':
+    case 'kanban.archive': {
+      const verb = command.split('.')[1];
+      if (!args.id)
+        return `Error: kanban ${verb} requires a task id.\n\nUsage: fleet kanban ${verb} <task-id>`;
+      return null;
+    }
+
+    case 'kanban.assign':
+      if (!args.id)
+        return 'Error: kanban assign requires a task id.\n\nUsage: fleet kanban assign <task-id> --profile <name>';
+      if (!args.profile)
+        return 'Error: kanban assign requires --profile.\n\nUsage: fleet kanban assign <task-id> --profile <name>';
+      return null;
+
+    case 'kanban.block':
+      if (!args.id)
+        return 'Error: kanban block requires a task id.\n\nUsage: fleet kanban block <task-id> --reason "..."';
+      if (!args.reason)
+        return 'Error: kanban block requires --reason.\n\nUsage: fleet kanban block <task-id> --reason "..."';
+      return null;
+
+    case 'kanban.complete':
+      if (!args.id)
+        return 'Error: kanban complete requires a task id.\n\nUsage: fleet kanban complete <task-id> --result "..."';
+      if (!args.result)
+        return 'Error: kanban complete requires --result.\n\nUsage: fleet kanban complete <task-id> --result "..."';
+      return null;
+
+    case 'kanban.comment':
+      if (!args.id)
+        return 'Error: kanban comment requires a task id.\n\nUsage: fleet kanban comment <task-id> "comment text"';
+      if (!args.body)
+        return 'Error: kanban comment requires a comment body.\n\nUsage: fleet kanban comment <task-id> "comment text"';
+      return null;
+
+    case 'kanban.link':
+    case 'kanban.unlink': {
+      const verb = command.split('.')[1];
+      if (!args.parentId || !args.childId)
+        return `Error: kanban ${verb} requires a parent and child id.\n\nUsage: fleet kanban ${verb} <parent-id> <child-id>`;
+      return null;
+    }
+
     default:
       return null;
   }
@@ -342,7 +395,7 @@ export function validateCommand(command: string, args: Record<string, unknown>):
 
 const HELP_TOP = `# Fleet CLI
 
-Manage images and open files from the terminal.
+Manage images, files, and the Kanban board from the terminal.
 
 ## Usage
 
@@ -357,6 +410,7 @@ Manage images and open files from the terminal.
 | open | Open files or images in Fleet tabs. |
 | annotate | Visually annotate web page elements for AI agents. |
 | pi | Open Pi agent tabs and Pi plan documents. |
+| kanban | Manage the Kanban board: tasks, links, comments, live watch. |
 
 ## Examples
 
@@ -479,7 +533,41 @@ Manage AI image generation.
   fleet images action remove-background ./photo.png
   fleet images action remove-background ./photo.png --provider fal-ai
   fleet images actions
-`
+`,
+
+  kanban: `# fleet kanban
+
+Manage the Kanban board from the terminal. Requires the Fleet app to be running.
+
+## Commands
+
+  fleet kanban create --title "..." [--body "..."] [--assignee <profile>] [--priority <n>]
+  fleet kanban list [--status <status>]
+  fleet kanban show <task-id>
+  fleet kanban assign <task-id> --profile <name>
+  fleet kanban ready <task-id>
+  fleet kanban block <task-id> --reason "..."
+  fleet kanban unblock <task-id>
+  fleet kanban archive <task-id>
+  fleet kanban complete <task-id> --result "..."
+  fleet kanban comment <task-id> "comment text"
+  fleet kanban link <parent-id> <child-id>
+  fleet kanban unlink <parent-id> <child-id>
+  fleet kanban log <task-id>
+  fleet kanban dispatch
+  fleet kanban watch
+
+## Options
+
+  --status <status>   Filter list by status (triage|todo|ready|running|blocked|done|archived).
+  --format json       Emit raw JSON instead of a table.
+
+## Examples
+
+  fleet kanban create --title "Fix flaky test" --assignee default --priority 2
+  fleet kanban list --status ready
+  fleet kanban show t_abc123
+  fleet kanban watch`
 };
 
 export function getHelpText(argv: string[]): string | null {
@@ -763,6 +851,22 @@ export async function runCLI(
       } else {
         args.source = src;
       }
+    }
+  }
+
+  // ── kanban: remap positionals to named args ──────────────────────────────
+  if (group === 'kanban') {
+    const positionals = cleanRest.filter((t) => !t.startsWith('--'));
+    if (action === 'comment' && positionals.length >= 2) {
+      // parseArgs maps every positional to args.id (last wins), so the comment
+      // text clobbered id — restore id from the first positional, body from the rest.
+      args.id = positionals[0];
+      args.body = positionals.slice(1).join(' ');
+    }
+    if ((action === 'link' || action === 'unlink') && positionals.length >= 2) {
+      args.parentId = positionals[0];
+      args.childId = positionals[1];
+      delete args.id;
     }
   }
 
