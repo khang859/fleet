@@ -8,7 +8,7 @@ import { CommentThread } from './CommentThread';
 import { relativeTime, formatDuration } from './kanban-utils';
 import type { TaskStatus } from '../../../../shared/kanban-types';
 
-const ACTIONS: { status: TaskStatus; label: string }[] = [
+const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'ready', label: '→ Ready' },
   { status: 'blocked', label: 'Block' },
   { status: 'todo', label: 'Unblock' },

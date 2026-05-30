@@ -1,6 +1,6 @@
 import type { TaskStatus } from '../../../../shared/kanban-types';
 
-export const COLUMNS: { status: TaskStatus; label: string }[] = [
+export const COLUMNS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'triage', label: 'Triage' },
   { status: 'todo', label: 'Todo' },
   { status: 'ready', label: 'Ready' },
