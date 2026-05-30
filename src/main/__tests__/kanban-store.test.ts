@@ -127,4 +127,33 @@ describe('KanbanStore', () => {
     expect(s.extendClaim(t.id, 'wrong-lock', 100)).toBe(false);
     s.close();
   });
+
+  it('starts a run, sets it as current, and finishes it', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const run = store.startRun(t.id, 'researcher', 4321);
+    expect(run.status).toBe('running');
+    expect(store.getTask(t.id)?.currentRunId).toBe(run.id);
+    store.finishRun(run.id, 'completed', { summary: 'did it', metadata: { files: 2 } });
+    const runs = store.listRuns(t.id);
+    expect(runs[0].outcome).toBe('completed');
+    expect(runs[0].summary).toBe('did it');
+    expect(runs[0].metadata).toEqual({ files: 2 });
+  });
+
+  it('appends and lists events with json payload', () => {
+    const t = store.createTask({ title: 'x' });
+    store.appendEvent(t.id, null, 'created', { by: 'human' });
+    const events = store.listEvents(t.id);
+    expect(events.length).toBe(1);
+    expect(events[0].kind).toBe('created');
+    expect(events[0].payload).toEqual({ by: 'human' });
+  });
+
+  it('adds and lists comments in order', () => {
+    const t = store.createTask({ title: 'x' });
+    store.addComment(t.id, 'researcher', 'first');
+    store.addComment(t.id, 'human', 'second');
+    const comments = store.listComments(t.id);
+    expect(comments.map((c) => c.body)).toEqual(['first', 'second']);
+  });
 });

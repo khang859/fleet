@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-store');
 
@@ -206,5 +206,126 @@ export class KanbanStore {
       )
       .all() as Record<string, unknown>[];
     return rows.map((r) => this.rowToTask(r));
+  }
+
+  private rowToRun(r: Record<string, unknown>): TaskRun {
+    return {
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      profile: (r.profile as string | null) ?? null,
+      status: r.status as TaskRun['status'],
+      workerPid: (r.worker_pid as number | null) ?? null,
+      startedAt: Number(r.started_at),
+      endedAt: (r.ended_at as number | null) ?? null,
+      outcome: (r.outcome as RunOutcome | null) ?? null,
+      summary: (r.summary as string | null) ?? null,
+      metadata: r.metadata ? (JSON.parse(String(r.metadata)) as Record<string, unknown>) : null,
+      error: (r.error as string | null) ?? null
+    };
+  }
+
+  startRun(taskId: string, profile: string | null, workerPid: number | null): TaskRun {
+    const ts = this.now();
+    const info = this.db
+      .prepare(
+        `INSERT INTO task_runs (task_id, profile, status, worker_pid, started_at)
+         VALUES (?, ?, 'running', ?, ?)`
+      )
+      .run(taskId, profile, workerPid, ts);
+    const runId = Number(info.lastInsertRowid);
+    this.db
+      .prepare('UPDATE tasks SET current_run_id=?, worker_pid=?, updated_at=? WHERE id=?')
+      .run(runId, workerPid, ts, taskId);
+    const run = this.db.prepare('SELECT * FROM task_runs WHERE id=?').get(runId) as Record<
+      string,
+      unknown
+    >;
+    return this.rowToRun(run);
+  }
+
+  finishRun(
+    runId: number,
+    outcome: RunOutcome,
+    opts: { summary?: string; metadata?: Record<string, unknown>; error?: string } = {}
+  ): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE task_runs SET status='finished', ended_at=?, outcome=?, summary=?, metadata=?, error=?
+         WHERE id=?`
+      )
+      .run(
+        ts,
+        outcome,
+        opts.summary ?? null,
+        opts.metadata ? JSON.stringify(opts.metadata) : null,
+        opts.error ?? null,
+        runId
+      );
+  }
+
+  listRuns(taskId: string): TaskRun[] {
+    const rows = this.db
+      .prepare('SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at DESC')
+      .all(taskId) as Record<string, unknown>[];
+    return rows.map((r) => this.rowToRun(r));
+  }
+
+  appendEvent(
+    taskId: string,
+    runId: number | null,
+    kind: string,
+    payload?: Record<string, unknown>
+  ): TaskEvent {
+    const ts = this.now();
+    const info = this.db
+      .prepare(
+        `INSERT INTO task_events (task_id, run_id, kind, payload, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(taskId, runId, kind, payload ? JSON.stringify(payload) : null, ts);
+    return {
+      id: Number(info.lastInsertRowid),
+      taskId,
+      runId,
+      kind,
+      payload: payload ?? null,
+      createdAt: ts
+    };
+  }
+
+  listEvents(taskId: string): TaskEvent[] {
+    const rows = this.db
+      .prepare('SELECT * FROM task_events WHERE task_id=? ORDER BY id ASC')
+      .all(taskId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      runId: (r.run_id as number | null) ?? null,
+      kind: String(r.kind),
+      payload: r.payload ? (JSON.parse(String(r.payload)) as Record<string, unknown>) : null,
+      createdAt: Number(r.created_at)
+    }));
+  }
+
+  addComment(taskId: string, author: string, body: string): TaskComment {
+    const ts = this.now();
+    const info = this.db
+      .prepare('INSERT INTO task_comments (task_id, author, body, created_at) VALUES (?, ?, ?, ?)')
+      .run(taskId, author, body, ts);
+    return { id: Number(info.lastInsertRowid), taskId, author, body, createdAt: ts };
+  }
+
+  listComments(taskId: string): TaskComment[] {
+    const rows = this.db
+      .prepare('SELECT * FROM task_comments WHERE task_id=? ORDER BY id ASC')
+      .all(taskId) as Record<string, unknown>[];
+    return rows.map((r) => ({
+      id: Number(r.id),
+      taskId: String(r.task_id),
+      author: String(r.author),
+      body: String(r.body),
+      createdAt: Number(r.created_at)
+    }));
   }
 }
