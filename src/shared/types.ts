@@ -16,7 +16,16 @@ export type Tab = {
   label: string;
   labelIsCustom: boolean;
   cwd: string;
-  type?: 'terminal' | 'file' | 'image' | 'images' | 'settings' | 'annotate' | 'pi' | 'markdown' | 'kanban';
+  type?:
+    | 'terminal'
+    | 'file'
+    | 'image'
+    | 'images'
+    | 'settings'
+    | 'annotate'
+    | 'pi'
+    | 'markdown'
+    | 'kanban';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
