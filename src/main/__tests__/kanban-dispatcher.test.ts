@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -186,5 +186,85 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
     expect(runs[0].status).toBe('finished');
     expect(runs[0].outcome).toBe('spawn_failed');
     store.close();
+  });
+});
+
+describe('KanbanDispatcher.reconfigure', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('applies a new maxInProgress to the next claimAndSpawn', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    for (let i = 0; i < 3; i++) store.createTask({ title: `t${i}`, status: 'ready', assignee: 'r' });
+    let spawned = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => ++spawned,
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 }
+    });
+    disp.claimAndSpawn();
+    expect(spawned).toBe(1); // cap of 1
+
+    disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }, 5000);
+    disp.claimAndSpawn();
+    expect(spawned).toBe(3); // remaining 2 ready tasks now allowed
+    store.close();
+  });
+
+  it('restarts the timer only when the interval changes', () => {
+    vi.useFakeTimers();
+    try {
+      const clock = { t: 1000 };
+      const store = makeStore(clock);
+      const cfg = { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 };
+      const disp = new KanbanDispatcher(store, {
+        now: () => clock.t,
+        isAlive: () => true,
+        spawnWorker: () => 1,
+        config: cfg,
+        intervalMs: 5000
+      });
+      disp.start();
+      const clearSpy = vi.spyOn(global, 'clearInterval');
+      const setSpy = vi.spyOn(global, 'setInterval');
+
+      // same interval → no restart
+      disp.reconfigure(cfg, 5000);
+      expect(clearSpy).not.toHaveBeenCalled();
+      expect(setSpy).not.toHaveBeenCalled();
+
+      // changed interval → restart (stop + start)
+      disp.reconfigure(cfg, 8000);
+      expect(clearSpy).toHaveBeenCalledTimes(1);
+      expect(setSpy).toHaveBeenCalledTimes(1);
+
+      disp.stop();
+      store.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not start a timer when reconfigured while stopped', () => {
+    vi.useFakeTimers();
+    try {
+      const clock = { t: 1000 };
+      const store = makeStore(clock);
+      const setSpy = vi.spyOn(global, 'setInterval');
+      const disp = new KanbanDispatcher(store, {
+        now: () => clock.t,
+        isAlive: () => true,
+        spawnWorker: () => 1,
+        config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 },
+        intervalMs: 5000
+      });
+      disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 2, claimTtlMs: 1000 }, 8000);
+      expect(setSpy).not.toHaveBeenCalled();
+      store.close();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

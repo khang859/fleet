@@ -4,6 +4,8 @@ import type { Task } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-dispatcher');
 
+const DEFAULT_INTERVAL_MS = 5000;
+
 export interface SpawnWorkerArgs {
   task: Task;
   runId: number;
@@ -123,7 +125,7 @@ export class KanbanDispatcher {
 
   start(): void {
     if (this.timer) return;
-    const interval = this.deps.intervalMs ?? 5000;
+    const interval = this.deps.intervalMs ?? DEFAULT_INTERVAL_MS;
     this.timer = setInterval(() => {
       try {
         this.tick();
@@ -137,6 +139,20 @@ export class KanbanDispatcher {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+  }
+
+  /**
+   * Apply new config + interval. Per-tick reads pick up `config` immediately;
+   * the interval is only read in start(), so restart the timer if it changed.
+   */
+  reconfigure(config: DispatcherConfig, intervalMs: number): void {
+    const intervalChanged = intervalMs !== (this.deps.intervalMs ?? DEFAULT_INTERVAL_MS);
+    this.deps.config = config;
+    this.deps.intervalMs = intervalMs;
+    if (this.timer && intervalChanged) {
+      this.stop();
+      this.start();
     }
   }
 }
