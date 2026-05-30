@@ -100,3 +100,9 @@ export interface UpdateTaskFields {
   priority?: number;
   tenant?: string | null;
 }
+
+export interface BoardCard extends Task {
+  commentCount: number;
+  childTotal: number;
+  childDone: number;
+}

@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields, BoardCard } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-store');
 
@@ -386,6 +386,31 @@ export class KanbanStore {
       )
       .all() as Record<string, unknown>[];
     return rows.map((r) => this.rowToTask(r));
+  }
+
+  listBoard(): BoardCard[] {
+    const tasks = this.listTasks();
+    const commentRows = this.db
+      .prepare('SELECT task_id, COUNT(*) AS c FROM task_comments GROUP BY task_id')
+      .all() as { task_id: string; c: number }[];
+    const commentCounts = new Map(commentRows.map((r) => [r.task_id, Number(r.c)]));
+    const childRows = this.db
+      .prepare(
+        `SELECT l.parent_id AS parent, COUNT(*) AS total,
+          SUM(CASE WHEN c.status='done' THEN 1 ELSE 0 END) AS done
+         FROM task_links l JOIN tasks c ON c.id = l.child_id
+         GROUP BY l.parent_id`
+      )
+      .all() as { parent: string; total: number; done: number }[];
+    const childMap = new Map(
+      childRows.map((r) => [r.parent, { total: Number(r.total), done: Number(r.done) }])
+    );
+    return tasks.map((t) => ({
+      ...t,
+      commentCount: commentCounts.get(t.id) ?? 0,
+      childTotal: childMap.get(t.id)?.total ?? 0,
+      childDone: childMap.get(t.id)?.done ?? 0
+    }));
   }
 
   updateTask(id: string, fields: UpdateTaskFields): void {
