@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { join } from 'path';
+import { tmpdir } from 'os';
+import { unlinkSync } from 'fs';
+import { SocketServer } from '../socket-server';
+import type { KanbanCommands } from '../kanban/kanban-commands';
 import {
   parseArgs,
   validateCommand,
   getHelpText,
   runCLI,
+  runKanbanWatch,
   FleetCLI,
   formatTable,
   stripAnsi
@@ -339,5 +345,65 @@ describe('runCLI --quiet flag', () => {
     const deadSocket = '/tmp/nonexistent-fleet-quiet-test-unique.sock';
     const output = await runCLI(['unknown', 'command', '--quiet'], deadSocket);
     expect(output).toBe('');
+  });
+});
+
+// ── fleet kanban watch ─────────────────────────────────────────────────────────
+
+describe('fleet kanban watch', () => {
+  it('reports when the app is not running', async () => {
+    const out = await runCLI(['kanban', 'watch'], '/tmp/fleet-watch-nope.sock');
+    expect(out).toMatch(/not running/i);
+  });
+
+  it('streams formatted broadcast events from a running server', async () => {
+    const sockPath = join(
+      tmpdir(),
+      `fleet-watch-${process.pid}-${Math.random().toString(36).slice(2)}.sock`
+    );
+    const stubKanban = {
+      list: () => [],
+      show: () => null
+    } as unknown as KanbanCommands;
+    const server = new SocketServer(sockPath, undefined, undefined, () => stubKanban);
+    await server.start();
+
+    const written: string[] = [];
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk: unknown) => {
+      written.push(String(chunk));
+      return true;
+    });
+
+    try {
+      const watchPromise = runKanbanWatch(sockPath, { json: false });
+
+      // Wait for the subscription ack to register, then broadcast.
+      await new Promise((r) => setTimeout(r, 50));
+      server.broadcastKanbanEvent({ taskId: 't1', kind: 'task_created', createdAt: 0 });
+
+      // Poll until the formatted line is captured.
+      const deadline = Date.now() + 2000;
+      while (Date.now() < deadline && !written.some((l) => l.includes('task_created'))) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+
+      const result = await Promise.race([
+        server.stop().then(() => watchPromise),
+        new Promise<string>((r) => setTimeout(() => r('__timeout__'), 2000))
+      ]);
+
+      expect(result).toBe('');
+      const line = written.find((l) => l.includes('task_created'));
+      expect(line).toBeDefined();
+      expect(line).toContain('t1');
+      expect(line).toContain('task_created');
+    } finally {
+      spy.mockRestore();
+      try {
+        unlinkSync(sockPath);
+      } catch {
+        // ignore
+      }
+    }
   });
 });

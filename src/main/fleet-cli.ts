@@ -590,6 +590,70 @@ export function getHelpText(argv: string[]): string | null {
   return HELP_TOP;
 }
 
+// ── kanban watch: long-lived event stream ────────────────────────────────────
+
+function formatWatchEvent(event: unknown): string {
+  if (!isRecord(event)) return toStr(event);
+  const t = typeof event.createdAt === 'number' ? new Date(event.createdAt) : null;
+  const time = t ? t.toISOString().slice(11, 19) : '--:--:--';
+  const taskId = toStr(event.taskId);
+  const kind = toStr(event.kind);
+  return `${time}  ${taskId}  ${kind}`;
+}
+
+export async function runKanbanWatch(
+  sockPath: string,
+  opts: { json: boolean }
+): Promise<string> {
+  return new Promise((resolve) => {
+    const socket = createConnection(sockPath, () => {
+      socket.write(
+        JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n'
+      );
+    });
+    let buffer = '';
+    let acked = false;
+
+    socket.on('data', (chunk) => {
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let msg: unknown;
+        try {
+          msg = JSON.parse(line);
+        } catch {
+          continue;
+        }
+        if (!acked) {
+          acked = true;
+          if (isRecord(msg) && msg.ok === false) {
+            socket.end();
+            resolve(`Error: ${toStr(msg.error)}`);
+            return;
+          }
+          process.stderr.write('Watching kanban events (Ctrl-C to stop)…\n');
+          continue;
+        }
+        if (isRecord(msg) && 'kanbanEvent' in msg) {
+          process.stdout.write((opts.json ? line : formatWatchEvent(msg.kanbanEvent)) + '\n');
+        }
+      }
+    });
+
+    socket.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT' || err.code === 'ECONNREFUSED') {
+        resolve('Fleet is not running');
+      } else {
+        resolve(`Error: ${err.message}`);
+      }
+    });
+
+    socket.on('close', () => resolve(''));
+  });
+}
+
 // ── runCLI: parse argv and format output ─────────────────────────────────────
 
 export async function runCLI(
@@ -733,6 +797,13 @@ export async function runCLI(
       }
       return `Error: ${msg}`;
     }
+  }
+
+  // ── Top-level "kanban watch" (streaming; all other kanban verbs use the generic path) ──
+  if (group === 'kanban' && action === 'watch') {
+    const fmtIdx = rest.indexOf('--format');
+    const json = fmtIdx !== -1 && rest[fmtIdx + 1] === 'json';
+    return runKanbanWatch(sockPath, { json });
   }
 
   // ── Images config (get or set based on flags) ──────────────────────────
