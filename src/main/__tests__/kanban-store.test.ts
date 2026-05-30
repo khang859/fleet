@@ -3,6 +3,7 @@ import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
+import type { TaskEvent } from '../../shared/kanban-types';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-store-test-${Date.now()}`);
 const DB_PATH = join(TEST_DIR, 'kanban.db');
@@ -244,14 +245,21 @@ describe('KanbanStore', () => {
   });
 
   it('onEvent sink fires for every appended event', () => {
-    const seen: string[] = [];
+    const seen: TaskEvent[] = [];
     const s = new KanbanStore(join(TEST_DIR, 'sink.db'), {
       now: () => 1000,
-      onEvent: (e) => seen.push(e.kind)
+      onEvent: (e) => seen.push(e)
     });
     const t = s.createTask({ title: 'x' });
     s.appendEvent(t.id, null, 'status_changed', { to: 'ready' });
     s.close();
-    expect(seen).toContain('status_changed');
+    const ev = seen.find((e) => e.kind === 'status_changed')!;
+    expect(ev).toMatchObject({
+      kind: 'status_changed',
+      taskId: t.id,
+      runId: null,
+      payload: { to: 'ready' },
+      createdAt: 1000
+    });
   });
 });

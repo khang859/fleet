@@ -106,3 +106,12 @@ export interface BoardCard extends Task {
   childTotal: number;
   childDone: number;
 }
+
+export interface TaskDetail {
+  task: Task;
+  comments: TaskComment[];
+  runs: TaskRun[];
+  events: TaskEvent[];
+  parents: Task[];
+  children: Task[];
+}

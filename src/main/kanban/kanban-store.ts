@@ -10,14 +10,17 @@ const log = createLogger('kanban-store');
 
 export interface KanbanStoreOptions {
   now?: () => number;
+  onEvent?: (event: TaskEvent) => void;
 }
 
 export class KanbanStore {
   protected db: Database.Database;
   protected now: () => number;
+  protected onEvent?: (event: TaskEvent) => void;
 
   constructor(dbPath: string, opts: KanbanStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
+    this.onEvent = opts.onEvent;
     mkdirSync(dirname(dbPath), { recursive: true });
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
@@ -284,7 +287,7 @@ export class KanbanStore {
          VALUES (?, ?, ?, ?, ?)`
       )
       .run(taskId, runId, kind, payload ? JSON.stringify(payload) : null, ts);
-    return {
+    const event: TaskEvent = {
       id: Number(info.lastInsertRowid),
       taskId,
       runId,
@@ -292,6 +295,8 @@ export class KanbanStore {
       payload: payload ?? null,
       createdAt: ts
     };
+    this.onEvent?.(event);
+    return event;
   }
 
   listEvents(taskId: string): TaskEvent[] {
