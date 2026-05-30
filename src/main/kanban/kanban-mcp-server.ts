@@ -1,5 +1,6 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { URL } from 'url';
+import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 
@@ -168,12 +169,70 @@ export class KanbanMcpServer {
     }
   }
 
-  // Implemented in Task 12.
+  private text(res: ServerResponse, id: JsonRpcRequest['id'], message: string): void {
+    this.rpcResult(res, id, { content: [{ type: 'text', text: message }] });
+  }
+
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
     const scope = this.runs.get(token);
     if (!scope) return this.rpcError(res, rpcReq.id, 'unknown or missing run token');
-    // this.store used by tool handlers in Task 12
-    void this.store;
-    return this.rpcError(res, rpcReq.id, 'not implemented');
+
+    const params = rpcReq.params ?? {};
+    const name = String(params.name ?? '');
+    const args = (params.arguments ?? {}) as Record<string, unknown>;
+    const task = this.store.getTask(scope.taskId);
+    if (!task) return this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
+    const author = task.assignee ?? 'worker';
+
+    try {
+      switch (name) {
+        case 'kanban_show': {
+          const comments = this.store.listComments(task.id);
+          const runs = this.store.listRuns(task.id).filter((r) => r.summary);
+          const lines = [
+            `# ${task.title} (${task.id})`,
+            '',
+            task.body || '(no body)',
+            '',
+            comments.length ? '## Comments' : '',
+            ...comments.map((c) => `- ${c.author}: ${c.body}`),
+            runs.length ? '## Prior runs' : '',
+            ...runs.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`)
+          ].filter(Boolean);
+          return this.text(res, rpcReq.id, lines.join('\n'));
+        }
+        case 'kanban_complete': {
+          const a = z.object({ summary: z.string(), metadata: z.record(z.string(), z.unknown()).optional() }).parse(args);
+          this.store.completeTask(task.id, a.summary);
+          this.store.finishRun(scope.runId, 'completed', { summary: a.summary, metadata: a.metadata });
+          this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+          return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
+        }
+        case 'kanban_block': {
+          const a = z.object({ reason: z.string() }).parse(args);
+          this.store.blockTask(task.id, a.reason);
+          this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
+          this.store.appendEvent(task.id, scope.runId, 'blocked', { reason: a.reason });
+          return this.text(res, rpcReq.id, `Task ${task.id} blocked.`);
+        }
+        case 'kanban_comment': {
+          const a = z.object({ body: z.string() }).parse(args);
+          this.store.addComment(task.id, author, a.body);
+          this.store.appendEvent(task.id, scope.runId, 'comment', { author });
+          return this.text(res, rpcReq.id, 'Comment added.');
+        }
+        case 'kanban_heartbeat': {
+          const lock = this.claimLocks.get(token);
+          if (lock) this.store.extendClaim(task.id, lock, 15 * 60 * 1000);
+          this.store.appendEvent(task.id, scope.runId, 'heartbeat', {});
+          return this.text(res, rpcReq.id, 'Heartbeat recorded.');
+        }
+        default:
+          return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return this.rpcError(res, rpcReq.id, msg);
+    }
   }
 }

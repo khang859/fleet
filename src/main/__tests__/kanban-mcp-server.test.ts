@@ -59,4 +59,75 @@ describe('KanbanMcpServer', () => {
     expect(r.error).toBeTruthy();
     expect(String(r.error.message)).toMatch(/run token/i);
   });
+
+  it('kanban_complete marks the task done and finishes the run', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'LOCK', 100000);
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tok1', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+
+    const r = await rpc(`${base}?run=tok1`, 'tools/call', {
+      name: 'kanban_complete',
+      arguments: { summary: 'shipped it', metadata: { files: 3 } }
+    });
+    expect(r.result.content[0].text).toMatch(/done/i);
+    expect(store.getTask(t.id)?.status).toBe('done');
+    expect(store.getTask(t.id)?.result).toBe('shipped it');
+    const runs = store.listRuns(t.id);
+    expect(runs[0].outcome).toBe('completed');
+  });
+
+  it('kanban_block blocks the task', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'LOCK', 100000);
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tok2', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    await rpc(`${base}?run=tok2`, 'tools/call', {
+      name: 'kanban_block',
+      arguments: { reason: 'review-required: see comment' }
+    });
+    expect(store.getTask(t.id)?.status).toBe('blocked');
+  });
+
+  it('kanban_comment appends a comment authored by the assignee', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'researcher' });
+    const run = store.startRun(t.id, 'researcher', 1);
+    server.registerRun('tok3', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    await rpc(`${base}?run=tok3`, 'tools/call', {
+      name: 'kanban_comment',
+      arguments: { body: 'progress note' }
+    });
+    const comments = store.listComments(t.id);
+    expect(comments[0].body).toBe('progress note');
+    expect(comments[0].author).toBe('researcher');
+  });
+
+  it('kanban_heartbeat extends the claim for the lock holder', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'LOCK', 1000);
+    const before = store.getTask(t.id)?.claimExpires ?? 0;
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tok4', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    await rpc(`${base}?run=tok4`, 'tools/call', { name: 'kanban_heartbeat', arguments: {} });
+    const after = store.getTask(t.id)?.claimExpires ?? 0;
+    expect(after).toBeGreaterThanOrEqual(before);
+  });
+
+  it('kanban_show returns the task title and body', async () => {
+    const t = store.createTask({ title: 'My task', body: 'do the thing', status: 'ready', assignee: 'r' });
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tok5', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    const r = await rpc(`${base}?run=tok5`, 'tools/call', { name: 'kanban_show', arguments: {} });
+    expect(r.result.content[0].text).toMatch(/My task/);
+    expect(r.result.content[0].text).toMatch(/do the thing/);
+  });
+
+  it('writes a task_event for each tool call', async () => {
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    const run = store.startRun(t.id, 'r', 1);
+    server.registerRun('tok6', { taskId: t.id, runId: run.id, role: 'worker' }, 'LOCK');
+    await rpc(`${base}?run=tok6`, 'tools/call', { name: 'kanban_comment', arguments: { body: 'x' } });
+    const kinds = store.listEvents(t.id).map((e) => e.kind);
+    expect(kinds).toContain('comment');
+  });
 });
