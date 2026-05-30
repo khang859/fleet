@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-store');
 
@@ -386,6 +386,26 @@ export class KanbanStore {
       )
       .all() as Record<string, unknown>[];
     return rows.map((r) => this.rowToTask(r));
+  }
+
+  updateTask(id: string, fields: UpdateTaskFields): void {
+    const current = this.getTask(id);
+    if (!current) return;
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET title=@title, body=@body, assignee=@assignee,
+          priority=@priority, tenant=@tenant, updated_at=@ts WHERE id=@id`
+      )
+      .run({
+        id,
+        title: fields.title ?? current.title,
+        body: fields.body ?? current.body,
+        assignee: fields.assignee !== undefined ? fields.assignee : current.assignee,
+        priority: fields.priority ?? current.priority,
+        tenant: fields.tenant !== undefined ? fields.tenant : current.tenant,
+        ts
+      });
   }
 
   setStatus(taskId: string, status: TaskStatus): void {

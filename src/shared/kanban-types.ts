@@ -92,3 +92,11 @@ export interface CreateTaskInput {
   maxRuntimeSeconds?: number | null;
   maxRetries?: number;
 }
+
+export interface UpdateTaskFields {
+  title?: string;
+  body?: string;
+  assignee?: string | null;
+  priority?: number;
+  tenant?: string | null;
+}

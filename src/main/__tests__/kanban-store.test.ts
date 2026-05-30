@@ -210,4 +210,48 @@ describe('KanbanStore', () => {
     const running = store.runningTasks();
     expect(running.map((t) => t.id)).toEqual([a.id]);
   });
+
+  it('updateTask updates only provided fields and bumps updatedAt', () => {
+    const t = store.createTask({ title: 'orig', body: 'b', priority: 1, assignee: 'alice' });
+    const before = store.getTask(t.id)!;
+    store.updateTask(t.id, { title: 'changed', assignee: null });
+    const after = store.getTask(t.id)!;
+    expect(after.title).toBe('changed');
+    expect(after.assignee).toBeNull();
+    expect(after.body).toBe('b'); // untouched
+    expect(after.priority).toBe(1); // untouched
+    expect(after.updatedAt).toBeGreaterThanOrEqual(before.updatedAt);
+  });
+
+  it('listBoard returns cards with comment and child-progress counts', () => {
+    const parent = store.createTask({ title: 'parent' });
+    const childA = store.createTask({ title: 'a' });
+    const childB = store.createTask({ title: 'b' });
+    store.addLink(parent.id, childA.id);
+    store.addLink(parent.id, childB.id);
+    store.setStatus(childA.id, 'done');
+    store.addComment(parent.id, 'human', 'hi');
+    store.addComment(parent.id, 'human', 'again');
+
+    const cards = store.listBoard();
+    const p = cards.find((c) => c.id === parent.id)!;
+    expect(p.commentCount).toBe(2);
+    expect(p.childTotal).toBe(2);
+    expect(p.childDone).toBe(1);
+    const a = cards.find((c) => c.id === childA.id)!;
+    expect(a.childTotal).toBe(0);
+    expect(a.commentCount).toBe(0);
+  });
+
+  it('onEvent sink fires for every appended event', () => {
+    const seen: string[] = [];
+    const s = new KanbanStore(join(TEST_DIR, 'sink.db'), {
+      now: () => 1000,
+      onEvent: (e) => seen.push(e.kind)
+    });
+    const t = s.createTask({ title: 'x' });
+    s.appendEvent(t.id, null, 'status_changed', { to: 'ready' });
+    s.close();
+    expect(seen).toContain('status_changed');
+  });
 });
