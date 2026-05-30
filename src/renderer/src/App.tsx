@@ -16,6 +16,7 @@ import { initCwdListener, useCwdStore } from './store/cwd-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
 import { useHomesStore } from './store/homes-store';
+import { useKanbanStore } from './store/kanban-store';
 import { injectLiveCwd } from './lib/workspace-utils';
 import { VisualizerPanel } from './components/visualizer/VisualizerPanel';
 import { ShortcutsHint } from './components/ShortcutsHint';
@@ -30,6 +31,7 @@ import { TelescopeModal } from './components/Telescope/TelescopeModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
+import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -301,6 +303,24 @@ export function App(): React.JSX.Element {
   const activePlanModal = planModalQueue[0] ?? null;
   const closeActivePlanModal = useCallback(() => {
     setPlanModalQueue((queue) => queue.slice(1));
+  }, []);
+
+  // Live kanban updates: any task_event → refetch board + open task (150ms coalesced)
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = window.fleet.kanban.onEvent(() => {
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        const s = useKanbanStore.getState();
+        void s.loadBoard();
+        void s.refreshDetail();
+      }, 150);
+    });
+    return () => {
+      if (timer) clearTimeout(timer);
+      cleanup();
+    };
   }, []);
 
   // Auto-updater
@@ -776,6 +796,8 @@ export function App(): React.JSX.Element {
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
                       />
+                    ) : tab.type === 'kanban' ? (
+                      <KanbanBoard />
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}

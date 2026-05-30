@@ -159,6 +159,12 @@ export function createCommandRegistry(): Command[] {
           });
         }
       }
+    },
+    {
+      id: 'open-kanban',
+      label: 'Open Kanban Board',
+      category: 'Tabs',
+      execute: () => useWorkspaceStore.getState().addKanbanTab(window.fleet.homeDir)
     }
   ];
 }
