@@ -1,4 +1,4 @@
-import type { SwarmWorkerSpec } from '../../shared/kanban-types';
+import type { SwarmWorkerSpec, TaskComment } from '../../shared/kanban-types';
 
 export const BLACKBOARD_PREFIX = '[swarm:blackboard] ';
 
@@ -38,4 +38,48 @@ export function parseWorkerArg(raw: string): SwarmWorkerSpec {
     throw new Error('worker must be profile:title or profile:title:skill,skill');
   }
   return { profile, title, body: title, skills };
+}
+
+/** The subset of KanbanStore the blackboard helpers need. */
+export interface BlackboardStore {
+  addComment(taskId: string, author: string, body: string): TaskComment;
+  listComments(taskId: string): TaskComment[];
+}
+
+/** Append one structured update to a swarm root's blackboard. */
+export function postBlackboardUpdate(
+  store: BlackboardStore,
+  rootId: string,
+  author: string,
+  key: string,
+  value: unknown
+): TaskComment {
+  const body = BLACKBOARD_PREFIX + JSON.stringify({ key, value });
+  return store.addComment(rootId, author, body);
+}
+
+/** Merge a root's blackboard comments, last-write-wins per key, with winning authors. */
+export function latestBlackboard(
+  store: BlackboardStore,
+  rootId: string
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {};
+  const authors: Record<string, string> = {};
+  for (const comment of store.listComments(rootId)) {
+    const body = comment.body ?? '';
+    if (!body.startsWith(BLACKBOARD_PREFIX)) continue;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(body.slice(BLACKBOARD_PREFIX.length));
+    } catch {
+      continue;
+    }
+    if (typeof payload !== 'object' || payload === null) continue;
+    const key = (payload as { key?: unknown }).key;
+    if (typeof key !== 'string' || key === '') continue;
+    merged[key] = (payload as { value?: unknown }).value;
+    authors[key] = comment.author;
+  }
+  if (Object.keys(authors).length > 0) merged._authors = authors;
+  return merged;
 }
