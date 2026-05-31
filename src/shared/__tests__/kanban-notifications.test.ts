@@ -15,7 +15,14 @@ describe('classifyKanbanEvent', () => {
   });
 
   it('returns null for non-attention kinds', () => {
-    for (const kind of ['comment', 'heartbeat', 'promoted', 'task_created', 'spawned', 'reclaimed']) {
+    for (const kind of [
+      'comment',
+      'heartbeat',
+      'promoted',
+      'task_created',
+      'spawned',
+      'reclaimed'
+    ]) {
       expect(classifyKanbanEvent(kind)).toBeNull();
     }
   });

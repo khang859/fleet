@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { classifyKanbanEvent } from '../../../shared/kanban-notifications';
+import { kanbanNotifyChannel } from '../../../shared/kanban-notifications';
 import { useKanbanStore } from '../store/kanban-store';
 import { useSettingsStore } from '../store/settings-store';
 import { useWorkspaceStore } from '../store/workspace-store';
@@ -15,10 +15,9 @@ export function useKanbanAttention(): void {
   // 1: badge bump on events
   useEffect(() => {
     const off = window.fleet.kanban.onEvent((event) => {
-      const category = classifyKanbanEvent(event.kind);
-      if (!category) return;
       const settings = useSettingsStore.getState().settings;
-      if (!settings?.kanban.notifications[category].badge) return;
+      if (!settings) return;
+      if (!kanbanNotifyChannel(event.kind, settings.kanban.notifications, 'badge')) return;
       if (isKanbanTabActive()) return;
       useKanbanStore.getState().incrementUnread();
     });
@@ -49,9 +48,7 @@ export function useKanbanAttention(): void {
       }
       const kanban = useKanbanStore.getState();
       const applyBoard =
-        kanban.activeBoardSlug !== boardSlug
-          ? kanban.switchBoard(boardSlug)
-          : Promise.resolve();
+        kanban.activeBoardSlug !== boardSlug ? kanban.switchBoard(boardSlug) : Promise.resolve();
       void applyBoard.then(() => {
         if (taskId) void useKanbanStore.getState().openTask(taskId);
       });

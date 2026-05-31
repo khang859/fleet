@@ -40,7 +40,12 @@ const COUNT_WORD: Record<KanbanNotifyCategory, string> = {
 };
 
 // Highest priority first — drives burst click target + count ordering.
-const PRIORITY: readonly KanbanNotifyCategory[] = ['blocked', 'failed', 'completed', 'scheduleFired'];
+const PRIORITY: readonly KanbanNotifyCategory[] = [
+  'blocked',
+  'failed',
+  'completed',
+  'scheduleFired'
+];
 
 export class KanbanNotifier {
   private buffer: BufferItem[] = [];
