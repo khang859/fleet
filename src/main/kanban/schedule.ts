@@ -26,16 +26,16 @@ export function validateSchedule(
 }
 
 /**
- * Next fire strictly after `after` (epoch ms).
- * - once: the fixed fire time.
+ * Next fire time after `after` (epoch ms).
+ * - once: the stored fire time, regardless of `after` — caller must not re-queue a past once-task.
  * - interval: `after + everyMs` (always one period out — naturally skip-missed).
- * - cron: cron-parser's next() seeded at `after`.
+ * - cron: cron-parser's next() seeded at `after`, always strictly after.
  */
 export function computeNextRun(input: ScheduleInput, after: number): number {
   if (input.kind === 'once') return input.at;
   if (input.kind === 'interval') return after + input.everyMs;
-  const interval = CronExpressionParser.parse(input.expr, { currentDate: new Date(after) });
-  return interval.next().toDate().getTime();
+  const parsed = CronExpressionParser.parse(input.expr, { currentDate: new Date(after) });
+  return parsed.next().toDate().getTime();
 }
 
 /** Reconstructs a recurring ScheduleInput from a task's columns (null if not recurring). */

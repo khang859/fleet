@@ -45,6 +45,12 @@ describe('validateSchedule', () => {
   it('accepts a valid cron expression', () => {
     expect(validateSchedule({ kind: 'cron', expr: '0 9 * * 1-5' }).ok).toBe(true);
   });
+  it('rejects a NaN once date', () => {
+    expect(validateSchedule({ kind: 'once', at: NaN }).ok).toBe(false);
+  });
+  it('rejects a negative interval', () => {
+    expect(validateSchedule({ kind: 'interval', everyMs: -5 }).ok).toBe(false);
+  });
 });
 
 describe('taskToScheduleInput', () => {
@@ -59,6 +65,10 @@ describe('taskToScheduleInput', () => {
   });
   it('returns null for an unscheduled task', () => {
     const t = { ...base, scheduleKind: null } as Task;
+    expect(taskToScheduleInput(t)).toBeNull();
+  });
+  it('returns null for a once task with no nextRunAt', () => {
+    const t = { ...base, scheduleKind: 'once', nextRunAt: null } as Task;
     expect(taskToScheduleInput(t)).toBeNull();
   });
 });
