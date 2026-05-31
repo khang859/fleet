@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
-  it('fresh db is created at v5 with the new columns', () => {
-    // Fresh store is already v5; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v6 with the new columns', () => {
+    // Fresh store is already v6; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
-  it('fresh db is created at v5 and persists repoPath', () => {
+  it('fresh db is created at v6 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -60,7 +60,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     s.close();
   });
 
@@ -85,7 +85,7 @@ describe('KanbanStore', () => {
     raw.close();
 
     const s = new KanbanStore(preV5Path);
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     expect(s.getTask('abc')?.boardId).toBe('default');
     expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
@@ -107,7 +107,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     s.close();
   });
 
@@ -474,6 +474,40 @@ describe('KanbanStore boards', () => {
     store.deleteBoard('research');
     expect(store.getTask(keep.id)?.id).toBe(keep.id);
     expect(store.listBoard('default')).toHaveLength(1);
+  });
+});
+
+describe('KanbanStore schema v6 migration', () => {
+  it('migrates a v5 database to v6 with schedule columns and intact rows', () => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    const dbPath = join(TEST_DIR, `mig-v6-${Math.random()}.db`);
+    const raw = new Database(dbPath);
+    raw.exec(`CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+      assignee TEXT, status TEXT NOT NULL DEFAULT 'todo', priority INTEGER NOT NULL DEFAULT 0,
+      tenant TEXT, workspace_kind TEXT NOT NULL DEFAULT 'scratch', workspace_path TEXT,
+      repo_path TEXT, branch_name TEXT, model_override TEXT, skills TEXT NOT NULL DEFAULT '[]',
+      board_id TEXT NOT NULL DEFAULT 'default', idempotency_key TEXT, result TEXT, pending_mode TEXT,
+      claim_lock TEXT, claim_expires INTEGER, worker_pid INTEGER, current_run_id INTEGER,
+      last_heartbeat_at INTEGER, consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      last_failure_error TEXT, max_runtime_seconds INTEGER, max_retries INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );`);
+    raw
+      .prepare(`INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (?, ?, 'todo', ?, ?)`)
+      .run('legacy1', 'old task', 1, 1);
+    raw.pragma('user_version = 5');
+    raw.close();
+
+    const store = new KanbanStore(dbPath, { now: () => 1000 });
+    expect(store.schemaVersion()).toBe(6);
+    const t = store.getTask('legacy1');
+    expect(t?.title).toBe('old task');
+    expect(t?.scheduleKind).toBeNull();
+    expect(t?.schedulePaused).toBe(false);
+    expect(t?.nextRunAt).toBeNull();
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
   });
 });
 

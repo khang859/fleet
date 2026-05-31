@@ -56,6 +56,15 @@ export class KanbanStore {
       // which runs before this block against a pre-v5 tasks table).
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(board_id)');
     }
+    if (current < 6) {
+      // Additive: DBs created before v6 lack the scheduling columns.
+      this.addColumnIfMissing('tasks', 'schedule_kind', 'TEXT');
+      this.addColumnIfMissing('tasks', 'schedule_cron', 'TEXT');
+      this.addColumnIfMissing('tasks', 'schedule_interval_ms', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'next_run_at', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'schedule_paused', 'INTEGER NOT NULL DEFAULT 0');
+      this.addColumnIfMissing('tasks', 'scheduled_from', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -113,6 +122,12 @@ export class KanbanStore {
       lastFailureError: (r.last_failure_error as string | null) ?? null,
       maxRuntimeSeconds: (r.max_runtime_seconds as number | null) ?? null,
       maxRetries: Number(r.max_retries),
+      scheduleKind: (r.schedule_kind as Task['scheduleKind']) ?? null,
+      scheduleCron: (r.schedule_cron as string | null) ?? null,
+      scheduleIntervalMs: (r.schedule_interval_ms as number | null) ?? null,
+      nextRunAt: (r.next_run_at as number | null) ?? null,
+      schedulePaused: Number(r.schedule_paused ?? 0) === 1,
+      scheduledFrom: (r.scheduled_from as string | null) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -125,10 +140,10 @@ export class KanbanStore {
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
           workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, board_id, idempotency_key,
-          max_runtime_seconds, max_retries, created_at, updated_at)
+          scheduled_from, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
           @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @board_id, @idempotency_key,
-          @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
+          @scheduled_from, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
         id,
@@ -146,6 +161,7 @@ export class KanbanStore {
         skills: JSON.stringify(input.skills ?? []),
         board_id: input.boardId ?? 'default',
         idempotency_key: input.idempotencyKey ?? null,
+        scheduled_from: input.scheduledFrom ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
         max_retries: input.maxRetries ?? 1,
         created_at: ts,

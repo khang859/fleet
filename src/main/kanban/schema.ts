@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -28,6 +28,12 @@ CREATE TABLE IF NOT EXISTS tasks (
   last_failure_error TEXT,
   max_runtime_seconds INTEGER,
   max_retries INTEGER NOT NULL DEFAULT 1,
+  schedule_kind TEXT,
+  schedule_cron TEXT,
+  schedule_interval_ms INTEGER,
+  next_run_at INTEGER,
+  schedule_paused INTEGER NOT NULL DEFAULT 0,
+  scheduled_from TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
