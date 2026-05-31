@@ -783,13 +783,21 @@ void app.whenReady().then(async () => {
         return false;
       }
     },
-    prepareWorkspaceFn: (task) =>
-      prepareWorkspace({
+    prepareWorkspaceFn: (task) => {
+      const prepared = prepareWorkspace({
         kind: task.workspaceKind,
         taskId: task.id,
         workspacesRoot: join(KANBAN_HOME, 'workspaces'),
-        path: task.workspacePath ?? undefined
-      }),
+        worktreesRoot: join(KANBAN_HOME, 'worktrees'),
+        workspacePath: task.workspacePath ?? undefined,
+        repoPath: task.repoPath ?? undefined,
+        branchName: task.branchName ?? undefined
+      });
+      if (task.workspaceKind === 'worktree' && task.workspacePath == null) {
+        kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName);
+      }
+      return prepared.path;
+    },
     spawnWorker: ({ task, runId, lock, workspace, mode }) => {
       const runToken = randomUUID();
       kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode }, lock);

@@ -37,6 +37,10 @@ export class KanbanStore {
       this.addColumnIfMissing('tasks', 'pending_mode', 'TEXT');
       this.addColumnIfMissing('task_runs', 'mode', "TEXT NOT NULL DEFAULT 'work'");
     }
+    if (current < 3) {
+      // Additive: DBs created before v3 lack the worktree source repo column.
+      this.addColumnIfMissing('tasks', 'repo_path', 'TEXT');
+    }
     if (current !== SCHEMA_VERSION) {
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
@@ -69,6 +73,7 @@ export class KanbanStore {
       tenant: (r.tenant as string | null) ?? null,
       workspaceKind: r.workspace_kind as Task['workspaceKind'],
       workspacePath: (r.workspace_path as string | null) ?? null,
+      repoPath: (r.repo_path as string | null) ?? null,
       branchName: (r.branch_name as string | null) ?? null,
       modelOverride: (r.model_override as string | null) ?? null,
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
@@ -95,10 +100,10 @@ export class KanbanStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
-          workspace_kind, branch_name, model_override, skills, idempotency_key,
+          workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, idempotency_key,
           max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
-          @workspace_kind, @branch_name, @model_override, @skills, @idempotency_key,
+          @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @idempotency_key,
           @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
@@ -110,6 +115,8 @@ export class KanbanStore {
         priority: input.priority ?? 0,
         tenant: input.tenant ?? null,
         workspace_kind: input.workspaceKind ?? 'scratch',
+        workspace_path: null,
+        repo_path: input.repoPath ?? null,
         branch_name: input.branchName ?? null,
         model_override: input.modelOverride ?? null,
         skills: JSON.stringify(input.skills ?? []),
@@ -472,6 +479,12 @@ export class KanbanStore {
       .prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?')
       .run(pid, ts, taskId);
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
+  }
+
+  setWorkspace(taskId: string, path: string, branchName: string | null): void {
+    this.db
+      .prepare('UPDATE tasks SET workspace_path=?, branch_name=?, updated_at=? WHERE id=?')
+      .run(path, branchName, this.now(), taskId);
   }
 
   setPendingMode(taskId: string, mode: PendingMode | null): void {
