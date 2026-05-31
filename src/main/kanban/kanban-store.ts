@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'fs';
+import { mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
@@ -7,6 +7,7 @@ import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode } from '../../shared/kanban-types';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
+import { removeWorktree, cleanupWorkspace } from './workspace';
 
 const log = createLogger('kanban-store');
 
@@ -585,6 +586,56 @@ export class KanbanStore {
     this.db
       .prepare('UPDATE boards SET name=?, updated_at=? WHERE slug=?')
       .run(name, this.now(), slug);
+    this.onBoardsChanged?.();
+  }
+
+  deleteBoard(slug: string): void {
+    // Gather the board's tasks first so on-disk cleanup can run before the rows go.
+    const tasks = this.listTasks().filter((t) => t.boardId === slug);
+    for (const t of tasks) {
+      try {
+        if (t.workspaceKind === 'worktree' && t.workspacePath && t.repoPath) {
+          removeWorktree({
+            repoPath: t.repoPath,
+            workspacePath: t.workspacePath,
+            branchName: t.branchName
+          });
+        } else if (t.workspacePath) {
+          cleanupWorkspace({ kind: t.workspaceKind, path: t.workspacePath });
+        }
+        rmSync(join(this.attachmentsRoot, t.id), { recursive: true, force: true });
+      } catch {
+        // best-effort: a filesystem failure must never block the DB delete
+      }
+    }
+    const tx = this.db.transaction((s: string) => {
+      this.db
+        .prepare(
+          'DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)'
+        )
+        .run(s);
+      this.db
+        .prepare(
+          'DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)'
+        )
+        .run(s);
+      this.db
+        .prepare('DELETE FROM task_events WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)')
+        .run(s);
+      this.db
+        .prepare('DELETE FROM task_runs WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)')
+        .run(s);
+      this.db
+        .prepare(
+          `DELETE FROM task_links
+           WHERE parent_id IN (SELECT id FROM tasks WHERE board_id=?)
+              OR child_id IN (SELECT id FROM tasks WHERE board_id=?)`
+        )
+        .run(s, s);
+      this.db.prepare('DELETE FROM tasks WHERE board_id=?').run(s);
+      this.db.prepare('DELETE FROM boards WHERE slug=?').run(s);
+    });
+    tx(slug);
     this.onBoardsChanged?.();
   }
 

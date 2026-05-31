@@ -427,6 +427,27 @@ describe('KanbanStore boards', () => {
     expect(store.listBoard('research').map((c) => c.title)).toEqual(['on research']);
     expect(store.listBoard().length).toBe(2);
   });
+
+  it('deleteBoard removes the board, its tasks, and their child rows', () => {
+    store.createBoard('Research');
+    const t = store.createTask({ title: 'doomed', boardId: 'research' });
+    store.addComment(t.id, 'human', 'a comment');
+    store.appendEvent(t.id, null, 'note', {});
+    store.deleteBoard('research');
+    expect(store.listBoards().map((b) => b.slug)).toEqual(['default']);
+    expect(store.getTask(t.id)).toBeNull();
+    expect(store.listComments(t.id)).toHaveLength(0);
+    expect(store.listEvents(t.id)).toHaveLength(0);
+  });
+
+  it('deleteBoard leaves other boards untouched', () => {
+    store.createBoard('Research');
+    const keep = store.createTask({ title: 'keep' }); // default board
+    store.createTask({ title: 'drop', boardId: 'research' });
+    store.deleteBoard('research');
+    expect(store.getTask(keep.id)?.id).toBe(keep.id);
+    expect(store.listBoard('default')).toHaveLength(1);
+  });
 });
 
 describe('KanbanStore attachments', () => {
