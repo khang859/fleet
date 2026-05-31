@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { X } from 'lucide-react';
+import { X, Paperclip, Download } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
-import { relativeTime, formatDuration } from './kanban-utils';
+import { relativeTime, formatDuration, formatBytes } from './kanban-utils';
 import type { TaskStatus } from '../../../../shared/kanban-types';
 
 const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
@@ -27,7 +27,10 @@ export function KanbanDrawer(): React.JSX.Element | null {
     addLink,
     removeLink,
     decompose,
-    specify
+    specify,
+    uploadAttachments,
+    removeAttachment,
+    saveAttachmentCopy
   } = useKanbanStore();
   const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
   const settingsLoaded = useSettingsStore((s) => s.settings !== null);
@@ -37,6 +40,9 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [priority, setPriority] = useState(0);
   const [tenant, setTenant] = useState('');
   const [linkId, setLinkId] = useState('');
+  const [dragging, setDragging] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const dragCounter = useRef(0);
   const seededIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -61,6 +67,33 @@ export function KanbanDrawer(): React.JSX.Element | null {
       assignee: assignee.trim() === '' ? null : assignee.trim(),
       priority,
       tenant: tenant.trim() === '' ? null : tenant.trim()
+    });
+  }
+
+  async function pickAndUpload(): Promise<void> {
+    const paths = await window.fleet.kanban.pickAttachment();
+    if (paths.length === 0) return;
+    setAttachError(null);
+    try {
+      await uploadAttachments(t.id, paths);
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : 'Failed to attach file');
+    }
+  }
+
+  function onDrop(e: React.DragEvent): void {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragging(false);
+    const paths: string[] = [];
+    for (const f of Array.from(e.dataTransfer.files)) {
+      const p = window.fleet.utils.getFilePath(f);
+      if (p) paths.push(p);
+    }
+    if (paths.length === 0) return;
+    setAttachError(null);
+    uploadAttachments(t.id, paths).catch((err) => {
+      setAttachError(err instanceof Error ? err.message : 'Failed to attach file');
     });
   }
 
@@ -241,6 +274,72 @@ export function KanbanDrawer(): React.JSX.Element | null {
               Add child
             </button>
           </div>
+        </section>
+
+        {/* Attachments */}
+        <section>
+          <h3 className="mb-1 flex items-center gap-1 font-semibold text-neutral-400">
+            <Paperclip size={12} /> Attachments
+          </h3>
+          <div
+            onDragEnter={(e) => {
+              e.preventDefault();
+              dragCounter.current += 1;
+              if (dragCounter.current === 1) setDragging(true);
+            }}
+            onDragOver={(e) => e.preventDefault()}
+            onDragLeave={() => {
+              dragCounter.current -= 1;
+              if (dragCounter.current === 0) setDragging(false);
+            }}
+            onDrop={onDrop}
+            className={`rounded border border-dashed p-2 ${
+              dragging ? 'border-blue-500 bg-blue-950/30' : 'border-neutral-700'
+            }`}
+          >
+            {detail.attachments.length === 0 && (
+              <p className="text-neutral-500">Drop files here, or use the button below.</p>
+            )}
+            {detail.attachments.map((a) => (
+              <div
+                key={a.id}
+                className="mb-1 flex items-center justify-between gap-2 rounded bg-neutral-950 px-2 py-1"
+              >
+                <span className="truncate" title={a.filename}>
+                  {a.filename}
+                </span>
+                <span className="flex shrink-0 items-center gap-2 text-[10px] text-neutral-500">
+                  {formatBytes(a.size)}
+                  <button
+                    onClick={() => void saveAttachmentCopy(a.id)}
+                    title="Save a copy…"
+                    className="text-neutral-400 hover:text-blue-400"
+                  >
+                    <Download size={12} />
+                  </button>
+                  <button
+                    onClick={() => void removeAttachment(a.id)}
+                    title="Remove"
+                    className="text-neutral-400 hover:text-red-400"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => void pickAndUpload()}
+            className="mt-1 rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+          >
+            Attach file
+          </button>
+          {attachError && <p className="mt-1 text-[10px] text-red-400">{attachError}</p>}
+          {running && (
+            <p className="mt-1 text-[10px] text-amber-400">
+              Files added now reach the worker on its next run.
+            </p>
+          )}
         </section>
 
         {/* Run history */}

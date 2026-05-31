@@ -39,7 +39,8 @@ import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
-  KanbanLinkRequest
+  KanbanLinkRequest,
+  KanbanAddAttachmentRequest
 } from '../shared/ipc-api';
 import type {
   BoardCard,
@@ -443,6 +444,14 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_DECOMPOSE, taskId),
     specify: async (taskId: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SPECIFY, taskId),
+    pickAttachment: async (): Promise<string[]> =>
+      typedInvoke<string[]>(IPC_CHANNELS.KANBAN_PICK_ATTACHMENT),
+    addAttachment: async (req: KanbanAddAttachmentRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_ADD_ATTACHMENT, req),
+    removeAttachment: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_ATTACHMENT, id),
+    saveAttachmentCopy: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SAVE_ATTACHMENT_COPY, id),
     onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
       onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback)
   }

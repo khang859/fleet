@@ -130,5 +130,9 @@ export const IPC_CHANNELS = {
   KANBAN_NUDGE: 'kanban:nudge',
   KANBAN_DECOMPOSE: 'kanban:decompose',
   KANBAN_SPECIFY: 'kanban:specify',
-  KANBAN_EVENT: 'kanban:event'
+  KANBAN_EVENT: 'kanban:event',
+  KANBAN_PICK_ATTACHMENT: 'kanban:pick-attachment',
+  KANBAN_ADD_ATTACHMENT: 'kanban:add-attachment',
+  KANBAN_REMOVE_ATTACHMENT: 'kanban:remove-attachment',
+  KANBAN_SAVE_ATTACHMENT_COPY: 'kanban:save-attachment-copy'
 } as const;

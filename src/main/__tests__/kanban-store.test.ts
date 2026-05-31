@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(3);
+    expect(store.schemaVersion()).toBe(4);
   });
 
-  it('fresh db is created at v3 with the new columns', () => {
-    // Fresh store is already v3; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v4 with the new columns', () => {
+    // Fresh store is already v4; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(3);
+    expect(store.schemaVersion()).toBe(4);
   });
 
-  it('fresh db is created at v3 and persists repoPath', () => {
+  it('fresh db is created at v4 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(3);
+    expect(store.schemaVersion()).toBe(4);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -60,7 +60,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(3);
+    expect(s.schemaVersion()).toBe(4);
     s.close();
   });
 
@@ -80,7 +80,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(3);
+    expect(s.schemaVersion()).toBe(4);
     s.close();
   });
 
@@ -385,5 +385,56 @@ describe('KanbanStore', () => {
       payload: { to: 'ready' },
       createdAt: 1000
     });
+  });
+});
+
+describe('KanbanStore attachments', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  function src(name: string, body = 'data'): string {
+    const p = join(TEST_DIR, name);
+    writeFileSync(p, body);
+    return p;
+  }
+
+  it('adds, lists, gets and removes an attachment', () => {
+    const task = store.createTask({ title: 't' });
+    const att = store.addAttachment(task.id, src('a.txt'));
+    expect(att.filename).toBe('a.txt');
+    expect(existsSync(att.storedPath)).toBe(true);
+
+    const list = store.listAttachments(task.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(att.id);
+
+    expect(store.getAttachment(att.id)?.storedPath).toBe(att.storedPath);
+
+    store.removeAttachment(att.id);
+    expect(store.listAttachments(task.id)).toHaveLength(0);
+    expect(existsSync(att.storedPath)).toBe(false);
+  });
+
+  it('two uploads of the same filename coexist on disk', () => {
+    const task = store.createTask({ title: 't' });
+    const a = store.addAttachment(task.id, src('dup.txt', 'one'));
+    const b = store.addAttachment(task.id, src('dup.txt', 'two'));
+    expect(a.storedPath).not.toBe(b.storedPath);
+    expect(store.listAttachments(task.id)).toHaveLength(2);
+  });
+
+  it('removeAttachment tolerates a missing on-disk file', () => {
+    const task = store.createTask({ title: 't' });
+    const att = store.addAttachment(task.id, src('gone.txt'));
+    rmSync(att.storedPath, { force: true });
+    expect(() => store.removeAttachment(att.id)).not.toThrow();
+    expect(store.getAttachment(att.id)).toBeNull();
   });
 });

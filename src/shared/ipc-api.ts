@@ -268,6 +268,11 @@ export type KanbanAddCommentRequest = {
   body: string;
 };
 
+export type KanbanAddAttachmentRequest = {
+  taskId: string;
+  sourcePath: string;
+};
+
 export type KanbanLinkRequest = {
   parentId: string;
   childId: string;

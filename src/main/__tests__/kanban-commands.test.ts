@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -336,5 +336,45 @@ describe('KanbanCommands archive worktree teardown', () => {
     store.setWorkspace(task.id, join(TEST_DIR, 'missing-wt'), `kanban/${task.id}`);
     expect(() => commands.setManualStatus(task.id, 'archived')).not.toThrow();
     expect(store.getTask(task.id)?.status).toBe('archived');
+  });
+});
+
+describe('KanbanCommands attachments', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  function srcFile(name: string): string {
+    const p = join(TEST_DIR, name);
+    writeFileSync(p, 'x');
+    return p;
+  }
+
+  it('addAttachment attaches a file, logs an event, and show() returns it', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const att = commands.addAttachment(task.id, srcFile('a.txt'));
+
+    const detail = commands.show(task.id);
+    expect(detail?.attachments.map((a) => a.id)).toContain(att.id);
+    expect(store.listEvents(task.id).some((e) => e.kind === 'attachment_added')).toBe(true);
+  });
+
+  it('removeAttachment deletes the row and logs an event', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const att = commands.addAttachment(task.id, srcFile('b.txt'));
+    commands.removeAttachment(att.id);
+
+    expect(commands.show(task.id)?.attachments).toHaveLength(0);
+    expect(store.listEvents(task.id).some((e) => e.kind === 'attachment_removed')).toBe(true);
+  });
+
+  it('addAttachment throws for a missing task', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.addAttachment('nope', srcFile('c.txt'))).toThrow();
   });
 });
