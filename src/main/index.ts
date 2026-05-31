@@ -833,7 +833,11 @@ void app.whenReady().then(async () => {
         logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
         mode,
         profile,
-        roster
+        roster,
+        attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
+          filename: a.filename,
+          storedPath: a.storedPath
+        }))
       });
     },
     config: buildDispatcherConfig(),
