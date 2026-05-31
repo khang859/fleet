@@ -324,7 +324,9 @@ export class KanbanCommands {
   }
 
   /** Compute the next ~3 fire times for a candidate schedule (drawer live preview). */
-  previewSchedule(input: ScheduleInput): { ok: true; next: number[] } | { ok: false; error: string } {
+  previewSchedule(
+    input: ScheduleInput
+  ): { ok: true; next: number[] } | { ok: false; error: string } {
     const v = validateSchedule(input);
     if (!v.ok) return { ok: false, error: v.error };
     const next: number[] = [];

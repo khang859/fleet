@@ -4,7 +4,22 @@ import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode, ScheduleInput } from '../../shared/kanban-types';
+import type {
+  Task,
+  TaskStatus,
+  CreateTaskInput,
+  TaskRun,
+  TaskEvent,
+  TaskComment,
+  TaskAttachment,
+  RunOutcome,
+  UpdateTaskFields,
+  BoardCard,
+  Board,
+  RunMode,
+  PendingMode,
+  ScheduleInput
+} from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
@@ -80,7 +95,7 @@ export class KanbanStore {
   }
 
   private addColumnIfMissing(table: string, column: string, decl: string): void {
-    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === column)) {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
     }
@@ -184,10 +199,10 @@ export class KanbanStore {
     const rows = filter.status
       ? (this.db
           .prepare('SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, created_at ASC')
-          .all(filter.status) as Record<string, unknown>[])
+          .all(filter.status) as Array<Record<string, unknown>>)
       : (this.db
           .prepare('SELECT * FROM tasks ORDER BY priority DESC, created_at ASC')
-          .all() as Record<string, unknown>[]);
+          .all() as Array<Record<string, unknown>>);
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -205,17 +220,19 @@ export class KanbanStore {
 
   parentsOf(childId: string): string[] {
     return (
-      this.db.prepare('SELECT parent_id FROM task_links WHERE child_id = ?').all(childId) as {
+      this.db.prepare('SELECT parent_id FROM task_links WHERE child_id = ?').all(childId) as Array<{
         parent_id: string;
-      }[]
+      }>
     ).map((r) => r.parent_id);
   }
 
   childrenOf(parentId: string): string[] {
     return (
-      this.db.prepare('SELECT child_id FROM task_links WHERE parent_id = ?').all(parentId) as {
+      this.db
+        .prepare('SELECT child_id FROM task_links WHERE parent_id = ?')
+        .all(parentId) as Array<{
         child_id: string;
-      }[]
+      }>
     ).map((r) => r.child_id);
   }
 
@@ -272,7 +289,7 @@ export class KanbanStore {
          WHERE l.child_id = t.id AND p.status != 'done'
        )`
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -341,7 +358,7 @@ export class KanbanStore {
   listRuns(taskId: string): TaskRun[] {
     const rows = this.db
       .prepare('SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at DESC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToRun(r));
   }
 
@@ -373,7 +390,7 @@ export class KanbanStore {
   listEvents(taskId: string): TaskEvent[] {
     const rows = this.db
       .prepare('SELECT * FROM task_events WHERE task_id=? ORDER BY id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       taskId: String(r.task_id),
@@ -395,7 +412,7 @@ export class KanbanStore {
   listComments(taskId: string): TaskComment[] {
     const rows = this.db
       .prepare('SELECT * FROM task_comments WHERE task_id=? ORDER BY id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       taskId: String(r.task_id),
@@ -459,7 +476,7 @@ export class KanbanStore {
   listAttachments(taskId: string): TaskAttachment[] {
     const rows = this.db
       .prepare('SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at ASC, id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToAttachment(r));
   }
 
@@ -521,9 +538,9 @@ export class KanbanStore {
   }
 
   runningTasks(): Task[] {
-    const rows = this.db
-      .prepare("SELECT * FROM tasks WHERE status='running'")
-      .all() as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM tasks WHERE status='running'").all() as Array<
+      Record<string, unknown>
+    >;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -532,7 +549,7 @@ export class KanbanStore {
       .prepare(
         "SELECT * FROM tasks WHERE status='ready' AND assignee IS NOT NULL ORDER BY priority DESC, created_at ASC"
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -542,7 +559,7 @@ export class KanbanStore {
       : this.listTasks();
     const commentRows = this.db
       .prepare('SELECT task_id, COUNT(*) AS c FROM task_comments GROUP BY task_id')
-      .all() as { task_id: string; c: number }[];
+      .all() as Array<{ task_id: string; c: number }>;
     const commentCounts = new Map(commentRows.map((r) => [r.task_id, Number(r.c)]));
     const childRows = this.db
       .prepare(
@@ -551,7 +568,7 @@ export class KanbanStore {
          FROM task_links l JOIN tasks c ON c.id = l.child_id
          GROUP BY l.parent_id`
       )
-      .all() as { parent: string; total: number; done: number }[];
+      .all() as Array<{ parent: string; total: number; done: number }>;
     const childMap = new Map(
       childRows.map((r) => [r.parent, { total: Number(r.total), done: Number(r.done) }])
     );
@@ -578,7 +595,7 @@ export class KanbanStore {
         `SELECT * FROM boards
          ORDER BY CASE WHEN slug='default' THEN 0 ELSE 1 END, created_at ASC, slug ASC`
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToBoard(r));
   }
 
@@ -687,9 +704,7 @@ export class KanbanStore {
 
   setWorkerPid(taskId: string, runId: number, pid: number): void {
     const ts = this.now();
-    this.db
-      .prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?')
-      .run(pid, ts, taskId);
+    this.db.prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?').run(pid, ts, taskId);
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
   }
 
@@ -711,7 +726,7 @@ export class KanbanStore {
       .prepare(
         "SELECT * FROM tasks WHERE status='triage' AND pending_mode IS NOT NULL ORDER BY priority DESC, created_at ASC"
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -738,7 +753,7 @@ export class KanbanStore {
         .prepare(
           "SELECT id FROM tasks WHERE status='triage' AND pending_mode IS NULL ORDER BY priority DESC, created_at ASC LIMIT ?"
         )
-        .all(limit) as { id: string }[]
+        .all(limit) as Array<{ id: string }>
     ).map((r) => r.id);
     for (const id of ids) this.setPendingMode(id, 'decompose');
     return ids.length;
@@ -829,7 +844,7 @@ export class KanbanStore {
            AND next_run_at IS NOT NULL AND next_run_at <= ?
          ORDER BY next_run_at ASC`
       )
-      .all(now) as Record<string, unknown>[];
+      .all(now) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 

@@ -49,6 +49,8 @@ export function taskToScheduleInput(task: Task): ScheduleInput | null {
         : null;
     case 'cron':
       return task.scheduleCron != null ? { kind: 'cron', expr: task.scheduleCron } : null;
+    case null:
+      return null;
     default:
       return null;
   }

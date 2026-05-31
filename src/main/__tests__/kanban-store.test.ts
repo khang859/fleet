@@ -496,7 +496,9 @@ describe('KanbanStore schema v6 migration', () => {
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
     );`);
     raw
-      .prepare(`INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (?, ?, 'todo', ?, ?)`)
+      .prepare(
+        `INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (?, ?, 'todo', ?, ?)`
+      )
       .run('legacy1', 'old task', 1, 1);
     raw.pragma('user_version = 5');
     raw.close();
@@ -603,8 +605,14 @@ describe('KanbanStore scheduling', () => {
     const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
     const board = store.createBoard('Ops');
     const tmpl = store.createTask({
-      title: 'nightly', body: 'do it', assignee: 'r', priority: 3, tenant: 'acme',
-      boardId: board.slug, skills: ['a'], maxRetries: 2
+      title: 'nightly',
+      body: 'do it',
+      assignee: 'r',
+      priority: 3,
+      tenant: 'acme',
+      boardId: board.slug,
+      skills: ['a'],
+      maxRetries: 2
     });
     store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 5000 });
     const inst = store.spawnScheduledInstance(store.getTask(tmpl.id)!);

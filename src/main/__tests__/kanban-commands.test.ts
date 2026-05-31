@@ -81,9 +81,7 @@ describe('KanbanCommands create/list/show', () => {
 
   it('rejects a worktree task with no repoPath', () => {
     const { commands } = makeCommands();
-    expect(() => commands.create({ title: 'no repo', workspaceKind: 'worktree' })).toThrow(
-      /repo/i
-    );
+    expect(() => commands.create({ title: 'no repo', workspaceKind: 'worktree' })).toThrow(/repo/i);
   });
 
   it('allows a scratch task with no repoPath', () => {

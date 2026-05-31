@@ -418,7 +418,9 @@ describe('KanbanDispatcher.fireSchedules', () => {
     clock.t = 1_050_001;
     const disp = makeDisp(store, clock, []);
     disp.fireSchedules();
-    const instances = store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id);
+    const instances = store
+      .listTasks({ status: 'todo' })
+      .filter((x) => x.scheduledFrom === tmpl.id);
     expect(instances.length).toBe(1);
     const after = store.getTask(tmpl.id)!;
     expect(after.status).toBe('scheduled');
@@ -434,7 +436,9 @@ describe('KanbanDispatcher.fireSchedules', () => {
     clock.t = 1_050_000 + 70_000; // 70s late > 60s grace
     const disp = makeDisp(store, clock, []);
     disp.fireSchedules();
-    const instances = store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id);
+    const instances = store
+      .listTasks({ status: 'todo' })
+      .filter((x) => x.scheduledFrom === tmpl.id);
     expect(instances.length).toBe(0);
     expect(store.getTask(tmpl.id)!.nextRunAt).toBe(clock.t + 50_000);
     store.close();
@@ -450,7 +454,9 @@ describe('KanbanDispatcher.fireSchedules', () => {
     const spawned: number[] = [];
     const disp = makeDisp(store, clock, spawned);
     disp.fireSchedules();
-    expect(store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id).length).toBe(0);
+    expect(
+      store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id).length
+    ).toBe(0);
     expect(store.getTask(tmpl.id)!.status).toBe('scheduled');
     store.close();
   });
