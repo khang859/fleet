@@ -646,6 +646,32 @@ describe('KanbanStore scheduling', () => {
   });
 });
 
+describe('KanbanStore.transaction', () => {
+  it('commits all writes when the function returns', () => {
+    const store = new KanbanStore(join(TEST_DIR, `tx-ok-${Math.random()}.db`));
+    const ids = store.transaction(() => {
+      const a = store.createTask({ title: 'a' });
+      const b = store.createTask({ title: 'b' });
+      store.addLink(a.id, b.id);
+      return [a.id, b.id];
+    });
+    expect(store.getTask(ids[0])).not.toBeNull();
+    expect(store.getTask(ids[1])).not.toBeNull();
+    expect(store.parentsOf(ids[1])).toEqual([ids[0]]);
+  });
+
+  it('rolls back every write when the function throws', () => {
+    const store = new KanbanStore(join(TEST_DIR, `tx-rollback-${Math.random()}.db`));
+    expect(() =>
+      store.transaction(() => {
+        store.createTask({ title: 'doomed' });
+        throw new Error('boom');
+      })
+    ).toThrow('boom');
+    expect(store.listTasks()).toHaveLength(0);
+  });
+});
+
 describe('KanbanStore attachments', () => {
   let store: KanbanStore;
   beforeEach(() => {

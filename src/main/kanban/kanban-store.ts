@@ -53,6 +53,11 @@ export class KanbanStore {
     log.info('kanban store opened', { dbPath });
   }
 
+  /** Run `fn` inside a single SQLite transaction. Rolls back if `fn` throws. */
+  transaction<T>(fn: () => T): T {
+    return this.db.transaction(fn)();
+  }
+
   private migrate(): void {
     this.db.exec(SCHEMA_SQL);
     const current = Number(this.db.pragma('user_version', { simple: true }));
