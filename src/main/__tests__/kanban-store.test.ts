@@ -28,8 +28,8 @@ describe('KanbanStore', () => {
     expect(store.schemaVersion()).toBe(3);
   });
 
-  it('fresh db is created at v2 with the new columns', () => {
-    // Fresh store is already v2; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v3 with the new columns', () => {
+    // Fresh store is already v3; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
