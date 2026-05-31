@@ -98,3 +98,45 @@ export function cleanupWorkspace(input: { kind: WorkspaceKind; path: string }): 
     rmSync(input.path, { recursive: true, force: true });
   }
 }
+
+/**
+ * Best-effort teardown of a worktree-kind workspace: remove the worktree dir
+ * and delete its branch. Never throws — archival must not be blocked by a git
+ * failure. Directory cleanup is independent of the git calls, so a moved or
+ * deleted repoPath does not leak the worktree dir.
+ */
+export function removeWorktree(input: {
+  repoPath: string;
+  workspacePath: string;
+  branchName: string | null;
+}): void {
+  try {
+    execFileSync(
+      'git',
+      ['-C', input.repoPath, 'worktree', 'remove', '--force', input.workspacePath],
+      { stdio: 'ignore' }
+    );
+  } catch {
+    // git remove failed (dir gone, repo moved, locked, ...). Clean the dir
+    // directly and prune the stale registration so nothing is leaked.
+    try {
+      rmSync(input.workspacePath, { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
+    try {
+      execFileSync('git', ['-C', input.repoPath, 'worktree', 'prune'], { stdio: 'ignore' });
+    } catch {
+      // best-effort
+    }
+  }
+  if (input.branchName) {
+    try {
+      execFileSync('git', ['-C', input.repoPath, 'branch', '-D', input.branchName], {
+        stdio: 'ignore'
+      });
+    } catch {
+      // branch already gone or never created
+    }
+  }
+}

@@ -13,6 +13,10 @@ import type {
   WorkspaceKind,
   PendingMode
 } from '../../shared/kanban-types';
+import { createLogger } from '../logger';
+import { removeWorktree } from './workspace';
+
+const log = createLogger('kanban-commands');
 
 /** Statuses a human may set manually (everything except dispatcher-owned `running`). */
 export const MANUAL_STATUSES: TaskStatus[] = [
@@ -110,6 +114,27 @@ export class KanbanCommands {
       to: status,
       by: 'user'
     });
+    // Archiving a worktree task tears down its worktree + branch (best-effort;
+    // removeWorktree never throws, but guard archival defensively regardless).
+    if (
+      status === 'archived' &&
+      task.workspaceKind === 'worktree' &&
+      task.workspacePath &&
+      task.repoPath
+    ) {
+      try {
+        removeWorktree({
+          repoPath: task.repoPath,
+          workspacePath: task.workspacePath,
+          branchName: task.branchName
+        });
+      } catch (err) {
+        log.warn('worktree removal on archive failed', {
+          taskId: id,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
   }
 
   ready(id: string): void {
