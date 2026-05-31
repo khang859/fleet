@@ -1,10 +1,11 @@
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields, BoardCard, RunMode, PendingMode } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, RunMode, PendingMode } from '../../shared/kanban-types';
+import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
 
 const log = createLogger('kanban-store');
 
@@ -17,11 +18,13 @@ export class KanbanStore {
   protected db: Database.Database;
   protected now: () => number;
   protected onEvent?: (event: TaskEvent) => void;
+  private attachmentsRoot: string;
 
   constructor(dbPath: string, opts: KanbanStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.onEvent = opts.onEvent;
     mkdirSync(dirname(dbPath), { recursive: true });
+    this.attachmentsRoot = join(dirname(dbPath), 'attachments');
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
@@ -361,6 +364,78 @@ export class KanbanStore {
       body: String(r.body),
       createdAt: Number(r.created_at)
     }));
+  }
+
+  private rowToAttachment(r: Record<string, unknown>): TaskAttachment {
+    return {
+      id: String(r.id),
+      taskId: String(r.task_id),
+      filename: String(r.filename),
+      storedPath: String(r.stored_path),
+      contentType: (r.content_type as string | null) ?? null,
+      size: Number(r.size),
+      createdAt: Number(r.created_at)
+    };
+  }
+
+  addAttachment(taskId: string, sourcePath: string): TaskAttachment {
+    const id = randomUUID().slice(0, 8);
+    const prepared = prepareAttachmentFile({
+      attachmentsRoot: this.attachmentsRoot,
+      taskId,
+      attachmentId: id,
+      sourcePath
+    });
+    const ts = this.now();
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO task_attachments (id, task_id, filename, stored_path, content_type, size, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          taskId,
+          prepared.filename,
+          prepared.storedPath,
+          prepared.contentType,
+          prepared.size,
+          ts
+        );
+    } catch (err) {
+      removeAttachmentFile(prepared.storedPath); // never leave an orphan file
+      throw err;
+    }
+    return {
+      id,
+      taskId,
+      filename: prepared.filename,
+      storedPath: prepared.storedPath,
+      contentType: prepared.contentType,
+      size: prepared.size,
+      createdAt: ts
+    };
+  }
+
+  listAttachments(taskId: string): TaskAttachment[] {
+    const rows = this.db
+      .prepare('SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at ASC, id ASC')
+      .all(taskId) as Record<string, unknown>[];
+    return rows.map((r) => this.rowToAttachment(r));
+  }
+
+  getAttachment(id: string): TaskAttachment | null {
+    const row = this.db.prepare('SELECT * FROM task_attachments WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToAttachment(row) : null;
+  }
+
+  removeAttachment(id: string): void {
+    const att = this.getAttachment(id);
+    if (!att) return;
+    removeAttachmentFile(att.storedPath);
+    this.db.prepare('DELETE FROM task_attachments WHERE id=?').run(id);
   }
 
   completeTask(taskId: string, result: string | null): void {

@@ -86,6 +86,16 @@ export interface TaskComment {
   createdAt: number;
 }
 
+export interface TaskAttachment {
+  id: string;
+  taskId: string;
+  filename: string;
+  storedPath: string;
+  contentType: string | null;
+  size: number;
+  createdAt: number;
+}
+
 export interface CreateTaskInput {
   title: string;
   body?: string;

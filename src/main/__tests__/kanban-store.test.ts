@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
@@ -385,5 +385,56 @@ describe('KanbanStore', () => {
       payload: { to: 'ready' },
       createdAt: 1000
     });
+  });
+});
+
+describe('KanbanStore attachments', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  function src(name: string, body = 'data'): string {
+    const p = join(TEST_DIR, name);
+    writeFileSync(p, body);
+    return p;
+  }
+
+  it('adds, lists, gets and removes an attachment', () => {
+    const task = store.createTask({ title: 't' });
+    const att = store.addAttachment(task.id, src('a.txt'));
+    expect(att.filename).toBe('a.txt');
+    expect(existsSync(att.storedPath)).toBe(true);
+
+    const list = store.listAttachments(task.id);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(att.id);
+
+    expect(store.getAttachment(att.id)?.storedPath).toBe(att.storedPath);
+
+    store.removeAttachment(att.id);
+    expect(store.listAttachments(task.id)).toHaveLength(0);
+    expect(existsSync(att.storedPath)).toBe(false);
+  });
+
+  it('two uploads of the same filename coexist on disk', () => {
+    const task = store.createTask({ title: 't' });
+    const a = store.addAttachment(task.id, src('dup.txt', 'one'));
+    const b = store.addAttachment(task.id, src('dup.txt', 'two'));
+    expect(a.storedPath).not.toBe(b.storedPath);
+    expect(store.listAttachments(task.id)).toHaveLength(2);
+  });
+
+  it('removeAttachment tolerates a missing on-disk file', () => {
+    const task = store.createTask({ title: 't' });
+    const att = store.addAttachment(task.id, src('gone.txt'));
+    rmSync(att.storedPath, { force: true });
+    expect(() => store.removeAttachment(att.id)).not.toThrow();
+    expect(store.getAttachment(att.id)).toBeNull();
   });
 });
