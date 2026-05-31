@@ -321,6 +321,90 @@ describe('fleet kanban --help', () => {
   });
 });
 
+// ── kanban decompose/specify CLI verbs ───────────────────────────────────────
+
+describe('kanban decompose/specify validation', () => {
+  it('kanban decompose requires a task id', () => {
+    expect(validateCommand('kanban.decompose', {})).toMatch(/requires a task id/i);
+    expect(validateCommand('kanban.decompose', { id: 't1' })).toBeNull();
+  });
+
+  it('kanban specify requires a task id', () => {
+    expect(validateCommand('kanban.specify', {})).toMatch(/requires a task id/i);
+    expect(validateCommand('kanban.specify', { id: 't1' })).toBeNull();
+  });
+
+  it('kanban help lists decompose and specify', () => {
+    const help = getHelpText(['kanban', '--help']);
+    expect(help).toContain('decompose');
+    expect(help).toContain('specify');
+  });
+});
+
+// Drives the server-side dispatch() routing for the new verbs over a real
+// SocketServer (mirrors the kanban watch test harness).
+describe('kanban decompose/specify dispatch (server-side)', () => {
+  function startServer(): {
+    server: SocketServer;
+    sockPath: string;
+    calls: { decompose: string[]; specify: string[] };
+  } {
+    const sockPath = join(
+      tmpdir(),
+      `fleet-decompose-${process.pid}-${Math.random().toString(36).slice(2)}.sock`
+    );
+    const calls = { decompose: [] as string[], specify: [] as string[] };
+    const stubKanban = {
+      requestDecompose: (id: string) => calls.decompose.push(id),
+      requestSpecify: (id: string) => calls.specify.push(id)
+    } as unknown as KanbanCommands;
+    const server = new SocketServer(sockPath, undefined, undefined, () => stubKanban);
+    return { server, sockPath, calls };
+  }
+
+  it('routes kanban.decompose to requestDecompose with the id', async () => {
+    const { server, sockPath, calls } = startServer();
+    await server.start();
+    try {
+      const cli = new FleetCLI(sockPath);
+      const res = await cli.send('kanban.decompose', { id: 't1' });
+      expect(res.ok).toBe(true);
+      expect(calls.decompose).toEqual(['t1']);
+      expect(calls.specify).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('routes kanban.specify to requestSpecify with the id', async () => {
+    const { server, sockPath, calls } = startServer();
+    await server.start();
+    try {
+      const cli = new FleetCLI(sockPath);
+      const res = await cli.send('kanban.specify', { id: 't2' });
+      expect(res.ok).toBe(true);
+      expect(calls.specify).toEqual(['t2']);
+      expect(calls.decompose).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  it('kanban.decompose without an id returns a BAD_REQUEST error', async () => {
+    const { server, sockPath, calls } = startServer();
+    await server.start();
+    try {
+      const cli = new FleetCLI(sockPath);
+      const res = await cli.send('kanban.decompose', {});
+      expect(res.ok).toBe(false);
+      expect(res.code).toBe('BAD_REQUEST');
+      expect(calls.decompose).toEqual([]);
+    } finally {
+      await server.stop();
+    }
+  });
+});
+
 // ── FleetCLI.send basic tests ─────────────────────────────────────────────────
 
 describe('FleetCLI.send', () => {
