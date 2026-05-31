@@ -3,7 +3,7 @@ import { URL } from 'url';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { RunMode } from '../../shared/kanban-types';
+import type { RunMode, SwarmInput, SwarmCreated } from '../../shared/kanban-types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 
 const log = createLogger('kanban-mcp');
@@ -133,6 +133,33 @@ const ORCHESTRATOR_EXTRA_TOOLS: McpTool[] = [
       properties: { task_id: { type: 'string' } },
       required: ['task_id']
     }
+  },
+  {
+    name: 'kanban_swarm',
+    description:
+      'Create a swarm graph: N parallel workers, a verifier gated on all workers, ' +
+      'and a synthesizer gated on the verifier. Inherits this task board.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        goal: { type: 'string' },
+        workers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              profile: { type: 'string' },
+              title: { type: 'string' },
+              skills: { type: 'array', items: { type: 'string' } }
+            },
+            required: ['profile', 'title']
+          }
+        },
+        verifier: { type: 'string' },
+        synthesizer: { type: 'string' }
+      },
+      required: ['goal', 'workers', 'verifier', 'synthesizer']
+    }
   }
 ];
 
@@ -164,8 +191,14 @@ export class KanbanMcpServer {
   private claimLocks = new Map<string, string>(); // token -> claim lock (for heartbeat)
 
   private store: KanbanStore;
+  private swarmHandler: ((input: SwarmInput) => SwarmCreated) | null = null;
   constructor(store: KanbanStore) {
     this.store = store;
+  }
+
+  /** Inject the swarm creation handler (KanbanCommands.createSwarm). */
+  setSwarmHandler(handler: (input: SwarmInput) => SwarmCreated): void {
+    this.swarmHandler = handler;
   }
 
   /** Register a per-run token; returns the token to embed in the worker's MCP url. */
@@ -404,6 +437,45 @@ export class KanbanMcpServer {
             by: 'orchestrator'
           });
           return this.text(res, rpcReq.id, 'Unblocked.');
+        }
+        case 'kanban_swarm': {
+          if (!this.swarmHandler) {
+            return this.rpcError(res, rpcReq.id, 'swarm creation is not available');
+          }
+          const a = z
+            .object({
+              goal: z.string(),
+              workers: z
+                .array(
+                  z.object({
+                    profile: z.string(),
+                    title: z.string(),
+                    skills: z.array(z.string()).optional()
+                  })
+                )
+                .min(1),
+              verifier: z.string(),
+              synthesizer: z.string()
+            })
+            .parse(args);
+          const inheritRepo =
+            task.workspaceKind === 'worktree' && task.repoPath
+              ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
+              : {};
+          const created = this.swarmHandler({
+            goal: a.goal,
+            workers: a.workers.map((w) => ({
+              profile: w.profile,
+              title: w.title,
+              skills: w.skills ?? []
+            })),
+            verifierAssignee: a.verifier,
+            synthesizerAssignee: a.synthesizer,
+            boardId: task.boardId,
+            createdBy: author,
+            ...inheritRepo
+          });
+          return this.text(res, rpcReq.id, JSON.stringify(created));
         }
         case 'kanban_update': {
           const a = z.object({ title: z.string().optional(), body: z.string() }).parse(args);

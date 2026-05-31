@@ -316,6 +316,37 @@ describe('KanbanMcpServer', () => {
     expect(bb.topology.kind).toBe('kanban_swarm_v1');
   });
 
+  it('kanban_swarm creation routes through the injected handler with the scope board', async () => {
+    let receivedBoard: string | undefined;
+    server.setSwarmHandler((input) => {
+      receivedBoard = input.boardId;
+      return { rootId: 'r1', workerIds: ['w1'], verifierId: 'v1', synthesizerId: 's1' };
+    });
+    const orch = store.createTask({
+      title: 'orch',
+      status: 'ready',
+      assignee: 'orchestrator',
+      boardId: 'default'
+    });
+    store.claimTask(orch.id, 'LOCK', 100000);
+    const run = store.startRun(orch.id, 'orchestrator', 1);
+    server.registerRun('tokorch', { taskId: orch.id, runId: run.id, mode: 'decompose' }, 'LOCK');
+
+    const r = await rpc(`${base}?run=tokorch`, 'tools/call', {
+      name: 'kanban_swarm',
+      arguments: {
+        goal: 'plan it',
+        workers: [{ profile: 'researcher', title: 'Research' }],
+        verifier: 'reviewer',
+        synthesizer: 'writer'
+      }
+    });
+    const out = JSON.parse(r.result.content[0].text);
+    expect(out.rootId).toBe('r1');
+    expect(out.workerIds).toEqual(['w1']);
+    expect(receivedBoard).toBe('default');
+  });
+
   it('kanban_swarm_read rejects a non-swarm-root id', async () => {
     const plain = store.createTask({ title: 'plain', status: 'ready', assignee: 'r' });
     store.claimTask(plain.id, 'LOCK', 100000);

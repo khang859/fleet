@@ -886,6 +886,7 @@ void app.whenReady().then(async () => {
     },
     () => settingsStore.get().kanban.profiles
   );
+  kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
   registerKanbanIpc(kanbanCommands);
   setKanbanSettingsApplier(() => {
     kanbanDispatcher?.reconfigure(
