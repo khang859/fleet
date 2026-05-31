@@ -25,6 +25,9 @@ type KanbanState = {
   nudge: () => Promise<void>;
   decompose: (id: string) => Promise<void>;
   specify: (id: string) => Promise<void>;
+  uploadAttachments: (taskId: string, sourcePaths: string[]) => Promise<void>;
+  removeAttachment: (id: string) => Promise<void>;
+  saveAttachmentCopy: (id: string) => Promise<void>;
 };
 
 export const useKanbanStore = create<KanbanState>((set, get) => ({
@@ -88,5 +91,18 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     await window.fleet.kanban.specify(id);
     await get().loadBoard();
     await get().refreshDetail();
+  },
+  uploadAttachments: async (taskId, sourcePaths) => {
+    for (const p of sourcePaths) {
+      await window.fleet.kanban.addAttachment({ taskId, sourcePath: p });
+    }
+    await get().refreshDetail();
+  },
+  removeAttachment: async (id) => {
+    await window.fleet.kanban.removeAttachment(id);
+    await get().refreshDetail();
+  },
+  saveAttachmentCopy: async (id) => {
+    await window.fleet.kanban.saveAttachmentCopy(id);
   }
 }));
