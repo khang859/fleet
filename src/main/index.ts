@@ -788,8 +788,11 @@ void app.whenReady().then(async () => {
         kind: task.workspaceKind,
         taskId: task.id,
         workspacesRoot: join(KANBAN_HOME, 'workspaces'),
-        path: task.workspacePath ?? undefined
-      }),
+        worktreesRoot: join(KANBAN_HOME, 'worktrees'),
+        workspacePath: task.workspacePath ?? undefined,
+        repoPath: task.repoPath ?? undefined,
+        branchName: task.branchName ?? undefined
+      }).path,
     spawnWorker: ({ task, runId, lock, workspace, mode }) => {
       const runToken = randomUUID();
       kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode }, lock);
