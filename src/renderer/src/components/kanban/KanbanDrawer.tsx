@@ -2,12 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { X, Paperclip, Download } from 'lucide-react';
+import { X, Paperclip, Download, Clock } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
-import { relativeTime, formatDuration, formatBytes } from './kanban-utils';
-import type { TaskStatus } from '../../../../shared/kanban-types';
+import {
+  relativeTime,
+  formatDuration,
+  formatBytes,
+  scheduleSummary,
+  formatNextRun
+} from './kanban-utils';
+import type { TaskStatus, ScheduleInput } from '../../../../shared/kanban-types';
 
 const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'ready', label: '→ Ready' },
@@ -30,7 +36,11 @@ export function KanbanDrawer(): React.JSX.Element | null {
     specify,
     uploadAttachments,
     removeAttachment,
-    saveAttachmentCopy
+    saveAttachmentCopy,
+    setSchedule,
+    clearSchedule,
+    pauseSchedule,
+    resumeSchedule
   } = useKanbanStore();
   const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
   const settingsLoaded = useSettingsStore((s) => s.settings !== null);
@@ -44,6 +54,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [attachError, setAttachError] = useState<string | null>(null);
   const dragCounter = useRef(0);
   const seededIdRef = useRef<string | null>(null);
+  const [schedKind, setSchedKind] = useState<'once' | 'interval' | 'cron'>('interval');
+  const [schedAt, setSchedAt] = useState(''); // datetime-local string
+  const [schedEveryN, setSchedEveryN] = useState(1);
+  const [schedUnit, setSchedUnit] = useState<'minutes' | 'hours' | 'days'>('hours');
+  const [schedCron, setSchedCron] = useState('0 9 * * *');
+  const [schedPreview, setSchedPreview] = useState<number[]>([]);
+  const [schedError, setSchedError] = useState<string | null>(null);
 
   useEffect(() => {
     if (detail && detail.task.id !== seededIdRef.current) {
@@ -68,6 +85,51 @@ export function KanbanDrawer(): React.JSX.Element | null {
       priority,
       tenant: tenant.trim() === '' ? null : tenant.trim()
     });
+  }
+
+  const UNIT_MS = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 } as const;
+
+  function buildScheduleInput(): ScheduleInput | null {
+    if (schedKind === 'once') {
+      const ms = Date.parse(schedAt);
+      if (Number.isNaN(ms)) return null;
+      return { kind: 'once', at: ms };
+    }
+    if (schedKind === 'interval') {
+      return { kind: 'interval', everyMs: Math.max(1, schedEveryN) * UNIT_MS[schedUnit] };
+    }
+    return { kind: 'cron', expr: schedCron.trim() };
+  }
+
+  async function refreshPreview(): Promise<void> {
+    const input = buildScheduleInput();
+    if (!input) {
+      setSchedPreview([]);
+      setSchedError('enter a valid date/time');
+      return;
+    }
+    const res = await window.fleet.kanban.previewSchedule(input);
+    if (res.ok) {
+      setSchedPreview(res.next);
+      setSchedError(null);
+    } else {
+      setSchedPreview([]);
+      setSchedError(res.error);
+    }
+  }
+
+  async function applySchedule(): Promise<void> {
+    const input = buildScheduleInput();
+    if (!input) {
+      setSchedError('enter a valid date/time');
+      return;
+    }
+    try {
+      await setSchedule(t.id, input);
+      setSchedError(null);
+    } catch (err) {
+      setSchedError(err instanceof Error ? err.message : 'could not set schedule');
+    }
   }
 
   async function pickAndUpload(): Promise<void> {
@@ -341,6 +403,131 @@ export function KanbanDrawer(): React.JSX.Element | null {
             </p>
           )}
         </section>
+
+        {/* Schedule */}
+        {!running && (
+          <section>
+            <h3 className="mb-1 flex items-center gap-1 font-semibold text-neutral-400">
+              <Clock size={12} /> Schedule
+            </h3>
+            {t.scheduleKind ? (
+              <div className="rounded border border-neutral-800 bg-neutral-950 p-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-indigo-300">{scheduleSummary(t)}</span>
+                  <span className="text-[10px] text-neutral-500">
+                    next {formatNextRun(t.nextRunAt)}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {t.scheduleKind !== 'once' &&
+                    (t.schedulePaused ? (
+                      <button
+                        onClick={() => void resumeSchedule(t.id)}
+                        className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                      >
+                        Resume
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => void pauseSchedule(t.id)}
+                        className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                      >
+                        Pause
+                      </button>
+                    ))}
+                  <button
+                    onClick={() => void clearSchedule(t.id)}
+                    className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                  >
+                    Clear schedule
+                  </button>
+                </div>
+                {t.schedulePaused && (
+                  <p className="mt-1 text-[10px] text-amber-400">Paused — will not fire.</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2 rounded border border-neutral-800 bg-neutral-950 p-2">
+                <select
+                  value={schedKind}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === 'once' || v === 'interval' || v === 'cron') setSchedKind(v);
+                    setSchedPreview([]);
+                    setSchedError(null);
+                  }}
+                  className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
+                >
+                  <option value="once">Once (at a time)</option>
+                  <option value="interval">Repeat every…</option>
+                  <option value="cron">Cron expression</option>
+                </select>
+
+                {schedKind === 'once' && (
+                  <input
+                    type="datetime-local"
+                    value={schedAt}
+                    onChange={(e) => setSchedAt(e.target.value)}
+                    className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
+                  />
+                )}
+                {schedKind === 'interval' && (
+                  <div className="flex gap-1">
+                    <input
+                      type="number"
+                      min={1}
+                      value={schedEveryN}
+                      onChange={(e) => setSchedEveryN(Math.max(1, Number(e.target.value)))}
+                      className="w-16 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
+                    />
+                    <select
+                      value={schedUnit}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'minutes' || v === 'hours' || v === 'days') setSchedUnit(v);
+                      }}
+                      className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
+                    >
+                      <option value="minutes">minutes</option>
+                      <option value="hours">hours</option>
+                      <option value="days">days</option>
+                    </select>
+                  </div>
+                )}
+                {schedKind === 'cron' && (
+                  <input
+                    value={schedCron}
+                    onChange={(e) => setSchedCron(e.target.value)}
+                    placeholder="0 9 * * *"
+                    className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 font-mono outline-none focus:border-blue-500"
+                  />
+                )}
+
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => void refreshPreview()}
+                    className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                  >
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => void applySchedule()}
+                    className="rounded bg-blue-600 px-2 py-1 text-white hover:bg-blue-500"
+                  >
+                    Set schedule
+                  </button>
+                </div>
+
+                {schedPreview.length > 0 && (
+                  <div className="text-[10px] text-neutral-500">
+                    Next: {schedPreview.map((n) => formatNextRun(n)).join(' · ')}
+                  </div>
+                )}
+                {schedError && <p className="text-[10px] text-red-400">{schedError}</p>}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Run history */}
         <section>
