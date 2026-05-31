@@ -26,7 +26,8 @@ describe('buildWorkerInvocation', () => {
       mcpPort: 5599,
       runToken: 'tok-abc',
       logPath: join(ROOT, 'abc.log'),
-      mode: 'work'
+      mode: 'work',
+      profile: { name: 'researcher', role: 'worker', model: '', skills: [], instructions: 'do it' }
     });
 
     expect(inv.command).toBe('rune');
@@ -180,11 +181,31 @@ describe('buildWorkerInvocation', () => {
       mcpPort: 1234,
       runToken: 'tok',
       logPath: join(ROOT, 'r.log'),
-      mode: 'work'
+      mode: 'work',
+      // index.ts always passes a resolveWorkProfile-vetted worker profile for work runs.
+      profile: { name: 'default', role: 'worker', model: '', skills: [], instructions: 'do it' }
     });
     const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
     expect(prompt).toMatch(/^work kanban task t3/);
     expect(inv.args[inv.args.indexOf('--profile') + 1]).toBe('default');
+  });
+
+  it('does not fall back to the assignee name as --profile for a work run with no resolved profile', () => {
+    // When no worker profile exists, index.ts resolves profile=null for a work run. The
+    // invocation must NOT fall back to --profile <assignee> (an orchestrator persona), which
+    // would run a work task as an orchestrator and loop until give-up.
+    const workspace = join(ROOT, 'wsnp');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'np', title: 't', body: 'b', assignee: 'orchestrator', modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'np.log'),
+      mode: 'work',
+      profile: null
+    });
+    expect(inv.args).not.toContain('--profile');
   });
 
   it('includes a work-mode Attachments section with absolute paths', () => {
