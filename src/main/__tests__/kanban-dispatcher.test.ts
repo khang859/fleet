@@ -28,7 +28,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('ready');
@@ -48,7 +48,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('blocked');
@@ -66,7 +66,7 @@ describe('KanbanDispatcher.reclaim', () => {
       now: () => clock.t,
       isAlive: () => false, // pid dead
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 30_000, maxInProgress: 3, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 30_000, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('ready');
@@ -88,7 +88,7 @@ describe('KanbanDispatcher.promote', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.promote();
     expect(store.getTask(c.id)?.status).toBe('ready');
@@ -105,7 +105,7 @@ describe('KanbanDispatcher.promote', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => undefined,
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.promote();
     expect(store.getTask(c.id)?.status).toBe('todo');
@@ -129,7 +129,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         spawned.push(args.task.id);
         return 12345;
       },
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 },
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
     disp.claimAndSpawn();
@@ -157,7 +157,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         spawnCount += 1;
         return 1;
       },
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 2, claimTtlMs: 1000 },
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 2, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
     disp.claimAndSpawn();
@@ -175,7 +175,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
       spawnWorker: () => {
         throw new Error('spawn boom');
       },
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 },
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
     disp.claimAndSpawn();
@@ -185,6 +185,115 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
     expect(runs.length).toBe(1);
     expect(runs[0].status).toBe('finished');
     expect(runs[0].outcome).toBe('spawn_failed');
+    store.close();
+  });
+});
+
+const baseConfig = {
+  failureLimit: 2,
+  claimGraceMs: 0,
+  maxInProgress: 3,
+  claimTtlMs: 1000,
+  autoDecompose: false,
+  maxDecompose: 1
+};
+
+describe('KanbanDispatcher.decompose', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('claims a flagged triage task and spawns an orchestrator run', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'big', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push({ id: args.task.id, mode: args.mode });
+        return 4242;
+      },
+      config: { ...baseConfig },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.decompose();
+    expect(spawned).toEqual([{ id: t.id, mode: 'decompose' }]);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+    store.close();
+  });
+
+  it('respects the maxDecompose cap', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    for (let i = 0; i < 3; i++) {
+      const t = store.createTask({ title: `t${i}`, status: 'triage' });
+      store.setPendingMode(t.id, 'decompose');
+    }
+    let count = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => (count++, 1),
+      config: { ...baseConfig, maxDecompose: 2 },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.decompose();
+    expect(count).toBe(2);
+    store.close();
+  });
+
+  it('auto_decompose arms triage tasks only when enabled', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'a', status: 'triage' });
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoDecompose: true, maxDecompose: 1 },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.decompose();
+    expect(store.getTask(t.id)?.status).toBe('running');
+    store.close();
+  });
+
+  it('auto_decompose does not arm triage tasks when disabled', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    store.createTask({ title: 'a', status: 'triage' });
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoDecompose: false, maxDecompose: 1 },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.decompose();
+    expect(store.runningTasks().length).toBe(0);
+    expect(store.pendingDecomposeTasks().length).toBe(0);
+    store.close();
+  });
+
+  it('reclaim returns a dead orchestrator run to triage', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'big', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    store.claimForDecompose(t.id, 'L', 100);
+    store.startRun(t.id, 'orchestrator', 9999, 'decompose');
+    clock.t = 2000; // claim expired
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig }
+    });
+    disp.reclaim();
+    expect(store.getTask(t.id)?.status).toBe('triage');
     store.close();
   });
 });
@@ -202,12 +311,12 @@ describe('KanbanDispatcher.reconfigure', () => {
       now: () => clock.t,
       isAlive: () => true,
       spawnWorker: () => ++spawned,
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 }
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
     });
     disp.claimAndSpawn();
     expect(spawned).toBe(1); // cap of 1
 
-    disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }, 5000);
+    disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }, 5000);
     disp.claimAndSpawn();
     expect(spawned).toBe(3); // remaining 2 ready tasks now allowed
     store.close();
@@ -218,7 +327,7 @@ describe('KanbanDispatcher.reconfigure', () => {
     try {
       const clock = { t: 1000 };
       const store = makeStore(clock);
-      const cfg = { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 };
+      const cfg = { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 };
       const disp = new KanbanDispatcher(store, {
         now: () => clock.t,
         isAlive: () => true,
@@ -257,10 +366,10 @@ describe('KanbanDispatcher.reconfigure', () => {
         now: () => clock.t,
         isAlive: () => true,
         spawnWorker: () => 1,
-        config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000 },
+        config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 1, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 },
         intervalMs: 5000
       });
-      disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 2, claimTtlMs: 1000 }, 8000);
+      disp.reconfigure({ failureLimit: 2, claimGraceMs: 0, maxInProgress: 2, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }, 8000);
       expect(setSpy).not.toHaveBeenCalled();
       store.close();
     } finally {

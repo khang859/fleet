@@ -1,6 +1,6 @@
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { Task } from '../../shared/kanban-types';
+import type { Task, RunMode } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -11,6 +11,7 @@ export interface SpawnWorkerArgs {
   runId: number;
   lock: string;
   workspace: string;
+  mode: RunMode;
 }
 
 export interface DispatcherConfig {
@@ -18,6 +19,8 @@ export interface DispatcherConfig {
   claimGraceMs: number; // protect freshly-spawned workers from reclaim
   maxInProgress: number; // concurrency cap
   claimTtlMs: number; // claim lease length
+  autoDecompose: boolean; // automatically arm triage tasks for decompose
+  maxDecompose: number; // max concurrent orchestrator runs
 }
 
 export interface DispatcherDeps {
@@ -61,7 +64,9 @@ export class KanbanDispatcher {
         this.store.appendEvent(task.id, null, 'gave_up', { reason });
         log.warn('task gave up', { taskId: task.id, failures });
       } else {
-        this.store.returnToReady(task.id);
+        const mode = task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
+        if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
+        else this.store.returnToReady(task.id);
       }
     }
   }
@@ -98,7 +103,7 @@ export class KanbanDispatcher {
           : (task.workspacePath ?? '');
         const run = this.store.startRun(task.id, task.assignee, null);
         runId = run.id;
-        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace });
+        pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'work' });
         if (pid != null) {
           this.store.setWorkerPid(task.id, run.id, pid);
         }
@@ -117,8 +122,45 @@ export class KanbanDispatcher {
     }
   }
 
+  /** Claim flagged triage tasks and spawn orchestrator (decompose/specify) runs. */
+  decompose(): void {
+    let slots = this.deps.config.maxDecompose - this.store.orchestratorRunningCount();
+    if (slots <= 0) return;
+    if (this.deps.config.autoDecompose) {
+      this.store.armTriageForDecompose(slots);
+    }
+    const ttl = this.deps.config.claimTtlMs;
+    for (const task of this.store.pendingDecomposeTasks()) {
+      if (slots <= 0) break;
+      const mode = task.pendingMode;
+      if (mode == null) continue;
+      const lock = this.nextLock();
+      if (!this.store.claimForDecompose(task.id, lock, ttl)) continue; // lost the race
+      let runId: number | null = null;
+      try {
+        const workspace = this.deps.prepareWorkspaceFn
+          ? this.deps.prepareWorkspaceFn(task)
+          : (task.workspacePath ?? '');
+        const run = this.store.startRun(task.id, 'orchestrator', null, mode);
+        runId = run.id;
+        const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode });
+        if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+        this.store.appendEvent(task.id, run.id, 'spawned', { pid: pid ?? null, mode });
+        slots -= 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.store.recordFailure(task.id, msg);
+        if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+        this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg });
+        this.store.setStatusCleared(task.id, 'triage');
+        log.error('decompose spawn failed', { taskId: task.id, error: msg });
+      }
+    }
+  }
+
   tick(): void {
     this.reclaim();
+    this.decompose();
     this.promote();
     this.claimAndSpawn();
   }

@@ -15,7 +15,7 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
     now: () => 0,
     isAlive: () => true,
     spawnWorker: () => undefined,
-    config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 }
+    config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 }
   });
   const commands = new KanbanCommands(store, dispatcher, () => ({
     workspaceKind: 'worktree',
@@ -215,7 +215,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         spawned.push(a.task.id);
         return 123;
       },
-      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000 },
+      config: { failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000, autoDecompose: false, maxDecompose: 1 },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
     const commands = new KanbanCommands(store, dispatcher, () => ({
