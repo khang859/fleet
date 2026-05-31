@@ -36,6 +36,7 @@ import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import type { PiPlanOpenPayload } from '../../shared/ipc-api';
+import { useKanbanAttention } from './hooks/useKanbanAttention';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
@@ -78,6 +79,7 @@ function killClosedTabPtys(paneIds: string[]): void {
 export function App(): React.JSX.Element {
   usePaneNavigation();
   useNotifications();
+  useKanbanAttention();
   const { loadSettings } = useSettingsStore();
   const initRef = useRef(false);
   const [showUndoToast, setShowUndoToast] = useState(false);
