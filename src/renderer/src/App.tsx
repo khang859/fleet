@@ -493,6 +493,18 @@ export function App(): React.JSX.Element {
     }, 0);
   }, []);
 
+  // Prevent stray file drops from navigating the renderer to a file:// URL.
+  // Existing dropzones call preventDefault in their own handlers and are unaffected.
+  useEffect(() => {
+    const prevent = (e: DragEvent): void => e.preventDefault();
+    window.addEventListener('dragover', prevent);
+    window.addEventListener('drop', prevent);
+    return () => {
+      window.removeEventListener('dragover', prevent);
+      window.removeEventListener('drop', prevent);
+    };
+  }, []);
+
   // Periodic GC: kill orphaned PTYs that have no corresponding pane in the workspace
   useEffect(() => {
     const interval = setInterval(() => {
