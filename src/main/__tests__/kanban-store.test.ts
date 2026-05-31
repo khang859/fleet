@@ -64,6 +64,33 @@ describe('KanbanStore', () => {
     s.close();
   });
 
+  it('upgrades a genuine pre-v5 db (tasks without board_id) to v5', () => {
+    const preV5Path = join(TEST_DIR, 'pre-v5.db');
+    // Build a real pre-v5 tasks table WITHOUT board_id / boards / idx_tasks_board.
+    // Must NOT use SCHEMA_SQL — it already includes board_id, which hides this bug.
+    const raw = new Database(preV5Path);
+    raw.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL, assignee TEXT,
+        body TEXT, priority INTEGER NOT NULL DEFAULT 0, idempotency_key TEXT,
+        skills TEXT NOT NULL DEFAULT '[]',
+        pending_mode TEXT, repo_path TEXT, workspace_kind TEXT, workspace_path TEXT,
+        branch_name TEXT, worker_pid INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+    `);
+    raw.exec(
+      "INSERT INTO tasks (id,title,status,created_at,updated_at) VALUES ('abc','old task','todo',1,1)"
+    );
+    raw.pragma('user_version = 4');
+    raw.close();
+
+    const s = new KanbanStore(preV5Path);
+    expect(s.schemaVersion()).toBe(5);
+    expect(s.getTask('abc')?.boardId).toBe('default');
+    expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
+    s.close();
+  });
+
   it('upgrades a v1 db to v2 (adds missing columns)', () => {
     const v1Path = join(TEST_DIR, 'v1.db');
     // Simulate a v1 DB: full current schema minus the two v2 columns.

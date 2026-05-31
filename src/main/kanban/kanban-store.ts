@@ -52,6 +52,9 @@ export class KanbanStore {
     if (current < 5) {
       // Additive: DBs created before v5 lack the board column.
       this.addColumnIfMissing('tasks', 'board_id', "TEXT NOT NULL DEFAULT 'default'");
+      // Index must be created AFTER the column exists (it can't live in SCHEMA_SQL,
+      // which runs before this block against a pre-v5 tasks table).
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(board_id)');
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
