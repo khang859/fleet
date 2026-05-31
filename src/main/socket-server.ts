@@ -6,7 +6,8 @@ import type { ImageService } from './image-service';
 import type { AnnotateService } from './annotate-service';
 import type { ImageProviderSettings } from '../shared/types';
 import type { KanbanCommands } from './kanban/kanban-commands';
-import type { TaskStatus, CreateTaskInput } from '../shared/kanban-types';
+import type { TaskStatus, CreateTaskInput, SwarmWorkerSpec } from '../shared/kanban-types';
+import { parseWorkerArg } from './kanban/kanban-swarm';
 import { CodedError } from './errors';
 
 type Request = {
@@ -448,6 +449,36 @@ export class SocketServer extends EventEmitter {
         const task = k.create(input);
         this.emit('state-change', 'kanban:changed', { id: task.id });
         return task;
+      }
+      case 'kanban.swarm': {
+        const k = this.requireKanban();
+        const goal = typeof args.goal === 'string' ? args.goal : undefined;
+        if (!goal) throw new CodedError('kanban swarm requires a goal', 'BAD_REQUEST');
+        const verifier = typeof args.verifier === 'string' ? args.verifier : undefined;
+        const synthesizer = typeof args.synthesizer === 'string' ? args.synthesizer : undefined;
+        if (!verifier) throw new CodedError('kanban swarm requires --verifier', 'BAD_REQUEST');
+        if (!synthesizer)
+          throw new CodedError('kanban swarm requires --synthesizer', 'BAD_REQUEST');
+        const rawWorkers = Array.isArray(args.worker)
+          ? (args.worker as unknown[]).map(String)
+          : typeof args.worker === 'string'
+            ? [args.worker]
+            : [];
+        if (rawWorkers.length === 0) {
+          throw new CodedError('kanban swarm requires at least one --worker', 'BAD_REQUEST');
+        }
+        const workers: SwarmWorkerSpec[] = rawWorkers.map((w) => parseWorkerArg(w));
+        const created = k.createSwarm({
+          goal,
+          workers,
+          verifierAssignee: verifier,
+          synthesizerAssignee: synthesizer,
+          ...(typeof args.repo === 'string'
+            ? { workspaceKind: 'worktree' as const, repoPath: args.repo }
+            : {})
+        });
+        this.emit('state-change', 'kanban:changed', { id: created.rootId });
+        return created;
       }
       case 'kanban.list': {
         const k = this.requireKanban();

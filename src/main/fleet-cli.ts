@@ -101,7 +101,7 @@ export function parseArgs(argv: string[]): Record<string, unknown> {
       const next = argv[i + 1];
 
       if (next !== undefined && !next.startsWith('--')) {
-        if (key === 'depends-on' || key === 'images') {
+        if (key === 'depends-on' || key === 'images' || key === 'worker') {
           // Accumulate into array for repeated flags
           const existing = result[key];
           result[key] =
@@ -339,6 +339,17 @@ export function validateCommand(command: string, args: Record<string, unknown>):
         return 'Error: kanban create requires --title.\n\nUsage: fleet kanban create --title "..." [--assignee <profile>] [--priority <n>] [--body "..."] [--workspace <scratch|dir|worktree>] [--repo <path>]';
       if (args.workspace === 'worktree' && !args.repo)
         return 'Error: kanban create --workspace worktree requires --repo <path>.\n\nUsage: fleet kanban create --title "..." --workspace worktree --repo <path>';
+      return null;
+
+    case 'kanban.swarm':
+      if (!args.goal)
+        return 'Error: kanban swarm requires a goal.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title[:skillA,skillB]> [--worker ...] --verifier <profile> --synthesizer <profile>';
+      if (!args.worker)
+        return 'Error: kanban swarm requires at least one --worker.\n\nUsage: fleet kanban swarm "<goal>" --worker <profile:title> --verifier <profile> --synthesizer <profile>';
+      if (!args.verifier)
+        return 'Error: kanban swarm requires --verifier <profile>.';
+      if (!args.synthesizer)
+        return 'Error: kanban swarm requires --synthesizer <profile>.';
       return null;
 
     case 'kanban.show':
@@ -939,6 +950,10 @@ export async function runCLI(
     if ((action === 'link' || action === 'unlink') && positionals.length >= 2) {
       args.parentId = positionals[0];
       args.childId = positionals[1];
+      delete args.id;
+    }
+    if (action === 'swarm' && positionals.length >= 1) {
+      args.goal = positionals.join(' ');
       delete args.id;
     }
   }

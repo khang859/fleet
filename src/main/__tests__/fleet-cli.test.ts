@@ -59,6 +59,19 @@ describe('parseArgs', () => {
   });
 });
 
+describe('parseArgs repeatable --worker', () => {
+  it('accumulates multiple --worker flags into an array', () => {
+    const args = parseArgs(['--worker', 'a:t1', '--worker', 'b:t2', '--verifier', 'v']);
+    expect(args.worker).toEqual(['a:t1', 'b:t2']);
+    expect(args.verifier).toBe('v');
+  });
+
+  it('keeps a single --worker as a string', () => {
+    const args = parseArgs(['--worker', 'a:t1']);
+    expect(args.worker).toBe('a:t1');
+  });
+});
+
 // ── validateCommand tests ─────────────────────────────────────────────────────
 
 describe('validateCommand', () => {
