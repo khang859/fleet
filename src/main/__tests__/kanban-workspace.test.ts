@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { prepareWorkspace, cleanupWorkspace } from '../kanban/workspace';
+import { prepareWorkspace, cleanupWorkspace, removeWorktree } from '../kanban/workspace';
 
 const ROOT = join(tmpdir(), `fleet-kanban-ws-test-${process.pid}`);
 const WT_ROOT = join(ROOT, 'worktrees');
@@ -170,5 +170,58 @@ describe('kanban workspace', () => {
         repoPath: notRepo
       })
     ).toThrow();
+  });
+
+  it('removeWorktree removes the worktree dir and deletes its branch', () => {
+    const repo = makeRepo('rm1');
+    const { path, branchName } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'r1',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    expect(existsSync(path)).toBe(true);
+    removeWorktree({ repoPath: repo, workspacePath: path, branchName });
+    expect(existsSync(path)).toBe(false);
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r1'], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).toBe('');
+  });
+
+  it('removeWorktree force-removes a worktree with uncommitted changes', () => {
+    const repo = makeRepo('rm2');
+    const { path, branchName } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'r2',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    writeFileSync(join(path, 'dirty.txt'), 'uncommitted');
+    removeWorktree({ repoPath: repo, workspacePath: path, branchName });
+    expect(existsSync(path)).toBe(false);
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r2'], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).toBe('');
+  });
+
+  it('removeWorktree does not throw when the dir was deleted out-of-band, and still drops the branch', () => {
+    const repo = makeRepo('rm3');
+    const { path, branchName } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'r3',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    rmSync(path, { recursive: true, force: true }); // simulate manual deletion
+    expect(() => removeWorktree({ repoPath: repo, workspacePath: path, branchName })).not.toThrow();
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r3'], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).toBe('');
   });
 });
