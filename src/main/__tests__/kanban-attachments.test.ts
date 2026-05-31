@@ -27,6 +27,7 @@ describe('kanban attachments helper', () => {
     expect(sanitizeFilename('../../etc/passwd')).toBe('passwd');
     expect(sanitizeFilename('a/b/c.txt')).toBe('c.txt');
     expect(sanitizeFilename('evil\nname.txt')).toBe('evilname.txt');
+    expect(sanitizeFilename('a`b```c.txt')).toBe('abc.txt');
     expect(sanitizeFilename('')).toBe('file');
   });
 

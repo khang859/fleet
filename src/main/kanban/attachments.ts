@@ -29,7 +29,7 @@ export function contentTypeFor(filename: string): string | null {
 export function sanitizeFilename(name: string): string {
   const base = basename(name);
   // eslint-disable-next-line no-control-regex
-  const cleaned = base.replace(/[\x00-\x1f\x7f/\\]/g, '').trim();
+  const cleaned = base.replace(/[\x00-\x1f\x7f/\\`]/g, '').trim();
   return cleaned.length > 0 ? cleaned : 'file';
 }
 
