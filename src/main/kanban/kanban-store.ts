@@ -1,28 +1,33 @@
 import Database from 'better-sqlite3';
-import { mkdirSync } from 'fs';
+import { mkdirSync, rmSync } from 'fs';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, RunMode, PendingMode } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode } from '../../shared/kanban-types';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
+import { deriveBoardSlug } from './board-slug';
+import { removeWorktree, cleanupWorkspace } from './workspace';
 
 const log = createLogger('kanban-store');
 
 export interface KanbanStoreOptions {
   now?: () => number;
   onEvent?: (event: TaskEvent) => void;
+  onBoardsChanged?: () => void;
 }
 
 export class KanbanStore {
   protected db: Database.Database;
   protected now: () => number;
   protected onEvent?: (event: TaskEvent) => void;
+  protected onBoardsChanged?: () => void;
   private attachmentsRoot: string;
 
   constructor(dbPath: string, opts: KanbanStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
     this.onEvent = opts.onEvent;
+    this.onBoardsChanged = opts.onBoardsChanged;
     mkdirSync(dirname(dbPath), { recursive: true });
     this.attachmentsRoot = join(dirname(dbPath), 'attachments');
     this.db = new Database(dbPath);
@@ -44,6 +49,21 @@ export class KanbanStore {
       // Additive: DBs created before v3 lack the worktree source repo column.
       this.addColumnIfMissing('tasks', 'repo_path', 'TEXT');
     }
+    if (current < 5) {
+      // Additive: DBs created before v5 lack the board column.
+      this.addColumnIfMissing('tasks', 'board_id', "TEXT NOT NULL DEFAULT 'default'");
+      // Index must be created AFTER the column exists (it can't live in SCHEMA_SQL,
+      // which runs before this block against a pre-v5 tasks table).
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(board_id)');
+    }
+    // Seed the permanent default board (idempotent: fresh and existing DBs).
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO boards (slug, name, created_at, updated_at)
+         VALUES ('default', 'Default', ?, ?)`
+      )
+      .run(ts, ts);
     if (current !== SCHEMA_VERSION) {
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }
@@ -80,6 +100,7 @@ export class KanbanStore {
       branchName: (r.branch_name as string | null) ?? null,
       modelOverride: (r.model_override as string | null) ?? null,
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
+      boardId: String(r.board_id ?? 'default'),
       idempotencyKey: (r.idempotency_key as string | null) ?? null,
       result: (r.result as string | null) ?? null,
       pendingMode: (r.pending_mode as Task['pendingMode']) ?? null,
@@ -103,10 +124,10 @@ export class KanbanStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
-          workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, idempotency_key,
+          workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, board_id, idempotency_key,
           max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
-          @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @idempotency_key,
+          @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @board_id, @idempotency_key,
           @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
@@ -123,6 +144,7 @@ export class KanbanStore {
         branch_name: input.branchName ?? null,
         model_override: input.modelOverride ?? null,
         skills: JSON.stringify(input.skills ?? []),
+        board_id: input.boardId ?? 'default',
         idempotency_key: input.idempotencyKey ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
         max_retries: input.maxRetries ?? 1,
@@ -497,8 +519,10 @@ export class KanbanStore {
     return rows.map((r) => this.rowToTask(r));
   }
 
-  listBoard(): BoardCard[] {
-    const tasks = this.listTasks();
+  listBoard(boardSlug?: string): BoardCard[] {
+    const tasks = boardSlug
+      ? this.listTasks().filter((t) => t.boardId === boardSlug)
+      : this.listTasks();
     const commentRows = this.db
       .prepare('SELECT task_id, COUNT(*) AS c FROM task_comments GROUP BY task_id')
       .all() as { task_id: string; c: number }[];
@@ -520,6 +544,102 @@ export class KanbanStore {
       childTotal: childMap.get(t.id)?.total ?? 0,
       childDone: childMap.get(t.id)?.done ?? 0
     }));
+  }
+
+  private rowToBoard(r: Record<string, unknown>): Board {
+    return {
+      slug: String(r.slug),
+      name: String(r.name),
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    };
+  }
+
+  listBoards(): Board[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM boards
+         ORDER BY CASE WHEN slug='default' THEN 0 ELSE 1 END, created_at ASC, slug ASC`
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowToBoard(r));
+  }
+
+  private uniqueBoardSlug(base: string): string {
+    const exists = (s: string): boolean =>
+      this.db.prepare('SELECT 1 FROM boards WHERE slug=?').get(s) !== undefined;
+    if (!exists(base)) return base;
+    for (let n = 2; ; n += 1) {
+      const candidate = `${base}-${n}`;
+      if (!exists(candidate)) return candidate;
+    }
+  }
+
+  createBoard(name: string): Board {
+    const slug = this.uniqueBoardSlug(deriveBoardSlug(name));
+    const ts = this.now();
+    this.db
+      .prepare('INSERT INTO boards (slug, name, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run(slug, name, ts, ts);
+    this.onBoardsChanged?.();
+    return { slug, name, createdAt: ts, updatedAt: ts };
+  }
+
+  renameBoard(slug: string, name: string): void {
+    this.db
+      .prepare('UPDATE boards SET name=?, updated_at=? WHERE slug=?')
+      .run(name, this.now(), slug);
+    this.onBoardsChanged?.();
+  }
+
+  deleteBoard(slug: string): void {
+    // Gather the board's tasks first so on-disk cleanup can run before the rows go.
+    const tasks = this.listTasks().filter((t) => t.boardId === slug);
+    for (const t of tasks) {
+      try {
+        if (t.workspaceKind === 'worktree' && t.workspacePath && t.repoPath) {
+          removeWorktree({
+            repoPath: t.repoPath,
+            workspacePath: t.workspacePath,
+            branchName: t.branchName
+          });
+        } else if (t.workspacePath) {
+          cleanupWorkspace({ kind: t.workspaceKind, path: t.workspacePath });
+        }
+        rmSync(join(this.attachmentsRoot, t.id), { recursive: true, force: true });
+      } catch {
+        // best-effort: a filesystem failure must never block the DB delete
+      }
+    }
+    const tx = this.db.transaction((s: string) => {
+      this.db
+        .prepare(
+          'DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)'
+        )
+        .run(s);
+      this.db
+        .prepare(
+          'DELETE FROM task_comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)'
+        )
+        .run(s);
+      this.db
+        .prepare('DELETE FROM task_events WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)')
+        .run(s);
+      this.db
+        .prepare('DELETE FROM task_runs WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)')
+        .run(s);
+      this.db
+        .prepare(
+          `DELETE FROM task_links
+           WHERE parent_id IN (SELECT id FROM tasks WHERE board_id=?)
+              OR child_id IN (SELECT id FROM tasks WHERE board_id=?)`
+        )
+        .run(s, s);
+      this.db.prepare('DELETE FROM tasks WHERE board_id=?').run(s);
+      this.db.prepare('DELETE FROM boards WHERE slug=?').run(s);
+    });
+    tx(slug);
+    this.onBoardsChanged?.();
   }
 
   updateTask(id: string, fields: UpdateTaskFields): void {

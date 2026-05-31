@@ -7,8 +7,23 @@ import type { TaskStatus, WorkspaceKind } from '../../../../shared/kanban-types'
 import { Plus, Zap, Archive } from 'lucide-react';
 
 export function KanbanBoard(): React.JSX.Element {
-  const { cards, loaded, loadBoard, openTask, openTaskId, setStatus, createTask, nudge } =
-    useKanbanStore();
+  const {
+    cards,
+    loaded,
+    loadBoard,
+    openTask,
+    openTaskId,
+    setStatus,
+    createTask,
+    nudge,
+    boards,
+    activeBoardSlug,
+    loadBoards,
+    switchBoard,
+    createBoard,
+    renameBoard,
+    deleteBoard
+  } = useKanbanStore();
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
@@ -20,7 +35,10 @@ export function KanbanBoard(): React.JSX.Element {
 
   useEffect(() => {
     if (!loaded) void loadBoard();
-  }, [loaded, loadBoard]);
+    void loadBoards();
+    const off = window.fleet.kanban.onBoardsChanged(() => void loadBoards());
+    return off;
+  }, [loaded, loadBoard, loadBoards]);
 
   const assignees = Array.from(
     new Set(cards.map((c) => c.assignee).filter((a): a is string => !!a))
@@ -58,6 +76,60 @@ export function KanbanBoard(): React.JSX.Element {
   return (
     <div className="flex h-full w-full flex-col bg-neutral-950 text-neutral-200">
       <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2">
+        <select
+          value={activeBoardSlug}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === '__new__') {
+              const name = window.prompt('New board name');
+              if (name?.trim()) void createBoard(name.trim());
+            } else {
+              void switchBoard(v);
+            }
+          }}
+          className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none focus:border-blue-500"
+          title="Switch board"
+        >
+          {boards.map((b) => (
+            <option key={b.slug} value={b.slug}>
+              {b.name}
+            </option>
+          ))}
+          <option value="__new__">＋ New board…</option>
+        </select>
+        <button
+          onClick={() => {
+            const current = boards.find((b) => b.slug === activeBoardSlug);
+            const name = window.prompt('Rename board', current?.name ?? '');
+            if (name?.trim()) void renameBoard(activeBoardSlug, name.trim());
+          }}
+          disabled={activeBoardSlug === 'default'}
+          className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40"
+          title="Rename board"
+        >
+          Rename
+        </button>
+        <button
+          onClick={() => {
+            if (activeBoardSlug === 'default') return;
+            const current = boards.find((b) => b.slug === activeBoardSlug);
+            if (
+              window.confirm(
+                `Delete board "${current?.name ?? activeBoardSlug}" and all its tasks?`
+              )
+            ) {
+              void deleteBoard(activeBoardSlug).catch((err) =>
+                window.alert(err instanceof Error ? err.message : 'Could not delete board')
+              );
+            }
+          }}
+          disabled={activeBoardSlug === 'default'}
+          className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-red-900/40 disabled:opacity-40"
+          title="Delete board"
+        >
+          Delete
+        </button>
+        <div className="h-4 w-px bg-neutral-800" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}

@@ -193,6 +193,20 @@ describe('KanbanMcpServer', () => {
     expect(store.listEvents(childId).some((e) => e.kind === 'task_created')).toBe(true);
   });
 
+  it('kanban_create makes children inherit the parent board', async () => {
+    store.createBoard('Research');
+    const parent = store.createTask({ title: 'p', status: 'running', boardId: 'research' });
+    const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+    server.registerRun('btok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    const r = await rpc(`${base}?run=btok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'child' }
+    });
+    const childId = String(r.result.content[0].text).trim();
+    const child = store.getTask(childId);
+    expect(child?.boardId).toBe('research');
+  });
+
   it('kanban_create makes worktree children that inherit the parent repo', async () => {
     const parent = store.createTask({
       title: 'big',

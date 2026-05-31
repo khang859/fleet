@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(4);
+    expect(store.schemaVersion()).toBe(5);
   });
 
-  it('fresh db is created at v4 with the new columns', () => {
-    // Fresh store is already v4; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v5 with the new columns', () => {
+    // Fresh store is already v5; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(4);
+    expect(store.schemaVersion()).toBe(5);
   });
 
-  it('fresh db is created at v4 and persists repoPath', () => {
+  it('fresh db is created at v5 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(4);
+    expect(store.schemaVersion()).toBe(5);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -60,7 +60,34 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(4);
+    expect(s.schemaVersion()).toBe(5);
+    s.close();
+  });
+
+  it('upgrades a genuine pre-v5 db (tasks without board_id) to v5', () => {
+    const preV5Path = join(TEST_DIR, 'pre-v5.db');
+    // Build a real pre-v5 tasks table WITHOUT board_id / boards / idx_tasks_board.
+    // Must NOT use SCHEMA_SQL — it already includes board_id, which hides this bug.
+    const raw = new Database(preV5Path);
+    raw.exec(`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY, title TEXT NOT NULL, status TEXT NOT NULL, assignee TEXT,
+        body TEXT, priority INTEGER NOT NULL DEFAULT 0, idempotency_key TEXT,
+        skills TEXT NOT NULL DEFAULT '[]',
+        pending_mode TEXT, repo_path TEXT, workspace_kind TEXT, workspace_path TEXT,
+        branch_name TEXT, worker_pid INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+      );
+    `);
+    raw.exec(
+      "INSERT INTO tasks (id,title,status,created_at,updated_at) VALUES ('abc','old task','todo',1,1)"
+    );
+    raw.pragma('user_version = 4');
+    raw.close();
+
+    const s = new KanbanStore(preV5Path);
+    expect(s.schemaVersion()).toBe(5);
+    expect(s.getTask('abc')?.boardId).toBe('default');
+    expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
   });
 
@@ -80,7 +107,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(4);
+    expect(s.schemaVersion()).toBe(5);
     s.close();
   });
 
@@ -385,6 +412,68 @@ describe('KanbanStore', () => {
       payload: { to: 'ready' },
       createdAt: 1000
     });
+  });
+});
+
+describe('KanbanStore boards', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('seeds the default board and new tasks land on it', () => {
+    expect(store.listBoards().map((b) => b.slug)).toEqual(['default']);
+    const t = store.createTask({ title: 'x' });
+    expect(t.boardId).toBe('default');
+  });
+
+  it('creates boards with unique slugs derived from the name', () => {
+    const a = store.createBoard('Research');
+    expect(a.slug).toBe('research');
+    const b = store.createBoard('Research');
+    expect(b.slug).toBe('research-2');
+    expect(store.listBoards().map((b2) => b2.slug)).toEqual(['default', 'research', 'research-2']);
+  });
+
+  it('renames a board (slug stays fixed)', () => {
+    const a = store.createBoard('Research');
+    store.renameBoard(a.slug, 'Renamed');
+    expect(store.listBoards().find((b) => b.slug === 'research')?.name).toBe('Renamed');
+  });
+
+  it('createTask honors boardId and listBoard filters by board', () => {
+    store.createBoard('Research');
+    store.createTask({ title: 'on default' });
+    store.createTask({ title: 'on research', boardId: 'research' });
+    expect(store.listBoard('default').map((c) => c.title)).toEqual(['on default']);
+    expect(store.listBoard('research').map((c) => c.title)).toEqual(['on research']);
+    expect(store.listBoard().length).toBe(2);
+  });
+
+  it('deleteBoard removes the board, its tasks, and their child rows', () => {
+    store.createBoard('Research');
+    const t = store.createTask({ title: 'doomed', boardId: 'research' });
+    store.addComment(t.id, 'human', 'a comment');
+    store.appendEvent(t.id, null, 'note', {});
+    store.deleteBoard('research');
+    expect(store.listBoards().map((b) => b.slug)).toEqual(['default']);
+    expect(store.getTask(t.id)).toBeNull();
+    expect(store.listComments(t.id)).toHaveLength(0);
+    expect(store.listEvents(t.id)).toHaveLength(0);
+  });
+
+  it('deleteBoard leaves other boards untouched', () => {
+    store.createBoard('Research');
+    const keep = store.createTask({ title: 'keep' }); // default board
+    store.createTask({ title: 'drop', boardId: 'research' });
+    store.deleteBoard('research');
+    expect(store.getTask(keep.id)?.id).toBe(keep.id);
+    expect(store.listBoard('default')).toHaveLength(1);
   });
 });
 

@@ -756,6 +756,11 @@ void app.whenReady().then(async () => {
         w.webContents.send(IPC_CHANNELS.KANBAN_EVENT, event);
       }
       socketSupervisor?.broadcastKanbanEvent(event);
+    },
+    onBoardsChanged: () => {
+      for (const w of BrowserWindow.getAllWindows()) {
+        w.webContents.send(IPC_CHANNELS.KANBAN_BOARDS_CHANGED);
+      }
     }
   });
   kanbanMcp = new KanbanMcpServer(kanbanStore);

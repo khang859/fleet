@@ -342,6 +342,7 @@ export class KanbanMcpServer {
             assignee: a.assignee ?? null,
             priority: a.priority ?? 0,
             status: 'todo',
+            boardId: task.boardId,
             ...inherit
           });
           this.store.addLink(scope.taskId, child.id); // original is the grouping parent

@@ -38,6 +38,7 @@ export interface Task {
   branchName: string | null;
   modelOverride: string | null;
   skills: string[];
+  boardId: string;
   idempotencyKey: string | null;
   result: string | null;
   pendingMode: PendingMode | null;
@@ -50,6 +51,13 @@ export interface Task {
   lastFailureError: string | null;
   maxRuntimeSeconds: number | null;
   maxRetries: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Board {
+  slug: string;
+  name: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -108,6 +116,7 @@ export interface CreateTaskInput {
   branchName?: string | null;
   modelOverride?: string | null;
   skills?: string[];
+  boardId?: string;
   idempotencyKey?: string | null;
   maxRuntimeSeconds?: number | null;
   maxRetries?: number;

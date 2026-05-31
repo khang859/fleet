@@ -6,6 +6,7 @@ import type {
   TaskStatus,
   TaskDetail,
   BoardCard,
+  Board,
   Task,
   TaskComment,
   TaskEvent,
@@ -16,6 +17,7 @@ import type {
 } from '../../shared/kanban-types';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
+import { deriveBoardSlug } from './board-slug';
 
 const log = createLogger('kanban-commands');
 
@@ -61,9 +63,37 @@ export class KanbanCommands {
     return task;
   }
 
-  list(filter: { status?: TaskStatus } = {}): BoardCard[] {
-    const board = this.store.listBoard();
+  list(filter: { status?: TaskStatus; boardSlug?: string } = {}): BoardCard[] {
+    const board = this.store.listBoard(filter.boardSlug);
     return filter.status ? board.filter((c) => c.status === filter.status) : board;
+  }
+
+  listBoards(): Board[] {
+    return this.store.listBoards();
+  }
+
+  createBoard(name: string): Board {
+    if (name.trim() === '' || deriveBoardSlug(name) === '') {
+      throw new CodedError('invalid board name', 'BAD_REQUEST');
+    }
+    return this.store.createBoard(name);
+  }
+
+  renameBoard(slug: string, name: string): void {
+    if (name.trim() === '' || deriveBoardSlug(name) === '') {
+      throw new CodedError('invalid board name', 'BAD_REQUEST');
+    }
+    this.store.renameBoard(slug, name);
+  }
+
+  deleteBoard(slug: string): void {
+    if (slug === 'default') {
+      throw new CodedError('the default board cannot be deleted', 'BAD_REQUEST');
+    }
+    if (this.store.listBoard(slug).some((c) => c.status === 'running')) {
+      throw new CodedError('stop running tasks before deleting this board', 'BAD_REQUEST');
+    }
+    this.store.deleteBoard(slug);
   }
 
   show(id: string): TaskDetail | null {

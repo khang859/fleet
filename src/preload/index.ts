@@ -40,9 +40,11 @@ import type {
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
   KanbanLinkRequest,
-  KanbanAddAttachmentRequest
+  KanbanAddAttachmentRequest,
+  KanbanRenameBoardRequest
 } from '../shared/ipc-api';
 import type {
+  Board,
   BoardCard,
   TaskDetail,
   CreateTaskInput,
@@ -423,8 +425,8 @@ const fleetApi = {
     }
   },
   kanban: {
-    listBoard: async (): Promise<BoardCard[]> =>
-      typedInvoke<BoardCard[]>(IPC_CHANNELS.KANBAN_LIST_BOARD),
+    listBoard: async (boardSlug?: string): Promise<BoardCard[]> =>
+      typedInvoke<BoardCard[]>(IPC_CHANNELS.KANBAN_LIST_BOARD, boardSlug),
     getTask: async (taskId: string): Promise<TaskDetail | null> =>
       typedInvoke<TaskDetail | null>(IPC_CHANNELS.KANBAN_GET_TASK, taskId),
     createTask: async (input: CreateTaskInput): Promise<Task> =>
@@ -452,6 +454,15 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_ATTACHMENT, id),
     saveAttachmentCopy: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SAVE_ATTACHMENT_COPY, id),
+    listBoards: async (): Promise<Board[]> => typedInvoke<Board[]>(IPC_CHANNELS.KANBAN_LIST_BOARDS),
+    createBoard: async (name: string): Promise<Board> =>
+      typedInvoke<Board>(IPC_CHANNELS.KANBAN_CREATE_BOARD, name),
+    renameBoard: async (req: KanbanRenameBoardRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_RENAME_BOARD, req),
+    deleteBoard: async (slug: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DELETE_BOARD, slug),
+    onBoardsChanged: (callback: () => void): Unsubscribe =>
+      onChannel<void>(IPC_CHANNELS.KANBAN_BOARDS_CHANGED, () => callback()),
     onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
       onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback)
   }
