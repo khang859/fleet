@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import { useState } from 'react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';

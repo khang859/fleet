@@ -38,7 +38,10 @@ export function parseWorkerArg(raw: string): SwarmWorkerSpec {
     // Treat the tail as skills only when it looks like a comma list of skill tokens.
     if (tail.trim() !== '' && /^[a-zA-Z0-9_,\- ]+$/.test(tail) && tail.includes(',')) {
       title = rest.slice(0, lastColon);
-      skills = tail.split(',').map((s) => s.trim()).filter(Boolean);
+      skills = tail
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
   }
   title = title.trim();
@@ -67,14 +70,11 @@ export function postBlackboardUpdate(
 }
 
 /** Merge a root's blackboard comments, last-write-wins per key, with winning authors. */
-export function latestBlackboard(
-  store: BlackboardStore,
-  rootId: string
-): Record<string, unknown> {
+export function latestBlackboard(store: BlackboardStore, rootId: string): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
   const authors: Record<string, string> = {};
   for (const comment of store.listComments(rootId)) {
-    const body = comment.body ?? '';
+    const body = comment.body;
     if (!body.startsWith(BLACKBOARD_PREFIX)) continue;
     let payload: unknown;
     try {
