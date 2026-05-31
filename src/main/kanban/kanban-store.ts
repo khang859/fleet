@@ -4,7 +4,7 @@ import { dirname } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields, BoardCard } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, RunOutcome, UpdateTaskFields, BoardCard, RunMode, PendingMode } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-store');
 
@@ -244,14 +244,19 @@ export class KanbanStore {
     };
   }
 
-  startRun(taskId: string, profile: string | null, workerPid: number | null): TaskRun {
+  startRun(
+    taskId: string,
+    profile: string | null,
+    workerPid: number | null,
+    mode: RunMode = 'work'
+  ): TaskRun {
     const ts = this.now();
     const info = this.db
       .prepare(
-        `INSERT INTO task_runs (task_id, profile, status, worker_pid, started_at)
-         VALUES (?, ?, 'running', ?, ?)`
+        `INSERT INTO task_runs (task_id, profile, status, mode, worker_pid, started_at)
+         VALUES (?, ?, 'running', ?, ?, ?)`
       )
-      .run(taskId, profile, workerPid, ts);
+      .run(taskId, profile, mode, workerPid, ts);
     const runId = Number(info.lastInsertRowid);
     this.db
       .prepare('UPDATE tasks SET current_run_id=?, worker_pid=?, updated_at=? WHERE id=?')
@@ -467,5 +472,80 @@ export class KanbanStore {
       .prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?')
       .run(pid, ts, taskId);
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
+  }
+
+  setPendingMode(taskId: string, mode: PendingMode | null): void {
+    this.db
+      .prepare('UPDATE tasks SET pending_mode=?, updated_at=? WHERE id=?')
+      .run(mode, this.now(), taskId);
+  }
+
+  /** Triage tasks flagged for an orchestrator run, highest priority first. */
+  pendingDecomposeTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM tasks WHERE status='triage' AND pending_mode IS NOT NULL ORDER BY priority DESC, created_at ASC"
+      )
+      .all() as Record<string, unknown>[];
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** Atomic CAS claim of a flagged triage task; clears pending_mode in the same write. */
+  claimForDecompose(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks
+         SET status='running', claim_lock=@lock, claim_expires=@expires,
+             last_heartbeat_at=@ts, pending_mode=NULL, updated_at=@ts
+         WHERE id=@id AND status='triage' AND pending_mode IS NOT NULL
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Flag up to `limit` un-flagged triage tasks for decompose; returns how many were flagged. */
+  armTriageForDecompose(limit: number): number {
+    if (limit <= 0) return 0;
+    const ids = (
+      this.db
+        .prepare(
+          "SELECT id FROM tasks WHERE status='triage' AND pending_mode IS NULL ORDER BY priority DESC, created_at ASC LIMIT ?"
+        )
+        .all(limit) as { id: string }[]
+    ).map((r) => r.id);
+    for (const id of ids) this.setPendingMode(id, 'decompose');
+    return ids.length;
+  }
+
+  /** Running tasks whose current run is an orchestrator run (mode != 'work'). */
+  orchestratorRunningCount(): number {
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM tasks t
+         JOIN task_runs r ON r.id = t.current_run_id
+         WHERE t.status='running' AND r.mode != 'work'`
+      )
+      .get() as { c: number };
+    return Number(row.c);
+  }
+
+  runMode(runId: number): RunMode | null {
+    const row = this.db.prepare('SELECT mode FROM task_runs WHERE id=?').get(runId) as
+      | { mode: string }
+      | undefined;
+    return row ? (row.mode as RunMode) : null;
+  }
+
+  /** Set status and clear all claim/run fields (used by reclaim→triage and specify→todo). */
+  setStatusCleared(taskId: string, status: TaskStatus): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status=@status, claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, current_run_id=NULL, last_heartbeat_at=NULL, updated_at=@ts WHERE id=@id`
+      )
+      .run({ id: taskId, status, ts });
   }
 }

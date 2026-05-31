@@ -275,6 +275,64 @@ describe('KanbanStore', () => {
     expect(a.commentCount).toBe(0);
   });
 
+  it('flags and reads pending_mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    expect(store.getTask(t.id)?.pendingMode).toBe('decompose');
+    expect(store.pendingDecomposeTasks().map((x) => x.id)).toEqual([t.id]);
+    store.setPendingMode(t.id, null);
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+  });
+
+  it('claimForDecompose atomically moves triage→running and clears pending_mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    expect(store.claimForDecompose(t.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+    // a second claim loses (already running / no pending_mode)
+    expect(store.claimForDecompose(t.id, 'L2', 1000)).toBe(false);
+  });
+
+  it('startRun records the run mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    const run = store.startRun(t.id, 'orchestrator', null, 'decompose');
+    expect(run.mode).toBe('decompose');
+    expect(store.runMode(run.id)).toBe('decompose');
+  });
+
+  it('orchestratorRunningCount counts only non-work running runs', () => {
+    const a = store.createTask({ title: 'a', status: 'triage' });
+    store.setPendingMode(a.id, 'decompose');
+    store.claimForDecompose(a.id, 'L', 1000);
+    store.startRun(a.id, 'orchestrator', null, 'decompose');
+    const b = store.createTask({ title: 'b', status: 'ready', assignee: 'r' });
+    store.claimTask(b.id, 'L2', 1000);
+    store.startRun(b.id, 'r', null, 'work');
+    expect(store.orchestratorRunningCount()).toBe(1);
+  });
+
+  it('armTriageForDecompose flags up to the limit and returns the count', () => {
+    store.createTask({ title: 'a', status: 'triage' });
+    store.createTask({ title: 'b', status: 'triage' });
+    store.createTask({ title: 'c', status: 'todo' }); // not triage — ignored
+    expect(store.armTriageForDecompose(1)).toBe(1);
+    expect(store.pendingDecomposeTasks().length).toBe(1);
+    expect(store.armTriageForDecompose(5)).toBe(1); // one triage remains unflagged
+  });
+
+  it('setStatusCleared resets claim fields', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.claimForDecompose(t.id, 'L', 1000);
+    store.setStatusCleared(t.id, 'triage');
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('triage');
+    expect(got?.claimLock).toBeNull();
+    expect(got?.claimExpires).toBeNull();
+    expect(got?.currentRunId).toBeNull();
+    expect(got?.lastHeartbeatAt).toBeNull();
+  });
+
   it('onEvent sink fires for every appended event', () => {
     const seen: TaskEvent[] = [];
     const s = new KanbanStore(join(TEST_DIR, 'sink.db'), {
