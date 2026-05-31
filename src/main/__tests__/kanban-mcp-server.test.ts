@@ -4,6 +4,7 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
 import { KanbanMcpServer } from '../kanban/kanban-mcp-server';
+import { createSwarm } from '../kanban/kanban-swarm';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-mcp-test-${Date.now()}`);
 
@@ -286,5 +287,46 @@ describe('KanbanMcpServer', () => {
     expect(got?.body).toBe('a much fuller spec');
     expect(got?.title).toBe('clear title');
     expect(got?.claimLock).toBeNull();
+  });
+
+  it('kanban_swarm_post then kanban_swarm_read round-trips on a swarm root', async () => {
+    const created = createSwarm(store, {
+      goal: 'g',
+      workers: [{ profile: 'w', title: 't', body: 't', skills: [] }],
+      verifierAssignee: 'v',
+      synthesizerAssignee: 'y'
+    });
+    const workerId = created.workerIds[0];
+    store.claimTask(workerId, 'LOCK', 100000);
+    const run = store.startRun(workerId, 'w', 1);
+    server.registerRun('toksw', { taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
+
+    const post = await rpc(`${base}?run=toksw`, 'tools/call', {
+      name: 'kanban_swarm_post',
+      arguments: { root: created.rootId, key: 'finding', value: { ok: true } }
+    });
+    expect(post.result.content[0].text).toMatch(/updated/i);
+
+    const read = await rpc(`${base}?run=toksw`, 'tools/call', {
+      name: 'kanban_swarm_read',
+      arguments: { root: created.rootId }
+    });
+    const bb = JSON.parse(read.result.content[0].text);
+    expect(bb.finding).toEqual({ ok: true });
+    expect(bb.topology.kind).toBe('kanban_swarm_v1');
+  });
+
+  it('kanban_swarm_read rejects a non-swarm-root id', async () => {
+    const plain = store.createTask({ title: 'plain', status: 'ready', assignee: 'r' });
+    store.claimTask(plain.id, 'LOCK', 100000);
+    const run = store.startRun(plain.id, 'r', 1);
+    server.registerRun('tokplain', { taskId: plain.id, runId: run.id, mode: 'work' }, 'LOCK');
+
+    const r = await rpc(`${base}?run=tokplain`, 'tools/call', {
+      name: 'kanban_swarm_read',
+      arguments: { root: plain.id }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/not a swarm root/i);
   });
 });

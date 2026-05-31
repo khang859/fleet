@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { RunMode } from '../../shared/kanban-types';
+import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 
 const log = createLogger('kanban-mcp');
 
@@ -67,6 +68,24 @@ const WORKER_TOOLS: McpTool[] = [
     inputSchema: {
       type: 'object',
       properties: { note: { type: 'string' } }
+    }
+  },
+  {
+    name: 'kanban_swarm_read',
+    description: 'Read the merged shared blackboard of a swarm root (pass its id).',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' } },
+      required: ['root']
+    }
+  },
+  {
+    name: 'kanban_swarm_post',
+    description: 'Post a structured key/value fact to a swarm root blackboard (pass its id).',
+    inputSchema: {
+      type: 'object',
+      properties: { root: { type: 'string' }, key: { type: 'string' }, value: {} },
+      required: ['root', 'key', 'value']
     }
   }
 ];
@@ -301,6 +320,24 @@ export class KanbanMcpServer {
           this.store.addComment(task.id, author, a.body);
           this.store.appendEvent(task.id, scope.runId, 'comment', { author });
           return this.text(res, rpcReq.id, 'Comment added.');
+        }
+        case 'kanban_swarm_read': {
+          const a = z.object({ root: z.string() }).parse(args);
+          if (!isSwarmRoot(this.store, a.root)) {
+            return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+          }
+          return this.text(res, rpcReq.id, JSON.stringify(latestBlackboard(this.store, a.root)));
+        }
+        case 'kanban_swarm_post': {
+          const a = z
+            .object({ root: z.string(), key: z.string(), value: z.unknown() })
+            .parse(args);
+          if (!isSwarmRoot(this.store, a.root)) {
+            return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
+          }
+          postBlackboardUpdate(this.store, a.root, author, a.key, a.value);
+          this.store.appendEvent(a.root, scope.runId, 'comment', { author, blackboard: a.key });
+          return this.text(res, rpcReq.id, 'Blackboard updated.');
         }
         case 'kanban_heartbeat': {
           const lock = this.claimLocks.get(token);
