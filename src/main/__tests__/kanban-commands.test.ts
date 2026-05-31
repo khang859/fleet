@@ -178,6 +178,33 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
     expect(log.map((e) => e.kind)).toEqual(expect.arrayContaining(['task_created', 'comment_added']));
   });
 
+  it('requestDecompose flags a triage task and logs an event', () => {
+    const { commands, store } = makeCommands();
+    const t = store.createTask({ title: 'big', status: 'triage' });
+    commands.requestDecompose(t.id);
+    expect(store.getTask(t.id)?.pendingMode).toBe('decompose');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'decompose_requested')).toBe(true);
+  });
+
+  it('requestSpecify flags a triage task with specify', () => {
+    const { commands, store } = makeCommands();
+    const t = store.createTask({ title: 'vague', status: 'triage' });
+    commands.requestSpecify(t.id);
+    expect(store.getTask(t.id)?.pendingMode).toBe('specify');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'specify_requested')).toBe(true);
+  });
+
+  it('requestDecompose rejects a non-triage task', () => {
+    const { commands, store } = makeCommands();
+    const t = store.createTask({ title: 'x', status: 'todo' });
+    expect(() => commands.requestDecompose(t.id)).toThrow(/triage/i);
+  });
+
+  it('requestDecompose rejects an unknown task', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.requestDecompose('nope')).toThrow(/not found/i);
+  });
+
   it('dispatch ticks the dispatcher (claims a ready task)', () => {
     const store = new KanbanStore(join(TEST_DIR, `disp-${Math.random().toString(36).slice(2)}.db`));
     const spawned: string[] = [];

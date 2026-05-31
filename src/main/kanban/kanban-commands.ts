@@ -10,7 +10,8 @@ import type {
   TaskComment,
   TaskEvent,
   UpdateTaskFields,
-  WorkspaceKind
+  WorkspaceKind,
+  PendingMode
 } from '../../shared/kanban-types';
 
 /** Statuses a human may set manually (everything except dispatcher-owned `running`). */
@@ -167,6 +168,28 @@ export class KanbanCommands {
   log(id: string): TaskEvent[] {
     this.requireTask(id);
     return this.store.listEvents(id);
+  }
+
+  requestDecompose(id: string): void {
+    this.requestOrchestration(id, 'decompose');
+  }
+
+  requestSpecify(id: string): void {
+    this.requestOrchestration(id, 'specify');
+  }
+
+  private requestOrchestration(id: string, mode: PendingMode): void {
+    const task = this.requireTask(id);
+    if (task.status !== 'triage') {
+      throw new CodedError('only triage tasks can be decomposed or specified', 'BAD_REQUEST');
+    }
+    this.store.setPendingMode(id, mode);
+    this.store.appendEvent(
+      id,
+      null,
+      mode === 'decompose' ? 'decompose_requested' : 'specify_requested',
+      {}
+    );
   }
 
   dispatch(): void {
