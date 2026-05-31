@@ -123,9 +123,12 @@ tree on a single board. Because inheritance happens in the store/MCP layer, **no
      (`BAD_REQUEST`, message "stop running tasks first" — mirrors the existing
      `setManualStatus` running-task guard).
   3. Best-effort on-disk cleanup per task on the board: `removeWorktree` for
-     `workspaceKind === 'worktree'`, `cleanupWorkspace` for `scratch`, remove the
-     `attachments/<taskId>` directory, remove log files. Never blocks the DB
-     delete on a filesystem error (matches the worktree-removal style).
+     `workspaceKind === 'worktree'`, `cleanupWorkspace` for `scratch`, and remove
+     the `attachments/<taskId>` directory. Never blocks the DB delete on a
+     filesystem error (matches the worktree-removal style). Worker logs
+     (`logs/<runToken>.log`) are keyed by run token, not task id, and are left
+     in place (tiny, shared dir) — same accepted-orphan tradeoff as
+     attachments-on-archive.
   4. Delete the board's rows across `task_attachments`, `task_comments`,
      `task_events`, `task_runs`, `task_links` (where parent or child belongs to
      the board), and `tasks` (where `board_id = slug`), then delete the `boards`
