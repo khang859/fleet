@@ -282,7 +282,7 @@ export class KanbanStore {
       .run({ id: taskId, ts });
   }
 
-  /** Todo tasks whose parents (if any) are all 'done'. */
+  /** Todo tasks whose parents (if any) are all settled (done or archived). */
   promotableTodoTasks(): Task[] {
     const rows = this.db
       .prepare(
@@ -291,7 +291,7 @@ export class KanbanStore {
        AND NOT EXISTS (
          SELECT 1 FROM task_links l
          JOIN tasks p ON p.id = l.parent_id
-         WHERE l.child_id = t.id AND p.status != 'done'
+         WHERE l.child_id = t.id AND p.status NOT IN ('done','archived')
        )`
       )
       .all() as Array<Record<string, unknown>>;

@@ -672,6 +672,49 @@ describe('KanbanStore.transaction', () => {
   });
 });
 
+describe('KanbanStore.promotableTodoTasks gate', () => {
+  function fresh(): KanbanStore {
+    return new KanbanStore(join(TEST_DIR, `gate-${Math.random()}.db`));
+  }
+
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('promotes a child whose only parent is done', () => {
+    const store = fresh();
+    const parent = store.createTask({ title: 'p', status: 'done' });
+    const child = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(parent.id, child.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(child.id);
+  });
+
+  it('promotes a child whose only parent is archived', () => {
+    const store = fresh();
+    const parent = store.createTask({ title: 'p', status: 'archived' });
+    const child = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(parent.id, child.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).toContain(child.id);
+  });
+
+  it('does NOT promote a child with a blocked parent', () => {
+    const store = fresh();
+    const parent = store.createTask({ title: 'p', status: 'blocked' });
+    const child = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(parent.id, child.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).not.toContain(child.id);
+  });
+
+  it('does NOT promote until ALL parents are settled', () => {
+    const store = fresh();
+    const p1 = store.createTask({ title: 'p1', status: 'done' });
+    const p2 = store.createTask({ title: 'p2', status: 'running' });
+    const child = store.createTask({ title: 'c', status: 'todo' });
+    store.addLink(p1.id, child.id);
+    store.addLink(p2.id, child.id);
+    expect(store.promotableTodoTasks().map((t) => t.id)).not.toContain(child.id);
+  });
+});
+
 describe('KanbanStore attachments', () => {
   let store: KanbanStore;
   beforeEach(() => {
