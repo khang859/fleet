@@ -41,6 +41,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [tenant, setTenant] = useState('');
   const [linkId, setLinkId] = useState('');
   const [dragging, setDragging] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
   const dragCounter = useRef(0);
   const seededIdRef = useRef<string | null>(null);
 
@@ -71,7 +72,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
 
   async function pickAndUpload(): Promise<void> {
     const paths = await window.fleet.kanban.pickAttachment();
-    if (paths.length > 0) await uploadAttachments(t.id, paths);
+    if (paths.length === 0) return;
+    setAttachError(null);
+    try {
+      await uploadAttachments(t.id, paths);
+    } catch (err) {
+      setAttachError(err instanceof Error ? err.message : 'Failed to attach file');
+    }
   }
 
   function onDrop(e: React.DragEvent): void {
@@ -83,7 +90,11 @@ export function KanbanDrawer(): React.JSX.Element | null {
       const p = window.fleet.utils.getFilePath(f);
       if (p) paths.push(p);
     }
-    if (paths.length > 0) void uploadAttachments(t.id, paths);
+    if (paths.length === 0) return;
+    setAttachError(null);
+    uploadAttachments(t.id, paths).catch((err) => {
+      setAttachError(err instanceof Error ? err.message : 'Failed to attach file');
+    });
   }
 
   return (
@@ -323,6 +334,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
           >
             Attach file
           </button>
+          {attachError && <p className="mt-1 text-[10px] text-red-400">{attachError}</p>}
           {running && (
             <p className="mt-1 text-[10px] text-amber-400">
               Files added now reach the worker on its next run.
