@@ -44,6 +44,18 @@ export class KanbanStore {
       // Additive: DBs created before v3 lack the worktree source repo column.
       this.addColumnIfMissing('tasks', 'repo_path', 'TEXT');
     }
+    if (current < 5) {
+      // Additive: DBs created before v5 lack the board column.
+      this.addColumnIfMissing('tasks', 'board_id', "TEXT NOT NULL DEFAULT 'default'");
+    }
+    // Seed the permanent default board (idempotent: fresh and existing DBs).
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT OR IGNORE INTO boards (slug, name, created_at, updated_at)
+         VALUES ('default', 'Default', ?, ?)`
+      )
+      .run(ts, ts);
     if (current !== SCHEMA_VERSION) {
       this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
     }

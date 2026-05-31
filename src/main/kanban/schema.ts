@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   branch_name TEXT,
   model_override TEXT,
   skills TEXT NOT NULL DEFAULT '[]',
+  board_id TEXT NOT NULL DEFAULT 'default',
   idempotency_key TEXT,
   result TEXT,
   pending_mode TEXT,
@@ -32,6 +33,7 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idem ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(board_id);
 
 CREATE TABLE IF NOT EXISTS task_links (
   parent_id TEXT NOT NULL,
@@ -85,4 +87,11 @@ CREATE TABLE IF NOT EXISTS task_attachments (
   created_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_attachments_task ON task_attachments(task_id);
+
+CREATE TABLE IF NOT EXISTS boards (
+  slug TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
 `;
