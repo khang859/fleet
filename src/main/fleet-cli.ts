@@ -605,15 +605,10 @@ function formatWatchEvent(event: unknown): string {
   return `${time}  ${taskId}  ${kind}`;
 }
 
-export async function runKanbanWatch(
-  sockPath: string,
-  opts: { json: boolean }
-): Promise<string> {
+export async function runKanbanWatch(sockPath: string, opts: { json: boolean }): Promise<string> {
   return new Promise((resolve) => {
     const socket = createConnection(sockPath, () => {
-      socket.write(
-        JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n'
-      );
+      socket.write(JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n');
     });
     let buffer = '';
     let acked = false;

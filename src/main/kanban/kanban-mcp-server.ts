@@ -44,7 +44,8 @@ const WORKER_TOOLS: McpTool[] = [
   },
   {
     name: 'kanban_block',
-    description: 'Block the task for human input. Prefix reason with "review-required: " for review.',
+    description:
+      'Block the task for human input. Prefix reason with "review-required: " for review.',
     inputSchema: {
       type: 'object',
       properties: { reason: { type: 'string' } },
@@ -73,7 +74,8 @@ const WORKER_TOOLS: McpTool[] = [
 const ORCHESTRATOR_EXTRA_TOOLS: McpTool[] = [
   {
     name: 'kanban_list',
-    description: 'List board tasks. Optional filters by status and assignee (unknown assignee → empty).',
+    description:
+      'List board tasks. Optional filters by status and assignee (unknown assignee → empty).',
     inputSchema: {
       type: 'object',
       properties: { status: { type: 'string' }, assignee: { type: 'string' } }
@@ -274,9 +276,14 @@ export class KanbanMcpServer {
           return this.text(res, rpcReq.id, lines.join('\n'));
         }
         case 'kanban_complete': {
-          const a = z.object({ summary: z.string(), metadata: z.record(z.string(), z.unknown()).optional() }).parse(args);
+          const a = z
+            .object({ summary: z.string(), metadata: z.record(z.string(), z.unknown()).optional() })
+            .parse(args);
           this.store.completeTask(task.id, a.summary);
-          this.store.finishRun(scope.runId, 'completed', { summary: a.summary, metadata: a.metadata });
+          this.store.finishRun(scope.runId, 'completed', {
+            summary: a.summary,
+            metadata: a.metadata
+          });
           this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);

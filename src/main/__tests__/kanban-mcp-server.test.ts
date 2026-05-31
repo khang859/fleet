@@ -114,7 +114,12 @@ describe('KanbanMcpServer', () => {
   });
 
   it('kanban_show returns the task title and body', async () => {
-    const t = store.createTask({ title: 'My task', body: 'do the thing', status: 'ready', assignee: 'r' });
+    const t = store.createTask({
+      title: 'My task',
+      body: 'do the thing',
+      status: 'ready',
+      assignee: 'r'
+    });
     const run = store.startRun(t.id, 'r', 1);
     server.registerRun('tok5', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     const r = await rpc(`${base}?run=tok5`, 'tools/call', { name: 'kanban_show', arguments: {} });
@@ -126,7 +131,10 @@ describe('KanbanMcpServer', () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
     const run = store.startRun(t.id, 'r', 1);
     server.registerRun('tok6', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
-    await rpc(`${base}?run=tok6`, 'tools/call', { name: 'kanban_comment', arguments: { body: 'x' } });
+    await rpc(`${base}?run=tok6`, 'tools/call', {
+      name: 'kanban_comment',
+      arguments: { body: 'x' }
+    });
     const kinds = store.listEvents(t.id).map((e) => e.kind);
     expect(kinds).toContain('comment');
   });
@@ -136,7 +144,10 @@ describe('KanbanMcpServer', () => {
     store.claimTask(t.id, 'LOCK', 100000);
     const run = store.startRun(t.id, 'r', 1);
     server.registerRun('tokX', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
-    await rpc(`${base}?run=tokX`, 'tools/call', { name: 'kanban_complete', arguments: { summary: 's' } });
+    await rpc(`${base}?run=tokX`, 'tools/call', {
+      name: 'kanban_complete',
+      arguments: { summary: 's' }
+    });
     // token must now be rejected
     const r = await rpc(`${base}?run=tokX`, 'tools/call', { name: 'kanban_show', arguments: {} });
     expect(r.error).toBeTruthy();

@@ -18,8 +18,17 @@ const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
 ];
 
 export function KanbanDrawer(): React.JSX.Element | null {
-  const { detail, closeTask, updateTask, setStatus, addComment, addLink, removeLink, decompose, specify } =
-    useKanbanStore();
+  const {
+    detail,
+    closeTask,
+    updateTask,
+    setStatus,
+    addComment,
+    addLink,
+    removeLink,
+    decompose,
+    specify
+  } = useKanbanStore();
   const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
   const settingsLoaded = useSettingsStore((s) => s.settings !== null);
   const [title, setTitle] = useState('');

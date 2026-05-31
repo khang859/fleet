@@ -34,7 +34,12 @@ import { WslService } from './wsl-service';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus, ImageSettings, WorkerProfile } from '../shared/types';
+import type {
+  NotificationLevel,
+  UpdateStatus,
+  ImageSettings,
+  WorkerProfile
+} from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { randomUUID } from 'crypto';
 import { createLogger } from './logger';

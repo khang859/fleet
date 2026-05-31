@@ -101,7 +101,11 @@ export class KanbanCommands {
       throw new CodedError(`invalid status: ${status}`, 'BAD_REQUEST');
     }
     this.store.setStatus(id, status);
-    this.store.appendEvent(id, null, 'status_changed', { from: task.status, to: status, by: 'user' });
+    this.store.appendEvent(id, null, 'status_changed', {
+      from: task.status,
+      to: status,
+      by: 'user'
+    });
   }
 
   ready(id: string): void {

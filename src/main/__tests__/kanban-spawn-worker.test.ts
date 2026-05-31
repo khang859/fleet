@@ -107,7 +107,13 @@ describe('buildWorkerInvocation', () => {
       runToken: 'x',
       logPath: join(ROOT, 'r.log'),
       mode: 'work',
-      profile: { name: '../evil', role: 'worker' as const, model: '', skills: [], instructions: 'b' }
+      profile: {
+        name: '../evil',
+        role: 'worker' as const,
+        model: '',
+        skills: [],
+        instructions: 'b'
+      }
     });
     expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
   });
@@ -122,7 +128,13 @@ describe('buildWorkerInvocation', () => {
       runToken: 'tok',
       logPath: join(ROOT, 'r.log'),
       mode: 'decompose',
-      profile: { name: 'orchestrator', role: 'orchestrator', model: '', skills: [], instructions: 'route' },
+      profile: {
+        name: 'orchestrator',
+        role: 'orchestrator',
+        model: '',
+        skills: [],
+        instructions: 'route'
+      },
       roster: [{ name: 'coder', description: 'writes code' }]
     });
     const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
@@ -145,7 +157,13 @@ describe('buildWorkerInvocation', () => {
       runToken: 'tok',
       logPath: join(ROOT, 'r.log'),
       mode: 'specify',
-      profile: { name: 'orchestrator', role: 'orchestrator', model: '', skills: [], instructions: 'route' }
+      profile: {
+        name: 'orchestrator',
+        role: 'orchestrator',
+        model: '',
+        skills: [],
+        instructions: 'route'
+      }
     });
     const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
     expect(prompt).toMatch(/kanban_update/);
