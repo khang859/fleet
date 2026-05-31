@@ -30,6 +30,8 @@ export function KanbanBoard(): React.JSX.Element {
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [swarming, setSwarming] = useState(false);
+  const [boardEditor, setBoardEditor] = useState<{ mode: 'new' | 'rename' } | null>(null);
+  const [boardName, setBoardName] = useState('');
   const [newTitle, setNewTitle] = useState('');
   const [newKind, setNewKind] = useState<WorkspaceKind>('scratch');
   const [newRepo, setNewRepo] = useState('');
@@ -75,6 +77,15 @@ export function KanbanBoard(): React.JSX.Element {
     setCreating(false);
   }
 
+  async function handleBoardSubmit(): Promise<void> {
+    const name = boardName.trim();
+    if (!name || !boardEditor) return;
+    if (boardEditor.mode === 'new') await createBoard(name);
+    else await renameBoard(activeBoardSlug, name);
+    setBoardName('');
+    setBoardEditor(null);
+  }
+
   return (
     <div className="flex h-full w-full flex-col bg-neutral-950 text-neutral-200">
       <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2">
@@ -83,8 +94,8 @@ export function KanbanBoard(): React.JSX.Element {
           onChange={(e) => {
             const v = e.target.value;
             if (v === '__new__') {
-              const name = window.prompt('New board name');
-              if (name?.trim()) void createBoard(name.trim());
+              setBoardName('');
+              setBoardEditor({ mode: 'new' });
             } else {
               void switchBoard(v);
             }
@@ -102,8 +113,8 @@ export function KanbanBoard(): React.JSX.Element {
         <button
           onClick={() => {
             const current = boards.find((b) => b.slug === activeBoardSlug);
-            const name = window.prompt('Rename board', current?.name ?? '');
-            if (name?.trim()) void renameBoard(activeBoardSlug, name.trim());
+            setBoardName(current?.name ?? '');
+            setBoardEditor({ mode: 'rename' });
           }}
           disabled={activeBoardSlug === 'default'}
           className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40"
@@ -180,6 +191,34 @@ export function KanbanBoard(): React.JSX.Element {
           <Plus size={12} /> New Task
         </button>
       </div>
+
+      {boardEditor && (
+        <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
+          <input
+            autoFocus
+            value={boardName}
+            onChange={(e) => setBoardName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleBoardSubmit();
+              if (e.key === 'Escape') setBoardEditor(null);
+            }}
+            placeholder={boardEditor.mode === 'new' ? 'New board name…' : 'Rename board…'}
+            className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+          />
+          <button
+            onClick={() => void handleBoardSubmit()}
+            className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
+          >
+            {boardEditor.mode === 'new' ? 'Create' : 'Save'}
+          </button>
+          <button
+            onClick={() => setBoardEditor(null)}
+            className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
 
       {creating && (
         <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
