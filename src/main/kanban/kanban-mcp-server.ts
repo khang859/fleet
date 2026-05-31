@@ -328,12 +328,21 @@ export class KanbanMcpServer {
               parents: z.array(z.string()).optional()
             })
             .parse(args);
+          // Children of a worktree parent inherit its source repo so each runs
+          // in its own kanban/<childId> worktree. Gate on a truthy repoPath:
+          // store.createTask bypasses the create() repoPath guard, so a
+          // worktree task without a repo would fail at claim time.
+          const inherit =
+            task.workspaceKind === 'worktree' && task.repoPath
+              ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
+              : {};
           const child = this.store.createTask({
             title: a.title,
             body: a.body ?? '',
             assignee: a.assignee ?? null,
             priority: a.priority ?? 0,
-            status: 'todo'
+            status: 'todo',
+            ...inherit
           });
           this.store.addLink(scope.taskId, child.id); // original is the grouping parent
           for (const p of a.parents ?? []) this.store.addLink(p, child.id);

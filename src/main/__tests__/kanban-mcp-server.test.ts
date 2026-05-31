@@ -193,6 +193,58 @@ describe('KanbanMcpServer', () => {
     expect(store.listEvents(childId).some((e) => e.kind === 'task_created')).toBe(true);
   });
 
+  it('kanban_create makes worktree children that inherit the parent repo', async () => {
+    const parent = store.createTask({
+      title: 'big',
+      status: 'running',
+      workspaceKind: 'worktree',
+      repoPath: '/src/myrepo'
+    });
+    const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+    server.registerRun('itok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    const r = await rpc(`${base}?run=itok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'child' }
+    });
+    const childId = String(r.result.content[0].text).trim();
+    const child = store.getTask(childId);
+    expect(child?.workspaceKind).toBe('worktree');
+    expect(child?.repoPath).toBe('/src/myrepo');
+  });
+
+  it('kanban_create leaves children as scratch when the parent is not a worktree', async () => {
+    const parent = store.createTask({ title: 'big', status: 'running' });
+    const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+    server.registerRun('itok2', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    const r = await rpc(`${base}?run=itok2`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'child' }
+    });
+    const childId = String(r.result.content[0].text).trim();
+    const child = store.getTask(childId);
+    expect(child?.workspaceKind).toBe('scratch');
+    expect(child?.repoPath).toBeNull();
+  });
+
+  it('kanban_create does not make a worktree child when the parent has no repoPath', async () => {
+    const parent = store.createTask({
+      title: 'big',
+      status: 'running',
+      workspaceKind: 'worktree'
+      // repoPath intentionally omitted
+    });
+    const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+    server.registerRun('itok3', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    const r = await rpc(`${base}?run=itok3`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'child' }
+    });
+    const childId = String(r.result.content[0].text).trim();
+    const child = store.getTask(childId);
+    expect(child?.workspaceKind).toBe('scratch');
+    expect(child?.repoPath).toBeNull();
+  });
+
   it('kanban_create honors extra parents', async () => {
     const parent = store.createTask({ title: 'big', status: 'running' });
     const dep = store.createTask({ title: 'dep', status: 'todo' });
