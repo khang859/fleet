@@ -134,5 +134,10 @@ export const IPC_CHANNELS = {
   KANBAN_PICK_ATTACHMENT: 'kanban:pick-attachment',
   KANBAN_ADD_ATTACHMENT: 'kanban:add-attachment',
   KANBAN_REMOVE_ATTACHMENT: 'kanban:remove-attachment',
-  KANBAN_SAVE_ATTACHMENT_COPY: 'kanban:save-attachment-copy'
+  KANBAN_SAVE_ATTACHMENT_COPY: 'kanban:save-attachment-copy',
+  KANBAN_LIST_BOARDS: 'kanban:list-boards',
+  KANBAN_CREATE_BOARD: 'kanban:create-board',
+  KANBAN_RENAME_BOARD: 'kanban:rename-board',
+  KANBAN_DELETE_BOARD: 'kanban:delete-board',
+  KANBAN_BOARDS_CHANGED: 'kanban:boards-changed'
 } as const;

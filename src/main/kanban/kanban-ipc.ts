@@ -9,13 +9,16 @@ import type {
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
   KanbanLinkRequest,
-  KanbanAddAttachmentRequest
+  KanbanAddAttachmentRequest,
+  KanbanRenameBoardRequest
 } from '../../shared/ipc-api';
 
 const log = createLogger('kanban-ipc');
 
 export function registerKanbanIpc(commands: KanbanCommands): void {
-  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARD, () => commands.list());
+  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARD, (_e, boardSlug?: string) =>
+    commands.list({ boardSlug })
+  );
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_GET_TASK, (_e, taskId: string): TaskDetail | null => {
     return commands.show(taskId);
@@ -94,6 +97,17 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     if (res.canceled || !res.filePath) return;
     copyFileSync(att.storedPath, res.filePath);
   });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARDS, () => commands.listBoards());
+  ipcMain.handle(IPC_CHANNELS.KANBAN_CREATE_BOARD, (_e, name: string) =>
+    commands.createBoard(name)
+  );
+  ipcMain.handle(IPC_CHANNELS.KANBAN_RENAME_BOARD, (_e, req: KanbanRenameBoardRequest) =>
+    commands.renameBoard(req.slug, req.name)
+  );
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DELETE_BOARD, (_e, slug: string) =>
+    commands.deleteBoard(slug)
+  );
 
   log.info('kanban IPC handlers registered');
 }

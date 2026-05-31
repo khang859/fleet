@@ -277,3 +277,8 @@ export type KanbanLinkRequest = {
   parentId: string;
   childId: string;
 };
+
+export type KanbanRenameBoardRequest = {
+  slug: string;
+  name: string;
+};
