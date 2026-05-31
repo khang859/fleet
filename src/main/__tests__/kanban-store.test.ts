@@ -388,6 +388,47 @@ describe('KanbanStore', () => {
   });
 });
 
+describe('KanbanStore boards', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('seeds the default board and new tasks land on it', () => {
+    expect(store.listBoards().map((b) => b.slug)).toEqual(['default']);
+    const t = store.createTask({ title: 'x' });
+    expect(t.boardId).toBe('default');
+  });
+
+  it('creates boards with unique slugs derived from the name', () => {
+    const a = store.createBoard('Research');
+    expect(a.slug).toBe('research');
+    const b = store.createBoard('Research');
+    expect(b.slug).toBe('research-2');
+    expect(store.listBoards().map((b2) => b2.slug)).toEqual(['default', 'research', 'research-2']);
+  });
+
+  it('renames a board (slug stays fixed)', () => {
+    const a = store.createBoard('Research');
+    store.renameBoard(a.slug, 'Renamed');
+    expect(store.listBoards().find((b) => b.slug === 'research')?.name).toBe('Renamed');
+  });
+
+  it('createTask honors boardId and listBoard filters by board', () => {
+    store.createBoard('Research');
+    store.createTask({ title: 'on default' });
+    store.createTask({ title: 'on research', boardId: 'research' });
+    expect(store.listBoard('default').map((c) => c.title)).toEqual(['on default']);
+    expect(store.listBoard('research').map((c) => c.title)).toEqual(['on research']);
+    expect(store.listBoard().length).toBe(2);
+  });
+});
+
 describe('KanbanStore attachments', () => {
   let store: KanbanStore;
   beforeEach(() => {
