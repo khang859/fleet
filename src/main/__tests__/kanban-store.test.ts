@@ -25,7 +25,7 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(2);
+    expect(store.schemaVersion()).toBe(3);
   });
 
   it('fresh db is created at v2 with the new columns', () => {
@@ -34,7 +34,34 @@ describe('KanbanStore', () => {
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(2);
+    expect(store.schemaVersion()).toBe(3);
+  });
+
+  it('fresh db is created at v3 and persists repoPath', () => {
+    const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
+    expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
+    expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
+    expect(store.schemaVersion()).toBe(3);
+  });
+
+  it('repoPath defaults to null when omitted', () => {
+    const t = store.createTask({ title: 'plain' });
+    expect(store.getTask(t.id)?.repoPath).toBeNull();
+  });
+
+  it('upgrades a v2 db to v3 (adds repo_path)', () => {
+    const v2Path = join(TEST_DIR, 'v2.db');
+    const raw = new Database(v2Path);
+    raw.exec(SCHEMA_SQL);
+    raw.exec('ALTER TABLE tasks DROP COLUMN repo_path');
+    raw.pragma('user_version = 2');
+    raw.close();
+
+    const s = new KanbanStore(v2Path);
+    const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
+    expect(s.getTask(t.id)?.repoPath).toBe('/r');
+    expect(s.schemaVersion()).toBe(3);
+    s.close();
   });
 
   it('upgrades a v1 db to v2 (adds missing columns)', () => {
@@ -53,7 +80,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(2);
+    expect(s.schemaVersion()).toBe(3);
     s.close();
   });
 

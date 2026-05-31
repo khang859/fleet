@@ -34,6 +34,7 @@ export interface Task {
   tenant: string | null;
   workspaceKind: WorkspaceKind;
   workspacePath: string | null;
+  repoPath: string | null;
   branchName: string | null;
   modelOverride: string | null;
   skills: string[];
@@ -93,6 +94,7 @@ export interface CreateTaskInput {
   priority?: number;
   tenant?: string | null;
   workspaceKind?: WorkspaceKind;
+  repoPath?: string;
   branchName?: string | null;
   modelOverride?: string | null;
   skills?: string[];
