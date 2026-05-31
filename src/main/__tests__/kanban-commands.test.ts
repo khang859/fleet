@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, existsSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { prepareWorkspace } from '../kanban/workspace';
 import { KanbanStore } from '../kanban/kanban-store';
 import { KanbanDispatcher } from '../kanban/kanban-dispatcher';
 import { KanbanCommands } from '../kanban/kanban-commands';
@@ -29,6 +31,16 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
     maxRuntimeSeconds: null
   }));
   return { store, commands };
+}
+
+function makeRepo(name: string): string {
+  const repo = join(TEST_DIR, name);
+  mkdirSync(repo, { recursive: true });
+  execFileSync('git', ['-C', repo, 'init', '-q', '-b', 'main']);
+  execFileSync('git', ['-C', repo, 'config', 'user.email', 't@t.t']);
+  execFileSync('git', ['-C', repo, 'config', 'user.name', 't']);
+  execFileSync('git', ['-C', repo, 'commit', '-q', '--allow-empty', '-m', 'init']);
+  return repo;
 }
 
 describe('KanbanCommands create/list/show', () => {
@@ -266,5 +278,63 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
     commands.dispatch();
     expect(spawned).toContain(t.id);
     store.close();
+  });
+});
+
+describe('KanbanCommands archive worktree teardown', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('archiving a worktree task via setManualStatus removes its worktree and branch', () => {
+    const { store, commands } = makeCommands();
+    const repo = makeRepo('cmd-rm1');
+    const task = store.createTask({
+      title: 'wt task',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: repo
+    });
+    const wt = prepareWorkspace({
+      kind: 'worktree',
+      taskId: task.id,
+      workspacesRoot: TEST_DIR,
+      worktreesRoot: join(TEST_DIR, 'worktrees'),
+      repoPath: repo
+    });
+    store.setWorkspace(task.id, wt.path, wt.branchName);
+    expect(existsSync(wt.path)).toBe(true);
+
+    commands.setManualStatus(task.id, 'archived');
+
+    expect(store.getTask(task.id)?.status).toBe('archived');
+    expect(existsSync(wt.path)).toBe(false);
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `kanban/${task.id}`], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).toBe('');
+  });
+
+  it('archiving a scratch task does not throw and just archives', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 'scratch task', status: 'todo' });
+    expect(() => commands.setManualStatus(task.id, 'archived')).not.toThrow();
+    expect(store.getTask(task.id)?.status).toBe('archived');
+  });
+
+  it('archives a worktree task even when its repo and worktree are gone', () => {
+    const { store, commands } = makeCommands();
+    const task = store.createTask({
+      title: 'wt',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: join(TEST_DIR, 'missing-repo')
+    });
+    store.setWorkspace(task.id, join(TEST_DIR, 'missing-wt'), `kanban/${task.id}`);
+    expect(() => commands.setManualStatus(task.id, 'archived')).not.toThrow();
+    expect(store.getTask(task.id)?.status).toBe('archived');
   });
 });
