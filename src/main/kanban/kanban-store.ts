@@ -845,7 +845,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE tasks SET status='ready', schedule_kind=NULL, schedule_cron=NULL,
-          schedule_interval_ms=NULL, next_run_at=NULL, updated_at=@ts
+          schedule_interval_ms=NULL, next_run_at=NULL, schedule_paused=0, updated_at=@ts
          WHERE id=@id`
       )
       .run({ id: taskId, ts });
@@ -853,6 +853,8 @@ export class KanbanStore {
 
   /** Recurring fire: create a fresh todo instance copying the template's work fields. */
   spawnScheduledInstance(template: Task): Task {
+    // Note: idempotencyKey is intentionally not inherited — each fired instance is a
+    // distinct task with its own identity; reusing the template's key would collide.
     return this.createTask({
       title: template.title,
       body: template.body,
