@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -74,4 +74,15 @@ CREATE TABLE IF NOT EXISTS task_runs (
   error TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id);
+
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  stored_path TEXT NOT NULL,
+  content_type TEXT,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_task ON task_attachments(task_id);
 `;
