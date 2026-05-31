@@ -96,7 +96,12 @@ export class KanbanDispatcher {
         continue;
       }
       const input = taskToScheduleInput(t);
-      if (!input) continue; // defensive: scheduled row with no usable recurrence
+      if (!input) {
+        // defensive: a scheduled row whose recurrence columns are missing/corrupt. It would
+        // otherwise be re-selected by dueSchedules every tick and skipped silently — log it.
+        log.warn('fireSchedules: due task has no usable recurrence; skipping', { taskId: t.id });
+        continue;
+      }
       const next = computeNextRun(input, now);
       if (t.nextRunAt != null && now - t.nextRunAt > grace) {
         this.store.advanceNextRun(t.id, next);
