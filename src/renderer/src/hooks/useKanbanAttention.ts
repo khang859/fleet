@@ -40,12 +40,9 @@ export function useKanbanAttention(): void {
   useEffect(() => {
     const off = window.fleet.kanban.onKanbanFocusTask(({ boardSlug, taskId }) => {
       const ws = useWorkspaceStore.getState();
-      const existing = ws.workspace.tabs.find((t) => t.type === 'kanban');
-      if (existing) {
-        ws.setActiveTab(existing.id);
-      } else {
-        ws.addKanbanTab('/');
-      }
+      ws.ensureKanbanTab();
+      const existing = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'kanban');
+      if (existing) ws.setActiveTab(existing.id);
       const kanban = useKanbanStore.getState();
       const applyBoard =
         kanban.activeBoardSlug !== boardSlug ? kanban.switchBoard(boardSlug) : Promise.resolve();

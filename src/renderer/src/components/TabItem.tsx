@@ -22,8 +22,6 @@ type TabItemProps = {
   drivingPaneId?: string;
   isActive: boolean;
   badge: NotificationLevel | null;
-  /** Numeric unread count pill (e.g. Kanban tab). Rendered when > 0 and tab inactive. */
-  countBadge?: number;
   icon?: React.ReactNode;
   onClick: () => void;
   onDuplicate?: () => void;
@@ -85,7 +83,6 @@ export function TabItem({
   drivingPaneId,
   isActive,
   badge,
-  countBadge,
   icon,
   onClick,
   onDuplicate,
@@ -231,15 +228,6 @@ export function TabItem({
                   {BADGE_CONFIG[badge].label}
                 </span>
               )}
-            </span>
-          )}
-
-          {countBadge != null && countBadge > 0 && !isActive && (
-            <span
-              className="rounded-full flex-shrink-0 flex items-center justify-center bg-blue-500 text-white text-[10px] font-bold leading-none min-w-[16px] h-4 px-1"
-              aria-label={`${countBadge} unread kanban notification${countBadge > 1 ? 's' : ''}`}
-            >
-              {countBadge > 99 ? '99+' : countBadge}
             </span>
           )}
 

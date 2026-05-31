@@ -352,10 +352,12 @@ export function App(): React.JSX.Element {
         if (targetWs.tabs.length === 0) {
           addTab(undefined, window.fleet.homeDir);
           useWorkspaceStore.getState().ensureImagesTab();
+          useWorkspaceStore.getState().ensureKanbanTab();
         }
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
         useWorkspaceStore.getState().ensureImagesTab();
+        useWorkspaceStore.getState().ensureKanbanTab();
       }
 
       // Load all other saved workspaces into background so their PTYs warm up
@@ -612,6 +614,32 @@ export function App(): React.JSX.Element {
               </button>
             </MiniSidebarTooltip>
             <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            {/* Kanban pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'kanban')
+              .map((tab) => {
+                const isKanbanActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Kanban" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isKanbanActive
+                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
+                          : 'hover:bg-neutral-800'
+                      }`}
+                    >
+                      <KanbanSquare
+                        size={16}
+                        className={isKanbanActive ? 'text-blue-400' : 'text-blue-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {workspace.tabs.some((t) => t.type === 'kanban') && (
+              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            )}
             {/* Images pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'images')
@@ -672,9 +700,15 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'annotate') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
-            {/* File/terminal/image tab icons (excluding images, settings, annotate) */}
+            {/* File/terminal/image tab icons (excluding pinned + settings) */}
             {workspace.tabs
-              .filter((t) => t.type !== 'images' && t.type !== 'settings' && t.type !== 'annotate')
+              .filter(
+                (t) =>
+                  t.type !== 'images' &&
+                  t.type !== 'settings' &&
+                  t.type !== 'annotate' &&
+                  t.type !== 'kanban'
+              )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
                 return (
@@ -695,11 +729,6 @@ export function App(): React.JSX.Element {
                         </span>
                       ) : tab.type === 'image' ? (
                         <ImageIcon
-                          size={16}
-                          className={isActive ? 'text-white' : 'text-neutral-500'}
-                        />
-                      ) : tab.type === 'kanban' ? (
-                        <KanbanSquare
                           size={16}
                           className={isActive ? 'text-white' : 'text-neutral-500'}
                         />

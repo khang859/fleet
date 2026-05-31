@@ -164,7 +164,12 @@ export function createCommandRegistry(): Command[] {
       id: 'open-kanban',
       label: 'Open Kanban Board',
       category: 'Tabs',
-      execute: () => useWorkspaceStore.getState().addKanbanTab(window.fleet.homeDir)
+      execute: () => {
+        const ws = useWorkspaceStore.getState();
+        ws.ensureKanbanTab();
+        const kanban = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'kanban');
+        if (kanban) ws.setActiveTab(kanban.id);
+      }
     }
   ];
 }

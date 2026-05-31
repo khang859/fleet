@@ -137,14 +137,15 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures images and annotate tabs for an empty workspace', () => {
+  it('ensures kanban, images and annotate tabs for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     const state = useWorkspaceStore.getState();
-    // Empty workspaces get pinned images + annotate tabs automatically
-    expect(state.workspace.tabs).toHaveLength(2);
-    expect(state.workspace.tabs[0].type).toBe('images');
-    expect(state.workspace.tabs[1].type).toBe('annotate');
+    // Empty workspaces get pinned kanban + images + annotate tabs automatically
+    expect(state.workspace.tabs).toHaveLength(3);
+    expect(state.workspace.tabs[0].type).toBe('kanban');
+    expect(state.workspace.tabs[1].type).toBe('images');
+    expect(state.workspace.tabs[2].type).toBe('annotate');
   });
 });
 
@@ -544,24 +545,104 @@ describe('duplicateTab — live CWD', () => {
   });
 });
 
-describe('addKanbanTab', () => {
-  it('addKanbanTab adds a kanban tab and activates it', () => {
+describe('ensureKanbanTab', () => {
+  it('pins a single kanban tab at the top when absent', () => {
     useWorkspaceStore.setState({
-      workspace: { id: 'ws', label: 'W', tabs: [] },
+      workspace: {
+        id: 'ws',
+        label: 'W',
+        tabs: [
+          {
+            id: 't1',
+            label: 'T',
+            labelIsCustom: false,
+            cwd: '/tmp',
+            splitRoot: { type: 'leaf' as const, id: 'p1', cwd: '/tmp' }
+          }
+        ]
+      },
       backgroundWorkspaces: new Map(),
-      activeTabId: null,
-      activePaneId: null,
+      activeTabId: 't1',
+      activePaneId: 'p1',
       isDirty: false,
       lastClosedTab: null,
       recentFiles: []
     });
-    const paneId = useWorkspaceStore.getState().addKanbanTab('/tmp');
-    const state = useWorkspaceStore.getState();
-    const tab = state.workspace.tabs.find((t) => t.type === 'kanban');
-    expect(tab).toBeDefined();
-    expect(tab!.splitRoot.type).toBe('leaf');
-    expect(state.activeTabId).toBe(tab!.id);
-    expect(state.activePaneId).toBe(paneId);
-    expect(typeof paneId).toBe('string');
+    useWorkspaceStore.getState().ensureKanbanTab();
+    const { tabs } = useWorkspaceStore.getState().workspace;
+    expect(tabs.filter((t) => t.type === 'kanban')).toHaveLength(1);
+    expect(tabs[0].type).toBe('kanban');
+    expect(tabs[0].splitRoot.type).toBe('leaf');
+  });
+
+  it('dedupes pre-existing duplicate kanban tabs down to one at the top', () => {
+    useWorkspaceStore.setState({
+      workspace: {
+        id: 'ws',
+        label: 'W',
+        tabs: [
+          {
+            id: 't1',
+            label: 'T',
+            labelIsCustom: false,
+            cwd: '/tmp',
+            splitRoot: { type: 'leaf' as const, id: 'p1', cwd: '/tmp' }
+          },
+          {
+            id: 'k1',
+            label: 'Kanban',
+            labelIsCustom: true,
+            type: 'kanban' as const,
+            cwd: '/',
+            splitRoot: { type: 'leaf' as const, id: 'pk1', cwd: '/' }
+          },
+          {
+            id: 'k2',
+            label: 'Kanban',
+            labelIsCustom: true,
+            type: 'kanban' as const,
+            cwd: '/',
+            splitRoot: { type: 'leaf' as const, id: 'pk2', cwd: '/' }
+          }
+        ]
+      },
+      backgroundWorkspaces: new Map(),
+      activeTabId: 't1',
+      activePaneId: 'p1',
+      isDirty: false,
+      lastClosedTab: null,
+      recentFiles: []
+    });
+    useWorkspaceStore.getState().ensureKanbanTab();
+    const { tabs } = useWorkspaceStore.getState().workspace;
+    expect(tabs.filter((t) => t.type === 'kanban')).toHaveLength(1);
+    expect(tabs[0].id).toBe('k1');
+  });
+
+  it('does not let closeTab close a pinned kanban tab', () => {
+    useWorkspaceStore.setState({
+      workspace: {
+        id: 'ws',
+        label: 'W',
+        tabs: [
+          {
+            id: 'k1',
+            label: 'Kanban',
+            labelIsCustom: true,
+            type: 'kanban' as const,
+            cwd: '/',
+            splitRoot: { type: 'leaf' as const, id: 'pk1', cwd: '/' }
+          }
+        ]
+      },
+      backgroundWorkspaces: new Map(),
+      activeTabId: 'k1',
+      activePaneId: 'pk1',
+      isDirty: false,
+      lastClosedTab: null,
+      recentFiles: []
+    });
+    useWorkspaceStore.getState().closeTab('k1');
+    expect(useWorkspaceStore.getState().workspace.tabs.some((t) => t.id === 'k1')).toBe(true);
   });
 });

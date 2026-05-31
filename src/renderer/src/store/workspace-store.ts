@@ -117,6 +117,25 @@ function ensureAnnotateTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs };
 }
 
+/** Ensure workspace has a pinned Kanban tab at the top; dedupes extras; mutates and returns the workspace */
+function ensureKanbanTab(workspace: Workspace): Workspace {
+  const existing = workspace.tabs.filter((t) => t.type === 'kanban');
+  // Already pinned at the top with no duplicates — nothing to do.
+  if (existing.length === 1 && workspace.tabs[0]?.type === 'kanban') return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  // Keep the first existing kanban tab (if any), drop duplicates, then pin it to the top.
+  const kanbanTab: Tab = existing[0] ?? {
+    id: generateId(),
+    label: 'Kanban',
+    labelIsCustom: true,
+    cwd,
+    type: 'kanban',
+    splitRoot: { type: 'leaf', id: generateId(), cwd, paneType: 'kanban' }
+  };
+  const rest = workspace.tabs.filter((t) => t.type !== 'kanban');
+  return { ...workspace, tabs: [kanbanTab, ...rest] };
+}
+
 /** Extract basename from a path for auto-labeling tabs. ctx defaults to 'posix'. */
 export function cwdBasename(cwd: string, ctx: PathContext = 'posix'): string {
   return pathBasename(cwd, ctx);
@@ -143,7 +162,6 @@ type WorkspaceStore = {
   addTab: (label: string | undefined, cwd: string) => string;
   duplicateTab: (tabId: string) => string | null;
   addPiTab: (cwd: string) => string;
-  addKanbanTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
   undoCloseTab: () => void;
   renameTab: (tabId: string, label: string) => void;
@@ -187,6 +205,7 @@ type WorkspaceStore = {
   markClean: () => void;
 
   ensureImagesTab: () => void;
+  ensureKanbanTab: () => void;
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
@@ -270,7 +289,7 @@ export function collectPaneIds(node: PaneNode): string[] {
 }
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings']);
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
@@ -386,38 +405,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     return leaf.id;
   },
 
-  addKanbanTab: (cwd) => {
-    // Kanban is not a shell — no shellProfileId/pathContext/PTY.
-    const leaf: PaneLeaf = {
-      type: 'leaf',
-      id: generateId(),
-      cwd,
-      paneType: 'kanban'
-    };
-    const tab: Tab = {
-      id: generateId(),
-      label: 'Kanban',
-      labelIsCustom: true,
-      cwd,
-      type: 'kanban',
-      splitRoot: leaf
-    };
-    logTabs.debug('addKanbanTab', { tabId: tab.id, cwd, paneId: leaf.id });
-    set((state) => ({
-      workspace: {
-        ...state.workspace,
-        tabs: [...state.workspace.tabs, tab]
-      },
-      activeTabId: tab.id,
-      activePaneId: leaf.id,
-      isDirty: true
-    }));
-    return leaf.id;
-  },
-
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
     set((state) => {
+      const target = state.workspace.tabs.find((t) => t.id === tabId);
+      // Pinned tabs (Kanban/Images/Annotate) are not closeable.
+      if (target && SPECIAL_TAB_TYPES.has(target.type ?? '')) return state;
       const tabIndex = state.workspace.tabs.findIndex((t) => t.id === tabId);
       const rawTab = state.workspace.tabs[tabIndex];
       // Inject live CWDs so undo-close restores the PTY at the correct directory
@@ -735,6 +728,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
     set((state) => {
+      // Don't let the close-pane action destroy a pinned tab via its sole leaf.
+      const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
+      if (owner && SPECIAL_TAB_TYPES.has(owner.type ?? '')) return state;
       const tabs = state.workspace.tabs
         .map((tab) => {
           const newRoot = removePaneFromTree(tab.splitRoot, paneId);
@@ -833,13 +829,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cwd: firstLeafCwd ?? t.cwd
       };
     });
-    const migrated = ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }));
+    const migrated = ensureKanbanTab(
+      ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }))
+    );
 
     const restoredTab =
       (migrated.activeTabId
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
         : undefined) ??
-      migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ??
+      migrated.tabs.find(
+        (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+      ) ??
       migrated.tabs[0];
 
     const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
@@ -872,6 +872,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
+  ensureKanbanTab: () => {
+    set((state) => {
+      const updated = ensureKanbanTab(state.workspace);
+      if (updated === state.workspace) return state;
+      return { workspace: updated, isDirty: true };
+    });
+  },
+
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
@@ -887,13 +895,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           cwd: firstLeafCwd ?? t.cwd
         };
       });
-      const migrated = ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }));
+      const migrated = ensureKanbanTab(
+        ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }))
+      );
 
       const restoredTab =
         (migrated.activeTabId
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
           : undefined) ??
-        migrated.tabs.find((t) => t.type !== 'images' && t.type !== 'annotate') ??
+        migrated.tabs.find(
+          (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+        ) ??
         migrated.tabs[0];
 
       const paneIds = restoredTab ? collectPaneIds(restoredTab.splitRoot) : [];
