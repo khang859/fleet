@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { buildWorkerInvocation } from '../kanban/spawn-worker';
+import { buildWorkerInvocation, resolveWorkProfile } from '../kanban/spawn-worker';
+import type { WorkerProfile } from '../../shared/types';
 
 const ROOT = join(tmpdir(), `fleet-kanban-spawn-test-${Date.now()}`);
 
@@ -219,6 +220,66 @@ describe('buildWorkerInvocation', () => {
     });
     const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
     expect(prompt).not.toContain('attached by the user');
+  });
+
+  describe('resolveWorkProfile', () => {
+    const worker: WorkerProfile = {
+      name: 'default',
+      role: 'worker',
+      model: '',
+      skills: [],
+      instructions: 'call kanban_complete'
+    };
+    const orchestrator: WorkerProfile = {
+      name: 'orchestrator',
+      role: 'orchestrator',
+      model: '',
+      skills: [],
+      instructions: 'do not implement the work yourself'
+    };
+    const coder: WorkerProfile = { ...worker, name: 'coder' };
+
+    it('keeps a worker-role assignee as-is', () => {
+      const r = resolveWorkProfile([worker, coder, orchestrator], 'coder');
+      expect(r.profile).toBe(coder);
+      expect(r.fellBack).toBe(false);
+    });
+
+    it('falls back to a worker profile when the assignee is an orchestrator', () => {
+      const r = resolveWorkProfile([worker, orchestrator], 'orchestrator');
+      expect(r.profile?.role).toBe('worker');
+      expect(r.fellBack).toBe(true);
+    });
+
+    it('uses a worker profile (no fallback flag) when there is no assignee', () => {
+      const r = resolveWorkProfile([worker, orchestrator], null);
+      expect(r.profile).toBe(worker);
+      expect(r.fellBack).toBe(false);
+    });
+
+    it('falls back (with flag) when the assignee names a non-existent profile', () => {
+      const r = resolveWorkProfile([worker, orchestrator], 'ghost');
+      expect(r.profile).toBe(worker);
+      expect(r.fellBack).toBe(true);
+    });
+
+    it('picks the first worker-role profile as the fallback', () => {
+      const r = resolveWorkProfile([orchestrator, worker, coder], 'orchestrator');
+      expect(r.profile).toBe(worker);
+    });
+
+    it('never returns a non-worker profile even when one is named "default"', () => {
+      const orchestratorDefault: WorkerProfile = { ...orchestrator, name: 'default' };
+      const r = resolveWorkProfile([orchestratorDefault, orchestrator], 'orchestrator');
+      expect(r.profile).toBeNull();
+      expect(r.fellBack).toBe(true);
+    });
+
+    it('returns null when no worker profile exists at all', () => {
+      const r = resolveWorkProfile([orchestrator], 'orchestrator');
+      expect(r.profile).toBeNull();
+      expect(r.fellBack).toBe(true);
+    });
   });
 
   it('does not include attachments in decompose mode', () => {

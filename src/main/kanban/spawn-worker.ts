@@ -69,6 +69,27 @@ function buildPrompt(input: BuildWorkerInput): string {
   return `work kanban task ${task.id}: ${task.title}\n\n${task.body}` + attachmentsSection(input);
 }
 
+/**
+ * Picks the profile for a `work` run. Work runs must use a worker-role persona — it's
+ * the one instructed to call kanban_complete when done. An orchestrator persona ("do not
+ * implement the work yourself") would do the work, exit without completing, and get
+ * reclaimed as a dead worker, looping until the task is given up. When the assignee is an
+ * orchestrator (or doesn't resolve to a worker), fall back to the first worker-role
+ * profile so the run can actually complete. `fellBack` is true whenever an explicit
+ * assignee was overridden (a non-worker role, or a name with no matching profile).
+ */
+export function resolveWorkProfile(
+  profiles: WorkerProfile[],
+  assignee: string | null
+): { profile: WorkerProfile | null; fellBack: boolean } {
+  const assigned = assignee ? (profiles.find((p) => p.name === assignee) ?? null) : null;
+  if (assigned?.role === 'worker') return { profile: assigned, fellBack: false };
+  // Role-filter the fallback: a profile *named* "default" but with an orchestrator role
+  // must not slip through, or we'd re-introduce the very bug this guards against.
+  const profile = profiles.find((p) => p.role === 'worker') ?? null;
+  return { profile, fellBack: assignee != null };
+}
+
 /** Computes the rune invocation and writes the scoped mcp.json into the workspace. */
 export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation {
   const runeDir = join(input.workspace, '.rune');
