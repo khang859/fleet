@@ -3,14 +3,15 @@ import { copyFileSync } from 'fs';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import { createLogger } from '../logger';
 import type { KanbanCommands } from './kanban-commands';
-import type { CreateTaskInput, TaskDetail, Task } from '../../shared/kanban-types';
+import type { CreateTaskInput, TaskDetail, Task, ScheduleInput } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
   KanbanLinkRequest,
   KanbanAddAttachmentRequest,
-  KanbanRenameBoardRequest
+  KanbanRenameBoardRequest,
+  KanbanSetScheduleRequest
 } from '../../shared/ipc-api';
 
 const log = createLogger('kanban-ipc');
@@ -108,6 +109,27 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
   ipcMain.handle(IPC_CHANNELS.KANBAN_DELETE_BOARD, (_e, slug: string) =>
     commands.deleteBoard(slug)
   );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SET_SCHEDULE, (_e, req: KanbanSetScheduleRequest) => {
+    // CodedError('BAD_REQUEST') propagates to the renderer's invoke() for inline display.
+    commands.setSchedule(req.taskId, req.input);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_CLEAR_SCHEDULE, (_e, taskId: string) => {
+    commands.clearSchedule(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PAUSE_SCHEDULE, (_e, taskId: string) => {
+    commands.pauseSchedule(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_RESUME_SCHEDULE, (_e, taskId: string) => {
+    commands.resumeSchedule(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PREVIEW_SCHEDULE, (_e, input: ScheduleInput) => {
+    return commands.previewSchedule(input);
+  });
 
   log.info('kanban IPC handlers registered');
 }

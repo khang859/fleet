@@ -1,6 +1,6 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState } from './shell-profiles';
-import type { UpdateTaskFields, TaskStatus } from './kanban-types';
+import type { UpdateTaskFields, TaskStatus, ScheduleInput } from './kanban-types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -282,3 +282,12 @@ export type KanbanRenameBoardRequest = {
   slug: string;
   name: string;
 };
+
+export type KanbanSetScheduleRequest = {
+  taskId: string;
+  input: ScheduleInput;
+};
+
+export type KanbanPreviewScheduleResponse =
+  | { ok: true; next: number[] }
+  | { ok: false; error: string };

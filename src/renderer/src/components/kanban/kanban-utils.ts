@@ -1,6 +1,7 @@
-import type { TaskStatus } from '../../../../shared/kanban-types';
+import type { TaskStatus, Task } from '../../../../shared/kanban-types';
 
 export const COLUMNS: Array<{ status: TaskStatus; label: string }> = [
+  { status: 'scheduled', label: 'Scheduled' },
   { status: 'triage', label: 'Triage' },
   { status: 'todo', label: 'Todo' },
   { status: 'ready', label: 'Ready' },
@@ -38,4 +39,32 @@ export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Compact human label for an interval period (input is ms). */
+export function formatInterval(ms: number): string {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
+/** One-line recurrence summary for a scheduled card. */
+export function scheduleSummary(
+  task: Pick<Task, 'scheduleKind' | 'scheduleCron' | 'scheduleIntervalMs'>
+): string {
+  if (task.scheduleKind === 'cron') return task.scheduleCron ?? 'cron';
+  if (task.scheduleKind === 'interval')
+    return `every ${formatInterval(task.scheduleIntervalMs ?? 0)}`;
+  if (task.scheduleKind === 'once') return 'once';
+  return '';
+}
+
+/** Localized absolute time for a next-fire timestamp. */
+export function formatNextRun(epochMs: number | null): string {
+  if (epochMs == null) return '';
+  return new Date(epochMs).toLocaleString();
 }

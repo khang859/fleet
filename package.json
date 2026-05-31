@@ -84,6 +84,7 @@
     "chokidar": "^5.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cron-parser": "^5.5.0",
     "electron-store": "^11.0.2",
     "electron-updater": "^6.8.3",
     "iconv-lite": "^0.7.2",

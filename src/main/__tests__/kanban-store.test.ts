@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
-  it('fresh db is created at v5 with the new columns', () => {
-    // Fresh store is already v5; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v6 with the new columns', () => {
+    // Fresh store is already v6; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
-  it('fresh db is created at v5 and persists repoPath', () => {
+  it('fresh db is created at v6 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(5);
+    expect(store.schemaVersion()).toBe(6);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -60,7 +60,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     s.close();
   });
 
@@ -85,7 +85,7 @@ describe('KanbanStore', () => {
     raw.close();
 
     const s = new KanbanStore(preV5Path);
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     expect(s.getTask('abc')?.boardId).toBe('default');
     expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
@@ -107,7 +107,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(5);
+    expect(s.schemaVersion()).toBe(6);
     s.close();
   });
 
@@ -474,6 +474,175 @@ describe('KanbanStore boards', () => {
     store.deleteBoard('research');
     expect(store.getTask(keep.id)?.id).toBe(keep.id);
     expect(store.listBoard('default')).toHaveLength(1);
+  });
+});
+
+describe('KanbanStore schema v6 migration', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('migrates a v5 database to v6 with schedule columns and intact rows', () => {
+    const dbPath = join(TEST_DIR, `mig-v6-${Math.random()}.db`);
+    const raw = new Database(dbPath);
+    raw.exec(`CREATE TABLE tasks (
+      id TEXT PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+      assignee TEXT, status TEXT NOT NULL DEFAULT 'todo', priority INTEGER NOT NULL DEFAULT 0,
+      tenant TEXT, workspace_kind TEXT NOT NULL DEFAULT 'scratch', workspace_path TEXT,
+      repo_path TEXT, branch_name TEXT, model_override TEXT, skills TEXT NOT NULL DEFAULT '[]',
+      board_id TEXT NOT NULL DEFAULT 'default', idempotency_key TEXT, result TEXT, pending_mode TEXT,
+      claim_lock TEXT, claim_expires INTEGER, worker_pid INTEGER, current_run_id INTEGER,
+      last_heartbeat_at INTEGER, consecutive_failures INTEGER NOT NULL DEFAULT 0,
+      last_failure_error TEXT, max_runtime_seconds INTEGER, max_retries INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+    );`);
+    raw
+      .prepare(
+        `INSERT INTO tasks (id, title, status, created_at, updated_at) VALUES (?, ?, 'todo', ?, ?)`
+      )
+      .run('legacy1', 'old task', 1, 1);
+    raw.pragma('user_version = 5');
+    raw.close();
+
+    const store = new KanbanStore(dbPath, { now: () => 1000 });
+    expect(store.schemaVersion()).toBe(6);
+    const t = store.getTask('legacy1');
+    expect(t?.title).toBe('old task');
+    expect(t?.scheduleKind).toBeNull();
+    expect(t?.schedulePaused).toBe(false);
+    expect(t?.nextRunAt).toBeNull();
+    store.close();
+  });
+});
+
+describe('KanbanStore scheduling', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('setSchedule (interval) sets columns, next_run_at, and scheduled status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('scheduled');
+    expect(got.scheduleKind).toBe('interval');
+    expect(got.scheduleIntervalMs).toBe(5000);
+    expect(got.nextRunAt).toBe(15_000);
+    expect(got.schedulePaused).toBe(false);
+    store.close();
+  });
+
+  it('setSchedule (once) sets next_run_at to the fixed time', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'one', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'once', at: 99_000 });
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('scheduled');
+    expect(got.scheduleKind).toBe('once');
+    expect(got.nextRunAt).toBe(99_000);
+    store.close();
+  });
+
+  it('clearSchedule returns the task to todo and nulls schedule columns', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.clearSchedule(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('todo');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
+    store.close();
+  });
+
+  it('pause/resume toggles schedule_paused', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.pauseSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(true);
+    store.resumeSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(false);
+    store.close();
+  });
+
+  it('dueSchedules returns only unpaused scheduled rows due at/before now', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const due = store.createTask({ title: 'due', assignee: 'r' });
+    const future = store.createTask({ title: 'future', assignee: 'r' });
+    const paused = store.createTask({ title: 'paused', assignee: 'r' });
+    store.setSchedule(due.id, { kind: 'once', at: 9_000 });
+    store.setSchedule(future.id, { kind: 'once', at: 11_000 });
+    store.setSchedule(paused.id, { kind: 'once', at: 9_000 });
+    store.pauseSchedule(paused.id);
+    const ids = store.dueSchedules(10_000).map((t) => t.id);
+    expect(ids).toEqual([due.id]);
+    store.close();
+  });
+
+  it('fireOnce moves a scheduled task to ready and clears schedule columns', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'one', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'once', at: 9_000 });
+    store.fireOnce(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    store.close();
+  });
+
+  it('advanceNextRun updates next_run_at without changing status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.advanceNextRun(t.id, 42_000);
+    const got = store.getTask(t.id)!;
+    expect(got.nextRunAt).toBe(42_000);
+    expect(got.status).toBe('scheduled');
+    store.close();
+  });
+
+  it('dropSchedule nulls schedule columns without changing status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'x', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.setStatus(t.id, 'ready');
+    store.dropSchedule(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
+    expect(got.schedulePaused).toBe(false);
+    store.close();
+  });
+
+  it('spawnScheduledInstance copies fields, inherits board, sets scheduled_from + todo', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const board = store.createBoard('Ops');
+    const tmpl = store.createTask({
+      title: 'nightly',
+      body: 'do it',
+      assignee: 'r',
+      priority: 3,
+      tenant: 'acme',
+      boardId: board.slug,
+      skills: ['a'],
+      maxRetries: 2
+    });
+    store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 5000 });
+    const inst = store.spawnScheduledInstance(store.getTask(tmpl.id)!);
+    expect(inst.id).not.toBe(tmpl.id);
+    expect(inst.status).toBe('todo');
+    expect(inst.title).toBe('nightly');
+    expect(inst.body).toBe('do it');
+    expect(inst.assignee).toBe('r');
+    expect(inst.priority).toBe(3);
+    expect(inst.tenant).toBe('acme');
+    expect(inst.boardId).toBe(board.slug);
+    expect(inst.skills).toEqual(['a']);
+    expect(inst.maxRetries).toBe(2);
+    expect(inst.scheduledFrom).toBe(tmpl.id);
+    expect(inst.scheduleKind).toBeNull();
+    store.close();
   });
 });
 

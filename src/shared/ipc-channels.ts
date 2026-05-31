@@ -139,5 +139,10 @@ export const IPC_CHANNELS = {
   KANBAN_CREATE_BOARD: 'kanban:create-board',
   KANBAN_RENAME_BOARD: 'kanban:rename-board',
   KANBAN_DELETE_BOARD: 'kanban:delete-board',
-  KANBAN_BOARDS_CHANGED: 'kanban:boards-changed'
+  KANBAN_BOARDS_CHANGED: 'kanban:boards-changed',
+  KANBAN_SET_SCHEDULE: 'kanban:set-schedule',
+  KANBAN_CLEAR_SCHEDULE: 'kanban:clear-schedule',
+  KANBAN_PAUSE_SCHEDULE: 'kanban:pause-schedule',
+  KANBAN_RESUME_SCHEDULE: 'kanban:resume-schedule',
+  KANBAN_PREVIEW_SCHEDULE: 'kanban:preview-schedule'
 } as const;

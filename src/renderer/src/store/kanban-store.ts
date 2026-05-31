@@ -5,7 +5,8 @@ import type {
   TaskDetail,
   CreateTaskInput,
   TaskStatus,
-  UpdateTaskFields
+  UpdateTaskFields,
+  ScheduleInput
 } from '../../../shared/kanban-types';
 
 type KanbanState = {
@@ -33,6 +34,10 @@ type KanbanState = {
   nudge: () => Promise<void>;
   decompose: (id: string) => Promise<void>;
   specify: (id: string) => Promise<void>;
+  setSchedule: (taskId: string, input: ScheduleInput) => Promise<void>;
+  clearSchedule: (taskId: string) => Promise<void>;
+  pauseSchedule: (taskId: string) => Promise<void>;
+  resumeSchedule: (taskId: string) => Promise<void>;
   uploadAttachments: (taskId: string, sourcePaths: string[]) => Promise<void>;
   removeAttachment: (id: string) => Promise<void>;
   saveAttachmentCopy: (id: string) => Promise<void>;
@@ -132,6 +137,26 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   specify: async (id) => {
     await window.fleet.kanban.specify(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  setSchedule: async (taskId, input) => {
+    await window.fleet.kanban.setSchedule({ taskId, input });
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  clearSchedule: async (taskId) => {
+    await window.fleet.kanban.clearSchedule(taskId);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  pauseSchedule: async (taskId) => {
+    await window.fleet.kanban.pauseSchedule(taskId);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  resumeSchedule: async (taskId) => {
+    await window.fleet.kanban.resumeSchedule(taskId);
     await get().loadBoard();
     await get().refreshDetail();
   },

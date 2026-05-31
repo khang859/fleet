@@ -13,8 +13,10 @@ import type {
   UpdateTaskFields,
   WorkspaceKind,
   PendingMode,
-  TaskAttachment
+  TaskAttachment,
+  ScheduleInput
 } from '../../shared/kanban-types';
+import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
 import { deriveBoardSlug } from './board-slug';
@@ -146,6 +148,10 @@ export class KanbanCommands {
       to: status,
       by: 'user'
     });
+    if (task.status === 'scheduled' && status !== 'scheduled') {
+      // leaving the scheduled lane unschedules the task (drag or action button)
+      this.store.dropSchedule(id);
+    }
     // Archiving a worktree task tears down its worktree + branch (best-effort;
     // removeWorktree never throws, but guard archival defensively regardless).
     if (
@@ -279,6 +285,63 @@ export class KanbanCommands {
       mode === 'decompose' ? 'decompose_requested' : 'specify_requested',
       {}
     );
+  }
+
+  setSchedule(id: string, input: ScheduleInput): void {
+    this.requireTask(id);
+    const v = validateSchedule(input);
+    if (!v.ok) throw new CodedError(v.error, 'BAD_REQUEST');
+    this.store.setSchedule(id, input);
+    this.store.appendEvent(id, null, 'schedule_set', {
+      kind: input.kind,
+      expr: input.kind === 'cron' ? input.expr : undefined,
+      everyMs: input.kind === 'interval' ? input.everyMs : undefined,
+      at: input.kind === 'once' ? input.at : undefined
+    });
+  }
+
+  clearSchedule(id: string): void {
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null) return; // nothing to clear; don't emit a phantom event
+    this.store.clearSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_cleared', {});
+  }
+
+  pauseSchedule(id: string): void {
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null || t.scheduleKind === 'once') {
+      throw new CodedError('only recurring schedules can be paused', 'BAD_REQUEST');
+    }
+    if (t.schedulePaused) return; // already paused — idempotent no-op
+    this.store.pauseSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_paused', {});
+  }
+
+  resumeSchedule(id: string): void {
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null || t.scheduleKind === 'once') {
+      throw new CodedError('only recurring schedules can be resumed', 'BAD_REQUEST');
+    }
+    if (!t.schedulePaused) return; // not paused — idempotent no-op
+    this.store.resumeSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_resumed', {});
+  }
+
+  /** Compute the next ~3 fire times for a candidate schedule (drawer live preview). */
+  previewSchedule(
+    input: ScheduleInput
+  ): { ok: true; next: number[] } | { ok: false; error: string } {
+    const v = validateSchedule(input);
+    if (!v.ok) return { ok: false, error: v.error };
+    const next: number[] = [];
+    let after = Date.now();
+    for (let i = 0; i < 3; i += 1) {
+      const n = computeNextRun(input, after);
+      next.push(n);
+      after = n;
+      if (input.kind === 'once') break; // a one-shot fires exactly once
+    }
+    return { ok: true, next };
   }
 
   dispatch(): void {

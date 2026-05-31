@@ -4,7 +4,23 @@ import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode } from '../../shared/kanban-types';
+import type {
+  Task,
+  TaskStatus,
+  CreateTaskInput,
+  TaskRun,
+  TaskEvent,
+  TaskComment,
+  TaskAttachment,
+  RunOutcome,
+  UpdateTaskFields,
+  BoardCard,
+  Board,
+  RunMode,
+  PendingMode,
+  ScheduleInput
+} from '../../shared/kanban-types';
+import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
 import { removeWorktree, cleanupWorkspace } from './workspace';
@@ -56,6 +72,15 @@ export class KanbanStore {
       // which runs before this block against a pre-v5 tasks table).
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_board ON tasks(board_id)');
     }
+    if (current < 6) {
+      // Additive: DBs created before v6 lack the scheduling columns.
+      this.addColumnIfMissing('tasks', 'schedule_kind', 'TEXT');
+      this.addColumnIfMissing('tasks', 'schedule_cron', 'TEXT');
+      this.addColumnIfMissing('tasks', 'schedule_interval_ms', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'next_run_at', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'schedule_paused', 'INTEGER NOT NULL DEFAULT 0');
+      this.addColumnIfMissing('tasks', 'scheduled_from', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -70,7 +95,7 @@ export class KanbanStore {
   }
 
   private addColumnIfMissing(table: string, column: string, decl: string): void {
-    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === column)) {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
     }
@@ -113,6 +138,12 @@ export class KanbanStore {
       lastFailureError: (r.last_failure_error as string | null) ?? null,
       maxRuntimeSeconds: (r.max_runtime_seconds as number | null) ?? null,
       maxRetries: Number(r.max_retries),
+      scheduleKind: (r.schedule_kind as Task['scheduleKind']) ?? null,
+      scheduleCron: (r.schedule_cron as string | null) ?? null,
+      scheduleIntervalMs: (r.schedule_interval_ms as number | null) ?? null,
+      nextRunAt: (r.next_run_at as number | null) ?? null,
+      schedulePaused: Number(r.schedule_paused ?? 0) === 1,
+      scheduledFrom: (r.scheduled_from as string | null) ?? null,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -125,10 +156,10 @@ export class KanbanStore {
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
           workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, board_id, idempotency_key,
-          max_runtime_seconds, max_retries, created_at, updated_at)
+          scheduled_from, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
           @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @board_id, @idempotency_key,
-          @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
+          @scheduled_from, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
         id,
@@ -146,6 +177,7 @@ export class KanbanStore {
         skills: JSON.stringify(input.skills ?? []),
         board_id: input.boardId ?? 'default',
         idempotency_key: input.idempotencyKey ?? null,
+        scheduled_from: input.scheduledFrom ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
         max_retries: input.maxRetries ?? 1,
         created_at: ts,
@@ -167,10 +199,10 @@ export class KanbanStore {
     const rows = filter.status
       ? (this.db
           .prepare('SELECT * FROM tasks WHERE status = ? ORDER BY priority DESC, created_at ASC')
-          .all(filter.status) as Record<string, unknown>[])
+          .all(filter.status) as Array<Record<string, unknown>>)
       : (this.db
           .prepare('SELECT * FROM tasks ORDER BY priority DESC, created_at ASC')
-          .all() as Record<string, unknown>[]);
+          .all() as Array<Record<string, unknown>>);
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -188,17 +220,19 @@ export class KanbanStore {
 
   parentsOf(childId: string): string[] {
     return (
-      this.db.prepare('SELECT parent_id FROM task_links WHERE child_id = ?').all(childId) as {
+      this.db.prepare('SELECT parent_id FROM task_links WHERE child_id = ?').all(childId) as Array<{
         parent_id: string;
-      }[]
+      }>
     ).map((r) => r.parent_id);
   }
 
   childrenOf(parentId: string): string[] {
     return (
-      this.db.prepare('SELECT child_id FROM task_links WHERE parent_id = ?').all(parentId) as {
+      this.db
+        .prepare('SELECT child_id FROM task_links WHERE parent_id = ?')
+        .all(parentId) as Array<{
         child_id: string;
-      }[]
+      }>
     ).map((r) => r.child_id);
   }
 
@@ -255,7 +289,7 @@ export class KanbanStore {
          WHERE l.child_id = t.id AND p.status != 'done'
        )`
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -324,7 +358,7 @@ export class KanbanStore {
   listRuns(taskId: string): TaskRun[] {
     const rows = this.db
       .prepare('SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at DESC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToRun(r));
   }
 
@@ -356,7 +390,7 @@ export class KanbanStore {
   listEvents(taskId: string): TaskEvent[] {
     const rows = this.db
       .prepare('SELECT * FROM task_events WHERE task_id=? ORDER BY id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       taskId: String(r.task_id),
@@ -378,7 +412,7 @@ export class KanbanStore {
   listComments(taskId: string): TaskComment[] {
     const rows = this.db
       .prepare('SELECT * FROM task_comments WHERE task_id=? ORDER BY id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => ({
       id: Number(r.id),
       taskId: String(r.task_id),
@@ -442,7 +476,7 @@ export class KanbanStore {
   listAttachments(taskId: string): TaskAttachment[] {
     const rows = this.db
       .prepare('SELECT * FROM task_attachments WHERE task_id=? ORDER BY created_at ASC, id ASC')
-      .all(taskId) as Record<string, unknown>[];
+      .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToAttachment(r));
   }
 
@@ -504,9 +538,9 @@ export class KanbanStore {
   }
 
   runningTasks(): Task[] {
-    const rows = this.db
-      .prepare("SELECT * FROM tasks WHERE status='running'")
-      .all() as Record<string, unknown>[];
+    const rows = this.db.prepare("SELECT * FROM tasks WHERE status='running'").all() as Array<
+      Record<string, unknown>
+    >;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -515,7 +549,7 @@ export class KanbanStore {
       .prepare(
         "SELECT * FROM tasks WHERE status='ready' AND assignee IS NOT NULL ORDER BY priority DESC, created_at ASC"
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -525,7 +559,7 @@ export class KanbanStore {
       : this.listTasks();
     const commentRows = this.db
       .prepare('SELECT task_id, COUNT(*) AS c FROM task_comments GROUP BY task_id')
-      .all() as { task_id: string; c: number }[];
+      .all() as Array<{ task_id: string; c: number }>;
     const commentCounts = new Map(commentRows.map((r) => [r.task_id, Number(r.c)]));
     const childRows = this.db
       .prepare(
@@ -534,7 +568,7 @@ export class KanbanStore {
          FROM task_links l JOIN tasks c ON c.id = l.child_id
          GROUP BY l.parent_id`
       )
-      .all() as { parent: string; total: number; done: number }[];
+      .all() as Array<{ parent: string; total: number; done: number }>;
     const childMap = new Map(
       childRows.map((r) => [r.parent, { total: Number(r.total), done: Number(r.done) }])
     );
@@ -561,7 +595,7 @@ export class KanbanStore {
         `SELECT * FROM boards
          ORDER BY CASE WHEN slug='default' THEN 0 ELSE 1 END, created_at ASC, slug ASC`
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToBoard(r));
   }
 
@@ -670,9 +704,7 @@ export class KanbanStore {
 
   setWorkerPid(taskId: string, runId: number, pid: number): void {
     const ts = this.now();
-    this.db
-      .prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?')
-      .run(pid, ts, taskId);
+    this.db.prepare('UPDATE tasks SET worker_pid=?, updated_at=? WHERE id=?').run(pid, ts, taskId);
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
   }
 
@@ -694,7 +726,7 @@ export class KanbanStore {
       .prepare(
         "SELECT * FROM tasks WHERE status='triage' AND pending_mode IS NOT NULL ORDER BY priority DESC, created_at ASC"
       )
-      .all() as Record<string, unknown>[];
+      .all() as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
   }
 
@@ -721,7 +753,7 @@ export class KanbanStore {
         .prepare(
           "SELECT id FROM tasks WHERE status='triage' AND pending_mode IS NULL ORDER BY priority DESC, created_at ASC LIMIT ?"
         )
-        .all(limit) as { id: string }[]
+        .all(limit) as Array<{ id: string }>
     ).map((r) => r.id);
     for (const id of ids) this.setPendingMode(id, 'decompose');
     return ids.length;
@@ -755,5 +787,117 @@ export class KanbanStore {
           worker_pid=NULL, current_run_id=NULL, last_heartbeat_at=NULL, updated_at=@ts WHERE id=@id`
       )
       .run({ id: taskId, status, ts });
+  }
+
+  /** Attach (or replace) a schedule on a task; moves it to the scheduled lane. */
+  setSchedule(taskId: string, input: ScheduleInput): void {
+    const v = validateSchedule(input);
+    if (!v.ok) throw new Error(v.error);
+    const ts = this.now();
+    const nextRunAt = input.kind === 'once' ? input.at : computeNextRun(input, ts);
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='scheduled', schedule_kind=@kind, schedule_cron=@cron,
+          schedule_interval_ms=@everyMs, next_run_at=@nextRunAt, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({
+        id: taskId,
+        kind: input.kind,
+        cron: input.kind === 'cron' ? input.expr : null,
+        everyMs: input.kind === 'interval' ? input.everyMs : null,
+        nextRunAt,
+        ts
+      });
+  }
+
+  /** Remove a schedule; returns the task to the todo lane. */
+  clearSchedule(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='todo', schedule_kind=NULL, schedule_cron=NULL,
+          schedule_interval_ms=NULL, next_run_at=NULL, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
+  /** Null all schedule columns WITHOUT changing status (used when a scheduled task is moved out of the lane). */
+  dropSchedule(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET schedule_kind=NULL, schedule_cron=NULL, schedule_interval_ms=NULL,
+          next_run_at=NULL, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
+  pauseSchedule(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET schedule_paused=1, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  resumeSchedule(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET schedule_paused=0, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  /** Scheduled, unpaused tasks whose next fire is due at/before `now`. */
+  dueSchedules(now: number): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status='scheduled' AND schedule_paused=0
+           AND next_run_at IS NOT NULL AND next_run_at <= ?
+         ORDER BY next_run_at ASC`
+      )
+      .all(now) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  advanceNextRun(taskId: string, nextRunAt: number): void {
+    this.db
+      .prepare('UPDATE tasks SET next_run_at=?, updated_at=? WHERE id=?')
+      .run(nextRunAt, this.now(), taskId);
+  }
+
+  /** One-shot fire: move scheduled -> ready in place and drop the schedule. */
+  fireOnce(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='ready', schedule_kind=NULL, schedule_cron=NULL,
+          schedule_interval_ms=NULL, next_run_at=NULL, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
+  /** Recurring fire: create a fresh todo instance copying the template's work fields. */
+  spawnScheduledInstance(template: Task): Task {
+    // Note: idempotencyKey is intentionally not inherited — each fired instance is a
+    // distinct task with its own identity; reusing the template's key would collide.
+    return this.createTask({
+      title: template.title,
+      body: template.body,
+      assignee: template.assignee,
+      priority: template.priority,
+      tenant: template.tenant,
+      workspaceKind: template.workspaceKind,
+      repoPath: template.repoPath ?? undefined,
+      branchName: template.branchName,
+      modelOverride: template.modelOverride,
+      skills: template.skills,
+      boardId: template.boardId,
+      maxRuntimeSeconds: template.maxRuntimeSeconds,
+      maxRetries: template.maxRetries,
+      status: 'todo',
+      scheduledFrom: template.id
+    });
   }
 }

@@ -81,9 +81,7 @@ describe('KanbanCommands create/list/show', () => {
 
   it('rejects a worktree task with no repoPath', () => {
     const { commands } = makeCommands();
-    expect(() => commands.create({ title: 'no repo', workspaceKind: 'worktree' })).toThrow(
-      /repo/i
-    );
+    expect(() => commands.create({ title: 'no repo', workspaceKind: 'worktree' })).toThrow(/repo/i);
   });
 
   it('allows a scratch task with no repoPath', () => {
@@ -376,6 +374,99 @@ describe('KanbanCommands attachments', () => {
   it('addAttachment throws for a missing task', () => {
     const { commands } = makeCommands();
     expect(() => commands.addAttachment('nope', srcFile('c.txt'))).toThrow();
+  });
+});
+
+describe('KanbanCommands scheduling', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('setSchedule rejects an invalid cron with BAD_REQUEST', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    let code: string | undefined;
+    try {
+      commands.setSchedule(t.id, { kind: 'cron', expr: 'nope' });
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('setSchedule rejects a non-positive interval with BAD_REQUEST', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    let code: string | undefined;
+    try {
+      commands.setSchedule(t.id, { kind: 'interval', everyMs: 0 });
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('setSchedule with a valid interval round-trips and logs an event', () => {
+    const { store, commands } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    expect(store.getTask(t.id)!.status).toBe('scheduled');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_set')).toBe(true);
+  });
+
+  it('pauseSchedule rejects a one-shot schedule', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    commands.setSchedule(t.id, { kind: 'once', at: 99_000 });
+    let code: string | undefined;
+    try {
+      commands.pauseSchedule(t.id);
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('previewSchedule returns next fire times for a valid schedule', () => {
+    const { commands } = makeCommands();
+    const res = commands.previewSchedule({ kind: 'interval', everyMs: 1000 });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.next.length).toBe(3);
+  });
+
+  it('previewSchedule returns an error for an invalid cron', () => {
+    const { commands } = makeCommands();
+    const res = commands.previewSchedule({ kind: 'cron', expr: 'nope' });
+    expect(res.ok).toBe(false);
+  });
+
+  it('resumeSchedule on a paused recurring schedule clears the flag and logs an event', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.pauseSchedule(t.id);
+    commands.resumeSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(false);
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_resumed')).toBe(true);
+  });
+
+  it('clearSchedule returns a scheduled task to todo and logs schedule_cleared', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.clearSchedule(t.id);
+    expect(store.getTask(t.id)!.status).toBe('todo');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_cleared')).toBe(true);
+  });
+
+  it('moving a scheduled task out of the lane drops its schedule', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.setManualStatus(t.id, 'ready');
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
   });
 });
 

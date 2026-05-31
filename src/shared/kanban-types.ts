@@ -1,5 +1,6 @@
 export type TaskStatus =
   | 'triage'
+  | 'scheduled'
   | 'todo'
   | 'ready'
   | 'running'
@@ -14,6 +15,12 @@ export type RunMode = 'work' | 'decompose' | 'specify';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
+
+/** A schedule the user attaches to a task. Discriminated by `kind`. */
+export type ScheduleInput =
+  | { kind: 'once'; at: number } // epoch ms
+  | { kind: 'interval'; everyMs: number } // > 0
+  | { kind: 'cron'; expr: string }; // a valid cron expression
 
 export type RunOutcome =
   | 'completed'
@@ -51,6 +58,12 @@ export interface Task {
   lastFailureError: string | null;
   maxRuntimeSeconds: number | null;
   maxRetries: number;
+  scheduleKind: 'once' | 'interval' | 'cron' | null;
+  scheduleCron: string | null;
+  scheduleIntervalMs: number | null;
+  nextRunAt: number | null;
+  schedulePaused: boolean;
+  scheduledFrom: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -120,6 +133,7 @@ export interface CreateTaskInput {
   idempotencyKey?: string | null;
   maxRuntimeSeconds?: number | null;
   maxRetries?: number;
+  scheduledFrom?: string | null;
 }
 
 export interface UpdateTaskFields {

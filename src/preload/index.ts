@@ -41,7 +41,9 @@ import type {
   KanbanAddCommentRequest,
   KanbanLinkRequest,
   KanbanAddAttachmentRequest,
-  KanbanRenameBoardRequest
+  KanbanRenameBoardRequest,
+  KanbanSetScheduleRequest,
+  KanbanPreviewScheduleResponse
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -49,7 +51,8 @@ import type {
   TaskDetail,
   CreateTaskInput,
   Task,
-  TaskEvent
+  TaskEvent,
+  ScheduleInput
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type {
@@ -464,7 +467,17 @@ const fleetApi = {
     onBoardsChanged: (callback: () => void): Unsubscribe =>
       onChannel<void>(IPC_CHANNELS.KANBAN_BOARDS_CHANGED, () => callback()),
     onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
-      onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback)
+      onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback),
+    setSchedule: async (req: KanbanSetScheduleRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_SCHEDULE, req),
+    clearSchedule: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_CLEAR_SCHEDULE, taskId),
+    pauseSchedule: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_PAUSE_SCHEDULE, taskId),
+    resumeSchedule: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_RESUME_SCHEDULE, taskId),
+    previewSchedule: async (input: ScheduleInput): Promise<KanbanPreviewScheduleResponse> =>
+      typedInvoke<KanbanPreviewScheduleResponse>(IPC_CHANNELS.KANBAN_PREVIEW_SCHEDULE, input)
   }
 };
 
