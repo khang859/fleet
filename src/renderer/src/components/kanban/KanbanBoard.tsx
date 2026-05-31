@@ -4,7 +4,8 @@ import { KanbanColumn } from './KanbanColumn';
 import { KanbanDrawer } from './KanbanDrawer';
 import { COLUMNS } from './kanban-utils';
 import type { TaskStatus, WorkspaceKind } from '../../../../shared/kanban-types';
-import { Plus, Zap, Archive } from 'lucide-react';
+import { Plus, Zap, Archive, Network } from 'lucide-react';
+import { SwarmModal } from './SwarmModal';
 
 export function KanbanBoard(): React.JSX.Element {
   const {
@@ -28,6 +29,7 @@ export function KanbanBoard(): React.JSX.Element {
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [swarming, setSwarming] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newKind, setNewKind] = useState<WorkspaceKind>('scratch');
   const [newRepo, setNewRepo] = useState('');
@@ -165,6 +167,13 @@ export function KanbanBoard(): React.JSX.Element {
           <Zap size={12} /> Nudge
         </button>
         <button
+          onClick={() => setSwarming(true)}
+          className="inline-flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-xs text-white hover:bg-purple-500"
+          title="Create a swarm: workers → verifier → synthesizer"
+        >
+          <Network size={12} /> Swarm
+        </button>
+        <button
           onClick={() => setCreating(true)}
           className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
         >
@@ -250,6 +259,8 @@ export function KanbanBoard(): React.JSX.Element {
       </div>
 
       {openTaskId && <KanbanDrawer />}
+
+      {swarming && <SwarmModal onClose={() => setSwarming(false)} />}
     </div>
   );
 }
