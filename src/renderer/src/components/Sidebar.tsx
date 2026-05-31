@@ -11,6 +11,7 @@ const logDnd = createLogger('sidebar:dnd');
 import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
+import { useKanbanStore } from '../store/kanban-store';
 
 import { useImageStore } from '../store/image-store';
 import { serializePane } from '../hooks/use-terminal';
@@ -432,6 +433,7 @@ export function Sidebar({
     }))
   );
   const { getTabBadge } = useNotificationStore();
+  const kanbanUnread = useKanbanStore((s) => s.unreadCount);
 
   const currentSidebarWidth = workspace.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
 
@@ -1198,6 +1200,7 @@ export function Sidebar({
                   drivingPaneId={drivingPaneId}
                   isActive={tab.id === activeTabId}
                   badge={getTabBadge(paneIds)}
+                  countBadge={tab.type === 'kanban' ? kanbanUnread : undefined}
                   icon={icon}
                   disableReset={isFile}
                   index={idx}
