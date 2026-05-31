@@ -360,6 +360,14 @@ describe('KanbanStore', () => {
     expect(got?.lastHeartbeatAt).toBeNull();
   });
 
+  it('setWorkspace persists workspacePath and branchName', () => {
+    const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/r' });
+    store.setWorkspace(t.id, '/wt/path', 'kanban/abc');
+    const got = store.getTask(t.id);
+    expect(got?.workspacePath).toBe('/wt/path');
+    expect(got?.branchName).toBe('kanban/abc');
+  });
+
   it('onEvent sink fires for every appended event', () => {
     const seen: TaskEvent[] = [];
     const s = new KanbanStore(join(TEST_DIR, 'sink.db'), {

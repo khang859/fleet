@@ -481,6 +481,12 @@ export class KanbanStore {
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
   }
 
+  setWorkspace(taskId: string, path: string, branchName: string | null): void {
+    this.db
+      .prepare('UPDATE tasks SET workspace_path=?, branch_name=?, updated_at=? WHERE id=?')
+      .run(path, branchName, this.now(), taskId);
+  }
+
   setPendingMode(taskId: string, mode: PendingMode | null): void {
     this.db
       .prepare('UPDATE tasks SET pending_mode=?, updated_at=? WHERE id=?')
