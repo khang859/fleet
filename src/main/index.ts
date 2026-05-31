@@ -53,6 +53,7 @@ import { prepareWorkspace } from './kanban/workspace';
 import { spawnRuneWorker, resolveWorkProfile } from './kanban/spawn-worker';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
+import { KanbanNotifier } from './kanban/kanban-notifier';
 import pkg from 'electron-updater';
 const { autoUpdater } = pkg;
 
@@ -65,6 +66,7 @@ let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
 let kanbanCommands: KanbanCommands | undefined;
+let kanbanNotifier: KanbanNotifier | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -756,11 +758,29 @@ void app.whenReady().then(async () => {
         w.webContents.send(IPC_CHANNELS.KANBAN_EVENT, event);
       }
       socketSupervisor?.broadcastKanbanEvent(event);
+      kanbanNotifier?.enqueue(event);
     },
     onBoardsChanged: () => {
       for (const w of BrowserWindow.getAllWindows()) {
         w.webContents.send(IPC_CHANNELS.KANBAN_BOARDS_CHANGED);
       }
+    }
+  });
+  kanbanNotifier = new KanbanNotifier({
+    isOsEnabled: (category) => settingsStore.get().kanban.notifications[category].os,
+    getTask: (taskId) => {
+      const t = kanbanStore?.getTask(taskId);
+      return t ? { title: t.title, boardId: t.boardId } : null;
+    },
+    present: ({ body, boardSlug, taskId }) => {
+      if (!Notification.isSupported()) return;
+      const notif = new Notification({ title: 'Fleet — Kanban', body });
+      notif.on('click', () => {
+        mainWindow?.show();
+        mainWindow?.focus();
+        mainWindow?.webContents.send(IPC_CHANNELS.KANBAN_FOCUS_TASK, { boardSlug, taskId });
+      });
+      notif.show();
     }
   });
   kanbanMcp = new KanbanMcpServer(kanbanStore);

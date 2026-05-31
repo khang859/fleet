@@ -41,6 +41,9 @@ type KanbanState = {
   uploadAttachments: (taskId: string, sourcePaths: string[]) => Promise<void>;
   removeAttachment: (id: string) => Promise<void>;
   saveAttachmentCopy: (id: string) => Promise<void>;
+  unreadCount: number;
+  incrementUnread: () => void;
+  markSeen: () => void;
 };
 
 export const useKanbanStore = create<KanbanState>((set, get) => ({
@@ -50,6 +53,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   detail: null,
   boards: [],
   activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
+  unreadCount: 0,
 
   loadBoard: async () => {
     const cards = await window.fleet.kanban.listBoard(get().activeBoardSlug);
@@ -172,5 +176,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   saveAttachmentCopy: async (id) => {
     await window.fleet.kanban.saveAttachmentCopy(id);
-  }
+  },
+  incrementUnread: () => set((s) => ({ unreadCount: s.unreadCount + 1 })),
+  markSeen: () => set({ unreadCount: 0 })
 }));

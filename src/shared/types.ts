@@ -1,5 +1,6 @@
 import type { PathContext } from './shell-profiles';
 import type { WorkspaceKind } from './kanban-types';
+import type { KanbanNotifySettings } from './kanban-notifications';
 
 export type Workspace = {
   id: string;
@@ -150,6 +151,7 @@ export type KanbanSettings = {
     maxRuntimeSeconds: number | null;
   };
   profiles: WorkerProfile[];
+  notifications: KanbanNotifySettings;
 };
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9_-]*$/;

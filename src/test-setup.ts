@@ -34,6 +34,25 @@ if (typeof window === 'undefined') {
   });
 }
 
+// Polyfill localStorage for Node.js test environment (renderer stores use it)
+if (typeof localStorage === 'undefined') {
+  const store: Record<string, string> = {};
+  Object.assign(globalThis, {
+    localStorage: {
+      getItem: (key: string) => store[key] ?? null,
+      setItem: (key: string, value: string) => {
+        store[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete store[key];
+      },
+      clear: () => {
+        for (const key of Object.keys(store)) delete store[key];
+      }
+    }
+  });
+}
+
 // Polyfill OffscreenCanvas for Node.js test environment
 if (typeof OffscreenCanvas === 'undefined') {
   class FakeOffscreenCanvas {

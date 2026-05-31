@@ -90,6 +90,12 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       maxDecompose: 1
     },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
+    notifications: {
+      blocked: { os: true, badge: true },
+      failed: { os: true, badge: true },
+      completed: { os: true, badge: true },
+      scheduleFired: { os: true, badge: true }
+    },
     profiles: [
       {
         name: 'default',
