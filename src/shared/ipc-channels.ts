@@ -128,5 +128,7 @@ export const IPC_CHANNELS = {
   KANBAN_ADD_LINK: 'kanban:add-link',
   KANBAN_REMOVE_LINK: 'kanban:remove-link',
   KANBAN_NUDGE: 'kanban:nudge',
+  KANBAN_DECOMPOSE: 'kanban:decompose',
+  KANBAN_SPECIFY: 'kanban:specify',
   KANBAN_EVENT: 'kanban:event'
 } as const;
