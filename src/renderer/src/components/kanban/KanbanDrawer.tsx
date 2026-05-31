@@ -23,6 +23,8 @@ const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'archived', label: 'Archive' }
 ];
 
+const UNIT_MS = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 } as const;
+
 export function KanbanDrawer(): React.JSX.Element | null {
   const {
     detail,
@@ -70,6 +72,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
       setAssignee(detail.task.assignee ?? '');
       setPriority(detail.task.priority);
       setTenant(detail.task.tenant ?? '');
+      setSchedKind('interval');
+      setSchedAt('');
+      setSchedEveryN(1);
+      setSchedUnit('hours');
+      setSchedCron('0 9 * * *');
+      setSchedPreview([]);
+      setSchedError(null);
     }
   }, [detail]);
 
@@ -86,8 +95,6 @@ export function KanbanDrawer(): React.JSX.Element | null {
       tenant: tenant.trim() === '' ? null : tenant.trim()
     });
   }
-
-  const UNIT_MS = { minutes: 60_000, hours: 3_600_000, days: 86_400_000 } as const;
 
   function buildScheduleInput(): ScheduleInput | null {
     if (schedKind === 'once') {
@@ -414,9 +421,11 @@ export function KanbanDrawer(): React.JSX.Element | null {
               <div className="rounded border border-neutral-800 bg-neutral-950 p-2">
                 <div className="flex items-center justify-between">
                   <span className="text-indigo-300">{scheduleSummary(t)}</span>
-                  <span className="text-[10px] text-neutral-500">
-                    next {formatNextRun(t.nextRunAt)}
-                  </span>
+                  {t.nextRunAt != null && (
+                    <span className="text-[10px] text-neutral-500">
+                      next {formatNextRun(t.nextRunAt)}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   {t.scheduleKind !== 'once' &&
