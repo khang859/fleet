@@ -368,8 +368,11 @@ export class KanbanMcpServer {
           if (!isSwarmRoot(this.store, a.root)) {
             return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
           }
+          if (a.key === '_authors') {
+            return this.rpcError(res, rpcReq.id, '"_authors" is a reserved blackboard key');
+          }
           postBlackboardUpdate(this.store, a.root, author, a.key, a.value);
-          this.store.appendEvent(a.root, scope.runId, 'comment', { author, blackboard: a.key });
+          this.store.appendEvent(a.root, null, 'blackboard_post', { author, key: a.key });
           return this.text(res, rpcReq.id, 'Blackboard updated.');
         }
         case 'kanban_heartbeat': {

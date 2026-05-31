@@ -297,6 +297,7 @@ describe('KanbanMcpServer', () => {
       synthesizerAssignee: 'y'
     });
     const workerId = created.workerIds[0];
+    store.setStatus(workerId, 'ready');
     store.claimTask(workerId, 'LOCK', 100000);
     const run = store.startRun(workerId, 'w', 1);
     server.registerRun('toksw', { taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
@@ -314,6 +315,26 @@ describe('KanbanMcpServer', () => {
     const bb = JSON.parse(read.result.content[0].text);
     expect(bb.finding).toEqual({ ok: true });
     expect(bb.topology.kind).toBe('kanban_swarm_v1');
+  });
+
+  it('kanban_swarm_post rejects the reserved _authors key', async () => {
+    const created = createSwarm(store, {
+      goal: 'g',
+      workers: [{ profile: 'w', title: 't', body: 't', skills: [] }],
+      verifierAssignee: 'v',
+      synthesizerAssignee: 'y'
+    });
+    const workerId = created.workerIds[0];
+    store.setStatus(workerId, 'ready');
+    store.claimTask(workerId, 'LOCK', 100000);
+    const run = store.startRun(workerId, 'w', 1);
+    server.registerRun('tokres', { taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
+    const r = await rpc(`${base}?run=tokres`, 'tools/call', {
+      name: 'kanban_swarm_post',
+      arguments: { root: created.rootId, key: '_authors', value: 'x' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/reserved/i);
   });
 
   it('kanban_swarm creation routes through the injected handler with the scope board', async () => {
