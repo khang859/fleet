@@ -336,7 +336,9 @@ export function validateCommand(command: string, args: Record<string, unknown>):
     // ── Kanban ────────────────────────────────────────────────────────────
     case 'kanban.create':
       if (!args.title)
-        return 'Error: kanban create requires --title.\n\nUsage: fleet kanban create --title "..." [--assignee <profile>] [--priority <n>] [--body "..."]';
+        return 'Error: kanban create requires --title.\n\nUsage: fleet kanban create --title "..." [--assignee <profile>] [--priority <n>] [--body "..."] [--workspace <scratch|dir|worktree>] [--repo <path>]';
+      if (args.workspace === 'worktree' && !args.repo)
+        return 'Error: kanban create --workspace worktree requires --repo <path>.\n\nUsage: fleet kanban create --title "..." --workspace worktree --repo <path>';
       return null;
 
     case 'kanban.show':
@@ -543,7 +545,7 @@ Manage the Kanban board from the terminal. Requires the Fleet app to be running.
 
 ## Commands
 
-  fleet kanban create --title "..." [--body "..."] [--assignee <profile>] [--priority <n>]
+  fleet kanban create --title "..." [--body "..."] [--assignee <profile>] [--priority <n>] [--workspace <scratch|dir|worktree>] [--repo <path>]
   fleet kanban list [--status <status>]
   fleet kanban show <task-id>
   fleet kanban assign <task-id> --profile <name>
@@ -569,6 +571,7 @@ Manage the Kanban board from the terminal. Requires the Fleet app to be running.
 ## Examples
 
   fleet kanban create --title "Fix flaky test" --assignee default --priority 2
+  fleet kanban create --title "Refactor auth" --workspace worktree --repo /home/me/project
   fleet kanban list --status ready
   fleet kanban show t_abc123
   fleet kanban watch`

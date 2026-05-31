@@ -437,6 +437,14 @@ export class SocketServer extends EventEmitter {
           const p = Number(args.priority);
           if (!Number.isNaN(p)) input.priority = p;
         }
+        if (
+          args.workspace === 'scratch' ||
+          args.workspace === 'dir' ||
+          args.workspace === 'worktree'
+        ) {
+          input.workspaceKind = args.workspace;
+        }
+        if (typeof args.repo === 'string') input.repoPath = args.repo;
         const task = k.create(input);
         this.emit('state-change', 'kanban:changed', { id: task.id });
         return task;
