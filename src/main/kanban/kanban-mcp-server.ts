@@ -3,15 +3,14 @@ import { URL } from 'url';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
+import type { RunMode } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-mcp');
-
-export type McpRole = 'worker' | 'orchestrator';
 
 interface RunScope {
   taskId: string;
   runId: number;
-  role: McpRole;
+  mode: RunMode;
 }
 
 interface JsonRpcRequest {
@@ -23,7 +22,9 @@ interface JsonRpcRequest {
 
 const PROTOCOL_VERSION = '2024-11-05';
 
-const WORKER_TOOLS = [
+type McpTool = { name: string; description: string; inputSchema: Record<string, unknown> };
+
+const WORKER_TOOLS: McpTool[] = [
   {
     name: 'kanban_show',
     description: 'Show the current task: title, body, comments, prior run summaries.',
@@ -68,6 +69,73 @@ const WORKER_TOOLS = [
     }
   }
 ];
+
+const ORCHESTRATOR_EXTRA_TOOLS: McpTool[] = [
+  {
+    name: 'kanban_list',
+    description: 'List board tasks. Optional filters by status and assignee (unknown assignee → empty).',
+    inputSchema: {
+      type: 'object',
+      properties: { status: { type: 'string' }, assignee: { type: 'string' } }
+    }
+  },
+  {
+    name: 'kanban_create',
+    description:
+      'Create a child task (starts in todo, linked to the current task). Use parents for extra dependencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        body: { type: 'string' },
+        assignee: { type: 'string' },
+        priority: { type: 'number' },
+        parents: { type: 'array', items: { type: 'string' } }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'kanban_link',
+    description: 'Add a dependency link: child waits for parent to be done.',
+    inputSchema: {
+      type: 'object',
+      properties: { parent_id: { type: 'string' }, child_id: { type: 'string' } },
+      required: ['parent_id', 'child_id']
+    }
+  },
+  {
+    name: 'kanban_unblock',
+    description: 'Return a blocked task to ready.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id']
+    }
+  }
+];
+
+const DECOMPOSE_TOOLS: McpTool[] = [...WORKER_TOOLS, ...ORCHESTRATOR_EXTRA_TOOLS];
+
+const SPECIFY_TOOLS: McpTool[] = [
+  WORKER_TOOLS[0], // kanban_show
+  {
+    name: 'kanban_update',
+    description: 'Rewrite this task with an improved title/body. Terminal — ends the specify run.',
+    inputSchema: {
+      type: 'object',
+      properties: { title: { type: 'string' }, body: { type: 'string' } },
+      required: ['body']
+    }
+  },
+  ...WORKER_TOOLS.filter((t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat')
+];
+
+function toolsForMode(mode: RunMode): McpTool[] {
+  if (mode === 'decompose') return DECOMPOSE_TOOLS;
+  if (mode === 'specify') return SPECIFY_TOOLS;
+  return WORKER_TOOLS;
+}
 
 export class KanbanMcpServer {
   private server: Server | null = null;
@@ -159,8 +227,10 @@ export class KanbanMcpServer {
       case 'notifications/initialized':
         res.writeHead(202).end();
         return;
-      case 'tools/list':
-        return this.rpcResult(res, rpcReq.id, { tools: WORKER_TOOLS });
+      case 'tools/list': {
+        const scope = this.runs.get(token);
+        return this.rpcResult(res, rpcReq.id, { tools: toolsForMode(scope?.mode ?? 'work') });
+      }
       case 'tools/call':
         return this.handleToolCall(res, rpcReq, token);
       default:
@@ -182,6 +252,9 @@ export class KanbanMcpServer {
     const task = this.store.getTask(scope.taskId);
     if (!task) return this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
     const author = task.assignee ?? 'worker';
+
+    const allowed = toolsForMode(scope.mode).some((t) => t.name === name);
+    if (!allowed) return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
 
     try {
       switch (name) {
@@ -227,6 +300,65 @@ export class KanbanMcpServer {
           if (lock) this.store.extendClaim(task.id, lock, 15 * 60 * 1000);
           this.store.appendEvent(task.id, scope.runId, 'heartbeat', {});
           return this.text(res, rpcReq.id, 'Heartbeat recorded.');
+        }
+        case 'kanban_list': {
+          const a = z
+            .object({ status: z.string().optional(), assignee: z.string().optional() })
+            .parse(args);
+          let rows = this.store.listBoard();
+          if (a.status) rows = rows.filter((c) => c.status === a.status);
+          if (a.assignee) rows = rows.filter((c) => c.assignee === a.assignee);
+          const lines = rows.map((c) => `${c.id}\t${c.status}\t${c.assignee ?? '-'}\t${c.title}`);
+          return this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+        }
+        case 'kanban_create': {
+          const a = z
+            .object({
+              title: z.string(),
+              body: z.string().optional(),
+              assignee: z.string().optional(),
+              priority: z.number().optional(),
+              parents: z.array(z.string()).optional()
+            })
+            .parse(args);
+          const child = this.store.createTask({
+            title: a.title,
+            body: a.body ?? '',
+            assignee: a.assignee ?? null,
+            priority: a.priority ?? 0,
+            status: 'todo'
+          });
+          this.store.addLink(scope.taskId, child.id); // original is the grouping parent
+          for (const p of a.parents ?? []) this.store.addLink(p, child.id);
+          this.store.appendEvent(child.id, scope.runId, 'task_created', {
+            by: 'orchestrator',
+            parent: scope.taskId
+          });
+          return this.text(res, rpcReq.id, child.id);
+        }
+        case 'kanban_link': {
+          const a = z.object({ parent_id: z.string(), child_id: z.string() }).parse(args);
+          this.store.addLink(a.parent_id, a.child_id);
+          this.store.appendEvent(a.child_id, scope.runId, 'link_added', { parentId: a.parent_id });
+          return this.text(res, rpcReq.id, 'Linked.');
+        }
+        case 'kanban_unblock': {
+          const a = z.object({ task_id: z.string() }).parse(args);
+          this.store.setStatus(a.task_id, 'ready');
+          this.store.appendEvent(a.task_id, scope.runId, 'status_changed', {
+            to: 'ready',
+            by: 'orchestrator'
+          });
+          return this.text(res, rpcReq.id, 'Unblocked.');
+        }
+        case 'kanban_update': {
+          const a = z.object({ title: z.string().optional(), body: z.string() }).parse(args);
+          this.store.updateTask(task.id, { title: a.title, body: a.body });
+          this.store.appendEvent(task.id, scope.runId, 'task_updated', { by: 'orchestrator' });
+          this.store.setStatusCleared(task.id, 'todo');
+          this.store.finishRun(scope.runId, 'completed', { summary: 'specified' });
+          this.unregisterRun(token);
+          return this.text(res, rpcReq.id, `Task ${task.id} specified.`);
         }
         default:
           return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);

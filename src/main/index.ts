@@ -785,7 +785,7 @@ void app.whenReady().then(async () => {
       }),
     spawnWorker: ({ task, runId, lock, workspace }) => {
       const runToken = randomUUID();
-      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, role: 'worker' }, lock);
+      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode: 'work' }, lock);
       const profile = task.assignee
         ? (settingsStore.get().kanban.profiles.find((p) => p.name === task.assignee) ?? null)
         : null;
