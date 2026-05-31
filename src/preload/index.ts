@@ -52,7 +52,9 @@ import type {
   CreateTaskInput,
   Task,
   TaskEvent,
-  ScheduleInput
+  ScheduleInput,
+  SwarmInput,
+  SwarmCreated
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type {
@@ -434,6 +436,8 @@ const fleetApi = {
       typedInvoke<TaskDetail | null>(IPC_CHANNELS.KANBAN_GET_TASK, taskId),
     createTask: async (input: CreateTaskInput): Promise<Task> =>
       typedInvoke<Task>(IPC_CHANNELS.KANBAN_CREATE_TASK, input),
+    createSwarm: async (input: SwarmInput): Promise<SwarmCreated> =>
+      typedInvoke<SwarmCreated>(IPC_CHANNELS.KANBAN_CREATE_SWARM, input),
     updateTask: async (req: KanbanUpdateTaskRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_UPDATE_TASK, req),
     setStatus: async (req: KanbanSetStatusRequest): Promise<void> =>

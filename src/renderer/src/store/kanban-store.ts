@@ -6,7 +6,9 @@ import type {
   CreateTaskInput,
   TaskStatus,
   UpdateTaskFields,
-  ScheduleInput
+  ScheduleInput,
+  SwarmInput,
+  SwarmCreated
 } from '../../../shared/kanban-types';
 
 type KanbanState = {
@@ -26,6 +28,7 @@ type KanbanState = {
   closeTask: () => void;
   refreshDetail: () => Promise<void>;
   createTask: (input: CreateTaskInput) => Promise<void>;
+  createSwarm: (input: SwarmInput) => Promise<SwarmCreated>;
   updateTask: (id: string, fields: UpdateTaskFields) => Promise<void>;
   setStatus: (id: string, status: TaskStatus) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
@@ -106,6 +109,11 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   createTask: async (input) => {
     await window.fleet.kanban.createTask(input);
     await get().loadBoard();
+  },
+  createSwarm: async (input) => {
+    const created = await window.fleet.kanban.createSwarm(input);
+    await get().loadBoard();
+    return created;
   },
   updateTask: async (id, fields) => {
     await window.fleet.kanban.updateTask({ id, fields });

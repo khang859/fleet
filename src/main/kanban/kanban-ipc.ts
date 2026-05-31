@@ -3,7 +3,7 @@ import { copyFileSync } from 'fs';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import { createLogger } from '../logger';
 import type { KanbanCommands } from './kanban-commands';
-import type { CreateTaskInput, TaskDetail, Task, ScheduleInput } from '../../shared/kanban-types';
+import type { CreateTaskInput, TaskDetail, Task, ScheduleInput, SwarmInput, SwarmCreated } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
@@ -27,6 +27,10 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_CREATE_TASK, (_e, input: CreateTaskInput): Task => {
     return commands.create(input);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_CREATE_SWARM, (_e, input: SwarmInput): SwarmCreated => {
+    return commands.createSwarm(input);
   });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_UPDATE_TASK, (_e, req: KanbanUpdateTaskRequest) => {

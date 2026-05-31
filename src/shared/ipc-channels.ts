@@ -145,5 +145,6 @@ export const IPC_CHANNELS = {
   KANBAN_PAUSE_SCHEDULE: 'kanban:pause-schedule',
   KANBAN_RESUME_SCHEDULE: 'kanban:resume-schedule',
   KANBAN_PREVIEW_SCHEDULE: 'kanban:preview-schedule',
-  KANBAN_FOCUS_TASK: 'kanban:focus-task'
+  KANBAN_FOCUS_TASK: 'kanban:focus-task',
+  KANBAN_CREATE_SWARM: 'kanban:create-swarm'
 } as const;
