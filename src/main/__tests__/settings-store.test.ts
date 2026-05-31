@@ -57,4 +57,21 @@ describe('SettingsStore kanban merge', () => {
     expect(s.kanban.defaults.workspaceKind).toBe('dir');
     expect(s.kanban.defaults.maxRuntimeSeconds).toBeNull();
   });
+
+  it('backfills role: "worker" on saved profiles missing the field', () => {
+    store.set({
+      kanban: {
+        ...store.get().kanban,
+        profiles: [{ name: 'legacy', model: '', skills: [], instructions: 'x' } as never]
+      }
+    });
+    const profiles = store.get().kanban.profiles;
+    expect(profiles[0].role).toBe('worker');
+  });
+
+  it('defaults autoDecompose off and maxDecompose to 1', () => {
+    const s = store.get();
+    expect(s.kanban.dispatcher.autoDecompose).toBe(false);
+    expect(s.kanban.dispatcher.maxDecompose).toBe(1);
+  });
 });

@@ -34,7 +34,12 @@ import { WslService } from './wsl-service';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
-import type { NotificationLevel, UpdateStatus, ImageSettings } from '../shared/types';
+import type {
+  NotificationLevel,
+  UpdateStatus,
+  ImageSettings,
+  WorkerProfile
+} from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { randomUUID } from 'crypto';
 import { createLogger } from './logger';
@@ -763,7 +768,9 @@ void app.whenReady().then(async () => {
       failureLimit: d.failureLimit,
       claimGraceMs: 30_000, // internal grace window; not user-configurable
       maxInProgress: d.maxInProgress,
-      claimTtlMs: d.claimTtlMs
+      claimTtlMs: d.claimTtlMs,
+      autoDecompose: d.autoDecompose,
+      maxDecompose: d.maxDecompose
     };
   };
   kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
@@ -783,12 +790,27 @@ void app.whenReady().then(async () => {
         workspacesRoot: join(KANBAN_HOME, 'workspaces'),
         path: task.workspacePath ?? undefined
       }),
-    spawnWorker: ({ task, runId, lock, workspace }) => {
+    spawnWorker: ({ task, runId, lock, workspace, mode }) => {
       const runToken = randomUUID();
-      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, role: 'worker' }, lock);
-      const profile = task.assignee
-        ? (settingsStore.get().kanban.profiles.find((p) => p.name === task.assignee) ?? null)
-        : null;
+      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode }, lock);
+      const profiles = settingsStore.get().kanban.profiles;
+      let profile: WorkerProfile | null;
+      let roster: Array<{ name: string; description: string }> | undefined;
+      if (mode === 'work') {
+        profile = task.assignee ? (profiles.find((p) => p.name === task.assignee) ?? null) : null;
+      } else {
+        // decompose/specify: run as an orchestrator profile; offer the worker roster.
+        profile =
+          profiles.find((p) => p.role === 'orchestrator') ??
+          profiles.find((p) => p.name === 'orchestrator') ??
+          null;
+        roster = profiles
+          .filter((p) => p.role !== 'orchestrator')
+          .map((p) => ({
+            name: p.name,
+            description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
+          }));
+      }
       return spawnRuneWorker({
         task: {
           id: task.id,
@@ -801,7 +823,9 @@ void app.whenReady().then(async () => {
         mcpPort: kanbanMcpPort,
         runToken,
         logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
-        profile
+        mode,
+        profile,
+        roster
       });
     },
     config: buildDispatcherConfig(),

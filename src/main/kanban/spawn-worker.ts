@@ -4,6 +4,7 @@ import { join, dirname } from 'path';
 import { createLogger } from '../logger';
 import { renderProfileMarkdown } from './profile-file';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
+import type { RunMode } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-spawn');
 
@@ -21,7 +22,9 @@ export interface BuildWorkerInput {
   mcpPort: number;
   runToken: string;
   logPath: string;
+  mode: RunMode;
   profile?: WorkerProfile | null;
+  roster?: Array<{ name: string; description: string }>;
 }
 
 export interface WorkerInvocation {
@@ -30,6 +33,29 @@ export interface WorkerInvocation {
   env: Record<string, string>;
   cwd: string;
   logPath: string;
+}
+
+function buildPrompt(input: BuildWorkerInput): string {
+  const { mode, task } = input;
+  if (mode === 'decompose') {
+    const roster = (input.roster ?? []).map((r) => `- ${r.name}: ${r.description}`).join('\n');
+    return (
+      `decompose kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `Break this into a graph of smaller child tasks. For each unit of work, call kanban_create ` +
+      `with a clear title and body, and an assignee chosen from the worker profiles below. Pass ` +
+      `parents=[...] for true dependencies. Do not implement the work yourself. When the graph is ` +
+      `complete, call kanban_complete with a one-line summary.\n\n` +
+      `Available worker profiles:\n${roster || '- default: general worker'}`
+    );
+  }
+  if (mode === 'specify') {
+    return (
+      `specify kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `Rewrite this task into a fuller, clearer specification. Do not create child tasks. When done, ` +
+      `call kanban_update with the improved title and body.`
+    );
+  }
+  return `work kanban task ${task.id}: ${task.title}\n\n${task.body}`;
 }
 
 /** Computes the rune invocation and writes the scoped mcp.json into the workspace. */
@@ -57,9 +83,10 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     }
   }
 
-  const prompt = `work kanban task ${input.task.id}: ${input.task.title}\n\n${input.task.body}`;
+  const prompt = buildPrompt(input);
   const args = ['--prompt', prompt];
-  if (input.task.assignee) args.push('--profile', input.task.assignee);
+  const profileName = input.profile?.name ?? input.task.assignee ?? null;
+  if (profileName) args.push('--profile', profileName);
   if (input.task.modelOverride) args.push('--model', input.task.modelOverride);
 
   return {

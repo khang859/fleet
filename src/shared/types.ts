@@ -130,6 +130,7 @@ export type VisualizerEffects = {
 /** A named worker role materialized to `<workspace>/.rune/profiles/<name>.md`. */
 export type WorkerProfile = {
   name: string; // ^[a-z0-9][a-z0-9_-]*$ (rune's validName)
+  role: 'worker' | 'orchestrator'; // orchestrator profiles drive decompose/specify runs
   model: string; // '' → leave to rune's normal provider resolution
   skills: string[];
   instructions: string; // persona / system-prompt body
@@ -141,6 +142,8 @@ export type KanbanSettings = {
     maxInProgress: number;
     failureLimit: number;
     claimTtlMs: number;
+    autoDecompose: boolean; // when true, the dispatcher auto-flags triage tasks for decompose
+    maxDecompose: number; // concurrency cap for orchestrator runs (separate from maxInProgress)
   };
   defaults: {
     workspaceKind: WorkspaceKind;

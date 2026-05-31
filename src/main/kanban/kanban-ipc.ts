@@ -57,5 +57,13 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     commands.dispatch();
   });
 
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DECOMPOSE, (_e, taskId: string) => {
+    commands.requestDecompose(taskId);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SPECIFY, (_e, taskId: string) => {
+    commands.requestSpecify(taskId);
+  });
+
   log.info('kanban IPC handlers registered');
 }

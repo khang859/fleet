@@ -530,6 +530,17 @@ export class SocketServer extends EventEmitter {
         k.dispatch();
         return { ok: true };
       }
+      case 'kanban.decompose':
+      case 'kanban.specify': {
+        const k = this.requireKanban();
+        const id = typeof args.id === 'string' ? args.id : undefined;
+        if (!id)
+          throw new CodedError(`kanban ${command.split('.')[1]} requires a task id`, 'BAD_REQUEST');
+        if (command === 'kanban.decompose') k.requestDecompose(id);
+        else k.requestSpecify(id);
+        this.emit('state-change', 'kanban:changed', { id });
+        return { ok: true };
+      }
 
       default: {
         throw new CodedError(`Unknown command: ${command}`, 'NOT_FOUND');

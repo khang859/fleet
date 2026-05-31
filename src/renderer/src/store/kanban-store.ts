@@ -23,6 +23,8 @@ type KanbanState = {
   addLink: (parentId: string, childId: string) => Promise<void>;
   removeLink: (parentId: string, childId: string) => Promise<void>;
   nudge: () => Promise<void>;
+  decompose: (id: string) => Promise<void>;
+  specify: (id: string) => Promise<void>;
 };
 
 export const useKanbanStore = create<KanbanState>((set, get) => ({
@@ -76,5 +78,15 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   nudge: async () => {
     await window.fleet.kanban.nudge();
+  },
+  decompose: async (id) => {
+    await window.fleet.kanban.decompose(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  specify: async (id) => {
+    await window.fleet.kanban.specify(id);
+    await get().loadBoard();
+    await get().refreshDetail();
   }
 }));

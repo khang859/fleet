@@ -439,6 +439,10 @@ const fleetApi = {
     removeLink: async (req: KanbanLinkRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_LINK, req),
     nudge: async (): Promise<void> => typedInvoke<void>(IPC_CHANNELS.KANBAN_NUDGE),
+    decompose: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DECOMPOSE, taskId),
+    specify: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SPECIFY, taskId),
     onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
       onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback)
   }

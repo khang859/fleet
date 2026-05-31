@@ -18,8 +18,17 @@ const ACTIONS: Array<{ status: TaskStatus; label: string }> = [
 ];
 
 export function KanbanDrawer(): React.JSX.Element | null {
-  const { detail, closeTask, updateTask, setStatus, addComment, addLink, removeLink } =
-    useKanbanStore();
+  const {
+    detail,
+    closeTask,
+    updateTask,
+    setStatus,
+    addComment,
+    addLink,
+    removeLink,
+    decompose,
+    specify
+  } = useKanbanStore();
   const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
   const settingsLoaded = useSettingsStore((s) => s.settings !== null);
   const [title, setTitle] = useState('');
@@ -135,6 +144,27 @@ export function KanbanDrawer(): React.JSX.Element | null {
         {running && (
           <p className="text-[10px] text-amber-400">
             Running tasks are dispatcher-controlled; status actions are disabled.
+          </p>
+        )}
+        {t.status === 'triage' && !running && (
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => void decompose(t.id)}
+              className="rounded border border-purple-700 px-2 py-1 text-purple-300 hover:bg-neutral-800"
+            >
+              ⚗ Decompose
+            </button>
+            <button
+              onClick={() => void specify(t.id)}
+              className="rounded border border-sky-700 px-2 py-1 text-sky-300 hover:bg-neutral-800"
+            >
+              ✨ Specify
+            </button>
+          </div>
+        )}
+        {t.pendingMode && (
+          <p className="text-[10px] text-purple-400">
+            Queued for {t.pendingMode}… the dispatcher will pick this up shortly.
           </p>
         )}
 

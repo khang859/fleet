@@ -35,7 +35,10 @@ export class SettingsStore {
         ...saved.kanban,
         dispatcher: { ...DEFAULT_SETTINGS.kanban.dispatcher, ...saved.kanban?.dispatcher },
         defaults: { ...DEFAULT_SETTINGS.kanban.defaults, ...saved.kanban?.defaults },
-        profiles: saved.kanban?.profiles ?? DEFAULT_SETTINGS.kanban.profiles
+        profiles: (saved.kanban?.profiles ?? DEFAULT_SETTINGS.kanban.profiles).map((p) => ({
+          ...p,
+          role: p.role ?? 'worker'
+        }))
       }
     };
   }

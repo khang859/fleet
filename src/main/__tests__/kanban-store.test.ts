@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import Database from 'better-sqlite3';
 import { KanbanStore } from '../kanban/kanban-store';
+import { SCHEMA_SQL } from '../kanban/schema';
 import type { TaskEvent } from '../../shared/kanban-types';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-store-test-${Date.now()}`);
@@ -23,7 +25,36 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(2);
+  });
+
+  it('fresh db is created at v2 with the new columns', () => {
+    // Fresh store is already v2; assert the new columns exist and are nullable/defaulted.
+    const t = store.createTask({ title: 'x' });
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+    const run = store.startRun(t.id, 'p', null);
+    expect(run.mode).toBe('work');
+    expect(store.schemaVersion()).toBe(2);
+  });
+
+  it('upgrades a v1 db to v2 (adds missing columns)', () => {
+    const v1Path = join(TEST_DIR, 'v1.db');
+    // Simulate a v1 DB: full current schema minus the two v2 columns.
+    const raw = new Database(v1Path);
+    raw.exec(SCHEMA_SQL);
+    raw.exec('ALTER TABLE tasks DROP COLUMN pending_mode');
+    raw.exec('ALTER TABLE task_runs DROP COLUMN mode');
+    raw.pragma('user_version = 1');
+    raw.close();
+
+    // Opening the store must run the ALTER-based upgrade path.
+    const s = new KanbanStore(v1Path);
+    const t = s.createTask({ title: 'x' });
+    expect(s.getTask(t.id)?.pendingMode).toBeNull();
+    const run = s.startRun(t.id, 'p', null);
+    expect(run.mode).toBe('work');
+    expect(s.schemaVersion()).toBe(2);
+    s.close();
   });
 
   it('creates a task with defaults and reads it back', () => {
@@ -242,6 +273,64 @@ describe('KanbanStore', () => {
     const a = cards.find((c) => c.id === childA.id)!;
     expect(a.childTotal).toBe(0);
     expect(a.commentCount).toBe(0);
+  });
+
+  it('flags and reads pending_mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    expect(store.getTask(t.id)?.pendingMode).toBe('decompose');
+    expect(store.pendingDecomposeTasks().map((x) => x.id)).toEqual([t.id]);
+    store.setPendingMode(t.id, null);
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+  });
+
+  it('claimForDecompose atomically moves triage→running and clears pending_mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    expect(store.claimForDecompose(t.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+    // a second claim loses (already running / no pending_mode)
+    expect(store.claimForDecompose(t.id, 'L2', 1000)).toBe(false);
+  });
+
+  it('startRun records the run mode', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    const run = store.startRun(t.id, 'orchestrator', null, 'decompose');
+    expect(run.mode).toBe('decompose');
+    expect(store.runMode(run.id)).toBe('decompose');
+  });
+
+  it('orchestratorRunningCount counts only non-work running runs', () => {
+    const a = store.createTask({ title: 'a', status: 'triage' });
+    store.setPendingMode(a.id, 'decompose');
+    store.claimForDecompose(a.id, 'L', 1000);
+    store.startRun(a.id, 'orchestrator', null, 'decompose');
+    const b = store.createTask({ title: 'b', status: 'ready', assignee: 'r' });
+    store.claimTask(b.id, 'L2', 1000);
+    store.startRun(b.id, 'r', null, 'work');
+    expect(store.orchestratorRunningCount()).toBe(1);
+  });
+
+  it('armTriageForDecompose flags up to the limit and returns the count', () => {
+    store.createTask({ title: 'a', status: 'triage' });
+    store.createTask({ title: 'b', status: 'triage' });
+    store.createTask({ title: 'c', status: 'todo' }); // not triage — ignored
+    expect(store.armTriageForDecompose(1)).toBe(1);
+    expect(store.pendingDecomposeTasks().length).toBe(1);
+    expect(store.armTriageForDecompose(5)).toBe(1); // one triage remains unflagged
+  });
+
+  it('setStatusCleared resets claim fields', () => {
+    const t = store.createTask({ title: 'x', status: 'triage' });
+    store.claimForDecompose(t.id, 'L', 1000);
+    store.setStatusCleared(t.id, 'triage');
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('triage');
+    expect(got?.claimLock).toBeNull();
+    expect(got?.claimExpires).toBeNull();
+    expect(got?.currentRunId).toBeNull();
+    expect(got?.lastHeartbeatAt).toBeNull();
   });
 
   it('onEvent sink fires for every appended event', () => {

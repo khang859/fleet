@@ -343,7 +343,9 @@ export function validateCommand(command: string, args: Record<string, unknown>):
     case 'kanban.log':
     case 'kanban.ready':
     case 'kanban.unblock':
-    case 'kanban.archive': {
+    case 'kanban.archive':
+    case 'kanban.decompose':
+    case 'kanban.specify': {
       const verb = command.split('.')[1];
       if (!args.id)
         return `Error: kanban ${verb} requires a task id.\n\nUsage: fleet kanban ${verb} <task-id>`;
@@ -555,6 +557,8 @@ Manage the Kanban board from the terminal. Requires the Fleet app to be running.
   fleet kanban unlink <parent-id> <child-id>
   fleet kanban log <task-id>
   fleet kanban dispatch
+  fleet kanban decompose <task-id>            Fan a triage task into a child-task graph
+  fleet kanban specify <task-id>              Rewrite a triage task into a fuller spec
   fleet kanban watch
 
 ## Options
@@ -601,15 +605,10 @@ function formatWatchEvent(event: unknown): string {
   return `${time}  ${taskId}  ${kind}`;
 }
 
-export async function runKanbanWatch(
-  sockPath: string,
-  opts: { json: boolean }
-): Promise<string> {
+export async function runKanbanWatch(sockPath: string, opts: { json: boolean }): Promise<string> {
   return new Promise((resolve) => {
     const socket = createConnection(sockPath, () => {
-      socket.write(
-        JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n'
-      );
+      socket.write(JSON.stringify({ id: randomUUID(), command: 'kanban.watch', args: {} }) + '\n');
     });
     let buffer = '';
     let acked = false;

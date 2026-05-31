@@ -6,6 +6,7 @@ describe('renderProfileMarkdown', () => {
   it('renders frontmatter with name, model, and inline skills list, then body', () => {
     const md = renderProfileMarkdown({
       name: 'researcher',
+      role: 'worker',
       model: 'claude-opus-4-8',
       skills: ['web-search', 'docs'],
       instructions: 'You research things.'
@@ -18,18 +19,33 @@ describe('renderProfileMarkdown', () => {
   });
 
   it('omits the model line when model is empty', () => {
-    const md = renderProfileMarkdown({ name: 'a', model: '', skills: [], instructions: 'b' });
+    const md = renderProfileMarkdown({
+      name: 'a',
+      role: 'worker',
+      model: '',
+      skills: [],
+      instructions: 'b'
+    });
     expect(md).not.toContain('model:');
   });
 
   it('omits the skills line when there are no skills', () => {
-    const md = renderProfileMarkdown({ name: 'a', model: '', skills: [], instructions: 'b' });
+    const md = renderProfileMarkdown({
+      name: 'a',
+      role: 'worker',
+      model: '',
+      skills: [],
+      instructions: 'b'
+    });
     expect(md).not.toContain('skills:');
   });
 
   it('preserves multi-line instructions in the body', () => {
     const md = renderProfileMarkdown({
-      name: 'x', model: '', skills: [],
+      name: 'x',
+      role: 'worker',
+      model: '',
+      skills: [],
       instructions: 'Line 1.\nLine 2.\nLine 3.'
     });
     expect(md).toContain('Line 1.\nLine 2.\nLine 3.');
@@ -37,7 +53,10 @@ describe('renderProfileMarkdown', () => {
 
   it('keeps a --- inside instructions in the body (rune closes frontmatter at the first --- after name)', () => {
     const md = renderProfileMarkdown({
-      name: 'x', model: '', skills: [],
+      name: 'x',
+      role: 'worker',
+      model: '',
+      skills: [],
       instructions: 'Intro.\n---\nFooter.'
     });
     // Everything from the blank line after the closing fence onward is the body.
@@ -47,7 +66,13 @@ describe('renderProfileMarkdown', () => {
   });
 
   it('omits the model line when model is whitespace-only', () => {
-    const md = renderProfileMarkdown({ name: 'a', model: '   ', skills: [], instructions: 'b' });
+    const md = renderProfileMarkdown({
+      name: 'a',
+      role: 'worker',
+      model: '   ',
+      skills: [],
+      instructions: 'b'
+    });
     expect(md).not.toContain('model:');
   });
 });

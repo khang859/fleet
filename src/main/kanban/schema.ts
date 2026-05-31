@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   skills TEXT NOT NULL DEFAULT '[]',
   idempotency_key TEXT,
   result TEXT,
+  pending_mode TEXT,
   claim_lock TEXT,
   claim_expires INTEGER,
   worker_pid INTEGER,
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
   task_id TEXT NOT NULL,
   profile TEXT,
   status TEXT NOT NULL,
+  mode TEXT NOT NULL DEFAULT 'work',
   worker_pid INTEGER,
   started_at INTEGER NOT NULL,
   ended_at INTEGER,
