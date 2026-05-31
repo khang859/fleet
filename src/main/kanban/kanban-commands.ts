@@ -11,7 +11,8 @@ import type {
   TaskEvent,
   UpdateTaskFields,
   WorkspaceKind,
-  PendingMode
+  PendingMode,
+  TaskAttachment
 } from '../../shared/kanban-types';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
@@ -80,7 +81,8 @@ export class KanbanCommands {
       children: this.store
         .childrenOf(id)
         .map((cid) => this.store.getTask(cid))
-        .filter((t): t is Task => t !== null)
+        .filter((t): t is Task => t !== null),
+      attachments: this.store.listAttachments(id)
     };
   }
 
@@ -182,6 +184,30 @@ export class KanbanCommands {
     const comment = this.store.addComment(id, 'human', body);
     this.store.appendEvent(id, null, 'comment_added', { author: 'human' });
     return comment;
+  }
+
+  addAttachment(taskId: string, sourcePath: string): TaskAttachment {
+    this.requireTask(taskId);
+    const att = this.store.addAttachment(taskId, sourcePath);
+    this.store.appendEvent(taskId, null, 'attachment_added', {
+      id: att.id,
+      filename: att.filename
+    });
+    return att;
+  }
+
+  removeAttachment(id: string): void {
+    const att = this.store.getAttachment(id);
+    if (!att) return;
+    this.store.removeAttachment(id);
+    this.store.appendEvent(att.taskId, null, 'attachment_removed', {
+      id,
+      filename: att.filename
+    });
+  }
+
+  getAttachment(id: string): TaskAttachment | null {
+    return this.store.getAttachment(id);
   }
 
   link(parentId: string, childId: string): void {

@@ -134,4 +134,5 @@ export interface TaskDetail {
   events: TaskEvent[];
   parents: Task[];
   children: Task[];
+  attachments: TaskAttachment[];
 }
