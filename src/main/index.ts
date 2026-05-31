@@ -50,7 +50,7 @@ import type { DispatcherConfig } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
-import { spawnRuneWorker } from './kanban/spawn-worker';
+import { spawnRuneWorker, resolveWorkProfile } from './kanban/spawn-worker';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
 import pkg from 'electron-updater';
@@ -805,7 +805,15 @@ void app.whenReady().then(async () => {
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
       if (mode === 'work') {
-        profile = task.assignee ? (profiles.find((p) => p.name === task.assignee) ?? null) : null;
+        const resolved = resolveWorkProfile(profiles, task.assignee);
+        profile = resolved.profile;
+        if (resolved.fellBack) {
+          log.warn('kanban: non-worker profile assigned to work task; using worker fallback', {
+            taskId: task.id,
+            assignee: task.assignee,
+            fallback: profile?.name ?? null
+          });
+        }
       } else {
         // decompose/specify: run as an orchestrator profile; offer the worker roster.
         profile =
