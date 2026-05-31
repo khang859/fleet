@@ -43,9 +43,13 @@ export class KanbanCommands {
 
   create(input: CreateTaskInput): Task {
     const d = this.getCreateDefaults();
+    const workspaceKind = input.workspaceKind ?? d.workspaceKind;
+    if (workspaceKind === 'worktree' && !input.repoPath) {
+      throw new CodedError('worktree tasks require a source repo (repoPath)', 'BAD_REQUEST');
+    }
     const task = this.store.createTask({
       ...input,
-      workspaceKind: input.workspaceKind ?? d.workspaceKind,
+      workspaceKind,
       maxRuntimeSeconds: input.maxRuntimeSeconds ?? d.maxRuntimeSeconds
     });
     this.store.appendEvent(task.id, null, 'task_created', { title: task.title });

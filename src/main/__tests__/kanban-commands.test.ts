@@ -25,7 +25,7 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
     }
   });
   const commands = new KanbanCommands(store, dispatcher, () => ({
-    workspaceKind: 'worktree',
+    workspaceKind: 'scratch',
     maxRuntimeSeconds: null
   }));
   return { store, commands };
@@ -43,7 +43,7 @@ describe('KanbanCommands create/list/show', () => {
     const { store, commands } = makeCommands();
     const task = commands.create({ title: 'First task' });
     expect(task.title).toBe('First task');
-    expect(task.workspaceKind).toBe('worktree');
+    expect(task.workspaceKind).toBe('scratch');
     const events = store.listEvents(task.id);
     expect(events.map((e) => e.kind)).toContain('task_created');
   });
@@ -65,6 +65,30 @@ describe('KanbanCommands create/list/show', () => {
     expect(detail?.task.title).toBe('detail me');
     expect(detail?.comments).toEqual([]);
     expect(commands.show('nope')).toBeNull();
+  });
+
+  it('rejects a worktree task with no repoPath', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.create({ title: 'no repo', workspaceKind: 'worktree' })).toThrow(
+      /repo/i
+    );
+  });
+
+  it('allows a scratch task with no repoPath', () => {
+    const { commands } = makeCommands();
+    const task = commands.create({ title: 'scratch ok', workspaceKind: 'scratch' });
+    expect(task.workspaceKind).toBe('scratch');
+  });
+
+  it('stores repoPath for a worktree task', () => {
+    const { commands } = makeCommands();
+    const task = commands.create({
+      title: 'wt',
+      workspaceKind: 'worktree',
+      repoPath: '/src/repo'
+    });
+    expect(task.repoPath).toBe('/src/repo');
+    expect(task.workspaceKind).toBe('worktree');
   });
 });
 
@@ -235,7 +259,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
       prepareWorkspaceFn: () => '/tmp/ws'
     });
     const commands = new KanbanCommands(store, dispatcher, () => ({
-      workspaceKind: 'worktree',
+      workspaceKind: 'scratch',
       maxRuntimeSeconds: null
     }));
     const t = commands.create({ title: 'go', status: 'ready', assignee: 'r' });
