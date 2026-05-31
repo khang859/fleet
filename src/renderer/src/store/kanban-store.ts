@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type {
+  Board,
   BoardCard,
   TaskDetail,
   CreateTaskInput,
@@ -12,7 +13,14 @@ type KanbanState = {
   loaded: boolean;
   openTaskId: string | null;
   detail: TaskDetail | null;
+  boards: Board[];
+  activeBoardSlug: string;
   loadBoard: () => Promise<void>;
+  loadBoards: () => Promise<void>;
+  switchBoard: (slug: string) => Promise<void>;
+  createBoard: (name: string) => Promise<void>;
+  renameBoard: (slug: string, name: string) => Promise<void>;
+  deleteBoard: (slug: string) => Promise<void>;
   openTask: (id: string) => Promise<void>;
   closeTask: () => void;
   refreshDetail: () => Promise<void>;
@@ -35,10 +43,45 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   loaded: false,
   openTaskId: null,
   detail: null,
+  boards: [],
+  activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
 
   loadBoard: async () => {
-    const cards = await window.fleet.kanban.listBoard();
+    const cards = await window.fleet.kanban.listBoard(get().activeBoardSlug);
     set({ cards, loaded: true });
+  },
+  loadBoards: async () => {
+    const boards = await window.fleet.kanban.listBoards();
+    // If the active board vanished (e.g. deleted in another window), fall back.
+    const active = get().activeBoardSlug;
+    if (!boards.some((b) => b.slug === active)) {
+      localStorage.setItem('fleet.kanban.activeBoard', 'default');
+      set({ boards, activeBoardSlug: 'default' });
+      await get().loadBoard();
+      return;
+    }
+    set({ boards });
+  },
+  switchBoard: async (slug) => {
+    localStorage.setItem('fleet.kanban.activeBoard', slug);
+    set({ activeBoardSlug: slug, openTaskId: null, detail: null });
+    await get().loadBoard();
+  },
+  createBoard: async (name) => {
+    const board = await window.fleet.kanban.createBoard(name);
+    await get().loadBoards();
+    await get().switchBoard(board.slug);
+  },
+  renameBoard: async (slug, name) => {
+    await window.fleet.kanban.renameBoard({ slug, name });
+    await get().loadBoards();
+  },
+  deleteBoard: async (slug) => {
+    await window.fleet.kanban.deleteBoard(slug);
+    if (get().activeBoardSlug === slug) {
+      await get().switchBoard('default');
+    }
+    await get().loadBoards();
   },
   openTask: async (id) => {
     const detail = await window.fleet.kanban.getTask(id);
