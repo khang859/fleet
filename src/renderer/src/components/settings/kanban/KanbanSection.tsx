@@ -3,6 +3,17 @@ import { SettingRow } from '../SettingRow';
 import { ProfileEditor } from './ProfileEditor';
 import type { KanbanSettings, WorkerProfile } from '../../../../../shared/types';
 import type { WorkspaceKind } from '../../../../../shared/kanban-types';
+import {
+  KANBAN_NOTIFY_CATEGORIES,
+  type KanbanNotifyCategory
+} from '../../../../../shared/kanban-notifications';
+
+const KANBAN_NOTIFY_LABELS: Record<KanbanNotifyCategory, string> = {
+  blocked: 'Blocked (needs you)',
+  failed: 'Failed',
+  completed: 'Completed',
+  scheduleFired: 'Schedule fired'
+};
 
 const WORKSPACE_KINDS: WorkspaceKind[] = ['scratch', 'dir', 'worktree'];
 
@@ -146,6 +157,44 @@ export function KanbanSection(): React.JSX.Element | null {
             className="w-32 rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
           />
         </SettingRow>
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-300">Notifications</h3>
+        <p className="text-xs text-neutral-500 mb-2">
+          Surface worker and scheduler events as an OS notification and an unread badge on the
+          Kanban tab.
+        </p>
+        <div className="grid grid-cols-3 gap-2 text-xs text-neutral-500 mb-1">
+          <div>Event</div>
+          <div className="text-center">Badge</div>
+          <div className="text-center">OS</div>
+        </div>
+        {KANBAN_NOTIFY_CATEGORIES.map((cat) => (
+          <div key={cat} className="grid grid-cols-3 gap-2 items-center">
+            <div className="text-sm text-neutral-300">{KANBAN_NOTIFY_LABELS[cat]}</div>
+            {(['badge', 'os'] as const).map((channel) => (
+              <div key={channel} className="flex justify-center">
+                <input
+                  type="checkbox"
+                  checked={k.notifications[cat][channel]}
+                  onChange={(e) => {
+                    patch({
+                      notifications: {
+                        ...k.notifications,
+                        [cat]: {
+                          ...k.notifications[cat],
+                          [channel]: e.target.checked
+                        }
+                      }
+                    });
+                  }}
+                  className="accent-blue-500"
+                />
+              </div>
+            ))}
+          </div>
+        ))}
       </section>
 
       <section className="space-y-3">
