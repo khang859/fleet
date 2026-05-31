@@ -440,6 +440,25 @@ describe('KanbanCommands scheduling', () => {
     const res = commands.previewSchedule({ kind: 'cron', expr: 'nope' });
     expect(res.ok).toBe(false);
   });
+
+  it('resumeSchedule on a paused recurring schedule clears the flag and logs an event', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.pauseSchedule(t.id);
+    commands.resumeSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(false);
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_resumed')).toBe(true);
+  });
+
+  it('clearSchedule returns a scheduled task to todo and logs schedule_cleared', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.clearSchedule(t.id);
+    expect(store.getTask(t.id)!.status).toBe('todo');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_cleared')).toBe(true);
+  });
 });
 
 describe('KanbanCommands boards', () => {

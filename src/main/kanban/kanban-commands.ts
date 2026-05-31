@@ -288,11 +288,17 @@ export class KanbanCommands {
     const v = validateSchedule(input);
     if (!v.ok) throw new CodedError(v.error, 'BAD_REQUEST');
     this.store.setSchedule(id, input);
-    this.store.appendEvent(id, null, 'schedule_set', { kind: input.kind });
+    this.store.appendEvent(id, null, 'schedule_set', {
+      kind: input.kind,
+      expr: input.kind === 'cron' ? input.expr : undefined,
+      everyMs: input.kind === 'interval' ? input.everyMs : undefined,
+      at: input.kind === 'once' ? input.at : undefined
+    });
   }
 
   clearSchedule(id: string): void {
-    this.requireTask(id);
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null) return; // nothing to clear; don't emit a phantom event
     this.store.clearSchedule(id);
     this.store.appendEvent(id, null, 'schedule_cleared', {});
   }
@@ -302,6 +308,7 @@ export class KanbanCommands {
     if (t.scheduleKind == null || t.scheduleKind === 'once') {
       throw new CodedError('only recurring schedules can be paused', 'BAD_REQUEST');
     }
+    if (t.schedulePaused) return; // already paused — idempotent no-op
     this.store.pauseSchedule(id);
     this.store.appendEvent(id, null, 'schedule_paused', {});
   }
@@ -311,6 +318,7 @@ export class KanbanCommands {
     if (t.scheduleKind == null || t.scheduleKind === 'once') {
       throw new CodedError('only recurring schedules can be resumed', 'BAD_REQUEST');
     }
+    if (!t.schedulePaused) return; // not paused — idempotent no-op
     this.store.resumeSchedule(id);
     this.store.appendEvent(id, null, 'schedule_resumed', {});
   }
