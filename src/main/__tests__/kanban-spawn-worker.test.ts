@@ -24,7 +24,8 @@ describe('buildWorkerInvocation', () => {
       workspace,
       mcpPort: 5599,
       runToken: 'tok-abc',
-      logPath: join(ROOT, 'abc.log')
+      logPath: join(ROOT, 'abc.log'),
+      mode: 'work'
     });
 
     expect(inv.command).toBe('rune');
@@ -48,7 +49,8 @@ describe('buildWorkerInvocation', () => {
       workspace,
       mcpPort: 1,
       runToken: 'x',
-      logPath: join(ROOT, 'd.log')
+      logPath: join(ROOT, 'd.log'),
+      mode: 'work'
     });
     expect(inv.args).toContain('--model');
     expect(inv.args).toContain('gpt-4');
@@ -63,6 +65,7 @@ describe('buildWorkerInvocation', () => {
       mcpPort: 1,
       runToken: 'x',
       logPath: join(ROOT, 'p.log'),
+      mode: 'work',
       profile: {
         name: 'researcher',
         role: 'worker' as const,
@@ -88,7 +91,8 @@ describe('buildWorkerInvocation', () => {
       workspace,
       mcpPort: 1,
       runToken: 'x',
-      logPath: join(ROOT, 'q.log')
+      logPath: join(ROOT, 'q.log'),
+      mode: 'work'
     });
     expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
   });
@@ -102,8 +106,65 @@ describe('buildWorkerInvocation', () => {
       mcpPort: 1,
       runToken: 'x',
       logPath: join(ROOT, 'r.log'),
+      mode: 'work',
       profile: { name: '../evil', role: 'worker' as const, model: '', skills: [], instructions: 'b' }
     });
     expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
+  });
+
+  it('builds a decompose prompt with the worker roster and --profile orchestrator', () => {
+    const workspace = join(ROOT, 'ws6');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 't1', title: 'big', body: 'do everything', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'r.log'),
+      mode: 'decompose',
+      profile: { name: 'orchestrator', role: 'orchestrator', model: '', skills: [], instructions: 'route' },
+      roster: [{ name: 'coder', description: 'writes code' }]
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toMatch(/decompose/i);
+    expect(prompt).toContain('coder: writes code');
+    expect(prompt).toContain('kanban_create');
+    expect(prompt).toContain('kanban_complete');
+    expect(prompt).toMatch(/do not implement/i);
+    expect(inv.args).toContain('--profile');
+    expect(inv.args[inv.args.indexOf('--profile') + 1]).toBe('orchestrator');
+  });
+
+  it('builds a specify prompt that says not to create child tasks', () => {
+    const workspace = join(ROOT, 'ws7');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 't2', title: 'vague', body: 'x', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'r.log'),
+      mode: 'specify',
+      profile: { name: 'orchestrator', role: 'orchestrator', model: '', skills: [], instructions: 'route' }
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toMatch(/kanban_update/);
+    expect(prompt).toMatch(/do not create child/i);
+  });
+
+  it('builds the normal work prompt for mode work', () => {
+    const workspace = join(ROOT, 'ws8');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 't3', title: 'fix', body: 'bug', assignee: 'default', modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'r.log'),
+      mode: 'work'
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toMatch(/^work kanban task t3/);
+    expect(inv.args[inv.args.indexOf('--profile') + 1]).toBe('default');
   });
 });
