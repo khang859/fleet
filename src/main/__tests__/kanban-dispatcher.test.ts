@@ -375,6 +375,87 @@ describe('KanbanDispatcher.decompose', () => {
   });
 });
 
+describe('KanbanDispatcher.fireSchedules', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function makeDisp(store: KanbanStore, clock: { t: number }, spawned: number[]): KanbanDispatcher {
+    return new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => {
+        spawned.push(1);
+        return 123;
+      },
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        maxDecompose: 1
+      },
+      intervalMs: 5000 // GRACE_MS = max(2*5000, 60000) = 60000
+    });
+  }
+
+  it('fires a due one-shot in place (scheduled -> ready)', () => {
+    const clock = { t: 1_000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'one', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'once', at: 1_000 });
+    const disp = makeDisp(store, clock, []);
+    disp.fireSchedules();
+    expect(store.getTask(t.id)?.status).toBe('ready');
+    store.close();
+  });
+
+  it('fires a due recurring template within grace: spawns an instance and advances next_run_at', () => {
+    const clock = { t: 1_000_000 };
+    const store = makeStore(clock);
+    const tmpl = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 50_000 }); // next_run_at = 1_050_000
+    clock.t = 1_050_001;
+    const disp = makeDisp(store, clock, []);
+    disp.fireSchedules();
+    const instances = store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id);
+    expect(instances.length).toBe(1);
+    const after = store.getTask(tmpl.id)!;
+    expect(after.status).toBe('scheduled');
+    expect(after.nextRunAt).toBe(1_050_001 + 50_000);
+    store.close();
+  });
+
+  it('realigns a missed recurring template (> grace) without spawning', () => {
+    const clock = { t: 1_000_000 };
+    const store = makeStore(clock);
+    const tmpl = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 50_000 }); // next_run_at = 1_050_000
+    clock.t = 1_050_000 + 70_000; // 70s late > 60s grace
+    const disp = makeDisp(store, clock, []);
+    disp.fireSchedules();
+    const instances = store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id);
+    expect(instances.length).toBe(0);
+    expect(store.getTask(tmpl.id)!.nextRunAt).toBe(clock.t + 50_000);
+    store.close();
+  });
+
+  it('does not fire a paused recurring template', () => {
+    const clock = { t: 1_000_000 };
+    const store = makeStore(clock);
+    const tmpl = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 50_000 });
+    store.pauseSchedule(tmpl.id);
+    clock.t = 1_050_001;
+    const spawned: number[] = [];
+    const disp = makeDisp(store, clock, spawned);
+    disp.fireSchedules();
+    expect(store.listTasks({ status: 'todo' }).filter((x) => x.scheduledFrom === tmpl.id).length).toBe(0);
+    expect(store.getTask(tmpl.id)!.status).toBe('scheduled');
+    store.close();
+  });
+});
+
 describe('KanbanDispatcher.reconfigure', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));

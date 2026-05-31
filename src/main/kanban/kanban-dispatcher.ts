@@ -1,6 +1,7 @@
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { Task, RunMode } from '../../shared/kanban-types';
+import { computeNextRun, taskToScheduleInput } from './schedule';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -76,6 +77,38 @@ export class KanbanDispatcher {
     for (const task of this.store.promotableTodoTasks()) {
       this.store.setStatus(task.id, 'ready');
       this.store.appendEvent(task.id, null, 'promoted', {});
+    }
+  }
+
+  private graceMs(): number {
+    return Math.max(2 * (this.deps.intervalMs ?? DEFAULT_INTERVAL_MS), 60_000);
+  }
+
+  /** Fire due schedules: one-shots run in place; recurring templates spawn instances
+   *  (or realign past the grace window). Synchronous — preserves the atomic-tick invariant. */
+  fireSchedules(): void {
+    const now = this.deps.now();
+    const grace = this.graceMs();
+    for (const t of this.store.dueSchedules(now)) {
+      if (t.scheduleKind === 'once') {
+        this.store.fireOnce(t.id);
+        this.store.appendEvent(t.id, null, 'schedule_fired', { kind: 'once' });
+        continue;
+      }
+      const input = taskToScheduleInput(t);
+      if (!input) continue; // defensive: scheduled row with no usable recurrence
+      const next = computeNextRun(input, now);
+      if (t.nextRunAt != null && now - t.nextRunAt > grace) {
+        this.store.advanceNextRun(t.id, next);
+        this.store.appendEvent(t.id, null, 'schedule_realigned', { nextRunAt: next });
+      } else {
+        const instance = this.store.spawnScheduledInstance(t);
+        this.store.advanceNextRun(t.id, next);
+        this.store.appendEvent(t.id, null, 'schedule_fired', {
+          kind: t.scheduleKind,
+          instanceId: instance.id
+        });
+      }
     }
   }
 
@@ -161,6 +194,7 @@ export class KanbanDispatcher {
 
   tick(): void {
     this.reclaim();
+    this.fireSchedules();
     this.decompose();
     this.promote();
     this.claimAndSpawn();
