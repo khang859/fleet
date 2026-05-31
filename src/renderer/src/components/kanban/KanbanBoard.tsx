@@ -3,7 +3,7 @@ import { useKanbanStore } from '../../store/kanban-store';
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanDrawer } from './KanbanDrawer';
 import { COLUMNS } from './kanban-utils';
-import type { TaskStatus } from '../../../../shared/kanban-types';
+import type { TaskStatus, WorkspaceKind } from '../../../../shared/kanban-types';
 import { Plus, Zap, Archive } from 'lucide-react';
 
 export function KanbanBoard(): React.JSX.Element {
@@ -14,6 +14,8 @@ export function KanbanBoard(): React.JSX.Element {
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newKind, setNewKind] = useState<WorkspaceKind>('scratch');
+  const [newRepo, setNewRepo] = useState('');
   const draggingId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -41,8 +43,15 @@ export function KanbanBoard(): React.JSX.Element {
   async function handleCreate(): Promise<void> {
     const title = newTitle.trim();
     if (!title) return;
-    await createTask({ title });
+    if (newKind === 'worktree' && !newRepo.trim()) return;
+    await createTask({
+      title,
+      workspaceKind: newKind,
+      ...(newKind === 'worktree' ? { repoPath: newRepo.trim() } : {})
+    });
     setNewTitle('');
+    setNewRepo('');
+    setNewKind('scratch');
     setCreating(false);
   }
 
@@ -104,6 +113,30 @@ export function KanbanBoard(): React.JSX.Element {
             placeholder="Task title…"
             className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
           />
+          <select
+            value={newKind}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (v === 'scratch' || v === 'dir' || v === 'worktree') setNewKind(v);
+            }}
+            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none"
+          >
+            <option value="scratch">scratch</option>
+            <option value="dir">dir</option>
+            <option value="worktree">worktree</option>
+          </select>
+          {newKind === 'worktree' && (
+            <input
+              value={newRepo}
+              onChange={(e) => setNewRepo(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate();
+                if (e.key === 'Escape') setCreating(false);
+              }}
+              placeholder="Source repo path…"
+              className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+            />
+          )}
           <button
             onClick={() => void handleCreate()}
             className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
