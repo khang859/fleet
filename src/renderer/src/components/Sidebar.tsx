@@ -1173,39 +1173,6 @@ export function Sidebar({
             handleDrop();
           }}
         >
-          {/* Kanban tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'kanban')
-            .map((tab) => (
-              <KanbanTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {/* Images tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'images')
-            .map((tab) => (
-              <ImagesTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {/* Annotate tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'annotate')
-            .map((tab) => (
-              <AnnotateTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {workspace.tabs.some(
-            (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
-          ) && <div className="h-px bg-neutral-800 mx-1 my-1" />}
           {(() => {
             const regularTabs = workspace.tabs.filter(
               (t) =>
@@ -1370,6 +1337,49 @@ export function Sidebar({
           label="need attention"
         />
       </div>
+
+      {/* Pinned tools section */}
+      {workspace.tabs.some(
+        (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+      ) && (
+        <div className="border-t border-neutral-800 px-2 py-2 space-y-0.5">
+          <div className="flex items-center px-2 py-1">
+            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+              Tools
+            </span>
+          </div>
+          {/* Kanban tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'kanban')
+            .map((tab) => (
+              <KanbanTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+          {/* Images tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'images')
+            .map((tab) => (
+              <ImagesTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+          {/* Annotate tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'annotate')
+            .map((tab) => (
+              <AnnotateTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+        </div>
+      )}
 
       {/* Bottom section: workspaces */}
       <div className="border-t border-neutral-800 px-2 py-2 space-y-0.5">
