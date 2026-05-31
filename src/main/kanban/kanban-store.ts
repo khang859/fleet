@@ -175,7 +175,7 @@ export class KanbanStore {
         priority: input.priority ?? 0,
         tenant: input.tenant ?? null,
         workspace_kind: input.workspaceKind ?? 'scratch',
-        workspace_path: null,
+        workspace_path: input.workspacePath ?? null,
         repo_path: input.repoPath ?? null,
         branch_name: input.branchName ?? null,
         model_override: input.modelOverride ?? null,

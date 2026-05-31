@@ -3,7 +3,7 @@ import { useKanbanStore } from '../../store/kanban-store';
 import { KanbanColumn } from './KanbanColumn';
 import { KanbanDrawer } from './KanbanDrawer';
 import { COLUMNS } from './kanban-utils';
-import type { TaskStatus, WorkspaceKind } from '../../../../shared/kanban-types';
+import type { TaskStatus } from '../../../../shared/kanban-types';
 import { Plus, Zap, Archive, Network } from 'lucide-react';
 import { SwarmModal } from './SwarmModal';
 
@@ -33,8 +33,9 @@ export function KanbanBoard(): React.JSX.Element {
   const [boardEditor, setBoardEditor] = useState<{ mode: 'new' | 'rename' } | null>(null);
   const [boardName, setBoardName] = useState('');
   const [newTitle, setNewTitle] = useState('');
-  const [newKind, setNewKind] = useState<WorkspaceKind>('scratch');
-  const [newRepo, setNewRepo] = useState('');
+  const [newMode, setNewMode] = useState<'scratch' | 'project'>('scratch');
+  const [newFolder, setNewFolder] = useState('');
+  const [newIsolated, setNewIsolated] = useState(true);
   const draggingId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -62,18 +63,27 @@ export function KanbanBoard(): React.JSX.Element {
     ? [...COLUMNS, { status: 'archived' as TaskStatus, label: 'Archived' }]
     : COLUMNS;
 
+  async function pickFolder(): Promise<void> {
+    const path = await window.fleet.showFolderPicker();
+    if (path) setNewFolder(path);
+  }
+
   async function handleCreate(): Promise<void> {
     const title = newTitle.trim();
     if (!title) return;
-    if (newKind === 'worktree' && !newRepo.trim()) return;
-    await createTask({
-      title,
-      workspaceKind: newKind,
-      ...(newKind === 'worktree' ? { repoPath: newRepo.trim() } : {})
-    });
+    const folder = newFolder.trim();
+    if (newMode === 'project' && !folder) return;
+    const workspace =
+      newMode === 'scratch'
+        ? { workspaceKind: 'scratch' as const }
+        : newIsolated
+          ? { workspaceKind: 'worktree' as const, repoPath: folder }
+          : { workspaceKind: 'dir' as const, workspacePath: folder };
+    await createTask({ title, ...workspace });
     setNewTitle('');
-    setNewRepo('');
-    setNewKind('scratch');
+    setNewFolder('');
+    setNewMode('scratch');
+    setNewIsolated(true);
     setCreating(false);
   }
 
@@ -221,7 +231,7 @@ export function KanbanBoard(): React.JSX.Element {
       )}
 
       {creating && (
-        <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
+        <div className="flex flex-col gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
           <input
             autoFocus
             value={newTitle}
@@ -231,44 +241,78 @@ export function KanbanBoard(): React.JSX.Element {
               if (e.key === 'Escape') setCreating(false);
             }}
             placeholder="Task title…"
-            className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+            className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
           />
-          <select
-            value={newKind}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v === 'scratch' || v === 'dir' || v === 'worktree') setNewKind(v);
-            }}
-            className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs outline-none"
-          >
-            <option value="scratch">scratch</option>
-            <option value="dir">dir</option>
-            <option value="worktree">worktree</option>
-          </select>
-          {newKind === 'worktree' && (
+          <div className="text-[11px] font-medium text-neutral-400">Where should the agent work?</div>
+          <label className="flex items-center gap-2 text-xs text-neutral-300">
             <input
-              value={newRepo}
-              onChange={(e) => setNewRepo(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') void handleCreate();
-                if (e.key === 'Escape') setCreating(false);
-              }}
-              placeholder="Source repo path…"
-              className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+              type="radio"
+              name="ws-mode"
+              checked={newMode === 'scratch'}
+              onChange={() => setNewMode('scratch')}
             />
+            Empty sandbox{' '}
+            <span className="text-neutral-500">(no project — a fresh, empty folder)</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-neutral-300">
+            <input
+              type="radio"
+              name="ws-mode"
+              checked={newMode === 'project'}
+              onChange={() => setNewMode('project')}
+            />
+            A project folder
+          </label>
+          {newMode === 'project' && (
+            <div className="flex flex-col gap-2 pl-6">
+              <div className="flex items-center gap-2">
+                <input
+                  value={newFolder}
+                  onChange={(e) => setNewFolder(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void handleCreate();
+                    if (e.key === 'Escape') setCreating(false);
+                  }}
+                  placeholder="No folder selected…"
+                  className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+                />
+                <button
+                  onClick={() => void pickFolder()}
+                  className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+                >
+                  Browse…
+                </button>
+              </div>
+              <label className="flex items-start gap-2 text-xs text-neutral-300">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={newIsolated}
+                  onChange={(e) => setNewIsolated(e.target.checked)}
+                />
+                <span>
+                  Work on an isolated copy{' '}
+                  <span className="text-neutral-500">
+                    (git worktree — recommended; leaves your files untouched. Requires a git repo.)
+                  </span>
+                </span>
+              </label>
+            </div>
           )}
-          <button
-            onClick={() => void handleCreate()}
-            className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
-          >
-            Create
-          </button>
-          <button
-            onClick={() => setCreating(false)}
-            className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
-          >
-            Cancel
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void handleCreate()}
+              className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
+            >
+              Create
+            </button>
+            <button
+              onClick={() => setCreating(false)}
+              className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 

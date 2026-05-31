@@ -126,6 +126,7 @@ export interface CreateTaskInput {
   tenant?: string | null;
   workspaceKind?: WorkspaceKind;
   repoPath?: string;
+  workspacePath?: string;
   branchName?: string | null;
   modelOverride?: string | null;
   skills?: string[];

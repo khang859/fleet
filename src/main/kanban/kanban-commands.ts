@@ -63,6 +63,9 @@ export class KanbanCommands {
     if (workspaceKind === 'worktree' && !input.repoPath) {
       throw new CodedError('worktree tasks require a source repo (repoPath)', 'BAD_REQUEST');
     }
+    if (workspaceKind === 'dir' && !input.workspacePath) {
+      throw new CodedError('dir tasks require a workspace path (workspacePath)', 'BAD_REQUEST');
+    }
     const task = this.store.createTask({
       ...input,
       workspaceKind,
