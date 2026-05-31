@@ -13,8 +13,10 @@ import type {
   UpdateTaskFields,
   WorkspaceKind,
   PendingMode,
-  TaskAttachment
+  TaskAttachment,
+  ScheduleInput
 } from '../../shared/kanban-types';
+import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
 import { deriveBoardSlug } from './board-slug';
@@ -279,6 +281,53 @@ export class KanbanCommands {
       mode === 'decompose' ? 'decompose_requested' : 'specify_requested',
       {}
     );
+  }
+
+  setSchedule(id: string, input: ScheduleInput): void {
+    this.requireTask(id);
+    const v = validateSchedule(input);
+    if (!v.ok) throw new CodedError(v.error, 'BAD_REQUEST');
+    this.store.setSchedule(id, input);
+    this.store.appendEvent(id, null, 'schedule_set', { kind: input.kind });
+  }
+
+  clearSchedule(id: string): void {
+    this.requireTask(id);
+    this.store.clearSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_cleared', {});
+  }
+
+  pauseSchedule(id: string): void {
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null || t.scheduleKind === 'once') {
+      throw new CodedError('only recurring schedules can be paused', 'BAD_REQUEST');
+    }
+    this.store.pauseSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_paused', {});
+  }
+
+  resumeSchedule(id: string): void {
+    const t = this.requireTask(id);
+    if (t.scheduleKind == null || t.scheduleKind === 'once') {
+      throw new CodedError('only recurring schedules can be resumed', 'BAD_REQUEST');
+    }
+    this.store.resumeSchedule(id);
+    this.store.appendEvent(id, null, 'schedule_resumed', {});
+  }
+
+  /** Compute the next ~3 fire times for a candidate schedule (drawer live preview). */
+  previewSchedule(input: ScheduleInput): { ok: true; next: number[] } | { ok: false; error: string } {
+    const v = validateSchedule(input);
+    if (!v.ok) return { ok: false, error: v.error };
+    const next: number[] = [];
+    let after = Date.now();
+    for (let i = 0; i < 3; i += 1) {
+      const n = computeNextRun(input, after);
+      next.push(n);
+      after = n;
+      if (input.kind === 'once') break; // a one-shot fires exactly once
+    }
+    return { ok: true, next };
   }
 
   dispatch(): void {

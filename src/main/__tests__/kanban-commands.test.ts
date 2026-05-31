@@ -379,6 +379,69 @@ describe('KanbanCommands attachments', () => {
   });
 });
 
+describe('KanbanCommands scheduling', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('setSchedule rejects an invalid cron with BAD_REQUEST', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    let code: string | undefined;
+    try {
+      commands.setSchedule(t.id, { kind: 'cron', expr: 'nope' });
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('setSchedule rejects a non-positive interval with BAD_REQUEST', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    let code: string | undefined;
+    try {
+      commands.setSchedule(t.id, { kind: 'interval', everyMs: 0 });
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('setSchedule with a valid interval round-trips and logs an event', () => {
+    const { store, commands } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    expect(store.getTask(t.id)!.status).toBe('scheduled');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_set')).toBe(true);
+  });
+
+  it('pauseSchedule rejects a one-shot schedule', () => {
+    const { commands } = makeCommands();
+    const t = commands.create({ title: 'x' });
+    commands.setSchedule(t.id, { kind: 'once', at: 99_000 });
+    let code: string | undefined;
+    try {
+      commands.pauseSchedule(t.id);
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+  });
+
+  it('previewSchedule returns next fire times for a valid schedule', () => {
+    const { commands } = makeCommands();
+    const res = commands.previewSchedule({ kind: 'interval', everyMs: 1000 });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.next.length).toBe(3);
+  });
+
+  it('previewSchedule returns an error for an invalid cron', () => {
+    const { commands } = makeCommands();
+    const res = commands.previewSchedule({ kind: 'cron', expr: 'nope' });
+    expect(res.ok).toBe(false);
+  });
+});
+
 describe('KanbanCommands boards', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
