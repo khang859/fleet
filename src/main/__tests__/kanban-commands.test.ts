@@ -378,3 +378,50 @@ describe('KanbanCommands attachments', () => {
     expect(() => commands.addAttachment('nope', srcFile('c.txt'))).toThrow();
   });
 });
+
+describe('KanbanCommands boards', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('createBoard derives a slug and listBoards returns it', () => {
+    const { commands } = makeCommands();
+    const b = commands.createBoard('Research');
+    expect(b.slug).toBe('research');
+    expect(commands.listBoards().map((x) => x.slug)).toContain('research');
+  });
+
+  it('createBoard rejects an empty / junk name', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.createBoard('   ')).toThrow();
+    expect(() => commands.createBoard('!!!')).toThrow();
+  });
+
+  it('renameBoard rejects an empty / junk name', () => {
+    const { commands } = makeCommands();
+    commands.createBoard('Research');
+    expect(() => commands.renameBoard('research', '  ')).toThrow();
+    expect(() => commands.renameBoard('research', '!!!')).toThrow();
+  });
+
+  it('deleteBoard refuses the default board', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.deleteBoard('default')).toThrow();
+  });
+
+  it('deleteBoard refuses a board with a running task', () => {
+    const { store, commands } = makeCommands();
+    commands.createBoard('Research');
+    const t = store.createTask({ title: 'busy', boardId: 'research' });
+    store.setStatus(t.id, 'running');
+    expect(() => commands.deleteBoard('research')).toThrow();
+    expect(commands.listBoards().map((b) => b.slug)).toContain('research');
+  });
+
+  it('deleteBoard removes an idle board', () => {
+    const { store, commands } = makeCommands();
+    commands.createBoard('Research');
+    store.createTask({ title: 'idle', boardId: 'research' });
+    commands.deleteBoard('research');
+    expect(commands.listBoards().map((b) => b.slug)).not.toContain('research');
+  });
+});
