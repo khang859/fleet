@@ -31,7 +31,22 @@ export class KanbanStore {
 
   private migrate(): void {
     this.db.exec(SCHEMA_SQL);
-    this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    const current = Number(this.db.pragma('user_version', { simple: true }));
+    if (current < 2) {
+      // Additive: older DBs created before v2 lack these columns.
+      this.addColumnIfMissing('tasks', 'pending_mode', 'TEXT');
+      this.addColumnIfMissing('task_runs', 'mode', "TEXT NOT NULL DEFAULT 'work'");
+    }
+    if (current !== SCHEMA_VERSION) {
+      this.db.pragma(`user_version = ${SCHEMA_VERSION}`);
+    }
+  }
+
+  private addColumnIfMissing(table: string, column: string, decl: string): void {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${decl}`);
+    }
   }
 
   schemaVersion(): number {
@@ -59,6 +74,7 @@ export class KanbanStore {
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
       idempotencyKey: (r.idempotency_key as string | null) ?? null,
       result: (r.result as string | null) ?? null,
+      pendingMode: (r.pending_mode as Task['pendingMode']) ?? null,
       claimLock: (r.claim_lock as string | null) ?? null,
       claimExpires: (r.claim_expires as number | null) ?? null,
       workerPid: (r.worker_pid as number | null) ?? null,
@@ -217,6 +233,7 @@ export class KanbanStore {
       taskId: String(r.task_id),
       profile: (r.profile as string | null) ?? null,
       status: r.status as TaskRun['status'],
+      mode: (r.mode as TaskRun['mode']) ?? 'work',
       workerPid: (r.worker_pid as number | null) ?? null,
       startedAt: Number(r.started_at),
       endedAt: (r.ended_at as number | null) ?? null,

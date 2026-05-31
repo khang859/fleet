@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import Database from 'better-sqlite3';
 import { KanbanStore } from '../kanban/kanban-store';
+import { SCHEMA_SQL } from '../kanban/schema';
 import type { TaskEvent } from '../../shared/kanban-types';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-store-test-${Date.now()}`);
@@ -23,7 +25,36 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(1);
+    expect(store.schemaVersion()).toBe(2);
+  });
+
+  it('fresh db is created at v2 with the new columns', () => {
+    // Fresh store is already v2; assert the new columns exist and are nullable/defaulted.
+    const t = store.createTask({ title: 'x' });
+    expect(store.getTask(t.id)?.pendingMode).toBeNull();
+    const run = store.startRun(t.id, 'p', null);
+    expect(run.mode).toBe('work');
+    expect(store.schemaVersion()).toBe(2);
+  });
+
+  it('upgrades a v1 db to v2 (adds missing columns)', () => {
+    const v1Path = join(TEST_DIR, 'v1.db');
+    // Simulate a v1 DB: full current schema minus the two v2 columns.
+    const raw = new Database(v1Path);
+    raw.exec(SCHEMA_SQL);
+    raw.exec('ALTER TABLE tasks DROP COLUMN pending_mode');
+    raw.exec('ALTER TABLE task_runs DROP COLUMN mode');
+    raw.pragma('user_version = 1');
+    raw.close();
+
+    // Opening the store must run the ALTER-based upgrade path.
+    const s = new KanbanStore(v1Path);
+    const t = s.createTask({ title: 'x' });
+    expect(s.getTask(t.id)?.pendingMode).toBeNull();
+    const run = s.startRun(t.id, 'p', null);
+    expect(run.mode).toBe('work');
+    expect(s.schemaVersion()).toBe(2);
+    s.close();
   });
 
   it('creates a task with defaults and reads it back', () => {
