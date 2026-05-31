@@ -14,8 +14,11 @@ import type {
   WorkspaceKind,
   PendingMode,
   TaskAttachment,
-  ScheduleInput
+  ScheduleInput,
+  SwarmInput,
+  SwarmCreated
 } from '../../shared/kanban-types';
+import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
@@ -38,6 +41,9 @@ export interface CreateDefaults {
   maxRuntimeSeconds: number | null;
 }
 
+/** Upper bound on workers per swarm — keeps one swarm from monopolizing the global dispatcher. */
+export const SWARM_MAX_WORKERS = 20;
+
 /**
  * KanbanCommands is the single application layer over KanbanStore/KanbanDispatcher.
  * The board IPC, the CLI socket server, and any future front door all call these
@@ -47,7 +53,8 @@ export class KanbanCommands {
   constructor(
     private store: KanbanStore,
     private dispatcher: KanbanDispatcher,
-    private getCreateDefaults: () => CreateDefaults
+    private getCreateDefaults: () => CreateDefaults,
+    private getProfiles: () => Array<{ name: string; role: string }> = () => []
   ) {}
 
   create(input: CreateTaskInput): Task {
@@ -63,6 +70,62 @@ export class KanbanCommands {
     });
     this.store.appendEvent(task.id, null, 'task_created', { title: task.title });
     return task;
+  }
+
+  createSwarm(input: SwarmInput): SwarmCreated {
+    const goal = (input.goal ?? '').trim();
+    if (goal === '') throw new CodedError('swarm requires a goal', 'BAD_REQUEST');
+    const workers = input.workers ?? [];
+    if (workers.length < 1) {
+      throw new CodedError('swarm requires at least one worker', 'BAD_REQUEST');
+    }
+    if (workers.length > SWARM_MAX_WORKERS) {
+      throw new CodedError(`swarm supports at most ${SWARM_MAX_WORKERS} workers`, 'BAD_REQUEST');
+    }
+    if (!(input.verifierAssignee ?? '').trim()) {
+      throw new CodedError('swarm requires a verifier', 'BAD_REQUEST');
+    }
+    if (!(input.synthesizerAssignee ?? '').trim()) {
+      throw new CodedError('swarm requires a synthesizer', 'BAD_REQUEST');
+    }
+
+    const d = this.getCreateDefaults();
+    const workspaceKind = input.workspaceKind ?? d.workspaceKind;
+    if (workspaceKind === 'worktree' && !input.repoPath) {
+      throw new CodedError('worktree swarms require a source repo (repoPath)', 'BAD_REQUEST');
+    }
+
+    const profiles = this.getProfiles();
+    const workerProfiles = new Set(profiles.filter((p) => p.role === 'worker').map((p) => p.name));
+    for (const w of workers) {
+      if (!(w.profile ?? '').trim())
+        throw new CodedError('each worker requires a profile', 'BAD_REQUEST');
+      if (!(w.title ?? '').trim())
+        throw new CodedError('each worker requires a title', 'BAD_REQUEST');
+      if (workerProfiles.size > 0 && !workerProfiles.has(w.profile)) {
+        throw new CodedError(`unknown worker profile: ${w.profile}`, 'BAD_REQUEST');
+      }
+    }
+
+    const resolved: SwarmInput = {
+      ...input,
+      goal,
+      workspaceKind,
+      maxRuntimeSeconds: input.maxRuntimeSeconds ?? d.maxRuntimeSeconds
+    };
+
+    const created = this.store.transaction(() => buildSwarm(this.store, resolved));
+
+    // Emit after commit so IPC/notifier never fire mid-transaction.
+    this.store.appendEvent(created.rootId, null, 'swarm_created', {
+      goal,
+      workerCount: workers.length
+    });
+    for (const id of [...created.workerIds, created.verifierId, created.synthesizerId]) {
+      const t = this.store.getTask(id);
+      this.store.appendEvent(id, null, 'task_created', { title: t?.title ?? '' });
+    }
+    return created;
   }
 
   list(filter: { status?: TaskStatus; boardSlug?: string } = {}): BoardCard[] {

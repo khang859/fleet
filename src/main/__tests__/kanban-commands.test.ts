@@ -470,6 +470,84 @@ describe('KanbanCommands scheduling', () => {
   });
 });
 
+describe('KanbanCommands.createSwarm', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function setup(profiles: Array<{ name: string; role: string }> = []) {
+    const store = new KanbanStore(join(TEST_DIR, `cmd-swarm-${Math.random()}.db`));
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => Date.now(),
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        maxDecompose: 1
+      }
+    });
+    const events: string[] = [];
+    store['onEvent'] = (e) => events.push(e.kind); // capture emitted kinds
+    const commands = new KanbanCommands(
+      store,
+      dispatcher,
+      () => ({ workspaceKind: 'scratch', maxRuntimeSeconds: null }),
+      () => profiles
+    );
+    return { store, commands, events };
+  }
+
+  const base = {
+    goal: 'Plan failover',
+    workers: [{ profile: 'researcher', title: 'Research' }],
+    verifierAssignee: 'reviewer',
+    synthesizerAssignee: 'writer'
+  };
+
+  it('creates the graph and emits swarm_created + per-card task_created', () => {
+    const { commands, events, store } = setup([
+      { name: 'researcher', role: 'worker' },
+      { name: 'reviewer', role: 'worker' },
+      { name: 'writer', role: 'worker' }
+    ]);
+    const created = commands.createSwarm(base);
+    expect(store.getTask(created.rootId)!.status).toBe('done');
+    expect(events).toContain('swarm_created');
+    expect(events.filter((k) => k === 'task_created')).toHaveLength(3); // 1 worker + verifier + synth
+  });
+
+  it('rejects an empty workers list', () => {
+    const { commands } = setup();
+    expect(() => commands.createSwarm({ ...base, workers: [] })).toThrow();
+  });
+
+  it('rejects an unknown worker profile when profiles are configured', () => {
+    const { commands } = setup([
+      { name: 'reviewer', role: 'worker' },
+      { name: 'writer', role: 'worker' }
+    ]);
+    expect(() => commands.createSwarm(base)).toThrow(/unknown worker profile/);
+  });
+
+  it('rejects a worktree swarm with no repoPath', () => {
+    const { commands } = setup([
+      { name: 'researcher', role: 'worker' },
+      { name: 'reviewer', role: 'worker' },
+      { name: 'writer', role: 'worker' }
+    ]);
+    expect(() => commands.createSwarm({ ...base, workspaceKind: 'worktree' })).toThrow(/repo/);
+  });
+
+  it('rejects more than the worker cap', () => {
+    const many = Array.from({ length: 21 }, (_, i) => ({ profile: 'researcher', title: `t${i}` }));
+    const { commands } = setup([{ name: 'researcher', role: 'worker' }]);
+    expect(() => commands.createSwarm({ ...base, workers: many })).toThrow(/at most/);
+  });
+});
+
 describe('KanbanCommands boards', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));

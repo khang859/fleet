@@ -877,10 +877,15 @@ void app.whenReady().then(async () => {
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs
   });
   kanbanDispatcher.start();
-  kanbanCommands = new KanbanCommands(kanbanStore, kanbanDispatcher, () => {
-    const d = settingsStore.get().kanban.defaults;
-    return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
-  });
+  kanbanCommands = new KanbanCommands(
+    kanbanStore,
+    kanbanDispatcher,
+    () => {
+      const d = settingsStore.get().kanban.defaults;
+      return { workspaceKind: d.workspaceKind, maxRuntimeSeconds: d.maxRuntimeSeconds };
+    },
+    () => settingsStore.get().kanban.profiles
+  );
   registerKanbanIpc(kanbanCommands);
   setKanbanSettingsApplier(() => {
     kanbanDispatcher?.reconfigure(
