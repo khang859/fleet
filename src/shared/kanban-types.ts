@@ -159,3 +159,38 @@ export interface TaskDetail {
   children: Task[];
   attachments: TaskAttachment[];
 }
+
+/** One parallel worker card in a swarm. */
+export interface SwarmWorkerSpec {
+  profile: string;
+  title: string;
+  body?: string;
+  skills?: string[];
+  priority?: number;
+}
+
+/** Input to create a swarm graph. Workspace/runtime fields are resolved by the command layer. */
+export interface SwarmInput {
+  goal: string;
+  workers: SwarmWorkerSpec[];
+  verifierAssignee: string;
+  synthesizerAssignee: string;
+  boardId?: string;
+  tenant?: string | null;
+  priority?: number;
+  workspaceKind?: WorkspaceKind;
+  repoPath?: string;
+  maxRuntimeSeconds?: number | null;
+  rootTitle?: string;
+  verifierTitle?: string;
+  synthesizerTitle?: string;
+  createdBy?: string;
+}
+
+/** IDs produced by createSwarm. */
+export interface SwarmCreated {
+  rootId: string;
+  workerIds: string[];
+  verifierId: string;
+  synthesizerId: string;
+}
