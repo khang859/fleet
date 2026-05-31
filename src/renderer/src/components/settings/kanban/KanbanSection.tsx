@@ -83,6 +83,32 @@ export function KanbanSection(): React.JSX.Element | null {
             className="w-32 rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
           />
         </SettingRow>
+        <SettingRow label="Auto-decompose triage tasks">
+          <input
+            type="checkbox"
+            checked={k.dispatcher.autoDecompose}
+            onChange={(e) =>
+              patch({ dispatcher: { ...k.dispatcher, autoDecompose: e.target.checked } })
+            }
+            className="h-4 w-4"
+          />
+        </SettingRow>
+        <SettingRow label="Max concurrent orchestrator runs">
+          <input
+            type="number"
+            min={1}
+            value={k.dispatcher.maxDecompose}
+            onChange={(e) =>
+              patch({
+                dispatcher: {
+                  ...k.dispatcher,
+                  maxDecompose: Math.max(1, Number(e.target.value) || 1)
+                }
+              })
+            }
+            className="w-28 rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+          />
+        </SettingRow>
       </section>
 
       <section className="space-y-3">
@@ -128,7 +154,10 @@ export function KanbanSection(): React.JSX.Element | null {
           <button
             onClick={() =>
               patch({
-                profiles: [...k.profiles, { name: '', model: '', skills: [], instructions: '' }]
+                profiles: [
+                  ...k.profiles,
+                  { name: '', role: 'worker', model: '', skills: [], instructions: '' }
+                ]
               })
             }
             className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
