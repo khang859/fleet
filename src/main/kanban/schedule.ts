@@ -17,6 +17,9 @@ export function validateSchedule(
     }
     return { ok: true };
   }
+  if (input.expr.trim() === '') {
+    return { ok: false, error: 'cron expression required' };
+  }
   try {
     CronExpressionParser.parse(input.expr);
     return { ok: true };

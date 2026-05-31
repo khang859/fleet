@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { CronExpressionParser } from 'cron-parser';
-import {
-  computeNextRun,
-  validateSchedule,
-  taskToScheduleInput
-} from '../kanban/schedule';
+import { computeNextRun, validateSchedule, taskToScheduleInput } from '../kanban/schedule';
 import type { Task } from '../../shared/kanban-types';
 
 describe('computeNextRun', () => {
@@ -50,6 +46,10 @@ describe('validateSchedule', () => {
   });
   it('rejects a negative interval', () => {
     expect(validateSchedule({ kind: 'interval', everyMs: -5 }).ok).toBe(false);
+  });
+  it('rejects an empty/whitespace cron expression', () => {
+    expect(validateSchedule({ kind: 'cron', expr: '' }).ok).toBe(false);
+    expect(validateSchedule({ kind: 'cron', expr: '   ' }).ok).toBe(false);
   });
 });
 

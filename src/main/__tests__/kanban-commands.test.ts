@@ -457,6 +457,17 @@ describe('KanbanCommands scheduling', () => {
     expect(store.getTask(t.id)!.status).toBe('todo');
     expect(store.listEvents(t.id).some((e) => e.kind === 'schedule_cleared')).toBe(true);
   });
+
+  it('moving a scheduled task out of the lane drops its schedule', () => {
+    const { commands, store } = makeCommands();
+    const t = commands.create({ title: 'x', assignee: 'r' });
+    commands.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    commands.setManualStatus(t.id, 'ready');
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
+  });
 });
 
 describe('KanbanCommands boards', () => {

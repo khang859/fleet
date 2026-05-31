@@ -601,6 +601,20 @@ describe('KanbanStore scheduling', () => {
     store.close();
   });
 
+  it('dropSchedule nulls schedule columns without changing status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'x', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.setStatus(t.id, 'ready');
+    store.dropSchedule(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
+    expect(got.schedulePaused).toBe(false);
+    store.close();
+  });
+
   it('spawnScheduledInstance copies fields, inherits board, sets scheduled_from + todo', () => {
     const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
     const board = store.createBoard('Ops');

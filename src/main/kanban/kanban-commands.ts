@@ -148,6 +148,10 @@ export class KanbanCommands {
       to: status,
       by: 'user'
     });
+    if (task.status === 'scheduled' && status !== 'scheduled') {
+      // leaving the scheduled lane unschedules the task (drag or action button)
+      this.store.dropSchedule(id);
+    }
     // Archiving a worktree task tears down its worktree + branch (best-effort;
     // removeWorktree never throws, but guard archival defensively regardless).
     if (

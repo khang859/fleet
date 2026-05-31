@@ -823,6 +823,18 @@ export class KanbanStore {
       .run({ id: taskId, ts });
   }
 
+  /** Null all schedule columns WITHOUT changing status (used when a scheduled task is moved out of the lane). */
+  dropSchedule(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET schedule_kind=NULL, schedule_cron=NULL, schedule_interval_ms=NULL,
+          next_run_at=NULL, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
   pauseSchedule(taskId: string): void {
     this.db
       .prepare('UPDATE tasks SET schedule_paused=1, updated_at=? WHERE id=?')
