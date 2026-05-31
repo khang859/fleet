@@ -57,7 +57,8 @@ export function scheduleSummary(
   task: Pick<Task, 'scheduleKind' | 'scheduleCron' | 'scheduleIntervalMs'>
 ): string {
   if (task.scheduleKind === 'cron') return task.scheduleCron ?? 'cron';
-  if (task.scheduleKind === 'interval') return `every ${formatInterval(task.scheduleIntervalMs ?? 0)}`;
+  if (task.scheduleKind === 'interval')
+    return `every ${formatInterval(task.scheduleIntervalMs ?? 0)}`;
   if (task.scheduleKind === 'once') return 'once';
   return '';
 }

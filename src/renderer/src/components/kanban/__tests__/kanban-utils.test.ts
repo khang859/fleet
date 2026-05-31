@@ -15,17 +15,21 @@ describe('kanban-utils schedule helpers', () => {
   });
 
   it('scheduleSummary describes each kind', () => {
-    expect(scheduleSummary({ scheduleKind: 'cron', scheduleCron: '0 9 * * *', scheduleIntervalMs: null })).toBe(
-      '0 9 * * *'
-    );
     expect(
-      scheduleSummary({ scheduleKind: 'interval', scheduleCron: null, scheduleIntervalMs: 7200_000 })
+      scheduleSummary({ scheduleKind: 'cron', scheduleCron: '0 9 * * *', scheduleIntervalMs: null })
+    ).toBe('0 9 * * *');
+    expect(
+      scheduleSummary({
+        scheduleKind: 'interval',
+        scheduleCron: null,
+        scheduleIntervalMs: 7200_000
+      })
     ).toBe('every 2h');
-    expect(scheduleSummary({ scheduleKind: 'once', scheduleCron: null, scheduleIntervalMs: null })).toBe(
-      'once'
-    );
-    expect(scheduleSummary({ scheduleKind: null, scheduleCron: null, scheduleIntervalMs: null })).toBe(
-      ''
-    );
+    expect(
+      scheduleSummary({ scheduleKind: 'once', scheduleCron: null, scheduleIntervalMs: null })
+    ).toBe('once');
+    expect(
+      scheduleSummary({ scheduleKind: null, scheduleCron: null, scheduleIntervalMs: null })
+    ).toBe('');
   });
 });
