@@ -1,4 +1,12 @@
-import type { SwarmWorkerSpec, TaskComment } from '../../shared/kanban-types';
+import type {
+  SwarmWorkerSpec,
+  SwarmInput,
+  SwarmCreated,
+  TaskComment,
+  Task,
+  CreateTaskInput,
+  WorkspaceKind
+} from '../../shared/kanban-types';
 
 export const BLACKBOARD_PREFIX = '[swarm:blackboard] ';
 
@@ -82,4 +90,115 @@ export function latestBlackboard(
   }
   if (Object.keys(authors).length > 0) merged._authors = authors;
   return merged;
+}
+
+/** The subset of KanbanStore createSwarm needs. Extends BlackboardStore. */
+export interface SwarmStore extends BlackboardStore {
+  createTask(input: CreateTaskInput): Task;
+  completeTask(taskId: string, result: string | null): void;
+  addLink(parentId: string, childId: string): void;
+  getTask(id: string): Task | null;
+}
+
+const SWARM_ROOT_KIND = 'kanban_swarm_v1';
+
+/** True when `rootId` is a swarm root (its blackboard carries the topology marker). */
+export function isSwarmRoot(store: BlackboardStore, rootId: string): boolean {
+  const topology = latestBlackboard(store, rootId).topology;
+  return (
+    typeof topology === 'object' &&
+    topology !== null &&
+    (topology as { kind?: unknown }).kind === SWARM_ROOT_KIND
+  );
+}
+
+/**
+ * Create a swarm graph. The root is created then completed immediately; workers,
+ * verifier, and synthesizer are created `todo` with the gating links. Emits no
+ * events (the caller wraps this in a transaction and emits after commit).
+ */
+export function createSwarm(store: SwarmStore, input: SwarmInput): SwarmCreated {
+  const goal = input.goal.trim();
+  const createdBy = input.createdBy ?? 'swarm-orchestrator';
+  const workspaceKind: WorkspaceKind = input.workspaceKind ?? 'scratch';
+  const common = {
+    boardId: input.boardId,
+    tenant: input.tenant ?? null,
+    workspaceKind,
+    repoPath: input.repoPath,
+    maxRuntimeSeconds: input.maxRuntimeSeconds ?? null
+  };
+
+  // Root.
+  const root = store.createTask({
+    title: input.rootTitle ?? `Swarm: ${goal.split('\n')[0].slice(0, 80)}`,
+    body:
+      'Kanban Swarm planning/root card. Completed immediately so workers can start; ' +
+      `remains the shared blackboard and audit anchor.\n\nGoal:\n${goal}`,
+    assignee: createdBy,
+    priority: input.priority ?? 0,
+    ...common
+  });
+  store.completeTask(root.id, 'Swarm topology planned; root is the shared blackboard.');
+
+  const suffix = swarmContext(root.id, goal);
+
+  // Workers.
+  const workerIds: string[] = [];
+  for (const spec of input.workers) {
+    const w = store.createTask({
+      title: spec.title,
+      body: (spec.body ?? spec.title) + suffix,
+      assignee: spec.profile,
+      status: 'todo',
+      priority: spec.priority ?? input.priority ?? 0,
+      skills: spec.skills ?? [],
+      ...common
+    });
+    store.addLink(root.id, w.id);
+    workerIds.push(w.id);
+  }
+
+  // Verifier (gated on all workers).
+  const verifier = store.createTask({
+    title: input.verifierTitle ?? 'Verify swarm outputs',
+    body:
+      'Review every worker handoff and blackboard update. Complete ONLY when the ' +
+      'evidence is sufficient; otherwise block with the exact missing work (blocking ' +
+      'withholds the synthesizer).' +
+      suffix,
+    assignee: input.verifierAssignee,
+    status: 'todo',
+    priority: input.priority ?? 0,
+    skills: ['requesting-code-review'],
+    ...common
+  });
+  for (const id of workerIds) store.addLink(id, verifier.id);
+
+  // Synthesizer (gated on verifier).
+  const synthesizer = store.createTask({
+    title: input.synthesizerTitle ?? 'Synthesize swarm outputs',
+    body:
+      'Synthesize the verified worker outputs into the final deliverable. Read the ' +
+      'blackboard for all findings.' +
+      suffix,
+    assignee: input.synthesizerAssignee,
+    status: 'todo',
+    priority: input.priority ?? 0,
+    ...common
+  });
+  store.addLink(verifier.id, synthesizer.id);
+
+  const created: SwarmCreated = {
+    rootId: root.id,
+    workerIds,
+    verifierId: verifier.id,
+    synthesizerId: synthesizer.id
+  };
+  postBlackboardUpdate(store, root.id, createdBy, 'topology', {
+    kind: SWARM_ROOT_KIND,
+    ...created,
+    goal
+  });
+  return created;
 }
