@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -118,6 +118,33 @@ describe('kanban workspace', () => {
     });
     expect(existsSync(path)).toBe(true);
     expect(branchName).toBe('kanban/t3');
+  });
+
+  it('recovers on a later attempt after a failed worktree add left a dir behind', () => {
+    const repo = makeRepo('repo6');
+    // Pre-create a NON-EMPTY dir where the worktree would go, so `git worktree add` fails.
+    const dir = join(WT_ROOT, 't6');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'stale.txt'), 'leftover');
+    expect(() =>
+      prepareWorkspace({
+        kind: 'worktree',
+        taskId: 't6',
+        workspacesRoot: ROOT,
+        worktreesRoot: WT_ROOT,
+        repoPath: repo
+      })
+    ).toThrow(/worktree add failed/);
+    // The failed attempt cleaned up; a fresh attempt now succeeds.
+    const ok = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 't6',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    expect(existsSync(ok.path)).toBe(true);
+    expect(ok.branchName).toBe('kanban/t6');
   });
 
   it('throws when worktree kind has no repoPath', () => {

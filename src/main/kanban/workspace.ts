@@ -32,6 +32,8 @@ function isGitRepo(repoPath: string): boolean {
   }
 }
 
+// taskId is a generated id (no glob metacharacters), so `git branch --list <branch>`
+// is an exact match here.
 function branchExists(repoPath: string, branch: string): boolean {
   const out = execFileSync('git', ['-C', repoPath, 'branch', '--list', branch], {
     encoding: 'utf8'
@@ -61,16 +63,32 @@ export function prepareWorkspace(input: PrepareWorkspaceInput): PreparedWorkspac
   if (!input.repoPath) {
     throw new Error("prepareWorkspace: kind 'worktree' requires repoPath");
   }
-  if (!isGitRepo(input.repoPath)) {
-    throw new Error(`prepareWorkspace: not a git repo: ${input.repoPath}`);
+  const repo = input.repoPath;
+  if (!isGitRepo(repo)) {
+    throw new Error(`prepareWorkspace: not a git repo: ${repo}`);
   }
   const branch = `kanban/${input.taskId}`;
   const dir = join(input.worktreesRoot, input.taskId);
   mkdirSync(input.worktreesRoot, { recursive: true });
-  const addArgs = branchExists(input.repoPath, branch)
-    ? ['-C', input.repoPath, 'worktree', 'add', dir, branch]
-    : ['-C', input.repoPath, 'worktree', 'add', dir, '-b', branch];
-  execFileSync('git', addArgs, { stdio: 'ignore' });
+  const addArgs = branchExists(repo, branch)
+    ? ['-C', repo, 'worktree', 'add', dir, branch]
+    : ['-C', repo, 'worktree', 'add', dir, '-b', branch];
+  try {
+    execFileSync('git', addArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+  } catch (err) {
+    // A failed `worktree add` can leave a partial dir + a stale registration;
+    // remove both so a later retry can recreate cleanly.
+    rmSync(dir, { recursive: true, force: true });
+    try {
+      execFileSync('git', ['-C', repo, 'worktree', 'prune'], { stdio: 'ignore' });
+    } catch {
+      // best-effort; ignore prune failures
+    }
+    const stderr = (err as { stderr?: Buffer }).stderr?.toString().trim() ?? '';
+    throw new Error(
+      `prepareWorkspace: git worktree add failed: ${stderr || (err as Error).message}`
+    );
+  }
   return { path: dir, branchName: branch };
 }
 
