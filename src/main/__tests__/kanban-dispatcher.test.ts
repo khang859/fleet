@@ -278,6 +278,27 @@ describe('KanbanDispatcher.decompose', () => {
     store.close();
   });
 
+  it('re-flags a decompose task whose spawn throws so it is retried', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'big', status: 'triage' });
+    store.setPendingMode(t.id, 'decompose');
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => {
+        throw new Error('rune not found');
+      },
+      config: { ...baseConfig },
+      prepareWorkspaceFn: () => '/tmp/ws'
+    });
+    disp.decompose();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('triage');
+    expect(got?.pendingMode).toBe('decompose');
+    store.close();
+  });
+
   it('reclaim returns a dead orchestrator run to triage', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);

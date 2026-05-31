@@ -153,6 +153,7 @@ export class KanbanDispatcher {
         if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
         this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg });
         this.store.setStatusCleared(task.id, 'triage');
+        this.store.setPendingMode(task.id, mode); // re-flag so the request isn't lost
         log.error('decompose spawn failed', { taskId: task.id, error: msg });
       }
     }
