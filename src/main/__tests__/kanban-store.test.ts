@@ -478,8 +478,10 @@ describe('KanbanStore boards', () => {
 });
 
 describe('KanbanStore schema v6 migration', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
   it('migrates a v5 database to v6 with schedule columns and intact rows', () => {
-    mkdirSync(TEST_DIR, { recursive: true });
     const dbPath = join(TEST_DIR, `mig-v6-${Math.random()}.db`);
     const raw = new Database(dbPath);
     raw.exec(`CREATE TABLE tasks (
@@ -507,7 +509,118 @@ describe('KanbanStore schema v6 migration', () => {
     expect(t?.schedulePaused).toBe(false);
     expect(t?.nextRunAt).toBeNull();
     store.close();
-    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+});
+
+describe('KanbanStore scheduling', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('setSchedule (interval) sets columns, next_run_at, and scheduled status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('scheduled');
+    expect(got.scheduleKind).toBe('interval');
+    expect(got.scheduleIntervalMs).toBe(5000);
+    expect(got.nextRunAt).toBe(15_000);
+    expect(got.schedulePaused).toBe(false);
+    store.close();
+  });
+
+  it('setSchedule (once) sets next_run_at to the fixed time', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'one', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'once', at: 99_000 });
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('scheduled');
+    expect(got.scheduleKind).toBe('once');
+    expect(got.nextRunAt).toBe(99_000);
+    store.close();
+  });
+
+  it('clearSchedule returns the task to todo and nulls schedule columns', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.clearSchedule(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('todo');
+    expect(got.scheduleKind).toBeNull();
+    expect(got.nextRunAt).toBeNull();
+    store.close();
+  });
+
+  it('pause/resume toggles schedule_paused', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.pauseSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(true);
+    store.resumeSchedule(t.id);
+    expect(store.getTask(t.id)!.schedulePaused).toBe(false);
+    store.close();
+  });
+
+  it('dueSchedules returns only unpaused scheduled rows due at/before now', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const due = store.createTask({ title: 'due', assignee: 'r' });
+    const future = store.createTask({ title: 'future', assignee: 'r' });
+    const paused = store.createTask({ title: 'paused', assignee: 'r' });
+    store.setSchedule(due.id, { kind: 'once', at: 9_000 });
+    store.setSchedule(future.id, { kind: 'once', at: 11_000 });
+    store.setSchedule(paused.id, { kind: 'once', at: 9_000 });
+    store.pauseSchedule(paused.id);
+    const ids = store.dueSchedules(10_000).map((t) => t.id);
+    expect(ids).toEqual([due.id]);
+    store.close();
+  });
+
+  it('fireOnce moves a scheduled task to ready and clears schedule columns', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'one', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'once', at: 9_000 });
+    store.fireOnce(t.id);
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('ready');
+    expect(got.scheduleKind).toBeNull();
+    store.close();
+  });
+
+  it('advanceNextRun updates next_run_at without changing status', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const t = store.createTask({ title: 'rec', assignee: 'r' });
+    store.setSchedule(t.id, { kind: 'interval', everyMs: 5000 });
+    store.advanceNextRun(t.id, 42_000);
+    const got = store.getTask(t.id)!;
+    expect(got.nextRunAt).toBe(42_000);
+    expect(got.status).toBe('scheduled');
+    store.close();
+  });
+
+  it('spawnScheduledInstance copies fields, inherits board, sets scheduled_from + todo', () => {
+    const store = new KanbanStore(join(TEST_DIR, `sch-${Math.random()}.db`), { now: () => 10_000 });
+    const board = store.createBoard('Ops');
+    const tmpl = store.createTask({
+      title: 'nightly', body: 'do it', assignee: 'r', priority: 3, tenant: 'acme',
+      boardId: board.slug, skills: ['a'], maxRetries: 2
+    });
+    store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 5000 });
+    const inst = store.spawnScheduledInstance(store.getTask(tmpl.id)!);
+    expect(inst.id).not.toBe(tmpl.id);
+    expect(inst.status).toBe('todo');
+    expect(inst.title).toBe('nightly');
+    expect(inst.body).toBe('do it');
+    expect(inst.assignee).toBe('r');
+    expect(inst.priority).toBe(3);
+    expect(inst.tenant).toBe('acme');
+    expect(inst.boardId).toBe(board.slug);
+    expect(inst.skills).toEqual(['a']);
+    expect(inst.maxRetries).toBe(2);
+    expect(inst.scheduledFrom).toBe(tmpl.id);
+    expect(inst.scheduleKind).toBeNull();
+    store.close();
   });
 });
 

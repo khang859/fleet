@@ -4,7 +4,8 @@ import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
-import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode } from '../../shared/kanban-types';
+import type { Task, TaskStatus, CreateTaskInput, TaskRun, TaskEvent, TaskComment, TaskAttachment, RunOutcome, UpdateTaskFields, BoardCard, Board, RunMode, PendingMode, ScheduleInput } from '../../shared/kanban-types';
+import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
 import { removeWorktree, cleanupWorkspace } from './workspace';
@@ -771,5 +772,103 @@ export class KanbanStore {
           worker_pid=NULL, current_run_id=NULL, last_heartbeat_at=NULL, updated_at=@ts WHERE id=@id`
       )
       .run({ id: taskId, status, ts });
+  }
+
+  /** Attach (or replace) a schedule on a task; moves it to the scheduled lane. */
+  setSchedule(taskId: string, input: ScheduleInput): void {
+    const v = validateSchedule(input);
+    if (!v.ok) throw new Error(v.error);
+    const ts = this.now();
+    const nextRunAt = input.kind === 'once' ? input.at : computeNextRun(input, ts);
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='scheduled', schedule_kind=@kind, schedule_cron=@cron,
+          schedule_interval_ms=@everyMs, next_run_at=@nextRunAt, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({
+        id: taskId,
+        kind: input.kind,
+        cron: input.kind === 'cron' ? input.expr : null,
+        everyMs: input.kind === 'interval' ? input.everyMs : null,
+        nextRunAt,
+        ts
+      });
+  }
+
+  /** Remove a schedule; returns the task to the todo lane. */
+  clearSchedule(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='todo', schedule_kind=NULL, schedule_cron=NULL,
+          schedule_interval_ms=NULL, next_run_at=NULL, schedule_paused=0, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
+  pauseSchedule(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET schedule_paused=1, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  resumeSchedule(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET schedule_paused=0, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  /** Scheduled, unpaused tasks whose next fire is due at/before `now`. */
+  dueSchedules(now: number): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status='scheduled' AND schedule_paused=0
+           AND next_run_at IS NOT NULL AND next_run_at <= ?
+         ORDER BY next_run_at ASC`
+      )
+      .all(now) as Record<string, unknown>[];
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  advanceNextRun(taskId: string, nextRunAt: number): void {
+    this.db
+      .prepare('UPDATE tasks SET next_run_at=?, updated_at=? WHERE id=?')
+      .run(nextRunAt, this.now(), taskId);
+  }
+
+  /** One-shot fire: move scheduled -> ready in place and drop the schedule. */
+  fireOnce(taskId: string): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='ready', schedule_kind=NULL, schedule_cron=NULL,
+          schedule_interval_ms=NULL, next_run_at=NULL, updated_at=@ts
+         WHERE id=@id`
+      )
+      .run({ id: taskId, ts });
+  }
+
+  /** Recurring fire: create a fresh todo instance copying the template's work fields. */
+  spawnScheduledInstance(template: Task): Task {
+    return this.createTask({
+      title: template.title,
+      body: template.body,
+      assignee: template.assignee,
+      priority: template.priority,
+      tenant: template.tenant,
+      workspaceKind: template.workspaceKind,
+      repoPath: template.repoPath ?? undefined,
+      branchName: template.branchName,
+      modelOverride: template.modelOverride,
+      skills: template.skills,
+      boardId: template.boardId,
+      maxRuntimeSeconds: template.maxRuntimeSeconds,
+      maxRetries: template.maxRetries,
+      status: 'todo',
+      scheduledFrom: template.id
+    });
   }
 }
