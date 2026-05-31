@@ -35,6 +35,10 @@ export class SettingsStore {
         ...saved.kanban,
         dispatcher: { ...DEFAULT_SETTINGS.kanban.dispatcher, ...saved.kanban?.dispatcher },
         defaults: { ...DEFAULT_SETTINGS.kanban.defaults, ...saved.kanban?.defaults },
+        notifications: {
+          ...DEFAULT_SETTINGS.kanban.notifications,
+          ...saved.kanban?.notifications
+        },
         profiles: (saved.kanban?.profiles ?? DEFAULT_SETTINGS.kanban.profiles).map((p) => ({
           ...p,
           role: p.role ?? 'worker'
@@ -63,6 +67,10 @@ export class SettingsStore {
         ...(partial.kanban ?? {}),
         dispatcher: { ...current.kanban.dispatcher, ...(partial.kanban?.dispatcher ?? {}) },
         defaults: { ...current.kanban.defaults, ...(partial.kanban?.defaults ?? {}) },
+        notifications: {
+          ...current.kanban.notifications,
+          ...(partial.kanban?.notifications ?? {})
+        },
         profiles: partial.kanban?.profiles ?? current.kanban.profiles
       }
     };
