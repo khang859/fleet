@@ -65,6 +65,7 @@ describe('buildWorkerInvocation', () => {
       logPath: join(ROOT, 'p.log'),
       profile: {
         name: 'researcher',
+        role: 'worker' as const,
         model: 'claude-opus-4-8',
         skills: ['docs'],
         instructions: 'Research.'
@@ -101,7 +102,7 @@ describe('buildWorkerInvocation', () => {
       mcpPort: 1,
       runToken: 'x',
       logPath: join(ROOT, 'r.log'),
-      profile: { name: '../evil', model: '', skills: [], instructions: 'b' }
+      profile: { name: '../evil', role: 'worker' as const, model: '', skills: [], instructions: 'b' }
     });
     expect(existsSync(join(workspace, '.rune', 'profiles'))).toBe(false);
   });

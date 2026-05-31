@@ -81,11 +81,19 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     retentionDays: 3
   },
   kanban: {
-    dispatcher: { intervalMs: 5000, maxInProgress: 3, failureLimit: 2, claimTtlMs: 900_000 },
+    dispatcher: {
+      intervalMs: 5000,
+      maxInProgress: 3,
+      failureLimit: 2,
+      claimTtlMs: 900_000,
+      autoDecompose: false,
+      maxDecompose: 1
+    },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
     profiles: [
       {
         name: 'default',
+        role: 'worker',
         model: '',
         skills: [],
         instructions:
@@ -93,6 +101,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       },
       {
         name: 'orchestrator',
+        role: 'orchestrator',
         model: '',
         skills: [],
         instructions:

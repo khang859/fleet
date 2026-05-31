@@ -9,6 +9,12 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify'. */
+export type RunMode = 'work' | 'decompose' | 'specify';
+
+/** A triage task can be flagged for an orchestrator run. */
+export type PendingMode = 'decompose' | 'specify';
+
 export type RunOutcome =
   | 'completed'
   | 'blocked'
@@ -33,6 +39,7 @@ export interface Task {
   skills: string[];
   idempotencyKey: string | null;
   result: string | null;
+  pendingMode: PendingMode | null;
   claimLock: string | null;
   claimExpires: number | null;
   workerPid: number | null;
@@ -51,6 +58,7 @@ export interface TaskRun {
   taskId: string;
   profile: string | null;
   status: 'running' | 'finished';
+  mode: RunMode;
   workerPid: number | null;
   startedAt: number;
   endedAt: number | null;
