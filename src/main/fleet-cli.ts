@@ -557,6 +557,7 @@ Manage the Kanban board from the terminal. Requires the Fleet app to be running.
 ## Commands
 
   fleet kanban create --title "..." [--body "..."] [--assignee <profile>] [--priority <n>] [--workspace <scratch|dir|worktree>] [--repo <path>]
+  fleet kanban swarm "<goal>" --worker <profile:title[:skillA,skillB]> [--worker ...] --verifier <profile> --synthesizer <profile> [--repo <path>]
   fleet kanban list [--status <status>]
   fleet kanban show <task-id>
   fleet kanban assign <task-id> --profile <name>
