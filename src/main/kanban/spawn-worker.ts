@@ -117,7 +117,12 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
 
   const prompt = buildPrompt(input);
   const args = ['--prompt', prompt];
-  const profileName = input.profile?.name ?? input.task.assignee ?? null;
+  // Work runs must never fall back to the raw assignee name: resolveWorkProfile has already
+  // vetted it (a non-worker assignee resolves to a worker fallback, or null when no worker
+  // profile exists). Falling back to --profile <assignee> here would run a work task under an
+  // orchestrator persona and loop until give-up — the exact bug resolveWorkProfile guards against.
+  const profileName =
+    input.profile?.name ?? (input.mode === 'work' ? null : input.task.assignee) ?? null;
   if (profileName) args.push('--profile', profileName);
   if (input.task.modelOverride) args.push('--model', input.task.modelOverride);
 
