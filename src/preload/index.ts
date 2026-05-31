@@ -468,6 +468,10 @@ const fleetApi = {
       onChannel<void>(IPC_CHANNELS.KANBAN_BOARDS_CHANGED, () => callback()),
     onEvent: (callback: (event: TaskEvent) => void): Unsubscribe =>
       onChannel<TaskEvent>(IPC_CHANNELS.KANBAN_EVENT, callback),
+    onKanbanFocusTask: (
+      callback: (payload: { boardSlug: string; taskId?: string }) => void
+    ): Unsubscribe =>
+      onChannel<{ boardSlug: string; taskId?: string }>(IPC_CHANNELS.KANBAN_FOCUS_TASK, callback),
     setSchedule: async (req: KanbanSetScheduleRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_SCHEDULE, req),
     clearSchedule: async (taskId: string): Promise<void> =>
