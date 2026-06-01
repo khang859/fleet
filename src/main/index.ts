@@ -867,6 +867,10 @@ void app.whenReady().then(async () => {
             name: p.name,
             description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
           }));
+        // Record the orchestrator as the task's assignee so the triage card reflects who is
+        // running it. The dispatcher never sets this for decompose/specify runs (it only writes
+        // task_runs.profile), leaving the card unassigned otherwise.
+        kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
       }
       return spawnRuneWorker(
         {
