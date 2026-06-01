@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Terminal, ImageIcon, Settings, Crosshair, KanbanSquare } from 'lucide-react';
+import { Terminal, ImageIcon, Settings, Crosshair, KanbanSquare, Package } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
@@ -32,6 +32,7 @@ import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
+import { ArtifactsView } from './components/kanban/ArtifactsView';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -358,6 +359,7 @@ export function App(): React.JSX.Element {
         addTab(undefined, window.fleet.homeDir);
         useWorkspaceStore.getState().ensureImagesTab();
         useWorkspaceStore.getState().ensureKanbanTab();
+        useWorkspaceStore.getState().ensureArtifactsTab();
       }
 
       // Load all other saved workspaces into background so their PTYs warm up
@@ -700,6 +702,32 @@ export function App(): React.JSX.Element {
             {workspace.tabs.some((t) => t.type === 'annotate') && (
               <div className="w-6 h-px bg-neutral-800 my-0.5" />
             )}
+            {/* Artifacts pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'artifacts')
+              .map((tab) => {
+                const isArtifactsActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Artifacts" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isArtifactsActive
+                          ? 'bg-amber-900/40 ring-1 ring-amber-500/30'
+                          : 'hover:bg-neutral-800'
+                      }`}
+                    >
+                      <Package
+                        size={16}
+                        className={isArtifactsActive ? 'text-amber-400' : 'text-amber-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {workspace.tabs.some((t) => t.type === 'artifacts') && (
+              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            )}
             {/* File/terminal/image tab icons (excluding pinned + settings) */}
             {workspace.tabs
               .filter(
@@ -707,7 +735,8 @@ export function App(): React.JSX.Element {
                   t.type !== 'images' &&
                   t.type !== 'settings' &&
                   t.type !== 'annotate' &&
-                  t.type !== 'kanban'
+                  t.type !== 'kanban' &&
+                  t.type !== 'artifacts'
               )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;
@@ -846,6 +875,8 @@ export function App(): React.JSX.Element {
                       />
                     ) : tab.type === 'kanban' ? (
                       <KanbanBoard />
+                    ) : tab.type === 'artifacts' ? (
+                      <ArtifactsView />
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}

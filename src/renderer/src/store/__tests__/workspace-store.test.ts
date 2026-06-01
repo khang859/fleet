@@ -137,15 +137,16 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures kanban, images and annotate tabs for an empty workspace', () => {
+  it('ensures kanban, images, annotate and artifacts tabs for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     const state = useWorkspaceStore.getState();
-    // Empty workspaces get pinned kanban + images + annotate tabs automatically
-    expect(state.workspace.tabs).toHaveLength(3);
+    // Empty workspaces get pinned kanban + images + annotate + artifacts tabs automatically
+    expect(state.workspace.tabs).toHaveLength(4);
     expect(state.workspace.tabs[0].type).toBe('kanban');
     expect(state.workspace.tabs[1].type).toBe('images');
     expect(state.workspace.tabs[2].type).toBe('annotate');
+    expect(state.workspace.tabs[3].type).toBe('artifacts');
   });
 });
 

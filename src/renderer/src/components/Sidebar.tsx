@@ -2,7 +2,15 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Settings, Terminal, ImageIcon, ChevronRight, Bot, KanbanSquare } from 'lucide-react';
+import {
+  Settings,
+  Terminal,
+  ImageIcon,
+  ChevronRight,
+  Bot,
+  KanbanSquare,
+  Package
+} from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
@@ -351,6 +359,58 @@ function AnnotateTabCard({
             }}
           >
             Annotate
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArtifactsTabCard({
+  isActive,
+  onClick
+}: {
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <div
+      onClick={onClick}
+      className="cursor-pointer rounded-md overflow-hidden relative transition-all"
+      style={{
+        background: isActive ? '#1a160a' : 'rgba(26,22,10,0.4)',
+        border: isActive ? '1px solid rgba(251,191,36,0.35)' : '1px solid rgba(255,255,255,0.05)',
+        boxShadow: isActive
+          ? '0 0 10px rgba(251,191,36,0.15), inset 0 0 20px rgba(251,191,36,0.03)'
+          : 'none'
+      }}
+    >
+      {/* Subtle noise overlay */}
+      <div
+        className="absolute inset-0 pointer-events-none z-10 opacity-[0.03]"
+        style={{
+          backgroundImage:
+            'repeating-linear-gradient(transparent 0px, transparent 1px, rgba(255,255,255,0.15) 1px, rgba(255,255,255,0.15) 2px)',
+          backgroundSize: '100% 2px'
+        }}
+      />
+
+      <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
+        {/* Icon */}
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center">
+          <Package size={16} className={isActive ? 'text-amber-400' : 'text-amber-400/40'} />
+        </div>
+
+        {/* Label */}
+        <div className="flex-1 min-w-0">
+          <div
+            className="font-mono uppercase tracking-widest leading-none"
+            style={{
+              fontSize: '9px',
+              color: isActive ? 'rgb(251,191,36)' : 'rgba(251,191,36,0.5)'
+            }}
+          >
+            Artifacts
           </div>
         </div>
       </div>
@@ -1179,7 +1239,8 @@ export function Sidebar({
                 t.type !== 'images' &&
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
-                t.type !== 'kanban'
+                t.type !== 'kanban' &&
+                t.type !== 'artifacts'
             );
 
             const rendered: React.ReactNode[] = [];
@@ -1340,7 +1401,11 @@ export function Sidebar({
 
       {/* Pinned tools section */}
       {workspace.tabs.some(
-        (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+        (t) =>
+          t.type === 'images' ||
+          t.type === 'annotate' ||
+          t.type === 'kanban' ||
+          t.type === 'artifacts'
       ) && (
         <div className="border-t border-neutral-800 px-2 py-2 space-y-0.5">
           <div className="flex items-center px-2 py-1">
@@ -1373,6 +1438,16 @@ export function Sidebar({
             .filter((tab) => tab.type === 'annotate')
             .map((tab) => (
               <AnnotateTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+          {/* Artifacts tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'artifacts')
+            .map((tab) => (
+              <ArtifactsTabCard
                 key={tab.id}
                 isActive={tab.id === activeTabId}
                 onClick={() => setActiveTab(tab.id)}

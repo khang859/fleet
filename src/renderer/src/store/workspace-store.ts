@@ -136,6 +136,28 @@ function ensureKanbanTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [kanbanTab, ...rest] };
 }
 
+/** Ensure workspace has a pinned Artifacts tab; mutates and returns the workspace */
+function ensureArtifactsTab(workspace: Workspace): Workspace {
+  if (workspace.tabs.some((t) => t.type === 'artifacts')) return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  const artifactsTab: Tab = {
+    id: generateId(),
+    label: 'Artifacts',
+    labelIsCustom: true,
+    cwd,
+    type: 'artifacts',
+    splitRoot: { type: 'leaf', id: generateId(), cwd, paneType: 'artifacts' }
+  };
+  // Insert after the annotate tab if present, otherwise after images, otherwise prepend.
+  const annotateIdx = workspace.tabs.findIndex((t) => t.type === 'annotate');
+  const imagesIdx = workspace.tabs.findIndex((t) => t.type === 'images');
+  const anchorIdx = annotateIdx >= 0 ? annotateIdx : imagesIdx;
+  const insertIdx = anchorIdx >= 0 ? anchorIdx + 1 : 0;
+  const tabs = [...workspace.tabs];
+  tabs.splice(insertIdx, 0, artifactsTab);
+  return { ...workspace, tabs };
+}
+
 /** Extract basename from a path for auto-labeling tabs. ctx defaults to 'posix'. */
 export function cwdBasename(cwd: string, ctx: PathContext = 'posix'): string {
   return pathBasename(cwd, ctx);
@@ -206,6 +228,7 @@ type WorkspaceStore = {
 
   ensureImagesTab: () => void;
   ensureKanbanTab: () => void;
+  ensureArtifactsTab: () => void;
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
@@ -289,7 +312,7 @@ export function collectPaneIds(node: PaneNode): string[] {
 }
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban']);
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban', 'artifacts']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');
@@ -829,8 +852,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         cwd: firstLeafCwd ?? t.cwd
       };
     });
-    const migrated = ensureKanbanTab(
-      ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }))
+    const migrated = ensureArtifactsTab(
+      ensureKanbanTab(ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs })))
     );
 
     const restoredTab =
@@ -838,7 +861,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
         : undefined) ??
       migrated.tabs.find(
-        (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+        (t) =>
+          t.type !== 'images' &&
+          t.type !== 'annotate' &&
+          t.type !== 'kanban' &&
+          t.type !== 'artifacts'
       ) ??
       migrated.tabs[0];
 
@@ -880,6 +907,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
+  ensureArtifactsTab: () => {
+    set((state) => {
+      const updated = ensureArtifactsTab(state.workspace);
+      if (updated === state.workspace) return state;
+      return { workspace: updated, isDirty: true };
+    });
+  },
+
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
@@ -895,8 +930,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           cwd: firstLeafCwd ?? t.cwd
         };
       });
-      const migrated = ensureKanbanTab(
-        ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }))
+      const migrated = ensureArtifactsTab(
+        ensureKanbanTab(ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs })))
       );
 
       const restoredTab =
@@ -904,7 +939,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
           : undefined) ??
         migrated.tabs.find(
-          (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+          (t) =>
+            t.type !== 'images' &&
+            t.type !== 'annotate' &&
+            t.type !== 'kanban' &&
+            t.type !== 'artifacts'
         ) ??
         migrated.tabs[0];
 
