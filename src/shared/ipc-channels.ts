@@ -128,6 +128,7 @@ export const IPC_CHANNELS = {
   KANBAN_UPDATE_TASK: 'kanban:update-task',
   KANBAN_SET_STATUS: 'kanban:set-status',
   KANBAN_ADD_COMMENT: 'kanban:add-comment',
+  KANBAN_REPLY_AND_RESUME: 'kanban:reply-and-resume',
   KANBAN_ADD_LINK: 'kanban:add-link',
   KANBAN_REMOVE_LINK: 'kanban:remove-link',
   KANBAN_NUDGE: 'kanban:nudge',

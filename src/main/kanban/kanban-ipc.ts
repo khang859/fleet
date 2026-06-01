@@ -18,6 +18,7 @@ import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
+  KanbanReplyAndResumeRequest,
   KanbanLinkRequest,
   KanbanAddAttachmentRequest,
   KanbanRenameBoardRequest,
@@ -69,6 +70,11 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_ADD_COMMENT, (_e, req: KanbanAddCommentRequest) => {
     commands.comment(req.taskId, req.body);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REPLY_AND_RESUME, (_e, req: KanbanReplyAndResumeRequest) => {
+    // CodedError('BAD_REQUEST') for a non-blocked task propagates to the renderer's invoke().
+    commands.replyAndResume(req.taskId, req.body);
   });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_ADD_LINK, (_e, req: KanbanLinkRequest) => {

@@ -330,6 +330,40 @@ export class KanbanCommands {
     return comment;
   }
 
+  /**
+   * Answer a blocked card and re-queue it in one step. Posts the reply (when
+   * non-empty) as a human comment, clears the failure counters, then resumes in
+   * the same mode the card last ran: a worker run returns to `ready`, an
+   * orchestrator run (`decompose`/`specify`) is re-armed back to `triage`. The
+   * dispatcher is ticked immediately so the agent picks up without waiting for
+   * the next poll.
+   */
+  replyAndResume(id: string, body: string): void {
+    const task = this.requireTask(id);
+    if (task.status !== 'blocked') {
+      throw new CodedError('only blocked tasks can be resumed', 'BAD_REQUEST');
+    }
+    const text = body.trim();
+    if (text !== '') this.comment(id, text);
+    this.store.clearFailures(id);
+    // `current_run_id` is nulled on block, so the last run's mode is the signal
+    // for how to resume; listRuns is deterministically ordered newest-first.
+    const lastMode = this.store.listRuns(id)[0]?.mode ?? 'work';
+    if (lastMode === 'decompose' || lastMode === 'specify') {
+      this.store.setStatusCleared(id, 'triage');
+      this.store.appendEvent(id, null, 'status_changed', {
+        from: 'blocked',
+        to: 'triage',
+        by: 'user'
+      });
+      // status is now 'triage', so requestOrchestration's guard passes.
+      this.requestOrchestration(id, lastMode);
+    } else {
+      this.unblock(id);
+    }
+    this.dispatcher.tick();
+  }
+
   addAttachment(taskId: string, sourcePath: string): TaskAttachment {
     this.requireTask(taskId);
     const att = this.store.addAttachment(taskId, sourcePath);

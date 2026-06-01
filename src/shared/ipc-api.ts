@@ -275,6 +275,11 @@ export type KanbanAddCommentRequest = {
   body: string;
 };
 
+export type KanbanReplyAndResumeRequest = {
+  taskId: string;
+  body: string;
+};
+
 export type KanbanAddAttachmentRequest = {
   taskId: string;
   sourcePath: string;

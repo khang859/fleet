@@ -281,6 +281,89 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
   });
 });
 
+describe('KanbanCommands replyAndResume', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  // A dispatcher that never claims, so the resume *target* state is observable
+  // (the real dispatcher's tick would immediately move a resumed task to running).
+  function makeNoClaim(): { store: KanbanStore; commands: KanbanCommands } {
+    const store = new KanbanStore(join(TEST_DIR, `rr-${Math.random().toString(36).slice(2)}.db`));
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 0,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 0,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        maxDecompose: 0,
+        artifactRetentionDays: 0
+      }
+    });
+    const commands = new KanbanCommands(store, dispatcher, () => ({
+      workspaceKind: 'scratch',
+      maxRuntimeSeconds: null
+    }));
+    return { store, commands };
+  }
+
+  it('rejects a task that is not blocked', () => {
+    const { commands } = makeNoClaim();
+    const t = commands.create({ title: 'x', status: 'todo' });
+    expect(() => commands.replyAndResume(t.id, 'hi')).toThrowError(/blocked/i);
+  });
+
+  it('posts the reply and returns a blocked worker task to ready', () => {
+    const { store, commands } = makeNoClaim();
+    const t = commands.create({ title: 'x', status: 'todo', assignee: 'worker' });
+    store.startRun(t.id, 'worker', null, 'work'); // prior work run
+    commands.block(t.id, 'which db?');
+    commands.replyAndResume(t.id, 'use postgres');
+    expect(store.getTask(t.id)?.status).toBe('ready');
+    expect(store.listComments(t.id).map((c) => c.body)).toContain('use postgres');
+    expect(store.listEvents(t.id).map((e) => e.kind)).toContain('comment_added');
+  });
+
+  it('re-arms a blocked orchestrator task back to triage with its pending mode', () => {
+    const { store, commands } = makeNoClaim();
+    const t = store.createTask({ title: 'big', status: 'triage' });
+    store.startRun(t.id, 'orchestrator', null, 'decompose'); // prior orchestrator run
+    commands.block(t.id, 'need scope');
+    commands.replyAndResume(t.id, 'split by service');
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('triage');
+    expect(got?.pendingMode).toBe('decompose');
+    expect(store.listEvents(t.id).some((e) => e.kind === 'decompose_requested')).toBe(true);
+  });
+
+  it('resumes with an empty body without posting a comment', () => {
+    const { store, commands } = makeNoClaim();
+    const t = commands.create({ title: 'x', status: 'todo', assignee: 'worker' });
+    store.startRun(t.id, 'worker', null, 'work');
+    commands.block(t.id, 'q');
+    commands.replyAndResume(t.id, '   ');
+    expect(store.getTask(t.id)?.status).toBe('ready');
+    expect(store.listComments(t.id)).toHaveLength(0);
+  });
+
+  it('clears failure counters so a gave-up task resumes with a clean slate', () => {
+    const { store, commands } = makeNoClaim();
+    const t = commands.create({ title: 'x', status: 'todo', assignee: 'worker' });
+    store.startRun(t.id, 'worker', null, 'work');
+    store.recordFailure(t.id, 'boom');
+    store.giveUp(t.id, 'too many');
+    expect(store.getTask(t.id)!.consecutiveFailures).toBeGreaterThan(0);
+    commands.replyAndResume(t.id, 'try again');
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('ready');
+    expect(got?.consecutiveFailures).toBe(0);
+    expect(got?.lastFailureError).toBeNull();
+  });
+});
+
 describe('KanbanCommands archive worktree teardown', () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });

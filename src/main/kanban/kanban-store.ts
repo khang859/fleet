@@ -380,8 +380,10 @@ export class KanbanStore {
   }
 
   listRuns(taskId: string): TaskRun[] {
+    // `id DESC` tiebreaks runs started in the same millisecond so [0] is
+    // deterministically the most recent run (relied on by replyAndResume).
     const rows = this.db
-      .prepare('SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at DESC')
+      .prepare('SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at DESC, id DESC')
       .all(taskId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToRun(r));
   }
@@ -1085,6 +1087,15 @@ export class KanbanStore {
           worker_pid=NULL, current_run_id=NULL, last_heartbeat_at=NULL, updated_at=@ts WHERE id=@id`
       )
       .run({ id: taskId, status, ts });
+  }
+
+  /** Reset the failure counters so a resumed task starts with a clean slate. */
+  clearFailures(taskId: string): void {
+    this.db
+      .prepare(
+        'UPDATE tasks SET consecutive_failures=0, last_failure_error=NULL, updated_at=? WHERE id=?'
+      )
+      .run(this.now(), taskId);
   }
 
   /** Attach (or replace) a schedule on a task; moves it to the scheduled lane. */

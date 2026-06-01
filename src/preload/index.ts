@@ -39,6 +39,7 @@ import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
+  KanbanReplyAndResumeRequest,
   KanbanLinkRequest,
   KanbanAddAttachmentRequest,
   KanbanRenameBoardRequest,
@@ -456,6 +457,8 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_STATUS, req),
     addComment: async (req: KanbanAddCommentRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_ADD_COMMENT, req),
+    replyAndResume: async (req: KanbanReplyAndResumeRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REPLY_AND_RESUME, req),
     addLink: async (req: KanbanLinkRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_ADD_LINK, req),
     removeLink: async (req: KanbanLinkRequest): Promise<void> =>

@@ -33,6 +33,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
     updateTask,
     setStatus,
     addComment,
+    replyAndResume,
     addLink,
     removeLink,
     decompose,
@@ -303,16 +304,26 @@ export function KanbanDrawer(): React.JSX.Element | null {
           </div>
         </section>
 
-        {/* Result / body preview */}
+        {/* Result / body preview (for blocked cards this holds the agent's question) */}
         {t.result && (
           <section>
-            <h3 className="mb-1 font-semibold text-neutral-400">Result</h3>
+            <h3 className="mb-1 font-semibold text-neutral-400">
+              {t.status === 'blocked' ? 'Question' : 'Result'}
+            </h3>
             <div className="markdown-preview rounded border border-neutral-800 bg-neutral-950 p-2">
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
                 {t.result}
               </ReactMarkdown>
             </div>
           </section>
+        )}
+
+        {/* Reply & resume — answer a blocked agent and re-queue it in one step */}
+        {t.status === 'blocked' && (
+          <BlockedReply
+            onResume={(b) => void replyAndResume(t.id, b)}
+            onComment={(b) => void addComment(t.id, b)}
+          />
         )}
 
         {/* Dependencies */}
@@ -595,7 +606,11 @@ export function KanbanDrawer(): React.JSX.Element | null {
         {/* Comments */}
         <section>
           <h3 className="mb-1 font-semibold text-neutral-400">Comments</h3>
-          <CommentThread comments={detail.comments} onPost={(b) => void addComment(t.id, b)} />
+          <CommentThread
+            comments={detail.comments}
+            onPost={(b) => void addComment(t.id, b)}
+            readOnly={t.status === 'blocked'}
+          />
         </section>
 
         <p className="text-[10px] text-neutral-600">
@@ -603,5 +618,68 @@ export function KanbanDrawer(): React.JSX.Element | null {
         </p>
       </div>
     </div>
+  );
+}
+
+/**
+ * Compose box shown on a blocked card. The primary action posts the reply (if any)
+ * and re-queues the agent in one step; the secondary action only records a note.
+ */
+function BlockedReply({
+  onResume,
+  onComment
+}: {
+  onResume: (body: string) => void;
+  onComment: (body: string) => void;
+}): React.JSX.Element {
+  const [draft, setDraft] = useState('');
+  const [resuming, setResuming] = useState(false);
+  // The card leaves the blocked state on resume, so this component unmounts —
+  // `resuming` only needs to guard against a double-submit in the interim.
+  const resume = (): void => {
+    setResuming(true);
+    onResume(draft.trim());
+  };
+  return (
+    <section>
+      <h3 className="mb-1 font-semibold text-neutral-400">Reply &amp; resume</h3>
+      <div className="space-y-2 rounded border border-neutral-800 bg-neutral-950 p-2">
+        <textarea
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            // ⌘/Ctrl+Enter is the power-user accelerator for the primary action.
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+              e.preventDefault();
+              resume();
+            }
+          }}
+          rows={3}
+          placeholder="Answer the agent's question… (⌘/Ctrl+Enter to resume)"
+          className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500"
+        />
+        <div className="flex gap-1.5">
+          <button
+            onClick={resume}
+            disabled={resuming}
+            className="rounded bg-blue-600 px-2 py-1 font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {resuming ? 'Resuming…' : 'Reply & Resume ▶'}
+          </button>
+          <button
+            onClick={() => {
+              const body = draft.trim();
+              if (!body) return;
+              onComment(body);
+              setDraft('');
+            }}
+            disabled={resuming}
+            className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800 disabled:opacity-40"
+          >
+            Add comment
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }

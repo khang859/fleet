@@ -40,6 +40,7 @@ type KanbanState = {
   updateTask: (id: string, fields: UpdateTaskFields) => Promise<void>;
   setStatus: (id: string, status: TaskStatus) => Promise<void>;
   addComment: (taskId: string, body: string) => Promise<void>;
+  replyAndResume: (taskId: string, body: string) => Promise<void>;
   addLink: (parentId: string, childId: string) => Promise<void>;
   removeLink: (parentId: string, childId: string) => Promise<void>;
   nudge: () => Promise<void>;
@@ -149,6 +150,11 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   addComment: async (taskId, body) => {
     await window.fleet.kanban.addComment({ taskId, body });
+    await get().refreshDetail();
+  },
+  replyAndResume: async (taskId, body) => {
+    await window.fleet.kanban.replyAndResume({ taskId, body });
+    await get().loadBoard();
     await get().refreshDetail();
   },
   addLink: async (parentId, childId) => {
