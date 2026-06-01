@@ -126,6 +126,9 @@ export function createSwarm(store: SwarmStore, input: SwarmInput): SwarmCreated 
     tenant: input.tenant ?? null,
     workspaceKind,
     repoPath: input.repoPath,
+    // Worktree workers branch from the orchestrator's base so they inherit its
+    // merged work (matches kanban_create's child inheritance).
+    baseBranch: input.baseBranch ?? null,
     // 'dir' swarms run every node directly in the shared folder; carry the path
     // so it survives onto each task instead of falling back to a scratch sandbox.
     workspacePath: input.workspacePath ?? undefined,

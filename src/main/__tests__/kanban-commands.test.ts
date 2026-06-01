@@ -372,7 +372,7 @@ describe('KanbanCommands archive worktree teardown', () => {
     rmSync(TEST_DIR, { recursive: true, force: true });
   });
 
-  it('archiving a worktree task via setManualStatus removes its worktree and branch', () => {
+  it('archiving a worktree task via setManualStatus removes its worktree and a merged branch', () => {
     const { store, commands } = makeCommands();
     const repo = makeRepo('cmd-rm1');
     const task = store.createTask({
@@ -388,7 +388,8 @@ describe('KanbanCommands archive worktree teardown', () => {
       worktreesRoot: join(TEST_DIR, 'worktrees'),
       repoPath: repo
     });
-    store.setWorkspace(task.id, wt.path, wt.branchName);
+    // Branch is at main's HEAD (no new commits) → merged → archive deletes it.
+    store.setWorkspace(task.id, wt.path, wt.branchName, wt.baseBranch);
     expect(existsSync(wt.path)).toBe(true);
 
     commands.setManualStatus(task.id, 'archived');
@@ -399,6 +400,40 @@ describe('KanbanCommands archive worktree teardown', () => {
       encoding: 'utf8'
     });
     expect(branches.trim()).toBe('');
+  });
+
+  it('archiving a worktree task keeps an unmerged branch and logs an event', () => {
+    const { store, commands } = makeCommands();
+    const repo = makeRepo('cmd-rm-keep');
+    const task = store.createTask({
+      title: 'wt task',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: repo
+    });
+    const wt = prepareWorkspace({
+      kind: 'worktree',
+      taskId: task.id,
+      workspacesRoot: TEST_DIR,
+      worktreesRoot: join(TEST_DIR, 'worktrees'),
+      repoPath: repo
+    });
+    store.setWorkspace(task.id, wt.path, wt.branchName, wt.baseBranch);
+    // Commit unmerged work on the branch so archive must preserve it.
+    writeFileSync(join(wt.path, 'feature.txt'), 'work');
+    execFileSync('git', ['-C', wt.path, 'add', '-A']);
+    execFileSync('git', ['-C', wt.path, 'commit', '-q', '-m', 'feature']);
+
+    commands.setManualStatus(task.id, 'archived');
+
+    expect(store.getTask(task.id)?.status).toBe('archived');
+    expect(existsSync(wt.path)).toBe(false); // dir freed
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', `kanban/${task.id}`], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).not.toBe(''); // branch preserved
+    const events = store.listEvents(task.id);
+    expect(events.some((e) => e.kind === 'unmerged_branch_kept')).toBe(true);
   });
 
   it('archiving a scratch task does not throw and just archives', () => {

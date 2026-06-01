@@ -280,6 +280,19 @@ export type KanbanReplyAndResumeRequest = {
   body: string;
 };
 
+/** Outcome of a review integration action (merge / PR / accept). */
+export type KanbanReviewActionResult = {
+  ok: boolean;
+  /** PR URL when a pull request was created. */
+  prUrl?: string;
+  /** True when a merge failed due to conflicts (vs a setup/remote error). */
+  conflict?: boolean;
+  /** Human-readable failure reason when ok is false. */
+  error?: string;
+  /** Human-readable success note when ok is true. */
+  message?: string;
+};
+
 export type KanbanAddAttachmentRequest = {
   taskId: string;
   sourcePath: string;

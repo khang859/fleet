@@ -7,11 +7,12 @@ export const COLUMNS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'ready', label: 'Ready' },
   { status: 'running', label: 'Running' },
   { status: 'blocked', label: 'Blocked' },
+  { status: 'review', label: 'Review' },
   { status: 'done', label: 'Done' }
 ];
 
 // Manual drag targets exclude 'running' (dispatcher-owned) and 'archived'.
-export const DRAG_TARGETS: TaskStatus[] = ['triage', 'todo', 'ready', 'blocked', 'done'];
+export const DRAG_TARGETS: TaskStatus[] = ['triage', 'todo', 'ready', 'blocked', 'review', 'done'];
 
 export function relativeTime(epochMs: number): string {
   const diff = Date.now() - epochMs;

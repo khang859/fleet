@@ -172,7 +172,7 @@ describe('kanban workspace', () => {
     ).toThrow();
   });
 
-  it('removeWorktree removes the worktree dir and deletes its branch', () => {
+  it('removeWorktree removes the worktree dir and deletes a merged branch', () => {
     const repo = makeRepo('rm1');
     const { path, branchName } = prepareWorkspace({
       kind: 'worktree',
@@ -182,7 +182,14 @@ describe('kanban workspace', () => {
       repoPath: repo
     });
     expect(existsSync(path)).toBe(true);
-    removeWorktree({ repoPath: repo, workspacePath: path, branchName });
+    // Branch is at main's HEAD (no new commits) → merged → safe to delete.
+    const { branchKept } = removeWorktree({
+      repoPath: repo,
+      workspacePath: path,
+      branchName,
+      baseBranch: 'main'
+    });
+    expect(branchKept).toBe(false);
     expect(existsSync(path)).toBe(false);
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r1'], {
       encoding: 'utf8'
@@ -199,8 +206,9 @@ describe('kanban workspace', () => {
       worktreesRoot: WT_ROOT,
       repoPath: repo
     });
+    // Uncommitted change is not on the branch tip, so the branch is still merged.
     writeFileSync(join(path, 'dirty.txt'), 'uncommitted');
-    removeWorktree({ repoPath: repo, workspacePath: path, branchName });
+    removeWorktree({ repoPath: repo, workspacePath: path, branchName, baseBranch: 'main' });
     expect(existsSync(path)).toBe(false);
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r2'], {
       encoding: 'utf8'
@@ -208,7 +216,7 @@ describe('kanban workspace', () => {
     expect(branches.trim()).toBe('');
   });
 
-  it('removeWorktree does not throw when the dir was deleted out-of-band, and still drops the branch', () => {
+  it('removeWorktree does not throw when the dir was deleted out-of-band, and still drops a merged branch', () => {
     const repo = makeRepo('rm3');
     const { path, branchName } = prepareWorkspace({
       kind: 'worktree',
@@ -218,10 +226,56 @@ describe('kanban workspace', () => {
       repoPath: repo
     });
     rmSync(path, { recursive: true, force: true }); // simulate manual deletion
-    expect(() => removeWorktree({ repoPath: repo, workspacePath: path, branchName })).not.toThrow();
+    expect(() =>
+      removeWorktree({ repoPath: repo, workspacePath: path, branchName, baseBranch: 'main' })
+    ).not.toThrow();
     const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r3'], {
       encoding: 'utf8'
     });
     expect(branches.trim()).toBe('');
+  });
+
+  it('removeWorktree keeps an unmerged branch (preserves the work)', () => {
+    const repo = makeRepo('rm4');
+    const { path, branchName } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'r4',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    // Add a commit on the branch that is NOT in main → unmerged.
+    writeFileSync(join(path, 'feature.txt'), 'work');
+    execFileSync('git', ['-C', path, 'add', '-A']);
+    execFileSync('git', ['-C', path, 'commit', '-q', '-m', 'feature work']);
+    const { branchKept } = removeWorktree({
+      repoPath: repo,
+      workspacePath: path,
+      branchName,
+      baseBranch: 'main'
+    });
+    expect(branchKept).toBe(true);
+    expect(existsSync(path)).toBe(false); // dir still freed
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r4'], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).not.toBe(''); // branch preserved
+  });
+
+  it('removeWorktree keeps the branch when no base is known (conservative)', () => {
+    const repo = makeRepo('rm5');
+    const { path, branchName } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'r5',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    const { branchKept } = removeWorktree({ repoPath: repo, workspacePath: path, branchName });
+    expect(branchKept).toBe(true);
+    const branches = execFileSync('git', ['-C', repo, 'branch', '--list', 'kanban/r5'], {
+      encoding: 'utf8'
+    });
+    expect(branches.trim()).not.toBe('');
   });
 });

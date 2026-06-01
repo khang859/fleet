@@ -15,7 +15,7 @@ export class GitService {
     }
   }
 
-  async getFullStatus(cwd: string): Promise<GitStatusPayload> {
+  async getFullStatus(cwd: string, baseRef?: string): Promise<GitStatusPayload> {
     const git = this.getGit(cwd);
 
     // Check if it's a repo first
@@ -26,6 +26,12 @@ export class GitService {
       }
     } catch {
       return { isRepo: false, branch: '', files: [], diff: '' };
+    }
+
+    // When a base ref is given, show the branch's committed work (base...HEAD)
+    // rather than working-tree changes — a finalized worktree has a clean tree.
+    if (baseRef) {
+      return this.getRefDiff(git, baseRef);
     }
 
     try {
@@ -91,6 +97,62 @@ export class GitService {
         }
       }
 
+      return { isRepo: true, branch, files, diff };
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return { isRepo: true, branch: '', files: [], diff: '', error: message };
+    }
+  }
+
+  /** Committed diff of the current branch against `baseRef` (three-dot: base...HEAD). */
+  private async getRefDiff(git: SimpleGit, baseRef: string): Promise<GitStatusPayload> {
+    const range = `${baseRef}...HEAD`;
+    try {
+      const branchInfo = await git.branch();
+      const branch = branchInfo.current;
+      const numstatRaw = await git.raw(['diff', range, '--numstat']);
+      const nameStatusRaw = await git.raw(['diff', range, '--name-status']);
+
+      const numstatMap = new Map<string, { insertions: number; deletions: number }>();
+      for (const line of numstatRaw.split('\n')) {
+        const parts = line.split('\t');
+        if (parts.length === 3) {
+          // Renames appear as `dir/{old => new}/file` or a whole-path `old => new`
+          // in the path column; collapse to the new path so name-status lookups match.
+          let path = parts[2];
+          const brace = path.match(/^(.*)\{.* => (.*?)\}(.*)$/);
+          if (brace) path = brace[1] + brace[2] + brace[3];
+          else if (path.includes(' => ')) path = path.split(' => ')[1];
+          numstatMap.set(path, {
+            insertions: parseInt(parts[0]) || 0,
+            deletions: parseInt(parts[1]) || 0
+          });
+        }
+      }
+
+      const files: GitFileStatus[] = [];
+      for (const line of nameStatusRaw.split('\n')) {
+        if (!line.trim()) continue;
+        const parts = line.split('\t');
+        const code = parts[0]?.[0] ?? 'M';
+        const path = parts[parts.length - 1];
+        const stats = numstatMap.get(path) ?? { insertions: 0, deletions: 0 };
+        files.push({
+          path,
+          status:
+            code === 'A'
+              ? 'added'
+              : code === 'D'
+                ? 'deleted'
+                : code === 'R'
+                  ? 'renamed'
+                  : 'modified',
+          insertions: stats.insertions,
+          deletions: stats.deletions
+        });
+      }
+
+      const diff = await git.diff([range]);
       return { isRepo: true, branch, files, diff };
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

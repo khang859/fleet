@@ -50,7 +50,8 @@ import type {
   KanbanArtifactPreviewResponse,
   KanbanReuseArtifactRequest,
   KanbanCreateTaskFromArtifactRequest,
-  KanbanCreateSwarmFromArtifactRequest
+  KanbanCreateSwarmFromArtifactRequest,
+  KanbanReviewActionResult
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -198,8 +199,8 @@ const fleetApi = {
   git: {
     isRepo: async (cwd: string): Promise<GitIsRepoPayload> =>
       typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
-    getStatus: async (cwd: string): Promise<GitStatusPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd)
+    getStatus: async (cwd: string, baseRef?: string): Promise<GitStatusPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef)
   },
   worktree: {
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
@@ -464,6 +465,12 @@ const fleetApi = {
     removeLink: async (req: KanbanLinkRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_LINK, req),
     nudge: async (): Promise<void> => typedInvoke<void>(IPC_CHANNELS.KANBAN_NUDGE),
+    mergeTask: async (taskId: string): Promise<KanbanReviewActionResult> =>
+      typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_MERGE_TASK, taskId),
+    createPr: async (taskId: string): Promise<KanbanReviewActionResult> =>
+      typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_CREATE_PR, taskId),
+    acceptTask: async (taskId: string): Promise<KanbanReviewActionResult> =>
+      typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_ACCEPT_TASK, taskId),
     decompose: async (taskId: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_DECOMPOSE, taskId),
     specify: async (taskId: string): Promise<void> =>

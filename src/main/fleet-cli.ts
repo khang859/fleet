@@ -577,7 +577,7 @@ Manage the Kanban board from the terminal. Requires the Fleet app to be running.
 
 ## Options
 
-  --status <status>   Filter list by status (triage|todo|ready|running|blocked|done|archived).
+  --status <status>   Filter list by status (triage|todo|ready|running|blocked|review|done|archived).
   --format json       Emit raw JSON instead of a table.
 
 ## Examples

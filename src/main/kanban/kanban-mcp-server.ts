@@ -3,9 +3,10 @@ import { URL } from 'url';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { RunMode, SwarmInput, SwarmCreated } from '../../shared/kanban-types';
+import type { RunMode, SwarmInput, SwarmCreated, Task } from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
+import { finalizeWorktree, reviewStat } from './workspace';
 
 const log = createLogger('kanban-mcp');
 
@@ -315,6 +316,27 @@ export class KanbanMcpServer {
     this.rpcResult(res, id, { content: [{ type: 'text', text: message }] });
   }
 
+  /**
+   * Workspace fields a child / swarm worker inherits from its parent task: a
+   * worktree parent gives each child its own worktree branched from the parent's
+   * base (so it inherits merged work); a 'dir' parent shares its folder. Without
+   * this a child falls back to an empty scratch sandbox.
+   */
+  private inheritWorkspace(task: Task): {
+    workspaceKind?: 'worktree' | 'dir';
+    repoPath?: string;
+    baseBranch?: string | null;
+    workspacePath?: string;
+  } {
+    if (task.workspaceKind === 'worktree' && task.repoPath) {
+      return { workspaceKind: 'worktree', repoPath: task.repoPath, baseBranch: task.baseBranch };
+    }
+    if (task.workspaceKind === 'dir' && task.workspacePath) {
+      return { workspaceKind: 'dir', workspacePath: task.workspacePath };
+    }
+    return {};
+  }
+
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
     const scope = this.runs.get(token);
     if (!scope) return this.rpcError(res, rpcReq.id, 'unknown or missing run token');
@@ -350,6 +372,33 @@ export class KanbanMcpServer {
           const a = z
             .object({ summary: z.string(), metadata: z.record(z.string(), z.unknown()).optional() })
             .parse(args);
+          // Worktree tasks don't go straight to done: commit the work, land it in
+          // the human review gate, and record what changed. Scratch/dir tasks have
+          // nothing to merge, so they complete as before.
+          if (task.workspaceKind === 'worktree' && task.workspacePath) {
+            finalizeWorktree({
+              workspacePath: task.workspacePath,
+              taskId: task.id,
+              title: task.title
+            });
+            const stat = reviewStat({
+              workspacePath: task.workspacePath,
+              baseBranch: task.baseBranch
+            });
+            this.store.reviewTask(task.id, a.summary);
+            this.store.finishRun(scope.runId, 'completed', {
+              summary: a.summary,
+              metadata: { ...a.metadata, review: stat ?? undefined }
+            });
+            this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+            const where = task.branchName ?? `kanban/${task.id}`;
+            const statText = stat
+              ? `${stat.files} file${stat.files === 1 ? '' : 's'} (+${stat.insertions}/−${stat.deletions})`
+              : 'changes committed';
+            this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
+            this.unregisterRun(token);
+            return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+          }
           this.store.completeTask(task.id, a.summary);
           this.store.finishRun(scope.runId, 'completed', {
             summary: a.summary,
@@ -462,18 +511,7 @@ export class KanbanMcpServer {
               `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
             );
           }
-          // Children inherit the parent's workspace so they can see its files:
-          // a worktree parent gives each child its own kanban/<childId> worktree
-          // (gate on a truthy repoPath — store.createTask bypasses the create()
-          // repoPath guard, so a worktree task without a repo would fail at claim
-          // time), and a 'dir' parent shares its folder directly. Without this a
-          // child falls back to an empty scratch sandbox.
-          const inherit =
-            task.workspaceKind === 'worktree' && task.repoPath
-              ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
-              : task.workspaceKind === 'dir' && task.workspacePath
-                ? { workspaceKind: 'dir' as const, workspacePath: task.workspacePath }
-                : {};
+          const inherit = this.inheritWorkspace(task);
           const child = this.store.createTask({
             title: a.title,
             body: a.body ?? '',
@@ -526,12 +564,7 @@ export class KanbanMcpServer {
               synthesizer: z.string()
             })
             .parse(args);
-          const inheritRepo =
-            task.workspaceKind === 'worktree' && task.repoPath
-              ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
-              : task.workspaceKind === 'dir' && task.workspacePath
-                ? { workspaceKind: 'dir' as const, workspacePath: task.workspacePath }
-                : {};
+          const inheritRepo = this.inheritWorkspace(task);
           const created = this.swarmHandler({
             goal: a.goal,
             workers: a.workers.map((w) => ({
