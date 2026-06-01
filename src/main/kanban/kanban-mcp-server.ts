@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { RunMode, SwarmInput, SwarmCreated } from '../../shared/kanban-types';
+import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 
 const log = createLogger('kanban-mcp');
@@ -205,8 +206,13 @@ export class KanbanMcpServer {
 
   private store: KanbanStore;
   private swarmHandler: ((input: SwarmInput) => SwarmCreated) | null = null;
-  constructor(store: KanbanStore) {
+  private getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>>;
+  constructor(
+    store: KanbanStore,
+    getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>> = () => []
+  ) {
     this.store = store;
+    this.getProfiles = getProfiles;
   }
 
   /** Inject the swarm creation handler (KanbanCommands.createSwarm). */
@@ -440,6 +446,22 @@ export class KanbanMcpServer {
               parents: z.array(z.string()).optional()
             })
             .parse(args);
+          // The orchestrator must assign children only to worker profiles that actually
+          // exist — otherwise the card shows a phantom assignee and the work run silently
+          // falls back to a different profile. Reject unknown names so the model retries
+          // with a real one (mirrors createSwarm's worker-profile guard). Skip when no
+          // profiles are known (tests/fresh state) — there's nothing to validate against.
+          const assignee = a.assignee?.trim() || null;
+          const workerNames = this.getProfiles()
+            .filter((p) => p.role === 'worker')
+            .map((p) => p.name);
+          if (assignee && workerNames.length > 0 && !workerNames.includes(assignee)) {
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
+            );
+          }
           // Children inherit the parent's workspace so they can see its files:
           // a worktree parent gives each child its own kanban/<childId> worktree
           // (gate on a truthy repoPath — store.createTask bypasses the create()
@@ -455,7 +477,7 @@ export class KanbanMcpServer {
           const child = this.store.createTask({
             title: a.title,
             body: a.body ?? '',
-            assignee: a.assignee ?? null,
+            assignee,
             priority: a.priority ?? 0,
             status: 'todo',
             boardId: task.boardId,

@@ -787,7 +787,7 @@ void app.whenReady().then(async () => {
       notif.show();
     }
   });
-  kanbanMcp = new KanbanMcpServer(kanbanStore);
+  kanbanMcp = new KanbanMcpServer(kanbanStore, () => settingsStore.get().kanban.profiles);
   const kanbanMcpPort = await kanbanMcp.start(0);
 
   const kanbanMcpRef = kanbanMcp;

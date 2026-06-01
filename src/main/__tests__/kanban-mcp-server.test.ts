@@ -368,6 +368,72 @@ describe('KanbanMcpServer', () => {
     expect(receivedBoard).toBe('default');
   });
 
+  it('kanban_create rejects an assignee that is not a known worker profile', async () => {
+    const profiled = new KanbanMcpServer(store, () => [
+      { name: 'default', role: 'worker' },
+      { name: 'researcher', role: 'worker' },
+      { name: 'orchestrator', role: 'orchestrator' }
+    ]);
+    const port = await profiled.start(0);
+    try {
+      const url = `http://127.0.0.1:${port}/mcp`;
+      const parent = store.createTask({ title: 'big', status: 'running' });
+      const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+      profiled.registerRun('ptok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      const r = await rpc(`${url}?run=ptok`, 'tools/call', {
+        name: 'kanban_create',
+        arguments: { title: 'child', assignee: 'backend-dev' }
+      });
+      expect(r.error).toBeTruthy();
+      expect(String(r.error.message)).toMatch(/unknown worker profile "backend-dev"/i);
+      expect(String(r.error.message)).toMatch(/default, researcher/);
+      expect(store.listBoard().some((c) => c.title === 'child')).toBe(false);
+    } finally {
+      await profiled.stop();
+    }
+  });
+
+  it('kanban_create rejects an orchestrator-role profile as an assignee', async () => {
+    const profiled = new KanbanMcpServer(store, () => [
+      { name: 'default', role: 'worker' },
+      { name: 'orchestrator', role: 'orchestrator' }
+    ]);
+    const port = await profiled.start(0);
+    try {
+      const url = `http://127.0.0.1:${port}/mcp`;
+      const parent = store.createTask({ title: 'big', status: 'running' });
+      const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+      profiled.registerRun('ptok2', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      const r = await rpc(`${url}?run=ptok2`, 'tools/call', {
+        name: 'kanban_create',
+        arguments: { title: 'child', assignee: 'orchestrator' }
+      });
+      expect(r.error).toBeTruthy();
+      expect(String(r.error.message)).toMatch(/unknown worker profile "orchestrator"/i);
+    } finally {
+      await profiled.stop();
+    }
+  });
+
+  it('kanban_create accepts a valid worker assignee when profiles are known', async () => {
+    const profiled = new KanbanMcpServer(store, () => [{ name: 'researcher', role: 'worker' }]);
+    const port = await profiled.start(0);
+    try {
+      const url = `http://127.0.0.1:${port}/mcp`;
+      const parent = store.createTask({ title: 'big', status: 'running' });
+      const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
+      profiled.registerRun('ptok3', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      const r = await rpc(`${url}?run=ptok3`, 'tools/call', {
+        name: 'kanban_create',
+        arguments: { title: 'child', assignee: 'researcher' }
+      });
+      const childId = String(r.result.content[0].text).trim();
+      expect(store.getTask(childId)?.assignee).toBe('researcher');
+    } finally {
+      await profiled.stop();
+    }
+  });
+
   it('kanban_swarm_read rejects a non-swarm-root id', async () => {
     const plain = store.createTask({ title: 'plain', status: 'ready', assignee: 'r' });
     store.claimTask(plain.id, 'LOCK', 100000);
