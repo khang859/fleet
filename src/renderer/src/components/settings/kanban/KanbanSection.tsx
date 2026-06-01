@@ -1,7 +1,12 @@
 import { useSettingsStore } from '../../../store/settings-store';
 import { SettingRow } from '../SettingRow';
 import { ProfileEditor } from './ProfileEditor';
-import type { KanbanSettings, WorkerProfile } from '../../../../../shared/types';
+import {
+  DEFAULT_ORCHESTRATOR_INSTRUCTIONS,
+  ORCHESTRATOR_PROFILE_NAME,
+  type KanbanSettings,
+  type WorkerProfile
+} from '../../../../../shared/types';
 import type { WorkspaceKind } from '../../../../../shared/kanban-types';
 import {
   KANBAN_NOTIFY_CATEGORIES,
@@ -233,8 +238,11 @@ export function KanbanSection(): React.JSX.Element | null {
             + New profile
           </button>
         </div>
-        {k.profiles.length === 0 && <p className="text-xs text-neutral-500">No profiles yet.</p>}
+        {!k.profiles.some((p) => p.role === 'worker') && (
+          <p className="text-xs text-neutral-500">No profiles yet.</p>
+        )}
         {k.profiles.map((p, i) => {
+          if (p.role !== 'worker') return null;
           const duplicate =
             p.name !== '' && k.profiles.some((q, j) => j !== i && q.name === p.name);
           return (
@@ -250,6 +258,74 @@ export function KanbanSection(): React.JSX.Element | null {
           );
         })}
       </section>
+
+      <OrchestratorSection k={k} patch={patch} />
     </div>
+  );
+}
+
+/**
+ * The orchestrator is a singleton — there is exactly one, it can't be deleted or assigned to a
+ * task, so it gets its own panel (model + persona only) instead of a row in the worker list.
+ */
+function OrchestratorSection({
+  k,
+  patch
+}: {
+  k: KanbanSettings;
+  patch: (next: Partial<KanbanSettings>) => void;
+}): React.JSX.Element {
+  const idx = k.profiles.findIndex((p) => p.role === 'orchestrator');
+  const orchestrator: WorkerProfile =
+    idx >= 0
+      ? k.profiles[idx]
+      : {
+          name: ORCHESTRATOR_PROFILE_NAME,
+          role: 'orchestrator',
+          model: '',
+          skills: [],
+          instructions: DEFAULT_ORCHESTRATOR_INSTRUCTIONS
+        };
+  const update = (next: Partial<WorkerProfile>): void => {
+    const merged = { ...orchestrator, ...next };
+    patch({
+      profiles:
+        idx >= 0 ? k.profiles.map((q, j) => (j === idx ? merged : q)) : [...k.profiles, merged]
+    });
+  };
+  const isDefault = orchestrator.instructions === DEFAULT_ORCHESTRATOR_INSTRUCTIONS;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-neutral-300">Orchestrator</h3>
+        <button
+          onClick={() => update({ model: '', instructions: DEFAULT_ORCHESTRATOR_INSTRUCTIONS })}
+          disabled={isDefault && orchestrator.model === ''}
+          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
+        >
+          Reset to default
+        </button>
+      </div>
+      <p className="text-xs text-neutral-500">
+        The single planner that decomposes tasks into child tasks. There is exactly one — it
+        can&apos;t be deleted or assigned to a task.
+      </p>
+      <div className="rounded-md border border-neutral-800 bg-neutral-900/50 p-3 space-y-2">
+        <input
+          value={orchestrator.model}
+          onChange={(e) => update({ model: e.target.value })}
+          placeholder="model (optional, e.g. claude-opus-4-8)"
+          className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+        />
+        <textarea
+          value={orchestrator.instructions}
+          onChange={(e) => update({ instructions: e.target.value })}
+          rows={10}
+          placeholder="Orchestrator system prompt / persona…"
+          className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+        />
+      </div>
+    </section>
   );
 }

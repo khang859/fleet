@@ -38,20 +38,6 @@ export function ProfileEditor({
       {duplicate && !nameInvalid && (
         <p className="text-[10px] text-red-400">Another profile already uses this name.</p>
       )}
-      <select
-        value={profile.role}
-        onChange={(e) =>
-          onChange({
-            ...profile,
-            role: e.target.value === 'orchestrator' ? 'orchestrator' : 'worker'
-          })
-        }
-        title="role"
-        className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
-      >
-        <option value="worker">worker</option>
-        <option value="orchestrator">orchestrator</option>
-      </select>
       <input
         value={profile.model}
         onChange={(e) => onChange({ ...profile, model: e.target.value })}

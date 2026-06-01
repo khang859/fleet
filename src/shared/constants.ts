@@ -1,6 +1,7 @@
 import { join } from 'path';
 import { homedir } from 'os';
 import type { FleetSettings } from './types';
+import { DEFAULT_ORCHESTRATOR_INSTRUCTIONS, ORCHESTRATOR_PROFILE_NAME } from './types';
 export { IPC_CHANNELS } from './ipc-channels';
 export { MASCOT_REGISTRY } from './mascots';
 
@@ -107,12 +108,11 @@ export const DEFAULT_SETTINGS: FleetSettings = {
           'You are a focused Fleet worker. Complete the assigned kanban task end-to-end, then call kanban_complete with a concise result. If you cannot proceed, call kanban_block with the reason.'
       },
       {
-        name: 'orchestrator',
+        name: ORCHESTRATOR_PROFILE_NAME,
         role: 'orchestrator',
         model: '',
         skills: [],
-        instructions:
-          'You are the Fleet kanban orchestrator. Break the assigned task into a graph of smaller child tasks using kanban_create and kanban_link, choosing an appropriate worker profile for each child. Do not implement the work yourself.'
+        instructions: DEFAULT_ORCHESTRATOR_INSTRUCTIONS
       }
     ]
   }
