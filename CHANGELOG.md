@@ -3,6 +3,8 @@
 ## v2.42.0
 
 - Kanban: scheduled tasks. Schedule a task to run once at a future time, or on a recurring cadence (a simple interval or a cron expression). Recurring schedules act as templates that spawn a fresh instance task on each fire; one-shots run in place. Fires missed while the app was closed are skipped and realigned to the next future occurrence. Adds a "Scheduled" lane and a Schedule section (with a live next-fire preview) in the task drawer.
+- Kanban: task artifacts. Agents can produce durable output files (documents, code, data) via the `kanban_artifact` tool. Browse, preview, download, reveal, discard/restore, and reuse them as the seed for a new task or swarm — all from a new Board ↔ Artifacts toggle inside the Kanban view. Discarded artifacts are soft-deleted and auto-purged after a configurable retention window.
+- Kanban: the task drawer now shows where an agent runs — an empty scratch sandbox, a project directory, or an isolated git worktree (with its repo path and branch).
 
 ## v2.41.0
 
