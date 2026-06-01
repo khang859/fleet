@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.45.0
+
+- Kanban: answering a blocked card is now one click. When an agent blocks with a question, the task drawer shows a "Question" section and a Reply & Resume box — type your answer, click once, and the agent is re-queued in the same mode it last ran (a worker run returns to Ready, an orchestrator run back to triage), dispatched immediately instead of waiting for the next poll. This replaces the old comment → move-to-Ready → re-assign → wait sequence. A secondary "Add comment" still records a note without resuming.
+
 ## v2.44.0
 
 - Kanban: Fleet now checks whether Rune (the agent that runs every task) is installed. A new Settings → Rune section shows the installed version or, when it's missing, a copyable install command and an install guide. The status re-checks automatically when you return to the window, so installing Rune in a terminal updates it without a restart.
