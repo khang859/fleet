@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.44.0
+
+- Kanban: Fleet now checks whether Rune (the agent that runs every task) is installed. A new Settings → Rune section shows the installed version or, when it's missing, a copyable install command and an install guide. The status re-checks automatically when you return to the window, so installing Rune in a terminal updates it without a restart.
+- Kanban: when Rune isn't installed, the board shows a banner instead of letting tasks silently fail. Tasks that can't spawn now record a clear, actionable reason ("Rune couldn't be found on your PATH…") in their run history rather than a cryptic "worker pid not alive".
+
 ## v2.43.0
 
 - Kanban: child and swarm tasks now inherit a directory-scoped parent's workspace. Previously a task scoped to a project directory spawned children in an empty scratch sandbox, so they failed when looking for files the parent referenced. Decomposed and swarm tasks now run in the same `dir` (and path) as their parent.
