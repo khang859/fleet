@@ -17,7 +17,6 @@ import {
   Boxes
 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
-import { useWorkspaceStore } from '../../store/workspace-store';
 import { formatBytes } from './kanban-utils';
 import type {
   ArtifactListItem,
@@ -230,7 +229,12 @@ function ArtifactRow({
   );
 }
 
-export function ArtifactsView(): React.JSX.Element {
+export function ArtifactsView({
+  onReuseSeed
+}: {
+  /** Called after a reuse request is seeded, so the host (Kanban) can return to the board. */
+  onReuseSeed: () => void;
+}): React.JSX.Element {
   const boards = useKanbanStore((s) => s.boards);
   const loadBoards = useKanbanStore((s) => s.loadBoards);
   const requestSeed = useKanbanStore((s) => s.requestSeed);
@@ -278,20 +282,19 @@ export function ArtifactsView(): React.JSX.Element {
 
   const onReuse = useCallback(
     (art: ArtifactListItem, target: 'task' | 'swarm') => {
-      // Seeds into the active Kanban board (per design); jump to the Kanban tab to finish.
+      // Seeds into the active Kanban board (per design); the host returns to the board view
+      // where the seeded create / swarm form opens.
       requestSeed({ id: art.id, filename: art.filename }, target);
-      const ws = useWorkspaceStore.getState();
-      const kanbanTab = ws.workspace.tabs.find((t) => t.type === 'kanban');
-      if (kanbanTab) ws.setActiveTab(kanbanTab.id);
+      onReuseSeed();
     },
-    [requestSeed]
+    [requestSeed, onReuseSeed]
   );
 
   const groups = groupByTaskRun(items);
   const filtersActive = Boolean(board || kind || state || query.trim());
 
   return (
-    <div className="flex h-full flex-col bg-neutral-900 text-neutral-200">
+    <div className="flex min-h-0 flex-1 flex-col bg-neutral-900 text-neutral-200">
       <header className="flex flex-wrap items-center gap-2 border-b border-neutral-800 px-4 py-3">
         <h2 className="flex items-center gap-1.5 text-sm font-semibold text-neutral-300">
           <Package size={15} className="text-amber-400" /> Artifacts
