@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.43.0
+
+- Kanban: child and swarm tasks now inherit a directory-scoped parent's workspace. Previously a task scoped to a project directory spawned children in an empty scratch sandbox, so they failed when looking for files the parent referenced. Decomposed and swarm tasks now run in the same `dir` (and path) as their parent.
+- Kanban: the orchestrator is now a single, built-in planner instead of a user-created profile. It ships with a research-backed default persona (scale the breakdown to the task, write self-contained children with explicit acceptance criteria, maximize parallelism) and a "Reset to default" button in Settings. It can't be deleted or assigned to a task.
+
 ## v2.42.0
 
 - Kanban: scheduled tasks. Schedule a task to run once at a future time, or on a recurring cadence (a simple interval or a cron expression). Recurring schedules act as templates that spawn a fresh instance task on each fire; one-shots run in place. Fires missed while the app was closed are skipped and realigned to the next future occurrence. Adds a "Scheduled" lane and a Schedule section (with a live next-fire preview) in the task drawer.
