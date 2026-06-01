@@ -219,6 +219,7 @@ export interface SwarmInput {
   priority?: number;
   workspaceKind?: WorkspaceKind;
   repoPath?: string;
+  workspacePath?: string | null;
   maxRuntimeSeconds?: number | null;
   rootTitle?: string;
   verifierTitle?: string;

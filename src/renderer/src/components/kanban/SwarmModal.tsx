@@ -37,7 +37,15 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
   const [rows, setRows] = useState<WorkerRow[]>([{ profile: firstWorker, title: '', skills: '' }]);
   const [verifier, setVerifier] = useState(firstWorker);
   const [synthesizer, setSynthesizer] = useState(firstWorker);
+  const [mode, setMode] = useState<'scratch' | 'project'>('scratch');
+  const [folder, setFolder] = useState('');
+  const [isolated, setIsolated] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  async function pickFolder(): Promise<void> {
+    const path = await window.fleet.showFolderPicker();
+    if (path) setFolder(path);
+  }
 
   async function submit(): Promise<void> {
     const workers = rowsToWorkerSpecs(rows);
@@ -47,11 +55,25 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
       );
       return;
     }
+    const dir = folder.trim();
+    if (mode === 'project' && !dir) {
+      setError('Select a project folder, or choose the empty sandbox.');
+      return;
+    }
+    // Every node in the swarm shares this workspace. Worktree gives each its own
+    // isolated copy; a plain folder is shared directly (the user opted out of isolation).
+    const workspace =
+      mode === 'scratch'
+        ? { workspaceKind: 'scratch' as const }
+        : isolated
+          ? { workspaceKind: 'worktree' as const, repoPath: dir }
+          : { workspaceKind: 'dir' as const, workspacePath: dir };
     const input = {
       goal: goal.trim(),
       workers,
       verifierAssignee: verifier,
-      synthesizerAssignee: synthesizer
+      synthesizerAssignee: synthesizer,
+      ...workspace
     };
     try {
       if (seed?.target === 'swarm') {
@@ -164,6 +186,61 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
             </select>
           </label>
         </div>
+        <div className="mb-1 text-[11px] font-medium text-neutral-400">
+          Where should the swarm work?
+        </div>
+        <label className="mb-1 flex items-center gap-2 text-xs text-neutral-300">
+          <input
+            type="radio"
+            name="swarm-ws-mode"
+            checked={mode === 'scratch'}
+            onChange={() => setMode('scratch')}
+          />
+          Empty sandbox{' '}
+          <span className="text-neutral-500">(no project — a fresh, empty folder per task)</span>
+        </label>
+        <label className="mb-1 flex items-center gap-2 text-xs text-neutral-300">
+          <input
+            type="radio"
+            name="swarm-ws-mode"
+            checked={mode === 'project'}
+            onChange={() => setMode('project')}
+          />
+          A project folder
+        </label>
+        {mode === 'project' && (
+          <div className="mb-2 flex flex-col gap-2 pl-6">
+            <div className="flex items-center gap-2">
+              <input
+                value={folder}
+                onChange={(e) => setFolder(e.target.value)}
+                placeholder="No folder selected…"
+                className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
+              />
+              <button
+                onClick={() => void pickFolder()}
+                className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+              >
+                Browse…
+              </button>
+            </div>
+            <label className="flex items-start gap-2 text-xs text-neutral-300">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={isolated}
+                onChange={(e) => setIsolated(e.target.checked)}
+              />
+              <span>
+                Work on an isolated copy{' '}
+                <span className="text-neutral-500">
+                  (git worktree — each task gets its own copy; leaves your files untouched. Requires
+                  a git repo. Unchecked: every task shares the folder directly.)
+                </span>
+              </span>
+            </label>
+          </div>
+        )}
         {error && <div className="mb-2 text-xs text-red-400">{error}</div>}
         <div className="flex justify-end gap-2">
           <button

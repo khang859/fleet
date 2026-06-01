@@ -440,14 +440,18 @@ export class KanbanMcpServer {
               parents: z.array(z.string()).optional()
             })
             .parse(args);
-          // Children of a worktree parent inherit its source repo so each runs
-          // in its own kanban/<childId> worktree. Gate on a truthy repoPath:
-          // store.createTask bypasses the create() repoPath guard, so a
-          // worktree task without a repo would fail at claim time.
+          // Children inherit the parent's workspace so they can see its files:
+          // a worktree parent gives each child its own kanban/<childId> worktree
+          // (gate on a truthy repoPath — store.createTask bypasses the create()
+          // repoPath guard, so a worktree task without a repo would fail at claim
+          // time), and a 'dir' parent shares its folder directly. Without this a
+          // child falls back to an empty scratch sandbox.
           const inherit =
             task.workspaceKind === 'worktree' && task.repoPath
               ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
-              : {};
+              : task.workspaceKind === 'dir' && task.workspacePath
+                ? { workspaceKind: 'dir' as const, workspacePath: task.workspacePath }
+                : {};
           const child = this.store.createTask({
             title: a.title,
             body: a.body ?? '',
@@ -503,7 +507,9 @@ export class KanbanMcpServer {
           const inheritRepo =
             task.workspaceKind === 'worktree' && task.repoPath
               ? { workspaceKind: 'worktree' as const, repoPath: task.repoPath }
-              : {};
+              : task.workspaceKind === 'dir' && task.workspacePath
+                ? { workspaceKind: 'dir' as const, workspacePath: task.workspacePath }
+                : {};
           const created = this.swarmHandler({
             goal: a.goal,
             workers: a.workers.map((w) => ({

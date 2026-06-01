@@ -126,6 +126,9 @@ export function createSwarm(store: SwarmStore, input: SwarmInput): SwarmCreated 
     tenant: input.tenant ?? null,
     workspaceKind,
     repoPath: input.repoPath,
+    // 'dir' swarms run every node directly in the shared folder; carry the path
+    // so it survives onto each task instead of falling back to a scratch sandbox.
+    workspacePath: input.workspacePath ?? undefined,
     maxRuntimeSeconds: input.maxRuntimeSeconds ?? null
   };
 

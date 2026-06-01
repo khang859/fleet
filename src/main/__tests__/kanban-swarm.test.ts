@@ -174,4 +174,20 @@ describe('createSwarm topology', () => {
     expect(s.getTask(created.workerIds[0])!.workspaceKind).toBe('worktree');
     expect(s.getTask(created.synthesizerId)!.workspaceKind).toBe('worktree');
   });
+
+  it('carries a dir workspacePath onto every card', () => {
+    const s = store();
+    const created = createSwarm(s, {
+      goal: 'g',
+      workers: [{ profile: 'w', title: 't', body: 't', skills: [] }],
+      verifierAssignee: 'v',
+      synthesizerAssignee: 'y',
+      workspaceKind: 'dir',
+      workspacePath: '/tmp/project'
+    });
+    for (const id of [created.workerIds[0], created.verifierId, created.synthesizerId]) {
+      expect(s.getTask(id)!.workspaceKind).toBe('dir');
+      expect(s.getTask(id)!.workspacePath).toBe('/tmp/project');
+    }
+  });
 });
