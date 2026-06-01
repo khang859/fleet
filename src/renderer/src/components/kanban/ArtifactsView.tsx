@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Download,
   FolderOpen,
-  Sprout
+  Sprout,
+  Boxes
 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useWorkspaceStore } from '../../store/workspace-store';
@@ -141,10 +142,18 @@ function ArtifactRow({
               <button
                 onClick={() => onReuse(art, 'task')}
                 title="Use as input for a new task"
-                aria-label="Use as input"
+                aria-label="Use as input for a new task"
                 className="text-neutral-400 hover:text-blue-300"
               >
                 <Sprout size={12} />
+              </button>
+              <button
+                onClick={() => onReuse(art, 'swarm')}
+                title="Use as input for a new swarm"
+                aria-label="Use as input for a new swarm"
+                className="text-neutral-400 hover:text-purple-300"
+              >
+                <Boxes size={12} />
               </button>
               <button
                 onClick={() => void act(discardArtifact)}
@@ -251,11 +260,20 @@ export function ArtifactsView(): React.JSX.Element {
   }, [reload]);
 
   // Refresh when artifacts change elsewhere (worker registration, retention purge).
+  // Coalesce bursts (a swarm emits many events) into one reload, matching App.tsx.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const cleanup = window.fleet.kanban.onEvent(() => {
-      void reload();
+      if (timer) return;
+      timer = setTimeout(() => {
+        timer = null;
+        void reload();
+      }, 150);
     });
-    return cleanup;
+    return () => {
+      if (timer) clearTimeout(timer);
+      cleanup();
+    };
   }, [reload]);
 
   const onReuse = useCallback(
@@ -270,6 +288,7 @@ export function ArtifactsView(): React.JSX.Element {
   );
 
   const groups = groupByTaskRun(items);
+  const filtersActive = Boolean(board || kind || state || query.trim());
 
   return (
     <div className="flex h-full flex-col bg-neutral-900 text-neutral-200">
@@ -324,8 +343,14 @@ export function ArtifactsView(): React.JSX.Element {
       <div className="flex-1 overflow-y-auto px-4 py-3">
         {groups.length === 0 ? (
           <p className="mt-8 text-center text-xs text-neutral-600">
-            No artifacts match these filters. Agents register outputs with the{' '}
-            <code className="text-neutral-500">kanban_artifact</code> tool.
+            {filtersActive ? (
+              'No artifacts match these filters.'
+            ) : (
+              <>
+                No artifacts yet — agents create these with the{' '}
+                <code className="text-neutral-500">kanban_artifact</code> tool.
+              </>
+            )}
           </p>
         ) : (
           <div className="space-y-4">

@@ -354,6 +354,7 @@ export function App(): React.JSX.Element {
           addTab(undefined, window.fleet.homeDir);
           useWorkspaceStore.getState().ensureImagesTab();
           useWorkspaceStore.getState().ensureKanbanTab();
+          useWorkspaceStore.getState().ensureArtifactsTab();
         }
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
