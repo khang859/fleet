@@ -91,6 +91,9 @@ export const IPC_CHANNELS = {
   ANNOTATE_LIST: 'annotate:list',
   ANNOTATE_GET: 'annotate:get',
   ANNOTATE_DELETE: 'annotate:delete',
+  // Rune Agent
+  RUNE_VERSION: 'rune:version',
+
   // Pi Agent
   PI_OPEN: 'pi:open',
   PI_PLAN_OPEN: 'pi:plan-open',

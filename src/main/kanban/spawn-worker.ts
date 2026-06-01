@@ -146,8 +146,18 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
   };
 }
 
-/** Spawns the worker as a detached child; returns its pid (or undefined on failure). */
-export function spawnRuneWorker(input: BuildWorkerInput): number | undefined {
+/**
+ * Spawns the worker as a detached child; returns its pid (or undefined on failure).
+ *
+ * `spawn` resolves `rune` off PATH and does NOT throw when it's missing — it fires an async
+ * `'error'` (ENOENT) after returning. Without a handler that error is unhandled and the run
+ * only surfaces ~5s later as a cryptic "pid not alive" reclaim. `onSpawnError` lets the caller
+ * react (e.g. mark Rune missing so the next claim is guarded with a clear reason).
+ */
+export function spawnRuneWorker(
+  input: BuildWorkerInput,
+  onSpawnError?: (err: NodeJS.ErrnoException) => void
+): number | undefined {
   const inv = buildWorkerInvocation(input);
   mkdirSync(dirname(inv.logPath), { recursive: true });
   const out = openSync(inv.logPath, 'a');
@@ -156,6 +166,10 @@ export function spawnRuneWorker(input: BuildWorkerInput): number | undefined {
     env: { ...process.env, ...inv.env },
     detached: true,
     stdio: ['ignore', out, out]
+  });
+  child.on('error', (err: NodeJS.ErrnoException) => {
+    log.error('rune worker failed to spawn', { taskId: input.task.id, error: err.message });
+    onSpawnError?.(err);
   });
   // The child has its own dup of the fd; close the parent's copy to avoid leaking fds across spawns.
   closeSync(out);

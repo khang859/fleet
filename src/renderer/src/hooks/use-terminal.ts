@@ -3,7 +3,6 @@ import { Terminal } from '@xterm/xterm';
 
 import { FitAddon } from '@xterm/addon-fit';
 import { createLogger } from '../logger';
-import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 
 const log = createLogger('terminal:lifecycle');
 import { SearchAddon } from '@xterm/addon-search';
@@ -46,9 +45,6 @@ const RUNE_READY_MARKER_FLUSH_DELAY_MS = 100;
 // Track which panes already have PTYs created (survives StrictMode remounts)
 const createdPtys = new Set<string>();
 
-// Track which live PTY sessions have already received Fleet skill injection.
-const runeSkillInjectedPanes = new Set<string>();
-
 // Registry for serializing terminal content before close
 const serializeRegistry = new Map<string, SerializeAddon>();
 
@@ -60,7 +56,6 @@ export const restartingPanes = new Set<string>();
 
 export function clearCreatedPty(paneId: string): void {
   createdPtys.delete(paneId);
-  runeSkillInjectedPanes.delete(paneId);
 }
 
 /** Pre-mark a pane as having a PTY (created by main process, e.g. crew deployments). */
@@ -81,7 +76,6 @@ export async function restartPane(
   restartingPanes.add(paneId);
   window.fleet.pty.kill(paneId);
   createdPtys.delete(paneId);
-  runeSkillInjectedPanes.delete(paneId);
 
   // Clear xterm buffer so the user sees a fresh terminal
   const term = terminalRegistry.get(paneId);
@@ -145,17 +139,6 @@ export function stripRuneReadyMarker(
   }
 
   return { output, readySeen };
-}
-
-export function markRuneSkillInjectedForTest(paneId: string, injected: boolean): void {
-  if (injected) runeSkillInjectedPanes.add(paneId);
-  else runeSkillInjectedPanes.delete(paneId);
-}
-
-export function shouldInjectRuneFleetSkill(paneId: string, readySeen: boolean): boolean {
-  if (!readySeen || runeSkillInjectedPanes.has(paneId)) return false;
-  runeSkillInjectedPanes.add(paneId);
-  return true;
 }
 
 function createTerminal(
@@ -313,12 +296,8 @@ function createTerminal(
 
   const writeToTerm = (data: string, flushRuneReadyMarker = false): void => {
     clearRuneReadyMarkerFlushTimer();
+    // Strip Rune's ready marker (an OSC handshake) from terminal output so it never displays.
     const processed = stripRuneReadyMarker(runeReadyMarkerState, data, flushRuneReadyMarker);
-    if (shouldInjectRuneFleetSkill(options.paneId, processed.readySeen)) {
-      void getFleetSkillContentInput().then((input) => {
-        window.fleet.pty.input({ paneId: options.paneId, data: input });
-      });
-    }
 
     if (runeReadyMarkerState.pending) {
       runeReadyMarkerFlushTimer = setTimeout(() => {

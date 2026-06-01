@@ -65,6 +65,7 @@ import type {
   SwarmCreated
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
+import type { RuneStatus } from '../shared/rune';
 import type {
   Workspace,
   FleetSettings,
@@ -362,6 +363,9 @@ const fleetApi = {
       typedInvoke<{ resultPath: string }>(IPC_CHANNELS.ANNOTATE_UI_START, args),
     onCompleted: (callback: () => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
+  },
+  rune: {
+    getVersion: async (): Promise<RuneStatus> => typedInvoke(IPC_CHANNELS.RUNE_VERSION)
   },
   pi: {
     onOpen: (callback: (payload: PiOpenPayload) => void): Unsubscribe =>

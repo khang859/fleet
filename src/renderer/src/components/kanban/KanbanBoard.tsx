@@ -7,6 +7,7 @@ import type { TaskStatus } from '../../../../shared/kanban-types';
 import { Plus, Zap, Archive, Network, KanbanSquare, Package } from 'lucide-react';
 import { SwarmModal } from './SwarmModal';
 import { ArtifactsView } from './ArtifactsView';
+import { RuneMissingBanner } from './RuneMissingBanner';
 
 export function KanbanBoard(): React.JSX.Element {
   const {
@@ -149,6 +150,8 @@ export function KanbanBoard(): React.JSX.Element {
           <Package size={12} /> Artifacts
         </button>
       </div>
+
+      <RuneMissingBanner />
 
       {view === 'artifacts' ? (
         <ArtifactsView onReuseSeed={() => setView('board')} />

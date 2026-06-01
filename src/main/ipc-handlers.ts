@@ -51,6 +51,7 @@ import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
 import type { PiAgentManager } from './pi-agent-manager';
+import type { RuneManager } from './rune-manager';
 import type { FleetBridgeServer } from './fleet-bridge';
 import type { PiConfigManager } from './pi-config-manager';
 import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
@@ -85,6 +86,7 @@ export function registerIpcHandlers(
   annotationStore: AnnotationStore,
   annotateService: AnnotateService,
   piAgentManager: PiAgentManager,
+  runeManager: RuneManager,
   fleetBridge: FleetBridgeServer,
   piConfigManager: PiConfigManager,
   piAuthInspector: PiAuthInspector,
@@ -574,6 +576,8 @@ export function registerIpcHandlers(
     version: piAgentManager.getVersion(),
     installed: piAgentManager.isInstalled()
   }));
+
+  ipcMain.handle(IPC_CHANNELS.RUNE_VERSION, async () => runeManager.getVersion());
 
   ipcMain.handle(IPC_CHANNELS.PI_PLAN_RESPOND, (_event, req: PiPlanResponseRequest) => {
     const delivered = fleetBridge.sendEvent(req.paneId, {

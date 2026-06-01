@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   RUNE_READY_MARKER,
-  markRuneSkillInjectedForTest,
-  shouldInjectRuneFleetSkill,
   stripRuneReadyMarker,
   type RuneReadyMarkerState
 } from '../use-terminal';
@@ -71,20 +69,5 @@ describe('stripRuneReadyMarker', () => {
     expect(first).toEqual({ output: '', readySeen: false });
     expect(flushed).toEqual({ output: partial, readySeen: false });
     expect(s.pending).toBe('');
-  });
-});
-
-describe('shouldInjectRuneFleetSkill', () => {
-  it('allows injection once per pane', () => {
-    markRuneSkillInjectedForTest('pane-a', false);
-
-    expect(shouldInjectRuneFleetSkill('pane-a', true)).toBe(true);
-    expect(shouldInjectRuneFleetSkill('pane-a', true)).toBe(false);
-  });
-
-  it('does not inject when no marker was seen', () => {
-    markRuneSkillInjectedForTest('pane-b', false);
-
-    expect(shouldInjectRuneFleetSkill('pane-b', false)).toBe(false);
   });
 });

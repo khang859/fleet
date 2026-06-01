@@ -9,6 +9,7 @@ import { UpdatesSection } from './UpdatesSection';
 import { CopilotSection } from './CopilotSection';
 import { AnnotateSection } from './AnnotateSection';
 import { PiSection } from './pi/PiSection';
+import { RuneSection } from './rune/RuneSection';
 import { KanbanSection } from './kanban/KanbanSection';
 
 const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
@@ -19,6 +20,7 @@ const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
   updates: UpdatesSection,
   copilot: CopilotSection,
   annotate: AnnotateSection,
+  rune: RuneSection,
   pi: PiSection,
   kanban: KanbanSection
 };

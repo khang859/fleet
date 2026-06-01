@@ -51,6 +51,8 @@ import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
 import { spawnRuneWorker, resolveWorkProfile } from './kanban/spawn-worker';
+import { RuneManager } from './rune-manager';
+import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
 import { KanbanNotifier } from './kanban/kanban-notifier';
@@ -84,6 +86,7 @@ const ANNOTATIONS_DIR = join(homedir(), '.fleet', 'annotations');
 const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
 const piAgentManager = new PiAgentManager();
+const runeManager = new RuneManager();
 const piConfigManager = new PiConfigManager();
 const piEnvInjectionManager = new PiEnvInjectionManager();
 const piAuthInspector = new PiAuthInspector({
@@ -348,6 +351,7 @@ void app.whenReady().then(async () => {
     annotationStore,
     annotateService,
     piAgentManager,
+    runeManager,
     fleetBridge,
     piConfigManager,
     piAuthInspector,
@@ -830,6 +834,12 @@ void app.whenReady().then(async () => {
       return prepared.path;
     },
     spawnWorker: ({ task, runId, lock, workspace, mode }) => {
+      // Pre-flight gate: if we already know rune is missing, fail fast with a clear, actionable
+      // reason. This routes through the dispatcher's catch → spawn_failed (shown in the drawer)
+      // instead of letting the worker die and surface as a cryptic "pid not alive" reclaim.
+      if (runeManager.isInstalledCached() === false) {
+        throw new Error(RUNE_NOT_INSTALLED_MESSAGE);
+      }
       const runToken = randomUUID();
       kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode }, lock);
       const profiles = settingsStore.get().kanban.profiles;
@@ -858,26 +868,33 @@ void app.whenReady().then(async () => {
             description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
           }));
       }
-      return spawnRuneWorker({
-        task: {
-          id: task.id,
-          title: task.title,
-          body: task.body,
-          assignee: task.assignee,
-          modelOverride: task.modelOverride
+      return spawnRuneWorker(
+        {
+          task: {
+            id: task.id,
+            title: task.title,
+            body: task.body,
+            assignee: task.assignee,
+            modelOverride: task.modelOverride
+          },
+          workspace,
+          mcpPort: kanbanMcpPort,
+          runToken,
+          logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
+          mode,
+          profile,
+          roster,
+          attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
+            filename: a.filename,
+            storedPath: a.storedPath
+          }))
         },
-        workspace,
-        mcpPort: kanbanMcpPort,
-        runToken,
-        logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
-        mode,
-        profile,
-        roster,
-        attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
-          filename: a.filename,
-          storedPath: a.storedPath
-        }))
-      });
+        // ENOENT here means rune vanished from PATH after our cached check. Mark it missing so
+        // the next claim is guarded up-front with the clear reason above.
+        (err) => {
+          if (err.code === 'ENOENT') runeManager.markMissing();
+        }
+      );
     },
     config: buildDispatcherConfig(),
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs

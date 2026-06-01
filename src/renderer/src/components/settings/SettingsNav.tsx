@@ -6,6 +6,7 @@ export type SettingsSection =
   | 'updates'
   | 'copilot'
   | 'annotate'
+  | 'rune'
   | 'pi'
   | 'kanban';
 
@@ -15,6 +16,7 @@ const ALL_SECTIONS: Array<{ id: SettingsSection; label: string; darwinOnly?: boo
   { id: 'socket', label: 'Socket API' },
   { id: 'visualizer', label: 'Visualizer' },
   { id: 'copilot', label: 'Copilot', darwinOnly: true },
+  { id: 'rune', label: 'Rune' },
   { id: 'pi', label: 'Pi Agent' },
   { id: 'kanban', label: 'Kanban' },
   { id: 'annotate', label: 'Annotate' },
