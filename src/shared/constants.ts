@@ -85,7 +85,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     dispatcher: {
       intervalMs: 5000,
       maxInProgress: 3,
-      failureLimit: 2,
+      failureLimit: 3,
       claimTtlMs: 900_000,
       autoDecompose: false,
       maxDecompose: 1

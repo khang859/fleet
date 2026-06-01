@@ -7,6 +7,14 @@ const log = createLogger('kanban-dispatcher');
 
 const DEFAULT_INTERVAL_MS = 5000;
 
+/**
+ * Exit code rune returns from a `--require-tool` run that ended without the
+ * model calling a completion tool (it was nudged to the cap and gave up). Kept
+ * in sync with rune's main.go. Distinct from a crash so we route to review
+ * instead of burning the crash-retry budget.
+ */
+const REVIEW_REQUIRED_EXIT_CODE = 3;
+
 export interface SpawnWorkerArgs {
   task: Task;
   runId: number;
@@ -25,6 +33,11 @@ export interface DispatcherConfig {
   artifactRetentionDays: number; // auto-purge discarded artifacts older than this; 0 disables
 }
 
+export interface WorkerExit {
+  code: number | null;
+  signal: string | null;
+}
+
 export interface DispatcherDeps {
   now: () => number;
   isAlive: (pid: number) => boolean;
@@ -32,6 +45,11 @@ export interface DispatcherDeps {
   config: DispatcherConfig;
   prepareWorkspaceFn?: (task: Task) => string;
   intervalMs?: number;
+  // How a worker process exited, if we observed it (in-memory; absent after a
+  // restart). Lets reclaim() classify a clean "didn't complete" exit distinctly
+  // from a crash. clearWorkerExit drops the entry once consumed.
+  workerExit?: (runId: number) => WorkerExit | undefined;
+  clearWorkerExit?: (runId: number) => void;
 }
 
 export class KanbanDispatcher {
@@ -47,15 +65,38 @@ export class KanbanDispatcher {
   reclaim(): void {
     const now = this.deps.now();
     for (const task of this.store.runningTasks()) {
+      const exit =
+        task.currentRunId != null ? this.deps.workerExit?.(task.currentRunId) : undefined;
       const expired = task.claimExpires != null && task.claimExpires <= now;
       const fresh =
         task.lastHeartbeatAt != null && now - task.lastHeartbeatAt < this.deps.config.claimGraceMs;
       const dead = task.workerPid != null && !fresh && !this.deps.isAlive(task.workerPid);
-      if (!expired && !dead) continue;
+      // A definitive exit event means the process is provably gone — reclaim it
+      // now, bypassing the heartbeat grace that only guards against false reaps
+      // of a still-live worker.
+      if (!expired && !dead && exit == null) continue;
+
+      // Clean exit without a terminal tool: rune nudged to its cap and gave up
+      // (exit 3). This is deterministic — retrying re-rolls the same wall — so
+      // route to a deliberate review-required block, and do NOT count it as a
+      // crash against the retry budget. A definitive exit-3 is the known cause,
+      // so it wins even if the claim lease also happened to expire this tick.
+      if (exit?.code === REVIEW_REQUIRED_EXIT_CODE) {
+        const note = 'review-required: agent ended turn without completing';
+        if (task.currentRunId != null) {
+          this.store.finishRun(task.currentRunId, 'incomplete', { summary: note });
+        }
+        this.store.blockTask(task.id, note);
+        this.store.appendEvent(task.id, task.currentRunId, 'blocked', { reason: note });
+        if (task.currentRunId != null) this.deps.clearWorkerExit?.(task.currentRunId);
+        log.warn('task needs review', { taskId: task.id });
+        continue;
+      }
 
       const reason = expired ? 'claim expired' : 'worker pid not alive';
       if (task.currentRunId != null) {
         this.store.finishRun(task.currentRunId, 'reclaimed', { error: reason });
+        this.deps.clearWorkerExit?.(task.currentRunId);
       }
       this.store.recordFailure(task.id, reason);
       this.store.appendEvent(task.id, task.currentRunId, 'reclaimed', { reason });

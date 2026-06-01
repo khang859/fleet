@@ -29,7 +29,8 @@ export type RunOutcome =
   | 'timed_out'
   | 'spawn_failed'
   | 'gave_up'
-  | 'reclaimed';
+  | 'reclaimed'
+  | 'incomplete'; // exited cleanly without calling a completion tool (review-required)
 
 export interface Task {
   id: string;

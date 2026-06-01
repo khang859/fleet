@@ -303,6 +303,35 @@ describe('buildWorkerInvocation', () => {
     });
   });
 
+  it('passes --require-tool kanban_complete,kanban_block for a work run', () => {
+    const workspace = join(ROOT, 'wsrt');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'rt', title: 't', body: 'b', assignee: 'default', modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'rt.log'),
+      mode: 'work',
+      profile: { name: 'default', role: 'worker', model: '', skills: [], instructions: 'do it' }
+    });
+    expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_complete,kanban_block');
+  });
+
+  it('passes --require-tool kanban_update for a specify run', () => {
+    const workspace = join(ROOT, 'wsrt2');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'rt2', title: 't', body: 'b', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'rt2.log'),
+      mode: 'specify'
+    });
+    expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_update');
+  });
+
   it('does not include attachments in decompose mode', () => {
     const workspace = join(ROOT, 'wsc');
     mkdirSync(workspace, { recursive: true });

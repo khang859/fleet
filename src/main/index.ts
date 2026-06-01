@@ -46,7 +46,7 @@ import { createLogger } from './logger';
 import { initCopilot, stopCopilot, pruneDeadCopilotSessions } from './copilot/index';
 import { KanbanStore } from './kanban/kanban-store';
 import { KanbanDispatcher } from './kanban/kanban-dispatcher';
-import type { DispatcherConfig } from './kanban/kanban-dispatcher';
+import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
@@ -791,11 +791,16 @@ void app.whenReady().then(async () => {
   const kanbanMcpPort = await kanbanMcp.start(0);
 
   const kanbanMcpRef = kanbanMcp;
+  // How each worker process exited, keyed by runId. Lets reclaim() tell a clean
+  // "ended turn without completing" (rune exit 3) apart from a crash. Pruned as
+  // soon as reclaim consumes an entry; entries are only recorded for runs that
+  // hadn't already reached a terminal state, so normal completions never linger.
+  const workerExits = new Map<number, WorkerExit>();
   const buildDispatcherConfig = (): DispatcherConfig => {
     const d = settingsStore.get().kanban.dispatcher;
     return {
       failureLimit: d.failureLimit,
-      claimGraceMs: 30_000, // internal grace window; not user-configurable
+      claimGraceMs: 120_000, // internal grace window; not user-configurable
       maxInProgress: d.maxInProgress,
       claimTtlMs: d.claimTtlMs,
       autoDecompose: d.autoDecompose,
@@ -897,11 +902,23 @@ void app.whenReady().then(async () => {
         // the next claim is guarded up-front with the clear reason above.
         (err) => {
           if (err.code === 'ENOENT') runeManager.markMissing();
+        },
+        // Record the exit only if the run didn't already finish via an MCP
+        // terminal call (kanban_complete/block move the task off 'running').
+        // That keeps the map to in-flight-but-exited runs and lets reclaim()
+        // classify rune's exit-3 "incomplete" without false-flagging successes.
+        (exit) => {
+          const t = kanbanStore!.getTask(task.id);
+          if (t?.status === 'running' && t.currentRunId === runId) {
+            workerExits.set(runId, exit);
+          }
         }
       );
     },
     config: buildDispatcherConfig(),
-    intervalMs: settingsStore.get().kanban.dispatcher.intervalMs
+    intervalMs: settingsStore.get().kanban.dispatcher.intervalMs,
+    workerExit: (id) => workerExits.get(id),
+    clearWorkerExit: (id) => workerExits.delete(id)
   });
   kanbanDispatcher.start();
   kanbanCommands = new KanbanCommands(

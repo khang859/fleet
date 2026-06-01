@@ -97,6 +97,23 @@ export function resolveWorkProfile(
   return { profile, fellBack: assignee != null };
 }
 
+/**
+ * The terminal tool(s) for each run mode — rune may only end the turn after one
+ * succeeds. `work`/`decompose` finish via kanban_complete (or kanban_block when
+ * stuck); `specify` finalizes via kanban_update.
+ */
+function requireToolsForMode(mode: RunMode): string | null {
+  switch (mode) {
+    case 'work':
+    case 'decompose':
+      return 'kanban_complete,kanban_block';
+    case 'specify':
+      return 'kanban_update';
+    default:
+      return null;
+  }
+}
+
 /** Computes the rune invocation and writes the scoped mcp.json into the workspace. */
 export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation {
   const runeDir = join(input.workspace, '.rune');
@@ -132,6 +149,12 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     input.profile?.name ?? (input.mode === 'work' ? null : input.task.assignee) ?? null;
   if (profileName) args.push('--profile', profileName);
   if (input.task.modelOverride) args.push('--model', input.task.modelOverride);
+  // Headless contract: the worker is non-interactive, so rune must keep going
+  // (nudge-and-continue) until the run's terminal tool is called, and exit with
+  // a distinct code (3) if the model goes quiet without it. Without this a model
+  // that ends its turn with a question exits silently and looks like a crash.
+  const requireTools = requireToolsForMode(input.mode);
+  if (requireTools) args.push('--require-tool', requireTools);
 
   return {
     command: 'rune',
@@ -154,9 +177,15 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
  * only surfaces ~5s later as a cryptic "pid not alive" reclaim. `onSpawnError` lets the caller
  * react (e.g. mark Rune missing so the next claim is guarded with a clear reason).
  */
+export interface WorkerExit {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+}
+
 export function spawnRuneWorker(
   input: BuildWorkerInput,
-  onSpawnError?: (err: NodeJS.ErrnoException) => void
+  onSpawnError?: (err: NodeJS.ErrnoException) => void,
+  onExit?: (exit: WorkerExit) => void
 ): number | undefined {
   const inv = buildWorkerInvocation(input);
   mkdirSync(dirname(inv.logPath), { recursive: true });
@@ -170,6 +199,12 @@ export function spawnRuneWorker(
   child.on('error', (err: NodeJS.ErrnoException) => {
     log.error('rune worker failed to spawn', { taskId: input.task.id, error: err.message });
     onSpawnError?.(err);
+  });
+  // Capture how the detached child exited so the dispatcher can tell a clean
+  // "ended turn without completing" (rune exit 3) apart from a real crash. The
+  // exit event still fires after unref() while this main process is alive.
+  child.on('exit', (code, signal) => {
+    onExit?.({ code, signal });
   });
   // The child has its own dup of the fd; close the parent's copy to avoid leaking fds across spawns.
   closeSync(out);

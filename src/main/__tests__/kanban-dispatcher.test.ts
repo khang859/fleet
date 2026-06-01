@@ -71,6 +71,73 @@ describe('KanbanDispatcher.reclaim', () => {
     store.close();
   });
 
+  it('routes a clean incomplete exit (code 3) to review-required without counting a crash', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100000); // long ttl, not expired
+    const run = store.startRun(t.id, 'r', 9999);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true, // pid liveness irrelevant — a definitive exit was observed
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) => (id === run.id ? { code: 3, signal: null } : undefined)
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('blocked');
+    expect(got?.result).toContain('review-required');
+    expect(got?.consecutiveFailures).toBe(0); // not a crash
+    expect(store.listRuns(t.id)[0].outcome).toBe('incomplete');
+    store.close();
+  });
+
+  it('routes exit-3 to review-required even when the claim lease also expired', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100); // expires 1100
+    const run = store.startRun(t.id, 'r', 9999);
+    clock.t = 5000; // claim expired
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => false,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 0, claimTtlMs: 100 },
+      workerExit: (id) => (id === run.id ? { code: 3, signal: null } : undefined)
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('blocked');
+    expect(got?.result).toContain('review-required');
+    expect(got?.consecutiveFailures).toBe(0); // expiry must not turn this into a crash
+    store.close();
+  });
+
+  it('treats a non-zero crash exit as a failure and reaps it past the grace window', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100000);
+    const run = store.startRun(t.id, 'r', 9999);
+    const cleared: number[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t, // still within grace, but a definitive exit short-circuits it
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) => (id === run.id ? { code: 2, signal: null } : undefined),
+      clearWorkerExit: (id) => cleared.push(id)
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('ready'); // crash → retry (under failure limit)
+    expect(got?.consecutiveFailures).toBe(1);
+    expect(cleared).toContain(run.id);
+    store.close();
+  });
+
   it('reclaims a running task whose pid is dead even if claim not expired', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);

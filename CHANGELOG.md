@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.47.0
+
+- Kanban: headless workers no longer fail as "worker pid not alive" when an agent ends its turn with a question instead of completing. rune now enforces a completion contract in headless runs (new `--require-tool` flag): a worker that tries to stop without calling `kanban_complete`/`kanban_block` is nudged to keep going, and if it still won't finish it exits with a distinct signal. Fleet classifies that as a deliberate "review-required" block (with Reply & Resume) instead of a crash, so a single pause no longer thrashes a card into give-up. Crash-retry limit raised to 3 and the liveness grace window widened to 120s. Requires rune v0.4.0+.
+
 ## v2.46.0
 
 - Kanban: dispatching a triage task to the orchestrator now assigns it. Previously a task sent to decompose/specify kept an empty assignee while the orchestrator ran; the card now shows the orchestrator profile as its assignee, matching how worker tasks display who's running them.
