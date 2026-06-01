@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { X, Paperclip, Download, Clock } from 'lucide-react';
+import { X, Paperclip, Download, Clock, FolderGit2 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
@@ -270,6 +270,38 @@ export function KanbanDrawer(): React.JSX.Element | null {
             Queued for {t.pendingMode}… the dispatcher will pick this up shortly.
           </p>
         )}
+
+        {/* Workspace */}
+        <section>
+          <h3 className="mb-1 flex items-center gap-1 font-semibold text-neutral-400">
+            <FolderGit2 size={12} /> Workspace
+          </h3>
+          <div className="rounded border border-neutral-800 bg-neutral-950 p-2">
+            {t.workspaceKind === 'scratch' ? (
+              <span className="text-neutral-400">Scratch (ephemeral)</span>
+            ) : t.workspaceKind === 'worktree' ? (
+              <span className="text-neutral-300">
+                Worktree ·{' '}
+                <span className="font-mono text-[11px] text-neutral-400">
+                  {t.repoPath ?? '(repo unset)'}
+                </span>
+                {t.branchName && (
+                  <>
+                    {' @ '}
+                    <span className="font-mono text-[11px] text-emerald-400">{t.branchName}</span>
+                  </>
+                )}
+              </span>
+            ) : (
+              <span className="text-neutral-300">
+                Dir ·{' '}
+                <span className="font-mono text-[11px] text-neutral-400">
+                  {t.workspacePath ?? '(path unset)'}
+                </span>
+              </span>
+            )}
+          </div>
+        </section>
 
         {/* Result / body preview */}
         {t.result && (
