@@ -57,7 +57,7 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
       if (seed?.target === 'swarm') {
         await createSwarmFromArtifact(seed.artifact.id, { ...input, boardId: activeBoardSlug });
       } else {
-        await createSwarm(input);
+        await createSwarm({ ...input, boardId: activeBoardSlug });
       }
       onClose();
     } catch (err) {

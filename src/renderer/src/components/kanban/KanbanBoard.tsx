@@ -100,7 +100,7 @@ export function KanbanBoard(): React.JSX.Element {
           ...workspace
         });
       } else {
-        await createTask({ title, ...workspace });
+        await createTask({ title, boardId: activeBoardSlug, ...workspace });
       }
     } catch (err) {
       // Keep the form (and any seed) open so the user can retry or cancel explicitly.
