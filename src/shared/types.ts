@@ -150,6 +150,8 @@ export type KanbanSettings = {
     workspaceKind: WorkspaceKind;
     maxRuntimeSeconds: number | null;
   };
+  /** Days a discarded artifact is retained before auto-purge. 0 disables auto-purge. */
+  artifactRetentionDays: number;
   profiles: WorkerProfile[];
   notifications: KanbanNotifySettings;
 };

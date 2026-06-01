@@ -22,6 +22,7 @@ export interface DispatcherConfig {
   claimTtlMs: number; // claim lease length
   autoDecompose: boolean; // automatically arm triage tasks for decompose
   maxDecompose: number; // max concurrent orchestrator runs
+  artifactRetentionDays: number; // auto-purge discarded artifacts older than this; 0 disables
 }
 
 export interface DispatcherDeps {
@@ -197,12 +198,26 @@ export class KanbanDispatcher {
     }
   }
 
+  /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
+  sweepArtifacts(): void {
+    const days = this.deps.config.artifactRetentionDays;
+    if (!days || days <= 0) return; // 0 (or unset) disables auto-purge
+    const cutoff = this.deps.now() - days * 86_400_000;
+    for (const a of this.store.purgeDiscardedBefore(cutoff)) {
+      this.store.appendEvent(a.taskId, a.runId, 'artifact_purged', {
+        id: a.id,
+        filename: a.filename
+      });
+    }
+  }
+
   tick(): void {
     this.reclaim();
     this.fireSchedules();
     this.decompose();
     this.promote();
     this.claimAndSpawn();
+    this.sweepArtifacts();
   }
 
   start(): void {

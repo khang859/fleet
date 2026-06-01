@@ -1,9 +1,19 @@
-import { ipcMain, BrowserWindow, dialog } from 'electron';
+import { ipcMain, BrowserWindow, dialog, shell } from 'electron';
 import { copyFileSync } from 'fs';
 import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import { createLogger } from '../logger';
+import { readArtifactPreview } from './artifact-files';
 import type { KanbanCommands } from './kanban-commands';
-import type { CreateTaskInput, TaskDetail, Task, ScheduleInput, SwarmInput, SwarmCreated } from '../../shared/kanban-types';
+import type {
+  CreateTaskInput,
+  TaskDetail,
+  Task,
+  ScheduleInput,
+  SwarmInput,
+  SwarmCreated,
+  ArtifactListItem,
+  TaskAttachment
+} from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
   KanbanSetStatusRequest,
@@ -11,7 +21,13 @@ import type {
   KanbanLinkRequest,
   KanbanAddAttachmentRequest,
   KanbanRenameBoardRequest,
-  KanbanSetScheduleRequest
+  KanbanSetScheduleRequest,
+  KanbanListArtifactsRequest,
+  KanbanReadArtifactPreviewRequest,
+  KanbanArtifactPreviewResponse,
+  KanbanReuseArtifactRequest,
+  KanbanCreateTaskFromArtifactRequest,
+  KanbanCreateSwarmFromArtifactRequest
 } from '../../shared/ipc-api';
 
 const log = createLogger('kanban-ipc');
@@ -101,6 +117,87 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     const res = await dialog.showSaveDialog(win, { defaultPath: att.filename });
     if (res.canceled || !res.filePath) return;
     copyFileSync(att.storedPath, res.filePath);
+  });
+
+  // ---- Artifacts ----
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_LIST_ARTIFACTS,
+    (_e, filter: KanbanListArtifactsRequest = {}): ArtifactListItem[] =>
+      commands.listAllArtifacts(filter)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DISCARD_ARTIFACT, (_e, id: string) => {
+    commands.discardArtifact(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_RESTORE_ARTIFACT, (_e, id: string) => {
+    commands.restoreArtifact(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REMOVE_ARTIFACT, (_e, id: string) => {
+    commands.removeArtifact(id);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_REUSE_ARTIFACT,
+    (_e, req: KanbanReuseArtifactRequest): TaskAttachment =>
+      commands.reuseArtifact(req.id, req.targetTaskId)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_CREATE_TASK_FROM_ARTIFACT,
+    (_e, req: KanbanCreateTaskFromArtifactRequest): Task =>
+      commands.createTaskFromArtifact(req.artifactId, req.input)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_CREATE_SWARM_FROM_ARTIFACT,
+    (_e, req: KanbanCreateSwarmFromArtifactRequest): SwarmCreated =>
+      commands.createSwarm({ ...req.input, seedArtifactId: req.artifactId })
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_READ_ARTIFACT_PREVIEW,
+    (_e, req: KanbanReadArtifactPreviewRequest): KanbanArtifactPreviewResponse => {
+      const art = commands.getArtifact(req.id);
+      if (!art) return { previewable: false, reason: 'Artifact not found' };
+      const preview = readArtifactPreview(art.storedPath, req.maxBytes);
+      if (!preview.previewable) {
+        return { previewable: false, reason: preview.reason ?? 'Preview unavailable' };
+      }
+      return {
+        previewable: true,
+        text: preview.text ?? '',
+        truncated: preview.truncated ?? false,
+        contentType: art.contentType,
+        size: art.size
+      };
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SAVE_ARTIFACT_COPY, async (e, id: string): Promise<void> => {
+    const art = commands.getArtifact(id);
+    if (!art) return;
+    const win = BrowserWindow.fromWebContents(e.sender);
+    if (!win) return;
+    const res = await dialog.showSaveDialog(win, { defaultPath: art.filename });
+    if (res.canceled || !res.filePath) return;
+    copyFileSync(art.storedPath, res.filePath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REVEAL_ARTIFACT, (_e, id: string) => {
+    const art = commands.getArtifact(id);
+    if (art) shell.showItemInFolder(art.storedPath);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REVEAL_TASK_WORKSPACE, (_e, taskId: string) => {
+    const path = commands.revealTaskWorkspace(taskId);
+    if (path) shell.showItemInFolder(path);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DISCARD_TASK_WORKSPACE_LEFTOVERS, (_e, taskId: string) => {
+    commands.discardTaskWorkspaceLeftovers(taskId);
   });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARDS, () => commands.listBoards());

@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, realpathSync } from 'fs';
 import { dirname, join } from 'path';
 import { randomUUID } from 'crypto';
 import { createLogger } from '../logger';
@@ -12,6 +12,10 @@ import type {
   TaskEvent,
   TaskComment,
   TaskAttachment,
+  TaskArtifact,
+  ArtifactKind,
+  ArtifactListItem,
+  ArtifactListFilter,
   RunOutcome,
   UpdateTaskFields,
   BoardCard,
@@ -22,10 +26,21 @@ import type {
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
+import {
+  prepareArtifactFile,
+  removeArtifactFile,
+  listUnregisteredLeftovers
+} from './artifact-files';
 import { deriveBoardSlug } from './board-slug';
 import { removeWorktree, cleanupWorkspace } from './workspace';
 
 const log = createLogger('kanban-store');
+
+/** Append a plain reference line pointing at a seeded artifact (reuse provenance). */
+function appendArtifactReference(body: string, art: { filename: string }): string {
+  const ref = `Seeded from artifact: ${art.filename} (attached).`;
+  return body.trim() ? `${body.trimEnd()}\n\n${ref}` : ref;
+}
 
 export interface KanbanStoreOptions {
   now?: () => number;
@@ -39,6 +54,8 @@ export class KanbanStore {
   protected onEvent?: (event: TaskEvent) => void;
   protected onBoardsChanged?: () => void;
   private attachmentsRoot: string;
+  private artifactsRoot: string;
+  private workspacesRoot: string;
 
   constructor(dbPath: string, opts: KanbanStoreOptions = {}) {
     this.now = opts.now ?? Date.now;
@@ -46,6 +63,8 @@ export class KanbanStore {
     this.onBoardsChanged = opts.onBoardsChanged;
     mkdirSync(dirname(dbPath), { recursive: true });
     this.attachmentsRoot = join(dirname(dbPath), 'attachments');
+    this.artifactsRoot = join(dirname(dbPath), 'artifacts');
+    this.workspacesRoot = join(dirname(dbPath), 'workspaces');
     this.db = new Database(dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
@@ -499,6 +518,266 @@ export class KanbanStore {
     this.db.prepare('DELETE FROM task_attachments WHERE id=?').run(id);
   }
 
+  private rowToArtifact(r: Record<string, unknown>): TaskArtifact {
+    return {
+      id: String(r.id),
+      taskId: String(r.task_id),
+      runId: (r.run_id as number | null) ?? null,
+      boardId: String(r.board_id),
+      title: (r.title as string | null) ?? null,
+      filename: String(r.filename),
+      sourceRelPath: String(r.source_rel_path),
+      storedPath: String(r.stored_path),
+      kind: r.kind as ArtifactKind,
+      contentType: (r.content_type as string | null) ?? null,
+      size: Number(r.size),
+      state: r.state as TaskArtifact['state'],
+      createdAt: Number(r.created_at),
+      discardedAt: (r.discarded_at as number | null) ?? null
+    };
+  }
+
+  /** Register a worker-produced file as a durable artifact (copy taken at registration time). */
+  addArtifact(input: {
+    taskId: string;
+    runId: number | null;
+    boardId: string;
+    workspaceRoot: string;
+    relPath: string;
+    title?: string | null;
+    kind?: ArtifactKind;
+  }): TaskArtifact {
+    const id = randomUUID().slice(0, 8);
+    const prepared = prepareArtifactFile({
+      artifactsRoot: this.artifactsRoot,
+      boardId: input.boardId,
+      taskId: input.taskId,
+      artifactId: id,
+      workspaceRoot: input.workspaceRoot,
+      relPath: input.relPath,
+      kind: input.kind
+    });
+    const ts = this.now();
+    const title = input.title ?? null;
+    try {
+      this.db
+        .prepare(
+          `INSERT INTO task_artifacts
+            (id, task_id, run_id, board_id, title, filename, source_rel_path, stored_path,
+             kind, content_type, size, state, created_at, discarded_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'kept', ?, NULL)`
+        )
+        .run(
+          id,
+          input.taskId,
+          input.runId,
+          input.boardId,
+          title,
+          prepared.filename,
+          prepared.sourceRelPath,
+          prepared.storedPath,
+          prepared.kind,
+          prepared.contentType,
+          prepared.size,
+          ts
+        );
+    } catch (err) {
+      removeArtifactFile(prepared.storedPath); // never leave an orphan file
+      throw err;
+    }
+    return {
+      id,
+      taskId: input.taskId,
+      runId: input.runId,
+      boardId: input.boardId,
+      title,
+      filename: prepared.filename,
+      sourceRelPath: prepared.sourceRelPath,
+      storedPath: prepared.storedPath,
+      kind: prepared.kind,
+      contentType: prepared.contentType,
+      size: prepared.size,
+      state: 'kept',
+      createdAt: ts,
+      discardedAt: null
+    };
+  }
+
+  listArtifacts(taskId: string): TaskArtifact[] {
+    const rows = this.db
+      .prepare('SELECT * FROM task_artifacts WHERE task_id=? ORDER BY created_at ASC, id ASC')
+      .all(taskId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToArtifact(r));
+  }
+
+  getArtifact(id: string): TaskArtifact | null {
+    const row = this.db.prepare('SELECT * FROM task_artifacts WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToArtifact(row) : null;
+  }
+
+  /** Cross-board feed for the global Artifacts browser: artifacts joined with task + board. */
+  listAllArtifacts(filter: ArtifactListFilter = {}): ArtifactListItem[] {
+    const where: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.boardSlug) {
+      where.push('a.board_id=@board');
+      params.board = filter.boardSlug;
+    }
+    if (filter.state) {
+      where.push('a.state=@state');
+      params.state = filter.state;
+    }
+    if (filter.kind) {
+      where.push('a.kind=@kind');
+      params.kind = filter.kind;
+    }
+    if (filter.query?.trim()) {
+      where.push('(a.filename LIKE @q OR a.title LIKE @q OR t.title LIKE @q)');
+      params.q = `%${filter.query.trim()}%`;
+    }
+    const sql = `SELECT a.*, t.title AS task_title, b.name AS board_name
+       FROM task_artifacts a
+       JOIN tasks t ON t.id = a.task_id
+       LEFT JOIN boards b ON b.slug = a.board_id
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ORDER BY a.created_at DESC, a.id DESC`;
+    const rows = this.db.prepare(sql).all(params) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      ...this.rowToArtifact(r),
+      taskTitle: (r.task_title as string | null) ?? '',
+      boardName: (r.board_name as string | null) ?? (r.board_id as string | null) ?? ''
+    }));
+  }
+
+  discardArtifact(id: string): void {
+    this.db
+      .prepare(
+        "UPDATE task_artifacts SET state='discarded', discarded_at=? WHERE id=? AND state='kept'"
+      )
+      .run(this.now(), id);
+  }
+
+  restoreArtifact(id: string): void {
+    this.db
+      .prepare(
+        "UPDATE task_artifacts SET state='kept', discarded_at=NULL WHERE id=? AND state='discarded'"
+      )
+      .run(id);
+  }
+
+  /** Hard delete: remove the row and the stored file copy. */
+  purgeArtifact(id: string): void {
+    const art = this.getArtifact(id);
+    if (!art) return;
+    removeArtifactFile(art.storedPath);
+    this.db.prepare('DELETE FROM task_artifacts WHERE id=?').run(id);
+  }
+
+  /**
+   * Retention sweep: purge discarded artifacts whose discard predates `cutoffMs`. Returns
+   * per-artifact metadata (not just a count) so the caller can emit one visible purge event each.
+   */
+  purgeDiscardedBefore(
+    cutoffMs: number
+  ): Array<{ id: string; taskId: string; runId: number | null; filename: string }> {
+    const rows = this.db
+      .prepare(
+        "SELECT id, task_id, run_id, filename, stored_path FROM task_artifacts WHERE state='discarded' AND discarded_at IS NOT NULL AND discarded_at <= ?"
+      )
+      .all(cutoffMs) as Array<Record<string, unknown>>;
+    const purged: Array<{ id: string; taskId: string; runId: number | null; filename: string }> =
+      [];
+    for (const r of rows) {
+      removeArtifactFile(String(r.stored_path));
+      this.db.prepare('DELETE FROM task_artifacts WHERE id=?').run(String(r.id));
+      purged.push({
+        id: String(r.id),
+        taskId: String(r.task_id),
+        runId: (r.run_id as number | null) ?? null,
+        filename: String(r.filename)
+      });
+    }
+    return purged;
+  }
+
+  /**
+   * Atomically create a task seeded with a kept artifact: the artifact copy is attached and a
+   * reference line is appended to the body, inside one transaction. Copied attachment files are
+   * removed if the transaction rolls back, so neither a task-without-input nor an orphan file
+   * can result.
+   */
+  createTaskFromArtifact(artifactId: string, input: CreateTaskInput): Task {
+    const art = this.getArtifact(artifactId);
+    if (!art) throw new Error(`artifact not found: ${artifactId}`);
+    if (art.state !== 'kept') throw new Error('only kept artifacts can be reused');
+    const copied: string[] = [];
+    try {
+      return this.transaction(() => {
+        const task = this.createTask({
+          ...input,
+          body: appendArtifactReference(input.body ?? '', art)
+        });
+        const att = this.addAttachment(task.id, art.storedPath);
+        copied.push(att.storedPath);
+        return task;
+      });
+    } catch (err) {
+      for (const p of copied) removeAttachmentFile(p);
+      throw err;
+    }
+  }
+
+  /** Attach a kept artifact's copy to an existing task and append a reference line to its body.
+   *  Caller is responsible for rollback file cleanup when used inside a larger transaction. */
+  attachArtifactToTask(taskId: string, artifactId: string): TaskAttachment {
+    const art = this.getArtifact(artifactId);
+    if (!art) throw new Error(`artifact not found: ${artifactId}`);
+    if (art.state !== 'kept') throw new Error('only kept artifacts can be reused');
+    const att = this.addAttachment(taskId, art.storedPath);
+    const task = this.getTask(taskId);
+    if (task) {
+      this.db
+        .prepare('UPDATE tasks SET body=?, updated_at=? WHERE id=?')
+        .run(appendArtifactReference(task.body, art), this.now(), taskId);
+    }
+    return att;
+  }
+
+  /** Top-level files in a scratch task's workspace not yet registered as artifacts (§6). */
+  scratchLeftovers(taskId: string): string[] {
+    const task = this.getTask(taskId);
+    if (task?.workspaceKind !== 'scratch' || !task.workspacePath) return [];
+    if (!existsSync(task.workspacePath)) return [];
+    const registered = this.listArtifacts(taskId).map((a) => a.sourceRelPath);
+    return listUnregisteredLeftovers({
+      workspaceRoot: task.workspacePath,
+      registeredRelPaths: registered
+    });
+  }
+
+  /**
+   * Delete a scratch task's workspace dir. The recursive delete is canonicalization-guarded:
+   * the workspace must be a direct child of the canonical workspaces root, so a symlinked
+   * component can never redirect the rm onto the user's real files. Returns true if deleted.
+   */
+  deleteScratchWorkspace(taskId: string): boolean {
+    const task = this.getTask(taskId);
+    if (task?.workspaceKind !== 'scratch' || !task.workspacePath) return false;
+    let canonRoot: string;
+    let canonWs: string;
+    try {
+      canonRoot = realpathSync(this.workspacesRoot);
+      canonWs = realpathSync(task.workspacePath);
+    } catch {
+      return false; // path already gone or unreadable
+    }
+    if (dirname(canonWs) !== canonRoot) return false; // not a direct child — refuse
+    rmSync(canonWs, { recursive: true, force: true });
+    return true;
+  }
+
   completeTask(taskId: string, result: string | null): void {
     const ts = this.now();
     this.db
@@ -577,11 +856,18 @@ export class KanbanStore {
     const childMap = new Map(
       childRows.map((r) => [r.parent, { total: Number(r.total), done: Number(r.done) }])
     );
+    const artifactRows = this.db
+      .prepare(
+        "SELECT task_id, COUNT(*) AS c FROM task_artifacts WHERE state='kept' GROUP BY task_id"
+      )
+      .all() as Array<{ task_id: string; c: number }>;
+    const artifactCounts = new Map(artifactRows.map((r) => [r.task_id, Number(r.c)]));
     return tasks.map((t) => ({
       ...t,
       commentCount: commentCounts.get(t.id) ?? 0,
       childTotal: childMap.get(t.id)?.total ?? 0,
-      childDone: childMap.get(t.id)?.done ?? 0
+      childDone: childMap.get(t.id)?.done ?? 0,
+      artifactCount: artifactCounts.get(t.id) ?? 0
     }));
   }
 
@@ -650,7 +936,14 @@ export class KanbanStore {
         // best-effort: a filesystem failure must never block the DB delete
       }
     }
+    try {
+      // Artifacts are stored per board, so one rm clears every task's snapshots.
+      rmSync(join(this.artifactsRoot, slug), { recursive: true, force: true });
+    } catch {
+      // best-effort
+    }
     const tx = this.db.transaction((s: string) => {
+      this.db.prepare('DELETE FROM task_artifacts WHERE board_id=?').run(s);
       this.db
         .prepare(
           'DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE board_id=?)'

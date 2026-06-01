@@ -14,6 +14,9 @@ import type {
   WorkspaceKind,
   PendingMode,
   TaskAttachment,
+  TaskArtifact,
+  ArtifactListItem,
+  ArtifactListFilter,
   ScheduleInput,
   SwarmInput,
   SwarmCreated
@@ -22,6 +25,7 @@ import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
 import { removeWorktree } from './workspace';
+import { removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
 
 const log = createLogger('kanban-commands');
@@ -110,6 +114,14 @@ export class KanbanCommands {
       }
     }
 
+    if (input.seedArtifactId) {
+      const art = this.store.getArtifact(input.seedArtifactId);
+      if (!art) throw new CodedError(`artifact not found: ${input.seedArtifactId}`, 'NOT_FOUND');
+      if (art.state !== 'kept') {
+        throw new CodedError('only kept artifacts can be reused', 'BAD_REQUEST');
+      }
+    }
+
     const resolved: SwarmInput = {
       ...input,
       goal,
@@ -117,7 +129,23 @@ export class KanbanCommands {
       maxRuntimeSeconds: input.maxRuntimeSeconds ?? d.maxRuntimeSeconds
     };
 
-    const created = this.store.transaction(() => buildSwarm(this.store, resolved));
+    // The seeded artifact copy attaches to the root task inside the same transaction; if any
+    // step throws, the copied attachment file is removed so a rollback leaves no orphan.
+    const copiedFiles: string[] = [];
+    let created: SwarmCreated;
+    try {
+      created = this.store.transaction(() => {
+        const c = buildSwarm(this.store, resolved);
+        if (resolved.seedArtifactId) {
+          const att = this.store.attachArtifactToTask(c.rootId, resolved.seedArtifactId);
+          copiedFiles.push(att.storedPath);
+        }
+        return c;
+      });
+    } catch (err) {
+      for (const p of copiedFiles) removeAttachmentFile(p);
+      throw err;
+    }
 
     // Emit after commit so IPC/notifier never fire mid-transaction.
     this.store.appendEvent(created.rootId, null, 'swarm_created', {
@@ -180,7 +208,8 @@ export class KanbanCommands {
         .childrenOf(id)
         .map((cid) => this.store.getTask(cid))
         .filter((t): t is Task => t !== null),
-      attachments: this.store.listAttachments(id)
+      attachments: this.store.listAttachments(id),
+      artifacts: this.store.listArtifacts(id)
     };
   }
 
@@ -237,6 +266,16 @@ export class KanbanCommands {
           taskId: id,
           error: err instanceof Error ? err.message : String(err)
         });
+      }
+    }
+    // Scratch safety net (§6): never warn-then-delete. If unregistered files remain in the
+    // ephemeral workspace, preserve it and surface a warning; only delete when nothing is at risk.
+    if (status === 'archived' && task.workspaceKind === 'scratch' && task.workspacePath) {
+      const leftovers = this.store.scratchLeftovers(id);
+      if (leftovers.length > 0) {
+        this.store.appendEvent(id, null, 'artifacts_unregistered', { files: leftovers });
+      } else {
+        this.store.deleteScratchWorkspace(id);
       }
     }
   }
@@ -310,6 +349,101 @@ export class KanbanCommands {
 
   getAttachment(id: string): TaskAttachment | null {
     return this.store.getAttachment(id);
+  }
+
+  // ---- Artifacts (durable task outputs) ----
+
+  listArtifacts(taskId: string): TaskArtifact[] {
+    this.requireTask(taskId);
+    return this.store.listArtifacts(taskId);
+  }
+
+  listAllArtifacts(filter: ArtifactListFilter = {}): ArtifactListItem[] {
+    return this.store.listAllArtifacts(filter);
+  }
+
+  getArtifact(id: string): TaskArtifact | null {
+    return this.store.getArtifact(id);
+  }
+
+  discardArtifact(id: string): void {
+    const art = this.store.getArtifact(id);
+    if (art?.state !== 'kept') return;
+    this.store.discardArtifact(id);
+    this.store.appendEvent(art.taskId, art.runId, 'artifact_discarded', {
+      id,
+      filename: art.filename
+    });
+  }
+
+  restoreArtifact(id: string): void {
+    const art = this.store.getArtifact(id);
+    if (art?.state !== 'discarded') return;
+    this.store.restoreArtifact(id);
+    this.store.appendEvent(art.taskId, art.runId, 'artifact_restored', {
+      id,
+      filename: art.filename
+    });
+  }
+
+  /** Hard delete (row + file). The drawer Discard is soft; this is the explicit Remove action. */
+  removeArtifact(id: string): void {
+    const art = this.store.getArtifact(id);
+    if (!art) return;
+    this.store.purgeArtifact(id);
+    this.store.appendEvent(art.taskId, art.runId, 'artifact_removed', {
+      id,
+      filename: art.filename
+    });
+  }
+
+  /** Reuse a kept artifact as input to an existing task (copy into its attachments). */
+  reuseArtifact(artifactId: string, targetTaskId: string): TaskAttachment {
+    this.requireTask(targetTaskId);
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new CodedError(`artifact not found: ${artifactId}`, 'NOT_FOUND');
+    if (art.state !== 'kept')
+      throw new CodedError('only kept artifacts can be reused', 'BAD_REQUEST');
+    const att = this.store.attachArtifactToTask(targetTaskId, artifactId);
+    this.store.appendEvent(targetTaskId, null, 'attachment_added', {
+      id: att.id,
+      filename: att.filename,
+      fromArtifact: artifactId
+    });
+    return att;
+  }
+
+  /** Atomically create a new task seeded with a kept artifact copy. */
+  createTaskFromArtifact(artifactId: string, input: CreateTaskInput): Task {
+    const art = this.store.getArtifact(artifactId);
+    if (!art) throw new CodedError(`artifact not found: ${artifactId}`, 'NOT_FOUND');
+    if (art.state !== 'kept')
+      throw new CodedError('only kept artifacts can be reused', 'BAD_REQUEST');
+    const task = this.store.createTaskFromArtifact(artifactId, input);
+    this.store.appendEvent(task.id, null, 'task_created', { title: task.title });
+    return task;
+  }
+
+  /** Reveal a preserved scratch workspace (path resolved from the task row, never the renderer). */
+  revealTaskWorkspace(taskId: string): string | null {
+    const task = this.requireTask(taskId);
+    if (task.workspaceKind !== 'scratch' || !task.workspacePath) return null;
+    return task.workspacePath;
+  }
+
+  /** Explicitly delete preserved scratch leftovers after the archive warning. Guarded in the store. */
+  discardTaskWorkspaceLeftovers(taskId: string): void {
+    const task = this.requireTask(taskId);
+    if (task.workspaceKind !== 'scratch') {
+      throw new CodedError('only scratch workspaces can be discarded', 'BAD_REQUEST');
+    }
+    if (task.status !== 'archived') {
+      throw new CodedError('only archived tasks can have their workspace discarded', 'BAD_REQUEST');
+    }
+    const deleted = this.store.deleteScratchWorkspace(taskId);
+    if (deleted) {
+      this.store.appendEvent(taskId, null, 'artifacts_unregistered_discarded', {});
+    }
   }
 
   link(parentId: string, childId: string): void {

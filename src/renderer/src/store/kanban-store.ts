@@ -8,8 +8,16 @@ import type {
   UpdateTaskFields,
   ScheduleInput,
   SwarmInput,
-  SwarmCreated
+  SwarmCreated,
+  Task
 } from '../../../shared/kanban-types';
+import type { KanbanArtifactPreviewResponse } from '../../../shared/ipc-api';
+
+/** A pending "use artifact as input" request, consumed by the board's create form / swarm modal. */
+export type ArtifactSeed = {
+  artifact: { id: string; filename: string };
+  target: 'task' | 'swarm';
+};
 
 type KanbanState = {
   cards: BoardCard[];
@@ -44,6 +52,19 @@ type KanbanState = {
   uploadAttachments: (taskId: string, sourcePaths: string[]) => Promise<void>;
   removeAttachment: (id: string) => Promise<void>;
   saveAttachmentCopy: (id: string) => Promise<void>;
+  discardArtifact: (id: string) => Promise<void>;
+  restoreArtifact: (id: string) => Promise<void>;
+  removeArtifact: (id: string) => Promise<void>;
+  saveArtifactCopy: (id: string) => Promise<void>;
+  revealArtifact: (id: string) => Promise<void>;
+  readArtifactPreview: (id: string) => Promise<KanbanArtifactPreviewResponse>;
+  createTaskFromArtifact: (artifactId: string, input: CreateTaskInput) => Promise<Task>;
+  createSwarmFromArtifact: (artifactId: string, input: SwarmInput) => Promise<SwarmCreated>;
+  revealTaskWorkspace: (taskId: string) => Promise<void>;
+  discardTaskWorkspaceLeftovers: (taskId: string) => Promise<void>;
+  seed: ArtifactSeed | null;
+  requestSeed: (artifact: { id: string; filename: string }, target: 'task' | 'swarm') => void;
+  clearSeed: () => void;
   unreadCount: number;
   incrementUnread: () => void;
   markSeen: () => void;
@@ -56,6 +77,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   detail: null,
   boards: [],
   activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
+  seed: null,
   unreadCount: 0,
 
   loadBoard: async () => {
@@ -76,7 +98,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   switchBoard: async (slug) => {
     localStorage.setItem('fleet.kanban.activeBoard', slug);
-    set({ activeBoardSlug: slug, openTaskId: null, detail: null });
+    set({ activeBoardSlug: slug, openTaskId: null, detail: null, seed: null });
     await get().loadBoard();
   },
   createBoard: async (name) => {
@@ -185,6 +207,47 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   saveAttachmentCopy: async (id) => {
     await window.fleet.kanban.saveAttachmentCopy(id);
   },
+  discardArtifact: async (id) => {
+    await window.fleet.kanban.discardArtifact(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  restoreArtifact: async (id) => {
+    await window.fleet.kanban.restoreArtifact(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  removeArtifact: async (id) => {
+    await window.fleet.kanban.removeArtifact(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  saveArtifactCopy: async (id) => {
+    await window.fleet.kanban.saveArtifactCopy(id);
+  },
+  revealArtifact: async (id) => {
+    await window.fleet.kanban.revealArtifact(id);
+  },
+  readArtifactPreview: async (id) => window.fleet.kanban.readArtifactPreview({ id }),
+  createTaskFromArtifact: async (artifactId, input) => {
+    const task = await window.fleet.kanban.createTaskFromArtifact({ artifactId, input });
+    await get().loadBoard();
+    return task;
+  },
+  createSwarmFromArtifact: async (artifactId, input) => {
+    const created = await window.fleet.kanban.createSwarmFromArtifact({ artifactId, input });
+    await get().loadBoard();
+    return created;
+  },
+  revealTaskWorkspace: async (taskId) => {
+    await window.fleet.kanban.revealTaskWorkspace(taskId);
+  },
+  discardTaskWorkspaceLeftovers: async (taskId) => {
+    await window.fleet.kanban.discardTaskWorkspaceLeftovers(taskId);
+    await get().refreshDetail();
+  },
+  requestSeed: (artifact, target) => set({ seed: { artifact, target } }),
+  clearSeed: () => set({ seed: null }),
   incrementUnread: () => set((s) => ({ unreadCount: s.unreadCount + 1 })),
   markSeen: () => set({ unreadCount: 0 })
 }));

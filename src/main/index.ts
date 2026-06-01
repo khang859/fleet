@@ -795,7 +795,8 @@ void app.whenReady().then(async () => {
       maxInProgress: d.maxInProgress,
       claimTtlMs: d.claimTtlMs,
       autoDecompose: d.autoDecompose,
-      maxDecompose: d.maxDecompose
+      maxDecompose: d.maxDecompose,
+      artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
     };
   };
   kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
@@ -818,7 +819,12 @@ void app.whenReady().then(async () => {
         repoPath: task.repoPath ?? undefined,
         branchName: task.branchName ?? undefined
       });
-      if (task.workspaceKind === 'worktree' && task.workspacePath == null) {
+      // Persist the workspace path for worktree AND scratch tasks so the artifact MCP handler,
+      // archive warning, and reveal/discard actions all resolve the same durable path.
+      if (
+        (task.workspaceKind === 'worktree' || task.workspaceKind === 'scratch') &&
+        task.workspacePath == null
+      ) {
         kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName);
       }
       return prepared.path;

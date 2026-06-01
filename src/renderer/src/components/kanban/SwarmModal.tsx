@@ -26,6 +26,9 @@ export function rowsToWorkerSpecs(rows: WorkerRow[]): SwarmWorkerSpec[] {
 
 export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Element {
   const createSwarm = useKanbanStore((s) => s.createSwarm);
+  const createSwarmFromArtifact = useKanbanStore((s) => s.createSwarmFromArtifact);
+  const seed = useKanbanStore((s) => s.seed);
+  const activeBoardSlug = useKanbanStore((s) => s.activeBoardSlug);
   const profiles = useSettingsStore((s) => s.settings?.kanban.profiles ?? []);
   const workerProfiles = profiles.filter((p) => p.role === 'worker');
   const firstWorker = workerProfiles[0]?.name ?? '';
@@ -44,13 +47,18 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
       );
       return;
     }
+    const input = {
+      goal: goal.trim(),
+      workers,
+      verifierAssignee: verifier,
+      synthesizerAssignee: synthesizer
+    };
     try {
-      await createSwarm({
-        goal: goal.trim(),
-        workers,
-        verifierAssignee: verifier,
-        synthesizerAssignee: synthesizer
-      });
+      if (seed?.target === 'swarm') {
+        await createSwarmFromArtifact(seed.artifact.id, { ...input, boardId: activeBoardSlug });
+      } else {
+        await createSwarm(input);
+      }
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -67,6 +75,11 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-3 text-sm font-semibold text-neutral-100">New Swarm</h2>
+        {seed?.target === 'swarm' && (
+          <div className="mb-3 flex items-center gap-1 rounded bg-purple-950/40 px-2 py-1 text-[11px] text-purple-300">
+            📦 Seeding root task with <span className="font-medium">{seed.artifact.filename}</span>
+          </div>
+        )}
         <textarea
           value={goal}
           onChange={(e) => setGoal(e.target.value)}

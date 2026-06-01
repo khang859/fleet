@@ -56,6 +56,8 @@ function buildPrompt(input: BuildWorkerInput): string {
       `with a clear title and body, and an assignee chosen from the worker profiles below. Pass ` +
       `parents=[...] for true dependencies. Do not implement the work yourself. When the graph is ` +
       `complete, call kanban_complete with a one-line summary.\n\n` +
+      `If you produce any durable output files (docs, research, data), register each with the ` +
+      `kanban_artifact tool (path relative to your working directory) so the user can find them.\n\n` +
       `Available worker profiles:\n${roster || '- default: general worker'}`
     );
   }
@@ -66,7 +68,12 @@ function buildPrompt(input: BuildWorkerInput): string {
       `call kanban_update with the improved title and body.`
     );
   }
-  return `work kanban task ${task.id}: ${task.title}\n\n${task.body}` + attachmentsSection(input);
+  return (
+    `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
+    attachmentsSection(input) +
+    `\n\nIf you produce any durable output files (docs, research, data), register each with the ` +
+    `kanban_artifact tool (path relative to your working directory) so the user can find them.`
+  );
 }
 
 /**

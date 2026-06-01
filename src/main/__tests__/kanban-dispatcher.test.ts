@@ -34,7 +34,8 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.reclaim();
@@ -61,7 +62,8 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.reclaim();
@@ -86,7 +88,8 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.reclaim();
@@ -115,7 +118,8 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.promote();
@@ -139,7 +143,8 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.promote();
@@ -170,7 +175,8 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
@@ -205,7 +211,8 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 2,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
@@ -230,7 +237,8 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
@@ -251,7 +259,8 @@ const baseConfig = {
   maxInProgress: 3,
   claimTtlMs: 1000,
   autoDecompose: false,
-  maxDecompose: 1
+  maxDecompose: 1,
+  artifactRetentionDays: 0
 };
 
 describe('KanbanDispatcher.decompose', () => {
@@ -393,7 +402,8 @@ describe('KanbanDispatcher.fireSchedules', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       intervalMs: 5000 // GRACE_MS = max(2*5000, 60000) = 60000
     });
@@ -482,7 +492,8 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     disp.claimAndSpawn();
@@ -495,7 +506,8 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       5000
     );
@@ -515,7 +527,8 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       };
       const disp = new KanbanDispatcher(store, {
         now: () => clock.t,
@@ -561,7 +574,8 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 1,
           claimTtlMs: 1000,
           autoDecompose: false,
-          maxDecompose: 1
+          maxDecompose: 1,
+          artifactRetentionDays: 0
         },
         intervalMs: 5000
       });
@@ -572,7 +586,8 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 2,
           claimTtlMs: 1000,
           autoDecompose: false,
-          maxDecompose: 1
+          maxDecompose: 1,
+          artifactRetentionDays: 0
         },
         8000
       );

@@ -6,6 +6,7 @@ import { X, Paperclip, Download, Clock } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
+import { OutputsSection } from './KanbanArtifacts';
 import {
   relativeTime,
   formatDuration,
@@ -410,6 +411,9 @@ export function KanbanDrawer(): React.JSX.Element | null {
             </p>
           )}
         </section>
+
+        {/* Outputs (artifacts) */}
+        <OutputsSection detail={detail} />
 
         {/* Schedule */}
         {!running && (

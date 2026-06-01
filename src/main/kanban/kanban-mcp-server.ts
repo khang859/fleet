@@ -87,6 +87,19 @@ const WORKER_TOOLS: McpTool[] = [
       properties: { root: { type: 'string' }, key: { type: 'string' }, value: {} },
       required: ['root', 'key', 'value']
     }
+  },
+  {
+    name: 'kanban_artifact',
+    description: 'Register an output file you produced as a durable task artifact.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        path: { type: 'string' }, // relative to the task workspace
+        title: { type: 'string' }, // optional display name
+        kind: { type: 'string', enum: ['document', 'code', 'data', 'other'] }
+      },
+      required: ['path']
+    }
   }
 ];
 
@@ -374,6 +387,32 @@ export class KanbanMcpServer {
           postBlackboardUpdate(this.store, a.root, author, a.key, a.value);
           this.store.appendEvent(a.root, null, 'blackboard_post', { author, key: a.key });
           return this.text(res, rpcReq.id, 'Blackboard updated.');
+        }
+        case 'kanban_artifact': {
+          const a = z
+            .object({
+              path: z.string(),
+              title: z.string().optional(),
+              kind: z.enum(['document', 'code', 'data', 'other']).optional()
+            })
+            .parse(args);
+          if (!task.workspacePath) {
+            return this.rpcError(res, rpcReq.id, 'workspace not ready');
+          }
+          const artifact = this.store.addArtifact({
+            taskId: task.id,
+            runId: scope.runId,
+            boardId: task.boardId,
+            workspaceRoot: task.workspacePath,
+            relPath: a.path,
+            title: a.title ?? null,
+            kind: a.kind
+          });
+          this.store.appendEvent(task.id, scope.runId, 'artifact_added', {
+            id: artifact.id,
+            filename: artifact.filename
+          });
+          return this.text(res, rpcReq.id, artifact.id);
         }
         case 'kanban_heartbeat': {
           const lock = this.claimLocks.get(token);

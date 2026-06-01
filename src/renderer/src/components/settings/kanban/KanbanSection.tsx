@@ -160,6 +160,25 @@ export function KanbanSection(): React.JSX.Element | null {
       </section>
 
       <section className="space-y-3">
+        <h3 className="text-sm font-semibold text-neutral-300">Artifacts</h3>
+        <SettingRow label="Auto-remove discarded after (days, 0 = never)">
+          <input
+            type="number"
+            min={0}
+            value={k.artifactRetentionDays}
+            onChange={(e) =>
+              patch({ artifactRetentionDays: Math.max(0, Number(e.target.value) || 0) })
+            }
+            className="w-28 rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+          />
+        </SettingRow>
+        <p className="text-xs text-neutral-500">
+          Discarded outputs stay recoverable for this window before they are permanently deleted to
+          free disk. Kept artifacts are never auto-removed.
+        </p>
+      </section>
+
+      <section className="space-y-3">
         <h3 className="text-sm font-semibold text-neutral-300">Notifications</h3>
         <p className="text-xs text-neutral-500 mb-2">
           Surface worker and scheduler events as an OS notification and an unread badge on the

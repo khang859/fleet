@@ -117,6 +117,41 @@ export interface TaskAttachment {
   createdAt: number;
 }
 
+export type ArtifactKind = 'document' | 'code' | 'data' | 'other';
+export type ArtifactState = 'kept' | 'discarded';
+
+export interface TaskArtifact {
+  id: string;
+  taskId: string;
+  runId: number | null;
+  boardId: string;
+  title: string | null;
+  filename: string;
+  /** Normalized, workspace-relative path originally registered by the agent. */
+  sourceRelPath: string;
+  storedPath: string;
+  kind: ArtifactKind;
+  contentType: string | null;
+  size: number;
+  state: ArtifactState;
+  createdAt: number;
+  discardedAt: number | null;
+}
+
+/** A row in the cross-board Artifacts browser: a TaskArtifact joined with its task/board. */
+export interface ArtifactListItem extends TaskArtifact {
+  taskTitle: string;
+  boardName: string;
+}
+
+/** Filters for the global Artifacts browser. */
+export interface ArtifactListFilter {
+  boardSlug?: string;
+  state?: ArtifactState;
+  kind?: ArtifactKind;
+  query?: string;
+}
+
 export interface CreateTaskInput {
   title: string;
   body?: string;
@@ -149,6 +184,8 @@ export interface BoardCard extends Task {
   commentCount: number;
   childTotal: number;
   childDone: number;
+  /** Count of kept (non-discarded) artifacts produced by this task. */
+  artifactCount: number;
 }
 
 export interface TaskDetail {
@@ -159,6 +196,7 @@ export interface TaskDetail {
   parents: Task[];
   children: Task[];
   attachments: TaskAttachment[];
+  artifacts: TaskArtifact[];
 }
 
 /** One parallel worker card in a swarm. */
@@ -186,6 +224,8 @@ export interface SwarmInput {
   verifierTitle?: string;
   synthesizerTitle?: string;
   createdBy?: string;
+  /** When set, a copy of this kept artifact is attached to the root swarm task. */
+  seedArtifactId?: string;
 }
 
 /** IDs produced by createSwarm. */

@@ -90,6 +90,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       maxDecompose: 1
     },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
+    artifactRetentionDays: 14,
     notifications: {
       blocked: { os: true, badge: true },
       failed: { os: true, badge: true },

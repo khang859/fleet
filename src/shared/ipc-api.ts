@@ -1,6 +1,13 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState } from './shell-profiles';
-import type { UpdateTaskFields, TaskStatus, ScheduleInput } from './kanban-types';
+import type {
+  UpdateTaskFields,
+  TaskStatus,
+  ScheduleInput,
+  ArtifactListFilter,
+  CreateTaskInput,
+  SwarmInput
+} from './kanban-types';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -291,3 +298,35 @@ export type KanbanSetScheduleRequest = {
 export type KanbanPreviewScheduleResponse =
   | { ok: true; next: number[] }
   | { ok: false; error: string };
+
+export type KanbanListArtifactsRequest = ArtifactListFilter;
+
+export type KanbanReadArtifactPreviewRequest = {
+  id: string;
+  maxBytes?: number;
+};
+
+export type KanbanArtifactPreviewResponse =
+  | {
+      previewable: true;
+      text: string;
+      truncated: boolean;
+      contentType: string | null;
+      size: number;
+    }
+  | { previewable: false; reason: string };
+
+export type KanbanReuseArtifactRequest = {
+  id: string;
+  targetTaskId: string;
+};
+
+export type KanbanCreateTaskFromArtifactRequest = {
+  artifactId: string;
+  input: CreateTaskInput;
+};
+
+export type KanbanCreateSwarmFromArtifactRequest = {
+  artifactId: string;
+  input: SwarmInput;
+};

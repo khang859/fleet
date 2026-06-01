@@ -1,5 +1,5 @@
 import type { BoardCard } from '../../../../shared/kanban-types';
-import { MessageSquare, GitBranch, Clock, PauseCircle } from 'lucide-react';
+import { MessageSquare, GitBranch, Clock, PauseCircle, FileText } from 'lucide-react';
 import { scheduleSummary, formatNextRun } from './kanban-utils';
 
 type Props = {
@@ -55,6 +55,11 @@ export function KanbanCard({ card, onOpen, onDragStart, onDragEnd }: Props): Rea
         {card.commentCount > 0 && (
           <span className="inline-flex items-center gap-0.5">
             <MessageSquare size={10} /> {card.commentCount}
+          </span>
+        )}
+        {card.artifactCount > 0 && (
+          <span className="inline-flex items-center gap-0.5" title="output artifacts">
+            <FileText size={10} /> {card.artifactCount}
           </span>
         )}
         {card.status === 'scheduled' && (

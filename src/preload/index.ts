@@ -43,7 +43,13 @@ import type {
   KanbanAddAttachmentRequest,
   KanbanRenameBoardRequest,
   KanbanSetScheduleRequest,
-  KanbanPreviewScheduleResponse
+  KanbanPreviewScheduleResponse,
+  KanbanListArtifactsRequest,
+  KanbanReadArtifactPreviewRequest,
+  KanbanArtifactPreviewResponse,
+  KanbanReuseArtifactRequest,
+  KanbanCreateTaskFromArtifactRequest,
+  KanbanCreateSwarmFromArtifactRequest
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -52,6 +58,8 @@ import type {
   CreateTaskInput,
   Task,
   TaskEvent,
+  TaskAttachment,
+  ArtifactListItem,
   ScheduleInput,
   SwarmInput,
   SwarmCreated
@@ -461,6 +469,34 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_ATTACHMENT, id),
     saveAttachmentCopy: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SAVE_ATTACHMENT_COPY, id),
+    listArtifacts: async (filter?: KanbanListArtifactsRequest): Promise<ArtifactListItem[]> =>
+      typedInvoke<ArtifactListItem[]>(IPC_CHANNELS.KANBAN_LIST_ARTIFACTS, filter ?? {}),
+    discardArtifact: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DISCARD_ARTIFACT, id),
+    restoreArtifact: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_RESTORE_ARTIFACT, id),
+    removeArtifact: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_ARTIFACT, id),
+    saveArtifactCopy: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SAVE_ARTIFACT_COPY, id),
+    revealArtifact: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REVEAL_ARTIFACT, id),
+    readArtifactPreview: async (
+      req: KanbanReadArtifactPreviewRequest
+    ): Promise<KanbanArtifactPreviewResponse> =>
+      typedInvoke<KanbanArtifactPreviewResponse>(IPC_CHANNELS.KANBAN_READ_ARTIFACT_PREVIEW, req),
+    reuseArtifact: async (req: KanbanReuseArtifactRequest): Promise<TaskAttachment> =>
+      typedInvoke<TaskAttachment>(IPC_CHANNELS.KANBAN_REUSE_ARTIFACT, req),
+    createTaskFromArtifact: async (req: KanbanCreateTaskFromArtifactRequest): Promise<Task> =>
+      typedInvoke<Task>(IPC_CHANNELS.KANBAN_CREATE_TASK_FROM_ARTIFACT, req),
+    createSwarmFromArtifact: async (
+      req: KanbanCreateSwarmFromArtifactRequest
+    ): Promise<SwarmCreated> =>
+      typedInvoke<SwarmCreated>(IPC_CHANNELS.KANBAN_CREATE_SWARM_FROM_ARTIFACT, req),
+    revealTaskWorkspace: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REVEAL_TASK_WORKSPACE, taskId),
+    discardTaskWorkspaceLeftovers: async (taskId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DISCARD_TASK_WORKSPACE_LEFTOVERS, taskId),
     listBoards: async (): Promise<Board[]> => typedInvoke<Board[]>(IPC_CHANNELS.KANBAN_LIST_BOARDS),
     createBoard: async (name: string): Promise<Board> =>
       typedInvoke<Board>(IPC_CHANNELS.KANBAN_CREATE_BOARD, name),

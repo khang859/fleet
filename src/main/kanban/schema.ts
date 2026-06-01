@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -99,4 +99,24 @@ CREATE TABLE IF NOT EXISTS boards (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS task_artifacts (
+  id TEXT PRIMARY KEY,
+  task_id TEXT NOT NULL,
+  run_id INTEGER,
+  board_id TEXT NOT NULL,
+  title TEXT,
+  filename TEXT NOT NULL,
+  source_rel_path TEXT NOT NULL,
+  stored_path TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'other',
+  content_type TEXT,
+  size INTEGER NOT NULL,
+  state TEXT NOT NULL DEFAULT 'kept',
+  created_at INTEGER NOT NULL,
+  discarded_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_artifacts_task ON task_artifacts(task_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_board ON task_artifacts(board_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_state ON task_artifacts(state);
 `;

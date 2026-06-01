@@ -23,7 +23,10 @@ export function KanbanBoard(): React.JSX.Element {
     switchBoard,
     createBoard,
     renameBoard,
-    deleteBoard
+    deleteBoard,
+    seed,
+    clearSeed,
+    createTaskFromArtifact
   } = useKanbanStore();
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
@@ -44,6 +47,16 @@ export function KanbanBoard(): React.JSX.Element {
     const off = window.fleet.kanban.onBoardsChanged(() => void loadBoards());
     return off;
   }, [loaded, loadBoard, loadBoards]);
+
+  // A "use artifact as input" request from the drawer opens the matching create surface.
+  useEffect(() => {
+    if (seed?.target === 'task') setCreating(true);
+    if (seed?.target === 'swarm') setSwarming(true);
+  }, [seed]);
+
+  // Drop any pending seed when the board unmounts, so navigating away mid-flow doesn't
+  // re-open the seeded create form on return.
+  useEffect(() => () => clearSeed(), [clearSeed]);
 
   const assignees = Array.from(
     new Set(cards.map((c) => c.assignee).filter((a): a is string => !!a))
@@ -79,12 +92,27 @@ export function KanbanBoard(): React.JSX.Element {
         : newIsolated
           ? { workspaceKind: 'worktree' as const, repoPath: folder }
           : { workspaceKind: 'dir' as const, workspacePath: folder };
-    await createTask({ title, ...workspace });
+    try {
+      if (seed?.target === 'task') {
+        await createTaskFromArtifact(seed.artifact.id, {
+          title,
+          boardId: activeBoardSlug,
+          ...workspace
+        });
+      } else {
+        await createTask({ title, ...workspace });
+      }
+    } catch (err) {
+      // Keep the form (and any seed) open so the user can retry or cancel explicitly.
+      window.alert(err instanceof Error ? err.message : 'Could not create task');
+      return;
+    }
     setNewTitle('');
     setNewFolder('');
     setNewMode('scratch');
     setNewIsolated(true);
     setCreating(false);
+    clearSeed();
   }
 
   async function handleBoardSubmit(): Promise<void> {
@@ -232,18 +260,28 @@ export function KanbanBoard(): React.JSX.Element {
 
       {creating && (
         <div className="flex flex-col gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2">
+          {seed?.target === 'task' && (
+            <div className="flex items-center gap-1 rounded bg-blue-950/40 px-2 py-1 text-[11px] text-blue-300">
+              📦 Seeding new task with <span className="font-medium">{seed.artifact.filename}</span>
+            </div>
+          )}
           <input
             autoFocus
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void handleCreate();
-              if (e.key === 'Escape') setCreating(false);
+              if (e.key === 'Escape') {
+                setCreating(false);
+                clearSeed();
+              }
             }}
             placeholder="Task title…"
             className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
           />
-          <div className="text-[11px] font-medium text-neutral-400">Where should the agent work?</div>
+          <div className="text-[11px] font-medium text-neutral-400">
+            Where should the agent work?
+          </div>
           <label className="flex items-center gap-2 text-xs text-neutral-300">
             <input
               type="radio"
@@ -271,7 +309,10 @@ export function KanbanBoard(): React.JSX.Element {
                   onChange={(e) => setNewFolder(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') void handleCreate();
-                    if (e.key === 'Escape') setCreating(false);
+                    if (e.key === 'Escape') {
+                      setCreating(false);
+                      clearSeed();
+                    }
                   }}
                   placeholder="No folder selected…"
                   className="flex-1 rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
@@ -307,7 +348,10 @@ export function KanbanBoard(): React.JSX.Element {
               Create
             </button>
             <button
-              onClick={() => setCreating(false)}
+              onClick={() => {
+                setCreating(false);
+                clearSeed();
+              }}
               className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
             >
               Cancel
@@ -343,7 +387,14 @@ export function KanbanBoard(): React.JSX.Element {
 
       {openTaskId && <KanbanDrawer />}
 
-      {swarming && <SwarmModal onClose={() => setSwarming(false)} />}
+      {swarming && (
+        <SwarmModal
+          onClose={() => {
+            setSwarming(false);
+            clearSeed();
+          }}
+        />
+      )}
     </div>
   );
 }

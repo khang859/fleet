@@ -23,7 +23,8 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
       maxInProgress: 3,
       claimTtlMs: 1000,
       autoDecompose: false,
-      maxDecompose: 1
+      maxDecompose: 1,
+      artifactRetentionDays: 0
     }
   });
   const commands = new KanbanCommands(store, dispatcher, () => ({
@@ -264,7 +265,8 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       },
       prepareWorkspaceFn: () => '/tmp/ws'
     });
@@ -486,7 +488,8 @@ describe('KanbanCommands.createSwarm', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
-        maxDecompose: 1
+        maxDecompose: 1,
+        artifactRetentionDays: 0
       }
     });
     const events: string[] = [];
@@ -546,6 +549,57 @@ describe('KanbanCommands.createSwarm', () => {
     const { commands } = setup([{ name: 'researcher', role: 'worker' }]);
     expect(() => commands.createSwarm({ ...base, workers: many })).toThrow(/at most/);
   });
+
+  it('seedArtifactId attaches a kept artifact copy to the root task only', () => {
+    const { store, commands } = setup([
+      { name: 'researcher', role: 'worker' },
+      { name: 'reviewer', role: 'worker' },
+      { name: 'writer', role: 'worker' }
+    ]);
+    const src = store.createTask({ title: 'producer' });
+    const ws = join(TEST_DIR, `seed-ws-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(ws, { recursive: true });
+    writeFileSync(join(ws, 'out.md'), 'payload');
+    const art = store.addArtifact({
+      taskId: src.id,
+      runId: null,
+      boardId: src.boardId,
+      workspaceRoot: ws,
+      relPath: 'out.md'
+    });
+
+    const created = commands.createSwarm({ ...base, seedArtifactId: art.id });
+    const rootAtts = store.listAttachments(created.rootId);
+    expect(rootAtts).toHaveLength(1);
+    expect(existsSync(rootAtts[0].storedPath)).toBe(true);
+    expect(store.getTask(created.rootId)!.body).toMatch(/Seeded from artifact: out\.md/);
+    // workers/verifier/synth do not receive the copy
+    expect(store.listAttachments(created.workerIds[0])).toHaveLength(0);
+    expect(store.listAttachments(created.verifierId)).toHaveLength(0);
+  });
+
+  it('seedArtifactId refuses a discarded artifact', () => {
+    const { store, commands } = setup([
+      { name: 'researcher', role: 'worker' },
+      { name: 'reviewer', role: 'worker' },
+      { name: 'writer', role: 'worker' }
+    ]);
+    const src = store.createTask({ title: 'producer' });
+    const ws = join(TEST_DIR, `seed-ws2-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(ws, { recursive: true });
+    writeFileSync(join(ws, 'out.md'), 'payload');
+    const art = store.addArtifact({
+      taskId: src.id,
+      runId: null,
+      boardId: src.boardId,
+      workspaceRoot: ws,
+      relPath: 'out.md'
+    });
+    store.discardArtifact(art.id);
+    expect(() => commands.createSwarm({ ...base, seedArtifactId: art.id })).toThrow(/kept/);
+    // a rejected seed must not leave a half-built swarm: only the producer task exists
+    expect(store.listTasks()).toHaveLength(1);
+  });
 });
 
 describe('KanbanCommands boards', () => {
@@ -592,5 +646,88 @@ describe('KanbanCommands boards', () => {
     store.createTask({ title: 'idle', boardId: 'research' });
     commands.deleteBoard('research');
     expect(commands.listBoards().map((b) => b.slug)).not.toContain('research');
+  });
+});
+
+describe('KanbanCommands scratch archive safety net', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  // workspacesRoot is derived as join(dirname(dbPath), 'workspaces'); dbPath lives in TEST_DIR.
+  function scratchWorkspace(store: KanbanStore, taskId: string): string {
+    const ws = join(TEST_DIR, 'workspaces', taskId);
+    mkdirSync(ws, { recursive: true });
+    store.setWorkspace(taskId, ws, null);
+    return ws;
+  }
+
+  it('preserves the workspace and warns when unregistered files remain on archive', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const ws = scratchWorkspace(store, task.id);
+    writeFileSync(join(ws, 'out.md'), 'hi');
+    commands.archive(task.id);
+    expect(existsSync(ws)).toBe(true); // never warn-then-delete
+    expect(store.listEvents(task.id).map((e) => e.kind)).toContain('artifacts_unregistered');
+  });
+
+  it('deletes the scratch workspace on archive when every file is registered', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const ws = scratchWorkspace(store, task.id);
+    writeFileSync(join(ws, 'out.md'), 'hi');
+    store.addArtifact({
+      taskId: task.id,
+      runId: null,
+      boardId: task.boardId,
+      workspaceRoot: ws,
+      relPath: 'out.md'
+    });
+    commands.archive(task.id);
+    expect(existsSync(ws)).toBe(false);
+  });
+
+  it('discardTaskWorkspaceLeftovers guards non-archived tasks and then deletes', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const ws = scratchWorkspace(store, task.id);
+    writeFileSync(join(ws, 'out.md'), 'hi');
+    expect(() => commands.discardTaskWorkspaceLeftovers(task.id)).toThrow(); // not archived
+    commands.archive(task.id);
+    expect(existsSync(ws)).toBe(true); // preserved by the warning path
+    commands.discardTaskWorkspaceLeftovers(task.id);
+    expect(existsSync(ws)).toBe(false);
+    expect(store.listEvents(task.id).map((e) => e.kind)).toContain(
+      'artifacts_unregistered_discarded'
+    );
+  });
+
+  it('treats a top-level dir as a leftover until all descendants are registered', () => {
+    const { store, commands } = makeCommands();
+    const task = commands.create({ title: 't' });
+    const ws = scratchWorkspace(store, task.id);
+    mkdirSync(join(ws, 'reports'), { recursive: true });
+    writeFileSync(join(ws, 'reports', 'a.md'), 'a');
+    writeFileSync(join(ws, 'reports', 'b.md'), 'b');
+    store.addArtifact({
+      taskId: task.id,
+      runId: null,
+      boardId: task.boardId,
+      workspaceRoot: ws,
+      relPath: 'reports/a.md'
+    });
+    expect(store.scratchLeftovers(task.id)).toContain('reports'); // b.md still unregistered
+    store.addArtifact({
+      taskId: task.id,
+      runId: null,
+      boardId: task.boardId,
+      workspaceRoot: ws,
+      relPath: 'reports/b.md'
+    });
+    expect(store.scratchLeftovers(task.id)).not.toContain('reports');
   });
 });

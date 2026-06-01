@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, writeFileSync, symlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import Database from 'better-sqlite3';
@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(6);
+    expect(store.schemaVersion()).toBe(7);
   });
 
-  it('fresh db is created at v6 with the new columns', () => {
+  it('fresh db is created at v7 with the new columns', () => {
     // Fresh store is already v6; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(6);
+    expect(store.schemaVersion()).toBe(7);
   });
 
-  it('fresh db is created at v6 and persists repoPath', () => {
+  it('fresh db is created at v7 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(6);
+    expect(store.schemaVersion()).toBe(7);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -60,7 +60,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(6);
+    expect(s.schemaVersion()).toBe(7);
     s.close();
   });
 
@@ -85,7 +85,7 @@ describe('KanbanStore', () => {
     raw.close();
 
     const s = new KanbanStore(preV5Path);
-    expect(s.schemaVersion()).toBe(6);
+    expect(s.schemaVersion()).toBe(7);
     expect(s.getTask('abc')?.boardId).toBe('default');
     expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
@@ -107,7 +107,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(6);
+    expect(s.schemaVersion()).toBe(7);
     s.close();
   });
 
@@ -504,7 +504,7 @@ describe('KanbanStore schema v6 migration', () => {
     raw.close();
 
     const store = new KanbanStore(dbPath, { now: () => 1000 });
-    expect(store.schemaVersion()).toBe(6);
+    expect(store.schemaVersion()).toBe(7);
     const t = store.getTask('legacy1');
     expect(t?.title).toBe('old task');
     expect(t?.scheduleKind).toBeNull();
@@ -763,5 +763,153 @@ describe('KanbanStore attachments', () => {
     rmSync(att.storedPath, { force: true });
     expect(() => store.removeAttachment(att.id)).not.toThrow();
     expect(store.getAttachment(att.id)).toBeNull();
+  });
+});
+
+describe('KanbanStore artifacts', () => {
+  let store: KanbanStore;
+  let ws: string;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH, { now: () => 10_000 });
+    ws = join(TEST_DIR, 'ws');
+    mkdirSync(ws, { recursive: true });
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  function write(rel: string, body = 'hello'): void {
+    const full = join(ws, rel);
+    mkdirSync(join(full, '..'), { recursive: true });
+    writeFileSync(full, body);
+  }
+
+  function register(taskId: string, boardId: string, relPath: string, opts: { title?: string } = {}) {
+    return store.addArtifact({
+      taskId,
+      runId: 1,
+      boardId,
+      workspaceRoot: ws,
+      relPath,
+      title: opts.title ?? null
+    });
+  }
+
+  it('registers, copies, lists and gets an artifact with guessed kind', () => {
+    const task = store.createTask({ title: 't' });
+    write('report.md', '# hi');
+    const art = register(task.id, task.boardId, 'report.md', { title: 'Report' });
+    expect(art.filename).toBe('report.md');
+    expect(art.kind).toBe('document');
+    expect(art.sourceRelPath).toBe('report.md');
+    expect(art.state).toBe('kept');
+    expect(existsSync(art.storedPath)).toBe(true);
+    expect(store.listArtifacts(task.id)).toHaveLength(1);
+    expect(store.getArtifact(art.id)?.title).toBe('Report');
+  });
+
+  it('persists nested source_rel_path and basenames the filename', () => {
+    const task = store.createTask({ title: 't' });
+    write('reports/out.csv', 'a,b');
+    const art = register(task.id, task.boardId, 'reports/out.csv');
+    expect(art.sourceRelPath).toBe('reports/out.csv');
+    expect(art.filename).toBe('out.csv');
+    expect(art.kind).toBe('data');
+  });
+
+  it('rejects traversal, absolute paths, symlinks and secrets', () => {
+    const task = store.createTask({ title: 't' });
+    write('ok.txt');
+    expect(() => register(task.id, task.boardId, '../escape.txt')).toThrow();
+    expect(() => register(task.id, task.boardId, '/etc/passwd')).toThrow();
+    write('.env', 'SECRET=1');
+    expect(() => register(task.id, task.boardId, '.env')).toThrow(/sensitive/);
+    writeFileSync(join(TEST_DIR, 'outside.txt'), 'x');
+    symlinkSync(join(TEST_DIR, 'outside.txt'), join(ws, 'link.txt'));
+    expect(() => register(task.id, task.boardId, 'link.txt')).toThrow();
+  });
+
+  it('artifactCount on listBoard counts kept only', () => {
+    const task = store.createTask({ title: 't' });
+    write('a.md');
+    write('b.md');
+    const a = register(task.id, task.boardId, 'a.md');
+    register(task.id, task.boardId, 'b.md');
+    expect(store.listBoard().find((c) => c.id === task.id)?.artifactCount).toBe(2);
+    store.discardArtifact(a.id);
+    expect(store.listBoard().find((c) => c.id === task.id)?.artifactCount).toBe(1);
+  });
+
+  it('discard hides, restore un-hides', () => {
+    const task = store.createTask({ title: 't' });
+    write('a.md');
+    const a = register(task.id, task.boardId, 'a.md');
+    store.discardArtifact(a.id);
+    expect(store.getArtifact(a.id)?.state).toBe('discarded');
+    expect(store.getArtifact(a.id)?.discardedAt).toBe(10_000);
+    store.restoreArtifact(a.id);
+    expect(store.getArtifact(a.id)?.state).toBe('kept');
+    expect(store.getArtifact(a.id)?.discardedAt).toBeNull();
+  });
+
+  it('purgeDiscardedBefore removes old discarded artifacts and returns metadata', () => {
+    const task = store.createTask({ title: 't' });
+    write('a.md');
+    write('b.md');
+    const a = register(task.id, task.boardId, 'a.md');
+    const b = register(task.id, task.boardId, 'b.md');
+    store.discardArtifact(a.id); // discarded_at = 10_000
+    const purged = store.purgeDiscardedBefore(10_001);
+    expect(purged.map((p) => p.id)).toEqual([a.id]);
+    expect(existsSync(a.storedPath)).toBe(false);
+    expect(store.getArtifact(a.id)).toBeNull();
+    expect(store.getArtifact(b.id)?.state).toBe('kept'); // kept untouched
+  });
+
+  it('deleteBoard removes artifact rows and files', () => {
+    const board = store.createBoard('Side');
+    const task = store.createTask({ title: 't', boardId: board.slug });
+    write('a.md');
+    const a = register(task.id, board.slug, 'a.md');
+    expect(existsSync(a.storedPath)).toBe(true);
+    store.deleteBoard(board.slug);
+    expect(store.getArtifact(a.id)).toBeNull();
+    expect(existsSync(a.storedPath)).toBe(false);
+  });
+
+  it('listAllArtifacts joins task/board and filters by state', () => {
+    const task = store.createTask({ title: 'My Task' });
+    write('a.md');
+    write('b.md');
+    const a = register(task.id, task.boardId, 'a.md');
+    register(task.id, task.boardId, 'b.md');
+    store.discardArtifact(a.id);
+    const all = store.listAllArtifacts();
+    expect(all).toHaveLength(2);
+    expect(all[0].taskTitle).toBe('My Task');
+    expect(all[0].boardName).toBe('Default');
+    expect(store.listAllArtifacts({ state: 'kept' })).toHaveLength(1);
+    expect(store.listAllArtifacts({ state: 'discarded' })).toHaveLength(1);
+  });
+
+  it('createTaskFromArtifact attaches a copy and references it in the body', () => {
+    const task = store.createTask({ title: 'src' });
+    write('a.md', 'payload');
+    const a = register(task.id, task.boardId, 'a.md');
+    const seeded = store.createTaskFromArtifact(a.id, { title: 'seeded', body: 'do it' });
+    const atts = store.listAttachments(seeded.id);
+    expect(atts).toHaveLength(1);
+    expect(existsSync(atts[0].storedPath)).toBe(true);
+    expect(store.getTask(seeded.id)?.body).toMatch(/Seeded from artifact: a\.md/);
+  });
+
+  it('createTaskFromArtifact refuses a discarded artifact', () => {
+    const task = store.createTask({ title: 'src' });
+    write('a.md');
+    const a = register(task.id, task.boardId, 'a.md');
+    store.discardArtifact(a.id);
+    expect(() => store.createTaskFromArtifact(a.id, { title: 'x' })).toThrow(/kept/);
   });
 });
