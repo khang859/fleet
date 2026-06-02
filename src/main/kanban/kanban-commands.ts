@@ -25,7 +25,9 @@ import type {
   CreateFeatureInput,
   UpdateFeatureInput,
   FeatureDetail,
-  ConflictState
+  ConflictState,
+  WorktreeInfo,
+  PruneResult
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -36,10 +38,12 @@ import {
   pushAndCreatePr,
   checkMergeConflicts,
   createFeaturePr,
-  updateIntegrationBranchFromMain
+  updateIntegrationBranchFromMain,
+  worktreeStatus,
+  isBranchMerged
 } from './workspace';
 import { dirname } from 'path';
-import type { KanbanReviewActionResult } from '../../shared/ipc-api';
+import type { KanbanReviewActionResult, KanbanPruneWorktreeResult } from '../../shared/ipc-api';
 import { removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
 
@@ -664,6 +668,16 @@ export class KanbanCommands {
       base: task.baseBranch,
       branch: task.branchName
     });
+    // Auto-prune: the branch is now in base, so the worktree is spent disk. Reclaim it
+    // (removeWorktree only deletes the merged branch; it never destroys unmerged work).
+    removeWorktree({
+      repoPath: task.repoPath,
+      workspacePath: task.workspacePath,
+      branchName: task.branchName,
+      baseBranch: task.baseBranch
+    });
+    this.store.setWorktreePruned(id);
+    this.store.appendEvent(id, null, 'worktree_pruned', { branch: task.branchName, by: 'merge' });
     // Base advanced — let gated children promote without waiting for the next poll.
     this.dispatcher.tick();
     return { ok: true, message: `merged into ${task.baseBranch}` };
@@ -737,6 +751,97 @@ export class KanbanCommands {
       files: res.files.length
     });
     return res;
+  }
+
+  // ---- Worktree lifecycle (Phase 4) ----
+
+  /** Live worktrees on the board with ahead/behind/merged status, linked to their tasks. */
+  listWorktrees(boardId: string): WorktreeInfo[] {
+    return this.store.worktreeTasks({ boardId }).map((task) => {
+      const { repoPath, branchName, baseBranch } = task;
+      const st =
+        repoPath && branchName && baseBranch
+          ? worktreeStatus({ repoPath, branchName, baseBranch })
+          : { ahead: 0, behind: 0, merged: false };
+      return {
+        taskId: task.id,
+        title: task.title,
+        status: task.status,
+        repoPath: task.repoPath ?? '',
+        workspacePath: task.workspacePath ?? '',
+        branchName: task.branchName,
+        baseBranch: task.baseBranch,
+        ahead: st.ahead,
+        behind: st.behind,
+        merged: st.merged
+      };
+    });
+  }
+
+  /**
+   * Remove a single task's worktree on demand. Refuses while a worker is running or the
+   * task is still in the review gate (its worktree is needed to merge/PR); an unmerged
+   * branch is preserved (removeWorktree keeps it), surfaced via `branchKept` so the caller
+   * can warn.
+   */
+  pruneWorktree(id: string): KanbanPruneWorktreeResult {
+    const task = this.requireTask(id);
+    if (task.status === 'running' || task.status === 'review') {
+      return {
+        ok: false,
+        error: `cannot prune while the task is ${task.status}; finish it first`
+      };
+    }
+    if (task.workspaceKind !== 'worktree' || !task.workspacePath || !task.repoPath) {
+      return { ok: false, error: 'task has no worktree to prune' };
+    }
+    const { branchKept } = removeWorktree({
+      repoPath: task.repoPath,
+      workspacePath: task.workspacePath,
+      branchName: task.branchName,
+      baseBranch: task.baseBranch
+    });
+    this.store.setWorktreePruned(id);
+    this.store.appendEvent(id, null, 'worktree_pruned', { branch: task.branchName, by: 'manual' });
+    if (branchKept && task.branchName) {
+      this.store.appendEvent(id, null, 'unmerged_branch_kept', { branch: task.branchName });
+    }
+    return { ok: true, branchKept };
+  }
+
+  /**
+   * Prune every merged worktree among the board's finished (done/archived) tasks,
+   * leaving unmerged ones untouched. Only needs the merge predicate, so it queries the
+   * store directly rather than computing ahead/behind via listWorktrees.
+   */
+  pruneMergedWorktrees(boardId: string): PruneResult {
+    let pruned = 0;
+    let keptUnmerged = 0;
+    for (const task of this.store.worktreeTasks({ boardId, statuses: ['done', 'archived'] })) {
+      if (!task.workspacePath || !task.repoPath || !task.branchName || !task.baseBranch) continue;
+      const merged = isBranchMerged({
+        repoPath: task.repoPath,
+        branchName: task.branchName,
+        baseBranch: task.baseBranch
+      });
+      if (!merged) {
+        keptUnmerged++;
+        continue;
+      }
+      removeWorktree({
+        repoPath: task.repoPath,
+        workspacePath: task.workspacePath,
+        branchName: task.branchName,
+        baseBranch: task.baseBranch
+      });
+      this.store.setWorktreePruned(task.id);
+      this.store.appendEvent(task.id, null, 'worktree_pruned', {
+        branch: task.branchName,
+        by: 'bulk'
+      });
+      pruned++;
+    }
+    return { pruned, keptUnmerged };
   }
 
   // ---- Features (task grouping) ----

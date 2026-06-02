@@ -371,6 +371,13 @@ export type KanbanConflictResult = {
   files: string[];
 };
 
+/** Result of pruning a single task's worktree; `branchKept` flags an unmerged branch left behind. */
+export type KanbanPruneWorktreeResult = {
+  ok: boolean;
+  branchKept?: boolean;
+  error?: string;
+};
+
 export type KanbanAssignTaskToFeatureRequest = {
   taskId: string;
   featureId: string | null;

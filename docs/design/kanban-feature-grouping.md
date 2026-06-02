@@ -1,6 +1,6 @@
 # Kanban Feature Grouping, PR Tracking & Worktree Coordination
 
-**Status:** Phases 1–3 implemented; Phase 4 still design-only
+**Status:** Phases 1–4 implemented
 **Schema target:** v8 → v9 (single additive migration)
 
 ## Problem
@@ -253,7 +253,31 @@ Original design below (retained for reference):
 
 ## Phase 4 — Worktree lifecycle
 
-Kills pain #4.
+Kills pain #4. **Implemented 2026-06-02** with deliberate simplifications:
+- **Three prune mechanisms.** (1) Auto-prune on merge: `mergeReviewTask` calls `removeWorktree`
+  + `setWorktreePruned` after a successful merge (branch is now in base → safe). (2) Throttled
+  background sweep: `KanbanDispatcher.sweepMergedWorktrees()` (every `WORKTREE_SWEEP_INTERVAL_MS`
+  = 5 min, NOT every 5s tick — each candidate costs a git subprocess and unmerged PR'd/accepted
+  tasks never clear) over `store.worktreeTasks({statuses:['done','archived']})`, removing only
+  branches proven merged via `isBranchMerged`. (3) Manual "Branches" manager.
+- **Worktree list built from store tasks, not `git worktree list --porcelain`.** Each row links
+  to its task; orphaned worktrees with no task row aren't surfaced (rare). `removeWorktree` already
+  runs `git worktree prune` on failure to drop stale registrations.
+- **No drawer sub-mode** for the manager — a single "Branches" view-toggle tab (same spirit as
+  dropping `MergeOrderModal` in Phase 3).
+- **`pruneWorktree` refuses `running` AND `review`** tasks (a review task's worktree is needed for
+  its merge/PR action; pruning it would permanently break integration).
+
+Shipped surface: `workspace.ts` `worktreeStatus` (ahead/behind via `rev-list --left-right --count`
++ `isBranchMerged`); store `worktreeTasks({boardId?,statuses?})` (unified) / `setWorktreePruned`
+(sets `worktree_pruned=1`, clears `workspace_path`); `Task.worktreePruned`; commands `listWorktrees`
+/ `pruneWorktree` (→ `KanbanPruneWorktreeResult`) / `pruneMergedWorktrees` (→ `PruneResult`);
+auto-prune in `mergeReviewTask`; dispatcher `sweepMergedWorktrees`; `worktree_pruned` event (not in
+`classifyKanbanEvent` → no notification). UI: `WorktreeManager.tsx` ("Branches" tab) with per-row
+ahead/behind + merged/unmerged chip + individual Prune + "Prune merged (N)" bulk. Types
+`WorktreeInfo` / `PruneResult` in kanban-types.ts.
+
+Original design below (retained for reference):
 
 ### Backend / git
 

@@ -236,6 +236,7 @@ export class KanbanStore {
       prInfo: prInfoFromRow(r),
       conflictState: (r.conflict_state as ConflictState | null) ?? null,
       conflictFiles: JSON.parse(String(r.conflict_files ?? '[]')) as string[],
+      worktreePruned: Number(r.worktree_pruned ?? 0) === 1,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -907,6 +908,34 @@ export class KanbanStore {
     this.db
       .prepare('UPDATE tasks SET conflict_state=?, conflict_files=? WHERE id=?')
       .run(state, JSON.stringify(files), taskId);
+  }
+
+  /**
+   * Worktree tasks with a live workspace on disk (Phase 4). Used both by the board
+   * manager (all statuses on a board) and the prune sweep (finished tasks, any board).
+   */
+  worktreeTasks(filter: { boardId?: string; statuses?: TaskStatus[] } = {}): Task[] {
+    const where = ["workspace_kind='worktree'", 'workspace_path IS NOT NULL'];
+    const params: unknown[] = [];
+    if (filter.boardId) {
+      where.push('board_id=?');
+      params.push(filter.boardId);
+    }
+    if (filter.statuses?.length) {
+      where.push(`status IN (${filter.statuses.map(() => '?').join(',')})`);
+      params.push(...filter.statuses);
+    }
+    const rows = this.db
+      .prepare(`SELECT * FROM tasks WHERE ${where.join(' AND ')} ORDER BY created_at ASC`)
+      .all(...params) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** Mark a task's worktree as pruned: the dir is gone, so clear its path and flag it. */
+  setWorktreePruned(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET worktree_pruned=1, workspace_path=NULL, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
   }
 
   /** Open/draft-PR tasks not polled since `cutoff` (oldest sync first), for the PrPoller. */

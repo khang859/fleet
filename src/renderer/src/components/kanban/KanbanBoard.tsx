@@ -4,13 +4,23 @@ import { KanbanColumn } from './KanbanColumn';
 import { KanbanDrawer } from './KanbanDrawer';
 import { COLUMNS } from './kanban-utils';
 import type { TaskStatus } from '../../../../shared/kanban-types';
-import { Plus, Zap, Archive, Network, KanbanSquare, Package, Layers } from 'lucide-react';
+import {
+  Plus,
+  Zap,
+  Archive,
+  Network,
+  KanbanSquare,
+  Package,
+  Layers,
+  GitBranch
+} from 'lucide-react';
 import { SwarmModal } from './SwarmModal';
 import { ArtifactsView } from './ArtifactsView';
 import { RuneMissingBanner } from './RuneMissingBanner';
 import { FeatureSelector } from './FeatureSelector';
 import { FeaturesView } from './FeaturesView';
 import { FeaturePrRollup } from './FeaturePrRollup';
+import { WorktreeManager } from './WorktreeManager';
 
 export function KanbanBoard(): React.JSX.Element {
   const {
@@ -37,7 +47,7 @@ export function KanbanBoard(): React.JSX.Element {
     setFocusedFeature
   } = useKanbanStore();
   const focusedFeature = features.find((f) => f.id === selectedFeatureId) ?? null;
-  const [view, setView] = useState<'board' | 'artifacts' | 'features'>('board');
+  const [view, setView] = useState<'board' | 'artifacts' | 'features' | 'worktrees'>('board');
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
   const [showArchived, setShowArchived] = useState(false);
@@ -218,6 +228,16 @@ export function KanbanBoard(): React.JSX.Element {
           <Layers size={12} /> Features
         </button>
         <button
+          onClick={() => setView('worktrees')}
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+            view === 'worktrees'
+              ? 'bg-neutral-700 text-white'
+              : 'text-neutral-400 hover:bg-neutral-800'
+          }`}
+        >
+          <GitBranch size={12} /> Branches
+        </button>
+        <button
           onClick={() => setView('artifacts')}
           className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
             view === 'artifacts'
@@ -235,6 +255,8 @@ export function KanbanBoard(): React.JSX.Element {
         <ArtifactsView onReuseSeed={() => setView('board')} />
       ) : view === 'features' ? (
         <FeaturesView onFocus={() => setView('board')} />
+      ) : view === 'worktrees' ? (
+        <WorktreeManager onOpenTask={() => setView('board')} />
       ) : (
         <>
           <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2">

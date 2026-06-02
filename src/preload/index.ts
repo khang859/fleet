@@ -56,7 +56,8 @@ import type {
   KanbanCreateFeatureRequest,
   KanbanUpdateFeatureRequest,
   KanbanAssignTaskToFeatureRequest,
-  KanbanConflictResult
+  KanbanConflictResult,
+  KanbanPruneWorktreeResult
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -71,7 +72,9 @@ import type {
   SwarmInput,
   SwarmCreated,
   Feature,
-  FeatureDetail
+  FeatureDetail,
+  WorktreeInfo,
+  PruneResult
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type { RuneStatus } from '../shared/rune';
@@ -564,7 +567,13 @@ const fleetApi = {
     syncFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
       typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_SYNC_FEATURE, featureId),
     checkConflicts: async (taskId: string): Promise<KanbanConflictResult> =>
-      typedInvoke<KanbanConflictResult>(IPC_CHANNELS.KANBAN_CHECK_CONFLICTS, taskId)
+      typedInvoke<KanbanConflictResult>(IPC_CHANNELS.KANBAN_CHECK_CONFLICTS, taskId),
+    listWorktrees: async (boardId: string): Promise<WorktreeInfo[]> =>
+      typedInvoke<WorktreeInfo[]>(IPC_CHANNELS.KANBAN_LIST_WORKTREES, boardId),
+    pruneWorktree: async (taskId: string): Promise<KanbanPruneWorktreeResult> =>
+      typedInvoke<KanbanPruneWorktreeResult>(IPC_CHANNELS.KANBAN_PRUNE_WORKTREE, taskId),
+    pruneMergedWorktrees: async (boardId: string): Promise<PruneResult> =>
+      typedInvoke<PruneResult>(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, boardId)
   }
 };
 

@@ -2,11 +2,14 @@ import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { Task, RunMode } from '../../shared/kanban-types';
 import { computeNextRun, taskToScheduleInput } from './schedule';
-import { finalizeWorktree } from './workspace';
+import { finalizeWorktree, isBranchMerged, removeWorktree } from './workspace';
 
 const log = createLogger('kanban-dispatcher');
 
 const DEFAULT_INTERVAL_MS = 5000;
+
+/** Minimum gap between merged-worktree prune sweeps (a periodic safety net, not the fast path). */
+const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
 
 /**
  * Exit code rune returns from a `--require-tool` run that ended without the
@@ -63,6 +66,7 @@ export interface DispatcherDeps {
 export class KanbanDispatcher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private genLock = 0;
+  private lastWorktreeSweepAt = 0;
 
   constructor(
     private store: KanbanStore,
@@ -285,6 +289,44 @@ export class KanbanDispatcher {
     }
   }
 
+  /**
+   * Reclaim disk from finished worktrees whose branch is already merged into its base
+   * (a safety net behind merge-time auto-prune — catches tasks merged out-of-band).
+   * Only ever removes provably-merged worktrees, so no unmerged work is destroyed.
+   *
+   * Throttled to once every WORKTREE_SWEEP_INTERVAL_MS: each candidate costs a git
+   * subprocess, and the unmerged candidates (PR'd / accepted-as-is) never clear, so
+   * running it every 5s tick would re-scan them forever and stall claiming.
+   */
+  sweepMergedWorktrees(): void {
+    const now = this.deps.now();
+    if (now - this.lastWorktreeSweepAt < WORKTREE_SWEEP_INTERVAL_MS) return;
+    this.lastWorktreeSweepAt = now;
+    for (const task of this.store.worktreeTasks({ statuses: ['done', 'archived'] })) {
+      if (!task.workspacePath || !task.repoPath || !task.branchName || !task.baseBranch) continue;
+      if (
+        !isBranchMerged({
+          repoPath: task.repoPath,
+          branchName: task.branchName,
+          baseBranch: task.baseBranch
+        })
+      ) {
+        continue;
+      }
+      removeWorktree({
+        repoPath: task.repoPath,
+        workspacePath: task.workspacePath,
+        branchName: task.branchName,
+        baseBranch: task.baseBranch
+      });
+      this.store.setWorktreePruned(task.id);
+      this.store.appendEvent(task.id, null, 'worktree_pruned', {
+        branch: task.branchName,
+        by: 'sweep'
+      });
+    }
+  }
+
   tick(): void {
     this.reclaim();
     this.fireSchedules();
@@ -292,6 +334,7 @@ export class KanbanDispatcher {
     this.promote();
     this.claimAndSpawn();
     this.sweepArtifacts();
+    this.sweepMergedWorktrees();
   }
 
   start(): void {

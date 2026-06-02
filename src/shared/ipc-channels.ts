@@ -176,5 +176,8 @@ export const IPC_CHANNELS = {
   KANBAN_REDECOMPOSE: 'kanban:redecompose',
   KANBAN_SHIP_FEATURE: 'kanban:ship-feature',
   KANBAN_SYNC_FEATURE: 'kanban:sync-feature',
-  KANBAN_CHECK_CONFLICTS: 'kanban:check-conflicts'
+  KANBAN_CHECK_CONFLICTS: 'kanban:check-conflicts',
+  KANBAN_LIST_WORKTREES: 'kanban:list-worktrees',
+  KANBAN_PRUNE_WORKTREE: 'kanban:prune-worktree',
+  KANBAN_PRUNE_MERGED_WORKTREES: 'kanban:prune-merged-worktrees'
 } as const;

@@ -108,6 +108,30 @@ export interface FeatureDetail {
   rollup: FeatureRollup;
 }
 
+/**
+ * A live worktree on disk, linked to its task (Phase 4 worktree manager). Ahead/behind
+ * are commit counts of the branch vs its base; `merged` means the branch is an ancestor
+ * of the base (safe to prune).
+ */
+export interface WorktreeInfo {
+  taskId: string;
+  title: string;
+  status: TaskStatus;
+  repoPath: string;
+  workspacePath: string;
+  branchName: string | null;
+  baseBranch: string | null;
+  ahead: number;
+  behind: number;
+  merged: boolean;
+}
+
+/** Outcome of a (bulk) worktree prune: which branches were removed vs kept (unmerged). */
+export interface PruneResult {
+  pruned: number;
+  keptUnmerged: number;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -151,6 +175,8 @@ export interface Task {
   conflictState: ConflictState | null;
   /** Paths reported as conflicting by the last check; empty unless conflictState==='conflicts'. */
   conflictFiles: string[];
+  /** True once the worktree has been pruned from disk (Phase 4); the dir no longer exists. */
+  worktreePruned: boolean;
   createdAt: number;
   updatedAt: number;
 }

@@ -12,12 +12,15 @@ import type {
   Task,
   Feature,
   CreateFeatureInput,
-  UpdateFeatureInput
+  UpdateFeatureInput,
+  WorktreeInfo,
+  PruneResult
 } from '../../../shared/kanban-types';
 import type {
   KanbanArtifactPreviewResponse,
   KanbanReviewActionResult,
-  KanbanConflictResult
+  KanbanConflictResult,
+  KanbanPruneWorktreeResult
 } from '../../../shared/ipc-api';
 
 /** A pending "use artifact as input" request, consumed by the board's create form / swarm modal. */
@@ -48,6 +51,10 @@ type KanbanState = {
   shipFeature: (featureId: string) => Promise<KanbanReviewActionResult>;
   syncFeature: (featureId: string) => Promise<KanbanReviewActionResult>;
   checkConflicts: (taskId: string) => Promise<KanbanConflictResult>;
+  worktrees: WorktreeInfo[];
+  loadWorktrees: () => Promise<void>;
+  pruneWorktree: (taskId: string) => Promise<KanbanPruneWorktreeResult>;
+  pruneMergedWorktrees: () => Promise<PruneResult>;
   switchBoard: (slug: string) => Promise<void>;
   createBoard: (name: string) => Promise<void>;
   renameBoard: (slug: string, name: string) => Promise<void>;
@@ -103,6 +110,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
   features: [],
   selectedFeatureId: localStorage.getItem('fleet.kanban.focusedFeature') || null,
+  worktrees: [],
   seed: null,
   unreadCount: 0,
 
@@ -171,6 +179,22 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     const result = await window.fleet.kanban.checkConflicts(taskId);
     await get().loadBoard();
     await get().refreshDetail();
+    return result;
+  },
+  loadWorktrees: async () => {
+    const worktrees = await window.fleet.kanban.listWorktrees(get().activeBoardSlug);
+    set({ worktrees });
+  },
+  pruneWorktree: async (taskId) => {
+    const result = await window.fleet.kanban.pruneWorktree(taskId);
+    await get().loadWorktrees();
+    await get().loadBoard();
+    return result;
+  },
+  pruneMergedWorktrees: async () => {
+    const result = await window.fleet.kanban.pruneMergedWorktrees(get().activeBoardSlug);
+    await get().loadWorktrees();
+    await get().loadBoard();
     return result;
   },
   loadBoards: async () => {

@@ -308,5 +308,17 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     commands.checkConflictsForTask(taskId)
   );
 
+  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_WORKTREES, (_e, boardId: string) =>
+    commands.listWorktrees(boardId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PRUNE_WORKTREE, (_e, taskId: string) =>
+    commands.pruneWorktree(taskId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, (_e, boardId: string) =>
+    commands.pruneMergedWorktrees(boardId)
+  );
+
   log.info('kanban IPC handlers registered');
 }

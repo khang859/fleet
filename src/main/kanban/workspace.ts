@@ -202,6 +202,35 @@ export function removeWorktree(input: {
   return { branchKept: false };
 }
 
+/**
+ * Commit counts of `branchName` relative to `baseBranch` plus whether the branch is
+ * already merged (an ancestor of base, i.e. safe to prune). All local, never throws —
+ * a failed git call yields zeroes / not-merged so the manager degrades gracefully.
+ */
+export function worktreeStatus(input: {
+  repoPath: string;
+  branchName: string;
+  baseBranch: string;
+}): { ahead: number; behind: number; merged: boolean } {
+  const { repoPath, branchName, baseBranch } = input;
+  let ahead = 0;
+  let behind = 0;
+  try {
+    // `--left-right --count base...branch` → "<base-only>\t<branch-only>" = "<behind>\t<ahead>".
+    const out = execFileSync(
+      'git',
+      ['-C', repoPath, 'rev-list', '--left-right', '--count', `${baseBranch}...${branchName}`],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    const [b, a] = out.trim().split(/\s+/).map(Number);
+    behind = Number.isFinite(b) ? b : 0;
+    ahead = Number.isFinite(a) ? a : 0;
+  } catch {
+    // base/branch ref missing — leave zeroes.
+  }
+  return { ahead, behind, merged: isBranchMerged({ repoPath, branchName, baseBranch }) };
+}
+
 const COMMIT_IDENTITY = ['-c', 'user.name=Fleet', '-c', 'user.email=fleet@localhost'];
 
 /**
