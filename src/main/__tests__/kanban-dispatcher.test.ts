@@ -115,6 +115,53 @@ describe('KanbanDispatcher.reclaim', () => {
     store.close();
   });
 
+  it('blocks immediately on a retry-proof exit (blockNow) with the real cause, no retry', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100000);
+    const run = store.startRun(t.id, 'r', 9999);
+    const reason = 'rune authentication failed — fix the provider credentials and retry';
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) =>
+        id === run.id ? { code: 1, signal: null, fatalReason: reason, blockNow: true } : undefined
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('blocked');
+    expect(got?.result).toBe(reason); // surfaced verbatim, not "pid not alive"
+    expect(got?.consecutiveFailures).toBe(0); // definitive block — never entered the retry path
+    expect(store.listRuns(t.id)[0].outcome).toBe('crashed');
+    store.close();
+  });
+
+  it('surfaces a logged error as the reclaim reason while still retrying (no blockNow)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
+    store.claimTask(t.id, 'L', 100000);
+    const run = store.startRun(t.id, 'r', 9999);
+    const reason = "status 400 — Missing required parameter: 'input[11].content'";
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) =>
+        id === run.id ? { code: 1, signal: null, fatalReason: reason, blockNow: false } : undefined
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('ready'); // transient → retry (under failure limit)
+    expect(got?.consecutiveFailures).toBe(1);
+    expect(got?.lastFailureError).toBe(reason); // real cause, not "pid not alive"
+    store.close();
+  });
+
   it('treats a non-zero crash exit as a failure and reaps it past the grace window', () => {
     const clock = { t: 1000 };
     const store = makeStore(clock);

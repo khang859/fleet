@@ -37,6 +37,13 @@ export interface DispatcherConfig {
 export interface WorkerExit {
   code: number | null;
   signal: string | null;
+  // The real cause of death, extracted from the worker log at exit time (a rune
+  // `[error: …]`: auth failure, provider 4xx, etc.). Surfaced in place of the
+  // cryptic "pid not alive" reclaim reason.
+  fatalReason?: string;
+  // Deterministic failure (auth/credentials, or an instant startup crash) that
+  // retrying cannot fix — block immediately instead of spending the retry budget.
+  blockNow?: boolean;
 }
 
 export interface DispatcherDeps {
@@ -103,7 +110,23 @@ export class KanbanDispatcher {
         continue;
       }
 
-      const reason = expired ? 'claim expired' : 'worker pid not alive';
+      // A deterministic, retry-proof failure (auth/credentials, or a crash within
+      // the startup window): route it straight to a definitive block with the real
+      // cause, instead of burning the retry budget on repeated cryptic reclaims.
+      if (exit?.blockNow && exit.fatalReason) {
+        if (task.currentRunId != null) {
+          this.store.finishRun(task.currentRunId, 'crashed', { error: exit.fatalReason });
+          this.deps.clearWorkerExit?.(task.currentRunId);
+        }
+        this.store.blockTask(task.id, exit.fatalReason);
+        this.store.appendEvent(task.id, task.currentRunId, 'blocked', { reason: exit.fatalReason });
+        log.warn('worker blocked on fatal exit', { taskId: task.id, reason: exit.fatalReason });
+        continue;
+      }
+
+      // Prefer the worker's own logged error over the cryptic "pid not alive" so a
+      // retried-then-given-up task carries the real cause (e.g. a provider 4xx).
+      const reason = exit?.fatalReason ?? (expired ? 'claim expired' : 'worker pid not alive');
       if (task.currentRunId != null) {
         this.store.finishRun(task.currentRunId, 'reclaimed', { error: reason });
         this.deps.clearWorkerExit?.(task.currentRunId);

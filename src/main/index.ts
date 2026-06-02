@@ -50,7 +50,13 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
-import { spawnRuneWorker, resolveWorkProfile } from './kanban/spawn-worker';
+import {
+  spawnRuneWorker,
+  resolveWorkProfile,
+  detectAuthFailure,
+  extractRuneError,
+  lastLogLine
+} from './kanban/spawn-worker';
 import { RuneManager } from './rune-manager';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
@@ -791,6 +797,9 @@ void app.whenReady().then(async () => {
   const kanbanMcpPort = await kanbanMcp.start(0);
 
   const kanbanMcpRef = kanbanMcp;
+  // A worker that dies this soon after spawn never did real work — treat such a
+  // crash as a deterministic startup failure (block now) rather than retrying.
+  const KANBAN_STARTUP_CRASH_MS = 10_000;
   // How each worker process exited, keyed by runId. Lets reclaim() tell a clean
   // "ended turn without completing" (rune exit 3) apart from a crash. Pruned as
   // soon as reclaim consumes an entry; entries are only recorded for runs that
@@ -880,6 +889,8 @@ void app.whenReady().then(async () => {
         // task_runs.profile), leaving the card unassigned otherwise.
         kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
       }
+      const logPath = join(KANBAN_HOME, 'logs', `${runToken}.log`);
+      const spawnedAt = Date.now();
       return spawnRuneWorker(
         {
           task: {
@@ -892,7 +903,7 @@ void app.whenReady().then(async () => {
           workspace,
           mcpPort: kanbanMcpPort,
           runToken,
-          logPath: join(KANBAN_HOME, 'logs', `${runToken}.log`),
+          logPath,
           mode,
           profile,
           roster,
@@ -912,9 +923,30 @@ void app.whenReady().then(async () => {
         // classify rune's exit-3 "incomplete" without false-flagging successes.
         (exit) => {
           const t = kanbanStore!.getTask(task.id);
-          if (t?.status === 'running' && t.currentRunId === runId) {
-            workerExits.set(runId, exit);
+          if (t?.status !== 'running' || t.currentRunId !== runId) return;
+          // Classify the cause of death while the log path is in scope, so the
+          // dispatcher can surface the real error and block retry-proof failures
+          // instead of looping on a cryptic "pid not alive" reclaim.
+          const authFailed = detectAuthFailure(logPath);
+          const runeError = extractRuneError(logPath);
+          const crashed = (exit.code != null && exit.code !== 0) || exit.signal != null;
+          const startupCrash = crashed && Date.now() - spawnedAt < KANBAN_STARTUP_CRASH_MS;
+          let fatalReason: string | undefined;
+          let blockNow = false;
+          if (authFailed) {
+            fatalReason = `rune authentication failed${runeError ? `: ${runeError}` : ''} — fix the provider credentials (e.g. \`rune login\`) and retry`;
+            blockNow = true;
+          } else if (runeError) {
+            // A provider/runtime error (e.g. a 4xx). Surface it; only block now if
+            // it also died on startup — otherwise let the retry budget absorb transients.
+            fatalReason = runeError;
+            blockNow = startupCrash;
+          } else if (startupCrash) {
+            const line = lastLogLine(logPath);
+            fatalReason = `worker crashed on startup${line ? `: ${line}` : ''}`;
+            blockNow = true;
           }
+          workerExits.set(runId, { ...exit, fatalReason, blockNow });
         }
       );
     },

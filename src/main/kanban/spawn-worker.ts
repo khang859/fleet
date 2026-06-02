@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { mkdirSync, writeFileSync, openSync, closeSync } from 'fs';
+import { mkdirSync, writeFileSync, openSync, closeSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { createLogger } from '../logger';
 import { renderProfileMarkdown } from './profile-file';
@@ -180,6 +180,60 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
 export interface WorkerExit {
   code: number | null;
   signal: NodeJS.Signals | null;
+}
+
+/**
+ * Provider auth failures across rune's providers: codex OAuth refresh
+ * (`auth refresh failed` / `refresh_token_*` / "sign in again"), and API-key
+ * providers (groq/runpod/openrouter) that reject with 401/unauthorized/invalid
+ * key. Retrying can never fix these — credentials must be fixed — so the
+ * dispatcher blocks the task immediately instead of burning the retry budget on
+ * a cryptic "pid not alive". Provider-agnostic by design.
+ */
+const AUTH_FAILURE_RE =
+  /auth(?:entication)?\s+(?:refresh\s+)?failed|refresh_token|sign(?:ing)?\s+in\s+again|invalid_grant|invalid[_\s]?api[_\s]?key|missing\s+api\s+key|\bunauthorized\b|\b401\b/i;
+
+/** Reads up to the last `maxBytes` of a (possibly missing) log file; '' on any error. */
+function readLogTail(logPath: string, maxBytes = 8192): string {
+  try {
+    const buf = readFileSync(logPath);
+    return buf.subarray(Math.max(0, buf.length - maxBytes)).toString('utf-8');
+  } catch {
+    return '';
+  }
+}
+
+/** True when the worker log shows a provider auth/credential failure. */
+export function detectAuthFailure(logPath: string): boolean {
+  return AUTH_FAILURE_RE.test(readLogTail(logPath));
+}
+
+/**
+ * Extracts the most recent rune `[error: …]` marker from a worker log — the
+ * fatal provider/runtime error rune prints before dying (auth, a 4xx like
+ * `status 400: Missing required parameter`, etc.). Prefers the human `message`
+ * field, prefixed by the headline, so the dispatcher can surface the real cause
+ * instead of "pid not alive". Returns undefined when the log has no error marker.
+ */
+export function extractRuneError(logPath: string, maxLen = 300): string | undefined {
+  const tail = readLogTail(logPath);
+  const idx = tail.lastIndexOf('[error:');
+  if (idx === -1) return undefined;
+  const chunk = tail.slice(idx + '[error:'.length);
+  const headline = (chunk.split('\n')[0] ?? '').replace(/[{[\s]+$/, '').trim();
+  const message = chunk.match(/"message"\s*:\s*"([^"]+)"/)?.[1];
+  const text = message && headline ? `${headline} — ${message}` : (message ?? headline);
+  return text ? text.slice(0, maxLen) : undefined;
+}
+
+/** Last non-empty line of the worker log, trimmed and capped — a fallback crash reason. */
+export function lastLogLine(logPath: string, maxLen = 200): string | undefined {
+  const lines = readLogTail(logPath)
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const last = lines[lines.length - 1];
+  return last ? last.slice(0, maxLen) : undefined;
 }
 
 export function spawnRuneWorker(

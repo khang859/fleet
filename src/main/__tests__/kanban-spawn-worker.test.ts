@@ -1,8 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { buildWorkerInvocation, resolveWorkProfile } from '../kanban/spawn-worker';
+import {
+  buildWorkerInvocation,
+  resolveWorkProfile,
+  detectAuthFailure,
+  extractRuneError,
+  lastLogLine
+} from '../kanban/spawn-worker';
 import type { WorkerProfile } from '../../shared/types';
 
 const ROOT = join(tmpdir(), `fleet-kanban-spawn-test-${Date.now()}`);
@@ -348,5 +354,56 @@ describe('buildWorkerInvocation', () => {
     });
     const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
     expect(prompt).not.toContain('attached by the user');
+  });
+});
+
+describe('worker-log classification', () => {
+  beforeEach(() => mkdirSync(ROOT, { recursive: true }));
+  afterEach(() => rmSync(ROOT, { recursive: true, force: true }));
+
+  const write = (name: string, contents: string): string => {
+    const p = join(ROOT, name);
+    writeFileSync(p, contents);
+    return p;
+  };
+
+  it('detects a codex OAuth refresh failure', () => {
+    const p = write(
+      'auth1.log',
+      '\n[error: auth refresh failed: token endpoint 401: {\n  "error": {\n    "message": "Your refresh token has been invalidated. Please try signing in again.",\n    "code": "refresh_token_invalidated"\n  }\n}]'
+    );
+    expect(detectAuthFailure(p)).toBe(true);
+    expect(extractRuneError(p)).toContain('auth refresh failed');
+    expect(extractRuneError(p)).toContain('Your refresh token has been invalidated');
+  });
+
+  it('detects an API-key provider 401/unauthorized failure', () => {
+    const p = write('auth2.log', '[error: status 401: {\n  "message": "Invalid API key"\n}]');
+    expect(detectAuthFailure(p)).toBe(true);
+  });
+
+  it('does not flag a non-auth provider error as an auth failure', () => {
+    const p = write(
+      'err400.log',
+      '[tool: kanban_create]\n[error: status 400: {\n  "error": {\n    "message": "Missing required parameter: \'input[11].content\'.",\n    "type": "invalid_request_error"\n  }\n}]'
+    );
+    expect(detectAuthFailure(p)).toBe(false);
+    const err = extractRuneError(p);
+    expect(err).toContain('status 400');
+    expect(err).toContain('Missing required parameter');
+  });
+
+  it('returns undefined when the log has no error marker or is missing', () => {
+    const p = write('clean.log', '[tool: read]\n[done: 10 bytes]\nCompleted task abc.');
+    expect(extractRuneError(p)).toBeUndefined();
+    expect(detectAuthFailure(p)).toBe(false);
+    expect(extractRuneError(join(ROOT, 'does-not-exist.log'))).toBeUndefined();
+    expect(detectAuthFailure(join(ROOT, 'does-not-exist.log'))).toBe(false);
+  });
+
+  it('lastLogLine returns the final non-empty line, capped', () => {
+    const p = write('tail.log', 'first\n\n  panic: runtime error: index out of range  \n\n');
+    expect(lastLogLine(p)).toBe('panic: runtime error: index out of range');
+    expect(lastLogLine(p, 5)).toBe('panic');
   });
 });
