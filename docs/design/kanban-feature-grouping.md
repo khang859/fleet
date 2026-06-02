@@ -1,6 +1,6 @@
 # Kanban Feature Grouping, PR Tracking & Worktree Coordination
 
-**Status:** Design — not yet implemented
+**Status:** Phases 1–3 implemented; Phase 4 still design-only
 **Schema target:** v8 → v9 (single additive migration)
 
 ## Problem
@@ -210,7 +210,26 @@ Kills pain #2.
 
 ## Phase 3 — Integration branch + merge coordination
 
-Kills pain #3.
+Kills pain #3. **Implemented 2026-06-02** with two deliberate simplifications:
+- **No separate `mergeTaskIntoFeature`.** The integration branch is created lazily in
+  `prepareWorkspaceFn` (`ensureFeatureBranch`, local-only so the dispatcher tick never
+  hits the network), and the worktree branches off it. Because the captured `baseBranch`
+  cascades (and `inheritWorkspace` already propagates it), the *existing* `mergeReviewTask`
+  → `mergeWorktreeToBase` path already merges feature tasks back into the integration
+  branch — no new merge method, no MCP changes.
+- **No `MergeOrderModal`.** Per-task Merge from the drawer suffices; a sortable batch-merge
+  modal was dropped as speculative.
+
+Shipped surface: `workspace.ts` `ensureFeatureBranch` / `checkMergeConflicts`
+(`git merge-tree --write-tree`) / `updateIntegrationBranchFromMain` (temp-worktree merge)
+/ `createFeaturePr` (+ extracted `ghPrCreate`); commands `checkConflictsForTask`,
+`shipFeature`, `syncFeatureWithMain`; store `setTaskConflict` / `setFeaturePr`; conflict
+pre-check computed on review entry (`kanban_complete`) + on demand; `Task.conflictState`
+/ `conflictFiles`. UI: card conflict badge, drawer conflict warning + Re-check, and a
+Ship/Sync strip in `FeaturePrRollup`. If `ensureFeatureBranch` fails it throws (→
+`spawn_failed`) rather than silently merging into main.
+
+Original design below (retained for reference):
 
 ### Git (`workspace.ts`)
 

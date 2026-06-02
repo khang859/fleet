@@ -296,5 +296,17 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     commands.redecompose(featureId)
   );
 
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SHIP_FEATURE, (_e, featureId: string) =>
+    commands.shipFeature(featureId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SYNC_FEATURE, (_e, featureId: string) =>
+    commands.syncFeatureWithMain(featureId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_CHECK_CONFLICTS, (_e, taskId: string) =>
+    commands.checkConflictsForTask(taskId)
+  );
+
   log.info('kanban IPC handlers registered');
 }

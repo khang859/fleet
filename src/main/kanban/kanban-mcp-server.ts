@@ -6,7 +6,7 @@ import type { KanbanStore } from './kanban-store';
 import type { RunMode, SwarmInput, SwarmCreated, Task } from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
-import { finalizeWorktree, reviewStat } from './workspace';
+import { finalizeWorktree, reviewStat, checkMergeConflicts } from './workspace';
 
 const log = createLogger('kanban-mcp');
 
@@ -408,6 +408,16 @@ export class KanbanMcpServer {
               baseBranch: task.baseBranch
             });
             this.store.reviewTask(task.id, a.summary);
+            // Pre-compute whether this will merge cleanly into its base (the feature
+            // integration branch, for feature tasks) so the board can warn up-front.
+            if (task.repoPath && task.branchName && task.baseBranch) {
+              const c = checkMergeConflicts({
+                repoPath: task.repoPath,
+                baseBranch: task.baseBranch,
+                branchName: task.branchName
+              });
+              this.store.setTaskConflict(task.id, c.state, c.files);
+            }
             this.store.finishRun(scope.runId, 'completed', {
               summary: a.summary,
               metadata: { ...a.metadata, review: stat ?? undefined }

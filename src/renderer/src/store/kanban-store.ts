@@ -16,7 +16,8 @@ import type {
 } from '../../../shared/kanban-types';
 import type {
   KanbanArtifactPreviewResponse,
-  KanbanReviewActionResult
+  KanbanReviewActionResult,
+  KanbanConflictResult
 } from '../../../shared/ipc-api';
 
 /** A pending "use artifact as input" request, consumed by the board's create form / swarm modal. */
@@ -44,6 +45,9 @@ type KanbanState = {
   setFocusedFeature: (id: string | null) => void;
   assignFeature: (taskId: string, featureId: string | null) => Promise<void>;
   redecompose: (featureId: string) => Promise<void>;
+  shipFeature: (featureId: string) => Promise<KanbanReviewActionResult>;
+  syncFeature: (featureId: string) => Promise<KanbanReviewActionResult>;
+  checkConflicts: (taskId: string) => Promise<KanbanConflictResult>;
   switchBoard: (slug: string) => Promise<void>;
   createBoard: (name: string) => Promise<void>;
   renameBoard: (slug: string, name: string) => Promise<void>;
@@ -152,6 +156,22 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     await window.fleet.kanban.redecompose(featureId);
     await get().loadBoard();
     await get().refreshDetail();
+  },
+  shipFeature: async (featureId) => {
+    const result = await window.fleet.kanban.shipFeature(featureId);
+    await get().loadFeatures();
+    return result;
+  },
+  syncFeature: async (featureId) => {
+    const result = await window.fleet.kanban.syncFeature(featureId);
+    await get().loadFeatures();
+    return result;
+  },
+  checkConflicts: async (taskId) => {
+    const result = await window.fleet.kanban.checkConflicts(taskId);
+    await get().loadBoard();
+    await get().refreshDetail();
+    return result;
   },
   loadBoards: async () => {
     const boards = await window.fleet.kanban.listBoards();

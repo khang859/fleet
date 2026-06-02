@@ -9,7 +9,8 @@ import type {
   SwarmInput,
   CreateFeatureInput,
   UpdateFeatureInput,
-  FeatureStatus
+  FeatureStatus,
+  ConflictState
 } from './kanban-types';
 
 export type PtyCreateRequest = {
@@ -362,6 +363,12 @@ export type KanbanCreateFeatureRequest = CreateFeatureInput;
 export type KanbanUpdateFeatureRequest = {
   id: string;
   fields: UpdateFeatureInput;
+};
+
+/** Result of a local pre-merge conflict check for a task. */
+export type KanbanConflictResult = {
+  state: ConflictState | null;
+  files: string[];
 };
 
 export type KanbanAssignTaskToFeatureRequest = {

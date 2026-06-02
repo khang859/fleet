@@ -173,5 +173,8 @@ export const IPC_CHANNELS = {
   KANBAN_ARCHIVE_FEATURE: 'kanban:archive-feature',
   KANBAN_DELETE_FEATURE: 'kanban:delete-feature',
   KANBAN_ASSIGN_TASK_TO_FEATURE: 'kanban:assign-task-to-feature',
-  KANBAN_REDECOMPOSE: 'kanban:redecompose'
+  KANBAN_REDECOMPOSE: 'kanban:redecompose',
+  KANBAN_SHIP_FEATURE: 'kanban:ship-feature',
+  KANBAN_SYNC_FEATURE: 'kanban:sync-feature',
+  KANBAN_CHECK_CONFLICTS: 'kanban:check-conflicts'
 } as const;

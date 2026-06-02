@@ -1,5 +1,12 @@
 import type { BoardCard } from '../../../../shared/kanban-types';
-import { MessageSquare, GitBranch, Clock, PauseCircle, FileText } from 'lucide-react';
+import {
+  MessageSquare,
+  GitBranch,
+  Clock,
+  PauseCircle,
+  FileText,
+  AlertTriangle
+} from 'lucide-react';
 import { scheduleSummary, formatNextRun } from './kanban-utils';
 import { PrStatusBadge } from './PrStatusBadge';
 
@@ -64,6 +71,18 @@ export function KanbanCard({
           </span>
         )}
         {card.prInfo && <PrStatusBadge pr={card.prInfo} />}
+        {card.conflictState === 'conflicts' && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded bg-red-500/20 px-1 text-red-300"
+            title={
+              card.conflictFiles.length > 0
+                ? `Merge conflicts in:\n${card.conflictFiles.join('\n')}`
+                : 'Merge conflicts against base'
+            }
+          >
+            <AlertTriangle size={10} /> conflicts
+          </span>
+        )}
         {card.childTotal > 0 && (
           <span className="inline-flex items-center gap-0.5">
             <GitBranch size={10} /> {card.childDone}/{card.childTotal}

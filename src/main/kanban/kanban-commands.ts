@@ -24,12 +24,20 @@ import type {
   FeatureStatus,
   CreateFeatureInput,
   UpdateFeatureInput,
-  FeatureDetail
+  FeatureDetail,
+  ConflictState
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
-import { removeWorktree, mergeWorktreeToBase, pushAndCreatePr } from './workspace';
+import {
+  removeWorktree,
+  mergeWorktreeToBase,
+  pushAndCreatePr,
+  checkMergeConflicts,
+  createFeaturePr,
+  updateIntegrationBranchFromMain
+} from './workspace';
 import { dirname } from 'path';
 import type { KanbanReviewActionResult } from '../../shared/ipc-api';
 import { removeAttachmentFile } from './attachments';
@@ -702,6 +710,35 @@ export class KanbanCommands {
     return { ok: true, message: 'accepted; branch preserved' };
   }
 
+  /**
+   * Predict whether a worktree task's branch will merge cleanly into its base
+   * (the feature integration branch, for feature tasks) and persist the result so
+   * the board/drawer can warn before the merge is attempted. A no-op for tasks
+   * without a worktree branch + base.
+   */
+  checkConflictsForTask(id: string): { state: ConflictState | null; files: string[] } {
+    const task = this.requireTask(id);
+    if (
+      task.workspaceKind !== 'worktree' ||
+      !task.repoPath ||
+      !task.branchName ||
+      !task.baseBranch
+    ) {
+      return { state: null, files: [] };
+    }
+    const res = checkMergeConflicts({
+      repoPath: task.repoPath,
+      baseBranch: task.baseBranch,
+      branchName: task.branchName
+    });
+    this.store.setTaskConflict(id, res.state, res.files);
+    this.store.appendEvent(id, null, 'conflict_checked', {
+      state: res.state,
+      files: res.files.length
+    });
+    return res;
+  }
+
   // ---- Features (task grouping) ----
 
   private requireFeature(id: string): Feature {
@@ -828,6 +865,86 @@ export class KanbanCommands {
     this.requestDecompose(triage.id);
     this.dispatcher.tick();
     return triage;
+  }
+
+  /** Shared guard: a feature with the repo + integration branch needed for git ops. */
+  private requireShippableFeature(id: string): {
+    feature: Feature;
+    repoPath: string;
+    integrationBranch: string;
+    baseBranch: string;
+  } {
+    const feature = this.requireFeature(id);
+    if (!feature.repoPath) {
+      throw new CodedError('feature has no repo to ship from', 'BAD_REQUEST');
+    }
+    if (!feature.integrationBranch) {
+      throw new CodedError(
+        'feature has no integration branch yet; run a worktree task in it first',
+        'BAD_REQUEST'
+      );
+    }
+    // Integration was cut from baseBranch; default to main when the feature left it unset.
+    return {
+      feature,
+      repoPath: feature.repoPath,
+      integrationBranch: feature.integrationBranch,
+      baseBranch: feature.baseBranch ?? 'main'
+    };
+  }
+
+  /** Refresh a feature's integration branch with the latest base (main). */
+  syncFeatureWithMain(featureId: string): KanbanReviewActionResult {
+    const { repoPath, integrationBranch, baseBranch } = this.requireShippableFeature(featureId);
+    const res = updateIntegrationBranchFromMain({ repoPath, integrationBranch, baseBranch });
+    if (!res.ok) {
+      const reason = res.conflict
+        ? `${baseBranch} conflicts with ${integrationBranch}; resolve manually`
+        : (res.error ?? 'sync failed');
+      this.store.updateFeature(featureId, { mergeState: res.conflict ? 'conflict' : undefined });
+      this.store.appendEvent(featureId, null, 'feature_sync_failed', { conflict: !!res.conflict });
+      return { ok: false, conflict: res.conflict, error: reason };
+    }
+    this.store.appendEvent(featureId, null, 'feature_synced', {
+      upToDate: !!res.alreadyUpToDate
+    });
+    return {
+      ok: true,
+      message: res.alreadyUpToDate ? `already up to date with ${baseBranch}` : `synced with ${baseBranch}`
+    };
+  }
+
+  /** Open the single feature→main PR for a whole feature (syncs with main first). */
+  shipFeature(featureId: string): KanbanReviewActionResult {
+    const { feature, repoPath, integrationBranch, baseBranch } =
+      this.requireShippableFeature(featureId);
+    // Pre-flight: bring the integration branch up to date so the PR is mergeable.
+    const sync = updateIntegrationBranchFromMain({ repoPath, integrationBranch, baseBranch });
+    if (!sync.ok) {
+      const reason = sync.conflict
+        ? `${baseBranch} conflicts with ${integrationBranch}; resolve before shipping`
+        : (sync.error ?? 'sync failed');
+      this.store.appendEvent(featureId, null, 'feature_sync_failed', { conflict: !!sync.conflict });
+      return { ok: false, conflict: sync.conflict, error: reason };
+    }
+    const res = createFeaturePr({
+      repoPath,
+      integrationBranch,
+      baseBranch,
+      title: feature.name,
+      body: `Ships feature "${feature.name}".`
+    });
+    if (!res.ok) {
+      this.store.appendEvent(featureId, null, 'feature_pr_failed', { error: res.error });
+      return { ok: false, error: res.error };
+    }
+    if (res.url) this.store.setFeaturePr(featureId, res.url, res.number ?? null);
+    this.store.updateFeature(featureId, { mergeState: 'in_progress' });
+    this.store.appendEvent(featureId, null, 'feature_pr_created', {
+      url: res.url,
+      number: res.number
+    });
+    return { ok: true, prUrl: res.url, message: 'feature pull request opened' };
   }
 
   dispatch(): void {

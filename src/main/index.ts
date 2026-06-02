@@ -49,7 +49,7 @@ import { KanbanDispatcher } from './kanban/kanban-dispatcher';
 import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
-import { prepareWorkspace } from './kanban/workspace';
+import { prepareWorkspace, ensureFeatureBranch } from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import {
   spawnRuneWorker,
@@ -830,6 +830,36 @@ void app.whenReady().then(async () => {
       }
     },
     prepareWorkspaceFn: (task) => {
+      // A worktree task in a feature branches off the feature's integration branch
+      // (`fleet/feature-<id>`), created on first use. The captured base then cascades:
+      // the task merges back into integration, and decompose children inherit it.
+      let featureStartPoint: string | undefined;
+      if (
+        task.featureId &&
+        task.workspaceKind === 'worktree' &&
+        task.repoPath &&
+        task.workspacePath == null
+      ) {
+        const feature = kanbanStore!.getFeature(task.featureId);
+        if (feature) {
+          const integrationBranch = feature.integrationBranch ?? `fleet/feature-${feature.id}`;
+          const ensured = ensureFeatureBranch({
+            repoPath: task.repoPath,
+            integrationBranch,
+            baseBranch: feature.baseBranch ?? undefined
+          });
+          if (!ensured.ok) {
+            // Fail fast: silently falling back to repo HEAD would merge this
+            // feature task into main instead of its integration branch. The
+            // dispatcher turns this into a visible spawn_failed for the task.
+            throw new Error(`feature integration branch setup failed: ${ensured.error}`);
+          }
+          featureStartPoint = integrationBranch;
+          if (!feature.integrationBranch) {
+            kanbanStore!.updateFeature(feature.id, { integrationBranch, mergeState: 'pending' });
+          }
+        }
+      }
       const prepared = prepareWorkspace({
         kind: task.workspaceKind,
         taskId: task.id,
@@ -839,8 +869,9 @@ void app.whenReady().then(async () => {
         repoPath: task.repoPath ?? undefined,
         branchName: task.branchName ?? undefined,
         // A dependent child branches from its parent's base so it inherits the
-        // parent's merged work; top-level tasks fall back to the repo's HEAD.
-        startPoint: task.baseBranch ?? undefined
+        // parent's merged work; a feature task branches off its integration branch;
+        // top-level tasks fall back to the repo's HEAD.
+        startPoint: task.baseBranch ?? featureStartPoint ?? undefined
       });
       // Persist the workspace path for worktree AND scratch tasks so the artifact MCP handler,
       // archive warning, and reveal/discard actions all resolve the same durable path.

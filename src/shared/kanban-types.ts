@@ -38,6 +38,8 @@ export type FeatureMergeState = 'pending' | 'in_progress' | 'conflict' | 'merged
 export type PrState = 'open' | 'merged' | 'closed' | 'draft';
 /** Rolled-up CI status of a PR's checks. */
 export type ChecksState = 'passing' | 'failing' | 'pending';
+/** Result of a local pre-merge conflict check (Phase 3). */
+export type ConflictState = 'clean' | 'conflicts' | 'error';
 
 /** GitHub PR status for a task, polled from `gh`. Null fields until first sync. */
 export interface TaskPrInfo {
@@ -145,6 +147,10 @@ export interface Task {
   scheduledFrom: string | null;
   /** GitHub PR tracking; null when the task has no PR. */
   prInfo: TaskPrInfo | null;
+  /** Local pre-merge conflict check vs the branch's base (Phase 3); null until checked. */
+  conflictState: ConflictState | null;
+  /** Paths reported as conflicting by the last check; empty unless conflictState==='conflicts'. */
+  conflictFiles: string[];
   createdAt: number;
   updatedAt: number;
 }

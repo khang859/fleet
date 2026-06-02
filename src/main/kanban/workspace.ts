@@ -1,7 +1,8 @@
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
-import type { WorkspaceKind, PrState, ChecksState } from '../../shared/kanban-types';
+import { tmpdir } from 'os';
+import type { WorkspaceKind, PrState, ChecksState, ConflictState } from '../../shared/kanban-types';
 
 export interface PrepareWorkspaceInput {
   kind: WorkspaceKind;
@@ -435,6 +436,20 @@ export function pushAndCreatePr(input: {
   } catch (err) {
     return { ok: false, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
   }
+  return ghPrCreate({ cwd: workspacePath, base: baseBranch, head: branchName, title, body });
+}
+
+/**
+ * Open a PR via `gh pr create`, run in `cwd`. `gh` reports an already-existing PR
+ * (with its URL) as an error, which we treat as success so the action is idempotent.
+ */
+function ghPrCreate(input: {
+  cwd: string;
+  base: string;
+  head: string;
+  title: string;
+  body: string;
+}): { ok: boolean; url?: string; number?: number; error?: string } {
   try {
     const out = execFileSync(
       'gh',
@@ -442,15 +457,15 @@ export function pushAndCreatePr(input: {
         'pr',
         'create',
         '--base',
-        baseBranch,
+        input.base,
         '--head',
-        branchName,
+        input.head,
         '--title',
-        title,
+        input.title,
         '--body',
-        body || title
+        input.body || input.title
       ],
-      { cwd: workspacePath, encoding: 'utf8' }
+      { cwd: input.cwd, encoding: 'utf8' }
     );
     const url = out.match(/https?:\/\/\S+/)?.[0] ?? out.trim();
     return { ok: true, url, number: prNumberFromUrl(url) };
@@ -460,7 +475,6 @@ export function pushAndCreatePr(input: {
       return { ok: false, error: 'gh CLI not found. Install GitHub CLI to create PRs.' };
     }
     const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
-    // `gh` reports an existing PR (with its URL) as an error — treat that as success.
     const existing = msg.match(/https?:\/\/\S+/)?.[0];
     if (existing) return { ok: true, url: existing, number: prNumberFromUrl(existing) };
     return { ok: false, error: `gh pr create failed: ${msg}` };
@@ -471,6 +485,174 @@ export function pushAndCreatePr(input: {
 function prNumberFromUrl(url: string | undefined): number | undefined {
   const m = url?.match(/\/pull\/(\d+)/);
   return m ? Number(m[1]) : undefined;
+}
+
+/** Best start ref for cutting/merging a branch: origin/<base>, then <base>, then HEAD. */
+function resolveStartRef(repoPath: string, base: string | undefined): string {
+  if (base) {
+    for (const ref of [`origin/${base}`, base]) {
+      try {
+        execFileSync('git', ['-C', repoPath, 'rev-parse', '--verify', '--quiet', ref], {
+          stdio: 'ignore'
+        });
+        return ref;
+      } catch {
+        // not present; try the next candidate
+      }
+    }
+  }
+  return 'HEAD';
+}
+
+/**
+ * Create a feature's integration branch (`fleet/feature-<id>`) if absent, cut from
+ * the local base (origin/<base>, else local <base>, else HEAD). Idempotent. No
+ * network here on purpose — this runs inside the dispatcher tick, so a `git fetch`
+ * would stall task claiming; remote freshness is handled off-tick by sync/ship.
+ * Never pushed here either — that happens at ship time.
+ */
+export function ensureFeatureBranch(input: {
+  repoPath: string;
+  integrationBranch: string;
+  baseBranch?: string | null;
+}): { ok: boolean; error?: string } {
+  const { repoPath, integrationBranch } = input;
+  if (!isGitRepo(repoPath)) return { ok: false, error: `not a git repo: ${repoPath}` };
+  if (branchExists(repoPath, integrationBranch)) return { ok: true };
+  try {
+    execFileSync(
+      'git',
+      ['-C', repoPath, 'branch', integrationBranch, resolveStartRef(repoPath, input.baseBranch ?? undefined)],
+      { stdio: ['ignore', 'ignore', 'pipe'] }
+    );
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: `could not create ${integrationBranch}: ${gitStderr(err)}` };
+  }
+}
+
+/**
+ * Predict whether `branchName` will merge cleanly into `baseBranch` without
+ * touching either tree, via `git merge-tree --write-tree` (Git ≥2.38), returning
+ * the conflicted paths when it won't. 'error' means the prediction itself failed
+ * (older git, unknown ref) — not that a conflict exists.
+ */
+export function checkMergeConflicts(input: {
+  repoPath: string;
+  baseBranch: string;
+  branchName: string;
+}): { state: ConflictState; files: string[] } {
+  const { repoPath, baseBranch, branchName } = input;
+  try {
+    execFileSync(
+      'git',
+      ['-C', repoPath, 'merge-tree', '--write-tree', '--no-messages', baseBranch, branchName],
+      { stdio: ['ignore', 'pipe', 'pipe'] }
+    );
+    return { state: 'clean', files: [] };
+  } catch (err) {
+    const e = err as { status?: number; stdout?: Buffer };
+    // Exit 1 = the merge conflicts; conflicted entries are printed to stdout.
+    if (e.status === 1) {
+      return { state: 'conflicts', files: parseMergeTreeConflicts(e.stdout?.toString() ?? '') };
+    }
+    return { state: 'error', files: [] };
+  }
+}
+
+/**
+ * Pull conflicted paths from `git merge-tree --write-tree` output: after the
+ * top-level tree OID, conflicting entries print as `<mode> <oid> <stage>\t<path>`
+ * (one line per stage) — collect each distinct path.
+ */
+function parseMergeTreeConflicts(out: string): string[] {
+  const files = new Set<string>();
+  for (const line of out.split('\n')) {
+    const m = /^\d{6} [0-9a-f]+ [123]\t(.+)$/.exec(line);
+    if (m) files.add(m[1]);
+  }
+  return [...files];
+}
+
+/**
+ * Refresh a feature's integration branch with the latest base (main): fetch, and
+ * if the branch is behind, merge the base into it inside a throwaway worktree so
+ * no checkout is disturbed. Conflicts abort and are reported. Idempotent when the
+ * integration branch already contains the base.
+ */
+export function updateIntegrationBranchFromMain(input: {
+  repoPath: string;
+  integrationBranch: string;
+  baseBranch: string;
+}): { ok: boolean; conflict?: boolean; alreadyUpToDate?: boolean; error?: string } {
+  const { repoPath, integrationBranch, baseBranch } = input;
+  try {
+    execFileSync('git', ['-C', repoPath, 'fetch', 'origin', baseBranch], { stdio: 'ignore' });
+  } catch {
+    // best-effort; fall back to the local base ref
+  }
+  const baseRef = resolveStartRef(repoPath, baseBranch);
+  if (baseRef === 'HEAD') return { ok: false, error: `base branch not found: ${baseBranch}` };
+  try {
+    execFileSync(
+      'git',
+      ['-C', repoPath, 'merge-base', '--is-ancestor', baseRef, integrationBranch],
+      { stdio: 'ignore' }
+    );
+    return { ok: true, alreadyUpToDate: true };
+  } catch {
+    // base is ahead of the integration branch; merge it in below
+  }
+  const tmp = join(tmpdir(), `fleet-sync-${integrationBranch.replace(/[^\w.-]/g, '_')}`);
+  cleanupTempWorktree(repoPath, tmp);
+  try {
+    execFileSync('git', ['-C', repoPath, 'worktree', 'add', tmp, integrationBranch], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+  } catch (err) {
+    return { ok: false, error: `could not create sync worktree: ${gitStderr(err)}` };
+  }
+  try {
+    // The worktree has the integration branch checked out, so this advances its ref directly.
+    execFileSync(
+      'git',
+      ['-C', tmp, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', `merge ${baseBranch} into ${integrationBranch}`, baseRef],
+      { stdio: ['ignore', 'ignore', 'pipe'] }
+    );
+  } catch {
+    try {
+      execFileSync('git', ['-C', tmp, 'merge', '--abort'], { stdio: 'ignore' });
+    } catch {
+      // nothing to abort
+    }
+    cleanupTempWorktree(repoPath, tmp);
+    return { ok: false, conflict: true };
+  }
+  cleanupTempWorktree(repoPath, tmp);
+  return { ok: true };
+}
+
+/**
+ * Push a feature's integration branch to origin and open the single feature→main
+ * PR via `gh`. The branch lives only in the local repo until now, so the push is
+ * what publishes the whole feature as one reviewable unit.
+ */
+export function createFeaturePr(input: {
+  repoPath: string;
+  integrationBranch: string;
+  baseBranch: string;
+  title: string;
+  body: string;
+}): { ok: boolean; url?: string; number?: number; error?: string } {
+  const { repoPath, integrationBranch, baseBranch, title, body } = input;
+  try {
+    execFileSync('git', ['-C', repoPath, 'push', '-u', 'origin', integrationBranch], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+  } catch (err) {
+    return { ok: false, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
+  }
+  return ghPrCreate({ cwd: repoPath, base: baseBranch, head: integrationBranch, title, body });
 }
 
 /** Normalize a single gh statusCheckRollup entry into pass/fail/pending. */

@@ -55,7 +55,8 @@ import type {
   KanbanListFeaturesRequest,
   KanbanCreateFeatureRequest,
   KanbanUpdateFeatureRequest,
-  KanbanAssignTaskToFeatureRequest
+  KanbanAssignTaskToFeatureRequest,
+  KanbanConflictResult
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -557,7 +558,13 @@ const fleetApi = {
     assignTaskToFeature: async (req: KanbanAssignTaskToFeatureRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_ASSIGN_TASK_TO_FEATURE, req),
     redecompose: async (featureId: string): Promise<Task> =>
-      typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId)
+      typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId),
+    shipFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
+      typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_SHIP_FEATURE, featureId),
+    syncFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
+      typedInvoke<KanbanReviewActionResult>(IPC_CHANNELS.KANBAN_SYNC_FEATURE, featureId),
+    checkConflicts: async (taskId: string): Promise<KanbanConflictResult> =>
+      typedInvoke<KanbanConflictResult>(IPC_CHANNELS.KANBAN_CHECK_CONFLICTS, taskId)
   }
 };
 

@@ -30,7 +30,8 @@ import type {
   FeatureRollup,
   TaskPrInfo,
   PrState,
-  ChecksState
+  ChecksState,
+  ConflictState
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -233,6 +234,8 @@ export class KanbanStore {
       schedulePaused: Number(r.schedule_paused ?? 0) === 1,
       scheduledFrom: (r.scheduled_from as string | null) ?? null,
       prInfo: prInfoFromRow(r),
+      conflictState: (r.conflict_state as ConflictState | null) ?? null,
+      conflictFiles: JSON.parse(String(r.conflict_files ?? '[]')) as string[],
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -899,6 +902,13 @@ export class KanbanStore {
     }
   }
 
+  /** Record the result of a local pre-merge conflict check (no updated_at bump). */
+  setTaskConflict(taskId: string, state: ConflictState | null, files: string[]): void {
+    this.db
+      .prepare('UPDATE tasks SET conflict_state=?, conflict_files=? WHERE id=?')
+      .run(state, JSON.stringify(files), taskId);
+  }
+
   /** Open/draft-PR tasks not polled since `cutoff` (oldest sync first), for the PrPoller. */
   tasksDuePrSync(cutoff: number, limit: number): Task[] {
     const rows = this.db
@@ -1200,6 +1210,15 @@ export class KanbanStore {
         merge_state: fields.mergeState !== undefined ? fields.mergeState : current.mergeState,
         ts
       });
+  }
+
+  /** Record the single feature→main PR on a feature (set when it ships). */
+  setFeaturePr(featureId: string, prUrl: string, prNumber: number | null): void {
+    this.db
+      .prepare(
+        `UPDATE features SET pr_url=?, pr_number=?, pr_state='open', updated_at=? WHERE id=?`
+      )
+      .run(prUrl, prNumber, this.now(), featureId);
   }
 
   /** Soft close: flip status to archived; member tasks keep their feature_id. */

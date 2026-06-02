@@ -10,7 +10,8 @@ import {
   FolderGit2,
   GitMerge,
   GitPullRequest,
-  Check
+  Check,
+  AlertTriangle
 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -50,6 +51,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
     mergeTask,
     createPr,
     acceptTask,
+    checkConflicts,
     decompose,
     specify,
     features,
@@ -77,6 +79,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [reviewBusy, setReviewBusy] = useState<'merge' | 'pr' | 'accept' | null>(null);
   const [reviewMsg, setReviewMsg] = useState<string | null>(null);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
+  const [conflictBusy, setConflictBusy] = useState(false);
   const dragCounter = useRef(0);
   const seededIdRef = useRef<string | null>(null);
   const [schedKind, setSchedKind] = useState<'once' | 'interval' | 'cron'>('interval');
@@ -99,6 +102,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
       setReviewBusy(null);
       setReviewMsg(null);
       setReviewErr(null);
+      setConflictBusy(false);
       setSchedKind('interval');
       setSchedAt('');
       setSchedEveryN(1);
@@ -140,6 +144,15 @@ export function KanbanDrawer(): React.JSX.Element | null {
       setReviewErr(err instanceof Error ? err.message : 'Action failed');
     } finally {
       setReviewBusy(null);
+    }
+  }
+
+  async function recheckConflicts(): Promise<void> {
+    setConflictBusy(true);
+    try {
+      await checkConflicts(t.id);
+    } finally {
+      setConflictBusy(false);
     }
   }
 
@@ -440,6 +453,40 @@ export function KanbanDrawer(): React.JSX.Element | null {
                 </span>
                 . Pick how to integrate it.
               </p>
+              {/* Pre-merge conflict prediction against the base (integration) branch. */}
+              {t.workspaceKind === 'worktree' && t.branchName && t.baseBranch && (
+                <div className="text-[10px]">
+                  {t.conflictState === 'conflicts' ? (
+                    <div className="rounded border border-red-900/60 bg-red-950/30 p-1.5 text-red-300">
+                      <span className="inline-flex items-center gap-1 font-medium">
+                        <AlertTriangle size={11} /> Conflicts with {t.baseBranch}
+                      </span>
+                      {t.conflictFiles.length > 0 && (
+                        <ul className="mt-1 max-h-20 overflow-y-auto font-mono text-[10px] text-red-400">
+                          {t.conflictFiles.map((f) => (
+                            <li key={f} className="truncate" title={f}>
+                              {f}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : t.conflictState === 'clean' ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-400">
+                      <Check size={11} /> Merges cleanly into {t.baseBranch}
+                    </span>
+                  ) : t.conflictState === 'error' ? (
+                    <span className="text-neutral-500">Conflict check unavailable</span>
+                  ) : null}
+                  <button
+                    onClick={() => void recheckConflicts()}
+                    disabled={conflictBusy}
+                    className="ml-2 rounded border border-neutral-700 px-1.5 py-0.5 text-neutral-400 hover:bg-neutral-800 disabled:opacity-50"
+                  >
+                    {conflictBusy ? 'Checking…' : 'Re-check'}
+                  </button>
+                </div>
+              )}
               <div className="flex flex-wrap gap-1.5">
                 {/* Merge / PR need a worktree branch + base; otherwise only "Do Nothing" applies. */}
                 {t.workspaceKind === 'worktree' && t.branchName && t.baseBranch && (
