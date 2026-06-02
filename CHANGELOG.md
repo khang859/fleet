@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.48.0
+
+- Kanban: worktree tasks now go through a review gate before they're done. A worktree task's agent finishing no longer auto-completes the card — its work is committed and the card lands in a new "Review" column, where you pick one of three drawer actions: **Merge to base**, **Make Pull Request**, or **Do Nothing** (accept and keep the branch). Merge runs safely (in place when the base branch is checked out and clean, otherwise via a detached temp worktree push) so your working checkout is never disturbed, and conflicts keep the card in review with a note. The in-app diff shows the committed `base...HEAD` changes, and child/swarm workers inherit the parent's base branch. Scratch and directory tasks still complete straight to done.
+- Kanban: the create-task form now has a Triage/Todo column picker and defaults new tasks to Triage instead of Todo. Creating an "isolated copy" (worktree) task against a folder that isn't a git repo is now blocked up front with a clear message instead of failing later at claim time.
+- Kanban: the orchestrator can no longer assign a decomposed task to a worker profile that doesn't exist — `kanban_create` validates the assignee and rejects unknown profiles with the list of valid names, so the orchestrator retries with a real one.
+
 ## v2.47.0
 
 - Kanban: headless workers no longer fail as "worker pid not alive" when an agent ends its turn with a question instead of completing. rune now enforces a completion contract in headless runs (new `--require-tool` flag): a worker that tries to stop without calling `kanban_complete`/`kanban_block` is nudged to keep going, and if it still won't finish it exits with a distinct signal. Fleet classifies that as a deliberate "review-required" block (with Reply & Resume) instead of a crash, so a single pause no longer thrashes a card into give-up. Crash-retry limit raised to 3 and the liveness grace window widened to 120s. Requires rune v0.4.0+.
