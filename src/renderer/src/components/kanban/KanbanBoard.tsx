@@ -44,6 +44,7 @@ export function KanbanBoard(): React.JSX.Element {
   const [newIsolated, setNewIsolated] = useState(true);
   // null = not applicable / still checking; true/false = the picked folder's git-repo status.
   const [folderIsRepo, setFolderIsRepo] = useState<boolean | null>(null);
+  const [newStatus, setNewStatus] = useState<TaskStatus>('triage');
   const draggingId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -133,10 +134,11 @@ export function KanbanBoard(): React.JSX.Element {
         await createTaskFromArtifact(seed.artifact.id, {
           title,
           boardId: activeBoardSlug,
+          status: newStatus,
           ...workspace
         });
       } else {
-        await createTask({ title, boardId: activeBoardSlug, ...workspace });
+        await createTask({ title, boardId: activeBoardSlug, status: newStatus, ...workspace });
       }
     } catch (err) {
       // Keep the form (and any seed) open so the user can retry or cancel explicitly.
@@ -147,6 +149,7 @@ export function KanbanBoard(): React.JSX.Element {
     setNewFolder('');
     setNewMode('scratch');
     setNewIsolated(true);
+    setNewStatus('triage');
     setCreating(false);
     clearSeed();
   }
@@ -344,6 +347,17 @@ export function KanbanBoard(): React.JSX.Element {
                 placeholder="Task title…"
                 className="rounded border border-neutral-700 bg-neutral-950 px-2 py-1 text-xs outline-none focus:border-blue-500"
               />
+              <div className="flex items-center gap-2 text-[11px] font-medium text-neutral-400">
+                Column
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value === 'todo' ? 'todo' : 'triage')}
+                  className="rounded border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs font-normal text-neutral-200 outline-none focus:border-blue-500"
+                >
+                  <option value="triage">Triage</option>
+                  <option value="todo">Todo</option>
+                </select>
+              </div>
               <div className="text-[11px] font-medium text-neutral-400">
                 Where should the agent work?
               </div>
