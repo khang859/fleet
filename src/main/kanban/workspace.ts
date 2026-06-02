@@ -276,6 +276,36 @@ export function reviewStat(input: {
   }
 }
 
+/** Path of the worktree that currently has `branch` checked out, or null. */
+function findBranchWorktree(repoPath: string, branch: string): string | null {
+  let out: string;
+  try {
+    out = execFileSync('git', ['-C', repoPath, 'worktree', 'list', '--porcelain'], {
+      encoding: 'utf8'
+    });
+  } catch {
+    return null;
+  }
+  let current: string | null = null;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('worktree ')) current = line.slice('worktree '.length).trim();
+    else if (line === `branch refs/heads/${branch}`) return current;
+  }
+  return null;
+}
+
+/** True when a worktree has no staged/unstaged/untracked changes. */
+function isClean(worktreePath: string): boolean {
+  try {
+    const out = execFileSync('git', ['-C', worktreePath, 'status', '--porcelain'], {
+      encoding: 'utf8'
+    });
+    return out.trim().length === 0;
+  } catch {
+    return false;
+  }
+}
+
 function cleanupTempWorktree(repoPath: string, tmp: string): void {
   try {
     execFileSync('git', ['-C', repoPath, 'worktree', 'remove', '--force', tmp], {
@@ -296,10 +326,17 @@ function cleanupTempWorktree(repoPath: string, tmp: string): void {
 }
 
 /**
- * Merge `branchName` into `baseBranch` without disturbing the user's checkout:
- * the merge happens in a throwaway detached worktree, then the result is pushed
- * into the repo's base ref. `git push` refuses to update a branch checked out in
- * any worktree, so the user's working tree is never clobbered.
+ * Merge `branchName` into `baseBranch`. `git push` refuses to update a branch
+ * checked out in a non-bare repo, which is the common case (the base branch is
+ * usually the user's own checkout), so the strategy depends on where base lives:
+ *
+ * - Base checked out somewhere → merge in place there, but only when that
+ *   working tree is clean (a clean tree stays clean — the merge just advances
+ *   it). If it is dirty we refuse rather than clobber uncommitted work.
+ * - Base not checked out anywhere → merge in a throwaway detached worktree and
+ *   push the result into the base ref, leaving every checkout untouched.
+ *
+ * A conflicting merge is aborted (restoring the working tree) and reported.
  */
 export function mergeWorktreeToBase(input: {
   repoPath: string;
@@ -310,6 +347,33 @@ export function mergeWorktreeToBase(input: {
   title: string;
 }): { ok: boolean; conflict?: boolean; error?: string } {
   const { repoPath, branchName, baseBranch, worktreeParentDir, taskId, title } = input;
+  const msg = `kanban/${taskId}: merge ${title}`.slice(0, 200);
+
+  const baseCheckout = findBranchWorktree(repoPath, baseBranch);
+  if (baseCheckout) {
+    if (!isClean(baseCheckout)) {
+      return {
+        ok: false,
+        error: `${baseBranch} is checked out with uncommitted changes at ${baseCheckout}; commit or stash them, then retry.`
+      };
+    }
+    try {
+      execFileSync(
+        'git',
+        ['-C', baseCheckout, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName],
+        { stdio: ['ignore', 'ignore', 'pipe'] }
+      );
+    } catch {
+      try {
+        execFileSync('git', ['-C', baseCheckout, 'merge', '--abort'], { stdio: 'ignore' });
+      } catch {
+        // nothing to abort
+      }
+      return { ok: false, conflict: true };
+    }
+    return { ok: true };
+  }
+
   const tmp = join(worktreeParentDir, `.merge-${taskId}`);
   cleanupTempWorktree(repoPath, tmp);
   try {
@@ -320,7 +384,6 @@ export function mergeWorktreeToBase(input: {
     return { ok: false, error: `could not create merge worktree: ${gitStderr(err)}` };
   }
   try {
-    const msg = `kanban/${taskId}: merge ${title}`.slice(0, 200);
     execFileSync(
       'git',
       ['-C', tmp, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName],
@@ -345,7 +408,7 @@ export function mergeWorktreeToBase(input: {
     cleanupTempWorktree(repoPath, tmp);
     return {
       ok: false,
-      error: `merged cleanly but could not update ${baseBranch} (is it checked out?): ${gitStderr(err)}`
+      error: `merged cleanly but could not update ${baseBranch}: ${gitStderr(err)}`
     };
   }
   cleanupTempWorktree(repoPath, tmp);

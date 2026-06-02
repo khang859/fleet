@@ -950,7 +950,8 @@ export class KanbanStore {
           removeWorktree({
             repoPath: t.repoPath,
             workspacePath: t.workspacePath,
-            branchName: t.branchName
+            branchName: t.branchName,
+            baseBranch: t.baseBranch
           });
         } else if (t.workspacePath) {
           cleanupWorkspace({ kind: t.workspaceKind, path: t.workspacePath });

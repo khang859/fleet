@@ -243,6 +243,11 @@ export class KanbanCommands {
     if (!MANUAL_STATUSES.includes(status)) {
       throw new CodedError(`invalid status: ${status}`, 'BAD_REQUEST');
     }
+    // Review is a worktree-only lane: its drawer actions (merge/PR) assume a
+    // committed branch, so scratch/dir tasks have no business there.
+    if (status === 'review' && task.workspaceKind !== 'worktree') {
+      throw new CodedError('only worktree tasks can enter review', 'BAD_REQUEST');
+    }
     this.store.setStatus(id, status);
     this.store.appendEvent(id, null, 'status_changed', {
       from: task.status,

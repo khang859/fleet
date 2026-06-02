@@ -457,7 +457,10 @@ export function KanbanBoard(): React.JSX.Element {
                   draggingId.current = null;
                   if (!id) return;
                   const card = cards.find((c) => c.id === id);
-                  if (card && card.status !== status) void setStatus(id, status);
+                  if (!card || card.status === status) return;
+                  // Review is worktree-only (the command layer rejects it too).
+                  if (status === 'review' && card.workspaceKind !== 'worktree') return;
+                  void setStatus(id, status);
                 }}
               />
             ))}

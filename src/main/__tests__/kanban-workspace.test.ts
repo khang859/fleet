@@ -3,7 +3,12 @@ import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { prepareWorkspace, cleanupWorkspace, removeWorktree } from '../kanban/workspace';
+import {
+  prepareWorkspace,
+  cleanupWorkspace,
+  removeWorktree,
+  mergeWorktreeToBase
+} from '../kanban/workspace';
 
 const ROOT = join(tmpdir(), `fleet-kanban-ws-test-${process.pid}`);
 const WT_ROOT = join(ROOT, 'worktrees');
@@ -260,6 +265,109 @@ describe('kanban workspace', () => {
       encoding: 'utf8'
     });
     expect(branches.trim()).not.toBe(''); // branch preserved
+  });
+
+  // Commit `feat.txt` on a freshly-created worktree task branch and return its base.
+  function worktreeWithCommit(repo: string, taskId: string): { branch: string; base: string } {
+    const { path, branchName, baseBranch } = prepareWorkspace({
+      kind: 'worktree',
+      taskId,
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    writeFileSync(join(path, 'feat.txt'), 'feature');
+    execFileSync('git', ['-C', path, 'add', '-A']);
+    execFileSync('git', ['-C', path, 'commit', '-q', '-m', 'feat']);
+    return { branch: branchName as string, base: baseBranch as string };
+  }
+
+  it('mergeWorktreeToBase merges in place when the base branch is checked out (common case)', () => {
+    const repo = makeRepo('mg1');
+    const { branch, base } = worktreeWithCommit(repo, 'm1');
+    // `main` is checked out at repo — a push would be refused; we merge in place.
+    const res = mergeWorktreeToBase({
+      repoPath: repo,
+      branchName: branch,
+      baseBranch: base,
+      worktreeParentDir: WT_ROOT,
+      taskId: 'm1',
+      title: 'feature'
+    });
+    expect(res.ok).toBe(true);
+    // Base advanced: the feature file is now in the repo's checkout.
+    expect(existsSync(join(repo, 'feat.txt'))).toBe(true);
+  });
+
+  it('mergeWorktreeToBase refuses when the checked-out base has uncommitted changes', () => {
+    const repo = makeRepo('mg2');
+    const { branch, base } = worktreeWithCommit(repo, 'm2');
+    writeFileSync(join(repo, 'dirty.txt'), 'wip'); // dirty the base checkout
+    const res = mergeWorktreeToBase({
+      repoPath: repo,
+      branchName: branch,
+      baseBranch: base,
+      worktreeParentDir: WT_ROOT,
+      taskId: 'm2',
+      title: 'feature'
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/uncommitted/);
+    expect(existsSync(join(repo, 'feat.txt'))).toBe(false); // base untouched
+  });
+
+  it('mergeWorktreeToBase reports a conflict and restores the base checkout', () => {
+    const repo = makeRepo('mg3');
+    writeFileSync(join(repo, 'shared.txt'), 'base\n');
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'add shared']);
+    const { path, branchName, baseBranch } = prepareWorkspace({
+      kind: 'worktree',
+      taskId: 'm3',
+      workspacesRoot: ROOT,
+      worktreesRoot: WT_ROOT,
+      repoPath: repo
+    });
+    // Task branch and main diverge on the same file → merge conflict.
+    writeFileSync(join(path, 'shared.txt'), 'feature\n');
+    execFileSync('git', ['-C', path, 'add', '-A']);
+    execFileSync('git', ['-C', path, 'commit', '-q', '-m', 'feature change']);
+    writeFileSync(join(repo, 'shared.txt'), 'mainline\n');
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'main change']);
+    const res = mergeWorktreeToBase({
+      repoPath: repo,
+      branchName: branchName as string,
+      baseBranch: baseBranch as string,
+      worktreeParentDir: WT_ROOT,
+      taskId: 'm3',
+      title: 'feature'
+    });
+    expect(res.ok).toBe(false);
+    expect(res.conflict).toBe(true);
+    // The aborted merge left the base checkout clean.
+    const status = execFileSync('git', ['-C', repo, 'status', '--porcelain'], { encoding: 'utf8' });
+    expect(status.trim()).toBe('');
+  });
+
+  it('mergeWorktreeToBase pushes into base when it is not checked out anywhere', () => {
+    const repo = makeRepo('mg4');
+    const { branch, base } = worktreeWithCommit(repo, 'm4');
+    // Park the repo off main so the base ref is not checked out anywhere.
+    execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'parking']);
+    const res = mergeWorktreeToBase({
+      repoPath: repo,
+      branchName: branch,
+      baseBranch: base,
+      worktreeParentDir: WT_ROOT,
+      taskId: 'm4',
+      title: 'feature'
+    });
+    expect(res.ok).toBe(true);
+    const tree = execFileSync('git', ['-C', repo, 'ls-tree', '--name-only', 'main'], {
+      encoding: 'utf8'
+    });
+    expect(tree).toMatch(/feat\.txt/);
   });
 
   it('removeWorktree keeps the branch when no base is known (conservative)', () => {

@@ -142,6 +142,13 @@ describe('KanbanCommands status + assign', () => {
     );
   });
 
+  it('setManualStatus rejects review for a non-worktree task', () => {
+    const { store, commands } = makeCommands();
+    const t = commands.create({ title: 'x', status: 'todo', workspaceKind: 'scratch' });
+    expect(() => commands.setManualStatus(t.id, 'review')).toThrowError(/worktree/);
+    expect(store.getTask(t.id)?.status).toBe('todo');
+  });
+
   it('block sets blocked with a reason; complete sets done with a result', () => {
     const { store, commands } = makeCommands();
     const t = commands.create({ title: 'x', status: 'todo' });
