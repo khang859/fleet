@@ -12,10 +12,16 @@ import type {
   SwarmInput,
   SwarmCreated,
   ArtifactListItem,
-  TaskAttachment
+  TaskAttachment,
+  Feature,
+  FeatureDetail
 } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
+  KanbanListFeaturesRequest,
+  KanbanCreateFeatureRequest,
+  KanbanUpdateFeatureRequest,
+  KanbanAssignTaskToFeatureRequest,
   KanbanSetStatusRequest,
   KanbanAddCommentRequest,
   KanbanReplyAndResumeRequest,
@@ -249,6 +255,46 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
   ipcMain.handle(IPC_CHANNELS.KANBAN_PREVIEW_SCHEDULE, (_e, input: ScheduleInput) => {
     return commands.previewSchedule(input);
   });
+
+  // ---- Features ----
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_LIST_FEATURES,
+    (_e, filter: KanbanListFeaturesRequest = {}): Feature[] => commands.listFeatures(filter)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_GET_FEATURE,
+    (_e, id: string): FeatureDetail | null => commands.showFeature(id)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_CREATE_FEATURE,
+    (_e, req: KanbanCreateFeatureRequest): Feature => commands.createFeature(req)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_UPDATE_FEATURE, (_e, req: KanbanUpdateFeatureRequest) => {
+    commands.updateFeature(req.id, req.fields);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_ARCHIVE_FEATURE, (_e, id: string) => {
+    commands.archiveFeature(id);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DELETE_FEATURE, (_e, id: string) => {
+    commands.deleteFeature(id);
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_ASSIGN_TASK_TO_FEATURE,
+    (_e, req: KanbanAssignTaskToFeatureRequest) => {
+      commands.assignTaskToFeature(req.taskId, req.featureId);
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REDECOMPOSE, (_e, featureId: string): Task =>
+    commands.redecompose(featureId)
+  );
 
   log.info('kanban IPC handlers registered');
 }

@@ -19,7 +19,12 @@ import type {
   ArtifactListFilter,
   ScheduleInput,
   SwarmInput,
-  SwarmCreated
+  SwarmCreated,
+  Feature,
+  FeatureStatus,
+  CreateFeatureInput,
+  UpdateFeatureInput,
+  FeatureDetail
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -694,6 +699,134 @@ export class KanbanCommands {
     // Task accepted (done) — promote any gated children without waiting for the poll.
     this.dispatcher.tick();
     return { ok: true, message: 'accepted; branch preserved' };
+  }
+
+  // ---- Features (task grouping) ----
+
+  private requireFeature(id: string): Feature {
+    const f = this.store.getFeature(id);
+    if (!f) throw new CodedError(`feature not found: ${id}`, 'NOT_FOUND');
+    return f;
+  }
+
+  private requireBoard(slug: string): void {
+    if (!this.store.listBoards().some((b) => b.slug === slug)) {
+      throw new CodedError(`board not found: ${slug}`, 'NOT_FOUND');
+    }
+  }
+
+  listFeatures(filter: { boardId?: string; status?: FeatureStatus } = {}): Feature[] {
+    return this.store.listFeatures(filter);
+  }
+
+  showFeature(id: string): FeatureDetail | null {
+    const feature = this.store.getFeature(id);
+    if (!feature) return null;
+    return {
+      feature,
+      tasks: this.store.listFeatureTasks(id),
+      rollup: this.store.featureRollup(id)
+    };
+  }
+
+  createFeature(input: CreateFeatureInput): Feature {
+    const name = (input.name ?? '').trim();
+    if (name === '') throw new CodedError('feature requires a name', 'BAD_REQUEST');
+    this.requireBoard(input.boardId);
+    const feature = this.store.createFeature({ ...input, name });
+    this.store.appendEvent(feature.id, null, 'feature_created', { name });
+    return feature;
+  }
+
+  updateFeature(id: string, fields: UpdateFeatureInput): void {
+    this.requireFeature(id);
+    if (fields.name !== undefined && fields.name.trim() === '') {
+      throw new CodedError('feature requires a name', 'BAD_REQUEST');
+    }
+    this.store.updateFeature(id, {
+      ...fields,
+      name: fields.name?.trim()
+    });
+  }
+
+  archiveFeature(id: string): void {
+    this.requireFeature(id);
+    const running = this.store.listFeatureTasks(id).some((t) => t.status === 'running');
+    if (running) {
+      throw new CodedError('stop running tasks before archiving this feature', 'BAD_REQUEST');
+    }
+    this.store.archiveFeature(id);
+  }
+
+  /** Hard delete: member tasks are detached (feature_id nulled), then the feature row is removed. */
+  deleteFeature(id: string): void {
+    this.requireFeature(id);
+    const running = this.store.listFeatureTasks(id).some((t) => t.status === 'running');
+    if (running) {
+      throw new CodedError('stop running tasks before deleting this feature', 'BAD_REQUEST');
+    }
+    this.store.deleteFeature(id);
+  }
+
+  /** Add or clear a task's feature membership. Cross-board membership is rejected. */
+  assignTaskToFeature(taskId: string, featureId: string | null): void {
+    const task = this.requireTask(taskId);
+    if (featureId !== null) {
+      const feature = this.requireFeature(featureId);
+      if (feature.boardId !== task.boardId) {
+        throw new CodedError('task and feature belong to different boards', 'BAD_REQUEST');
+      }
+    }
+    this.store.assignTaskToFeature(taskId, featureId);
+    this.store.appendEvent(taskId, null, 'feature_assigned', { featureId });
+  }
+
+  /**
+   * Re-run decompose for a feature whose triage orchestrator only created some tasks.
+   * Reuses an existing triage task in the feature when present; otherwise creates a fresh
+   * triage task seeded with the feature's existing tasks so the orchestrator has context
+   * and can fill the gaps (dedup is the orchestrator's responsibility).
+   */
+  redecompose(featureId: string): Task {
+    const feature = this.requireFeature(featureId);
+    if (feature.status !== 'active') {
+      throw new CodedError('only active features can be decomposed', 'BAD_REQUEST');
+    }
+    const tasks = this.store.listFeatureTasks(featureId);
+    if (tasks.length === 0) {
+      throw new CodedError('feature has no tasks to decompose from', 'BAD_REQUEST');
+    }
+    // Prefer an existing triage task in the feature (the original orchestrator card).
+    const existingTriage = tasks.find((t) => t.status === 'triage');
+    if (existingTriage) {
+      this.requestDecompose(existingTriage.id);
+      this.dispatcher.tick();
+      return existingTriage;
+    }
+    // None in triage — create a new orchestrator card listing the existing work.
+    const summary = tasks
+      .map((t) => `- ${t.id} [${t.status}] ${t.title}`)
+      .join('\n');
+    const body = `Continue decomposing feature "${feature.name}". Existing tasks (avoid duplicates):\n\n${summary}`;
+    const workspace =
+      feature.repoPath != null
+        ? {
+            workspaceKind: 'worktree' as const,
+            repoPath: feature.repoPath,
+            baseBranch: feature.baseBranch
+          }
+        : { workspaceKind: 'scratch' as const };
+    const triage = this.create({
+      title: `Decompose: ${feature.name}`,
+      body,
+      status: 'triage',
+      boardId: feature.boardId,
+      featureId,
+      ...workspace
+    });
+    this.requestDecompose(triage.id);
+    this.dispatcher.tick();
+    return triage;
   }
 
   dispatch(): void {

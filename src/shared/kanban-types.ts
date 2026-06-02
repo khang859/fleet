@@ -33,6 +33,65 @@ export type RunOutcome =
   | 'reclaimed'
   | 'incomplete'; // exited cleanly without calling a completion tool (review-required)
 
+export type FeatureStatus = 'active' | 'shipped' | 'archived';
+export type FeatureMergeState = 'pending' | 'in_progress' | 'conflict' | 'merged';
+export type PrState = 'open' | 'merged' | 'closed' | 'draft';
+
+/** A lightweight grouping of tasks that ship together as one feature. */
+export interface Feature {
+  id: string;
+  boardId: string;
+  name: string;
+  status: FeatureStatus;
+  /** Inherited by member tasks so they don't need re-entering folder config. */
+  repoPath: string | null;
+  /** Merge target inherited by member tasks. */
+  baseBranch: string | null;
+  /** Per-feature integration branch (Phase 3); null until created. */
+  integrationBranch: string | null;
+  /** Feature-level merge coordination state (Phase 3). */
+  mergeState: FeatureMergeState | null;
+  /** The single feature→main PR (Phase 3). */
+  prUrl: string | null;
+  prNumber: number | null;
+  prState: PrState | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateFeatureInput {
+  boardId: string;
+  name: string;
+  repoPath?: string | null;
+  baseBranch?: string | null;
+}
+
+export interface UpdateFeatureInput {
+  name?: string;
+  status?: FeatureStatus;
+  repoPath?: string | null;
+  baseBranch?: string | null;
+  integrationBranch?: string | null;
+  mergeState?: FeatureMergeState | null;
+}
+
+/** Aggregate counts for a feature, used by the focus banner and Features dashboard. */
+export interface FeatureRollup {
+  featureId: string;
+  total: number;
+  todo: number;
+  running: number;
+  review: number;
+  done: number;
+  archived: number;
+}
+
+export interface FeatureDetail {
+  feature: Feature;
+  tasks: Task[];
+  rollup: FeatureRollup;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -50,6 +109,8 @@ export interface Task {
   modelOverride: string | null;
   skills: string[];
   boardId: string;
+  /** Membership in a feature (grouping), distinct from task_links (execution order). */
+  featureId: string | null;
   idempotencyKey: string | null;
   result: string | null;
   pendingMode: PendingMode | null;
@@ -172,6 +233,7 @@ export interface CreateTaskInput {
   modelOverride?: string | null;
   skills?: string[];
   boardId?: string;
+  featureId?: string | null;
   idempotencyKey?: string | null;
   maxRuntimeSeconds?: number | null;
   maxRetries?: number;

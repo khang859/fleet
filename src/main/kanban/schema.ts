@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -35,6 +35,16 @@ CREATE TABLE IF NOT EXISTS tasks (
   next_run_at INTEGER,
   schedule_paused INTEGER NOT NULL DEFAULT 0,
   scheduled_from TEXT,
+  feature_id TEXT,
+  pr_url TEXT,
+  pr_number INTEGER,
+  pr_state TEXT,
+  checks_state TEXT,
+  pr_merge_state TEXT,
+  pr_synced_at INTEGER,
+  conflict_state TEXT,
+  conflict_files TEXT,
+  worktree_pruned INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -100,6 +110,24 @@ CREATE TABLE IF NOT EXISTS boards (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS features (
+  id TEXT PRIMARY KEY,
+  board_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  repo_path TEXT,
+  base_branch TEXT,
+  integration_branch TEXT,
+  merge_state TEXT,
+  pr_url TEXT,
+  pr_number INTEGER,
+  pr_state TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_features_board ON features(board_id);
+CREATE INDEX IF NOT EXISTS idx_features_status ON features(status);
 
 CREATE TABLE IF NOT EXISTS task_artifacts (
   id TEXT PRIMARY KEY,

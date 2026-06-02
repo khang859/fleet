@@ -165,5 +165,13 @@ export const IPC_CHANNELS = {
   KANBAN_CREATE_SWARM: 'kanban:create-swarm',
   KANBAN_MERGE_TASK: 'kanban:merge-task',
   KANBAN_CREATE_PR: 'kanban:create-pr',
-  KANBAN_ACCEPT_TASK: 'kanban:accept-task'
+  KANBAN_ACCEPT_TASK: 'kanban:accept-task',
+  KANBAN_LIST_FEATURES: 'kanban:list-features',
+  KANBAN_CREATE_FEATURE: 'kanban:create-feature',
+  KANBAN_GET_FEATURE: 'kanban:get-feature',
+  KANBAN_UPDATE_FEATURE: 'kanban:update-feature',
+  KANBAN_ARCHIVE_FEATURE: 'kanban:archive-feature',
+  KANBAN_DELETE_FEATURE: 'kanban:delete-feature',
+  KANBAN_ASSIGN_TASK_TO_FEATURE: 'kanban:assign-task-to-feature',
+  KANBAN_REDECOMPOSE: 'kanban:redecompose'
 } as const;

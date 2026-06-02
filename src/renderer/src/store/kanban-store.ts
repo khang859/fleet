@@ -9,7 +9,10 @@ import type {
   ScheduleInput,
   SwarmInput,
   SwarmCreated,
-  Task
+  Task,
+  Feature,
+  CreateFeatureInput,
+  UpdateFeatureInput
 } from '../../../shared/kanban-types';
 import type {
   KanbanArtifactPreviewResponse,
@@ -29,8 +32,18 @@ type KanbanState = {
   detail: TaskDetail | null;
   boards: Board[];
   activeBoardSlug: string;
+  features: Feature[];
+  selectedFeatureId: string | null;
   loadBoard: () => Promise<void>;
   loadBoards: () => Promise<void>;
+  loadFeatures: () => Promise<void>;
+  createFeature: (input: CreateFeatureInput) => Promise<Feature>;
+  updateFeature: (id: string, fields: UpdateFeatureInput) => Promise<void>;
+  archiveFeature: (id: string) => Promise<void>;
+  deleteFeature: (id: string) => Promise<void>;
+  setFocusedFeature: (id: string | null) => void;
+  assignFeature: (taskId: string, featureId: string | null) => Promise<void>;
+  redecompose: (featureId: string) => Promise<void>;
   switchBoard: (slug: string) => Promise<void>;
   createBoard: (name: string) => Promise<void>;
   renameBoard: (slug: string, name: string) => Promise<void>;
@@ -84,12 +97,61 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   detail: null,
   boards: [],
   activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
+  features: [],
+  selectedFeatureId: localStorage.getItem('fleet.kanban.focusedFeature') || null,
   seed: null,
   unreadCount: 0,
 
   loadBoard: async () => {
     const cards = await window.fleet.kanban.listBoard(get().activeBoardSlug);
     set({ cards, loaded: true });
+    await get().loadFeatures();
+  },
+  loadFeatures: async () => {
+    const features = await window.fleet.kanban.listFeatures({ boardId: get().activeBoardSlug });
+    // Drop a stale focus if the focused feature is no longer on this board.
+    const focused = get().selectedFeatureId;
+    if (focused && !features.some((f) => f.id === focused)) {
+      localStorage.removeItem('fleet.kanban.focusedFeature');
+      set({ features, selectedFeatureId: null });
+    } else {
+      set({ features });
+    }
+  },
+  createFeature: async (input) => {
+    const feature = await window.fleet.kanban.createFeature(input);
+    await get().loadFeatures();
+    return feature;
+  },
+  updateFeature: async (id, fields) => {
+    await window.fleet.kanban.updateFeature({ id, fields });
+    await get().loadFeatures();
+  },
+  archiveFeature: async (id) => {
+    await window.fleet.kanban.archiveFeature(id);
+    if (get().selectedFeatureId === id) get().setFocusedFeature(null);
+    await get().loadFeatures();
+  },
+  deleteFeature: async (id) => {
+    await window.fleet.kanban.deleteFeature(id);
+    if (get().selectedFeatureId === id) get().setFocusedFeature(null);
+    await get().loadFeatures();
+    await get().loadBoard();
+  },
+  setFocusedFeature: (id) => {
+    if (id) localStorage.setItem('fleet.kanban.focusedFeature', id);
+    else localStorage.removeItem('fleet.kanban.focusedFeature');
+    set({ selectedFeatureId: id });
+  },
+  assignFeature: async (taskId, featureId) => {
+    await window.fleet.kanban.assignTaskToFeature({ taskId, featureId });
+    await get().loadBoard();
+    await get().refreshDetail();
+  },
+  redecompose: async (featureId) => {
+    await window.fleet.kanban.redecompose(featureId);
+    await get().loadBoard();
+    await get().refreshDetail();
   },
   loadBoards: async () => {
     const boards = await window.fleet.kanban.listBoards();
@@ -105,7 +167,14 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   switchBoard: async (slug) => {
     localStorage.setItem('fleet.kanban.activeBoard', slug);
-    set({ activeBoardSlug: slug, openTaskId: null, detail: null, seed: null });
+    localStorage.removeItem('fleet.kanban.focusedFeature');
+    set({
+      activeBoardSlug: slug,
+      openTaskId: null,
+      detail: null,
+      seed: null,
+      selectedFeatureId: null
+    });
     await get().loadBoard();
   },
   createBoard: async (name) => {

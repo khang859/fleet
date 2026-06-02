@@ -6,7 +6,10 @@ import type {
   ScheduleInput,
   ArtifactListFilter,
   CreateTaskInput,
-  SwarmInput
+  SwarmInput,
+  CreateFeatureInput,
+  UpdateFeatureInput,
+  FeatureStatus
 } from './kanban-types';
 
 export type PtyCreateRequest = {
@@ -347,4 +350,21 @@ export type KanbanCreateTaskFromArtifactRequest = {
 export type KanbanCreateSwarmFromArtifactRequest = {
   artifactId: string;
   input: SwarmInput;
+};
+
+export type KanbanListFeaturesRequest = {
+  boardId?: string;
+  status?: FeatureStatus;
+};
+
+export type KanbanCreateFeatureRequest = CreateFeatureInput;
+
+export type KanbanUpdateFeatureRequest = {
+  id: string;
+  fields: UpdateFeatureInput;
+};
+
+export type KanbanAssignTaskToFeatureRequest = {
+  taskId: string;
+  featureId: string | null;
 };

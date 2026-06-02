@@ -51,7 +51,11 @@ import type {
   KanbanReuseArtifactRequest,
   KanbanCreateTaskFromArtifactRequest,
   KanbanCreateSwarmFromArtifactRequest,
-  KanbanReviewActionResult
+  KanbanReviewActionResult,
+  KanbanListFeaturesRequest,
+  KanbanCreateFeatureRequest,
+  KanbanUpdateFeatureRequest,
+  KanbanAssignTaskToFeatureRequest
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -64,7 +68,9 @@ import type {
   ArtifactListItem,
   ScheduleInput,
   SwarmInput,
-  SwarmCreated
+  SwarmCreated,
+  Feature,
+  FeatureDetail
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type { RuneStatus } from '../shared/rune';
@@ -535,7 +541,23 @@ const fleetApi = {
     resumeSchedule: async (taskId: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_RESUME_SCHEDULE, taskId),
     previewSchedule: async (input: ScheduleInput): Promise<KanbanPreviewScheduleResponse> =>
-      typedInvoke<KanbanPreviewScheduleResponse>(IPC_CHANNELS.KANBAN_PREVIEW_SCHEDULE, input)
+      typedInvoke<KanbanPreviewScheduleResponse>(IPC_CHANNELS.KANBAN_PREVIEW_SCHEDULE, input),
+    listFeatures: async (filter?: KanbanListFeaturesRequest): Promise<Feature[]> =>
+      typedInvoke<Feature[]>(IPC_CHANNELS.KANBAN_LIST_FEATURES, filter ?? {}),
+    getFeature: async (id: string): Promise<FeatureDetail | null> =>
+      typedInvoke<FeatureDetail | null>(IPC_CHANNELS.KANBAN_GET_FEATURE, id),
+    createFeature: async (req: KanbanCreateFeatureRequest): Promise<Feature> =>
+      typedInvoke<Feature>(IPC_CHANNELS.KANBAN_CREATE_FEATURE, req),
+    updateFeature: async (req: KanbanUpdateFeatureRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_UPDATE_FEATURE, req),
+    archiveFeature: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_ARCHIVE_FEATURE, id),
+    deleteFeature: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DELETE_FEATURE, id),
+    assignTaskToFeature: async (req: KanbanAssignTaskToFeatureRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_ASSIGN_TASK_TO_FEATURE, req),
+    redecompose: async (featureId: string): Promise<Task> =>
+      typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId)
   }
 };
 

@@ -51,6 +51,9 @@ export function KanbanDrawer(): React.JSX.Element | null {
     acceptTask,
     decompose,
     specify,
+    features,
+    assignFeature,
+    redecompose,
     uploadAttachments,
     removeAttachment,
     saveAttachmentCopy,
@@ -305,6 +308,16 @@ export function KanbanDrawer(): React.JSX.Element | null {
             >
               ✨ Specify
             </button>
+            {/* Re-run decompose for the whole feature when the orchestrator only created some tasks. */}
+            {t.featureId && detail.children.length > 0 && (
+              <button
+                onClick={() => t.featureId && void redecompose(t.featureId)}
+                className="rounded border border-purple-700 px-2 py-1 text-purple-300 hover:bg-neutral-800"
+                title="Re-run decompose to fill in missing tasks for this feature"
+              >
+                ⟳ Decompose again
+              </button>
+            )}
           </div>
         )}
         {t.pendingMode && (
@@ -356,6 +369,30 @@ export function KanbanDrawer(): React.JSX.Element | null {
               </span>
             )}
           </div>
+        </section>
+
+        {/* Feature membership */}
+        <section>
+          <h3 className="mb-1 font-semibold text-neutral-400">Feature</h3>
+          <select
+            value={t.featureId ?? ''}
+            disabled={running}
+            onChange={(e) =>
+              void assignFeature(t.id, e.target.value === '' ? null : e.target.value)
+            }
+            className="w-full rounded border border-neutral-700 bg-neutral-950 px-2 py-1 outline-none focus:border-blue-500 disabled:opacity-50"
+          >
+            <option value="">No feature</option>
+            {/* Keep the current feature selectable even if archived (so it isn't silently dropped). */}
+            {features
+              .filter((f) => f.status === 'active' || f.id === t.featureId)
+              .map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                  {f.status !== 'active' ? ` (${f.status})` : ''}
+                </option>
+              ))}
+          </select>
         </section>
 
         {/* Review actions — integrate a finished worktree task */}

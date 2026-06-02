@@ -8,6 +8,7 @@ import { Plus, Zap, Archive, Network, KanbanSquare, Package } from 'lucide-react
 import { SwarmModal } from './SwarmModal';
 import { ArtifactsView } from './ArtifactsView';
 import { RuneMissingBanner } from './RuneMissingBanner';
+import { FeatureSelector } from './FeatureSelector';
 
 export function KanbanBoard(): React.JSX.Element {
   const {
@@ -28,8 +29,12 @@ export function KanbanBoard(): React.JSX.Element {
     deleteBoard,
     seed,
     clearSeed,
-    createTaskFromArtifact
+    createTaskFromArtifact,
+    features,
+    selectedFeatureId,
+    setFocusedFeature
   } = useKanbanStore();
+  const focusedFeature = features.find((f) => f.id === selectedFeatureId) ?? null;
   const [view, setView] = useState<'board' | 'artifacts'>('board');
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
@@ -64,12 +69,24 @@ export function KanbanBoard(): React.JSX.Element {
   // re-open the seeded create form on return.
   useEffect(() => () => clearSeed(), [clearSeed]);
 
+  // Opening the create form while focused on a feature with a repo prefills the
+  // workspace from the feature, so the user never re-enters folder config (pain #5).
+  useEffect(() => {
+    if (creating && focusedFeature?.repoPath) {
+      setNewMode('project');
+      setNewFolder(focusedFeature.repoPath);
+      setNewIsolated(true);
+    }
+    // Only re-run when the form opens or the focused feature changes.
+  }, [creating, focusedFeature?.repoPath]);
+
   const assignees = Array.from(
     new Set(cards.map((c) => c.assignee).filter((a): a is string => !!a))
   ).sort();
 
   const visible = cards.filter((c) => {
     if (c.status === 'archived' && !showArchived) return false;
+    if (selectedFeatureId && c.featureId !== selectedFeatureId) return false;
     if (assigneeFilter && c.assignee !== assigneeFilter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -127,18 +144,31 @@ export function KanbanBoard(): React.JSX.Element {
       newMode === 'scratch'
         ? { workspaceKind: 'scratch' as const }
         : newIsolated
-          ? { workspaceKind: 'worktree' as const, repoPath: folder }
+          ? {
+              workspaceKind: 'worktree' as const,
+              repoPath: folder,
+              baseBranch: focusedFeature?.baseBranch ?? undefined
+            }
           : { workspaceKind: 'dir' as const, workspacePath: folder };
+    // A task created while a feature is focused joins that feature.
+    const featureId = selectedFeatureId ?? undefined;
     try {
       if (seed?.target === 'task') {
         await createTaskFromArtifact(seed.artifact.id, {
           title,
           boardId: activeBoardSlug,
           status: newStatus,
+          featureId,
           ...workspace
         });
       } else {
-        await createTask({ title, boardId: activeBoardSlug, status: newStatus, ...workspace });
+        await createTask({
+          title,
+          boardId: activeBoardSlug,
+          status: newStatus,
+          featureId,
+          ...workspace
+        });
       }
     } catch (err) {
       // Keep the form (and any seed) open so the user can retry or cancel explicitly.
@@ -248,6 +278,8 @@ export function KanbanBoard(): React.JSX.Element {
               Delete
             </button>
             <div className="h-4 w-px bg-neutral-800" />
+            <FeatureSelector />
+            <div className="h-4 w-px bg-neutral-800" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -331,6 +363,11 @@ export function KanbanBoard(): React.JSX.Element {
                 <div className="flex items-center gap-1 rounded bg-blue-950/40 px-2 py-1 text-[11px] text-blue-300">
                   📦 Seeding new task with{' '}
                   <span className="font-medium">{seed.artifact.filename}</span>
+                </div>
+              )}
+              {focusedFeature && (
+                <div className="flex items-center gap-1 rounded bg-violet-950/40 px-2 py-1 text-[11px] text-violet-300">
+                  Creating in feature: <span className="font-medium">{focusedFeature.name}</span>
                 </div>
               )}
               <input
@@ -449,6 +486,18 @@ export function KanbanBoard(): React.JSX.Element {
                   Cancel
                 </button>
               </div>
+            </div>
+          )}
+
+          {focusedFeature && visible.length === 0 && (
+            <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
+              No visible tasks in <span className="font-medium">{focusedFeature.name}</span>.
+              <button
+                onClick={() => setFocusedFeature(null)}
+                className="rounded border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
+              >
+                Clear filter
+              </button>
             </div>
           )}
 

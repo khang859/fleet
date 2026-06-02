@@ -22,7 +22,12 @@ import type {
   Board,
   RunMode,
   PendingMode,
-  ScheduleInput
+  ScheduleInput,
+  Feature,
+  FeatureStatus,
+  CreateFeatureInput,
+  UpdateFeatureInput,
+  FeatureRollup
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -109,6 +114,41 @@ export class KanbanStore {
       // Additive: DBs created before v8 lack the worktree merge-target column.
       this.addColumnIfMissing('tasks', 'base_branch', 'TEXT');
     }
+    if (current < 9) {
+      // Additive: DBs created before v9 lack the features table + per-task PR/feature
+      // columns. The features table is in SCHEMA_SQL for fresh installs; create it here
+      // too (idempotent) so existing DBs gain it.
+      this.db.exec(`CREATE TABLE IF NOT EXISTS features (
+        id TEXT PRIMARY KEY,
+        board_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        repo_path TEXT,
+        base_branch TEXT,
+        integration_branch TEXT,
+        merge_state TEXT,
+        pr_url TEXT,
+        pr_number INTEGER,
+        pr_state TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`);
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_features_board ON features(board_id)');
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_features_status ON features(status)');
+      this.addColumnIfMissing('tasks', 'feature_id', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pr_url', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pr_number', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'pr_state', 'TEXT');
+      this.addColumnIfMissing('tasks', 'checks_state', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pr_merge_state', 'TEXT');
+      this.addColumnIfMissing('tasks', 'pr_synced_at', 'INTEGER');
+      this.addColumnIfMissing('tasks', 'conflict_state', 'TEXT');
+      this.addColumnIfMissing('tasks', 'conflict_files', 'TEXT');
+      this.addColumnIfMissing('tasks', 'worktree_pruned', 'INTEGER NOT NULL DEFAULT 0');
+      // Index must be created AFTER the column exists (it can't live in SCHEMA_SQL,
+      // which runs before this block against a pre-v9 tasks table).
+      this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_feature ON tasks(feature_id)');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -155,6 +195,7 @@ export class KanbanStore {
       modelOverride: (r.model_override as string | null) ?? null,
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
       boardId: String(r.board_id ?? 'default'),
+      featureId: (r.feature_id as string | null) ?? null,
       idempotencyKey: (r.idempotency_key as string | null) ?? null,
       result: (r.result as string | null) ?? null,
       pendingMode: (r.pending_mode as Task['pendingMode']) ?? null,
@@ -184,10 +225,10 @@ export class KanbanStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
-          workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, board_id, idempotency_key,
+          workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, board_id, feature_id, idempotency_key,
           scheduled_from, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
-          @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @board_id, @idempotency_key,
+          @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @board_id, @feature_id, @idempotency_key,
           @scheduled_from, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
@@ -206,6 +247,7 @@ export class KanbanStore {
         model_override: input.modelOverride ?? null,
         skills: JSON.stringify(input.skills ?? []),
         board_id: input.boardId ?? 'default',
+        feature_id: input.featureId ?? null,
         idempotency_key: input.idempotencyKey ?? null,
         scheduled_from: input.scheduledFrom ?? null,
         max_runtime_seconds: input.maxRuntimeSeconds ?? null,
@@ -993,10 +1035,151 @@ export class KanbanStore {
         )
         .run(s, s);
       this.db.prepare('DELETE FROM tasks WHERE board_id=?').run(s);
+      this.db.prepare('DELETE FROM features WHERE board_id=?').run(s);
       this.db.prepare('DELETE FROM boards WHERE slug=?').run(s);
     });
     tx(slug);
     this.onBoardsChanged?.();
+  }
+
+  // ---- Features (task grouping) ----
+
+  private rowToFeature(r: Record<string, unknown>): Feature {
+    return {
+      id: String(r.id),
+      boardId: String(r.board_id),
+      name: String(r.name),
+      status: r.status as FeatureStatus,
+      repoPath: (r.repo_path as string | null) ?? null,
+      baseBranch: (r.base_branch as string | null) ?? null,
+      integrationBranch: (r.integration_branch as string | null) ?? null,
+      mergeState: (r.merge_state as Feature['mergeState']) ?? null,
+      prUrl: (r.pr_url as string | null) ?? null,
+      prNumber: (r.pr_number as number | null) ?? null,
+      prState: (r.pr_state as Feature['prState']) ?? null,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    };
+  }
+
+  createFeature(input: CreateFeatureInput): Feature {
+    const id = randomUUID().slice(0, 8);
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO features (id, board_id, name, status, repo_path, base_branch, created_at, updated_at)
+         VALUES (?, ?, ?, 'active', ?, ?, ?, ?)`
+      )
+      .run(id, input.boardId, input.name, input.repoPath ?? null, input.baseBranch ?? null, ts, ts);
+    const feature = this.getFeature(id);
+    if (!feature) throw new Error('createFeature: failed to read back feature');
+    return feature;
+  }
+
+  getFeature(id: string): Feature | null {
+    const row = this.db.prepare('SELECT * FROM features WHERE id = ?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToFeature(row) : null;
+  }
+
+  listFeatures(filter: { boardId?: string; status?: FeatureStatus } = {}): Feature[] {
+    const where: string[] = [];
+    const params: Record<string, unknown> = {};
+    if (filter.boardId) {
+      where.push('board_id=@boardId');
+      params.boardId = filter.boardId;
+    }
+    if (filter.status) {
+      where.push('status=@status');
+      params.status = filter.status;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM features ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+         ORDER BY created_at DESC`
+      )
+      .all(params) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToFeature(r));
+  }
+
+  updateFeature(id: string, fields: UpdateFeatureInput): void {
+    const current = this.getFeature(id);
+    if (!current) return;
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE features SET name=@name, status=@status, repo_path=@repo_path,
+          base_branch=@base_branch, integration_branch=@integration_branch,
+          merge_state=@merge_state, updated_at=@ts WHERE id=@id`
+      )
+      .run({
+        id,
+        name: fields.name ?? current.name,
+        status: fields.status ?? current.status,
+        repo_path: fields.repoPath !== undefined ? fields.repoPath : current.repoPath,
+        base_branch: fields.baseBranch !== undefined ? fields.baseBranch : current.baseBranch,
+        integration_branch:
+          fields.integrationBranch !== undefined
+            ? fields.integrationBranch
+            : current.integrationBranch,
+        merge_state: fields.mergeState !== undefined ? fields.mergeState : current.mergeState,
+        ts
+      });
+  }
+
+  /** Soft close: flip status to archived; member tasks keep their feature_id. */
+  archiveFeature(id: string): void {
+    this.db
+      .prepare("UPDATE features SET status='archived', updated_at=? WHERE id=?")
+      .run(this.now(), id);
+  }
+
+  /** Hard delete: null member tasks' feature_id, then remove the feature row. */
+  deleteFeature(id: string): void {
+    const tx = this.db.transaction((featureId: string) => {
+      this.db.prepare('UPDATE tasks SET feature_id=NULL WHERE feature_id=?').run(featureId);
+      this.db.prepare('DELETE FROM features WHERE id=?').run(featureId);
+    });
+    tx(id);
+  }
+
+  assignTaskToFeature(taskId: string, featureId: string | null): void {
+    this.db
+      .prepare('UPDATE tasks SET feature_id=?, updated_at=? WHERE id=?')
+      .run(featureId, this.now(), taskId);
+  }
+
+  listFeatureTasks(featureId: string): Task[] {
+    const rows = this.db
+      .prepare('SELECT * FROM tasks WHERE feature_id=? ORDER BY priority DESC, created_at ASC')
+      .all(featureId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** Single-query status rollup for a feature (focus banner + Features dashboard). */
+  featureRollup(featureId: string): FeatureRollup {
+    const row = this.db
+      .prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status IN ('triage','scheduled','todo','ready') THEN 1 ELSE 0 END) AS todo,
+           SUM(CASE WHEN status='running' THEN 1 ELSE 0 END) AS running,
+           SUM(CASE WHEN status IN ('blocked','review') THEN 1 ELSE 0 END) AS review,
+           SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
+           SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived
+         FROM tasks WHERE feature_id=?`
+      )
+      .get(featureId) as Record<string, number | null>;
+    return {
+      featureId,
+      total: Number(row.total ?? 0),
+      todo: Number(row.todo ?? 0),
+      running: Number(row.running ?? 0),
+      review: Number(row.review ?? 0),
+      done: Number(row.done ?? 0),
+      archived: Number(row.archived ?? 0)
+    };
   }
 
   updateTask(id: string, fields: UpdateTaskFields): void {

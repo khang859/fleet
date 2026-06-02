@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { BoardCard, TaskStatus } from '../../../../shared/kanban-types';
 import { KanbanCard } from './KanbanCard';
 import { DRAG_TARGETS } from './kanban-utils';
+import { useKanbanStore } from '../../store/kanban-store';
 
 type Props = {
   status: TaskStatus;
@@ -24,6 +25,12 @@ export function KanbanColumn({
 }: Props): React.JSX.Element {
   const [over, setOver] = useState(false);
   const isDropTarget = DRAG_TARGETS.includes(status);
+  // Show the feature badge only when not focused on a single feature (otherwise every
+  // visible card carries the same name — redundant).
+  const features = useKanbanStore((s) => s.features);
+  const selectedFeatureId = useKanbanStore((s) => s.selectedFeatureId);
+  const featureName = (id: string | null): string | undefined =>
+    selectedFeatureId || !id ? undefined : features.find((f) => f.id === id)?.name;
   return (
     <div className="flex h-full w-64 shrink-0 flex-col">
       <div className="mb-2 flex items-center justify-between px-1 text-xs font-semibold uppercase tracking-wide text-neutral-400">
@@ -51,6 +58,7 @@ export function KanbanColumn({
           <KanbanCard
             key={c.id}
             card={c}
+            featureName={featureName(c.featureId)}
             onOpen={onOpen}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}

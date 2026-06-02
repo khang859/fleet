@@ -4,12 +4,19 @@ import { scheduleSummary, formatNextRun } from './kanban-utils';
 
 type Props = {
   card: BoardCard;
+  featureName?: string;
   onOpen: (id: string) => void;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
 };
 
-export function KanbanCard({ card, onOpen, onDragStart, onDragEnd }: Props): React.JSX.Element {
+export function KanbanCard({
+  card,
+  featureName,
+  onOpen,
+  onDragStart,
+  onDragEnd
+}: Props): React.JSX.Element {
   const draggable = card.status !== 'running';
   return (
     <div
@@ -46,6 +53,14 @@ export function KanbanCard({ card, onOpen, onDragStart, onDragEnd }: Props): Rea
         )}
         {card.tenant && (
           <span className="rounded bg-neutral-700 px-1 text-neutral-300">{card.tenant}</span>
+        )}
+        {featureName && (
+          <span
+            className="max-w-[10rem] truncate rounded bg-violet-500/20 px-1 text-violet-300"
+            title={featureName}
+          >
+            {featureName}
+          </span>
         )}
         {card.childTotal > 0 && (
           <span className="inline-flex items-center gap-0.5">

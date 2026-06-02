@@ -126,9 +126,23 @@ const ORCHESTRATOR_EXTRA_TOOLS: McpTool[] = [
         body: { type: 'string' },
         assignee: { type: 'string' },
         priority: { type: 'number' },
-        parents: { type: 'array', items: { type: 'string' } }
+        parents: { type: 'array', items: { type: 'string' } },
+        feature_id: { type: 'string' } // defaults to the current task's feature
       },
       required: ['title']
+    }
+  },
+  {
+    name: 'kanban_feature_create',
+    description:
+      'Create a feature (task grouping) on this board. Returns its id; pass to kanban_create as feature_id to group the tasks you create.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        base_branch: { type: 'string' }
+      },
+      required: ['name']
     }
   },
   {
@@ -327,14 +341,22 @@ export class KanbanMcpServer {
     repoPath?: string;
     baseBranch?: string | null;
     workspacePath?: string;
+    featureId?: string | null;
   } {
+    // Children inherit feature membership so a decompose run keeps the whole group together.
+    const feature = task.featureId ? { featureId: task.featureId } : {};
     if (task.workspaceKind === 'worktree' && task.repoPath) {
-      return { workspaceKind: 'worktree', repoPath: task.repoPath, baseBranch: task.baseBranch };
+      return {
+        workspaceKind: 'worktree',
+        repoPath: task.repoPath,
+        baseBranch: task.baseBranch,
+        ...feature
+      };
     }
     if (task.workspaceKind === 'dir' && task.workspacePath) {
-      return { workspaceKind: 'dir', workspacePath: task.workspacePath };
+      return { workspaceKind: 'dir', workspacePath: task.workspacePath, ...feature };
     }
-    return {};
+    return { ...feature };
   }
 
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
@@ -492,7 +514,8 @@ export class KanbanMcpServer {
               body: z.string().optional(),
               assignee: z.string().optional(),
               priority: z.number().optional(),
-              parents: z.array(z.string()).optional()
+              parents: z.array(z.string()).optional(),
+              feature_id: z.string().optional()
             })
             .parse(args);
           // The orchestrator must assign children only to worker profiles that actually
@@ -519,7 +542,9 @@ export class KanbanMcpServer {
             priority: a.priority ?? 0,
             status: 'todo',
             boardId: task.boardId,
-            ...inherit
+            ...inherit,
+            // An explicit feature_id overrides the inherited one.
+            ...(a.feature_id ? { featureId: a.feature_id } : {})
           });
           this.store.addLink(scope.taskId, child.id); // original is the grouping parent
           for (const p of a.parents ?? []) this.store.addLink(p, child.id);
@@ -528,6 +553,21 @@ export class KanbanMcpServer {
             parent: scope.taskId
           });
           return this.text(res, rpcReq.id, child.id);
+        }
+        case 'kanban_feature_create': {
+          const a = z.object({ name: z.string(), base_branch: z.string().optional() }).parse(args);
+          const feature = this.store.createFeature({
+            boardId: task.boardId,
+            name: a.name,
+            // Inherit the orchestrator's repo so member tasks need no folder re-setup.
+            repoPath: task.repoPath,
+            baseBranch: a.base_branch ?? task.baseBranch
+          });
+          this.store.appendEvent(feature.id, null, 'feature_created', {
+            name: a.name,
+            by: 'orchestrator'
+          });
+          return this.text(res, rpcReq.id, feature.id);
         }
         case 'kanban_link': {
           const a = z.object({ parent_id: z.string(), child_id: z.string() }).parse(args);
