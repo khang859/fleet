@@ -89,6 +89,18 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
     commands.dispatch();
   });
 
+  ipcMain.handle(IPC_CHANNELS.KANBAN_MERGE_TASK, (_e, taskId: string) =>
+    commands.mergeReviewTask(taskId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_CREATE_PR, (_e, taskId: string) =>
+    commands.createPrForTask(taskId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_ACCEPT_TASK, (_e, taskId: string) =>
+    commands.acceptReviewTask(taskId)
+  );
+
   ipcMain.handle(IPC_CHANNELS.KANBAN_DECOMPOSE, (_e, taskId: string) => {
     commands.requestDecompose(taskId);
   });

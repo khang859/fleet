@@ -2,6 +2,7 @@ import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { Task, RunMode } from '../../shared/kanban-types';
 import { computeNextRun, taskToScheduleInput } from './schedule';
+import { finalizeWorktree } from './workspace';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -83,6 +84,15 @@ export class KanbanDispatcher {
       // so it wins even if the claim lease also happened to expire this tick.
       if (exit?.code === REVIEW_REQUIRED_EXIT_CODE) {
         const note = 'review-required: agent ended turn without completing';
+        // Preserve whatever the agent did before it went quiet: commit the
+        // worktree so the block leaves a reviewable branch, not loose edits.
+        if (task.workspaceKind === 'worktree' && task.workspacePath) {
+          finalizeWorktree({
+            workspacePath: task.workspacePath,
+            taskId: task.id,
+            title: task.title
+          });
+        }
         if (task.currentRunId != null) {
           this.store.finishRun(task.currentRunId, 'incomplete', { summary: note });
         }

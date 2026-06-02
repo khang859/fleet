@@ -826,7 +826,10 @@ void app.whenReady().then(async () => {
         worktreesRoot: join(KANBAN_HOME, 'worktrees'),
         workspacePath: task.workspacePath ?? undefined,
         repoPath: task.repoPath ?? undefined,
-        branchName: task.branchName ?? undefined
+        branchName: task.branchName ?? undefined,
+        // A dependent child branches from its parent's base so it inherits the
+        // parent's merged work; top-level tasks fall back to the repo's HEAD.
+        startPoint: task.baseBranch ?? undefined
       });
       // Persist the workspace path for worktree AND scratch tasks so the artifact MCP handler,
       // archive warning, and reveal/discard actions all resolve the same durable path.
@@ -834,7 +837,7 @@ void app.whenReady().then(async () => {
         (task.workspaceKind === 'worktree' || task.workspaceKind === 'scratch') &&
         task.workspacePath == null
       ) {
-        kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName);
+        kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName, prepared.baseBranch);
       }
       return prepared.path;
     },

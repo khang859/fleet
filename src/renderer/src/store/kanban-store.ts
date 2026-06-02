@@ -11,7 +11,10 @@ import type {
   SwarmCreated,
   Task
 } from '../../../shared/kanban-types';
-import type { KanbanArtifactPreviewResponse } from '../../../shared/ipc-api';
+import type {
+  KanbanArtifactPreviewResponse,
+  KanbanReviewActionResult
+} from '../../../shared/ipc-api';
 
 /** A pending "use artifact as input" request, consumed by the board's create form / swarm modal. */
 export type ArtifactSeed = {
@@ -44,6 +47,9 @@ type KanbanState = {
   addLink: (parentId: string, childId: string) => Promise<void>;
   removeLink: (parentId: string, childId: string) => Promise<void>;
   nudge: () => Promise<void>;
+  mergeTask: (id: string) => Promise<KanbanReviewActionResult>;
+  createPr: (id: string) => Promise<KanbanReviewActionResult>;
+  acceptTask: (id: string) => Promise<KanbanReviewActionResult>;
   decompose: (id: string) => Promise<void>;
   specify: (id: string) => Promise<void>;
   setSchedule: (taskId: string, input: ScheduleInput) => Promise<void>;
@@ -169,6 +175,24 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   },
   nudge: async () => {
     await window.fleet.kanban.nudge();
+  },
+  mergeTask: async (id) => {
+    const result = await window.fleet.kanban.mergeTask(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+    return result;
+  },
+  createPr: async (id) => {
+    const result = await window.fleet.kanban.createPr(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+    return result;
+  },
+  acceptTask: async (id) => {
+    const result = await window.fleet.kanban.acceptTask(id);
+    await get().loadBoard();
+    await get().refreshDetail();
+    return result;
   },
   decompose: async (id) => {
     await window.fleet.kanban.decompose(id);

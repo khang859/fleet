@@ -105,6 +105,10 @@ export class KanbanStore {
       this.addColumnIfMissing('tasks', 'schedule_paused', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'scheduled_from', 'TEXT');
     }
+    if (current < 8) {
+      // Additive: DBs created before v8 lack the worktree merge-target column.
+      this.addColumnIfMissing('tasks', 'base_branch', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -147,6 +151,7 @@ export class KanbanStore {
       workspacePath: (r.workspace_path as string | null) ?? null,
       repoPath: (r.repo_path as string | null) ?? null,
       branchName: (r.branch_name as string | null) ?? null,
+      baseBranch: (r.base_branch as string | null) ?? null,
       modelOverride: (r.model_override as string | null) ?? null,
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
       boardId: String(r.board_id ?? 'default'),
@@ -179,10 +184,10 @@ export class KanbanStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
-          workspace_kind, workspace_path, repo_path, branch_name, model_override, skills, board_id, idempotency_key,
+          workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, board_id, idempotency_key,
           scheduled_from, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
-          @workspace_kind, @workspace_path, @repo_path, @branch_name, @model_override, @skills, @board_id, @idempotency_key,
+          @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @board_id, @idempotency_key,
           @scheduled_from, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
@@ -197,6 +202,7 @@ export class KanbanStore {
         workspace_path: input.workspacePath ?? null,
         repo_path: input.repoPath ?? null,
         branch_name: input.branchName ?? null,
+        base_branch: input.baseBranch ?? null,
         model_override: input.modelOverride ?? null,
         skills: JSON.stringify(input.skills ?? []),
         board_id: input.boardId ?? 'default',
@@ -791,6 +797,22 @@ export class KanbanStore {
       .run(result, ts, taskId);
   }
 
+  /**
+   * Land a worktree task in the human review gate: same claim-clearing as
+   * completeTask, but status='review' (not 'done'), so the work is preserved and
+   * dependent children stay gated until a human picks an integration action.
+   */
+  reviewTask(taskId: string, result: string | null): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET status='review', result=?, claim_lock=NULL, claim_expires=NULL,
+          worker_pid=NULL, current_run_id=NULL, consecutive_failures=0, last_failure_error=NULL, updated_at=?
+         WHERE id=?`
+      )
+      .run(result, ts, taskId);
+  }
+
   blockTask(taskId: string, reason: string): void {
     const ts = this.now();
     this.db
@@ -928,7 +950,8 @@ export class KanbanStore {
           removeWorktree({
             repoPath: t.repoPath,
             workspacePath: t.workspacePath,
-            branchName: t.branchName
+            branchName: t.branchName,
+            baseBranch: t.baseBranch
           });
         } else if (t.workspacePath) {
           cleanupWorkspace({ kind: t.workspaceKind, path: t.workspacePath });
@@ -1008,10 +1031,17 @@ export class KanbanStore {
     this.db.prepare('UPDATE task_runs SET worker_pid=? WHERE id=?').run(pid, runId);
   }
 
-  setWorkspace(taskId: string, path: string, branchName: string | null): void {
+  setWorkspace(
+    taskId: string,
+    path: string,
+    branchName: string | null,
+    baseBranch: string | null = null
+  ): void {
     this.db
-      .prepare('UPDATE tasks SET workspace_path=?, branch_name=?, updated_at=? WHERE id=?')
-      .run(path, branchName, this.now(), taskId);
+      .prepare(
+        'UPDATE tasks SET workspace_path=?, branch_name=?, base_branch=?, updated_at=? WHERE id=?'
+      )
+      .run(path, branchName, baseBranch, this.now(), taskId);
   }
 
   setPendingMode(taskId: string, mode: PendingMode | null): void {

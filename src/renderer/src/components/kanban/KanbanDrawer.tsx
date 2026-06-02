@@ -2,11 +2,21 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { X, Paperclip, Download, Clock, FolderGit2 } from 'lucide-react';
+import {
+  X,
+  Paperclip,
+  Download,
+  Clock,
+  FolderGit2,
+  GitMerge,
+  GitPullRequest,
+  Check
+} from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
 import { OutputsSection } from './KanbanArtifacts';
+import { GitChangesModal } from '../GitChangesModal';
 import {
   relativeTime,
   formatDuration,
@@ -36,6 +46,9 @@ export function KanbanDrawer(): React.JSX.Element | null {
     replyAndResume,
     addLink,
     removeLink,
+    mergeTask,
+    createPr,
+    acceptTask,
     decompose,
     specify,
     uploadAttachments,
@@ -56,6 +69,10 @@ export function KanbanDrawer(): React.JSX.Element | null {
   const [linkId, setLinkId] = useState('');
   const [dragging, setDragging] = useState(false);
   const [attachError, setAttachError] = useState<string | null>(null);
+  const [showDiff, setShowDiff] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState<'merge' | 'pr' | 'accept' | null>(null);
+  const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+  const [reviewErr, setReviewErr] = useState<string | null>(null);
   const dragCounter = useRef(0);
   const seededIdRef = useRef<string | null>(null);
   const [schedKind, setSchedKind] = useState<'once' | 'interval' | 'cron'>('interval');
@@ -74,6 +91,10 @@ export function KanbanDrawer(): React.JSX.Element | null {
       setAssignee(detail.task.assignee ?? '');
       setPriority(detail.task.priority);
       setTenant(detail.task.tenant ?? '');
+      setShowDiff(false);
+      setReviewBusy(null);
+      setReviewMsg(null);
+      setReviewErr(null);
       setSchedKind('interval');
       setSchedAt('');
       setSchedEveryN(1);
@@ -96,6 +117,26 @@ export function KanbanDrawer(): React.JSX.Element | null {
       priority,
       tenant: tenant.trim() === '' ? null : tenant.trim()
     });
+  }
+
+  async function runReview(action: 'merge' | 'pr' | 'accept'): Promise<void> {
+    setReviewBusy(action);
+    setReviewErr(null);
+    setReviewMsg(null);
+    try {
+      const res =
+        action === 'merge'
+          ? await mergeTask(t.id)
+          : action === 'pr'
+            ? await createPr(t.id)
+            : await acceptTask(t.id);
+      if (res.ok) setReviewMsg(res.prUrl ?? res.message ?? 'Done');
+      else setReviewErr(res.error ?? 'Action failed');
+    } catch (err) {
+      setReviewErr(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setReviewBusy(null);
+    }
   }
 
   function buildScheduleInput(): ScheduleInput | null {
@@ -281,18 +322,31 @@ export function KanbanDrawer(): React.JSX.Element | null {
             {t.workspaceKind === 'scratch' ? (
               <span className="text-neutral-400">Scratch (ephemeral)</span>
             ) : t.workspaceKind === 'worktree' ? (
-              <span className="text-neutral-300">
-                Worktree ·{' '}
-                <span className="font-mono text-[11px] text-neutral-400">
-                  {t.repoPath ?? '(repo unset)'}
+              <div className="space-y-1">
+                <span className="text-neutral-300">
+                  Worktree ·{' '}
+                  <span className="font-mono text-[11px] text-neutral-400">
+                    {t.repoPath ?? '(repo unset)'}
+                  </span>
+                  {t.branchName && (
+                    <>
+                      {' @ '}
+                      <span className="font-mono text-[11px] text-emerald-400">{t.branchName}</span>
+                    </>
+                  )}
+                  {t.baseBranch && (
+                    <span className="text-[10px] text-neutral-500"> → {t.baseBranch}</span>
+                  )}
                 </span>
-                {t.branchName && (
-                  <>
-                    {' @ '}
-                    <span className="font-mono text-[11px] text-emerald-400">{t.branchName}</span>
-                  </>
+                {t.workspacePath && t.branchName && (
+                  <button
+                    onClick={() => setShowDiff(true)}
+                    className="block rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+                  >
+                    View changes
+                  </button>
                 )}
-              </span>
+              </div>
             ) : (
               <span className="text-neutral-300">
                 Dir ·{' '}
@@ -303,6 +357,65 @@ export function KanbanDrawer(): React.JSX.Element | null {
             )}
           </div>
         </section>
+
+        {/* Review actions — integrate a finished worktree task */}
+        {t.status === 'review' && (
+          <section>
+            <h3 className="mb-1 font-semibold text-neutral-400">Review &amp; integrate</h3>
+            <div className="space-y-2 rounded border border-neutral-800 bg-neutral-950 p-2">
+              <p className="text-[10px] text-neutral-500">
+                Work is committed on{' '}
+                <span className="font-mono text-emerald-400">
+                  {t.branchName ?? '(unknown branch)'}
+                </span>
+                . Pick how to integrate it.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {/* Merge / PR need a worktree branch + base; otherwise only "Do Nothing" applies. */}
+                {t.workspaceKind === 'worktree' && t.branchName && t.baseBranch && (
+                  <>
+                    <button
+                      onClick={() => void runReview('merge')}
+                      disabled={reviewBusy !== null}
+                      className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <GitMerge size={12} />
+                      {reviewBusy === 'merge' ? 'Merging…' : `Merge to ${t.baseBranch}`}
+                    </button>
+                    <button
+                      onClick={() => void runReview('pr')}
+                      disabled={reviewBusy !== null}
+                      className="inline-flex items-center gap-1 rounded border border-sky-700 px-2 py-1 text-sky-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <GitPullRequest size={12} />
+                      {reviewBusy === 'pr' ? 'Opening…' : 'Make Pull Request'}
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => void runReview('accept')}
+                  disabled={reviewBusy !== null}
+                  className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Check size={12} />
+                  {reviewBusy === 'accept' ? 'Accepting…' : 'Do Nothing'}
+                </button>
+              </div>
+              {reviewMsg && (
+                <p className="break-all text-[10px] text-emerald-400">
+                  {reviewMsg.startsWith('http') ? (
+                    <a href={reviewMsg} target="_blank" rel="noreferrer" className="underline">
+                      {reviewMsg}
+                    </a>
+                  ) : (
+                    reviewMsg
+                  )}
+                </p>
+              )}
+              {reviewErr && <p className="text-[10px] text-red-400">{reviewErr}</p>}
+            </div>
+          </section>
+        )}
 
         {/* Result / body preview (for blocked cards this holds the agent's question) */}
         {t.result && (
@@ -617,6 +730,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
           Created {relativeTime(t.createdAt)} · Updated {relativeTime(t.updatedAt)}
         </p>
       </div>
+
+      <GitChangesModal
+        isOpen={showDiff}
+        onClose={() => setShowDiff(false)}
+        cwd={t.workspacePath ?? undefined}
+        compareRef={t.baseBranch}
+      />
     </div>
   );
 }

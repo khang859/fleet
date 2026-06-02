@@ -26,12 +26,15 @@ type GitChangesModalProps = {
   isOpen: boolean;
   onClose: () => void;
   cwd: string | undefined;
+  /** When set, show committed changes against this ref (base...HEAD) instead of the working tree. */
+  compareRef?: string | null;
 };
 
 export function GitChangesModal({
   isOpen,
   onClose,
-  cwd
+  cwd,
+  compareRef
 }: GitChangesModalProps): React.JSX.Element | null {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<GitStatusPayload | null>(null);
@@ -59,7 +62,7 @@ export function GitChangesModal({
     setFilterText('');
     setActiveFileIndex(0);
     window.fleet.git
-      .getStatus(cwd)
+      .getStatus(cwd, compareRef ?? undefined)
       .then((result) => {
         setData(result);
         setLoading(false);
@@ -69,7 +72,7 @@ export function GitChangesModal({
         setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
         setLoading(false);
       });
-  }, [isOpen, cwd]);
+  }, [isOpen, cwd, compareRef]);
 
   // Filter files
   const filteredFiles = useMemo(() => {

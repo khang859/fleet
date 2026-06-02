@@ -42,6 +42,8 @@ export function KanbanBoard(): React.JSX.Element {
   const [newMode, setNewMode] = useState<'scratch' | 'project'>('scratch');
   const [newFolder, setNewFolder] = useState('');
   const [newIsolated, setNewIsolated] = useState(true);
+  // null = not applicable / still checking; true/false = the picked folder's git-repo status.
+  const [folderIsRepo, setFolderIsRepo] = useState<boolean | null>(null);
   const draggingId = useRef<string | null>(null);
 
   useEffect(() => {
@@ -84,11 +86,42 @@ export function KanbanBoard(): React.JSX.Element {
     if (path) setNewFolder(path);
   }
 
+  // An "isolated copy" (worktree) needs a git repo. Verify the picked folder up
+  // front so the form catches it, instead of failing later at claim time.
+  useEffect(() => {
+    const folder = newFolder.trim();
+    if (newMode !== 'project' || !newIsolated || !folder) {
+      setFolderIsRepo(null);
+      return;
+    }
+    let cancelled = false;
+    setFolderIsRepo(null); // checking…
+    window.fleet.git
+      .isRepo(folder)
+      .then((r) => {
+        if (!cancelled) setFolderIsRepo(r.isRepo);
+      })
+      .catch(() => {
+        if (!cancelled) setFolderIsRepo(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [newFolder, newMode, newIsolated]);
+
   async function handleCreate(): Promise<void> {
     const title = newTitle.trim();
     if (!title) return;
     const folder = newFolder.trim();
     if (newMode === 'project' && !folder) return;
+    // Block an isolated-copy task on a non-repo folder before it can fail at claim time.
+    if (newMode === 'project' && newIsolated) {
+      const { isRepo } = await window.fleet.git.isRepo(folder);
+      if (!isRepo) {
+        setFolderIsRepo(false);
+        return;
+      }
+    }
     const workspace =
       newMode === 'scratch'
         ? { workspaceKind: 'scratch' as const }
@@ -371,12 +404,24 @@ export function KanbanBoard(): React.JSX.Element {
                       </span>
                     </span>
                   </label>
+                  {newIsolated && newFolder.trim() !== '' && folderIsRepo === false && (
+                    <p className="text-[10px] text-red-400">
+                      Not a git repository — an isolated copy needs a git repo. Uncheck to work in
+                      the folder directly, or pick a repo.
+                    </p>
+                  )}
                 </div>
               )}
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => void handleCreate()}
-                  className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
+                  disabled={
+                    newMode === 'project' &&
+                    newIsolated &&
+                    newFolder.trim() !== '' &&
+                    folderIsRepo !== true
+                  }
+                  className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Create
                 </button>
@@ -412,7 +457,10 @@ export function KanbanBoard(): React.JSX.Element {
                   draggingId.current = null;
                   if (!id) return;
                   const card = cards.find((c) => c.id === id);
-                  if (card && card.status !== status) void setStatus(id, status);
+                  if (!card || card.status === status) return;
+                  // Review is worktree-only (the command layer rejects it too).
+                  if (status === 'review' && card.workspaceKind !== 'worktree') return;
+                  void setStatus(id, status);
                 }}
               />
             ))}

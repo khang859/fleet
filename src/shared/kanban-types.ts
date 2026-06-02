@@ -5,6 +5,7 @@ export type TaskStatus =
   | 'ready'
   | 'running'
   | 'blocked'
+  | 'review'
   | 'done'
   | 'archived';
 
@@ -44,6 +45,8 @@ export interface Task {
   workspacePath: string | null;
   repoPath: string | null;
   branchName: string | null;
+  /** Repo HEAD captured when a worktree was created: the merge target and child-branch base. */
+  baseBranch: string | null;
   modelOverride: string | null;
   skills: string[];
   boardId: string;
@@ -164,6 +167,8 @@ export interface CreateTaskInput {
   repoPath?: string;
   workspacePath?: string;
   branchName?: string | null;
+  /** Start-point/merge-target a worktree child inherits from its parent. */
+  baseBranch?: string | null;
   modelOverride?: string | null;
   skills?: string[];
   boardId?: string;
@@ -221,6 +226,8 @@ export interface SwarmInput {
   workspaceKind?: WorkspaceKind;
   repoPath?: string;
   workspacePath?: string | null;
+  /** Start-point/merge-target worktree workers inherit (a worktree orchestrator's base). */
+  baseBranch?: string | null;
   maxRuntimeSeconds?: number | null;
   rootTitle?: string;
   verifierTitle?: string;

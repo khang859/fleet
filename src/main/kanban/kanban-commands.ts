@@ -24,7 +24,9 @@ import type {
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
 import { createLogger } from '../logger';
-import { removeWorktree } from './workspace';
+import { removeWorktree, mergeWorktreeToBase, pushAndCreatePr } from './workspace';
+import { dirname } from 'path';
+import type { KanbanReviewActionResult } from '../../shared/ipc-api';
 import { removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
 
@@ -36,6 +38,7 @@ export const MANUAL_STATUSES: TaskStatus[] = [
   'todo',
   'ready',
   'blocked',
+  'review',
   'done',
   'archived'
 ];
@@ -240,6 +243,11 @@ export class KanbanCommands {
     if (!MANUAL_STATUSES.includes(status)) {
       throw new CodedError(`invalid status: ${status}`, 'BAD_REQUEST');
     }
+    // Review is a worktree-only lane: its drawer actions (merge/PR) assume a
+    // committed branch, so scratch/dir tasks have no business there.
+    if (status === 'review' && task.workspaceKind !== 'worktree') {
+      throw new CodedError('only worktree tasks can enter review', 'BAD_REQUEST');
+    }
     this.store.setStatus(id, status);
     this.store.appendEvent(id, null, 'status_changed', {
       from: task.status,
@@ -259,11 +267,17 @@ export class KanbanCommands {
       task.repoPath
     ) {
       try {
-        removeWorktree({
+        const { branchKept } = removeWorktree({
           repoPath: task.repoPath,
           workspacePath: task.workspacePath,
-          branchName: task.branchName
+          branchName: task.branchName,
+          baseBranch: task.baseBranch
         });
+        // Unmerged work is preserved (branch kept) rather than `git branch -D`'d;
+        // surface it so the user knows a dangling branch is theirs to recover.
+        if (branchKept && task.branchName) {
+          this.store.appendEvent(id, null, 'unmerged_branch_kept', { branch: task.branchName });
+        }
       } catch (err) {
         log.warn('worktree removal on archive failed', {
           taskId: id,
@@ -579,6 +593,107 @@ export class KanbanCommands {
       if (input.kind === 'once') break; // a one-shot fires exactly once
     }
     return { ok: true, next };
+  }
+
+  /** Shared validation: a review task with a complete worktree + base branch. */
+  private requireMergeableReviewTask(id: string): Task & {
+    workspacePath: string;
+    repoPath: string;
+    branchName: string;
+    baseBranch: string;
+  } {
+    const task = this.requireTask(id);
+    if (task.status !== 'review') {
+      throw new CodedError('task is not awaiting review', 'BAD_REQUEST');
+    }
+    if (
+      task.workspaceKind !== 'worktree' ||
+      !task.workspacePath ||
+      !task.repoPath ||
+      !task.branchName ||
+      !task.baseBranch
+    ) {
+      throw new CodedError('task has no worktree branch to integrate', 'BAD_REQUEST');
+    }
+    return task as Task & {
+      workspacePath: string;
+      repoPath: string;
+      branchName: string;
+      baseBranch: string;
+    };
+  }
+
+  /** Merge a review task's branch into its base, then accept it (done). */
+  mergeReviewTask(id: string): KanbanReviewActionResult {
+    const task = this.requireMergeableReviewTask(id);
+    const result = mergeWorktreeToBase({
+      repoPath: task.repoPath,
+      branchName: task.branchName,
+      baseBranch: task.baseBranch,
+      worktreeParentDir: dirname(task.workspacePath),
+      taskId: task.id,
+      title: task.title
+    });
+    if (!result.ok) {
+      const reason = result.conflict
+        ? `merge conflict against ${task.baseBranch}; resolve manually or unblock to retry`
+        : (result.error ?? 'merge failed');
+      this.store.addComment(id, 'human', `merge to ${task.baseBranch} failed: ${reason}`);
+      this.store.appendEvent(id, null, 'merge_failed', {
+        base: task.baseBranch,
+        conflict: !!result.conflict
+      });
+      return { ok: false, conflict: result.conflict, error: reason };
+    }
+    this.store.completeTask(id, task.result);
+    this.store.addComment(id, 'human', `merged ${task.branchName} into ${task.baseBranch}`);
+    this.store.appendEvent(id, null, 'merged', {
+      base: task.baseBranch,
+      branch: task.branchName
+    });
+    // Base advanced — let gated children promote without waiting for the next poll.
+    this.dispatcher.tick();
+    return { ok: true, message: `merged into ${task.baseBranch}` };
+  }
+
+  /** Push a review task's branch and open a PR, then accept it (done). */
+  createPrForTask(id: string): KanbanReviewActionResult {
+    const task = this.requireMergeableReviewTask(id);
+    const result = pushAndCreatePr({
+      workspacePath: task.workspacePath,
+      branchName: task.branchName,
+      baseBranch: task.baseBranch,
+      title: task.title,
+      body: task.body
+    });
+    if (!result.ok) {
+      this.store.addComment(id, 'human', `PR creation failed: ${result.error}`);
+      this.store.appendEvent(id, null, 'pr_failed', { error: result.error });
+      return { ok: false, error: result.error };
+    }
+    this.store.completeTask(id, task.result);
+    this.store.addComment(id, 'human', `opened pull request: ${result.url}`);
+    this.store.appendEvent(id, null, 'pr_created', { url: result.url });
+    // Task accepted (done) — promote any gated children without waiting for the poll.
+    this.dispatcher.tick();
+    return { ok: true, prUrl: result.url, message: 'pull request created' };
+  }
+
+  /** Accept a review task without integrating (Do Nothing): branch + worktree are preserved. */
+  acceptReviewTask(id: string): KanbanReviewActionResult {
+    const task = this.requireTask(id);
+    if (task.status !== 'review') {
+      throw new CodedError('task is not awaiting review', 'BAD_REQUEST');
+    }
+    this.store.completeTask(id, task.result);
+    const where = task.branchName
+      ? `${task.branchName}${task.workspacePath ? ` at ${task.workspacePath}` : ''}`
+      : 'workspace';
+    this.store.addComment(id, 'human', `accepted without integration; branch preserved: ${where}`);
+    this.store.appendEvent(id, null, 'accepted', { branch: task.branchName });
+    // Task accepted (done) — promote any gated children without waiting for the poll.
+    this.dispatcher.tick();
+    return { ok: true, message: 'accepted; branch preserved' };
   }
 
   dispatch(): void {

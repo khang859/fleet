@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   workspace_path TEXT,
   repo_path TEXT,
   branch_name TEXT,
+  base_branch TEXT,
   model_override TEXT,
   skills TEXT NOT NULL DEFAULT '[]',
   board_id TEXT NOT NULL DEFAULT 'default',
