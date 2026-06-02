@@ -1,7 +1,7 @@
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
-import type { WorkspaceKind } from '../../shared/kanban-types';
+import type { WorkspaceKind, PrState, ChecksState } from '../../shared/kanban-types';
 
 export interface PrepareWorkspaceInput {
   kind: WorkspaceKind;
@@ -426,7 +426,7 @@ export function pushAndCreatePr(input: {
   baseBranch: string;
   title: string;
   body: string;
-}): { ok: boolean; url?: string; error?: string } {
+}): { ok: boolean; url?: string; number?: number; error?: string } {
   const { workspacePath, branchName, baseBranch, title, body } = input;
   try {
     execFileSync('git', ['-C', workspacePath, 'push', '-u', 'origin', branchName], {
@@ -453,7 +453,7 @@ export function pushAndCreatePr(input: {
       { cwd: workspacePath, encoding: 'utf8' }
     );
     const url = out.match(/https?:\/\/\S+/)?.[0] ?? out.trim();
-    return { ok: true, url };
+    return { ok: true, url, number: prNumberFromUrl(url) };
   } catch (err) {
     const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
     if (e.code === 'ENOENT') {
@@ -462,7 +462,121 @@ export function pushAndCreatePr(input: {
     const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
     // `gh` reports an existing PR (with its URL) as an error — treat that as success.
     const existing = msg.match(/https?:\/\/\S+/)?.[0];
-    if (existing) return { ok: true, url: existing };
+    if (existing) return { ok: true, url: existing, number: prNumberFromUrl(existing) };
     return { ok: false, error: `gh pr create failed: ${msg}` };
   }
+}
+
+/** Extract the PR number from a GitHub PR URL (…/pull/<n>), or undefined. */
+function prNumberFromUrl(url: string | undefined): number | undefined {
+  const m = url?.match(/\/pull\/(\d+)/);
+  return m ? Number(m[1]) : undefined;
+}
+
+/** Normalize a single gh statusCheckRollup entry into pass/fail/pending. */
+function classifyCheck(e: {
+  status?: string;
+  conclusion?: string;
+  state?: string;
+}): 'fail' | 'pass' | 'pending' {
+  const concl = (e.conclusion ?? '').toUpperCase();
+  const state = (e.state ?? '').toUpperCase();
+  const FAIL = [
+    'FAILURE',
+    'TIMED_OUT',
+    'CANCELLED',
+    'ACTION_REQUIRED',
+    'STARTUP_FAILURE',
+    'STALE',
+    'ERROR'
+  ];
+  const PASS = ['SUCCESS', 'NEUTRAL', 'SKIPPED'];
+  if (FAIL.includes(concl) || FAIL.includes(state)) return 'fail';
+  if (PASS.includes(concl) || PASS.includes(state)) return 'pass';
+  // CheckRun still running, or a pending/expected status context.
+  return 'pending';
+}
+
+/** Roll a gh statusCheckRollup array up to a single summary state (null when empty). */
+function rollupChecks(rollup: unknown): ChecksState | null {
+  if (!Array.isArray(rollup) || rollup.length === 0) return null;
+  let pending = false;
+  for (const raw of rollup) {
+    const verdict = classifyCheck(raw as { status?: string; conclusion?: string; state?: string });
+    if (verdict === 'fail') return 'failing';
+    if (verdict === 'pending') pending = true;
+  }
+  return pending ? 'pending' : 'passing';
+}
+
+export type PrFetchResult =
+  | {
+      ok: true;
+      state: PrState;
+      checksState: ChecksState | null;
+      mergeState: string | null;
+      url: string;
+      number: number;
+    }
+  | { ok: false; notFound?: boolean; noGh?: boolean; rateLimited?: boolean; error: string };
+
+/**
+ * Read a PR's current state from `gh`. `prRef` is a PR number or branch name;
+ * the lookup runs in `workspacePath` so it resolves against that repo's origin.
+ * Errors are tagged so the poller can react (drop a vanished PR, back off on
+ * rate limits) without parsing strings itself.
+ */
+export function fetchPrState(input: { workspacePath: string; prRef: string }): PrFetchResult {
+  let out: string;
+  try {
+    out = execFileSync(
+      'gh',
+      [
+        'pr',
+        'view',
+        input.prRef,
+        '--json',
+        'state,isDraft,mergeStateStatus,statusCheckRollup,url,number'
+      ],
+      { cwd: input.workspacePath, encoding: 'utf8' }
+    );
+  } catch (err) {
+    const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
+    if (e.code === 'ENOENT') return { ok: false, noGh: true, error: 'gh CLI not found' };
+    const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
+    if (/no pull requests found|could not resolve|not found/i.test(msg)) {
+      return { ok: false, notFound: true, error: msg };
+    }
+    if (/rate limit/i.test(msg)) return { ok: false, rateLimited: true, error: msg };
+    return { ok: false, error: msg };
+  }
+  let json: {
+    state?: string;
+    isDraft?: boolean;
+    mergeStateStatus?: string;
+    statusCheckRollup?: unknown;
+    url?: string;
+    number?: number;
+  };
+  try {
+    json = JSON.parse(out) as typeof json;
+  } catch {
+    return { ok: false, error: 'could not parse gh pr view output' };
+  }
+  const raw = (json.state ?? '').toUpperCase();
+  const state: PrState = json.isDraft
+    ? 'draft'
+    : raw === 'MERGED'
+      ? 'merged'
+      : raw === 'CLOSED'
+        ? 'closed'
+        : 'open';
+  return {
+    ok: true,
+    state,
+    checksState: rollupChecks(json.statusCheckRollup),
+    mergeState: json.mergeStateStatus ?? null,
+    url: json.url ?? '',
+    number: json.number ?? 0
+  };
 }

@@ -27,7 +27,10 @@ import type {
   FeatureStatus,
   CreateFeatureInput,
   UpdateFeatureInput,
-  FeatureRollup
+  FeatureRollup,
+  TaskPrInfo,
+  PrState,
+  ChecksState
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -45,6 +48,21 @@ const log = createLogger('kanban-store');
 function appendArtifactReference(body: string, art: { filename: string }): string {
   const ref = `Seeded from artifact: ${art.filename} (attached).`;
   return body.trim() ? `${body.trimEnd()}\n\n${ref}` : ref;
+}
+
+/** Build a task's PR tracking sub-object, or null when it has never had a PR. */
+function prInfoFromRow(r: Record<string, unknown>): TaskPrInfo | null {
+  const url = (r.pr_url as string | null) ?? null;
+  const number = (r.pr_number as number | null) ?? null;
+  if (url == null && number == null) return null;
+  return {
+    url,
+    number,
+    state: (r.pr_state as PrState | null) ?? null,
+    checksState: (r.checks_state as ChecksState | null) ?? null,
+    mergeState: (r.pr_merge_state as string | null) ?? null,
+    syncedAt: (r.pr_synced_at as number | null) ?? null
+  };
 }
 
 export interface KanbanStoreOptions {
@@ -214,6 +232,7 @@ export class KanbanStore {
       nextRunAt: (r.next_run_at as number | null) ?? null,
       schedulePaused: Number(r.schedule_paused ?? 0) === 1,
       scheduledFrom: (r.scheduled_from as string | null) ?? null,
+      prInfo: prInfoFromRow(r),
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -837,6 +856,61 @@ export class KanbanStore {
          WHERE id=?`
       )
       .run(result, ts, taskId);
+  }
+
+  /** Record a freshly-created PR on a task (no status change); poller fills in checks/merge state. */
+  setPr(taskId: string, prUrl: string, prNumber: number | null): void {
+    const ts = this.now();
+    this.db
+      .prepare(
+        `UPDATE tasks SET pr_url=?, pr_number=?, pr_state='open', pr_synced_at=?, updated_at=? WHERE id=?`
+      )
+      .run(prUrl, prNumber, ts, ts, taskId);
+  }
+
+  /**
+   * Write back polled PR status (the PrPoller's only mutation). Does NOT bump
+   * updated_at — a background poll is metadata, not a task edit; the poller emits
+   * an explicit event when something actually changed. `prNumber` is written only
+   * when supplied (a poll can discover the number for a URL-only PR).
+   */
+  setPrStatus(
+    taskId: string,
+    fields: {
+      prState: PrState | null;
+      checksState: ChecksState | null;
+      prMergeState: string | null;
+      prNumber?: number | null;
+    }
+  ): void {
+    const ts = this.now();
+    if (fields.prNumber !== undefined) {
+      this.db
+        .prepare(
+          `UPDATE tasks SET pr_state=?, checks_state=?, pr_merge_state=?, pr_number=?, pr_synced_at=? WHERE id=?`
+        )
+        .run(fields.prState, fields.checksState, fields.prMergeState, fields.prNumber, ts, taskId);
+    } else {
+      this.db
+        .prepare(
+          `UPDATE tasks SET pr_state=?, checks_state=?, pr_merge_state=?, pr_synced_at=? WHERE id=?`
+        )
+        .run(fields.prState, fields.checksState, fields.prMergeState, ts, taskId);
+    }
+  }
+
+  /** Open/draft-PR tasks not polled since `cutoff` (oldest sync first), for the PrPoller. */
+  tasksDuePrSync(cutoff: number, limit: number): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE pr_number IS NOT NULL AND pr_state IN ('open','draft')
+           AND (pr_synced_at IS NULL OR pr_synced_at <= @cutoff)
+         ORDER BY pr_synced_at ASC
+         LIMIT @limit`
+      )
+      .all({ cutoff, limit }) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
   }
 
   /**

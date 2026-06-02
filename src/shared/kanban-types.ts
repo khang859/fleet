@@ -36,6 +36,20 @@ export type RunOutcome =
 export type FeatureStatus = 'active' | 'shipped' | 'archived';
 export type FeatureMergeState = 'pending' | 'in_progress' | 'conflict' | 'merged';
 export type PrState = 'open' | 'merged' | 'closed' | 'draft';
+/** Rolled-up CI status of a PR's checks. */
+export type ChecksState = 'passing' | 'failing' | 'pending';
+
+/** GitHub PR status for a task, polled from `gh`. Null fields until first sync. */
+export interface TaskPrInfo {
+  url: string | null;
+  number: number | null;
+  state: PrState | null;
+  checksState: ChecksState | null;
+  /** gh mergeStateStatus (CLEAN/BEHIND/DIRTY/…), informational only. */
+  mergeState: string | null;
+  /** Epoch ms of the last successful poll (throttles the poller). */
+  syncedAt: number | null;
+}
 
 /** A lightweight grouping of tasks that ship together as one feature. */
 export interface Feature {
@@ -129,6 +143,8 @@ export interface Task {
   nextRunAt: number | null;
   schedulePaused: boolean;
   scheduledFrom: string | null;
+  /** GitHub PR tracking; null when the task has no PR. */
+  prInfo: TaskPrInfo | null;
   createdAt: number;
   updatedAt: number;
 }

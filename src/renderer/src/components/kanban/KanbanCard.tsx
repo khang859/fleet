@@ -1,6 +1,7 @@
 import type { BoardCard } from '../../../../shared/kanban-types';
 import { MessageSquare, GitBranch, Clock, PauseCircle, FileText } from 'lucide-react';
 import { scheduleSummary, formatNextRun } from './kanban-utils';
+import { PrStatusBadge } from './PrStatusBadge';
 
 type Props = {
   card: BoardCard;
@@ -62,6 +63,7 @@ export function KanbanCard({
             {featureName}
           </span>
         )}
+        {card.prInfo && <PrStatusBadge pr={card.prInfo} />}
         {card.childTotal > 0 && (
           <span className="inline-flex items-center gap-0.5">
             <GitBranch size={10} /> {card.childDone}/{card.childTotal}

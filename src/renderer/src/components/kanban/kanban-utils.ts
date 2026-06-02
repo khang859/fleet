@@ -1,4 +1,4 @@
-import type { TaskStatus, Task } from '../../../../shared/kanban-types';
+import type { TaskStatus, Task, ChecksState } from '../../../../shared/kanban-types';
 
 export const COLUMNS: Array<{ status: TaskStatus; label: string }> = [
   { status: 'scheduled', label: 'Scheduled' },
@@ -68,4 +68,52 @@ export function scheduleSummary(
 export function formatNextRun(epochMs: number | null): string {
   if (epochMs == null) return '';
   return new Date(epochMs).toLocaleString();
+}
+
+export type FeatureProgress = {
+  total: number;
+  todo: number;
+  running: number;
+  review: number;
+  done: number;
+  archived: number;
+  openPr: number;
+  mergedPr: number;
+  checks: ChecksState | null;
+};
+
+/**
+ * Roll a feature's member cards up to status + PR counts, entirely client-side
+ * (the board already holds every task for the active board, so no extra fetch).
+ */
+export function featureProgress(cards: Array<Pick<Task, 'status' | 'prInfo'>>): FeatureProgress {
+  const p: FeatureProgress = {
+    total: cards.length,
+    todo: 0,
+    running: 0,
+    review: 0,
+    done: 0,
+    archived: 0,
+    openPr: 0,
+    mergedPr: 0,
+    checks: null
+  };
+  let failing = false;
+  let pending = false;
+  let passing = false;
+  for (const c of cards) {
+    if (c.status === 'running') p.running += 1;
+    else if (c.status === 'blocked' || c.status === 'review') p.review += 1;
+    else if (c.status === 'done') p.done += 1;
+    else if (c.status === 'archived') p.archived += 1;
+    else p.todo += 1; // triage | scheduled | todo | ready
+    const pr = c.prInfo;
+    if (pr?.state === 'open' || pr?.state === 'draft') p.openPr += 1;
+    else if (pr?.state === 'merged') p.mergedPr += 1;
+    if (pr?.checksState === 'failing') failing = true;
+    else if (pr?.checksState === 'pending') pending = true;
+    else if (pr?.checksState === 'passing') passing = true;
+  }
+  p.checks = failing ? 'failing' : pending ? 'pending' : passing ? 'passing' : null;
+  return p;
 }

@@ -50,6 +50,7 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { prepareWorkspace } from './kanban/workspace';
+import { PrPoller } from './kanban/pr-poller';
 import {
   spawnRuneWorker,
   resolveWorkProfile,
@@ -73,6 +74,7 @@ let socketSupervisor: SocketSupervisor | null = null;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
+let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 const ptyManager = new PtyManager();
@@ -956,6 +958,10 @@ void app.whenReady().then(async () => {
     clearWorkerExit: (id) => workerExits.delete(id)
   });
   kanbanDispatcher.start();
+  // Poll GitHub PR status out-of-band (a gh network call inside the 5s dispatch
+  // tick would stall task claiming).
+  kanbanPrPoller = new PrPoller(kanbanStore, { now: Date.now });
+  kanbanPrPoller.start();
   kanbanCommands = new KanbanCommands(
     kanbanStore,
     kanbanDispatcher,
@@ -993,6 +999,7 @@ function shutdownAll(): void {
   imageService.shutdown();
   annotateService.destroy();
   kanbanDispatcher?.stop();
+  kanbanPrPoller?.stop();
   void kanbanMcp?.stop();
   kanbanStore?.close();
 }

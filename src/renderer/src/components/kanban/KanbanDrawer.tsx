@@ -17,6 +17,7 @@ import { useSettingsStore } from '../../store/settings-store';
 import { CommentThread } from './CommentThread';
 import { OutputsSection } from './KanbanArtifacts';
 import { GitChangesModal } from '../GitChangesModal';
+import { PrStatusBadge } from './PrStatusBadge';
 import {
   relativeTime,
   formatDuration,
@@ -370,6 +371,38 @@ export function KanbanDrawer(): React.JSX.Element | null {
             )}
           </div>
         </section>
+
+        {/* Pull request status (polled from gh) */}
+        {t.prInfo && (
+          <section>
+            <h3 className="mb-1 flex items-center gap-1 font-semibold text-neutral-400">
+              <GitPullRequest size={12} /> Pull request
+            </h3>
+            <div className="flex flex-wrap items-center gap-2 rounded border border-neutral-800 bg-neutral-950 p-2">
+              <PrStatusBadge pr={t.prInfo} />
+              {t.prInfo.url && (
+                <a
+                  href={t.prInfo.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all text-[11px] text-sky-400 underline"
+                >
+                  {t.prInfo.url}
+                </a>
+              )}
+              {t.prInfo.mergeState && (
+                <span className="text-[10px] text-neutral-500" title="gh mergeStateStatus">
+                  {t.prInfo.mergeState.toLowerCase()}
+                </span>
+              )}
+              {t.prInfo.syncedAt && (
+                <span className="ml-auto text-[10px] text-neutral-600">
+                  synced {relativeTime(t.prInfo.syncedAt)}
+                </span>
+              )}
+            </div>
+          </section>
+        )}
 
         {/* Feature membership */}
         <section>

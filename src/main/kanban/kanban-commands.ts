@@ -677,8 +677,9 @@ export class KanbanCommands {
       return { ok: false, error: result.error };
     }
     this.store.completeTask(id, task.result);
+    if (result.url) this.store.setPr(id, result.url, result.number ?? null);
     this.store.addComment(id, 'human', `opened pull request: ${result.url}`);
-    this.store.appendEvent(id, null, 'pr_created', { url: result.url });
+    this.store.appendEvent(id, null, 'pr_created', { url: result.url, number: result.number });
     // Task accepted (done) — promote any gated children without waiting for the poll.
     this.dispatcher.tick();
     return { ok: true, prUrl: result.url, message: 'pull request created' };
