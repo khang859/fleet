@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.49.0
+
+- Kanban: tasks can now be grouped into a first-class **Feature** you can focus on, track, and ship as one unit. A feature selector in the toolbar filters the board to a single feature, and a new **Features** dashboard tab shows every feature's progress and PR rollup at a glance. Tasks created while a feature is focused inherit its repo and base branch (no more re-entering workspace config), and **Decompose again** re-runs the orchestrator over a feature that was only partially broken down.
+- Kanban: pull requests are now tracked first-class. A task that opens a PR shows its state (open/merged/closed/draft) and CI checks as a badge on the card and in the drawer, polled from `gh` in the background, and the Features dashboard rolls these up per feature ("N open · M merged" + checks summary).
+- Kanban: a feature can own an **integration branch** (`fleet/feature-<id>`). Worktree tasks in the feature branch off it and merge back into it, so the whole feature ships as one feature→main pull request instead of many noisy ones. New **Sync main** and **Ship feature** actions refresh the integration branch from main and open the feature PR, and a local conflict pre-check warns on the card and drawer — with the conflicting file list and a re-check button — before you merge.
+- Kanban: worktrees no longer pile up on disk. A merged worktree is pruned automatically when you merge it, a throttled background sweep reclaims merged worktrees of finished tasks, and a new **Branches** tab lists every live worktree with its ahead/behind and merged status plus one-click prune (individual or "prune all merged"). Unmerged work is never destroyed — a task still in review or running can't be pruned, and an unmerged branch is always kept.
+
 ## v2.48.0
 
 - Kanban: worktree tasks now go through a review gate before they're done. A worktree task's agent finishing no longer auto-completes the card — its work is committed and the card lands in a new "Review" column, where you pick one of three drawer actions: **Merge to base**, **Make Pull Request**, or **Do Nothing** (accept and keep the branch). Merge runs safely (in place when the base branch is checked out and clean, otherwise via a detached temp worktree push) so your working checkout is never disturbed, and conflicts keep the card in review with a note. The in-app diff shows the committed `base...HEAD` changes, and child/swarm workers inherit the parent's base branch. Scratch and directory tasks still complete straight to done.
