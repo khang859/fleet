@@ -24,7 +24,7 @@ import type {
 } from '../../../shared/ipc-api';
 
 /** A pending "use artifact as input" request, consumed by the board's create form / swarm modal. */
-export type ArtifactSeed = {
+type ArtifactSeed = {
   artifact: { id: string; filename: string };
   target: 'task' | 'swarm';
 };

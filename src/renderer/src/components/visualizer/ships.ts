@@ -23,7 +23,6 @@ const PARENT_HEIGHT = 32;
 const SUB_WIDTH = 20;
 const SUB_HEIGHT = 20;
 const MAX_RENDERED_SUBS = 4;
-export const HULL_COUNT = PARENT_HULL_COUNT;
 
 export type Ship = {
   paneId: string;

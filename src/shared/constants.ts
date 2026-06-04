@@ -3,9 +3,8 @@ import { homedir } from 'os';
 import type { FleetSettings } from './types';
 import { DEFAULT_ORCHESTRATOR_INSTRUCTIONS, ORCHESTRATOR_PROFILE_NAME } from './types';
 export { IPC_CHANNELS } from './ipc-channels';
-export { MASCOT_REGISTRY } from './mascots';
 
-export const DEFAULT_SCROLLBACK = 10_000;
+const DEFAULT_SCROLLBACK = 10_000;
 
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.

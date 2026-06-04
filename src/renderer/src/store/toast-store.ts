@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 
-export type ToastAction = {
+type ToastAction = {
   label: string;
   onClick: () => void;
 };
 
-export type Toast = {
+type Toast = {
   id: string;
   message: string;
   duration?: number;

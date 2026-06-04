@@ -1,13 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
 import {
   Package,
-  FileText,
-  FileCode,
-  Database,
-  File,
   Eye,
   Trash2,
   RotateCcw,
@@ -18,19 +11,13 @@ import {
 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { formatBytes } from './kanban-utils';
+import { KIND_ICON, ArtifactPreview } from './artifact-preview';
 import type {
   ArtifactListItem,
   ArtifactKind,
   ArtifactState
 } from '../../../../shared/kanban-types';
 import type { KanbanArtifactPreviewResponse } from '../../../../shared/ipc-api';
-
-const KIND_ICON: Record<ArtifactKind, typeof FileText> = {
-  document: FileText,
-  code: FileCode,
-  data: Database,
-  other: File
-};
 
 const KIND_OPTIONS: ArtifactKind[] = ['document', 'code', 'data', 'other'];
 const STATE_OPTIONS: ArtifactState[] = ['kept', 'discarded'];
@@ -197,34 +184,7 @@ function ArtifactRow({
         </span>
       </div>
 
-      {open && (
-        <div className="mt-1 border-t border-neutral-800 pt-1">
-          {!preview && <p className="text-[10px] text-neutral-500">Loading preview…</p>}
-          {preview && !preview.previewable && (
-            <p className="text-[10px] text-amber-400" title={preview.reason}>
-              ⚠ Preview unavailable
-            </p>
-          )}
-          {preview && preview.previewable && (
-            <>
-              {art.kind === 'document' ? (
-                <div className="markdown-preview max-h-64 overflow-y-auto rounded border border-neutral-800 bg-neutral-900 p-2">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                    {preview.text}
-                  </ReactMarkdown>
-                </div>
-              ) : (
-                <pre className="max-h-64 overflow-auto rounded border border-neutral-800 bg-neutral-900 p-2 text-[10px] text-neutral-300">
-                  {preview.text}
-                </pre>
-              )}
-              {preview.truncated && (
-                <p className="mt-0.5 text-[10px] text-neutral-600">Preview truncated.</p>
-              )}
-            </>
-          )}
-        </div>
-      )}
+      {open && <ArtifactPreview preview={preview} kind={art.kind} />}
     </div>
   );
 }
