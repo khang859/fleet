@@ -15,6 +15,8 @@ const BUNDLED_FONTS: Array<{ label: string; selection: FontSelection }> = [
 ];
 
 const TERMINAL_THEME_OPTIONS = Object.values(TERMINAL_THEMES);
+const DARK_THEME_OPTIONS = TERMINAL_THEME_OPTIONS.filter((theme) => theme.kind === 'dark');
+const LIGHT_THEME_OPTIONS = TERMINAL_THEME_OPTIONS.filter((theme) => theme.kind === 'light');
 const ACCENT_COLOR_OPTIONS = Object.values(ACCENT_COLORS);
 
 function parseFontSelection(fontFamily: string): {
@@ -225,11 +227,20 @@ export function GeneralSection(): React.JSX.Element {
           }}
           className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
         >
-          {TERMINAL_THEME_OPTIONS.map((theme) => (
-            <option key={theme.id} value={theme.id}>
-              {theme.label}
-            </option>
-          ))}
+          <optgroup label="Dark">
+            {DARK_THEME_OPTIONS.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Light">
+            {LIGHT_THEME_OPTIONS.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </SettingRow>
       <SettingRow label="Accent Color">
