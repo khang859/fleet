@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.50.0
+
+- Settings: nine new built-in terminal themes — Nord, Tokyo Night, Tokyo Night Storm, Gruvbox Dark, One Dark, Monokai, Solarized Light, Gruvbox Light, and Catppuccin Latte — drawn from each project's canonical palette. The Terminal Theme picker now groups its options into **Dark** and **Light** sections for easier browsing.
+
 ## v2.49.0
 
 - Kanban: tasks can now be grouped into a first-class **Feature** you can focus on, track, and ship as one unit. A feature selector in the toolbar filters the board to a single feature, and a new **Features** dashboard tab shows every feature's progress and PR rollup at a glance. Tasks created while a feature is focused inherit its repo and base branch (no more re-entering workspace config), and **Decompose again** re-runs the orchestrator over a feature that was only partially broken down.
