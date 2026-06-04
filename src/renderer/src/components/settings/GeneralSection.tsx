@@ -160,7 +160,7 @@ export function GeneralSection(): React.JSX.Element {
   if (!settings) return <></>;
 
   return (
-    <>
+    <div className="space-y-4">
       <SettingRow label="Default Shell">
         <input
           type="text"
@@ -254,6 +254,6 @@ export function GeneralSection(): React.JSX.Element {
           })}
         </div>
       </SettingRow>
-    </>
+    </div>
   );
 }
