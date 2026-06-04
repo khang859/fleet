@@ -61,7 +61,7 @@ import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
 import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
-import type { FleetSettings } from '../shared/types';
+import type { FleetSettingsPatch } from '../shared/types';
 import { checkSystemDeps } from './system-checker';
 import { searchFiles } from './file-search';
 import { grepFiles } from './file-grep';
@@ -269,7 +269,7 @@ export function registerIpcHandlers(
     return settingsStore.get();
   });
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (_event, settings: Partial<FleetSettings>) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SET, async (_event, settings: FleetSettingsPatch) => {
     settingsStore.set(settings);
     if (settings.copilot) {
       await onCopilotSettingsChanged();

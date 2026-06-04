@@ -1,6 +1,15 @@
 import type { PathContext } from './shell-profiles';
 import type { WorkspaceKind } from './kanban-types';
 import type { KanbanNotifySettings } from './kanban-notifications';
+import type { AccentColorId, TerminalThemeId } from './theme-presets';
+
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends Array<infer U>
+    ? Array<U>
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
 
 export type Workspace = {
   id: string;
@@ -196,6 +205,8 @@ export type FleetSettings = {
     fontFamily: string;
     fontSize: number;
     theme: 'dark' | 'light';
+    terminalTheme: TerminalThemeId;
+    accentColor: AccentColorId;
   };
   notifications: {
     taskComplete: { badge: boolean; sound: boolean; os: boolean };
@@ -218,6 +229,8 @@ export type FleetSettings = {
   };
   kanban: KanbanSettings;
 };
+
+export type FleetSettingsPatch = DeepPartial<FleetSettings>;
 
 // ── Annotations ──────────────────────────────────────────────────────────
 

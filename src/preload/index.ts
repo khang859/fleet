@@ -81,6 +81,7 @@ import type { RuneStatus } from '../shared/rune';
 import type {
   Workspace,
   FleetSettings,
+  FleetSettingsPatch,
   UpdateStatus,
   ImageGenerationMeta,
   ImageSettings,
@@ -203,7 +204,7 @@ const fleetApi = {
   },
   settings: {
     get: async (): Promise<FleetSettings> => typedInvoke(IPC_CHANNELS.SETTINGS_GET),
-    set: async (settings: Partial<FleetSettings>): Promise<void> =>
+    set: async (settings: FleetSettingsPatch): Promise<void> =>
       typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings)
   },
   git: {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { FleetSettings } from '../../../shared/types';
+import type { FleetSettings, FleetSettingsPatch } from '../../../shared/types';
 import { createLogger } from '../logger';
 
 const log = createLogger('store:settings');
@@ -8,7 +8,7 @@ type SettingsStoreState = {
   settings: FleetSettings | null;
   isLoaded: boolean;
   loadSettings: () => Promise<void>;
-  updateSettings: (partial: Partial<FleetSettings>) => Promise<void>;
+  updateSettings: (partial: FleetSettingsPatch) => Promise<void>;
 };
 
 export const useSettingsStore = create<SettingsStoreState>((set) => ({

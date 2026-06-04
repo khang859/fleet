@@ -213,7 +213,7 @@ export function KanbanSection(): React.JSX.Element | null {
                       }
                     });
                   }}
-                  className="accent-blue-500"
+                  className="fleet-accent-input"
                 />
               </div>
             ))}

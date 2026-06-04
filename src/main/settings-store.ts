@@ -1,5 +1,5 @@
 import Store from 'electron-store';
-import type { FleetSettings } from '../shared/types';
+import type { FleetSettings, FleetSettingsPatch } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/constants';
 
 export class SettingsStore {
@@ -47,7 +47,7 @@ export class SettingsStore {
     };
   }
 
-  set(partial: Partial<FleetSettings>): void {
+  set(partial: FleetSettingsPatch): void {
     const current = this.get();
     const merged = {
       ...current,

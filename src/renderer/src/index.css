@@ -43,6 +43,11 @@
   font-display: swap;
 }
 
+:root {
+  --fleet-accent: #3b82f6;
+  --fleet-accent-hover: #60a5fa;
+}
+
 html,
 body,
 #root {
@@ -50,6 +55,38 @@ body,
   margin: 0;
   padding: 0;
   overflow: hidden;
+}
+
+.fleet-accent-bg {
+  background-color: var(--fleet-accent);
+}
+
+.fleet-accent-bg-hover:hover {
+  background-color: var(--fleet-accent-hover);
+}
+
+.fleet-accent-bg-soft {
+  background-color: color-mix(in srgb, var(--fleet-accent) 12%, transparent);
+}
+
+.fleet-accent-border {
+  border-color: var(--fleet-accent);
+}
+
+.fleet-accent-border-soft {
+  border-color: color-mix(in srgb, var(--fleet-accent) 60%, transparent);
+}
+
+.fleet-accent-text {
+  color: var(--fleet-accent-hover);
+}
+
+.fleet-accent-input {
+  accent-color: var(--fleet-accent);
+}
+
+.fleet-accent-ring-pane {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fleet-accent) 70%, transparent);
 }
 
 /* Global scrollbar — dark sci-fi theme */

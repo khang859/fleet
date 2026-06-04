@@ -4,10 +4,18 @@ import { useDebouncedCallback } from '../../hooks/use-debounced-callback';
 import { SettingRow } from './SettingRow';
 import type { FontSelection } from '../../../../shared/types';
 import { resolveFontFamily } from '../../../../shared/types';
+import {
+  ACCENT_COLORS,
+  TERMINAL_THEMES,
+  isTerminalThemeId
+} from '../../../../shared/theme-presets';
 
 const BUNDLED_FONTS: Array<{ label: string; selection: FontSelection }> = [
   { label: 'JetBrains Mono Nerd', selection: { type: 'bundled', name: 'JetBrains Mono Nerd Font' } }
 ];
+
+const TERMINAL_THEME_OPTIONS = Object.values(TERMINAL_THEMES);
+const ACCENT_COLOR_OPTIONS = Object.values(ACCENT_COLORS);
 
 function parseFontSelection(fontFamily: string): {
   mode: 'bundled' | 'custom';
@@ -50,7 +58,7 @@ function FontFamilyPicker({
               key={font.label}
               className={`flex items-center gap-2.5 px-3 py-2 rounded cursor-pointer border transition-colors ${
                 isSelected
-                  ? 'border-blue-500/60 bg-blue-500/10'
+                  ? 'fleet-accent-border-soft fleet-accent-bg-soft'
                   : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
               }`}
             >
@@ -59,7 +67,7 @@ function FontFamilyPicker({
                 name="fontFamily"
                 checked={isSelected}
                 onChange={() => onChange(resolveFontFamily(font.selection))}
-                className="accent-blue-500"
+                className="fleet-accent-input"
               />
               <span
                 className="text-sm text-white"
@@ -74,7 +82,7 @@ function FontFamilyPicker({
         <label
           className={`flex items-center gap-2.5 px-3 py-2 rounded cursor-pointer border transition-colors ${
             parsed.mode === 'custom'
-              ? 'border-blue-500/60 bg-blue-500/10'
+              ? 'fleet-accent-border-soft fleet-accent-bg-soft'
               : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
           }`}
         >
@@ -86,7 +94,7 @@ function FontFamilyPicker({
               const val = customValue || 'monospace';
               onChange(resolveFontFamily({ type: 'custom', name: val }));
             }}
-            className="accent-blue-500"
+            className="fleet-accent-input"
           />
           <span className="text-sm text-neutral-300">Custom:</span>
           <input
@@ -134,21 +142,18 @@ export function GeneralSection(): React.JSX.Element {
   );
 
   const debouncedSaveShell = useDebouncedCallback((value: string) => {
-    if (!settings) return;
-    void updateSettings({ general: { ...settings.general, defaultShell: value } });
+    void updateSettings({ general: { defaultShell: value } });
   }, 300);
 
   const debouncedSaveFontSize = useDebouncedCallback((value: string) => {
-    if (!settings) return;
     void updateSettings({
-      general: { ...settings.general, fontSize: parseInt(value) || 14 }
+      general: { fontSize: parseInt(value) || 14 }
     });
   }, 300);
 
   const debouncedSaveScrollback = useDebouncedCallback((value: string) => {
-    if (!settings) return;
     void updateSettings({
-      general: { ...settings.general, scrollbackSize: parseInt(value) || 10000 }
+      general: { scrollbackSize: parseInt(value) || 10000 }
     });
   }, 300);
 
@@ -182,7 +187,7 @@ export function GeneralSection(): React.JSX.Element {
       <FontFamilyPicker
         fontFamily={settings.general.fontFamily}
         onChange={(fontFamily) => {
-          void updateSettings({ general: { ...settings.general, fontFamily } });
+          void updateSettings({ general: { fontFamily } });
         }}
       />
       <SettingRow label="Scrollback Lines">
@@ -196,18 +201,58 @@ export function GeneralSection(): React.JSX.Element {
           className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-24 border border-neutral-700"
         />
       </SettingRow>
-      <SettingRow label="Theme">
+      <SettingRow label="App Theme">
         <select
           value={settings.general.theme}
           onChange={(e) => {
             const theme = e.target.value === 'light' ? 'light' : 'dark';
-            void updateSettings({ general: { ...settings.general, theme } });
+            void updateSettings({ general: { theme } });
           }}
           className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
         >
           <option value="dark">Dark</option>
           <option value="light">Light</option>
         </select>
+      </SettingRow>
+      <SettingRow label="Terminal Theme">
+        <select
+          value={settings.general.terminalTheme}
+          onChange={(e) => {
+            const { value } = e.target;
+            if (isTerminalThemeId(value)) {
+              void updateSettings({ general: { terminalTheme: value } });
+            }
+          }}
+          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
+        >
+          {TERMINAL_THEME_OPTIONS.map((theme) => (
+            <option key={theme.id} value={theme.id}>
+              {theme.label}
+            </option>
+          ))}
+        </select>
+      </SettingRow>
+      <SettingRow label="Accent Color">
+        <div className="flex gap-2">
+          {ACCENT_COLOR_OPTIONS.map((accent) => {
+            const selected = settings.general.accentColor === accent.id;
+            return (
+              <button
+                key={accent.id}
+                type="button"
+                title={accent.label}
+                aria-label={accent.label}
+                onClick={() => {
+                  void updateSettings({ general: { accentColor: accent.id } });
+                }}
+                className={`h-6 w-6 rounded-full border transition-shadow ${
+                  selected ? 'border-white fleet-accent-ring-pane' : 'border-neutral-700'
+                }`}
+                style={{ backgroundColor: accent.value }}
+              />
+            );
+          })}
+        </div>
       </SettingRow>
     </>
   );

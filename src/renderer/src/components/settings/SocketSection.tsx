@@ -16,7 +16,7 @@ export function SocketSection(): React.JSX.Element | null {
               socketApi: { ...settings.socketApi, enabled: e.target.checked }
             });
           }}
-          className="accent-blue-500"
+          className="fleet-accent-input"
         />
       </SettingRow>
       <SettingRow label="Socket Path">

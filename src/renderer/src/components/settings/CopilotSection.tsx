@@ -173,7 +173,7 @@ export function CopilotSection(): React.JSX.Element | null {
             type="checkbox"
             checked={copilot.enabled}
             onChange={(e) => updateCopilot({ enabled: e.target.checked })}
-            className="accent-blue-500"
+            className="fleet-accent-input"
           />
         </SettingRow>
         <p className="text-xs text-neutral-500 mt-1">
@@ -268,7 +268,7 @@ export function CopilotSection(): React.JSX.Element | null {
             type="checkbox"
             checked={copilot.showAllWorkspaces}
             onChange={(e) => updateCopilot({ showAllWorkspaces: e.target.checked })}
-            className="accent-blue-500"
+            className="fleet-accent-input"
           />
         </SettingRow>
         <p className="text-xs text-neutral-500 mt-1">

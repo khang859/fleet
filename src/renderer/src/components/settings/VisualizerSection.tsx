@@ -24,7 +24,7 @@ export function VisualizerSection(): React.JSX.Element | null {
               }
             });
           }}
-          className="accent-blue-500"
+          className="fleet-accent-input"
         />
       </SettingRow>
     );

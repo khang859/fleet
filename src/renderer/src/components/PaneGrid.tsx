@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf } from '../../../shared/types';
+import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { TerminalPane } from './TerminalPane';
 import { PaneHeader } from './PaneHeader';
 import { ImageViewerPane } from './ImageViewerPane';
@@ -122,6 +123,7 @@ type PaneGridProps = {
   serializedPanes?: Map<string, string>;
   fontFamily?: string;
   fontSize?: number;
+  terminalTheme?: TerminalThemeId;
 };
 
 export function PaneGrid({
@@ -130,7 +132,8 @@ export function PaneGrid({
   onPaneFocus,
   serializedPanes,
   fontFamily,
-  fontSize
+  fontSize,
+  terminalTheme
 }: PaneGridProps): React.JSX.Element {
   const { splitPane, closePane } = useWorkspaceStore();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -174,7 +177,7 @@ export function PaneGrid({
           <div
             key={leaf.id}
             style={rectStyle(leaf.rect)}
-            className={`flex flex-col ${leaf.id === activePaneId ? 'ring-2 ring-blue-500/70' : 'ring-1 ring-neutral-800/50'}`}
+            className={`flex flex-col ${leaf.id === activePaneId ? 'fleet-accent-ring-pane' : 'ring-1 ring-neutral-800/50'}`}
           >
             {root.type === 'split' && (
               <PaneHeader
@@ -192,6 +195,7 @@ export function PaneGrid({
                 serializedContent={serializedPanes?.get(leaf.id) ?? leaf.node.serializedContent}
                 fontFamily={fontFamily}
                 fontSize={fontSize}
+                terminalTheme={terminalTheme}
                 onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
                 onSplitVertical={() => splitPane(leaf.id, 'vertical')}
                 onClose={() => closePane(leaf.id)}
@@ -252,7 +256,7 @@ function AbsoluteResizeHandle({
 
       const target = e.currentTarget;
       const inner = target instanceof HTMLElement ? target.querySelector('div') : null;
-      if (inner) inner.classList.add('bg-blue-500');
+      if (inner) inner.classList.add('fleet-accent-bg');
 
       const onMouseMove = (moveEvent: MouseEvent): void => {
         const containerDim = isH ? gridRect.width : gridRect.height;
@@ -270,7 +274,7 @@ function AbsoluteResizeHandle({
       const onMouseUp = (): void => {
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        if (inner) inner.classList.remove('bg-blue-500');
+        if (inner) inner.classList.remove('fleet-accent-bg');
         document.removeEventListener('mousemove', onMouseMove);
         document.removeEventListener('mouseup', onMouseUp);
         log.debug('resize complete', { splitNodePath: path });

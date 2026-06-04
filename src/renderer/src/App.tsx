@@ -37,6 +37,7 @@ import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
 import type { PiPlanOpenPayload } from '../../shared/ipc-api';
 import { useKanbanAttention } from './hooks/useKanbanAttention';
+import { getAccentCssVars } from './lib/theme';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
@@ -576,8 +577,13 @@ export function App(): React.JSX.Element {
     };
   }, []);
 
+  const accentVars = getAccentCssVars(settings?.general.accentColor);
+
   return (
-    <div className="flex flex-col h-screen w-screen bg-neutral-950 text-white overflow-hidden">
+    <div
+      className="flex flex-col h-screen w-screen bg-neutral-950 text-white overflow-hidden"
+      style={accentVars}
+    >
       {/* Top bar — drag region for window movement, houses OS window controls */}
       <div
         className="h-9 shrink-0 bg-neutral-950 flex items-center"
@@ -843,6 +849,7 @@ export function App(): React.JSX.Element {
                         isActive={tab.id === activeTabId}
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
+                        terminalTheme={settings?.general.terminalTheme}
                       />
                     ) : tab.type === 'kanban' ? (
                       <KanbanBoard />
@@ -858,6 +865,7 @@ export function App(): React.JSX.Element {
                         serializedPanes={serializedPanes}
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
+                        terminalTheme={settings?.general.terminalTheme}
                       />
                     )}
                   </div>
@@ -883,6 +891,7 @@ export function App(): React.JSX.Element {
                     serializedPanes={undefined}
                     fontFamily={settings?.general.fontFamily}
                     fontSize={settings?.general.fontSize}
+                    terminalTheme={settings?.general.terminalTheme}
                   />
                 </div>
               ))

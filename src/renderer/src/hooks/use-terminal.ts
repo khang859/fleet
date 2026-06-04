@@ -10,12 +10,15 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
+import type { TerminalThemeId } from '../../../shared/theme-presets';
+import { resolveXtermTheme } from '../lib/theme';
 
 export type UseTerminalOptions = {
   paneId: string;
   cwd: string;
   fontSize?: number;
   fontFamily?: string;
+  terminalTheme?: TerminalThemeId;
   scrollback?: number;
   /** Shell command to run instead of default shell (e.g. pi agent binary). */
   cmd?: string;
@@ -167,29 +170,7 @@ function createTerminal(
     cursorBlink: true,
     cursorInactiveStyle: 'none',
     allowProposedApi: true,
-    theme: {
-      background: '#151515',
-      foreground: '#e4e4e4',
-      cursor: '#e4e4e4',
-      cursorAccent: '#0a0a0a',
-      selectionBackground: '#3a3d41',
-      black: '#0a0a0a',
-      red: '#ff5c57',
-      green: '#5af78e',
-      yellow: '#f3f99d',
-      blue: '#57c7ff',
-      magenta: '#ff6ac1',
-      cyan: '#9aedfe',
-      white: '#f1f1f0',
-      brightBlack: '#686868',
-      brightRed: '#ff5c57',
-      brightGreen: '#5af78e',
-      brightYellow: '#f3f99d',
-      brightBlue: '#57c7ff',
-      brightMagenta: '#ff6ac1',
-      brightCyan: '#9aedfe',
-      brightWhite: '#f1f1f0'
-    }
+    theme: resolveXtermTheme(options.terminalTheme)
   });
 
   const fitAddon = new FitAddon();
@@ -794,6 +775,14 @@ export function useTerminal(
       });
     }
   }, [options.fontFamily, options.fontSize]);
+
+  // Update terminal colors without re-creating the xterm instance or PTY.
+  useEffect(() => {
+    const term = termRef.current;
+    if (!term) return;
+    term.options.theme = resolveXtermTheme(options.terminalTheme);
+    term.refresh(0, term.rows - 1);
+  }, [options.terminalTheme]);
 
   // Focus and refresh the xterm instance when this pane becomes active.
   // The refresh call is needed when the terminal was hidden with display:none and

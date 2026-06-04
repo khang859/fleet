@@ -7,16 +7,26 @@ import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 import type { Tab } from '../../../shared/types';
+import type { TerminalThemeId } from '../../../shared/theme-presets';
+import { resolveTerminalTheme } from '../lib/theme';
 
 type PiTabProps = {
   tab: Tab;
   isActive: boolean;
   fontFamily?: string;
   fontSize?: number;
+  terminalTheme?: TerminalThemeId;
 };
 
-export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): React.JSX.Element {
+export function PiTab({
+  tab,
+  isActive,
+  fontFamily,
+  fontSize,
+  terminalTheme
+}: PiTabProps): React.JSX.Element {
   const paneId = tab.splitRoot.type === 'leaf' ? tab.splitRoot.id : '';
+  const terminalThemeDef = resolveTerminalTheme(terminalTheme);
   const [piReady, setPiReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const launchConfigRef = useRef<{ cmd: string } | null>(null);
@@ -41,7 +51,10 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
 
   if (error) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-[#151515] text-red-400 text-sm p-4">
+      <div
+        className="h-full w-full flex items-center justify-center text-red-400 text-sm p-4"
+        style={{ backgroundColor: terminalThemeDef.background }}
+      >
         <div className="max-w-md text-center">
           <p className="font-medium mb-2">Failed to launch Pi agent</p>
           <p className="text-neutral-400">{error}</p>
@@ -52,7 +65,10 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
 
   if (!piReady) {
     return (
-      <div className="h-full w-full flex items-center justify-center bg-[#151515] text-neutral-400 text-sm">
+      <div
+        className="h-full w-full flex items-center justify-center text-neutral-400 text-sm"
+        style={{ backgroundColor: terminalThemeDef.background }}
+      >
         Installing Pi agent...
       </div>
     );
@@ -67,6 +83,7 @@ export function PiTab({ tab, isActive, fontFamily, fontSize }: PiTabProps): Reac
       isActive={isActive}
       fontFamily={fontFamily}
       fontSize={fontSize}
+      terminalTheme={terminalTheme}
       launchConfig={launchConfigRef.current!}
     />
   );
@@ -81,6 +98,7 @@ function PiTerminal({
   isActive,
   fontFamily,
   fontSize,
+  terminalTheme,
   launchConfig
 }: {
   tabId: string;
@@ -89,6 +107,7 @@ function PiTerminal({
   isActive: boolean;
   fontFamily?: string;
   fontSize?: number;
+  terminalTheme?: TerminalThemeId;
   launchConfig: { cmd: string };
 }): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -98,6 +117,7 @@ function PiTerminal({
   const [isGitRepo, setIsGitRepo] = useState(false);
   const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeTab = useWorkspaceStore((s) => s.closeTab);
+  const terminalThemeDef = resolveTerminalTheme(terminalTheme);
 
   const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
@@ -107,6 +127,7 @@ function PiTerminal({
     isActive,
     fontFamily,
     fontSize,
+    terminalTheme,
     cursorHidden: true,
     onScrollStateChange: setIsScrolledUp
   });
@@ -141,7 +162,8 @@ function PiTerminal({
 
   return (
     <div
-      className="relative h-full w-full overflow-hidden p-3 bg-[#151515]"
+      className="relative h-full w-full overflow-hidden p-3"
+      style={{ backgroundColor: terminalThemeDef.background }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={() => focus()}

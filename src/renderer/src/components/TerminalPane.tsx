@@ -7,6 +7,8 @@ import { openAnnotateModal } from '../lib/annotate-modal-bridge';
 import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
+import type { TerminalThemeId } from '../../../shared/theme-presets';
+import { resolveTerminalTheme } from '../lib/theme';
 
 type TerminalPaneProps = {
   paneId: string;
@@ -16,6 +18,7 @@ type TerminalPaneProps = {
   serializedContent?: string;
   fontFamily?: string;
   fontSize?: number;
+  terminalTheme?: TerminalThemeId;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onClose?: () => void;
@@ -30,6 +33,7 @@ export function TerminalPane({
   serializedContent,
   fontFamily,
   fontSize,
+  terminalTheme,
   onSplitHorizontal,
   onSplitVertical,
   onClose,
@@ -45,6 +49,7 @@ export function TerminalPane({
     isActive,
     fontFamily,
     fontSize,
+    terminalTheme,
     workspaceId,
     shellProfileId,
     onScrollStateChange: setIsScrolledUp
@@ -55,6 +60,7 @@ export function TerminalPane({
   const currentCwd = useCwdStore((s) => s.cwds.get(paneId));
   const gitCheckTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { isDragOver, handlers: dragHandlers } = useTerminalDrop(paneId, focus);
+  const terminalThemeDef = resolveTerminalTheme(terminalTheme);
 
   // Seed the CWD store with the pane's initial cwd on mount so that
   // git-changes and other CWD-dependent tools work immediately after
@@ -112,7 +118,12 @@ export function TerminalPane({
 
   return (
     <div
-      className={`relative h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0 ${isActive ? 'bg-[#151515]' : 'bg-[#131313]'}`}
+      className="relative h-full w-full overflow-hidden p-3 transition-[box-shadow] duration-0"
+      style={{
+        backgroundColor: isActive
+          ? terminalThemeDef.background
+          : terminalThemeDef.inactiveBackground
+      }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={onFocus}
@@ -178,8 +189,8 @@ export function TerminalPane({
         </button>
       )}
       {isDragOver && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center bg-blue-500/10 border-2 border-dashed border-blue-400 rounded pointer-events-none">
-          <span className="text-blue-300 text-sm font-medium">Drop to paste file path</span>
+        <div className="absolute inset-0 z-50 flex items-center justify-center fleet-accent-bg-soft border-2 border-dashed fleet-accent-border rounded pointer-events-none">
+          <span className="fleet-accent-text text-sm font-medium">Drop to paste file path</span>
         </div>
       )}
     </div>
