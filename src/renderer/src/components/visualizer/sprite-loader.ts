@@ -68,7 +68,7 @@ function getTintedFrame(
 }
 
 /** Compute the current animation frame index. */
-export function getFrame(region: SpriteRegion, elapsed: number): number {
+function getFrame(region: SpriteRegion, elapsed: number): number {
   if (region.frames <= 1 || region.frameDuration <= 0) return 0;
   const totalDuration = region.frames * region.frameDuration;
   return Math.floor((elapsed % totalDuration) / region.frameDuration);

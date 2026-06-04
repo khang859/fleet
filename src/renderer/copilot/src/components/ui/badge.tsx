@@ -18,7 +18,7 @@ const badgeVariants = cva('inline-flex items-center justify-center', {
   }
 });
 
-export type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>;
+type BadgeProps = React.HTMLAttributes<HTMLSpanElement> & VariantProps<typeof badgeVariants>;
 
 function StatusIcon({ status }: { status: BadgeProps['status'] }): React.JSX.Element {
   const size = 10;
@@ -52,4 +52,4 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(
 );
 Badge.displayName = 'Badge';
 
-export { Badge, badgeVariants };
+export { Badge };

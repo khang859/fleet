@@ -1,6 +1,6 @@
 import type { LogEntry } from '../../shared/ipc-api';
 
-export const FLUSH_INTERVAL_MS = 100;
+const FLUSH_INTERVAL_MS = 100;
 export const FLUSH_SIZE_THRESHOLD = 50;
 export const MAX_QUEUE_SIZE = 200;
 

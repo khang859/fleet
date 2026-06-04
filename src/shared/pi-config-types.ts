@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PiThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+const PiThinkingLevelSchema = z.enum(['off', 'minimal', 'low', 'medium', 'high', 'xhigh']);
 export type PiThinkingLevel = z.infer<typeof PiThinkingLevelSchema>;
 
 export const PiSettingsSchema = z
@@ -14,10 +14,10 @@ export const PiSettingsSchema = z
   .passthrough();
 export type PiSettings = z.infer<typeof PiSettingsSchema>;
 
-export const PiApiSchema = z.string();
+const PiApiSchema = z.string();
 export type PiApi = z.infer<typeof PiApiSchema>;
 
-export const PiModelSchema = z
+const PiModelSchema = z
   .object({
     id: z.string(),
     name: z.string().optional(),
@@ -38,7 +38,7 @@ export const PiModelSchema = z
   .passthrough();
 export type PiModel = z.infer<typeof PiModelSchema>;
 
-export const PiProviderSchema = z
+const PiProviderSchema = z
   .object({
     baseUrl: z.string().optional(),
     api: PiApiSchema.optional(),

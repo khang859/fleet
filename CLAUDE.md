@@ -56,7 +56,7 @@ All `fleet images` commands are async — use `fleet images status <id>` to poll
 
 - **ESM output:** The main and preload processes output ESM (`.mjs`). Use `import.meta.url` instead of `__dirname`.
 - **node-pty macOS bug:** `spawn-helper` needs `chmod +x` — handled by postinstall script.
-- **xterm.js + StrictMode:** Track PTY creation in a module-level Set to prevent duplicates. Use Canvas addon (not WebGL) to avoid disposal errors.
+- **xterm.js + StrictMode:** Track PTY creation in a module-level Set to prevent duplicates. The terminal renders with xterm's default DOM renderer — no Canvas/WebGL addon is used (rendering addons caused disposal errors on teardown).
 - **xterm.js container sizing:** Mount xterm into an inner div, put padding on an outer wrapper div. Otherwise `fit` addon miscalculates dimensions.
 
 ## Behavioral Guidelines

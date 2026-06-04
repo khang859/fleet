@@ -1,4 +1,4 @@
-export const PLATFORM: 'mac' | 'other' =
+const PLATFORM: 'mac' | 'other' =
   typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? 'mac' : 'other';
 
 export type KeyCombo = {

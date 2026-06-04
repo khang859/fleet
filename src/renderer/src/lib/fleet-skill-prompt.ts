@@ -7,11 +7,11 @@ function getFleetSkillPath(): string {
   return joinPath(window.fleet.homeDir, '.fleet', 'skills', 'fleet.md');
 }
 
-export function getFleetSkillPrompt(): string {
+function getFleetSkillPrompt(): string {
   return `Read ${getFleetSkillPath()} to learn the Fleet terminal commands available to you.\n`;
 }
 
-export function wrapTerminalPasteSubmit(content: string): string {
+function wrapTerminalPasteSubmit(content: string): string {
   return `${BRACKETED_PASTE_START}${content.replace(/\r\n/g, '\n')}${BRACKETED_PASTE_END}\r`;
 }
 

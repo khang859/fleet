@@ -4,9 +4,8 @@ import type { FleetSettings } from './types';
 import { DEFAULT_ORCHESTRATOR_INSTRUCTIONS, ORCHESTRATOR_PROFILE_NAME } from './types';
 import { DEFAULT_ACCENT_COLOR_ID, DEFAULT_TERMINAL_THEME_ID } from './theme-presets';
 export { IPC_CHANNELS } from './ipc-channels';
-export { MASCOT_REGISTRY } from './mascots';
 
-export const DEFAULT_SCROLLBACK = 10_000;
+const DEFAULT_SCROLLBACK = 10_000;
 
 // --- Main-process only (Node.js built-ins) ---
 // Do NOT import these from renderer code.

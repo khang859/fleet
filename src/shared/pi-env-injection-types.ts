@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const PiBedrockCredentialModeSchema = z.enum(['profile', 'keys', 'bearer', 'chain']);
+const PiBedrockCredentialModeSchema = z.enum(['profile', 'keys', 'bearer', 'chain']);
 export type PiBedrockCredentialMode = z.infer<typeof PiBedrockCredentialModeSchema>;
 
 export const PiBedrockInjectionSchema = z.object({

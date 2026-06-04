@@ -1,4 +1,4 @@
-export const IMAGE_EXTENSIONS = new Set([
+const IMAGE_EXTENSIONS = new Set([
   '.png',
   '.jpg',
   '.jpeg',
@@ -9,9 +9,9 @@ export const IMAGE_EXTENSIONS = new Set([
   '.ico'
 ]);
 
-export const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
-export const BINARY_BLOCKLIST = new Set([
+const BINARY_BLOCKLIST = new Set([
   '.zip',
   '.tar',
   '.gz',
