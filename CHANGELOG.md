@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.52.0
+
+- Settings: terminals can now have a **custom background image**. Pick any image from disk in Settings → General → Terminal Background and tune its **Opacity** (dim it so terminal text stays readable), **Blur**, and **Fit** (Cover / Contain / Center / Tile), or **Clear** it to return to the solid theme color. The background applies live to every open terminal — no restart needed.
+
 ## v2.51.0
 
 - Settings: the **App Theme** picker now actually re-themes the whole app. Previously it only stored a light/dark value that nothing applied (the UI was always dark). It now offers **System** (follow your OS), **Match Terminal Theme**, and a full set of named **Dark** and **Light** presets — the app chrome (backgrounds, borders, text) recolors live to match, derived from each theme's palette. Your existing setting is carried over automatically.
