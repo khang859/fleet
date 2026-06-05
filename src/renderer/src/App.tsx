@@ -623,92 +623,6 @@ export function App(): React.JSX.Element {
               </button>
             </MiniSidebarTooltip>
             <div className="w-6 h-px bg-fleet-border my-0.5" />
-            {/* Kanban pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'kanban')
-              .map((tab) => {
-                const isKanbanActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Kanban" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
-                        isKanbanActive
-                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <KanbanSquare
-                        size={16}
-                        className={isKanbanActive ? 'text-blue-400' : 'text-blue-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {workspace.tabs.some((t) => t.type === 'kanban') && (
-              <div className="w-6 h-px bg-fleet-border my-0.5" />
-            )}
-            {/* Images pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'images')
-              .map((tab) => {
-                const isImagesActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Images" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
-                        isImagesActive
-                          ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke={isImagesActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
-                        strokeWidth="1.5"
-                      >
-                        <rect x="3" y="3" width="18" height="18" rx="2" />
-                        <circle cx="8.5" cy="8.5" r="1.5" />
-                        <path d="M21 15l-5-5L5 21" />
-                      </svg>
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {workspace.tabs.some((t) => t.type === 'images') && (
-              <div className="w-6 h-px bg-fleet-border my-0.5" />
-            )}
-            {/* Annotate pinned icon */}
-            {workspace.tabs
-              .filter((t) => t.type === 'annotate')
-              .map((tab) => {
-                const isAnnotateActive = tab.id === activeTabId;
-                return (
-                  <MiniSidebarTooltip label="Annotate" key={tab.id}>
-                    <button
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
-                        isAnnotateActive
-                          ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
-                          : 'hover:bg-fleet-surface-2'
-                      }`}
-                    >
-                      <Crosshair
-                        size={16}
-                        className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
-                      />
-                    </button>
-                  </MiniSidebarTooltip>
-                );
-              })}
-            {workspace.tabs.some((t) => t.type === 'annotate') && (
-              <div className="w-6 h-px bg-fleet-border my-0.5" />
-            )}
             {/* File/terminal/image tab icons (excluding pinned + settings) */}
             {workspace.tabs
               .filter(
@@ -754,6 +668,90 @@ export function App(): React.JSX.Element {
                 );
               })}
             <div className="flex-1" />
+            {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
+            {workspace.tabs.some(
+              (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+            ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
+            {/* Kanban pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'kanban')
+              .map((tab) => {
+                const isKanbanActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Kanban" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isKanbanActive
+                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
+                          : 'hover:bg-fleet-surface-2'
+                      }`}
+                    >
+                      <KanbanSquare
+                        size={16}
+                        className={isKanbanActive ? 'text-blue-400' : 'text-blue-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {/* Images pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'images')
+              .map((tab) => {
+                const isImagesActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Images" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isImagesActive
+                          ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
+                          : 'hover:bg-fleet-surface-2'
+                      }`}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={isImagesActive ? 'rgb(192,132,252)' : 'rgba(192,132,252,0.4)'}
+                        strokeWidth="1.5"
+                      >
+                        <rect x="3" y="3" width="18" height="18" rx="2" />
+                        <circle cx="8.5" cy="8.5" r="1.5" />
+                        <path d="M21 15l-5-5L5 21" />
+                      </svg>
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {/* Annotate pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'annotate')
+              .map((tab) => {
+                const isAnnotateActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Annotate" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors ${
+                        isAnnotateActive
+                          ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
+                          : 'hover:bg-fleet-surface-2'
+                      }`}
+                    >
+                      <Crosshair
+                        size={16}
+                        className={isAnnotateActive ? 'text-cyan-400' : 'text-cyan-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            {workspace.tabs.some(
+              (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+            ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
             {/* Workspace switcher popover */}
             <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
               <MiniSidebarTooltip label={workspace.label}>
