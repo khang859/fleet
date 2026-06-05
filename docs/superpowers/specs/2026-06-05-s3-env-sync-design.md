@@ -18,7 +18,7 @@ When you open a project in Fleet, it reads a committed, secret-free `.fleet/env-
 | Multiple `.env` (monorepo) | Explicit `targets[]` list + a gitignore-aware "Scan" helper that proposes targets |
 | Nested/multiple repos | Resolve by walking **up** from a `cwd` to the nearest `.fleet/env-sync.json` (SOPS pattern) |
 | Bucket scope | Per-repo (repo-level default; per-target override allowed) |
-| AWS auth | Default AWS credential provider chain — **Fleet stores no AWS keys** |
+| AWS auth | Per-repo selectable mode: **default chain** / **named profile** / **static keys**; global default + per-repo override. Profile name & static keys live in the local keychain store, never in committed config. Default mode stores no AWS keys. |
 | At-rest protection | Client-side **AES-256-GCM + scrypt** passphrase encryption; bucket only holds ciphertext |
 | Passphrase scope | Global default + optional per-repo override; stored in OS keychain via `safeStorage` |
 | Sync model | Full bidirectional; ETag-based conflict detection; diff prompt (keep-local / keep-remote / cancel) |
@@ -75,20 +75,38 @@ Per-target last-synced fingerprint, used for conflict detection. Keyed by `${con
 }
 ```
 
-### 3b. Passphrases (`fleet-env-sync-secrets.json`, electron-store + `safeStorage`)
+### 3b. Passphrases + AWS auth (`fleet-env-sync-secrets.json`, electron-store + `safeStorage`)
 
-Mirrors `PiEnvInjectionManager` exactly. Secrets encrypted with `safeStorage`, stored base64; never sent to the renderer in plaintext.
+Mirrors `PiEnvInjectionManager` exactly. Secrets encrypted with `safeStorage`, stored base64; never sent to the renderer in plaintext. Holds two parallel global-default + per-repo-override structures: one for the encryption passphrase, one for AWS auth.
 
 ```jsonc
 {
   "globalPassphraseEnc": "base64...",          // optional global default
   "repoOverrides": {                            // keyed by repo id
     "my-app": { "passphraseEnc": "base64..." }
+  },
+
+  "globalAuth": {                               // optional global default AWS auth
+    "mode": "profile",                          // 'default-chain' | 'profile' | 'static'
+    "profile": "work",                          // for 'profile' mode (NOT secret, but machine-specific → local only)
+    "accessKeyIdEnc": "base64...",              // for 'static' mode (safeStorage-encrypted)
+    "secretAccessKeyEnc": "base64...",          // for 'static' mode
+    "sessionTokenEnc": "base64..."              // optional, for 'static' mode
+  },
+  "authRepoOverrides": {                         // keyed by repo id
+    "my-app": { "mode": "static", "accessKeyIdEnc": "...", "secretAccessKeyEnc": "..." }
   }
 }
 ```
 
-Passphrase resolution for a repo: `repoOverrides[id].passphraseEnc` → `globalPassphraseEnc` → error ("no passphrase configured").
+**Passphrase resolution** for a repo: `repoOverrides[id].passphraseEnc` → `globalPassphraseEnc` → error ("no passphrase configured").
+
+**AWS auth resolution** for a repo: `authRepoOverrides[id]` → `globalAuth` → implicit `{ mode: 'default-chain' }`. The resolved entry maps to an AWS credentials provider:
+- `default-chain` → `fromNodeProviderChain()`
+- `profile` → `fromNodeProviderChain({ profile })`  *(covers ini / SSO / process credentials)*
+- `static` → `{ accessKeyId, secretAccessKey, sessionToken? }` (decrypted from keychain on use)
+
+The auth mode (and profile name) are **machine-specific** and never written to the committed `.fleet/env-sync.json` — only `bucket`/`region`/`targets`/`id` are shared.
 
 ---
 
@@ -111,19 +129,24 @@ Six focused units, each independently testable.
 - Whole-file encryption (not per-key) — the stored object is opaque ciphertext; readable diffs are produced locally in the conflict UI (§7), not from the S3 object.
 
 ### `env-sync-secrets.ts`
-- `getRedactedSecrets(): { globalPresent: boolean; repoOverrides: Record<string, { present: boolean }> }`
+- `getRedactedSecrets()` — redacted view of both passphrase and auth state:
+  - passphrase: `{ globalPresent: boolean; repoOverrides: Record<string, { present: boolean }> }`
+  - auth: `globalAuth?: { mode; profile?; hasAccessKeyId: boolean; hasSecretAccessKey: boolean; hasSessionToken: boolean }` and the same shape per repo under `authRepoOverrides`. Static-key material is **never** returned — only presence booleans + the non-secret `mode`/`profile`.
 - `setGlobalPassphrase(plaintext)` / `clearGlobalPassphrase()`
 - `setRepoPassphrase(id, plaintext)` / `clearRepoPassphrase(id)`
 - `resolvePassphrase(id): string` (throws if none)
-- `isEncryptionAvailable(): boolean` — gates the UI. On Linux additionally warns if `safeStorage.getSelectedStorageBackend() === 'basic_text'` (no real protection).
+- `setGlobalAuth(config)` / `clearGlobalAuth()` — `config` is `{ mode, profile?, accessKeyId?, secretAccessKey?, sessionToken? }`; key material is `safeStorage`-encrypted before persisting.
+- `setRepoAuth(id, config)` / `clearRepoAuth(id)`
+- `resolveAuth(id): { mode; profile?; accessKeyId?; secretAccessKey?; sessionToken? }` — per-repo override → global → `{ mode: 'default-chain' }`; decrypts static keys on use.
+- `isEncryptionAvailable(): boolean` — gates the UI (and is required before `static` auth can be saved). On Linux additionally warns if `safeStorage.getSelectedStorageBackend() === 'basic_text'` (no real protection).
 - Uses `safeStorage` async API where practical to avoid main-thread blocking.
 
 ### `s3-client.ts`
-- Thin `@aws-sdk/client-s3` wrapper, client cached per `(bucket, region)`.
-- `head(bucket, region, key): { etag } | null` (null on 404).
-- `get(bucket, region, key): { body: Buffer; etag }`.
-- `put(bucket, region, key, body, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; on `PreconditionFailed` the manager treats it as a conflict. New objects use `If-None-Match: *`.
-- Credentials via `@aws-sdk/credential-providers` default chain (env, `~/.aws`, SSO). Clear error if the chain yields nothing.
+- Thin `@aws-sdk/client-s3` wrapper. Each call takes a resolved `EnvSyncAuthResolved` (`{ mode, profile?, accessKeyId?, secretAccessKey?, sessionToken? }`); the client is cached per `(region, authFingerprint)` where `authFingerprint` = `mode` + `profile` + a hash of the static keys (so distinct identities don't share a client, and rotating keys invalidates the cache).
+- `head(bucket, region, key, auth): { etag } | null` (null on 404).
+- `get(bucket, region, key, auth): { body: Buffer; etag }`.
+- `put(bucket, region, key, body, auth, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; on `PreconditionFailed` the manager treats it as a conflict. New objects use `If-None-Match: *`.
+- Credential resolution from `auth`: `default-chain` → `fromNodeProviderChain()`; `profile` → `fromNodeProviderChain({ profile })`; `static` → static credentials object. Clear error if the chain yields nothing.
 
 ### `env-file.ts`
 - `parseEnv(text): { entries: Array<{key, value, raw}>; map: Record<string,string> }` — minimal parser preserving order/comments for round-tripping; tolerant of `export`, quotes, `#` comments.
@@ -133,7 +156,7 @@ Six focused units, each independently testable.
 - `scanCandidates(repoDir): string[]` — for the Scan helper: lists candidate env files honoring `.gitignore`, **excluding** `.env.example/.sample/.template/.dist`, `node_modules/`, `.git/`, build dirs (`dist`, `build`, `.next`, `.turbo`, `out`, `coverage`). Candidate includes: `.env`, `.env.local`, `.env.<env>`, `.env.<env>.local`.
 
 ### `env-sync-manager.ts` (orchestrator)
-Owns the sync-state store; depends on the five units above + `env-sync-secrets`.
+Owns the sync-state store; depends on the five units above + `env-sync-secrets`. Before any S3 call it resolves the repo's AWS auth via `secrets.resolveAuth(config.id)` and passes the resolved object into every `s3-client` call (alongside the passphrase it already resolves).
 
 - `status(repoDir): TargetStatus[]` — per target: `head` remote ETag, compare against local state + current local file hash → derive:
   - `remoteChanged = remoteEtag !== state.lastEtag`
@@ -176,11 +199,12 @@ Channels in `src/shared/ipc-channels.ts`, types in `src/shared/ipc-api.ts` (or a
 | `ENV_SYNC_PULL` / `ENV_SYNC_PUSH` | Pull/push a target; may return `{ conflict, diff }` |
 | `ENV_SYNC_RESOLVE` | Resolve a conflict (`keep-local` / `keep-remote`) |
 | `ENV_SYNC_DIFF` | Compute masked local-vs-remote diff for a target |
-| `ENV_SYNC_GET_SECRETS` | Redacted passphrase presence (global + per-repo) |
+| `ENV_SYNC_GET_SECRETS` | Redacted passphrase + auth state (global + per-repo) |
 | `ENV_SYNC_SET_PASSPHRASE` / `ENV_SYNC_CLEAR_PASSPHRASE` | Manage global / per-repo passphrase |
+| `ENV_SYNC_SET_AUTH` / `ENV_SYNC_CLEAR_AUTH` | Manage global / per-repo AWS auth (mode + profile + static keys) |
 | `ENV_SYNC_ENCRYPTION_AVAILABLE` | Gate UI on `safeStorage` availability |
 
-Passphrases cross the boundary as plaintext only inbound on set; outbound is always redacted presence flags (PiEnvInjection pattern).
+Passphrases and static AWS keys cross the boundary as plaintext only inbound on set; outbound is always redacted (presence flags + non-secret `mode`/`profile`), following the PiEnvInjection pattern. The set-auth request distinguishes global vs per-repo by an optional `id` (PiEnvInjection set-pattern).
 
 ---
 
@@ -189,13 +213,15 @@ Passphrases cross the boundary as plaintext only inbound on set; outbound is alw
 ### Settings → new "Env Sync" section
 Registered in `SettingsNav.tsx` (`SettingsSection` union + `ALL_SECTIONS`) and `SettingsTab.tsx` (`SECTION_COMPONENTS`). Built with existing `SettingRow` + plain controlled inputs (no form lib), `useToastStore` for feedback — matching `CopilotSection`.
 
-- **Encryption gate:** if `safeStorage` unavailable (or Linux `basic_text`), show a warning and disable secret entry.
+- **Encryption gate:** if `safeStorage` unavailable (or Linux `basic_text`), show a warning and disable secret entry (passphrase **and** static-key auth).
 - **Global passphrase:** masked entry following `PiBedrockPanel` (redacted "●●●● (set)" + Clear/Replace; password draft + Save when unset).
+- **Global AWS auth:** a mode dropdown (`Default credential chain` / `Named profile` / `Static keys`). `profile` mode shows a plain text profile-name input; `static` mode shows masked access-key-id / secret-access-key / optional session-token inputs (redacted "●●●● (set)" + Clear/Replace when set). Static mode is disabled when encryption is unavailable.
 - **Per-repo accordion** (copilot `workspaceOverrides` pattern): one row per repo discovered from open workspace tab `cwd`s (resolve nearest config, dedup by config path). Each expanded row shows:
   - Repo `id`, bucket/region (editable → `ENV_SYNC_WRITE_CONFIG`).
   - **Targets table:** per target — env file path, delivery dropdown (`file`/`inject`), status badge, **Pull** / **Push** buttons.
   - **Scan** button → lists candidates (`ENV_SYNC_SCAN`) with checkboxes → adds selected as targets.
   - Optional per-repo passphrase override (Clear/Replace).
+  - Optional per-repo AWS auth override (same mode dropdown + inputs as the global control); "Use global default" clears the override.
 - Async actions show inline progress + success/error toasts.
 
 ### Workspace status badge + conflict dialog
@@ -226,7 +252,8 @@ Add: `@aws-sdk/client-s3`, `@aws-sdk/credential-providers`. Use Node built-in `c
 - **`env-file`:** parse/serialize round-trip (comments, quotes, `export`); diff add/remove/change with masking; `scanCandidates` excludes templates/node_modules and honors gitignore.
 - **`env-sync-config`:** schema validation; `objectKey` defaulting; `findNearestConfig` walk-up incl. nested repos + cache invalidation; most-specific target selection for a cwd.
 - **`env-sync-manager`:** status derivation matrix (in-sync / *-ahead / conflict / *-only) with mocked `s3-client`; pull/push conflict paths; `If-Match` precondition → conflict; `getEnvForCwd` resolution.
-- **`env-sync-secrets`:** passphrase resolution order; redaction never leaks plaintext (mock `safeStorage`, mirror existing PiEnvInjection tests).
+- **`env-sync-secrets`:** passphrase resolution order; redaction never leaks plaintext (mock `safeStorage`, mirror existing PiEnvInjection tests); AWS auth resolution order (per-repo → global → `default-chain`); redacted auth view exposes `mode`/`profile` + presence booleans but never key material; static keys round-trip through `safeStorage`.
+- **`s3-client`:** auth fingerprint differs per `(region, mode, profile, static-key-hash)` so distinct identities get distinct cached clients; `default-chain`/`profile`/`static` each build the expected credentials provider (with the AWS SDK calls stubbed).
 - **Integration:** `PTY_CREATE` injects vars for an `inject` target when cwd is within its directory.
 
 ---
