@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.53.0
+
+- Settings: terminal background images can now **fade at the edges**. Two new sliders in Settings → General — **Fade Left/Right** and **Fade Top/Bottom** — feather the image's edges into the terminal background so an image that doesn't quite fill the window no longer looks hard-cropped. Set each axis independently (0–50%); corners blend automatically when both are active.
+
 ## v2.52.1
 
 - Sidebar: fixed the collapsed mini-rail showing tool icons (Kanban, Images, Annotate) in the wrong place. They now sit at the bottom above the workspace switcher and settings, matching the expanded sidebar's layout.
