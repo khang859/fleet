@@ -871,6 +871,7 @@ export function App(): React.JSX.Element {
                         fontFamily={settings?.general.fontFamily}
                         fontSize={settings?.general.fontSize}
                         terminalTheme={settings?.general.terminalTheme}
+                        terminalBackground={settings?.general.terminalBackground}
                       />
                     )}
                   </div>
@@ -897,6 +898,7 @@ export function App(): React.JSX.Element {
                     fontFamily={settings?.general.fontFamily}
                     fontSize={settings?.general.fontSize}
                     terminalTheme={settings?.general.terminalTheme}
+                    terminalBackground={settings?.general.terminalBackground}
                   />
                 </div>
               ))

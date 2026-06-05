@@ -34,6 +34,8 @@ export type UseTerminalOptions = {
   workspaceId?: string;
   /** ShellProfile id used to spawn the PTY. Read from PaneLeaf by callers. */
   shellProfileId?: string;
+  /** When true, render xterm's background transparently so a background image shows through. */
+  backgroundImageActive?: boolean;
 };
 
 export const RUNE_READY_MARKER = '\x1b]777;fleet.rune.ready\x07';
@@ -170,7 +172,10 @@ function createTerminal(
     cursorBlink: true,
     cursorInactiveStyle: 'none',
     allowProposedApi: true,
-    theme: resolveXtermTheme(options.terminalTheme)
+    // Always allow transparency (negligible cost on the DOM renderer) so a
+    // background image can be toggled on/off live without recreating the term.
+    allowTransparency: true,
+    theme: resolveXtermTheme(options.terminalTheme, options.backgroundImageActive)
   });
 
   const fitAddon = new FitAddon();
@@ -780,9 +785,9 @@ export function useTerminal(
   useEffect(() => {
     const term = termRef.current;
     if (!term) return;
-    term.options.theme = resolveXtermTheme(options.terminalTheme);
+    term.options.theme = resolveXtermTheme(options.terminalTheme, options.backgroundImageActive);
     term.refresh(0, term.rows - 1);
-  }, [options.terminalTheme]);
+  }, [options.terminalTheme, options.backgroundImageActive]);
 
   // Focus and refresh the xterm instance when this pane becomes active.
   // The refresh call is needed when the terminal was hidden with display:none and

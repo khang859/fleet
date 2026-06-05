@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
 import { useDebouncedCallback } from '../../hooks/use-debounced-callback';
 import { SettingRow } from './SettingRow';
-import type { FontSelection } from '../../../../shared/types';
+import type { FontSelection, TerminalBackground } from '../../../../shared/types';
 import { resolveFontFamily } from '../../../../shared/types';
 import {
   ACCENT_COLORS,
@@ -161,7 +161,40 @@ export function GeneralSection(): React.JSX.Element {
     });
   }, 300);
 
-  if (!settings) return <></>;
+  const bg = settings?.general.terminalBackground;
+  const [localOpacity, setLocalOpacity] = useState(bg?.opacity ?? 0.15);
+  const [localBlur, setLocalBlur] = useState(bg?.blur ?? 0);
+
+  // Sync the slider locals to stored values when an image is (re)loaded — covers
+  // the case where settings finish loading after this component first mounted.
+  useEffect(() => {
+    if (bg?.imagePath) {
+      setLocalOpacity(bg.opacity);
+      setLocalBlur(bg.blur);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bg?.imagePath]);
+
+  // The settings merge is shallow within `general`, so always send the full
+  // terminalBackground object (read fresh from the store to avoid stale closures).
+  const saveBackground = (patch: Partial<TerminalBackground>): void => {
+    const current = useSettingsStore.getState().settings;
+    if (!current) return;
+    void updateSettings({
+      general: { terminalBackground: { ...current.general.terminalBackground, ...patch } }
+    });
+  };
+  const debouncedSaveBackground = useDebouncedCallback(saveBackground, 150);
+
+  const pickBackgroundImage = async (): Promise<void> => {
+    const paths = await window.fleet.file.openDialog({
+      multi: false,
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'] }]
+    });
+    if (paths[0]) saveBackground({ imagePath: paths[0] });
+  };
+
+  if (!settings || !bg) return <></>;
 
   return (
     <div className="space-y-4">
@@ -285,6 +318,95 @@ export function GeneralSection(): React.JSX.Element {
           })}
         </div>
       </SettingRow>
+      <div className="space-y-3 pt-3 border-t border-fleet-border">
+        <SettingRow label="Terminal Background">
+          <div className="flex items-center gap-2">
+            {bg.imagePath && (
+              <span
+                className="text-xs text-fleet-text-subtle max-w-[150px] truncate"
+                title={bg.imagePath}
+              >
+                {bg.imagePath.split('/').pop()}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void pickBackgroundImage()}
+              className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle"
+            >
+              {bg.imagePath ? 'Change…' : 'Browse…'}
+            </button>
+            {bg.imagePath && (
+              <button
+                type="button"
+                onClick={() => saveBackground({ imagePath: null })}
+                className="text-fleet-text-secondary text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </SettingRow>
+        {bg.imagePath && (
+          <>
+            <SettingRow label="Opacity">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={localOpacity}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setLocalOpacity(v);
+                    debouncedSaveBackground({ opacity: v });
+                  }}
+                  className="w-40"
+                />
+                <span className="text-xs text-fleet-text-subtle w-8 text-right">
+                  {Math.round(localOpacity * 100)}%
+                </span>
+              </div>
+            </SettingRow>
+            <SettingRow label="Blur">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  step="1"
+                  value={localBlur}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value);
+                    setLocalBlur(v);
+                    debouncedSaveBackground({ blur: v });
+                  }}
+                  className="w-40"
+                />
+                <span className="text-xs text-fleet-text-subtle w-8 text-right">{localBlur}px</span>
+              </div>
+            </SettingRow>
+            <SettingRow label="Fit">
+              <select
+                value={bg.fit}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === 'cover' || v === 'contain' || v === 'center' || v === 'tile') {
+                    saveBackground({ fit: v });
+                  }
+                }}
+                className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
+              >
+                <option value="cover">Cover</option>
+                <option value="contain">Contain</option>
+                <option value="center">Center</option>
+                <option value="tile">Tile</option>
+              </select>
+            </SettingRow>
+          </>
+        )}
+      </div>
     </div>
   );
 }

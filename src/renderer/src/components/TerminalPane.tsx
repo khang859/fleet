@@ -8,6 +8,7 @@ import { useCwdStore } from '../store/cwd-store';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { getFleetSkillContentInput } from '../lib/fleet-skill-prompt';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
+import type { TerminalBackground } from '../../../shared/types';
 import { resolveTerminalTheme } from '../lib/theme';
 
 type TerminalPaneProps = {
@@ -19,10 +20,18 @@ type TerminalPaneProps = {
   fontFamily?: string;
   fontSize?: number;
   terminalTheme?: TerminalThemeId;
+  terminalBackground?: TerminalBackground;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onClose?: () => void;
   shellProfileId?: string;
+};
+
+const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
+  cover: { size: 'cover', repeat: 'no-repeat' },
+  contain: { size: 'contain', repeat: 'no-repeat' },
+  center: { size: 'auto', repeat: 'no-repeat' },
+  tile: { size: 'auto', repeat: 'repeat' }
 };
 
 export function TerminalPane({
@@ -34,6 +43,7 @@ export function TerminalPane({
   fontFamily,
   fontSize,
   terminalTheme,
+  terminalBackground,
   onSplitHorizontal,
   onSplitVertical,
   onClose,
@@ -42,6 +52,7 @@ export function TerminalPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const workspaceId = useWorkspaceStore((s) => s.workspace.id);
+  const hasBackgroundImage = !!terminalBackground?.imagePath;
   const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
     cwd,
@@ -50,6 +61,7 @@ export function TerminalPane({
     fontFamily,
     fontSize,
     terminalTheme,
+    backgroundImageActive: hasBackgroundImage,
     workspaceId,
     shellProfileId,
     onScrollStateChange: setIsScrolledUp
@@ -133,6 +145,23 @@ export function TerminalPane({
       }}
       {...dragHandlers}
     >
+      {terminalBackground?.imagePath && (
+        <div
+          aria-hidden
+          className="absolute z-0 pointer-events-none"
+          style={{
+            // Over-extend when blurred so the blur's soft edge doesn't reveal the pane border.
+            inset: terminalBackground.blur > 0 ? -terminalBackground.blur * 2 : 0,
+            // encodeURI so paths with spaces/special chars survive the CSS url() parser.
+            backgroundImage: `url("${encodeURI(`fleet-image://${terminalBackground.imagePath}`)}")`,
+            backgroundSize: FIT_STYLES[terminalBackground.fit].size,
+            backgroundRepeat: FIT_STYLES[terminalBackground.fit].repeat,
+            backgroundPosition: 'center',
+            opacity: terminalBackground.opacity,
+            filter: terminalBackground.blur > 0 ? `blur(${terminalBackground.blur}px)` : undefined
+          }}
+        />
+      )}
       <PaneToolbar
         visible={hovered}
         isGitRepo={isGitRepo}
@@ -164,7 +193,7 @@ export function TerminalPane({
         onSearch={(q) => search(q)}
         onSearchPrevious={(q) => searchPrevious(q)}
       />
-      <div ref={containerRef} className="h-full w-full" />
+      <div ref={containerRef} className="relative z-10 h-full w-full" />
       {isScrolledUp && (
         <button
           className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors"

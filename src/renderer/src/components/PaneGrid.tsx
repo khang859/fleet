@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef } from 'react';
-import type { PaneNode, PaneLeaf } from '../../../shared/types';
+import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { TerminalPane } from './TerminalPane';
 import { PaneHeader } from './PaneHeader';
@@ -124,6 +124,7 @@ type PaneGridProps = {
   fontFamily?: string;
   fontSize?: number;
   terminalTheme?: TerminalThemeId;
+  terminalBackground?: TerminalBackground;
 };
 
 export function PaneGrid({
@@ -133,7 +134,8 @@ export function PaneGrid({
   serializedPanes,
   fontFamily,
   fontSize,
-  terminalTheme
+  terminalTheme,
+  terminalBackground
 }: PaneGridProps): React.JSX.Element {
   const { splitPane, closePane } = useWorkspaceStore();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -196,6 +198,7 @@ export function PaneGrid({
                 fontFamily={fontFamily}
                 fontSize={fontSize}
                 terminalTheme={terminalTheme}
+                terminalBackground={terminalBackground}
                 onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
                 onSplitVertical={() => splitPane(leaf.id, 'vertical')}
                 onClose={() => closePane(leaf.id)}

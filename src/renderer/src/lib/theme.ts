@@ -26,8 +26,17 @@ export function resolveTerminalTheme(id?: string): TerminalThemeDefinition {
   return TERMINAL_THEMES[DEFAULT_TERMINAL_THEME_ID];
 }
 
-export function resolveXtermTheme(id?: TerminalThemeId): TerminalThemeColors {
-  return { ...resolveTerminalTheme(id).xterm };
+export function resolveXtermTheme(
+  id?: TerminalThemeId,
+  transparentBackground = false
+): TerminalThemeColors {
+  const theme = { ...resolveTerminalTheme(id).xterm };
+  // When a terminal background image is active, render xterm's default cell
+  // background transparently so the image layer behind it shows through.
+  if (transparentBackground) {
+    theme.background = 'rgba(0, 0, 0, 0)';
+  }
+  return theme;
 }
 
 export function resolveAccentColor(id?: string): AccentColorDefinition {

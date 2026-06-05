@@ -345,12 +345,24 @@ export function registerIpcHandlers(
   // Open file dialog — allows multi-select, no type filter, starts in provided dir
   ipcMain.handle(
     IPC_CHANNELS.FILE_OPEN_DIALOG,
-    async (event, { defaultPath }: { defaultPath?: string } = {}) => {
+    async (
+      event,
+      {
+        defaultPath,
+        filters,
+        multi = true
+      }: {
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+        multi?: boolean;
+      } = {}
+    ) => {
       const win = BrowserWindow.fromWebContents(event.sender);
       if (!win) return [];
       const result = await dialog.showOpenDialog(win, {
-        properties: ['openFile', 'multiSelections'],
-        defaultPath: defaultPath ?? undefined
+        properties: multi ? ['openFile', 'multiSelections'] : ['openFile'],
+        defaultPath: defaultPath ?? undefined,
+        filters: filters ?? undefined
       });
       return result.canceled ? [] : result.filePaths;
     }

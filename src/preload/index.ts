@@ -239,8 +239,13 @@ const fleetApi = {
       content: string
     ): Promise<{ success: true } | { success: false; error: string }> =>
       typedInvoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
-    openDialog: async (opts: { defaultPath?: string } = {}): Promise<string[]> =>
-      typedInvoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
+    openDialog: async (
+      opts: {
+        defaultPath?: string;
+        filters?: Array<{ name: string; extensions: string[] }>;
+        multi?: boolean;
+      } = {}
+    ): Promise<string[]> => typedInvoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
     list: async (
       dirPath: string
     ): Promise<{

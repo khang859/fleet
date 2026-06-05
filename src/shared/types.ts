@@ -198,6 +198,18 @@ export const DEFAULT_ORCHESTRATOR_INSTRUCTIONS =
   "another's output. Keep responsibilities non-overlapping. Assign each child to the worker " +
   'whose description best matches the work; if none fits well, pick the closest and note the gap.';
 
+export type TerminalBackgroundFit = 'cover' | 'contain' | 'center' | 'tile';
+
+export type TerminalBackground = {
+  /** Absolute path to the image on disk, served via the fleet-image:// protocol. */
+  imagePath: string | null;
+  /** Image visibility, 0–1. Lower values let the solid theme color show through (dimming). */
+  opacity: number;
+  /** Gaussian blur radius in pixels. */
+  blur: number;
+  fit: TerminalBackgroundFit;
+};
+
 export type FleetSettings = {
   general: {
     defaultShell: string;
@@ -207,6 +219,7 @@ export type FleetSettings = {
     theme: AppThemeSelection;
     terminalTheme: TerminalThemeId;
     accentColor: AccentColorId;
+    terminalBackground: TerminalBackground;
   };
   notifications: {
     taskComplete: { badge: boolean; sound: boolean; os: boolean };
