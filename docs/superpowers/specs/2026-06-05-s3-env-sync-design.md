@@ -55,7 +55,7 @@ Lives at the repo root, **committed to git, contains no secrets** (only an ident
 
 **Single-`.env` project** is just `targets: [{ "envFile": ".env" }]` — same code path, no special case.
 
-**Zod schema** (`src/shared/env-sync-types.ts`) validates this on read; invalid files surface a clear error in the status badge rather than throwing.
+**Zod schema** (`src/shared/env-sync-types.ts`) validates this on read. An invalid file is surfaced as an `error` target-status row by `status(repoDir)` (shown in the Settings section, ranked highest in the workspace badge) rather than crashing. Discovery by walk-up (`findNearestConfig`) logs and skips an unparseable config, so a malformed file is flagged once its repoDir is known but does not break unrelated repos.
 
 ---
 
@@ -120,8 +120,9 @@ Six focused units, each independently testable.
 - `findNearestConfig(cwd): { repoDir, config } | null` — walks **up** from `cwd` to filesystem root, returns the first dir containing `.fleet/env-sync.json`. Cached per-dir; cache invalidated on `writeConfig`.
 
 ### `env-sync-crypto.ts`
-- `encrypt(plaintext: Buffer, passphrase: string): Buffer`
-- `decrypt(blob: Buffer, passphrase: string): Buffer` (throws on auth failure / wrong passphrase)
+- `encrypt(plaintext: Buffer, passphrase: string): Promise<Buffer>`
+- `decrypt(blob: Buffer, passphrase: string): Promise<Buffer>` (rejects on auth failure / wrong passphrase)
+- **Async by design:** uses the async `crypto.scrypt` (not `scryptSync`). The KDF at N=2¹⁷ costs hundreds of ms; `decrypt` runs at PTY-spawn for inject delivery, so it must not block the main process event loop.
 - Scheme (research-validated, Node built-in `crypto`, no native deps):
   - **Cipher:** AES-256-GCM, fresh 12-byte random IV per encryption, 16-byte auth tag.
   - **KDF:** scrypt, **N=2¹⁷, r=8, p=1, dkLen=32**, fresh 16-byte random salt per encryption. **`maxmem: 256 * 1024 * 1024` is mandatory** — Node's default 32 MiB throws "memory limit exceeded" at these params.
@@ -145,15 +146,14 @@ Six focused units, each independently testable.
 - Thin `@aws-sdk/client-s3` wrapper. Each call takes a resolved `EnvSyncAuthResolved` (`{ mode, profile?, accessKeyId?, secretAccessKey?, sessionToken? }`); the client is cached per `(region, authFingerprint)` where `authFingerprint` = `mode` + `profile` + a hash of the static keys (so distinct identities don't share a client, and rotating keys invalidates the cache).
 - `head(bucket, region, key, auth): { etag } | null` (null on 404).
 - `get(bucket, region, key, auth): { body: Buffer; etag }`.
-- `put(bucket, region, key, body, auth, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; on `PreconditionFailed` the manager treats it as a conflict. New objects use `If-None-Match: *`.
+- `put(bucket, region, key, body, auth, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; on `PreconditionFailed` (HTTP 412) **or** `ConditionalRequestConflict` (HTTP 409, concurrent writer) the manager treats it as a conflict. New objects use `If-None-Match: *`. **IAM:** conditional `If-Match` PUT requires **both `s3:PutObject` and `s3:GetObject`** on the object, SigV4-signed (SDK default). `If-Match`-on-PUT is real-S3 only — S3-compatible stores (MinIO/R2) may not support it.
 - Credential resolution from `auth`: `default-chain` → `fromNodeProviderChain()`; `profile` → `fromNodeProviderChain({ profile })`; `static` → static credentials object. Clear error if the chain yields nothing.
 
 ### `env-file.ts`
-- `parseEnv(text): { entries: Array<{key, value, raw}>; map: Record<string,string> }` — minimal parser preserving order/comments for round-tripping; tolerant of `export`, quotes, `#` comments.
-- `serializeEnv(...)` — writes back, preserving untouched lines where possible.
-- `diff(localText, remoteText): EnvDiff` — per-key `added | removed | changed | unchanged`, with **values masked** (e.g. `changed`, last 2 chars hint) for the conflict UI.
+- `parseEnv(text): { map: Record<string,string> }` — minimal parser; tolerant of `export`, quotes, `#` comments. (v1 needs only the key→value map; pull/push write the whole decrypted file verbatim, so an order/comment-preserving serializer is **not** required. A future per-key merge path would add `entries`/`serializeEnv` then.)
+- `diffEnv(localText, remoteText): EnvDiff` — per-key `added | removed | changed | unchanged`, with **values masked** (`maskValue`: all but last 2 chars) for the conflict UI.
 - `hashPlaintext(text): string` — sha256 for conflict detection.
-- `scanCandidates(repoDir): string[]` — for the Scan helper: lists candidate env files honoring `.gitignore`, **excluding** `.env.example/.sample/.template/.dist`, `node_modules/`, `.git/`, build dirs (`dist`, `build`, `.next`, `.turbo`, `out`, `coverage`). Candidate includes: `.env`, `.env.local`, `.env.<env>`, `.env.<env>.local`.
+- `scanCandidates(repoDir): string[]` — for the Scan helper: lists candidate env files using a **fixed exclude list** (gitignore-awareness deferred to a later version), **excluding** suffixes `.example/.sample/.template/.dist/.defaults`, and dirs `node_modules/`, `.git*`, build dirs (`dist`, `build`, `.next`, `.turbo`, `out`, `coverage`). Candidate includes any `.env*` not matching an excluded suffix; max depth 4; returns posix-relative paths.
 
 ### `env-sync-manager.ts` (orchestrator)
 Owns the sync-state store; depends on the five units above + `env-sync-secrets`. Before any S3 call it resolves the repo's AWS auth via `secrets.resolveAuth(config.id)` and passes the resolved object into every `s3-client` call (alongside the passphrase it already resolves).
@@ -182,7 +182,7 @@ const injected = envSyncManager.getEnvForCwd(req.cwd);
 Object.assign(extraEnv, injected); // injected wins for collisions, like CLAUDE_CONFIG_DIR
 ```
 
-The existing spread `{ ...process.env, ...extraEnv }` already delivers these to the spawned shell. Inject vars are decrypted once and cached in memory (keyed by objectKey + etag), so spawns stay fast. Inject only affects Fleet-spawned shells — it never writes to disk.
+The existing spread `{ ...process.env, ...extraEnv }` already delivers these to the spawned shell. Inject vars are decrypted once and cached in memory (keyed by objectKey + etag), so spawns stay fast. Inject only affects Fleet-spawned shells — it never writes to disk. **Cache invalidation:** changing the passphrase or AWS auth clears this cache (`EnvSyncManager.clearInjectCache()`, called from the set/clear passphrase + auth IPC handlers) — a key/identity change doesn't move the etag, so without this the next spawn would serve vars decrypted with the old passphrase.
 
 ---
 
@@ -193,6 +193,7 @@ Channels in `src/shared/ipc-channels.ts`, types in `src/shared/ipc-api.ts` (or a
 | Channel | Purpose |
 |---|---|
 | `ENV_SYNC_GET_CONFIG` | Read `.fleet/env-sync.json` for a repoDir (or resolve nearest for a cwd) |
+| `ENV_SYNC_DISCOVER` | Resolve the nearest config by walking up from a cwd (used by the badge + settings discovery) |
 | `ENV_SYNC_WRITE_CONFIG` | Create/update the config file (used by the settings UI + Scan) |
 | `ENV_SYNC_SCAN` | Return candidate env files for a repoDir (Scan helper) |
 | `ENV_SYNC_STATUS` | Per-target status for a repoDir |
@@ -249,7 +250,7 @@ Add: `@aws-sdk/client-s3`, `@aws-sdk/credential-providers`. Use Node built-in `c
 ## 10. Testing strategy
 
 - **`env-sync-crypto`:** round-trip encrypt→decrypt; wrong passphrase rejects; tamper (flip a byte) rejects; envelope version/param parsing; confirm `maxmem` is set (no throw at N=2¹⁷).
-- **`env-file`:** parse/serialize round-trip (comments, quotes, `export`); diff add/remove/change with masking; `scanCandidates` excludes templates/node_modules and honors gitignore.
+- **`env-file`:** parse (comments, quotes, `export`); diff add/remove/change with masking; `scanCandidates` excludes templates/node_modules/build dirs (fixed list; gitignore-awareness deferred).
 - **`env-sync-config`:** schema validation; `objectKey` defaulting; `findNearestConfig` walk-up incl. nested repos + cache invalidation; most-specific target selection for a cwd.
 - **`env-sync-manager`:** status derivation matrix (in-sync / *-ahead / conflict / *-only) with mocked `s3-client`; pull/push conflict paths; `If-Match` precondition → conflict; `getEnvForCwd` resolution.
 - **`env-sync-secrets`:** passphrase resolution order; redaction never leaks plaintext (mock `safeStorage`, mirror existing PiEnvInjection tests); AWS auth resolution order (per-repo → global → `default-chain`); redacted auth view exposes `mode`/`profile` + presence booleans but never key material; static keys round-trip through `safeStorage`.
