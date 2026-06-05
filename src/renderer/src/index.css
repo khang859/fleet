@@ -2,6 +2,21 @@
 @import 'highlight.js/styles/atom-one-dark.css';
 @plugin "@tailwindcss/typography";
 
+/* Semantic app-chrome color tokens. `inline` makes utilities resolve var()
+   at the element, so overriding --fleet-* on the root re-themes the app live. */
+@theme inline {
+  --color-fleet-bg: var(--fleet-bg);
+  --color-fleet-surface: var(--fleet-surface);
+  --color-fleet-surface-2: var(--fleet-surface-2);
+  --color-fleet-surface-3: var(--fleet-surface-3);
+  --color-fleet-border: var(--fleet-border);
+  --color-fleet-border-strong: var(--fleet-border-strong);
+  --color-fleet-text: var(--fleet-text);
+  --color-fleet-text-secondary: var(--fleet-text-secondary);
+  --color-fleet-text-muted: var(--fleet-text-muted);
+  --color-fleet-text-subtle: var(--fleet-text-subtle);
+}
+
 /* --- Bundled Nerd Fonts --- */
 
 /* JetBrains Mono Nerd Font Mono (terminal-optimized, fixed-width Nerd glyphs) */
@@ -46,6 +61,19 @@
 :root {
   --fleet-accent: #3b82f6;
   --fleet-accent-hover: #60a5fa;
+
+  /* App-chrome defaults (Fleet Dark). Overridden at runtime on the root element
+     by the active app theme; these keep the initial paint correct. */
+  --fleet-bg: #0a0a0a;
+  --fleet-surface: #171717;
+  --fleet-surface-2: #262626;
+  --fleet-surface-3: #404040;
+  --fleet-border: #262626;
+  --fleet-border-strong: #404040;
+  --fleet-text: #fafafa;
+  --fleet-text-secondary: #d4d4d4;
+  --fleet-text-muted: #a3a3a3;
+  --fleet-text-subtle: #737373;
 }
 
 html,

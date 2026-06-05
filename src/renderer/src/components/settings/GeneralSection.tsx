@@ -7,8 +7,10 @@ import { resolveFontFamily } from '../../../../shared/types';
 import {
   ACCENT_COLORS,
   TERMINAL_THEMES,
+  isAppThemeSelection,
   isTerminalThemeId
 } from '../../../../shared/theme-presets';
+import { normalizeAppTheme } from '../../lib/theme';
 
 const BUNDLED_FONTS: Array<{ label: string; selection: FontSelection }> = [
   { label: 'JetBrains Mono Nerd', selection: { type: 'bundled', name: 'JetBrains Mono Nerd Font' } }
@@ -51,7 +53,7 @@ function FontFamilyPicker({
 
   return (
     <div className="space-y-2">
-      <span className="text-sm text-neutral-300">Font Family</span>
+      <span className="text-sm text-fleet-text-secondary">Font Family</span>
       <div className="space-y-1.5">
         {BUNDLED_FONTS.map((font, i) => {
           const isSelected = parsed.mode === 'bundled' && parsed.bundledIndex === i;
@@ -61,7 +63,7 @@ function FontFamilyPicker({
               className={`flex items-center gap-2.5 px-3 py-2 rounded cursor-pointer border transition-colors ${
                 isSelected
                   ? 'fleet-accent-border-soft fleet-accent-bg-soft'
-                  : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
+                  : 'border-fleet-border-strong bg-fleet-surface-2 hover:border-fleet-text-subtle'
               }`}
             >
               <input
@@ -72,12 +74,12 @@ function FontFamilyPicker({
                 className="fleet-accent-input"
               />
               <span
-                className="text-sm text-white"
+                className="text-sm text-fleet-text"
                 style={{ fontFamily: resolveFontFamily(font.selection) }}
               >
                 {font.label}
               </span>
-              <span className="text-xs text-neutral-500 ml-auto">bundled</span>
+              <span className="text-xs text-fleet-text-subtle ml-auto">bundled</span>
             </label>
           );
         })}
@@ -85,7 +87,7 @@ function FontFamilyPicker({
           className={`flex items-center gap-2.5 px-3 py-2 rounded cursor-pointer border transition-colors ${
             parsed.mode === 'custom'
               ? 'fleet-accent-border-soft fleet-accent-bg-soft'
-              : 'border-neutral-700 bg-neutral-800 hover:border-neutral-600'
+              : 'border-fleet-border-strong bg-fleet-surface-2 hover:border-fleet-text-subtle'
           }`}
         >
           <input
@@ -98,7 +100,7 @@ function FontFamilyPicker({
             }}
             className="fleet-accent-input"
           />
-          <span className="text-sm text-neutral-300">Custom:</span>
+          <span className="text-sm text-fleet-text-secondary">Custom:</span>
           <input
             type="text"
             value={parsed.mode === 'custom' ? customValue : ''}
@@ -114,14 +116,14 @@ function FontFamilyPicker({
               setCustomValue(e.target.value);
               debouncedOnChange(e.target.value);
             }}
-            className="bg-neutral-900 text-white text-sm rounded px-2 py-0.5 flex-1 border border-neutral-700 disabled:opacity-40"
+            className="bg-fleet-surface text-fleet-text text-sm rounded px-2 py-0.5 flex-1 border border-fleet-border-strong disabled:opacity-40"
             disabled={parsed.mode !== 'custom'}
           />
         </label>
       </div>
       {/* Preview */}
       <div
-        className="text-sm text-neutral-400 px-3 py-1.5 bg-neutral-800/50 rounded border border-neutral-800"
+        className="text-sm text-fleet-text-muted px-3 py-1.5 bg-fleet-surface-2/50 rounded border border-fleet-border"
         style={{ fontFamily }}
       >
         ABCDEFG abcdefg 0123456789 {'\ue0b0'} {'\ue0b2'} {'\uf113'} {'\uf09b'}
@@ -172,7 +174,7 @@ export function GeneralSection(): React.JSX.Element {
             debouncedSaveShell(e.target.value);
           }}
           placeholder="(auto-detect)"
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-48 border border-neutral-700"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-48 border border-fleet-border-strong"
         />
       </SettingRow>
       <SettingRow label="Font Size">
@@ -183,7 +185,7 @@ export function GeneralSection(): React.JSX.Element {
             setLocalFontSize(e.target.value);
             debouncedSaveFontSize(e.target.value);
           }}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-20 border border-neutral-700"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-20 border border-fleet-border-strong"
         />
       </SettingRow>
       <FontFamilyPicker
@@ -200,20 +202,38 @@ export function GeneralSection(): React.JSX.Element {
             setLocalScrollback(e.target.value);
             debouncedSaveScrollback(e.target.value);
           }}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 w-24 border border-neutral-700"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-24 border border-fleet-border-strong"
         />
       </SettingRow>
       <SettingRow label="App Theme">
         <select
-          value={settings.general.theme}
+          value={normalizeAppTheme(settings.general.theme)}
           onChange={(e) => {
-            const theme = e.target.value === 'light' ? 'light' : 'dark';
-            void updateSettings({ general: { theme } });
+            const { value } = e.target;
+            if (isAppThemeSelection(value)) {
+              void updateSettings({ general: { theme: value } });
+            }
           }}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
         >
-          <option value="dark">Dark</option>
-          <option value="light">Light</option>
+          <optgroup label="Mode">
+            <option value="system">System (follow OS)</option>
+            <option value="match-terminal">Match Terminal Theme</option>
+          </optgroup>
+          <optgroup label="Dark">
+            {DARK_THEME_OPTIONS.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.label}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Light">
+            {LIGHT_THEME_OPTIONS.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.label}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </SettingRow>
       <SettingRow label="Terminal Theme">
@@ -225,7 +245,7 @@ export function GeneralSection(): React.JSX.Element {
               void updateSettings({ general: { terminalTheme: value } });
             }
           }}
-          className="bg-neutral-800 text-white text-sm rounded px-2 py-1 border border-neutral-700"
+          className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
         >
           <optgroup label="Dark">
             {DARK_THEME_OPTIONS.map((theme) => (
@@ -257,7 +277,7 @@ export function GeneralSection(): React.JSX.Element {
                   void updateSettings({ general: { accentColor: accent.id } });
                 }}
                 className={`h-6 w-6 rounded-full border transition-shadow ${
-                  selected ? 'border-white fleet-accent-ring-pane' : 'border-neutral-700'
+                  selected ? 'border-white fleet-accent-ring-pane' : 'border-fleet-border-strong'
                 }`}
                 style={{ backgroundColor: accent.value }}
               />

@@ -7,7 +7,7 @@ export function SettingRow({
 }): React.JSX.Element {
   return (
     <div className="flex items-center justify-between">
-      <span className="text-sm text-neutral-300">{label}</span>
+      <span className="text-sm text-fleet-text-secondary">{label}</span>
       {children}
     </div>
   );

@@ -43,6 +43,24 @@ export type TerminalThemeColors = {
   brightWhite?: string;
 };
 
+/**
+ * Semantic color tokens for the app chrome (everything outside terminal panes).
+ * Derived per-theme from `background`/`foreground`/`kind`, optionally overridden
+ * per theme via {@link TerminalThemeDefinition.appOverrides}.
+ */
+export type AppThemeTokens = {
+  bg: string;
+  surface: string;
+  surface2: string;
+  surface3: string;
+  border: string;
+  borderStrong: string;
+  text: string;
+  textSecondary: string;
+  textMuted: string;
+  textSubtle: string;
+};
+
 export type TerminalThemeDefinition = {
   id: TerminalThemeId;
   label: string;
@@ -50,6 +68,8 @@ export type TerminalThemeDefinition = {
   background: string;
   inactiveBackground: string;
   xterm: TerminalThemeColors;
+  /** Manual overrides for derived app-chrome tokens (hybrid: derive + override). */
+  appOverrides?: Partial<AppThemeTokens>;
 };
 
 export const DEFAULT_TERMINAL_THEME_ID: TerminalThemeId = 'fleet-dark';
@@ -83,6 +103,18 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalThemeDefinition> =
       brightMagenta: '#ff6ac1',
       brightCyan: '#9aedfe',
       brightWhite: '#f1f1f0'
+    },
+    appOverrides: {
+      bg: '#0a0a0a',
+      surface: '#171717',
+      surface2: '#262626',
+      surface3: '#404040',
+      border: '#262626',
+      borderStrong: '#404040',
+      text: '#fafafa',
+      textSecondary: '#d4d4d4',
+      textMuted: '#a3a3a3',
+      textSubtle: '#737373'
     }
   },
   'fleet-light': {
@@ -113,6 +145,18 @@ export const TERMINAL_THEMES: Record<TerminalThemeId, TerminalThemeDefinition> =
       brightMagenta: '#d946ef',
       brightCyan: '#06b6d4',
       brightWhite: '#ffffff'
+    },
+    appOverrides: {
+      bg: '#f5f7fa',
+      surface: '#ffffff',
+      surface2: '#eef2f7',
+      surface3: '#e2e8f0',
+      border: '#dce3ec',
+      borderStrong: '#cbd5e1',
+      text: '#0f172a',
+      textSecondary: '#334155',
+      textMuted: '#64748b',
+      textSubtle: '#94a3b8'
     }
   },
   dracula: {
@@ -505,4 +549,17 @@ export const ACCENT_COLORS: Record<AccentColorId, AccentColorDefinition> = {
 
 export function isAccentColorId(value: string): value is AccentColorId {
   return Object.prototype.hasOwnProperty.call(ACCENT_COLORS, value);
+}
+
+/**
+ * The persisted app-theme selection. A named preset reuses a terminal theme's
+ * palette for the app chrome; `'system'` follows the OS, `'match-terminal'`
+ * mirrors whatever Terminal Theme is active.
+ */
+export type AppThemeSelection = 'system' | 'match-terminal' | TerminalThemeId;
+
+export const DEFAULT_APP_THEME: AppThemeSelection = 'fleet-dark';
+
+export function isAppThemeSelection(value: string): value is AppThemeSelection {
+  return value === 'system' || value === 'match-terminal' || isTerminalThemeId(value);
 }

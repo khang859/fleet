@@ -2,14 +2,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import {
-  Settings,
-  Terminal,
-  ImageIcon,
-  ChevronRight,
-  Bot,
-  KanbanSquare
-} from 'lucide-react';
+import { Settings, Terminal, ImageIcon, ChevronRight, Bot, KanbanSquare } from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
@@ -93,7 +86,7 @@ function GroupHeader({
     <ContextMenu.Root>
       <ContextMenu.Trigger asChild>
         <div
-          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800/50 transition-colors relative select-none uppercase tracking-wider"
+          className="group/header flex items-center gap-1.5 px-2 py-2 mt-2 cursor-pointer rounded-md text-xs text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-2/50 transition-colors relative select-none uppercase tracking-wider"
           onClick={onToggle}
           draggable
           onDragStart={(e) => {
@@ -125,7 +118,7 @@ function GroupHeader({
           {isEditing ? (
             <input
               ref={inputRef}
-              className="flex-1 bg-neutral-600 text-white text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0 uppercase tracking-wider"
+              className="flex-1 bg-fleet-surface-3 text-fleet-text text-xs rounded px-1 py-0 outline-none border border-blue-500 min-w-0 uppercase tracking-wider"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={(e) => {
@@ -148,9 +141,11 @@ function GroupHeader({
             </span>
           )}
           <span className="ml-auto flex items-center gap-1">
-            {isCollapsed && <span className="text-[10px] text-neutral-600">{tabCount} tabs</span>}
+            {isCollapsed && (
+              <span className="text-[10px] text-fleet-text-subtle">{tabCount} tabs</span>
+            )}
             <button
-              className="opacity-60 group-hover/header:opacity-100 text-neutral-400 hover:text-white w-5 h-5 flex items-center justify-center text-sm rounded border border-neutral-600 hover:border-neutral-500 hover:bg-neutral-700 transition-all cursor-pointer"
+              className="opacity-60 group-hover/header:opacity-100 text-fleet-text-muted hover:text-fleet-text w-5 h-5 flex items-center justify-center text-sm rounded border border-fleet-border-strong hover:border-fleet-border-strong hover:bg-fleet-surface-3 transition-all cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWorktree();
@@ -163,9 +158,9 @@ function GroupHeader({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+        <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
           <ContextMenu.Item
-            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
             onSelect={() => {
               setEditValue(label);
               setTimeout(() => setIsEditing(true), 0);
@@ -245,7 +240,7 @@ function ImagesTabCard({
 
       <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
         {/* Thumbnail or icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center">
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
           {thumbSrc ? (
             <img src={thumbSrc} alt="" className="w-full h-full object-cover" />
           ) : (
@@ -280,7 +275,7 @@ function ImagesTabCard({
             Images
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-neutral-500">
+            <span className="text-[9px] font-mono text-fleet-text-subtle">
               {totalImages > 0 ? (
                 <span className="text-purple-300/70">{totalImages} generated</span>
               ) : (
@@ -336,7 +331,7 @@ function AnnotateTabCard({
 
       <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
         {/* Icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center">
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center">
           <svg
             className="w-4 h-4"
             viewBox="0 0 24 24"
@@ -404,7 +399,7 @@ function KanbanTabCard({
 
       <div className="relative z-20 flex items-center gap-2.5 px-2.5 py-2">
         {/* Icon */}
-        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-neutral-800/50 flex items-center justify-center relative">
+        <div className="flex-shrink-0 w-8 h-8 rounded-sm overflow-hidden bg-fleet-surface-2/50 flex items-center justify-center relative">
           <KanbanSquare size={16} className={isActive ? 'text-blue-400' : 'text-blue-400/40'} />
           {running > 0 && (
             <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500/30 overflow-hidden">
@@ -425,7 +420,7 @@ function KanbanTabCard({
             Kanban
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono text-neutral-500">
+            <span className="text-[9px] font-mono text-fleet-text-subtle">
               {active > 0 ? (
                 <span className="text-blue-300/70">{active} active</span>
               ) : (
@@ -468,7 +463,7 @@ function OffScreenBadgeSummary({
   if (count === 0) return null;
   const arrow = direction === 'above' ? '\u2191' : '\u2193';
   return (
-    <div className="px-3 py-0.5 text-[10px] text-neutral-500 text-center">
+    <div className="px-3 py-0.5 text-[10px] text-fleet-text-subtle text-center">
       {arrow} {count} {label}
     </div>
   );
@@ -1083,7 +1078,7 @@ export function Sidebar({
   return (
     <div
       ref={sidebarRootRef}
-      className="relative flex flex-col h-full bg-neutral-900 border-r border-neutral-800 shrink-0"
+      className="relative flex flex-col h-full bg-fleet-surface border-r border-fleet-border shrink-0"
       style={{ width: currentSidebarWidth }}
     >
       {/* Drag region + workspace label with add button */}
@@ -1092,7 +1087,7 @@ export function Sidebar({
           {isEditingWsLabel ? (
             <input
               ref={wsLabelInputRef}
-              className="w-full bg-neutral-700 text-white text-xs font-semibold uppercase tracking-wider rounded px-1 py-0.5 outline-none border border-blue-500"
+              className="w-full bg-fleet-surface-3 text-fleet-text text-xs font-semibold uppercase tracking-wider rounded px-1 py-0.5 outline-none border border-blue-500"
               value={wsLabelEdit}
               onChange={(e) => setWsLabelEdit(e.target.value)}
               onKeyDown={(e) => {
@@ -1107,14 +1102,14 @@ export function Sidebar({
           ) : (
             <ContextMenu.Root>
               <ContextMenu.Trigger asChild>
-                <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider cursor-default select-none">
+                <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider cursor-default select-none">
                   {workspace.label}
                 </span>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
-                <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+                <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
                   <ContextMenu.Item
-                    className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+                    className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
                     onSelect={() => {
                       setWsLabelEdit(workspace.label);
                       setTimeout(() => setIsEditingWsLabel(true), 0);
@@ -1134,14 +1129,14 @@ export function Sidebar({
           )}
           {/* Add tab button */}
           <button
-            className="text-neutral-500 hover:text-white text-lg leading-none px-1 rounded hover:bg-neutral-800 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text text-lg leading-none px-1 rounded hover:bg-fleet-surface-2 transition-colors"
             onClick={() => addTab(undefined, window.fleet.homeDir)}
             title={`New Tab (${formatShortcut(getShortcut('new-tab')!)})`}
           >
             +
           </button>
           <button
-            className="text-neutral-500 hover:text-white px-1 rounded hover:bg-neutral-800 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text px-1 rounded hover:bg-fleet-surface-2 transition-colors"
             onClick={onCollapse}
             title="Collapse sidebar"
           >
@@ -1336,7 +1331,7 @@ export function Sidebar({
         </div>
         {/* Scroll overflow shadow indicator */}
         {hasScrollOverflow && (
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-neutral-900/90 to-transparent z-10" />
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-fleet-surface/90 to-transparent z-10" />
         )}
         <OffScreenBadgeSummary
           direction="below"
@@ -1347,12 +1342,11 @@ export function Sidebar({
 
       {/* Pinned tools section */}
       {workspace.tabs.some(
-        (t) =>
-          t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+        (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
       ) && (
-        <div className="border-t border-neutral-800 px-2 py-2 space-y-0.5">
+        <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
           <div className="flex items-center px-2 py-1">
-            <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+            <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
               Tools
             </span>
           </div>
@@ -1390,13 +1384,13 @@ export function Sidebar({
       )}
 
       {/* Bottom section: workspaces */}
-      <div className="border-t border-neutral-800 px-2 py-2 space-y-0.5">
+      <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
         <div className="flex items-center justify-between px-2 py-1">
-          <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
             Workspaces
           </span>
           <button
-            className="text-neutral-500 hover:text-white text-sm leading-none px-1 rounded hover:bg-neutral-800 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition-colors"
             onClick={() => {
               setShowNewWsInput(true);
               setNewWsName('');
@@ -1426,7 +1420,7 @@ export function Sidebar({
                 void commitNewWorkspace();
               }}
               placeholder="Workspace name..."
-              className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
+              className="w-full px-2 py-1 text-sm bg-fleet-surface-2 text-fleet-text border border-fleet-border-strong rounded focus:border-blue-500 focus:outline-none"
             />
           </div>
         )}
@@ -1437,7 +1431,7 @@ export function Sidebar({
           .map((ws) => (
             <div key={ws.id} className="relative">
               {deleteConfirmId === ws.id ? (
-                <div className="flex flex-col gap-1 px-2 py-2 bg-neutral-800 rounded-md text-xs">
+                <div className="flex flex-col gap-1 px-2 py-2 bg-fleet-surface-2 rounded-md text-xs">
                   <span className="text-red-400">Delete this workspace?</span>
                   <div className="flex gap-2">
                     <button
@@ -1449,7 +1443,7 @@ export function Sidebar({
                       Delete
                     </button>
                     <button
-                      className="px-2 py-0.5 bg-neutral-700 hover:bg-neutral-600 text-neutral-300 rounded transition-colors"
+                      className="px-2 py-0.5 bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text-secondary rounded transition-colors"
                       onClick={() => setDeleteConfirmId(null)}
                     >
                       Cancel
@@ -1470,27 +1464,27 @@ export function Sidebar({
                     onBlur={() => {
                       void commitSavedWsRename();
                     }}
-                    className="w-full px-2 py-1 text-sm bg-neutral-800 text-white border border-neutral-600 rounded focus:border-blue-500 focus:outline-none"
+                    className="w-full px-2 py-1 text-sm bg-fleet-surface-2 text-fleet-text border border-fleet-border-strong rounded focus:border-blue-500 focus:outline-none"
                   />
                 </div>
               ) : (
                 <ContextMenu.Root>
                   <ContextMenu.Trigger asChild>
                     <button
-                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-md transition-colors"
+                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded-md transition-colors"
                       onClick={() => handleSwitchWorkspace(ws.id)}
                       title={`Switch to ${ws.label}`}
                     >
                       <span className="truncate">{ws.label}</span>
-                      <span className="text-xs text-neutral-500 hover:text-blue-400 ml-1 flex-shrink-0">
+                      <span className="text-xs text-fleet-text-subtle hover:text-blue-400 ml-1 flex-shrink-0">
                         Open
                       </span>
                     </button>
                   </ContextMenu.Trigger>
                   <ContextMenu.Portal>
-                    <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+                    <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
                       <ContextMenu.Item
-                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+                        className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
                         onSelect={() => {
                           setRenamingWsValue(ws.label);
                           setTimeout(() => setRenamingWsId(ws.id), 0);
@@ -1498,7 +1492,7 @@ export function Sidebar({
                       >
                         Rename
                       </ContextMenu.Item>
-                      <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+                      <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
                       <ContextMenu.Item
                         className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
                         onSelect={() => setDeleteConfirmId(ws.id)}
@@ -1514,7 +1508,7 @@ export function Sidebar({
       </div>
 
       {/* Settings + Update indicator */}
-      <div className="border-t border-neutral-800 px-3 py-2 space-y-1">
+      <div className="border-t border-fleet-border px-3 py-2 space-y-1">
         {(() => {
           const isSettingsActive = workspace.tabs.some(
             (t) => t.type === 'settings' && t.id === activeTabId
@@ -1523,8 +1517,8 @@ export function Sidebar({
             <button
               className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md transition-colors ${
                 isSettingsActive
-                  ? 'text-white bg-neutral-700 ring-1 ring-neutral-600'
-                  : 'text-neutral-400 hover:text-white hover:bg-neutral-800'
+                  ? 'text-fleet-text bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
+                  : 'text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2'
               }`}
               onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
               title="Settings (⌘,)"
@@ -1547,17 +1541,17 @@ export function Sidebar({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
-            <Dialog.Title className="text-base font-semibold text-white mb-1">
+          <Dialog.Overlay className="fixed inset-0 bg-fleet-bg/60 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm">
+            <Dialog.Title className="text-base font-semibold text-fleet-text mb-1">
               Save changes to &ldquo;{fileCloseConfirm?.label}&rdquo;?
             </Dialog.Title>
-            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
+            <Dialog.Description className="text-fleet-text-muted mb-5 text-xs">
               Your changes will be lost if you don&apos;t save.
             </Dialog.Description>
             <div className="flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
                 onClick={() => {
                   if (fileCloseConfirm) doCloseTab(fileCloseConfirm.tabId);
                   setFileCloseConfirm(null);
@@ -1566,7 +1560,7 @@ export function Sidebar({
                 Don&apos;t Save
               </button>
               <button
-                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
                 onClick={() => setFileCloseConfirm(null)}
               >
                 Cancel
@@ -1606,18 +1600,18 @@ export function Sidebar({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-black/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-5 w-80 text-sm">
-            <Dialog.Title className="text-base font-semibold text-white mb-1">
+          <Dialog.Overlay className="fixed inset-0 bg-fleet-bg/60 z-50" />
+          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm">
+            <Dialog.Title className="text-base font-semibold text-fleet-text mb-1">
               Remove worktree &ldquo;{worktreeCloseConfirm?.label}&rdquo;?
             </Dialog.Title>
-            <Dialog.Description className="text-neutral-400 mb-5 text-xs">
+            <Dialog.Description className="text-fleet-text-muted mb-5 text-xs">
               This will destroy the worktree and its directory. Any work not committed and pushed
               will be lost.
             </Dialog.Description>
             <div className="flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
                 onClick={() => setWorktreeCloseConfirm(null)}
               >
                 Cancel

@@ -1,7 +1,7 @@
 import type { PathContext } from './shell-profiles';
 import type { WorkspaceKind } from './kanban-types';
 import type { KanbanNotifySettings } from './kanban-notifications';
-import type { AccentColorId, TerminalThemeId } from './theme-presets';
+import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -204,7 +204,7 @@ export type FleetSettings = {
     scrollbackSize: number;
     fontFamily: string;
     fontSize: number;
-    theme: 'dark' | 'light';
+    theme: AppThemeSelection;
     terminalTheme: TerminalThemeId;
     accentColor: AccentColorId;
   };

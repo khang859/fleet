@@ -176,7 +176,7 @@ export function CopilotSection(): React.JSX.Element | null {
             className="fleet-accent-input"
           />
         </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="text-xs text-fleet-text-subtle mt-1">
           Show the Copilot overlay window on macOS. Copilot watches your active agent sessions and
           surfaces status, permissions, and quick actions in a floating panel.
         </p>
@@ -188,7 +188,7 @@ export function CopilotSection(): React.JSX.Element | null {
           <select
             value={copilot.notificationSound}
             onChange={(e) => updateCopilot({ notificationSound: e.target.value })}
-            className="bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700"
+            className="bg-fleet-surface-2 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong"
           >
             <option value="">None</option>
             {SYSTEM_SOUNDS.map((sound) => (
@@ -198,28 +198,30 @@ export function CopilotSection(): React.JSX.Element | null {
             ))}
           </select>
         </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">Sound played when an agent needs attention.</p>
+        <p className="text-xs text-fleet-text-subtle mt-1">
+          Sound played when an agent needs attention.
+        </p>
       </div>
 
       {/* Config Directory */}
       <div>
-        <label className="text-sm text-neutral-300 block mb-1">Config Directory</label>
+        <label className="text-sm text-fleet-text-secondary block mb-1">Config Directory</label>
         <div className="flex gap-2">
           <input
             type="text"
             value={copilot.claudeConfigDir}
             onChange={(e) => updateCopilot({ claudeConfigDir: e.target.value })}
             placeholder="~/.claude"
-            className="flex-1 bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
+            className="flex-1 bg-fleet-surface-2 text-sm text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle"
           />
           <button
             onClick={() => void handleBrowseConfigDir()}
-            className="px-2 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
+            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
           >
             Browse
           </button>
         </div>
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="text-xs text-fleet-text-subtle mt-1">
           Claude Code config directory. Leave empty to use the default (~/.claude).
         </p>
         {copilot.claudeConfigDir && (
@@ -231,7 +233,7 @@ export function CopilotSection(): React.JSX.Element | null {
 
       {/* Claude Code Hooks */}
       <div>
-        <label className="text-sm text-neutral-300 block mb-1">Claude Code Hooks</label>
+        <label className="text-sm text-fleet-text-secondary block mb-1">Claude Code Hooks</label>
         {!claudeDetected && (
           <div className="rounded bg-amber-900/30 border border-amber-700/50 px-2 py-1.5 mb-2">
             <span className="text-xs text-amber-400 block font-medium">Claude Code not found</span>
@@ -244,18 +246,18 @@ export function CopilotSection(): React.JSX.Element | null {
           <span
             className={`w-2 h-2 rounded-full ${hookInstalled ? 'bg-green-500' : 'bg-red-500'}`}
           />
-          <span className="text-sm text-neutral-300">
+          <span className="text-sm text-fleet-text-secondary">
             {hookInstalled ? 'Installed' : 'Not installed'}
           </span>
           <button
             onClick={() => void (hookInstalled ? handleUninstallHooks() : handleInstallHooks())}
-            className="px-2 py-1 text-sm bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
+            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
           >
             {hookInstalled ? 'Uninstall' : 'Install'}
           </button>
         </div>
         {!hookInstalled && (
-          <p className="text-xs text-neutral-500 mt-1">
+          <p className="text-xs text-fleet-text-subtle mt-1">
             Hooks are required for Fleet to monitor your Claude Code sessions.
           </p>
         )}
@@ -271,7 +273,7 @@ export function CopilotSection(): React.JSX.Element | null {
             className="fleet-accent-input"
           />
         </SettingRow>
-        <p className="text-xs text-neutral-500 mt-1">
+        <p className="text-xs text-fleet-text-subtle mt-1">
           Show sessions from all workspaces in the Copilot overlay. When off, only the active
           workspace&apos;s sessions are shown.
         </p>
@@ -279,22 +281,22 @@ export function CopilotSection(): React.JSX.Element | null {
 
       {/* Workspace Overrides */}
       <div>
-        <label className="text-sm text-neutral-300 block mb-1">Workspace Overrides</label>
-        <p className="text-xs text-neutral-500 mb-2">
+        <label className="text-sm text-fleet-text-secondary block mb-1">Workspace Overrides</label>
+        <p className="text-xs text-fleet-text-subtle mb-2">
           Override global Claude settings per workspace.
         </p>
         {workspaces.length === 0 ? (
-          <p className="text-xs text-neutral-600 italic">No workspaces configured.</p>
+          <p className="text-xs text-fleet-text-subtle italic">No workspaces configured.</p>
         ) : (
           <div className="space-y-1">
             {workspaces.map((ws) => {
               const isExpanded = expandedWs === ws.id;
               const override = copilot.workspaceOverrides[ws.id] ?? {};
               return (
-                <div key={ws.id} className="border border-neutral-700 rounded">
+                <div key={ws.id} className="border border-fleet-border-strong rounded">
                   <button
                     onClick={() => handleWsExpandToggle(ws.id)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-neutral-300 hover:bg-neutral-800/50"
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50"
                   >
                     <span className="flex items-center gap-2">
                       {ws.label}
@@ -302,12 +304,12 @@ export function CopilotSection(): React.JSX.Element | null {
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                       )}
                     </span>
-                    <span className="text-neutral-600 text-xs">{isExpanded ? '▲' : '▼'}</span>
+                    <span className="text-fleet-text-subtle text-xs">{isExpanded ? '▲' : '▼'}</span>
                   </button>
                   {isExpanded && (
-                    <div className="px-3 pb-3 space-y-3 border-t border-neutral-700/50">
+                    <div className="px-3 pb-3 space-y-3 border-t border-fleet-border-strong/50">
                       <div className="pt-2">
-                        <label className="text-xs text-neutral-400 block mb-1">
+                        <label className="text-xs text-fleet-text-muted block mb-1">
                           Config Directory
                         </label>
                         <div className="flex gap-2">
@@ -319,11 +321,11 @@ export function CopilotSection(): React.JSX.Element | null {
                               refreshWsHookStatus(ws.id, e.target.value || undefined);
                             }}
                             placeholder="Use global default"
-                            className="flex-1 bg-neutral-800 text-xs text-neutral-200 rounded px-2 py-1 border border-neutral-700 placeholder:text-neutral-600"
+                            className="flex-1 bg-fleet-surface-2 text-xs text-fleet-text rounded px-2 py-1 border border-fleet-border-strong placeholder:text-fleet-text-subtle"
                           />
                           <button
                             onClick={() => void handleBrowseWsConfigDir(ws.id)}
-                            className="px-2 py-1 text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
+                            className="px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
                           >
                             Browse
                           </button>
@@ -338,12 +340,14 @@ export function CopilotSection(): React.JSX.Element | null {
                         const installed = wsHookStatus[ws.id] ?? false;
                         return (
                           <div>
-                            <label className="text-xs text-neutral-400 block mb-1">Hooks</label>
+                            <label className="text-xs text-fleet-text-muted block mb-1">
+                              Hooks
+                            </label>
                             <div className="flex items-center gap-2">
                               <span
                                 className={`w-1.5 h-1.5 rounded-full ${installed ? 'bg-green-500' : 'bg-red-500'}`}
                               />
-                              <span className="text-xs text-neutral-300">
+                              <span className="text-xs text-fleet-text-secondary">
                                 {installed ? 'Installed' : 'Not installed'}
                               </span>
                               <button
@@ -352,7 +356,7 @@ export function CopilotSection(): React.JSX.Element | null {
                                     ? handleWsUninstallHooks(ws.id, wsConfigDir)
                                     : handleWsInstallHooks(ws.id, wsConfigDir))
                                 }
-                                className="px-2 py-0.5 text-xs bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-300"
+                                className="px-2 py-0.5 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
                               >
                                 {installed ? 'Uninstall' : 'Install'}
                               </button>

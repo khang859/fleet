@@ -178,11 +178,11 @@ function GeneratedThumbnail({
   const parentDir = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}`;
   const isLarge = size === 'large';
   const imgClass = isLarge
-    ? 'h-[150px] w-[150px] object-cover rounded border border-neutral-700'
-    : 'h-[120px] w-[120px] object-cover rounded border border-neutral-700';
+    ? 'h-[150px] w-[150px] object-cover rounded border border-fleet-border-strong'
+    : 'h-[120px] w-[120px] object-cover rounded border border-fleet-border-strong';
   const placeholderClass = isLarge
-    ? 'h-[150px] w-[150px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700 text-neutral-600'
-    : 'h-[120px] w-[120px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700 text-neutral-600';
+    ? 'h-[150px] w-[150px] flex items-center justify-center bg-fleet-surface-2 rounded border border-fleet-border-strong text-fleet-text-subtle'
+    : 'h-[120px] w-[120px] flex items-center justify-center bg-fleet-surface-2 rounded border border-fleet-border-strong text-fleet-text-subtle';
   const labelWidth = isLarge ? 'w-[150px]' : 'w-[120px]';
 
   return (
@@ -196,7 +196,7 @@ function GeneratedThumbnail({
           size: 0
         })
       }
-      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
+      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0"
       title={generation.prompt}
     >
       {src ? (
@@ -216,10 +216,10 @@ function GeneratedThumbnail({
           </svg>
         </div>
       )}
-      <span className={`text-[10px] text-neutral-400 truncate ${labelWidth} text-center`}>
+      <span className={`text-[10px] text-fleet-text-muted truncate ${labelWidth} text-center`}>
         {generation.prompt.length > 20 ? generation.prompt.slice(0, 20) + '…' : generation.prompt}
       </span>
-      <span className="text-[9px] text-neutral-600">
+      <span className="text-[9px] text-fleet-text-subtle">
         {relativeTime(new Date(generation.createdAt).getTime())}
       </span>
     </button>
@@ -463,7 +463,7 @@ export function FileSearchOverlay({
       if (filteredGenerations.length === 0) {
         return (
           <div className="px-3 py-8 text-center">
-            <p className="text-sm text-neutral-400">
+            <p className="text-sm text-fleet-text-muted">
               No generated images match &ldquo;{query}&rdquo;
             </p>
             <button
@@ -479,7 +479,7 @@ export function FileSearchOverlay({
         <>
           {filteredGroupedGenerations.map(({ group, items }) => (
             <div key={group}>
-              <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+              <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
                 {group}
               </div>
               {renderGeneratedGrid(items)}
@@ -493,13 +493,15 @@ export function FileSearchOverlay({
     if (completedGenerations.length === 0) {
       return (
         <div className="px-3 py-8 text-center">
-          <div className="text-neutral-600 mb-2">
+          <div className="text-fleet-text-subtle mb-2">
             <Image size={24} className="mx-auto" />
           </div>
-          <p className="text-sm text-neutral-400">No generated images yet</p>
-          <p className="text-xs text-neutral-600 mt-1">
+          <p className="text-sm text-fleet-text-muted">No generated images yet</p>
+          <p className="text-xs text-fleet-text-subtle mt-1">
             Generate one with:{' '}
-            <code className="text-neutral-500">fleet images generate --prompt &quot;...&quot;</code>
+            <code className="text-fleet-text-subtle">
+              fleet images generate --prompt &quot;...&quot;
+            </code>
           </p>
         </div>
       );
@@ -509,7 +511,7 @@ export function FileSearchOverlay({
       <>
         {groupedGenerations.map(({ group, items }) => (
           <div key={group}>
-            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+            <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
               {group}
             </div>
             {renderGeneratedGrid(items)}
@@ -528,7 +530,7 @@ export function FileSearchOverlay({
       if (query) {
         return (
           <div className="px-3 py-8 text-center">
-            <p className="text-sm text-neutral-400">No files match &ldquo;{query}&rdquo;</p>
+            <p className="text-sm text-fleet-text-muted">No files match &ldquo;{query}&rdquo;</p>
             {scope === 'files' && (
               <button
                 onClick={() => setScope('all')}
@@ -540,13 +542,15 @@ export function FileSearchOverlay({
           </div>
         );
       }
-      return <div className="px-3 py-4 text-sm text-neutral-500 text-center">No recent files</div>;
+      return (
+        <div className="px-3 py-4 text-sm text-fleet-text-subtle text-center">No recent files</div>
+      );
     }
 
     return (
       <>
         {!query && sortedResults.length > 0 && (
-          <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+          <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
             Recent
           </div>
         )}
@@ -556,22 +560,22 @@ export function FileSearchOverlay({
             data-result-index={i}
             className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
               i === selectedIndex
-                ? 'bg-neutral-700 text-white'
-                : 'text-neutral-300 hover:bg-neutral-800'
+                ? 'bg-fleet-surface-3 text-fleet-text'
+                : 'text-fleet-text-secondary hover:bg-fleet-surface-2'
             }`}
             onMouseEnter={() => setSelectedIndex(i)}
             onClick={() => handleSelect(file)}
           >
-            <span className="text-neutral-500 shrink-0">{getFileIcon(file.name, 14)}</span>
+            <span className="text-fleet-text-subtle shrink-0">{getFileIcon(file.name, 14)}</span>
             <div className="flex flex-col min-w-0 flex-1">
               <span className="truncate font-medium">
                 <HighlightedText text={file.name} query={query} />
               </span>
-              <span className="truncate text-xs text-neutral-600">
+              <span className="truncate text-xs text-fleet-text-subtle">
                 {file.parentDir.replace(window.fleet.homeDir, '~')}
               </span>
             </div>
-            <span className="text-[10px] text-neutral-600 shrink-0">
+            <span className="text-[10px] text-fleet-text-subtle shrink-0">
               {sort === 'size' ? formatSize(file.size) : relativeTime(file.modifiedAt)}
             </span>
           </button>
@@ -586,7 +590,7 @@ export function FileSearchOverlay({
         {/* Generated Images thumbnail strip (only when no query) */}
         {!query && recentGenerations.length > 0 && (
           <>
-            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider flex items-center justify-between">
+            <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider flex items-center justify-between">
               <span>Generated Images</span>
               {completedGenerations.length > 5 && (
                 <button
@@ -597,7 +601,7 @@ export function FileSearchOverlay({
                 </button>
               )}
             </div>
-            <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800 overflow-x-auto">
+            <div className="relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
               {recentGenerations.map((gen) => (
                 <GeneratedThumbnail key={gen.id} generation={gen} onSelect={handleSelect} />
               ))}
@@ -607,32 +611,32 @@ export function FileSearchOverlay({
         {/* Recent Images thumbnail strip */}
         {!query && recentImages.length > 0 && (
           <>
-            <div className="px-3 py-1 text-[10px] text-neutral-600 uppercase tracking-wider">
+            <div className="px-3 py-1 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
               Recent Images
             </div>
-            <div className="relative flex gap-2 px-3 py-2 border-b border-neutral-800 overflow-x-auto">
+            <div className="relative flex gap-2 px-3 py-2 border-b border-fleet-border overflow-x-auto">
               {recentImages.map((img) => (
                 <button
                   key={img.path}
                   onClick={() => handleSelect(img)}
-                  className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-neutral-800 transition-colors shrink-0"
+                  className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0"
                   title={img.path}
                 >
                   {img.thumbnailDataUrl ? (
                     <img
                       src={img.thumbnailDataUrl}
                       alt={img.name}
-                      className="h-[120px] w-[120px] object-cover rounded border border-neutral-700"
+                      className="h-[120px] w-[120px] object-cover rounded border border-fleet-border-strong"
                     />
                   ) : (
-                    <div className="h-[120px] w-[120px] flex items-center justify-center bg-neutral-800 rounded border border-neutral-700">
+                    <div className="h-[120px] w-[120px] flex items-center justify-center bg-fleet-surface-2 rounded border border-fleet-border-strong">
                       {getFileIcon(img.name, 24)}
                     </div>
                   )}
-                  <span className="text-[10px] text-neutral-400 truncate w-[120px] text-center">
+                  <span className="text-[10px] text-fleet-text-muted truncate w-[120px] text-center">
                     {img.name}
                   </span>
-                  <span className="text-[9px] text-neutral-600">
+                  <span className="text-[9px] text-fleet-text-subtle">
                     {relativeTime(img.modifiedAt)}
                   </span>
                 </button>
@@ -647,14 +651,14 @@ export function FileSearchOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex justify-center bg-fleet-bg/60" onClick={onClose}>
       <div
-        className="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden"
+        className="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Search input */}
-        <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-2">
-          <Search size={14} className="text-neutral-500 shrink-0" />
+        <div className="px-3 py-2 border-b border-fleet-border flex items-center gap-2">
+          <Search size={14} className="text-fleet-text-subtle shrink-0" />
           <input
             ref={inputRef}
             type="text"
@@ -662,13 +666,13 @@ export function FileSearchOverlay({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
-            className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500"
+            className="flex-1 bg-transparent text-sm text-fleet-text outline-none placeholder-fleet-text-subtle"
           />
-          {isLoading && <span className="text-xs text-neutral-500">Searching...</span>}
+          {isLoading && <span className="text-xs text-fleet-text-subtle">Searching...</span>}
         </div>
 
         {/* Scope tabs */}
-        <div className="px-3 py-1.5 border-b border-neutral-800 flex items-center gap-1">
+        <div className="px-3 py-1.5 border-b border-fleet-border flex items-center gap-1">
           {SCOPE_OPTIONS.map(({ id, label, icon: Icon }) => {
             const count =
               id === 'generated'
@@ -682,14 +686,14 @@ export function FileSearchOverlay({
                 onClick={() => setScope(id)}
                 className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
                   scope === id
-                    ? 'bg-neutral-700 text-neutral-200'
-                    : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                    ? 'bg-fleet-surface-3 text-fleet-text'
+                    : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
                 }`}
               >
                 <Icon size={11} />
                 {label}
                 {count !== undefined && count > 0 && (
-                  <span className="text-[10px] text-neutral-500 ml-0.5">({count})</span>
+                  <span className="text-[10px] text-fleet-text-subtle ml-0.5">({count})</span>
                 )}
               </button>
             );
@@ -697,15 +701,15 @@ export function FileSearchOverlay({
           {/* Sort controls (only for file-based scopes) */}
           {scope !== 'generated' && results.length > 0 && (
             <div className="ml-auto flex items-center gap-1">
-              <span className="text-[10px] text-neutral-600 mr-1">Sort:</span>
+              <span className="text-[10px] text-fleet-text-subtle mr-1">Sort:</span>
               {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
                   onClick={() => setSort(id)}
                   className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
                     sort === id
-                      ? 'bg-neutral-700 text-neutral-200'
-                      : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                      ? 'bg-fleet-surface-3 text-fleet-text'
+                      : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
                   }`}
                 >
                   <Icon size={10} />
@@ -724,7 +728,7 @@ export function FileSearchOverlay({
         </div>
 
         {/* Footer */}
-        <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
+        <div className="px-3 py-1.5 border-t border-fleet-border flex items-center gap-3 text-xs text-fleet-text-subtle">
           {!targetPaneId ? (
             <span className="text-amber-500/80">No active terminal</span>
           ) : (

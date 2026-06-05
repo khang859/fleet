@@ -167,7 +167,7 @@ export function TerminalPane({
       <div ref={containerRef} className="h-full w-full" />
       {isScrolledUp && (
         <button
-          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-neutral-800/90 px-2.5 py-1.5 text-xs text-neutral-300 shadow-lg backdrop-blur-sm hover:bg-neutral-700 transition-colors"
+          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors"
           onClick={(e) => {
             e.stopPropagation();
             scrollToBottom();

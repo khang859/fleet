@@ -2,7 +2,11 @@ import { join } from 'path';
 import { homedir } from 'os';
 import type { FleetSettings } from './types';
 import { DEFAULT_ORCHESTRATOR_INSTRUCTIONS, ORCHESTRATOR_PROFILE_NAME } from './types';
-import { DEFAULT_ACCENT_COLOR_ID, DEFAULT_TERMINAL_THEME_ID } from './theme-presets';
+import {
+  DEFAULT_ACCENT_COLOR_ID,
+  DEFAULT_APP_THEME,
+  DEFAULT_TERMINAL_THEME_ID
+} from './theme-presets';
 export { IPC_CHANNELS } from './ipc-channels';
 
 const DEFAULT_SCROLLBACK = 10_000;
@@ -30,7 +34,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     scrollbackSize: DEFAULT_SCROLLBACK,
     fontFamily: 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     fontSize: 14,
-    theme: 'dark',
+    theme: DEFAULT_APP_THEME,
     terminalTheme: DEFAULT_TERMINAL_THEME_ID,
     accentColor: DEFAULT_ACCENT_COLOR_ID
   },

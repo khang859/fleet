@@ -177,7 +177,7 @@ export function PaneGrid({
           <div
             key={leaf.id}
             style={rectStyle(leaf.rect)}
-            className={`flex flex-col ${leaf.id === activePaneId ? 'fleet-accent-ring-pane' : 'ring-1 ring-neutral-800/50'}`}
+            className={`flex flex-col ${leaf.id === activePaneId ? 'fleet-accent-ring-pane' : 'ring-1 ring-fleet-border/50'}`}
           >
             {root.type === 'split' && (
               <PaneHeader
@@ -293,7 +293,7 @@ function AbsoluteResizeHandle({
       className={`flex items-center justify-center group/handle ${isH ? 'cursor-col-resize' : 'cursor-row-resize'}`}
     >
       <div
-        className={`bg-neutral-800 group-hover/handle:bg-neutral-500 transition-colors ${isH ? 'w-px h-full' : 'h-px w-full'}`}
+        className={`bg-fleet-surface-2 group-hover/handle:bg-fleet-surface-3 transition-colors ${isH ? 'w-px h-full' : 'h-px w-full'}`}
       />
     </div>
   );

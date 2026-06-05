@@ -38,6 +38,7 @@ import { ToastContainer } from './components/ToastContainer';
 import type { PiPlanOpenPayload } from '../../shared/ipc-api';
 import { useKanbanAttention } from './hooks/useKanbanAttention';
 import { getAccentCssVars } from './lib/theme';
+import { useAppThemeVars } from './hooks/use-app-theme';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
@@ -56,10 +57,10 @@ function MiniSidebarTooltip({
           <Tooltip.Content
             side="right"
             sideOffset={8}
-            className="px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50"
+            className="px-2 py-1 text-xs text-fleet-text bg-fleet-surface-2 border border-fleet-border-strong rounded shadow-lg z-50"
           >
             {label}
-            <Tooltip.Arrow className="fill-neutral-800" />
+            <Tooltip.Arrow className="fill-fleet-surface-2" />
           </Tooltip.Content>
         </Tooltip.Portal>
       </Tooltip.Root>
@@ -578,15 +579,17 @@ export function App(): React.JSX.Element {
   }, []);
 
   const accentVars = getAccentCssVars(settings?.general.accentColor);
+  const appThemeVars = useAppThemeVars(settings?.general.theme, settings?.general.terminalTheme);
+  const themeVars = { ...accentVars, ...appThemeVars };
 
   return (
     <div
-      className="flex flex-col h-screen w-screen bg-neutral-950 text-white overflow-hidden"
-      style={accentVars}
+      className="flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
+      style={themeVars}
     >
       {/* Top bar — drag region for window movement, houses OS window controls */}
       <div
-        className="h-9 shrink-0 bg-neutral-950 flex items-center"
+        className="h-9 shrink-0 bg-fleet-bg flex items-center"
         style={{ WebkitAppRegion: 'drag' }}
       >
         <ShortcutsHint />
@@ -596,14 +599,14 @@ export function App(): React.JSX.Element {
           <Sidebar updateReady={updateReady} onCollapse={() => setSidebarCollapsed(true)} />
         ) : (
           <div
-            className="flex flex-col items-center h-full w-11 bg-neutral-900 border-r border-neutral-800 shrink-0 py-2 gap-1"
+            className="flex flex-col items-center h-full w-11 bg-fleet-surface border-r border-fleet-border shrink-0 py-2 gap-1"
             style={{ WebkitAppRegion: 'no-drag' }}
           >
             {/* Expand sidebar button */}
             <MiniSidebarTooltip label="Show sidebar">
               <button
                 onClick={() => setSidebarCollapsed(false)}
-                className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors"
+                className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors"
               >
                 <svg
                   width="16"
@@ -619,7 +622,7 @@ export function App(): React.JSX.Element {
                 </svg>
               </button>
             </MiniSidebarTooltip>
-            <div className="w-6 h-px bg-neutral-800 my-0.5" />
+            <div className="w-6 h-px bg-fleet-border my-0.5" />
             {/* Kanban pinned icon */}
             {workspace.tabs
               .filter((t) => t.type === 'kanban')
@@ -632,7 +635,7 @@ export function App(): React.JSX.Element {
                       className={`p-1.5 rounded transition-colors ${
                         isKanbanActive
                           ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
-                          : 'hover:bg-neutral-800'
+                          : 'hover:bg-fleet-surface-2'
                       }`}
                     >
                       <KanbanSquare
@@ -644,7 +647,7 @@ export function App(): React.JSX.Element {
                 );
               })}
             {workspace.tabs.some((t) => t.type === 'kanban') && (
-              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+              <div className="w-6 h-px bg-fleet-border my-0.5" />
             )}
             {/* Images pinned icon */}
             {workspace.tabs
@@ -658,7 +661,7 @@ export function App(): React.JSX.Element {
                       className={`p-1.5 rounded transition-colors ${
                         isImagesActive
                           ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
-                          : 'hover:bg-neutral-800'
+                          : 'hover:bg-fleet-surface-2'
                       }`}
                     >
                       <svg
@@ -678,7 +681,7 @@ export function App(): React.JSX.Element {
                 );
               })}
             {workspace.tabs.some((t) => t.type === 'images') && (
-              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+              <div className="w-6 h-px bg-fleet-border my-0.5" />
             )}
             {/* Annotate pinned icon */}
             {workspace.tabs
@@ -692,7 +695,7 @@ export function App(): React.JSX.Element {
                       className={`p-1.5 rounded transition-colors ${
                         isAnnotateActive
                           ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
-                          : 'hover:bg-neutral-800'
+                          : 'hover:bg-fleet-surface-2'
                       }`}
                     >
                       <Crosshair
@@ -704,7 +707,7 @@ export function App(): React.JSX.Element {
                 );
               })}
             {workspace.tabs.some((t) => t.type === 'annotate') && (
-              <div className="w-6 h-px bg-neutral-800 my-0.5" />
+              <div className="w-6 h-px bg-fleet-border my-0.5" />
             )}
             {/* File/terminal/image tab icons (excluding pinned + settings) */}
             {workspace.tabs
@@ -722,11 +725,13 @@ export function App(): React.JSX.Element {
                     <button
                       onClick={() => setActiveTab(tab.id)}
                       className={`p-1 rounded transition-colors ${
-                        isActive ? 'bg-neutral-700 ring-1 ring-neutral-600' : 'hover:bg-neutral-800'
+                        isActive
+                          ? 'bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
+                          : 'hover:bg-fleet-surface-2'
                       }`}
                     >
                       {tab.type === 'file' ? (
-                        <span className={isActive ? 'text-white' : 'text-neutral-500'}>
+                        <span className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}>
                           {getFileIcon(
                             collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??
                               tab.label,
@@ -736,12 +741,12 @@ export function App(): React.JSX.Element {
                       ) : tab.type === 'image' ? (
                         <ImageIcon
                           size={16}
-                          className={isActive ? 'text-white' : 'text-neutral-500'}
+                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
                         />
                       ) : (
                         <Terminal
                           size={16}
-                          className={isActive ? 'text-white' : 'text-neutral-500'}
+                          className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}
                         />
                       )}
                     </button>
@@ -753,7 +758,7 @@ export function App(): React.JSX.Element {
             <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
               <MiniSidebarTooltip label={workspace.label}>
                 <Popover.Trigger asChild>
-                  <button className="p-2 text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800 rounded transition-colors">
+                  <button className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors">
                     <svg
                       width="16"
                       height="16"
@@ -775,31 +780,31 @@ export function App(): React.JSX.Element {
                 <Popover.Content
                   side="right"
                   sideOffset={8}
-                  className="min-w-[180px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg py-1 z-50"
+                  className="min-w-[180px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg py-1 z-50"
                 >
-                  <div className="px-3 py-1.5 text-[10px] text-neutral-500 uppercase tracking-wider">
+                  <div className="px-3 py-1.5 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
                     Current: {workspace.label}
                   </div>
-                  <div className="h-px bg-neutral-700 my-1" />
+                  <div className="h-px bg-fleet-border-strong my-1" />
                   {miniWsList.length > 0 ? (
                     miniWsList.map((ws) => (
                       <button
                         key={ws.id}
-                        className="w-full px-3 py-1.5 text-sm text-neutral-300 hover:text-white hover:bg-neutral-700 text-left flex items-center justify-between"
+                        className="w-full px-3 py-1.5 text-sm text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-3 text-left flex items-center justify-between"
                         onClick={() => void handleMiniWsSwitch(ws.id)}
                       >
                         <span className="truncate">{ws.label}</span>
-                        <span className="text-[10px] text-neutral-600 ml-2">
+                        <span className="text-[10px] text-fleet-text-subtle ml-2">
                           {ws.tabCount} tab{ws.tabCount !== 1 ? 's' : ''}
                         </span>
                       </button>
                     ))
                   ) : (
-                    <div className="px-3 py-1.5 text-xs text-neutral-600 italic">
+                    <div className="px-3 py-1.5 text-xs text-fleet-text-subtle italic">
                       No other workspaces
                     </div>
                   )}
-                  <Popover.Arrow className="fill-neutral-800" />
+                  <Popover.Arrow className="fill-fleet-surface-2" />
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
@@ -814,8 +819,8 @@ export function App(): React.JSX.Element {
                     onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
                     className={`p-2 rounded transition-colors ${
                       isSettingsActive
-                        ? 'text-white bg-neutral-700 ring-1 ring-neutral-600'
-                        : 'text-neutral-500 hover:text-neutral-200 hover:bg-neutral-800'
+                        ? 'text-fleet-text bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
+                        : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
                     }`}
                   >
                     <Settings size={16} />
@@ -898,8 +903,8 @@ export function App(): React.JSX.Element {
             )}
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg text-sm">
-                <span className="text-neutral-300">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-lg text-sm">
+                <span className="text-fleet-text-secondary">
                   {lastClosedTab.tab.worktreePath ? 'Removing worktree' : 'Closed'} {'"'}
                   {lastClosedTab.tab.label}
                   {'"'}
@@ -911,7 +916,7 @@ export function App(): React.JSX.Element {
                   Undo
                 </button>
                 <button
-                  className="text-neutral-500 hover:text-neutral-300"
+                  className="text-fleet-text-subtle hover:text-fleet-text-secondary"
                   onClick={() => {
                     setShowUndoToast(false);
                     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);

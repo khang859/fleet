@@ -184,8 +184,8 @@ export function TabItem({
             ${indentLevel > 0 ? 'ml-4 border-l-2 border-l-teal-500/50' : ''}
             ${
               isActive
-                ? `bg-neutral-700 text-white ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`}`
-                : `text-neutral-300 hover:bg-neutral-800 hover:text-neutral-100 ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
+                ? `bg-fleet-surface-3 text-fleet-text ${indentLevel > 0 ? '' : `border-l-2 ${activeBorderColor}`}`
+                : `text-fleet-text-secondary hover:bg-fleet-surface-2 hover:text-fleet-text ${indentLevel > 0 ? '' : 'border-l-2 border-transparent'}`
             }
           `}
           onClick={onClick}
@@ -232,7 +232,9 @@ export function TabItem({
           )}
 
           {icon && (
-            <span className={`flex-shrink-0 ${isActive ? 'text-neutral-400' : 'text-neutral-500'}`}>
+            <span
+              className={`flex-shrink-0 ${isActive ? 'text-fleet-text-muted' : 'text-fleet-text-subtle'}`}
+            >
               {icon}
             </span>
           )}
@@ -240,7 +242,7 @@ export function TabItem({
           {isEditing ? (
             <input
               ref={inputRef}
-              className="flex-1 bg-neutral-600 text-white text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
+              className="flex-1 bg-fleet-surface-3 text-fleet-text text-sm rounded px-1 py-0 outline-none border border-blue-500 min-w-0"
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -252,7 +254,7 @@ export function TabItem({
               <div className="truncate text-sm leading-tight">
                 {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
               </div>
-              <div className="truncate text-xs leading-tight text-neutral-400">
+              <div className="truncate text-xs leading-tight text-fleet-text-muted">
                 {worktreeBranch ? (
                   <span className="text-teal-400/60">{worktreeBranch}</span>
                 ) : freshness ? (
@@ -268,7 +270,7 @@ export function TabItem({
 
           {/* Always-visible close button (dimmed when not hovered) */}
           <button
-            className="opacity-40 group-hover:opacity-100 px-1 text-neutral-400 hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
+            className="opacity-40 group-hover:opacity-100 px-1 text-fleet-text-muted hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
@@ -279,17 +281,17 @@ export function TabItem({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-[140px] bg-neutral-800 border border-neutral-700 rounded-md shadow-lg p-1 text-sm text-neutral-200 z-50">
+        <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
           {onDuplicate && (
             <ContextMenu.Item
-              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
               onSelect={onDuplicate}
             >
               Duplicate Tab
             </ContextMenu.Item>
           )}
           <ContextMenu.Item
-            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+            className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
             onSelect={() => {
               setEditValue(label);
               // Defer so Radix finishes focus restoration before we focus the input
@@ -300,7 +302,7 @@ export function TabItem({
           </ContextMenu.Item>
           {!disableReset && labelIsCustom && (
             <ContextMenu.Item
-              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-neutral-700 hover:bg-neutral-700"
+              className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
               onSelect={() => onResetLabel(cwd)}
             >
               Reset to directory name
@@ -308,12 +310,12 @@ export function TabItem({
           )}
           {worktreeDisabledReason !== undefined && (
             <>
-              <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+              <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
               <ContextMenu.Item
                 className={`px-2 py-1.5 rounded outline-none ${
                   worktreeDisabledReason === null
-                    ? 'cursor-pointer focus:bg-neutral-700 hover:bg-neutral-700'
-                    : 'cursor-default text-neutral-500'
+                    ? 'cursor-pointer focus:bg-fleet-surface-3 hover:bg-fleet-surface-3'
+                    : 'cursor-default text-fleet-text-subtle'
                 }`}
                 disabled={worktreeDisabledReason !== null}
                 onSelect={() => {
@@ -325,14 +327,14 @@ export function TabItem({
                   <span>Create Worktree</span>
                 </div>
                 {worktreeDisabledReason && (
-                  <div className="text-xs text-neutral-500 mt-0.5 ml-6">
+                  <div className="text-xs text-fleet-text-subtle mt-0.5 ml-6">
                     {worktreeDisabledReason}
                   </div>
                 )}
               </ContextMenu.Item>
             </>
           )}
-          <ContextMenu.Separator className="my-1 h-px bg-neutral-700" />
+          <ContextMenu.Separator className="my-1 h-px bg-fleet-surface-3" />
           <ContextMenu.Item
             className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-red-900/50 hover:bg-red-900/50 text-red-400"
             onSelect={onClose}
