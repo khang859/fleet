@@ -20,7 +20,14 @@ export class SettingsStore {
     return {
       ...DEFAULT_SETTINGS,
       ...saved,
-      general: { ...DEFAULT_SETTINGS.general, ...saved.general },
+      general: {
+        ...DEFAULT_SETTINGS.general,
+        ...saved.general,
+        terminalBackground: {
+          ...DEFAULT_SETTINGS.general.terminalBackground,
+          ...saved.general?.terminalBackground
+        }
+      },
       notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications },
       socketApi: { ...DEFAULT_SETTINGS.socketApi, ...saved.socketApi },
       visualizer: {

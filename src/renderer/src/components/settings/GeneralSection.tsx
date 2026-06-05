@@ -164,6 +164,8 @@ export function GeneralSection(): React.JSX.Element {
   const bg = settings?.general.terminalBackground;
   const [localOpacity, setLocalOpacity] = useState(bg?.opacity ?? 0.15);
   const [localBlur, setLocalBlur] = useState(bg?.blur ?? 0);
+  const [localEdgeFadeX, setLocalEdgeFadeX] = useState(bg?.edgeFadeX ?? 0);
+  const [localEdgeFadeY, setLocalEdgeFadeY] = useState(bg?.edgeFadeY ?? 0);
 
   // Sync the slider locals to stored values when an image is (re)loaded — covers
   // the case where settings finish loading after this component first mounted.
@@ -171,6 +173,8 @@ export function GeneralSection(): React.JSX.Element {
     if (bg?.imagePath) {
       setLocalOpacity(bg.opacity);
       setLocalBlur(bg.blur);
+      setLocalEdgeFadeX(bg.edgeFadeX);
+      setLocalEdgeFadeY(bg.edgeFadeY);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bg?.imagePath]);
@@ -385,6 +389,46 @@ export function GeneralSection(): React.JSX.Element {
                   className="w-40"
                 />
                 <span className="text-xs text-fleet-text-subtle w-8 text-right">{localBlur}px</span>
+              </div>
+            </SettingRow>
+            <SettingRow label="Fade Left/Right">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.05"
+                  value={localEdgeFadeX}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setLocalEdgeFadeX(v);
+                    debouncedSaveBackground({ edgeFadeX: v });
+                  }}
+                  className="w-40"
+                />
+                <span className="text-xs text-fleet-text-subtle w-8 text-right">
+                  {Math.round(localEdgeFadeX * 100)}%
+                </span>
+              </div>
+            </SettingRow>
+            <SettingRow label="Fade Top/Bottom">
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min="0"
+                  max="0.5"
+                  step="0.05"
+                  value={localEdgeFadeY}
+                  onChange={(e) => {
+                    const v = parseFloat(e.target.value);
+                    setLocalEdgeFadeY(v);
+                    debouncedSaveBackground({ edgeFadeY: v });
+                  }}
+                  className="w-40"
+                />
+                <span className="text-xs text-fleet-text-subtle w-8 text-right">
+                  {Math.round(localEdgeFadeY * 100)}%
+                </span>
               </div>
             </SettingRow>
             <SettingRow label="Fit">

@@ -207,6 +207,12 @@ export type TerminalBackground = {
   opacity: number;
   /** Gaussian blur radius in pixels. */
   blur: number;
+  /** Left & right edge feather, 0–0.5 as a fraction of the pane width. Fades the
+   * side edges to transparent so a too-narrow image blends into the background. */
+  edgeFadeX: number;
+  /** Top & bottom edge feather, 0–0.5 as a fraction of the pane height. Fades the
+   * top/bottom edges to transparent so a too-short image blends into the background. */
+  edgeFadeY: number;
   fit: TerminalBackgroundFit;
 };
 
