@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.52.1
+
+- Sidebar: fixed the collapsed mini-rail showing tool icons (Kanban, Images, Annotate) in the wrong place. They now sit at the bottom above the workspace switcher and settings, matching the expanded sidebar's layout.
+
 ## v2.52.0
 
 - Settings: terminals can now have a **custom background image**. Pick any image from disk in Settings → General → Terminal Background and tune its **Opacity** (dim it so terminal text stays readable), **Blur**, and **Fit** (Cover / Contain / Center / Tile), or **Clear** it to return to the solid theme color. The background applies live to every open terminal — no restart needed.
