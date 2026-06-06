@@ -778,9 +778,13 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DISCOVER, (_e, cwd: string) => findNearestConfig(cwd));
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, (_e, repoDir: string, config: EnvSyncConfig) => {
-    writeConfig(repoDir, config);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG,
+    (_e, repoDir: string, config: EnvSyncConfig) => {
+      writeConfig(repoDir, config);
+      envSyncManager.clearInjectCache(); // bucket/region/target/objectKey edits invalidate cached injected env
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SCAN, (_e, repoDir: string) => scanCandidates(repoDir));
 

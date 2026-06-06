@@ -9,7 +9,9 @@ import type {
   RedactedEnvSyncSecrets,
   RedactedEnvSyncAuth,
   EnvSyncAuthMode,
-  EnvSyncAuthInput
+  EnvSyncAuthInput,
+  EnvSyncConfig,
+  EnvSyncTarget
 } from '../../../../shared/env-sync-types';
 
 const STATUS_LABEL: Record<TargetSyncState, string> = {
@@ -207,6 +209,244 @@ function AuthControl({
   );
 }
 
+function RepoCard({
+  repo,
+  statuses,
+  encAvailable,
+  secrets,
+  onChanged,
+  onSecretsChanged,
+  doSync
+}: {
+  repo: DiscoveredRepo;
+  statuses: TargetStatus[];
+  encAvailable: boolean;
+  secrets: RedactedEnvSyncSecrets;
+  onChanged: () => Promise<void>;
+  onSecretsChanged: () => Promise<void>;
+  doSync: (repoDir: string, envFile: string, dir: 'pull' | 'push') => Promise<void>;
+}): React.JSX.Element {
+  const showToast = useToastStore((s) => s.show);
+  const { repoDir, config } = repo;
+
+  const [editing, setEditing] = useState(false);
+  const [bucketDraft, setBucketDraft] = useState(config.bucket);
+  const [regionDraft, setRegionDraft] = useState(config.region);
+  // null = scan panel closed; an array (possibly empty) = panel open with results.
+  const [candidates, setCandidates] = useState<string[] | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  const saveConfig = async (next: EnvSyncConfig): Promise<boolean> => {
+    try {
+      await window.fleet.envSync.writeConfig(repoDir, next);
+      await onChanged();
+      return true;
+    } catch (err) {
+      showToast(`Could not save config: ${err instanceof Error ? err.message : 'unknown'}`, {
+        duration: 6000
+      });
+      return false;
+    }
+  };
+
+  const startEdit = (): void => {
+    setBucketDraft(config.bucket);
+    setRegionDraft(config.region);
+    setEditing(true);
+  };
+
+  const saveBucketRegion = async (): Promise<void> => {
+    const bucket = bucketDraft.trim();
+    const region = regionDraft.trim();
+    if (!bucket || !region) {
+      showToast('Bucket and region are required', { duration: 4000 });
+      return;
+    }
+    if (await saveConfig({ ...config, bucket, region })) {
+      setEditing(false);
+      showToast('Saved bucket/region');
+    }
+  };
+
+  const runScan = async (): Promise<void> => {
+    const found = await window.fleet.envSync.scan(repoDir);
+    const existing = new Set(config.targets.map((t) => t.envFile));
+    const fresh = found.filter((f) => !existing.has(f));
+    setCandidates(fresh);
+    setSelected(new Set(fresh));
+  };
+
+  const toggleCandidate = (path: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  };
+
+  const closeScan = (): void => {
+    setCandidates(null);
+    setSelected(new Set());
+  };
+
+  const addSelected = async (): Promise<void> => {
+    const additions: EnvSyncTarget[] = Array.from(selected).map((envFile) => ({
+      envFile,
+      delivery: 'file'
+    }));
+    if (additions.length === 0) return;
+    if (await saveConfig({ ...config, targets: [...config.targets, ...additions] })) {
+      closeScan();
+      showToast(`Added ${additions.length} target${additions.length === 1 ? '' : 's'}`);
+    }
+  };
+
+  const changeDelivery = async (envFile: string, delivery: 'file' | 'inject'): Promise<void> => {
+    const targets = config.targets.map((t) => (t.envFile === envFile ? { ...t, delivery } : t));
+    await saveConfig({ ...config, targets });
+  };
+
+  return (
+    <div className="rounded border border-neutral-800 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-neutral-200">{config.id}</span>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <input
+              value={bucketDraft}
+              onChange={(e) => setBucketDraft(e.target.value)}
+              placeholder="Bucket"
+              className={`${inputCls} w-36`}
+            />
+            <input
+              value={regionDraft}
+              onChange={(e) => setRegionDraft(e.target.value)}
+              placeholder="Region"
+              className={`${inputCls} w-28`}
+            />
+            <button className="text-xs text-blue-400" onClick={() => void saveBucketRegion()}>
+              Save
+            </button>
+            <button className="text-xs text-neutral-400" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-neutral-500">
+              {config.bucket} · {config.region}
+            </span>
+            <button className="text-xs text-blue-400" onClick={startEdit}>
+              Edit
+            </button>
+          </div>
+        )}
+      </div>
+
+      <table className="mt-2 w-full text-xs">
+        <tbody>
+          {statuses.map((t) => (
+            <tr key={t.envFile} className="border-t border-neutral-800">
+              <td className="py-1 text-neutral-300">{t.envFile}</td>
+              <td className="py-1">
+                <select
+                  value={t.delivery}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (v === 'file' || v === 'inject') void changeDelivery(t.envFile, v);
+                  }}
+                  className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-neutral-400"
+                >
+                  <option value="file">file</option>
+                  <option value="inject">inject</option>
+                </select>
+              </td>
+              <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
+              <td className="py-1 text-right">
+                <button
+                  className="text-xs text-blue-400 mr-2"
+                  onClick={() => void doSync(repoDir, t.envFile, 'pull')}
+                >
+                  Pull
+                </button>
+                <button
+                  className="text-xs text-blue-400"
+                  onClick={() => void doSync(repoDir, t.envFile, 'push')}
+                >
+                  Push
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      <div className="mt-2">
+        {candidates === null ? (
+          <button className="text-xs text-blue-400" onClick={() => void runScan()}>
+            Scan for env files
+          </button>
+        ) : (
+          <div className="rounded border border-neutral-800 p-2">
+            {candidates.length === 0 ? (
+              <p className="text-xs text-neutral-500">No new env files found.</p>
+            ) : (
+              <div className="space-y-1">
+                {candidates.map((path) => (
+                  <label key={path} className="flex items-center gap-2 text-xs text-neutral-300">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(path)}
+                      onChange={() => toggleCandidate(path)}
+                    />
+                    {path}
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                disabled={selected.size === 0}
+                className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
+                onClick={() => void addSelected()}
+              >
+                Add selected
+              </button>
+              <button className="text-xs text-neutral-400" onClick={closeScan}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 space-y-2 border-t border-neutral-800 pt-2">
+        <div className="flex items-center justify-between gap-2">
+          <span className="w-32 text-xs text-neutral-500">Passphrase override</span>
+          <PassphraseControl
+            id={config.id}
+            present={Boolean(secrets.repoOverrides[config.id]?.present)}
+            encAvailable={encAvailable}
+            clearLabel="Use global"
+            onChanged={onSecretsChanged}
+          />
+        </div>
+        <div className="flex items-start justify-between gap-2">
+          <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth override</span>
+          <AuthControl
+            id={config.id}
+            redacted={secrets.authRepoOverrides[config.id]}
+            encAvailable={encAvailable}
+            resetLabel="Use global default"
+            onChanged={onSecretsChanged}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EnvSyncSection(): React.JSX.Element {
   const showToast = useToastStore((s) => s.show);
   const [encAvailable, setEncAvailable] = useState(true);
@@ -317,62 +557,16 @@ export function EnvSyncSection(): React.JSX.Element {
           </p>
         )}
         {repos.map((repo) => (
-          <div key={repo.repoDir} className="rounded border border-neutral-800 p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-neutral-200">{repo.config.id}</span>
-              <span className="text-xs text-neutral-500">
-                {repo.config.bucket} · {repo.config.region}
-              </span>
-            </div>
-            <table className="mt-2 w-full text-xs">
-              <tbody>
-                {(statuses[repo.repoDir] ?? []).map((t) => (
-                  <tr key={t.envFile} className="border-t border-neutral-800">
-                    <td className="py-1 text-neutral-300">{t.envFile}</td>
-                    <td className="py-1 text-neutral-500">{t.delivery}</td>
-                    <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
-                    <td className="py-1 text-right">
-                      <button
-                        className="text-xs text-blue-400 mr-2"
-                        onClick={() => void doSync(repo.repoDir, t.envFile, 'pull')}
-                      >
-                        Pull
-                      </button>
-                      <button
-                        className="text-xs text-blue-400"
-                        onClick={() => void doSync(repo.repoDir, t.envFile, 'push')}
-                      >
-                        Push
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="mt-3 space-y-2 border-t border-neutral-800 pt-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="w-32 text-xs text-neutral-500">Passphrase override</span>
-                <PassphraseControl
-                  id={repo.config.id}
-                  present={Boolean(secrets.repoOverrides[repo.config.id]?.present)}
-                  encAvailable={encAvailable}
-                  clearLabel="Use global"
-                  onChanged={onSecretsChanged}
-                />
-              </div>
-              <div className="flex items-start justify-between gap-2">
-                <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth override</span>
-                <AuthControl
-                  id={repo.config.id}
-                  redacted={secrets.authRepoOverrides[repo.config.id]}
-                  encAvailable={encAvailable}
-                  resetLabel="Use global default"
-                  onChanged={onSecretsChanged}
-                />
-              </div>
-            </div>
-          </div>
+          <RepoCard
+            key={repo.repoDir}
+            repo={repo}
+            statuses={statuses[repo.repoDir] ?? []}
+            encAvailable={encAvailable}
+            secrets={secrets}
+            onChanged={refreshRepos}
+            onSecretsChanged={onSecretsChanged}
+            doSync={doSync}
+          />
         ))}
       </div>
     </div>
