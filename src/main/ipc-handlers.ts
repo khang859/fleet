@@ -136,6 +136,18 @@ export function registerIpcHandlers(
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
     }
 
+    // Env Sync: inject decrypted vars for any inject-delivery target whose dir
+    // is an ancestor of this terminal's cwd. Resolves to {} when nothing applies.
+    if (req.cwd) {
+      try {
+        Object.assign(extraEnv, await envSyncManager.getEnvForCwd(req.cwd));
+      } catch (err) {
+        log.warn('env-sync inject failed; continuing without injected vars', {
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+
     // Resolve the ShellProfile (defaulting to the registry's default if not provided).
     const profileId = req.shellProfileId ?? (await shellProfileRegistry.getDefaultProfileId());
     const profiles = await shellProfileRegistry.enumerate();

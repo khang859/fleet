@@ -133,3 +133,15 @@ describe('EnvSyncManager.getEnvForCwd', () => {
     expect(await mgr.getEnvForCwd(join(dir, 'sub'))).toEqual({});
   });
 });
+
+describe('getEnvForCwd merge contract', () => {
+  it('returns vars that callers can spread over process.env', async () => {
+    const dir = makeRepo([{ envFile: '.env', delivery: 'inject' }]);
+    writeFileSync(join(dir, '.env'), 'PATH_OVERRIDE=fromenvsync');
+    const { mgr } = make();
+    await mgr.push(dir, dir, '.env');
+    const env = await mgr.getEnvForCwd(dir);
+    const merged = { ...{ PATH_OVERRIDE: 'base' }, ...env };
+    expect(merged.PATH_OVERRIDE).toBe('fromenvsync');
+  });
+});
