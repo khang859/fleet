@@ -125,8 +125,9 @@ Six focused units, each independently testable.
 - **Async by design:** uses the async `crypto.scrypt` (not `scryptSync`). The KDF at N=2¹⁷ costs hundreds of ms; `decrypt` runs at PTY-spawn for inject delivery, so it must not block the main process event loop.
 - Scheme (research-validated, Node built-in `crypto`, no native deps):
   - **Cipher:** AES-256-GCM, fresh 12-byte random IV per encryption, 16-byte auth tag.
-  - **KDF:** scrypt, **N=2¹⁷, r=8, p=1, dkLen=32**, fresh 16-byte random salt per encryption. **`maxmem: 256 * 1024 * 1024` is mandatory** — Node's default 32 MiB throws "memory limit exceeded" at these params.
+  - **KDF:** scrypt, **N=2¹⁷, r=8, p=1, dkLen=32**, fresh 16-byte random salt per encryption. **`maxmem: 256 * 1024 * 1024` is mandatory** — Node's default 32 MiB throws "memory limit exceeded" at these params. (N/r/p are the exact OWASP Password Storage Cheat Sheet minimums for scrypt.)
   - **Envelope:** `version(1) || salt(16) || [log2N, r, p](3) || iv(12) || tag(16) || ciphertext`. Version byte enables future migration; params stored inline so cost can be raised without breaking old objects. `version||params` fed as AAD.
+  - **IV safety:** a fresh salt per encryption means a fresh derived key per encryption, so each key encrypts exactly once — the NIST SP 800-38D 2³²-invocations-per-key bound on random 96-bit IVs is never approached. The fresh-salt-per-encryption invariant is load-bearing, not incidental.
 - Whole-file encryption (not per-key) — the stored object is opaque ciphertext; readable diffs are produced locally in the conflict UI (§7), not from the S3 object.
 
 ### `env-sync-secrets.ts`
@@ -146,7 +147,7 @@ Six focused units, each independently testable.
 - Thin `@aws-sdk/client-s3` wrapper. Each call takes a resolved `EnvSyncAuthResolved` (`{ mode, profile?, accessKeyId?, secretAccessKey?, sessionToken? }`); the client is cached per `(region, authFingerprint)` where `authFingerprint` = `mode` + `profile` + a hash of the static keys (so distinct identities don't share a client, and rotating keys invalidates the cache).
 - `head(bucket, region, key, auth): { etag } | null` (null on 404).
 - `get(bucket, region, key, auth): { body: Buffer; etag }`.
-- `put(bucket, region, key, body, auth, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; on `PreconditionFailed` (HTTP 412) **or** `ConditionalRequestConflict` (HTTP 409, concurrent writer) the manager treats it as a conflict. New objects use `If-None-Match: *`. **IAM:** conditional `If-Match` PUT requires **both `s3:PutObject` and `s3:GetObject`** on the object, SigV4-signed (SDK default). `If-Match`-on-PUT is real-S3 only — S3-compatible stores (MinIO/R2) may not support it.
+- `put(bucket, region, key, body, auth, ifMatch?): { etag }` — uses `If-Match` for safe overwrite; new objects use `If-None-Match: *`. Per the AWS conditional-writes docs the two failure statuses mean different things and are handled differently: **412 Precondition Failed** = the remote ETag genuinely diverged (or a first-writer-wins create lost) → a real conflict, surfaced as a diff prompt (`isPreconditionFailed`); **409 Conflict** = a transient concurrent-request race ("uploads may be retried") → reported as a retryable error, **not** a content conflict (`isConditionalConflict`). A concurrent delete during an `If-Match` PUT yields **404** ("reupload"); v1 has no delete op, so this only happens via an out-of-band console delete and falls through to the generic error path. **IAM:** conditional `If-Match` PUT requires **both `s3:PutObject` and `s3:GetObject`** on the object (AWS docs, confirmed), SigV4-signed (SDK default). `If-Match`-on-PUT is real-S3 only — S3-compatible stores (MinIO/R2) may not support it.
 - Credential resolution from `auth`: `default-chain` → `fromNodeProviderChain()`; `profile` → `fromNodeProviderChain({ profile })`; `static` → static credentials object. Clear error if the chain yields nothing.
 
 ### `env-file.ts`
