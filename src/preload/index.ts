@@ -99,6 +99,14 @@ import type {
   BedrockWritePatch,
   BedrockSecretField
 } from '../shared/pi-env-injection-types';
+import type {
+  EnvSyncConfig,
+  ConflictChoice,
+  EnvSyncSetPassphraseRequest,
+  EnvSyncClearPassphraseRequest,
+  EnvSyncSetAuthRequest,
+  EnvSyncClearAuthRequest
+} from '../shared/ipc-api';
 
 type Unsubscribe = () => void;
 
@@ -580,6 +588,30 @@ const fleetApi = {
       typedInvoke<KanbanPruneWorktreeResult>(IPC_CHANNELS.KANBAN_PRUNE_WORKTREE, taskId),
     pruneMergedWorktrees: async (boardId: string): Promise<PruneResult> =>
       typedInvoke<PruneResult>(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, boardId)
+  },
+  envSync: {
+    getConfig: (repoDir: string) => typedInvoke(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, repoDir),
+    discover: (cwd: string) => typedInvoke(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd),
+    writeConfig: (repoDir: string, config: EnvSyncConfig) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, repoDir, config),
+    scan: (repoDir: string) => typedInvoke(IPC_CHANNELS.ENV_SYNC_SCAN, repoDir),
+    status: (repoDir: string) => typedInvoke(IPC_CHANNELS.ENV_SYNC_STATUS, repoDir),
+    pull: (repoDir: string, envFile: string, force: boolean) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_PULL, repoDir, envFile, force),
+    push: (repoDir: string, envFile: string, force: boolean) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_PUSH, repoDir, envFile, force),
+    resolve: (repoDir: string, envFile: string, choice: ConflictChoice) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_RESOLVE, repoDir, envFile, choice),
+    diff: (repoDir: string, envFile: string) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_DIFF, repoDir, envFile),
+    getSecrets: () => typedInvoke(IPC_CHANNELS.ENV_SYNC_GET_SECRETS),
+    setPassphrase: (req: EnvSyncSetPassphraseRequest) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_SET_PASSPHRASE, req),
+    clearPassphrase: (req: EnvSyncClearPassphraseRequest) =>
+      typedInvoke(IPC_CHANNELS.ENV_SYNC_CLEAR_PASSPHRASE, req),
+    setAuth: (req: EnvSyncSetAuthRequest) => typedInvoke(IPC_CHANNELS.ENV_SYNC_SET_AUTH, req),
+    clearAuth: (req: EnvSyncClearAuthRequest) => typedInvoke(IPC_CHANNELS.ENV_SYNC_CLEAR_AUTH, req),
+    encryptionAvailable: () => typedInvoke(IPC_CHANNELS.ENV_SYNC_ENCRYPTION_AVAILABLE)
   }
 };
 

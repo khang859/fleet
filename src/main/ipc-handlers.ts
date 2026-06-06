@@ -1,4 +1,4 @@
-import { ipcMain, BrowserWindow, Menu, dialog } from 'electron';
+import { ipcMain, BrowserWindow, Menu, dialog, safeStorage } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { safeOpenExternal } from './safe-external';
 import { createLogger, logger } from './logger';
@@ -69,6 +69,17 @@ import { searchRecentImages } from './recent-images';
 import { startClipboardMonitor, getClipboardHistory } from './clipboard-monitor';
 import { onCopilotSettingsChanged } from './copilot/index';
 import { onKanbanSettingsChanged } from './kanban/kanban-settings-bridge';
+import type { EnvSyncManager } from './env-sync/env-sync-manager';
+import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
+import { readConfig, writeConfig, findNearestConfig } from './env-sync/env-sync-config';
+import { scanCandidates } from './env-sync/env-file';
+import type { EnvSyncConfig, ConflictChoice } from '../shared/env-sync-types';
+import type {
+  EnvSyncSetPassphraseRequest,
+  EnvSyncClearPassphraseRequest,
+  EnvSyncSetAuthRequest,
+  EnvSyncClearAuthRequest
+} from '../shared/ipc-api';
 
 export function registerIpcHandlers(
   ptyManager: PtyManager,
@@ -92,7 +103,9 @@ export function registerIpcHandlers(
   piAuthInspector: PiAuthInspector,
   piEnvInjectionManager: PiEnvInjectionManager,
   shellProfileRegistry: ShellProfileRegistry,
-  wslService: WslService
+  wslService: WslService,
+  envSyncManager: EnvSyncManager,
+  envSyncSecrets: EnvSyncSecrets
 ): void {
   // Renderer log bridge — receives batched log entries from renderer and writes to Winston
   ipcMain.on(IPC_CHANNELS.LOG_BATCH, (_event, entries: LogEntry[]) => {
@@ -747,6 +760,66 @@ export function registerIpcHandlers(
       return { homeDir };
     }
   );
+
+  // ── Env Sync ────────────────────────────────────────────────────────────
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, (_e, repoDir: string) => readConfig(repoDir));
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DISCOVER, (_e, cwd: string) => findNearestConfig(cwd));
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, (_e, repoDir: string, config: EnvSyncConfig) => {
+    writeConfig(repoDir, config);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SCAN, (_e, repoDir: string) => scanCandidates(repoDir));
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_STATUS, (_e, repoDir: string) => envSyncManager.status(repoDir));
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_PULL, (_e, repoDir: string, envFile: string, force: boolean) =>
+    envSyncManager.pull(repoDir, repoDir, envFile, { force })
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_PUSH, (_e, repoDir: string, envFile: string, force: boolean) =>
+    envSyncManager.push(repoDir, repoDir, envFile, { force })
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_RESOLVE, (_e, repoDir: string, envFile: string, choice: ConflictChoice) =>
+    envSyncManager.resolveConflict(repoDir, envFile, choice)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DIFF, (_e, repoDir: string, envFile: string) =>
+    envSyncManager.diff(repoDir, envFile)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_GET_SECRETS, () => envSyncSecrets.getRedacted());
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SET_PASSPHRASE, (_e, req: EnvSyncSetPassphraseRequest) => {
+    if (req.id) envSyncSecrets.setRepoPassphrase(req.id, req.passphrase);
+    else envSyncSecrets.setGlobalPassphrase(req.passphrase);
+    envSyncManager.clearInjectCache(); // decrypted-with-old-passphrase vars are now stale
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_CLEAR_PASSPHRASE, (_e, req: EnvSyncClearPassphraseRequest) => {
+    if (req.id) envSyncSecrets.clearRepoPassphrase(req.id);
+    else envSyncSecrets.clearGlobalPassphrase();
+    envSyncManager.clearInjectCache();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SET_AUTH, (_e, req: EnvSyncSetAuthRequest) => {
+    if (req.id) envSyncSecrets.setRepoAuth(req.id, req.auth);
+    else envSyncSecrets.setGlobalAuth(req.auth);
+    envSyncManager.clearInjectCache(); // identity changed; re-read under the new auth
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_CLEAR_AUTH, (_e, req: EnvSyncClearAuthRequest) => {
+    if (req.id) envSyncSecrets.clearRepoAuth(req.id);
+    else envSyncSecrets.clearGlobalAuth();
+    envSyncManager.clearInjectCache();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_ENCRYPTION_AVAILABLE, () => ({
+    available: envSyncSecrets.isEncryptionAvailable(),
+    backend: process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : undefined
+  }));
 }
 
 // Exported for testing

@@ -382,3 +382,26 @@ export type KanbanAssignTaskToFeatureRequest = {
   taskId: string;
   featureId: string | null;
 };
+
+export type {
+  EnvSyncConfig,
+  EnvSyncTarget,
+  TargetStatus,
+  EnvDiff,
+  SyncOutcome,
+  ConflictChoice,
+  RedactedEnvSyncSecrets,
+  RedactedEnvSyncAuth,
+  EnvSyncAuthMode,
+  EnvSyncAuthInput,
+  DiscoveredRepo
+} from './env-sync-types';
+import type { EnvSyncAuthInput } from './env-sync-types';
+
+/** Passphrase set request: either global (no id) or per-repo (id set). */
+export type EnvSyncSetPassphraseRequest = { id?: string; passphrase: string };
+export type EnvSyncClearPassphraseRequest = { id?: string };
+
+/** AWS auth set request: either global (no id) or per-repo (id set). */
+export type EnvSyncSetAuthRequest = { id?: string; auth: EnvSyncAuthInput };
+export type EnvSyncClearAuthRequest = { id?: string };
