@@ -9,8 +9,7 @@ import type {
   RedactedEnvSyncSecrets,
   RedactedEnvSyncAuth,
   EnvSyncAuthMode,
-  EnvSyncAuthInput,
-  SyncOutcome
+  EnvSyncAuthInput
 } from '../../../../shared/env-sync-types';
 
 const STATUS_LABEL: Record<TargetSyncState, string> = {
@@ -24,7 +23,8 @@ const STATUS_LABEL: Record<TargetSyncState, string> = {
   error: 'Error'
 };
 
-const inputCls = 'bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700';
+const inputCls =
+  'bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700';
 
 function PassphraseControl({
   id,
@@ -56,12 +56,26 @@ function PassphraseControl({
   return present ? (
     <div className="flex items-center gap-2">
       <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
-      <button className="text-xs text-red-400" onClick={() => void clear()}>{clearLabel}</button>
+      <button className="text-xs text-red-400" onClick={() => void clear()}>
+        {clearLabel}
+      </button>
     </div>
   ) : (
     <div className="flex items-center gap-2">
-      <input type="password" value={draft} onChange={(e) => setDraft(e.target.value)} placeholder="Encryption passphrase" className={inputCls} />
-      <button disabled={!draft || !encAvailable} onClick={() => void save()} className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500">Save</button>
+      <input
+        type="password"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="Encryption passphrase"
+        className={inputCls}
+      />
+      <button
+        disabled={!draft || !encAvailable}
+        onClick={() => void save()}
+        className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
+      >
+        Save
+      </button>
     </div>
   );
 }
@@ -107,7 +121,9 @@ function AuthControl({
       await onChanged();
       showToast('AWS auth saved');
     } catch (err) {
-      showToast(`Could not save AWS auth: ${err instanceof Error ? err.message : 'unknown'}`, { duration: 6000 });
+      showToast(`Could not save AWS auth: ${err instanceof Error ? err.message : 'unknown'}`, {
+        duration: 6000
+      });
     }
   };
   const reset = async (): Promise<void> => {
@@ -127,28 +143,60 @@ function AuthControl({
       >
         <option value="default-chain">Default credential chain</option>
         <option value="profile">Named profile</option>
-        <option value="static" disabled={!encAvailable}>Static keys</option>
+        <option value="static" disabled={!encAvailable}>
+          Static keys
+        </option>
       </select>
 
       {mode === 'profile' && (
-        <input type="text" value={profile} onChange={(e) => setProfile(e.target.value)} placeholder="AWS profile name (e.g. work)" className={inputCls} />
+        <input
+          type="text"
+          value={profile}
+          onChange={(e) => setProfile(e.target.value)}
+          placeholder="AWS profile name (e.g. work)"
+          className={inputCls}
+        />
       )}
 
       {mode === 'static' && (
         <div className="flex flex-col gap-2">
           {redacted?.mode === 'static' && redacted.hasAccessKeyId ? (
-            <span className="text-sm text-neutral-400">Static keys ●●●● (set) — re-enter below to replace</span>
+            <span className="text-sm text-neutral-400">
+              Static keys ●●●● (set) — re-enter below to replace
+            </span>
           ) : null}
-          <input type="text" value={accessKeyId} onChange={(e) => setAccessKeyId(e.target.value)} placeholder="Access key ID" className={inputCls} />
-          <input type="password" value={secretAccessKey} onChange={(e) => setSecretAccessKey(e.target.value)} placeholder="Secret access key" className={inputCls} />
-          <input type="password" value={sessionToken} onChange={(e) => setSessionToken(e.target.value)} placeholder="Session token (optional)" className={inputCls} />
+          <input
+            type="text"
+            value={accessKeyId}
+            onChange={(e) => setAccessKeyId(e.target.value)}
+            placeholder="Access key ID"
+            className={inputCls}
+          />
+          <input
+            type="password"
+            value={secretAccessKey}
+            onChange={(e) => setSecretAccessKey(e.target.value)}
+            placeholder="Secret access key"
+            className={inputCls}
+          />
+          <input
+            type="password"
+            value={sessionToken}
+            onChange={(e) => setSessionToken(e.target.value)}
+            placeholder="Session token (optional)"
+            className={inputCls}
+          />
         </div>
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={() => void save()} className="text-xs bg-neutral-700 rounded px-2 py-1">Save</button>
+        <button onClick={() => void save()} className="text-xs bg-neutral-700 rounded px-2 py-1">
+          Save
+        </button>
         {redacted && (
-          <button className="text-xs text-red-400" onClick={() => void reset()}>{resetLabel}</button>
+          <button className="text-xs text-red-400" onClick={() => void reset()}>
+            {resetLabel}
+          </button>
         )}
       </div>
     </div>
@@ -159,13 +207,16 @@ export function EnvSyncSection(): React.JSX.Element {
   const showToast = useToastStore((s) => s.show);
   const [encAvailable, setEncAvailable] = useState(true);
   const [encBackend, setEncBackend] = useState<string | undefined>(undefined);
-  const [secrets, setSecrets] = useState<RedactedEnvSyncSecrets>({ globalPresent: false, repoOverrides: {}, authRepoOverrides: {} });
+  const [secrets, setSecrets] = useState<RedactedEnvSyncSecrets>({
+    globalPresent: false,
+    repoOverrides: {},
+    authRepoOverrides: {}
+  });
   const [repos, setRepos] = useState<DiscoveredRepo[]>([]);
   const [statuses, setStatuses] = useState<Record<string, TargetStatus[]>>({});
 
   const refreshSecrets = useCallback(async () => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- IPC bridge returns unknown
-    setSecrets((await window.fleet.envSync.getSecrets()) as RedactedEnvSyncSecrets);
+    setSecrets(await window.fleet.envSync.getSecrets());
   }, []);
 
   const refreshRepos = useCallback(async () => {
@@ -176,26 +227,22 @@ export function EnvSyncSection(): React.JSX.Element {
     }
     const found = new Map<string, DiscoveredRepo>();
     for (const cwd of cwds) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- IPC bridge returns unknown
-      const repo = (await window.fleet.envSync.discover(cwd)) as DiscoveredRepo | null;
+      const repo = await window.fleet.envSync.discover(cwd);
       if (repo) found.set(repo.repoDir, repo);
     }
     const list = Array.from(found.values());
     setRepos(list);
     const next: Record<string, TargetStatus[]> = {};
     for (const r of list) {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- IPC bridge returns unknown
-      next[r.repoDir] = (await window.fleet.envSync.status(r.repoDir)) as TargetStatus[];
+      next[r.repoDir] = await window.fleet.envSync.status(r.repoDir);
     }
     setStatuses(next);
   }, []);
 
   useEffect(() => {
     void window.fleet.envSync.encryptionAvailable().then((r) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- IPC bridge returns unknown
-      const enc = r as { available: boolean; backend?: string };
-      setEncAvailable(enc.available);
-      setEncBackend(enc.backend);
+      setEncAvailable(r.available);
+      setEncBackend(r.backend);
     });
     void refreshSecrets();
     void refreshRepos();
@@ -207,10 +254,10 @@ export function EnvSyncSection(): React.JSX.Element {
   }, [refreshSecrets, refreshRepos]);
 
   const doSync = async (repoDir: string, envFile: string, dir: 'pull' | 'push'): Promise<void> => {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- IPC bridge returns unknown
-    const res = (dir === 'pull'
-      ? await window.fleet.envSync.pull(repoDir, envFile, false)
-      : await window.fleet.envSync.push(repoDir, envFile, false)) as SyncOutcome;
+    const res =
+      dir === 'pull'
+        ? await window.fleet.envSync.pull(repoDir, envFile, false)
+        : await window.fleet.envSync.push(repoDir, envFile, false);
     if (res.ok) {
       showToast(`${dir === 'pull' ? 'Pulled' : 'Pushed'} ${envFile}`);
       await refreshRepos();
@@ -227,22 +274,35 @@ export function EnvSyncSection(): React.JSX.Element {
 
       {!encAvailable && (
         <div className="rounded border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
-          OS keychain encryption is unavailable. Passphrases and static AWS keys cannot be stored securely on this machine.
+          OS keychain encryption is unavailable. Passphrases and static AWS keys cannot be stored
+          securely on this machine.
         </div>
       )}
 
       {encAvailable && encBackend === 'basic_text' && (
         <div className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-300">
-          This Linux session uses the <code>basic_text</code> keychain backend — stored secrets are NOT meaningfully encrypted. Configure libsecret (gnome-keyring) or kwallet for real protection.
+          This Linux session uses the <code>basic_text</code> keychain backend — stored secrets are
+          NOT meaningfully encrypted. Configure libsecret (gnome-keyring) or kwallet for real
+          protection.
         </div>
       )}
 
       <SettingRow label="Global passphrase">
-        <PassphraseControl present={secrets.globalPresent} encAvailable={encAvailable} clearLabel="Clear" onChanged={onSecretsChanged} />
+        <PassphraseControl
+          present={secrets.globalPresent}
+          encAvailable={encAvailable}
+          clearLabel="Clear"
+          onChanged={onSecretsChanged}
+        />
       </SettingRow>
 
       <SettingRow label="AWS auth">
-        <AuthControl redacted={secrets.globalAuth} encAvailable={encAvailable} resetLabel="Reset to default chain" onChanged={onSecretsChanged} />
+        <AuthControl
+          redacted={secrets.globalAuth}
+          encAvailable={encAvailable}
+          resetLabel="Reset to default chain"
+          onChanged={onSecretsChanged}
+        />
       </SettingRow>
 
       <div className="space-y-3">
@@ -256,7 +316,9 @@ export function EnvSyncSection(): React.JSX.Element {
           <div key={repo.repoDir} className="rounded border border-neutral-800 p-3">
             <div className="flex items-center justify-between">
               <span className="text-sm text-neutral-200">{repo.config.id}</span>
-              <span className="text-xs text-neutral-500">{repo.config.bucket} · {repo.config.region}</span>
+              <span className="text-xs text-neutral-500">
+                {repo.config.bucket} · {repo.config.region}
+              </span>
             </div>
             <table className="mt-2 w-full text-xs">
               <tbody>
@@ -266,8 +328,18 @@ export function EnvSyncSection(): React.JSX.Element {
                     <td className="py-1 text-neutral-500">{t.delivery}</td>
                     <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
                     <td className="py-1 text-right">
-                      <button className="text-xs text-blue-400 mr-2" onClick={() => void doSync(repo.repoDir, t.envFile, 'pull')}>Pull</button>
-                      <button className="text-xs text-blue-400" onClick={() => void doSync(repo.repoDir, t.envFile, 'push')}>Push</button>
+                      <button
+                        className="text-xs text-blue-400 mr-2"
+                        onClick={() => void doSync(repo.repoDir, t.envFile, 'pull')}
+                      >
+                        Pull
+                      </button>
+                      <button
+                        className="text-xs text-blue-400"
+                        onClick={() => void doSync(repo.repoDir, t.envFile, 'push')}
+                      >
+                        Push
+                      </button>
                     </td>
                   </tr>
                 ))}

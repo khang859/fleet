@@ -148,7 +148,8 @@ export class EnvSyncSecrets {
     const resolved: EnvSyncAuthResolved = { mode: stored.mode, profile: stored.profile };
     if (stored.mode === 'static') {
       if (stored.accessKeyIdEnc) resolved.accessKeyId = this.decode(stored.accessKeyIdEnc);
-      if (stored.secretAccessKeyEnc) resolved.secretAccessKey = this.decode(stored.secretAccessKeyEnc);
+      if (stored.secretAccessKeyEnc)
+        resolved.secretAccessKey = this.decode(stored.secretAccessKeyEnc);
       if (stored.sessionTokenEnc) resolved.sessionToken = this.decode(stored.sessionTokenEnc);
     }
     return resolved;

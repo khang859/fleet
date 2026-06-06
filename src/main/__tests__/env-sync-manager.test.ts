@@ -9,35 +9,71 @@ import type { EnvSyncSyncStateData } from '../env-sync/env-sync-manager';
 
 class FakeStateStore {
   data: EnvSyncSyncStateData = {};
-  get() { return this.data; }
-  set(n: EnvSyncSyncStateData) { this.data = n; }
+  get() {
+    return this.data;
+  }
+  set(n: EnvSyncSyncStateData) {
+    this.data = n;
+  }
 }
 
 // In-memory S3 keyed by `${bucket}/${key}`; etag derived from a monotonic counter.
+// Auth args are accepted positionally but ignored — auth resolution is tested in
+// the s3-client/secrets specs. `head`/`get` drop the trailing auth param entirely
+// (a function may accept fewer args than its target type); `put` reads ifMatch via
+// a rest tuple so the unused auth slot needs no name.
 function fakeS3() {
   const objs = new Map<string, { body: Buffer; etag: string }>();
   let seq = 0;
   return {
     objs,
-    // `_auth` is accepted and ignored — auth resolution is tested in s3-client/secrets specs.
-    head: async (b: string, _r: string, k: string, _auth?: unknown) => objs.get(`${b}/${k}`) ? { etag: objs.get(`${b}/${k}`)!.etag } : null,
-    get: async (b: string, _r: string, k: string, _auth?: unknown) => { const o = objs.get(`${b}/${k}`)!; return { body: o.body, etag: o.etag }; },
-    put: async (b: string, _r: string, k: string, body: Buffer, _auth?: unknown, ifMatch?: string) => {
+    head: async (b: string, _r: string, k: string): Promise<{ etag: string } | null> => {
+      await Promise.resolve();
+      const o = objs.get(`${b}/${k}`);
+      return o ? { etag: o.etag } : null;
+    },
+    get: async (b: string, _r: string, k: string): Promise<{ body: Buffer; etag: string }> => {
+      await Promise.resolve();
+      const o = objs.get(`${b}/${k}`);
+      if (!o) throw new Error(`fakeS3: missing object ${b}/${k}`);
+      return { body: o.body, etag: o.etag };
+    },
+    put: async (
+      b: string,
+      _r: string,
+      k: string,
+      body: Buffer,
+      ...rest: [auth: unknown, ifMatch?: string]
+    ): Promise<{ etag: string }> => {
+      await Promise.resolve();
+      const ifMatch = rest[1];
       const cur = objs.get(`${b}/${k}`);
-      if (ifMatch && cur && cur.etag !== ifMatch) { const e = new Error('precondition'); (e as { name?: string }).name = 'PreconditionFailed'; throw e; }
+      if (ifMatch && cur && cur.etag !== ifMatch) {
+        const e = new Error('precondition');
+        e.name = 'PreconditionFailed';
+        throw e;
+      }
       const etag = `"e${++seq}"`;
       objs.set(`${b}/${k}`, { body, etag });
       return { etag };
     },
-    isPreconditionFailed: (err: unknown) => (err as { name?: string })?.name === 'PreconditionFailed',
-    isConditionalConflict: (err: unknown) => (err as { name?: string })?.name === 'ConditionalRequestConflict'
+    isPreconditionFailed: (err: unknown) =>
+      err instanceof Error && err.name === 'PreconditionFailed',
+    isConditionalConflict: (err: unknown) =>
+      err instanceof Error && err.name === 'ConditionalRequestConflict'
   };
 }
 
 // Identity "crypto" so the stored body is the plaintext (encryption tested separately).
 const fakeCrypto = {
-  encrypt: async (pt: Buffer) => pt,
-  decrypt: async (blob: Buffer) => blob
+  encrypt: async (pt: Buffer): Promise<Buffer> => {
+    await Promise.resolve();
+    return pt;
+  },
+  decrypt: async (blob: Buffer): Promise<Buffer> => {
+    await Promise.resolve();
+    return blob;
+  }
 };
 
 const fakeSecrets = {
@@ -47,13 +83,22 @@ const fakeSecrets = {
 
 function makeRepo(targets: Array<{ envFile: string; delivery?: 'file' | 'inject' }>): string {
   const dir = mkdtempSync(join(tmpdir(), 'envmgr-'));
-  writeConfig(dir, { version: 1, id: 'app', bucket: 'b', region: 'r', targets: targets.map((t) => ({ envFile: t.envFile, delivery: t.delivery ?? 'file' })) });
+  writeConfig(dir, {
+    version: 1,
+    id: 'app',
+    bucket: 'b',
+    region: 'r',
+    targets: targets.map((t) => ({ envFile: t.envFile, delivery: t.delivery ?? 'file' }))
+  });
   return dir;
 }
 
 function make(s3 = fakeS3()) {
   const mgr = new EnvSyncManager({
-    s3, crypto: fakeCrypto, secrets: fakeSecrets, store: new FakeStateStore()
+    s3,
+    crypto: fakeCrypto,
+    secrets: fakeSecrets,
+    store: new FakeStateStore()
   });
   return { mgr, s3 };
 }

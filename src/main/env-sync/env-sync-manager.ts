@@ -13,7 +13,13 @@ import {
 import { diffEnv, hashPlaintext, parseEnv } from './env-file';
 import * as realS3 from './s3-client';
 import * as realCrypto from './env-sync-crypto';
-import type { EnvSyncConfig, EnvSyncTarget, TargetStatus, SyncOutcome, EnvSyncAuthResolved } from '../../shared/env-sync-types';
+import type {
+  EnvSyncConfig,
+  EnvSyncTarget,
+  TargetStatus,
+  SyncOutcome,
+  EnvSyncAuthResolved
+} from '../../shared/env-sync-types';
 
 export type SyncStateEntry = { lastEtag: string; lastPlaintextHash: string; lastSyncedAt: number };
 export type EnvSyncSyncStateData = Record<string, SyncStateEntry>;
@@ -101,13 +107,15 @@ export class EnvSyncManager {
       // Malformed .fleet/env-sync.json → surface as an error row instead of rejecting,
       // so the status badge can show it (spec §2). findNearestConfig still swallows to
       // null for discovery, so an invalid config is only flagged once a repoDir is known.
-      return [{
-        envFile: '.fleet/env-sync.json',
-        objectKey: '',
-        delivery: 'file',
-        state: 'error',
-        error: err instanceof Error ? err.message : String(err)
-      }];
+      return [
+        {
+          envFile: '.fleet/env-sync.json',
+          objectKey: '',
+          delivery: 'file',
+          state: 'error',
+          error: err instanceof Error ? err.message : String(err)
+        }
+      ];
     }
     if (!config) return [];
     const out: TargetStatus[] = [];
@@ -124,7 +132,11 @@ export class EnvSyncManager {
         const state = this.getState(repoDir, objectKey);
         out.push({ ...base, state: this.deriveState(localText, remote?.etag, state) });
       } catch (err) {
-        out.push({ ...base, state: 'error', error: err instanceof Error ? err.message : String(err) });
+        out.push({
+          ...base,
+          state: 'error',
+          error: err instanceof Error ? err.message : String(err)
+        });
       }
     }
     return out;
@@ -141,7 +153,7 @@ export class EnvSyncManager {
     if (!hasRemote) return 'local-only';
     if (!hasLocal) return 'remote-only';
     const remoteChanged = remoteEtag !== state?.lastEtag;
-    const localChanged = hashPlaintext(localText!) !== state?.lastPlaintextHash;
+    const localChanged = hashPlaintext(localText) !== state?.lastPlaintextHash;
     if (remoteChanged && localChanged) return 'conflict';
     if (remoteChanged) return 'remote-ahead';
     if (localChanged) return 'local-ahead';
@@ -183,7 +195,11 @@ export class EnvSyncManager {
       });
       return { ok: true, state: 'in-sync' };
     } catch (err) {
-      return { ok: false, conflict: false, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        conflict: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
     }
   }
 
@@ -221,7 +237,9 @@ export class EnvSyncManager {
       const auth = this.secrets.resolveAuth(config.id);
       const state = this.getState(repoDir, objectKey);
       const blob = await this.crypto.encrypt(Buffer.from(localText, 'utf8'), passphrase);
-      const ifMatch = opts.force ? await this.currentEtag(bucket, region, objectKey, auth) : state?.lastEtag;
+      const ifMatch = opts.force
+        ? await this.currentEtag(bucket, region, objectKey, auth)
+        : state?.lastEtag;
       const result = await this.s3.put(bucket, region, objectKey, blob, auth, ifMatch);
       this.setState(repoDir, objectKey, {
         lastEtag: result.etag,
@@ -241,16 +259,30 @@ export class EnvSyncManager {
       if (this.s3.isConditionalConflict(err)) {
         return { ok: false, conflict: false, error: 'Concurrent write detected — please retry.' };
       }
-      return { ok: false, conflict: false, error: err instanceof Error ? err.message : String(err) };
+      return {
+        ok: false,
+        conflict: false,
+        error: err instanceof Error ? err.message : String(err)
+      };
     }
   }
 
-  private async currentEtag(bucket: string, region: string, objectKey: string, auth: EnvSyncAuthResolved): Promise<string | undefined> {
+  private async currentEtag(
+    bucket: string,
+    region: string,
+    objectKey: string,
+    auth: EnvSyncAuthResolved
+  ): Promise<string | undefined> {
     const h = await this.s3.head(bucket, region, objectKey, auth);
     return h?.etag;
   }
 
-  private async safeRemoteText(bucket: string, region: string, objectKey: string, id: string): Promise<string | null> {
+  private async safeRemoteText(
+    bucket: string,
+    region: string,
+    objectKey: string,
+    id: string
+  ): Promise<string | null> {
     try {
       const passphrase = this.secrets.resolvePassphrase(id);
       const auth = this.secrets.resolveAuth(id);

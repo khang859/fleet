@@ -21,7 +21,13 @@ beforeEach(() => invalidateConfigCache());
 describe('writeConfig/readConfig', () => {
   it('round-trips a config', () => {
     const dir = makeRepo();
-    writeConfig(dir, { version: 1, id: 'app', bucket: 'b', region: 'us-east-1', targets: [{ envFile: '.env', delivery: 'file' }] });
+    writeConfig(dir, {
+      version: 1,
+      id: 'app',
+      bucket: 'b',
+      region: 'us-east-1',
+      targets: [{ envFile: '.env', delivery: 'file' }]
+    });
     const cfg = readConfig(dir);
     expect(cfg?.id).toBe('app');
     expect(cfg?.targets[0].envFile).toBe('.env');
@@ -34,12 +40,18 @@ describe('writeConfig/readConfig', () => {
 
 describe('resolveObjectKey', () => {
   it('defaults to `${id}/${envFile}.enc`', () => {
-    const key = resolveObjectKey({ version: 1, id: 'app', bucket: 'b', region: 'r', targets: [] }, { envFile: 'apps/web/.env.production', delivery: 'file' });
+    const key = resolveObjectKey(
+      { version: 1, id: 'app', bucket: 'b', region: 'r', targets: [] },
+      { envFile: 'apps/web/.env.production', delivery: 'file' }
+    );
     expect(key).toBe('app/apps/web/.env.production.enc');
   });
 
   it('honors an explicit objectKey', () => {
-    const key = resolveObjectKey({ version: 1, id: 'app', bucket: 'b', region: 'r', targets: [] }, { envFile: '.env', delivery: 'file', objectKey: 'custom.enc' });
+    const key = resolveObjectKey(
+      { version: 1, id: 'app', bucket: 'b', region: 'r', targets: [] },
+      { envFile: '.env', delivery: 'file', objectKey: 'custom.enc' }
+    );
     expect(key).toBe('custom.enc');
   });
 });
@@ -47,8 +59,13 @@ describe('resolveObjectKey', () => {
 describe('resolveBucketRegion', () => {
   it('uses target overrides then repo defaults', () => {
     const cfg = { version: 1 as const, id: 'a', bucket: 'repo-b', region: 'repo-r', targets: [] };
-    expect(resolveBucketRegion(cfg, { envFile: '.env', delivery: 'file' })).toEqual({ bucket: 'repo-b', region: 'repo-r' });
-    expect(resolveBucketRegion(cfg, { envFile: '.env', delivery: 'file', bucket: 'tb', region: 'tr' })).toEqual({ bucket: 'tb', region: 'tr' });
+    expect(resolveBucketRegion(cfg, { envFile: '.env', delivery: 'file' })).toEqual({
+      bucket: 'repo-b',
+      region: 'repo-r'
+    });
+    expect(
+      resolveBucketRegion(cfg, { envFile: '.env', delivery: 'file', bucket: 'tb', region: 'tr' })
+    ).toEqual({ bucket: 'tb', region: 'tr' });
   });
 });
 
@@ -75,7 +92,10 @@ describe('findNearestConfig', () => {
 describe('mostSpecificInjectTarget', () => {
   it('picks the inject target whose dir is the longest prefix of cwd', () => {
     const cfg = {
-      version: 1 as const, id: 'a', bucket: 'b', region: 'r',
+      version: 1 as const,
+      id: 'a',
+      bucket: 'b',
+      region: 'r',
       targets: [
         { envFile: '.env', delivery: 'inject' as const },
         { envFile: 'apps/web/.env', delivery: 'inject' as const }

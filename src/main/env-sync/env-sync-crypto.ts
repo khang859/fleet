@@ -25,7 +25,13 @@ const P = 1;
 const MAXMEM = 256 * 1024 * 1024;
 
 // Async scrypt keeps the main process responsive — this runs at PTY-spawn for inject delivery.
-async function deriveKey(passphrase: string, salt: Buffer, n: number, r: number, p: number): Promise<Buffer> {
+async function deriveKey(
+  passphrase: string,
+  salt: Buffer,
+  n: number,
+  r: number,
+  p: number
+): Promise<Buffer> {
   return scryptAsync(passphrase, salt, KEY_LEN, { N: n, r, p, maxmem: MAXMEM });
 }
 

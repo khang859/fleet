@@ -4,7 +4,14 @@ import { join, relative, sep } from 'node:path';
 import type { EnvDiff, EnvDiffEntry } from '../../shared/env-sync-types';
 
 const EXCLUDE_DIRS = new Set([
-  'node_modules', '.git', 'dist', 'build', '.next', '.turbo', 'out', 'coverage'
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.turbo',
+  'out',
+  'coverage'
 ]);
 const EXCLUDE_SUFFIXES = ['.example', '.sample', '.template', '.dist', '.defaults'];
 

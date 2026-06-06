@@ -61,10 +61,30 @@ function client(region: string, auth: EnvSyncAuthResolved): S3Client {
   return c;
 }
 
+/** Read `err.name` when present, without an unsafe cast (uses `in` narrowing). */
+function errorName(err: unknown): string | undefined {
+  if (typeof err === 'object' && err !== null && 'name' in err) {
+    const { name } = err;
+    if (typeof name === 'string') return name;
+  }
+  return undefined;
+}
+
+/** Read `err.$metadata.httpStatusCode` (AWS SDK error shape) without an unsafe cast. */
+function httpStatus(err: unknown): number | undefined {
+  if (typeof err === 'object' && err !== null && '$metadata' in err) {
+    const meta = err.$metadata;
+    if (typeof meta === 'object' && meta !== null && 'httpStatusCode' in meta) {
+      const code = meta.httpStatusCode;
+      if (typeof code === 'number') return code;
+    }
+  }
+  return undefined;
+}
+
 function isNotFound(err: unknown): boolean {
-  const name = (err as { name?: string })?.name;
-  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-  return name === 'NotFound' || name === 'NoSuchKey' || status === 404;
+  const name = errorName(err);
+  return name === 'NotFound' || name === 'NoSuchKey' || httpStatus(err) === 404;
 }
 
 /**
@@ -78,9 +98,7 @@ function isNotFound(err: unknown): boolean {
  * fold 409 in here — a transient race must not masquerade as a divergence.
  */
 export function isPreconditionFailed(err: unknown): boolean {
-  const name = (err as { name?: string })?.name;
-  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-  return name === 'PreconditionFailed' || status === 412;
+  return errorName(err) === 'PreconditionFailed' || httpStatus(err) === 412;
 }
 
 /**
@@ -91,9 +109,7 @@ export function isPreconditionFailed(err: unknown): boolean {
  * keep-local/keep-remote diff.
  */
 export function isConditionalConflict(err: unknown): boolean {
-  const name = (err as { name?: string })?.name;
-  const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-  return name === 'ConditionalRequestConflict' || status === 409;
+  return errorName(err) === 'ConditionalRequestConflict' || httpStatus(err) === 409;
 }
 
 export async function head(
@@ -118,7 +134,8 @@ export async function get(
   auth: EnvSyncAuthResolved
 ): Promise<S3Get> {
   const r = await client(region, auth).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const bytes = await r.Body!.transformToByteArray();
+  if (!r.Body) throw new Error(`S3 object ${key} returned an empty body`);
+  const bytes = await r.Body.transformToByteArray();
   return { body: Buffer.from(bytes), etag: r.ETag ?? '' };
 }
 

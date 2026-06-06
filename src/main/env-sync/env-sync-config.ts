@@ -1,6 +1,10 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname, parse as parsePath } from 'node:path';
-import { EnvSyncConfigSchema, type EnvSyncConfig, type EnvSyncTarget } from '../../shared/env-sync-types';
+import {
+  EnvSyncConfigSchema,
+  type EnvSyncConfig,
+  type EnvSyncTarget
+} from '../../shared/env-sync-types';
 import { createLogger } from '../logger';
 
 const log = createLogger('env-sync-config');
@@ -23,7 +27,10 @@ export function readConfig(repoDir: string): EnvSyncConfig | null {
   try {
     return EnvSyncConfigSchema.parse(JSON.parse(readFileSync(p, 'utf8')));
   } catch (err) {
-    log.warn('Invalid .fleet/env-sync.json', { repoDir, error: err instanceof Error ? err.message : String(err) });
+    log.warn('Invalid .fleet/env-sync.json', {
+      repoDir,
+      error: err instanceof Error ? err.message : String(err)
+    });
     throw err instanceof Error ? err : new Error(String(err));
   }
 }

@@ -31,7 +31,11 @@ describe('EnvSyncSecrets', () => {
     s.setGlobalPassphrase('global-pw');
     s.setRepoPassphrase('app', 'repo-pw');
     const r = s.getRedacted();
-    expect(r).toEqual({ globalPresent: true, repoOverrides: { app: { present: true } }, authRepoOverrides: {} });
+    expect(r).toEqual({
+      globalPresent: true,
+      repoOverrides: { app: { present: true } },
+      authRepoOverrides: {}
+    });
   });
 
   it('resolves repo override before global', () => {
@@ -54,7 +58,10 @@ describe('EnvSyncSecrets', () => {
   });
 
   it('refuses to store when encryption unavailable', () => {
-    const s = new EnvSyncSecrets({ store: new FakeStore(), safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false } });
+    const s = new EnvSyncSecrets({
+      store: new FakeStore(),
+      safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false }
+    });
     expect(() => s.setGlobalPassphrase('x')).toThrow(/encryption/i);
   });
 });
@@ -74,7 +81,12 @@ describe('EnvSyncSecrets AWS auth', () => {
 
   it('round-trips static keys through safeStorage and never returns them in the redacted view', () => {
     const s = make();
-    s.setGlobalAuth({ mode: 'static', accessKeyId: 'AKIA123', secretAccessKey: 'shh', sessionToken: 'tok' });
+    s.setGlobalAuth({
+      mode: 'static',
+      accessKeyId: 'AKIA123',
+      secretAccessKey: 'shh',
+      sessionToken: 'tok'
+    });
     expect(s.resolveAuth('app')).toEqual({
       mode: 'static',
       profile: undefined,
@@ -95,7 +107,13 @@ describe('EnvSyncSecrets AWS auth', () => {
     const s = make();
     s.setRepoAuth('app', { mode: 'profile', profile: 'work' });
     expect(s.getRedacted().authRepoOverrides).toEqual({
-      app: { mode: 'profile', profile: 'work', hasAccessKeyId: false, hasSecretAccessKey: false, hasSessionToken: false }
+      app: {
+        mode: 'profile',
+        profile: 'work',
+        hasAccessKeyId: false,
+        hasSecretAccessKey: false,
+        hasSessionToken: false
+      }
     });
   });
 
@@ -108,12 +126,20 @@ describe('EnvSyncSecrets AWS auth', () => {
   });
 
   it('refuses to store static keys when encryption is unavailable', () => {
-    const s = new EnvSyncSecrets({ store: new FakeStore(), safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false } });
-    expect(() => s.setGlobalAuth({ mode: 'static', accessKeyId: 'a', secretAccessKey: 'b' })).toThrow(/encryption/i);
+    const s = new EnvSyncSecrets({
+      store: new FakeStore(),
+      safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false }
+    });
+    expect(() =>
+      s.setGlobalAuth({ mode: 'static', accessKeyId: 'a', secretAccessKey: 'b' })
+    ).toThrow(/encryption/i);
   });
 
   it('allows storing a profile mode without encryption (no secrets involved)', () => {
-    const s = new EnvSyncSecrets({ store: new FakeStore(), safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false } });
+    const s = new EnvSyncSecrets({
+      store: new FakeStore(),
+      safeStorage: { ...fakeSafe, isEncryptionAvailable: () => false }
+    });
     s.setGlobalAuth({ mode: 'profile', profile: 'work' });
     expect(s.resolveAuth('app')).toEqual({ mode: 'profile', profile: 'work' });
   });

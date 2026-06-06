@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { authFingerprint, isPreconditionFailed, isConditionalConflict } from '../env-sync/s3-client';
+import {
+  authFingerprint,
+  isPreconditionFailed,
+  isConditionalConflict
+} from '../env-sync/s3-client';
 
 describe('authFingerprint', () => {
   it('is constant for the default chain', () => {
@@ -21,8 +25,9 @@ describe('authFingerprint', () => {
   });
 
   it('does not embed the raw secret in the fingerprint', () => {
-    expect(authFingerprint({ mode: 'static', accessKeyId: 'AKIA1', secretAccessKey: 'super-secret' }))
-      .not.toContain('super-secret');
+    expect(
+      authFingerprint({ mode: 'static', accessKeyId: 'AKIA1', secretAccessKey: 'super-secret' })
+    ).not.toContain('super-secret');
   });
 });
 
