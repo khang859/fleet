@@ -21,6 +21,8 @@ import { getFileSave } from '../lib/file-save-registry';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 import { SidebarResizeHandle } from './SidebarResizeHandle';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-constants';
+import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
+import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -667,6 +669,16 @@ export function Sidebar({
   // Track which tabs are in git repos (for showing "Create Worktree" in context menu)
   // Uses live CWD so the option appears even if the user cd'd into a repo after opening the tab
   const liveCwds = useCwdStore((s) => s.cwds);
+
+  // Derive live cwd of the active tab (mirrors the same pattern used below for group tabs)
+  const activeTab = workspace.tabs.find((t) => t.id === activeTabId) ?? null;
+  const activeTabFirstPaneId = activeTab ? (collectPaneIds(activeTab.splitRoot)[0] ?? null) : null;
+  const activeCwd =
+    activeTab != null
+      ? ((activeTabFirstPaneId != null ? liveCwds.get(activeTabFirstPaneId) : undefined) ??
+        activeTab.cwd)
+      : undefined;
+
   const [gitRepoTabs, setGitRepoTabs] = useState<Set<string>>(new Set());
 
   useEffect(() => {
@@ -1123,6 +1135,8 @@ export function Sidebar({
           )}
         </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
+          {/* Env sync badge for active tab's repo */}
+          <EnvSyncBadge cwd={activeCwd} />
           {/* Dirty state indicator */}
           {isDirty && (
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Unsaved changes" />
@@ -1626,6 +1640,8 @@ export function Sidebar({
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+      {/* Env sync conflict dialog — renders nothing until a conflict event fires */}
+      <EnvSyncConflictDialog />
       {/* Right-edge drag handle for resizing */}
       <SidebarResizeHandle
         sidebarRef={sidebarRootRef}
