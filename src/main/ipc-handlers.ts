@@ -778,27 +778,39 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DISCOVER, (_e, cwd: string) => findNearestConfig(cwd));
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, (_e, repoDir: string, config: EnvSyncConfig) => {
-    writeConfig(repoDir, config);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG,
+    (_e, repoDir: string, config: EnvSyncConfig) => {
+      writeConfig(repoDir, config);
+      envSyncManager.clearInjectCache(); // bucket/region/target/objectKey edits invalidate cached injected env
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SCAN, (_e, repoDir: string) => scanCandidates(repoDir));
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_STATUS, (_e, repoDir: string) => envSyncManager.status(repoDir));
-
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_PULL, (_e, repoDir: string, envFile: string, force: boolean) =>
-    envSyncManager.pull(repoDir, repoDir, envFile, { force })
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_STATUS, async (_e, repoDir: string) =>
+    envSyncManager.status(repoDir)
   );
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_PUSH, (_e, repoDir: string, envFile: string, force: boolean) =>
-    envSyncManager.push(repoDir, repoDir, envFile, { force })
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_PULL,
+    async (_e, repoDir: string, envFile: string, force: boolean) =>
+      envSyncManager.pull(repoDir, repoDir, envFile, { force })
   );
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_RESOLVE, (_e, repoDir: string, envFile: string, choice: ConflictChoice) =>
-    envSyncManager.resolveConflict(repoDir, envFile, choice)
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_PUSH,
+    async (_e, repoDir: string, envFile: string, force: boolean) =>
+      envSyncManager.push(repoDir, repoDir, envFile, { force })
   );
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DIFF, (_e, repoDir: string, envFile: string) =>
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_RESOLVE,
+    async (_e, repoDir: string, envFile: string, choice: ConflictChoice) =>
+      envSyncManager.resolveConflict(repoDir, envFile, choice)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DIFF, async (_e, repoDir: string, envFile: string) =>
     envSyncManager.diff(repoDir, envFile)
   );
 
@@ -810,11 +822,14 @@ export function registerIpcHandlers(
     envSyncManager.clearInjectCache(); // decrypted-with-old-passphrase vars are now stale
   });
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_CLEAR_PASSPHRASE, (_e, req: EnvSyncClearPassphraseRequest) => {
-    if (req.id) envSyncSecrets.clearRepoPassphrase(req.id);
-    else envSyncSecrets.clearGlobalPassphrase();
-    envSyncManager.clearInjectCache();
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_SYNC_CLEAR_PASSPHRASE,
+    (_e, req: EnvSyncClearPassphraseRequest) => {
+      if (req.id) envSyncSecrets.clearRepoPassphrase(req.id);
+      else envSyncSecrets.clearGlobalPassphrase();
+      envSyncManager.clearInjectCache();
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SET_AUTH, (_e, req: EnvSyncSetAuthRequest) => {
     if (req.id) envSyncSecrets.setRepoAuth(req.id, req.auth);
