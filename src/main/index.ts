@@ -25,6 +25,8 @@ import { AnnotateService } from './annotate-service';
 import { AnnotationStore } from './annotation-store';
 import { PiAgentManager } from './pi-agent-manager';
 import { PiEnvInjectionManager } from './pi-env-injection-manager';
+import { EnvSyncManager } from './env-sync/env-sync-manager';
+import { EnvSyncSecrets } from './env-sync/env-sync-secrets';
 import { PiConfigManager } from './pi-config-manager';
 import { PiAuthInspector } from './pi-auth-inspector';
 import { FleetBridgeServer } from './fleet-bridge';
@@ -97,6 +99,8 @@ const piAgentManager = new PiAgentManager();
 const runeManager = new RuneManager();
 const piConfigManager = new PiConfigManager();
 const piEnvInjectionManager = new PiEnvInjectionManager();
+const envSyncSecrets = new EnvSyncSecrets();
+const envSyncManager = new EnvSyncManager({ secrets: envSyncSecrets });
 const piAuthInspector = new PiAuthInspector({
   modelCatalogPath: join(
     homedir(),
@@ -365,7 +369,9 @@ void app.whenReady().then(async () => {
     piAuthInspector,
     piEnvInjectionManager,
     shellProfileRegistry,
-    wslService
+    wslService,
+    envSyncManager,
+    envSyncSecrets
   );
 
   imageService.resumeInterrupted();

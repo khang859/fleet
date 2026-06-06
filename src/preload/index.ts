@@ -99,6 +99,18 @@ import type {
   BedrockWritePatch,
   BedrockSecretField
 } from '../shared/pi-env-injection-types';
+import type {
+  EnvSyncConfig,
+  ConflictChoice,
+  EnvSyncSetPassphraseRequest,
+  EnvSyncClearPassphraseRequest,
+  EnvSyncSetAuthRequest,
+  EnvSyncClearAuthRequest,
+  DiscoveredRepo,
+  TargetStatus,
+  SyncOutcome,
+  RedactedEnvSyncSecrets
+} from '../shared/ipc-api';
 
 type Unsubscribe = () => void;
 
@@ -580,6 +592,44 @@ const fleetApi = {
       typedInvoke<KanbanPruneWorktreeResult>(IPC_CHANNELS.KANBAN_PRUNE_WORKTREE, taskId),
     pruneMergedWorktrees: async (boardId: string): Promise<PruneResult> =>
       typedInvoke<PruneResult>(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, boardId)
+  },
+  envSync: {
+    getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
+      typedInvoke<EnvSyncConfig | null>(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, repoDir),
+    discover: async (cwd: string): Promise<DiscoveredRepo | null> =>
+      typedInvoke<DiscoveredRepo | null>(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd),
+    writeConfig: async (repoDir: string, config: EnvSyncConfig): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, repoDir, config),
+    scan: async (repoDir: string): Promise<string[]> =>
+      typedInvoke<string[]>(IPC_CHANNELS.ENV_SYNC_SCAN, repoDir),
+    status: async (repoDir: string): Promise<TargetStatus[]> =>
+      typedInvoke<TargetStatus[]>(IPC_CHANNELS.ENV_SYNC_STATUS, repoDir),
+    pull: async (repoDir: string, envFile: string, force: boolean): Promise<SyncOutcome> =>
+      typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_PULL, repoDir, envFile, force),
+    push: async (repoDir: string, envFile: string, force: boolean): Promise<SyncOutcome> =>
+      typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_PUSH, repoDir, envFile, force),
+    resolve: async (
+      repoDir: string,
+      envFile: string,
+      choice: ConflictChoice
+    ): Promise<SyncOutcome> =>
+      typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_RESOLVE, repoDir, envFile, choice),
+    diff: async (repoDir: string, envFile: string): Promise<SyncOutcome> =>
+      typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_DIFF, repoDir, envFile),
+    getSecrets: async (): Promise<RedactedEnvSyncSecrets> =>
+      typedInvoke<RedactedEnvSyncSecrets>(IPC_CHANNELS.ENV_SYNC_GET_SECRETS),
+    setPassphrase: async (req: EnvSyncSetPassphraseRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_SET_PASSPHRASE, req),
+    clearPassphrase: async (req: EnvSyncClearPassphraseRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_CLEAR_PASSPHRASE, req),
+    setAuth: async (req: EnvSyncSetAuthRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_SET_AUTH, req),
+    clearAuth: async (req: EnvSyncClearAuthRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_CLEAR_AUTH, req),
+    encryptionAvailable: async (): Promise<{ available: boolean; backend?: string }> =>
+      typedInvoke<{ available: boolean; backend?: string }>(
+        IPC_CHANNELS.ENV_SYNC_ENCRYPTION_AVAILABLE
+      )
   }
 };
 
