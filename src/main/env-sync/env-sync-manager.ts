@@ -110,13 +110,15 @@ export class EnvSyncManager {
       }];
     }
     if (!config) return [];
-    const auth = this.secrets.resolveAuth(config.id);
     const out: TargetStatus[] = [];
     for (const target of config.targets) {
       const objectKey = resolveObjectKey(config, target);
       const { bucket, region } = resolveBucketRegion(config, target);
       const base = { envFile: target.envFile, objectKey, delivery: target.delivery };
       try {
+        // Inside the try so a keychain-locked static-key decode surfaces as an
+        // error row instead of rejecting the whole status() call.
+        const auth = this.secrets.resolveAuth(config.id);
         const remote = await this.s3.head(bucket, region, objectKey, auth);
         const localText = this.readLocal(repoDir, target);
         const state = this.getState(repoDir, objectKey);
@@ -292,13 +294,14 @@ export class EnvSyncManager {
       const auth = this.secrets.resolveAuth(found.config.id);
       const remote = await this.s3.head(bucket, region, objectKey, auth);
       if (!remote) return {};
-      const cacheKey = `${objectKey}@${remote.etag}`;
-      const cached = this.injectCache.get(cacheKey);
+      const cached = this.injectCache.get(`${objectKey}@${remote.etag}`);
       if (cached) return cached;
       const passphrase = this.secrets.resolvePassphrase(found.config.id);
       const obj = await this.s3.get(bucket, region, objectKey, auth);
       const map = parseEnv((await this.crypto.decrypt(obj.body, passphrase)).toString('utf8')).map;
-      this.injectCache.set(cacheKey, map);
+      // Key by the fetched body's own etag, not the head etag: if the object was
+      // replaced between head and get, the body belongs to obj.etag.
+      this.injectCache.set(`${objectKey}@${obj.etag}`, map);
       return map;
     } catch {
       return {};
