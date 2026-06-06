@@ -39,7 +39,9 @@ export function parseEnv(text: string): ParsedEnv {
 }
 
 export function maskValue(value: string): string {
-  if (value.length <= 2) return '•'.repeat(value.length);
+  // Reveal the last 2 chars only for longer values; fully mask short secrets so a
+  // 3-4 char value never leaks most of itself across IPC into the diff UI.
+  if (value.length <= 4) return '•'.repeat(value.length);
   return '•'.repeat(value.length - 2) + value.slice(-2);
 }
 

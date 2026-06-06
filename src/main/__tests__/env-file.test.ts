@@ -16,6 +16,11 @@ describe('maskValue', () => {
     expect(maskValue('abcdef')).toBe('••••ef');
     expect(maskValue('a')).toBe('•');
   });
+
+  it('fully masks short values (<= 4 chars) so most of a short secret never leaks', () => {
+    expect(maskValue('ab12')).toBe('••••');
+    expect(maskValue('xyz')).toBe('•••');
+  });
 });
 
 describe('diffEnv', () => {

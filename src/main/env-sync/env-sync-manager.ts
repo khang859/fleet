@@ -62,6 +62,12 @@ export class EnvSyncManager {
   private readonly store: StateStore;
   /** In-memory decrypted vars for inject delivery, keyed by `${objectKey}@${etag}`. */
   private injectCache = new Map<string, Record<string, string>>();
+  /**
+   * Bumped on every cache clear. A `getEnvForCwd` that started before a clear
+   * captures the generation up front and refuses to write its (now-stale, decrypted
+   * with the old passphrase/identity) result back into the cleared cache.
+   */
+  private cacheGen = 0;
 
   constructor(opts: Options) {
     this.s3 = opts.s3 ?? realS3;
@@ -79,6 +85,7 @@ export class EnvSyncManager {
    */
   clearInjectCache(): void {
     this.injectCache.clear();
+    this.cacheGen++;
   }
 
   private stateKey(repoDir: string, objectKey: string): string {
@@ -322,6 +329,9 @@ export class EnvSyncManager {
     if (!target) return {};
     const objectKey = resolveObjectKey(found.config, target);
     const { bucket, region } = resolveBucketRegion(found.config, target);
+    // Capture the cache generation before any await; if a passphrase/auth change
+    // clears the cache while we're decrypting, we must not write our now-stale result.
+    const gen = this.cacheGen;
     try {
       const auth = this.secrets.resolveAuth(found.config.id);
       const remote = await this.s3.head(bucket, region, objectKey, auth);
@@ -332,8 +342,9 @@ export class EnvSyncManager {
       const obj = await this.s3.get(bucket, region, objectKey, auth);
       const map = parseEnv((await this.crypto.decrypt(obj.body, passphrase)).toString('utf8')).map;
       // Key by the fetched body's own etag, not the head etag: if the object was
-      // replaced between head and get, the body belongs to obj.etag.
-      this.injectCache.set(`${objectKey}@${obj.etag}`, map);
+      // replaced between head and get, the body belongs to obj.etag. Only cache if no
+      // clear happened during our awaits (else the entry would be stale).
+      if (gen === this.cacheGen) this.injectCache.set(`${objectKey}@${obj.etag}`, map);
       return map;
     } catch {
       return {};

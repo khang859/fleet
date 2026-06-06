@@ -64,6 +64,7 @@ function PassphraseControl({
     <div className="flex items-center gap-2">
       <input
         type="password"
+        autoComplete="off"
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         placeholder="Encryption passphrase"
@@ -167,6 +168,7 @@ function AuthControl({
           ) : null}
           <input
             type="text"
+            autoComplete="off"
             value={accessKeyId}
             onChange={(e) => setAccessKeyId(e.target.value)}
             placeholder="Access key ID"
@@ -174,6 +176,7 @@ function AuthControl({
           />
           <input
             type="password"
+            autoComplete="off"
             value={secretAccessKey}
             onChange={(e) => setSecretAccessKey(e.target.value)}
             placeholder="Secret access key"
@@ -181,6 +184,7 @@ function AuthControl({
           />
           <input
             type="password"
+            autoComplete="off"
             value={sessionToken}
             onChange={(e) => setSessionToken(e.target.value)}
             placeholder="Session token (optional)"
