@@ -1,7 +1,16 @@
-import { randomBytes, scrypt, createCipheriv, createDecipheriv } from 'node:crypto';
+import {
+  randomBytes,
+  scrypt,
+  createCipheriv,
+  createDecipheriv,
+  type BinaryLike,
+  type ScryptOptions
+} from 'node:crypto';
 import { promisify } from 'node:util';
 
-const scryptAsync = promisify(scrypt);
+// Type the promisified scrypt explicitly so the options-bearing overload is
+// selected (the default promisify inference drops the options argument).
+const scryptAsync = promisify<BinaryLike, BinaryLike, number, ScryptOptions, Buffer>(scrypt);
 
 const VERSION = 0x01;
 const SALT_LEN = 16;
@@ -17,7 +26,7 @@ const MAXMEM = 256 * 1024 * 1024;
 
 // Async scrypt keeps the main process responsive — this runs at PTY-spawn for inject delivery.
 async function deriveKey(passphrase: string, salt: Buffer, n: number, r: number, p: number): Promise<Buffer> {
-  return (await scryptAsync(passphrase, salt, KEY_LEN, { N: n, r, p, maxmem: MAXMEM })) as Buffer;
+  return scryptAsync(passphrase, salt, KEY_LEN, { N: n, r, p, maxmem: MAXMEM });
 }
 
 /** Envelope: version(1) | salt(16) | [log2N,r,p](3) | iv(12) | tag(16) | ciphertext */
