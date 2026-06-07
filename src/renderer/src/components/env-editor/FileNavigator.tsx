@@ -72,7 +72,7 @@ export function FileNavigator({
                       selected
                         ? 'bg-blue-950/50 font-semibold text-white shadow-[inset_3px_0_0_0_#3b82f6]'
                         : 'text-neutral-300 hover:bg-neutral-800'
-                    } ${f.isTemplate ? 'italic text-neutral-500' : ''} disabled:cursor-not-allowed disabled:opacity-40`}
+                    } ${f.isTemplate ? (selected ? 'italic' : 'italic text-neutral-500') : ''} disabled:cursor-not-allowed disabled:opacity-40`}
                   >
                     <span className="truncate">{f.name}</span>
                     {dirty && (
