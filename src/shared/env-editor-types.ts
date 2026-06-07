@@ -9,7 +9,7 @@ export const EnvFileEntrySchema = z.object({
   name: z.string(),
   /** True for .example/.sample/.template/.dist/.defaults files. */
   isTemplate: z.boolean(),
-  varCount: z.number(),
+  varCount: z.number().int().nonnegative(),
   /** False when the file could not be read (shown disabled). */
   readable: z.boolean()
 });
