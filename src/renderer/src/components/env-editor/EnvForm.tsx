@@ -68,7 +68,7 @@ export function EnvForm({
         const isDup = Boolean(line.key) && dupKeys.has(line.key);
         return (
           <div
-            key={index}
+            key={line.id}
             className="group flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-neutral-800/60 focus-within:bg-neutral-800/80 focus-within:shadow-[inset_0_0_0_1px_#2563eb]"
           >
             <input

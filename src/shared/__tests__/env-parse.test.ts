@@ -62,6 +62,18 @@ describe('env-parse', () => {
     expect(countVars(SAMPLE)).toBe(4);
   });
 
+  it('keeps a stable var id across edits but a fresh id for new lines', () => {
+    const { lines } = parseEnvFile(SAMPLE);
+    const port = lines.find((l) => l.kind === 'var' && l.key === 'PORT');
+    if (port?.kind !== 'var') throw new Error('expected PORT var line');
+    // Editing preserves the id so React keys (and focus) survive keystrokes.
+    expect(updateVarLine(port, 'PORT', '4000').id).toBe(port.id);
+    // Parsed var lines and new lines all get distinct ids.
+    const ids = lines.filter((l) => l.kind === 'var').map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain(newVarLine('NEW', 'v').id);
+  });
+
   it('round-trips whitespace-only blank lines byte-for-byte', () => {
     const text = 'A=1\n   \n\t\nB=2\n';
     expect(serializeEnvFile(parseEnvFile(text))).toBe(text);
