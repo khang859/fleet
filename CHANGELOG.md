@@ -1,5 +1,13 @@
 # Changelog
 
+## v2.55.0
+
+- Markdown doc tabs (`fleet open <file>.md`) gain real **copy tooling**: you can now **select and copy** any text, and highlighting auto-copies it with a **"Copied" toast** so you always know it worked — whether you highlight, press **Cmd/Ctrl+C**, or use the new **right-click menu**.
+- **Right-click menu** in the preview: Copy selection, Select all, Copy document as Markdown or plain text, and Find.
+- **Per-code-block copy buttons** appear on hover over any fenced code block.
+- A **"Copy as…"** menu in the Preview/Raw bar copies the whole document as Markdown or as rendered plain text.
+- **Find-in-document** (**Cmd/Ctrl+F**) with live match count, next/previous, and highlight — reusing the same shortcut as terminal search.
+
 ## v2.54.0
 
 - Motion polish across the app: the remaining dialogs (keyboard shortcuts, new annotation, Pi plan, feature editor, swarm, env-sync conflict, provider picker) now **fade, zoom, and slide in and out** instead of snapping, matching the rest of the app's animations.
