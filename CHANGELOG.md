@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.54.0
+
+- Motion polish across the app: the remaining dialogs (keyboard shortcuts, new annotation, Pi plan, feature editor, swarm, env-sync conflict, provider picker) now **fade, zoom, and slide in and out** instead of snapping, matching the rest of the app's animations.
+- Every interactive button now has **tactile press feedback** — a subtle scale on click — across the Kanban board, settings panels, overlays, toolbars, and image gallery.
+- All of the above fully respects the OS **"reduce motion"** setting, which neutralizes animations and press effects.
+- Kanban board: fixed the board toolbar clipping its action buttons (Nudge, Swarm, **New Task**) when the window was too narrow — they were unreachable without maximizing. The toolbar now wraps and the actions drop to their own row.
+
 ## v2.53.0
 
 - Settings: terminal background images can now **fade at the edges**. Two new sliders in Settings → General — **Fade Left/Right** and **Fade Top/Bottom** — feather the image's edges into the terminal background so an image that doesn't quite fill the window no longer looks hard-cropped. Set each axis independently (0–50%); corners blend automatically when both are active.
