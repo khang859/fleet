@@ -212,53 +212,61 @@ export function EnvEditorModal({
     async (group: string, name: string) => {
       if (!root) return;
       setNewFileError(null);
-      const dir = group === '·root' ? root : `${root}/${group}`;
       try {
+        const dir = group === '·root' ? root : `${root}/${group}`;
         const { absPath } = await window.fleet.envEditor.create(dir, name);
-        setNewFileOpen(false);
-        await reload();
         const list = await window.fleet.envEditor.list(root);
+        setFiles(list);
+        setNewFileOpen(false);
         const created = list.find((f) => f.absPath === absPath) ?? null;
         if (created) setSelected(created);
       } catch (e) {
         setNewFileError(e instanceof Error ? e.message : 'Could not create file');
       }
     },
-    [root, reload]
+    [root]
   );
 
   const renameFile = useCallback(
     async (file: EnvFileEntry, newName: string) => {
-      if (!root || newName === file.name || !newName.startsWith('.env')) return;
+      if (!root || newName === file.name) return;
+      if (!newName.startsWith('.env')) {
+        showToast('File name must start with ".env"');
+        return;
+      }
       try {
         const { absPath } = await window.fleet.envEditor.rename(file.absPath, newName);
-        await reload();
+        const list = await window.fleet.envEditor.list(root);
+        setFiles(list);
         if (selected?.absPath === file.absPath) {
-          const list = await window.fleet.envEditor.list(root);
           setSelected(list.find((f) => f.absPath === absPath) ?? null);
         }
       } catch (e) {
         showToast(e instanceof Error ? e.message : 'Could not rename file');
       }
     },
-    [reload, root, selected, showToast]
+    [root, selected, showToast]
   );
 
   const deleteFile = useCallback(
     async (file: EnvFileEntry) => {
-      const { trashPath } = await window.fleet.envEditor.delete(file.absPath);
-      if (selected?.absPath === file.absPath) setSelected(null);
-      await reload();
-      showToast(`Deleted ${file.name}`, {
-        action: {
-          label: 'Undo',
-          onClick: () => {
-            void window.fleet.envEditor.restore(trashPath, file.absPath).then(() => {
-              void reload();
-            });
+      try {
+        const { trashPath } = await window.fleet.envEditor.delete(file.absPath);
+        if (selected?.absPath === file.absPath) setSelected(null);
+        await reload();
+        showToast(`Deleted ${file.relPath}`, {
+          action: {
+            label: 'Undo',
+            onClick: () => {
+              void window.fleet.envEditor.restore(trashPath, file.absPath).then(() => {
+                void reload();
+              });
+            }
           }
-        }
-      });
+        });
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : 'Could not delete file');
+      }
     },
     [reload, selected, showToast]
   );
