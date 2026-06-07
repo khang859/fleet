@@ -44,6 +44,10 @@ export function NewFileDialog({ groups, onCancel, onCreate, error }: Props): Rea
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') onCreate(group, name);
+            else if (e.key === 'Escape') {
+              e.stopPropagation();
+              onCancel();
+            }
           }}
           spellCheck={false}
           className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-2 py-1.5 font-mono text-xs text-neutral-200 outline-none focus:border-blue-500"

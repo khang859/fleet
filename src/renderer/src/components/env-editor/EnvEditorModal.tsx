@@ -92,14 +92,20 @@ export function EnvEditorModal({
       setMode('form');
       return;
     }
-    void window.fleet.envEditor.read(selected.absPath).then((res) => {
-      if (cancelled) return;
-      setOriginalText(res.text);
-      mtimeMsRef.current = res.mtimeMs;
-      setParsed(parseEnvFile(res.text));
-      setRawText(res.text);
-      setMode('form');
-    });
+    void window.fleet.envEditor
+      .read(selected.absPath)
+      .then((res) => {
+        if (cancelled) return;
+        setOriginalText(res.text);
+        mtimeMsRef.current = res.mtimeMs;
+        setParsed(parseEnvFile(res.text));
+        setRawText(res.text);
+        setMode('form');
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Failed to read file');
+      });
     return () => {
       cancelled = true;
     };
