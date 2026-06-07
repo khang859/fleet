@@ -32,6 +32,7 @@ function isTemplateName(name: string): boolean {
 }
 
 function toEntry(root: string, full: string): EnvFileEntry {
+  const name = basename(full);
   const rel = relative(root, full).split(sep).join('/');
   const slash = rel.lastIndexOf('/');
   const dir = slash === -1 ? '' : rel.slice(0, slash);
@@ -48,15 +49,15 @@ function toEntry(root: string, full: string): EnvFileEntry {
     absPath: full,
     relPath: rel,
     group: dir === '' ? '·root' : dir,
-    name: basename(full),
-    isTemplate: isTemplateName(basename(full)),
+    name,
+    isTemplate: isTemplateName(name),
     varCount,
     readable
   };
 }
 
 function sortEntries(entries: EnvFileEntry[]): EnvFileEntry[] {
-  return entries.sort((a, b) => {
+  return [...entries].sort((a, b) => {
     if (a.group !== b.group) {
       if (a.group === '·root') return -1;
       if (b.group === '·root') return 1;
