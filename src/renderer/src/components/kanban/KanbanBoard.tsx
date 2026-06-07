@@ -211,7 +211,7 @@ export function KanbanBoard(): React.JSX.Element {
       <div className="flex items-center gap-1 border-b border-neutral-800 px-3 py-1.5">
         <button
           onClick={() => setView('board')}
-          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
             view === 'board' ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-800'
           }`}
         >
@@ -219,7 +219,7 @@ export function KanbanBoard(): React.JSX.Element {
         </button>
         <button
           onClick={() => setView('features')}
-          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
             view === 'features'
               ? 'bg-neutral-700 text-white'
               : 'text-neutral-400 hover:bg-neutral-800'
@@ -229,7 +229,7 @@ export function KanbanBoard(): React.JSX.Element {
         </button>
         <button
           onClick={() => setView('worktrees')}
-          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
             view === 'worktrees'
               ? 'bg-neutral-700 text-white'
               : 'text-neutral-400 hover:bg-neutral-800'
@@ -239,7 +239,7 @@ export function KanbanBoard(): React.JSX.Element {
         </button>
         <button
           onClick={() => setView('artifacts')}
-          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+          className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
             view === 'artifacts'
               ? 'bg-neutral-700 text-white'
               : 'text-neutral-400 hover:bg-neutral-800'
@@ -336,7 +336,7 @@ export function KanbanBoard(): React.JSX.Element {
             </select>
             <button
               onClick={() => setShowArchived((v) => !v)}
-              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
+              className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
                 showArchived ? 'bg-neutral-700 text-white' : 'text-neutral-400 hover:bg-neutral-800'
               }`}
             >
@@ -345,7 +345,7 @@ export function KanbanBoard(): React.JSX.Element {
             <div className="flex-1" />
             <button
               onClick={() => void nudge()}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800"
               title="Run a dispatcher tick now"
             >
               <Zap size={12} /> Nudge
@@ -471,7 +471,7 @@ export function KanbanBoard(): React.JSX.Element {
                     />
                     <button
                       onClick={() => void pickFolder()}
-                      className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+                      className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
                     >
                       Browse…
                     </button>
@@ -532,7 +532,7 @@ export function KanbanBoard(): React.JSX.Element {
               No visible tasks in <span className="font-medium">{focusedFeature.name}</span>.
               <button
                 onClick={() => setFocusedFeature(null)}
-                className="rounded border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800"
+                className="rounded border border-neutral-700 px-2 py-0.5 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
               >
                 Clear filter
               </button>

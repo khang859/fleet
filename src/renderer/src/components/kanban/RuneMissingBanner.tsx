@@ -23,7 +23,7 @@ export function RuneMissingBanner(): React.JSX.Element | null {
         <button
           onClick={recheck}
           disabled={loading}
-          className="flex shrink-0 items-center gap-1 rounded border border-amber-700/50 px-2 py-1 text-xs text-amber-200 hover:bg-amber-900/40 disabled:opacity-50"
+          className="flex shrink-0 items-center gap-1 rounded border border-amber-700/50 px-2 py-1 text-xs text-amber-200 transition active:scale-[0.97] hover:bg-amber-900/40 disabled:opacity-50 disabled:active:scale-100"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Re-check

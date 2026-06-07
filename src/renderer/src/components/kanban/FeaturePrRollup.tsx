@@ -82,7 +82,7 @@ export function FeaturePrRollup(): React.JSX.Element | null {
           <button
             onClick={() => void run('sync')}
             disabled={busy !== null}
-            className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:opacity-50 disabled:active:scale-100"
             title="Merge the latest main into the integration branch"
           >
             <RefreshCw size={11} />
@@ -93,7 +93,7 @@ export function FeaturePrRollup(): React.JSX.Element | null {
           <button
             onClick={() => void run('ship')}
             disabled={busy !== null}
-            className="inline-flex items-center gap-1 rounded bg-violet-700 px-2 py-0.5 font-medium text-white hover:bg-violet-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1 rounded bg-violet-700 px-2 py-0.5 font-medium text-white transition active:scale-[0.97] hover:bg-violet-600 disabled:opacity-50 disabled:active:scale-100"
             title="Open the single feature→main pull request"
           >
             <Rocket size={11} />

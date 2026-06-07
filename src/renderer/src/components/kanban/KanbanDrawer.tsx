@@ -300,7 +300,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
               key={a.label}
               disabled={running}
               onClick={() => void setStatus(t.id, a.status)}
-              className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100"
             >
               {a.label}
             </button>
@@ -315,13 +315,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => void decompose(t.id)}
-              className="rounded border border-purple-700 px-2 py-1 text-purple-300 hover:bg-neutral-800"
+              className="rounded border border-purple-700 px-2 py-1 text-purple-300 transition active:scale-[0.97] hover:bg-neutral-800"
             >
               ⚗ Decompose
             </button>
             <button
               onClick={() => void specify(t.id)}
-              className="rounded border border-sky-700 px-2 py-1 text-sky-300 hover:bg-neutral-800"
+              className="rounded border border-sky-700 px-2 py-1 text-sky-300 transition active:scale-[0.97] hover:bg-neutral-800"
             >
               ✨ Specify
             </button>
@@ -329,7 +329,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
             {t.featureId && detail.children.length > 0 && (
               <button
                 onClick={() => t.featureId && void redecompose(t.featureId)}
-                className="rounded border border-purple-700 px-2 py-1 text-purple-300 hover:bg-neutral-800"
+                className="rounded border border-purple-700 px-2 py-1 text-purple-300 transition active:scale-[0.97] hover:bg-neutral-800"
                 title="Re-run decompose to fill in missing tasks for this feature"
               >
                 ⟳ Decompose again
@@ -371,7 +371,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                 {t.workspacePath && t.branchName && (
                   <button
                     onClick={() => setShowDiff(true)}
-                    className="block rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+                    className="block rounded border border-neutral-700 px-2 py-1 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
                   >
                     View changes
                   </button>
@@ -484,7 +484,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                   <button
                     onClick={() => void recheckConflicts()}
                     disabled={conflictBusy}
-                    className="ml-2 rounded border border-neutral-700 px-1.5 py-0.5 text-neutral-400 hover:bg-neutral-800 disabled:opacity-50"
+                    className="ml-2 rounded border border-neutral-700 px-1.5 py-0.5 text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800 disabled:opacity-50 disabled:active:scale-100"
                   >
                     {conflictBusy ? 'Checking…' : 'Re-check'}
                   </button>
@@ -573,7 +573,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                   {p.id}
                   <button
                     onClick={() => void removeLink(p.id, t.id)}
-                    className="text-neutral-500 hover:text-red-400"
+                    className="text-neutral-500 transition active:scale-90 hover:text-red-400"
                   >
                     ×
                   </button>
@@ -592,7 +592,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                   {c.id} ({c.status})
                   <button
                     onClick={() => void removeLink(t.id, c.id)}
-                    className="text-neutral-500 hover:text-red-400"
+                    className="text-neutral-500 transition active:scale-90 hover:text-red-400"
                   >
                     ×
                   </button>
@@ -615,7 +615,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                   setLinkId('');
                 }
               }}
-              className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+              className="rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
             >
               Add child
             </button>
@@ -659,14 +659,14 @@ export function KanbanDrawer(): React.JSX.Element | null {
                   <button
                     onClick={() => void saveAttachmentCopy(a.id)}
                     title="Save a copy…"
-                    className="text-neutral-400 hover:text-blue-400"
+                    className="text-neutral-400 transition active:scale-90 hover:text-blue-400"
                   >
                     <Download size={12} />
                   </button>
                   <button
                     onClick={() => void removeAttachment(a.id)}
                     title="Remove"
-                    className="text-neutral-400 hover:text-red-400"
+                    className="text-neutral-400 transition active:scale-90 hover:text-red-400"
                   >
                     <X size={12} />
                   </button>
@@ -676,7 +676,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
           </div>
           <button
             onClick={() => void pickAndUpload()}
-            className="mt-1 rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+            className="mt-1 rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
           >
             Attach file
           </button>
@@ -712,21 +712,21 @@ export function KanbanDrawer(): React.JSX.Element | null {
                     (t.schedulePaused ? (
                       <button
                         onClick={() => void resumeSchedule(t.id)}
-                        className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                        className="rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
                       >
                         Resume
                       </button>
                     ) : (
                       <button
                         onClick={() => void pauseSchedule(t.id)}
-                        className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                        className="rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
                       >
                         Pause
                       </button>
                     ))}
                   <button
                     onClick={() => void clearSchedule(t.id)}
-                    className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                    className="rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
                   >
                     Clear schedule
                   </button>
@@ -795,13 +795,13 @@ export function KanbanDrawer(): React.JSX.Element | null {
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => void refreshPreview()}
-                    className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+                    className="rounded border border-neutral-700 px-2 py-1 transition active:scale-[0.97] hover:bg-neutral-800"
                   >
                     Preview
                   </button>
                   <button
                     onClick={() => void applySchedule()}
-                    className="rounded bg-blue-600 px-2 py-1 text-white hover:bg-blue-500"
+                    className="rounded bg-blue-600 px-2 py-1 text-white transition active:scale-[0.97] hover:bg-blue-500"
                   >
                     Set schedule
                   </button>
@@ -914,7 +914,7 @@ function BlockedReply({
               setDraft('');
             }}
             disabled={resuming}
-            className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800 disabled:opacity-40"
+            className="rounded border border-neutral-700 px-2 py-1 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:opacity-40 disabled:active:scale-100"
           >
             Add comment
           </button>

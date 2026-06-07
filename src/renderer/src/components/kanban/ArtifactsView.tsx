@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  Package,
-  Eye,
-  Trash2,
-  RotateCcw,
-  Download,
-  FolderOpen,
-  Sprout,
-  Boxes
-} from 'lucide-react';
+import { Package, Eye, Trash2, RotateCcw, Download, FolderOpen, Sprout, Boxes } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { formatBytes } from './kanban-utils';
 import { KIND_ICON, ArtifactPreview } from './artifact-preview';
@@ -111,7 +102,7 @@ function ArtifactRow({
               onClick={() => void act(restoreArtifact)}
               title="Restore"
               aria-label="Restore artifact"
-              className="text-neutral-400 hover:text-emerald-400"
+              className="text-neutral-400 transition active:scale-90 hover:text-emerald-400"
             >
               <RotateCcw size={12} />
             </button>
@@ -121,7 +112,7 @@ function ArtifactRow({
                 onClick={() => void togglePreview()}
                 title="Preview"
                 aria-label="Preview artifact"
-                className={`hover:text-blue-400 ${open ? 'text-blue-400' : 'text-neutral-400'}`}
+                className={`hover:text-blue-400 transition active:scale-90 ${open ? 'text-blue-400' : 'text-neutral-400'}`}
               >
                 <Eye size={12} />
               </button>
@@ -129,7 +120,7 @@ function ArtifactRow({
                 onClick={() => onReuse(art, 'task')}
                 title="Use as input for a new task"
                 aria-label="Use as input for a new task"
-                className="text-neutral-400 hover:text-blue-300"
+                className="text-neutral-400 transition active:scale-90 hover:text-blue-300"
               >
                 <Sprout size={12} />
               </button>
@@ -137,7 +128,7 @@ function ArtifactRow({
                 onClick={() => onReuse(art, 'swarm')}
                 title="Use as input for a new swarm"
                 aria-label="Use as input for a new swarm"
-                className="text-neutral-400 hover:text-purple-300"
+                className="text-neutral-400 transition active:scale-90 hover:text-purple-300"
               >
                 <Boxes size={12} />
               </button>
@@ -145,7 +136,7 @@ function ArtifactRow({
                 onClick={() => void act(discardArtifact)}
                 title="Discard"
                 aria-label="Discard artifact"
-                className="text-neutral-400 hover:text-amber-400"
+                className="text-neutral-400 transition active:scale-90 hover:text-amber-400"
               >
                 <Trash2 size={12} />
               </button>
@@ -155,7 +146,7 @@ function ArtifactRow({
             onClick={() => void saveArtifactCopy(art.id)}
             title="Download a copy"
             aria-label="Download artifact"
-            className="text-neutral-400 hover:text-neutral-200"
+            className="text-neutral-400 transition active:scale-90 hover:text-neutral-200"
           >
             <Download size={12} />
           </button>
@@ -163,7 +154,7 @@ function ArtifactRow({
             onClick={() => void revealArtifact(art.id)}
             title="Reveal in file manager"
             aria-label="Reveal artifact"
-            className="text-neutral-400 hover:text-neutral-200"
+            className="text-neutral-400 transition active:scale-90 hover:text-neutral-200"
           >
             <FolderOpen size={12} />
           </button>
@@ -176,7 +167,7 @@ function ArtifactRow({
               }}
               title="Delete permanently"
               aria-label="Delete artifact permanently"
-              className="text-red-400 hover:text-red-300"
+              className="text-red-400 transition active:scale-90 hover:text-red-300"
             >
               ✕
             </button>
