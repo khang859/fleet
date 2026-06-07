@@ -133,7 +133,7 @@ export type GitRepoRootPayload = {
 };
 
 export type FileOpenInTabPayload = {
-  files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown'; label: string }>;
+  files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>;
 };
 
 export type SystemDepResult = {

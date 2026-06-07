@@ -18,8 +18,16 @@ describe('file-open helpers', () => {
     expect(getPaneTypeForFilePath('/tmp/index.ts')).toBe('file');
   });
 
+  it('returns pdf pane type for pdf files', () => {
+    expect(getPaneTypeForFilePath('/tmp/report.pdf')).toBe('pdf');
+  });
+
+  it('does not block pdf files (now openable)', () => {
+    expect(isBinaryBlockedFilePath('/tmp/report.pdf')).toBe(false);
+  });
+
   it('detects blocked binary files', () => {
-    expect(isBinaryBlockedFilePath('/tmp/report.pdf')).toBe(true);
+    expect(isBinaryBlockedFilePath('/tmp/archive.zip')).toBe(true);
     expect(isBinaryBlockedFilePath('/tmp/report.txt')).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 node_modules
 dist
 out
+src/renderer/public/pdfjs/
 .DS_Store
 .eslintcache
 *.log*

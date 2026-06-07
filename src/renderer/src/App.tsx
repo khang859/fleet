@@ -663,7 +663,7 @@ export function App(): React.JSX.Element {
                           : 'hover:bg-fleet-surface-2'
                       }`}
                     >
-                      {tab.type === 'file' ? (
+                      {tab.type === 'file' || tab.type === 'pdf' ? (
                         <span className={isActive ? 'text-fleet-text' : 'text-fleet-text-subtle'}>
                           {getFileIcon(
                             collectPaneLeafs(tab.splitRoot)[0]?.filePath?.split('/').pop() ??

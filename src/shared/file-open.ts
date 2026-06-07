@@ -11,6 +11,8 @@ const IMAGE_EXTENSIONS = new Set([
 
 const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
+const PDF_EXTENSIONS = new Set(['.pdf']);
+
 const BINARY_BLOCKLIST = new Set([
   '.zip',
   '.tar',
@@ -33,7 +35,6 @@ const BINARY_BLOCKLIST = new Set([
   '.class',
   '.jar',
   '.war',
-  '.pdf',
   '.doc',
   '.docx',
   '.xls',
@@ -50,7 +51,7 @@ const BINARY_BLOCKLIST = new Set([
   '.aac'
 ]);
 
-export type OpenablePaneType = 'file' | 'image' | 'markdown';
+export type OpenablePaneType = 'file' | 'image' | 'markdown' | 'pdf';
 
 export function getFileExtension(filePath: string): string {
   const fileName = filePath.split(/[\\/]/).pop() ?? filePath;
@@ -62,6 +63,7 @@ export function getPaneTypeForFilePath(filePath: string): OpenablePaneType {
   const ext = getFileExtension(filePath);
   if (IMAGE_EXTENSIONS.has(ext)) return 'image';
   if (MARKDOWN_EXTENSIONS.has(ext)) return 'markdown';
+  if (PDF_EXTENSIONS.has(ext)) return 'pdf';
   return 'file';
 }
 
