@@ -9,7 +9,8 @@ import {
   BookOpen,
   Crosshair,
   Telescope,
-  FolderSync
+  FolderSync,
+  FilePenLine
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
@@ -58,6 +59,7 @@ type PaneToolbarProps = {
   onAnnotate?: () => void;
   onTelescope?: () => void;
   onEnvSync?: () => void;
+  onEnvEditor?: () => void;
 };
 
 export function PaneToolbar({
@@ -73,7 +75,8 @@ export function PaneToolbar({
   onInjectSkills,
   onAnnotate,
   onTelescope,
-  onEnvSync
+  onEnvSync,
+  onEnvEditor
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -195,6 +198,19 @@ export function PaneToolbar({
               className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <FolderSync size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onEnvEditor && (
+          <ToolbarTooltip label="Edit .env">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnvEditor();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors active:scale-90"
+            >
+              <FilePenLine size={14} />
             </button>
           </ToolbarTooltip>
         )}

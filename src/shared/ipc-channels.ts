@@ -196,5 +196,13 @@ export const IPC_CHANNELS = {
   KANBAN_CHECK_CONFLICTS: 'kanban:check-conflicts',
   KANBAN_LIST_WORKTREES: 'kanban:list-worktrees',
   KANBAN_PRUNE_WORKTREE: 'kanban:prune-worktree',
-  KANBAN_PRUNE_MERGED_WORKTREES: 'kanban:prune-merged-worktrees'
+  KANBAN_PRUNE_MERGED_WORKTREES: 'kanban:prune-merged-worktrees',
+  // Env Editor
+  ENV_EDITOR_LIST: 'env-editor:list',
+  ENV_EDITOR_READ: 'env-editor:read',
+  ENV_EDITOR_WRITE: 'env-editor:write',
+  ENV_EDITOR_CREATE: 'env-editor:create',
+  ENV_EDITOR_RENAME: 'env-editor:rename',
+  ENV_EDITOR_DELETE: 'env-editor:delete',
+  ENV_EDITOR_RESTORE: 'env-editor:restore'
 } as const;
