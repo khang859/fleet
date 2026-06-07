@@ -64,7 +64,11 @@ export function EnvEditorModal({
   }, [root]);
 
   useEffect(() => {
-    if (isOpen) void reload();
+    if (isOpen) {
+      setError(null);
+      setExternalChange(false);
+      void reload();
+    }
   }, [isOpen, reload]);
 
   useEffect(() => {
@@ -137,35 +141,46 @@ export function EnvEditorModal({
     }
   }, []);
 
-  const save = useCallback(async () => {
-    if (!selected || !parsed || saving) return;
-    const text = serializeEnvFile(parsed);
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await window.fleet.envEditor.write(selected.absPath, text, mtimeMsRef.current);
-      if (!res.ok && res.externalChange) {
-        setExternalChange(true);
-        return;
+  const writeFile = useCallback(
+    async (force: boolean) => {
+      if (!selected || !parsed || saving) return;
+      const text = serializeEnvFile(parsed);
+      setSaving(true);
+      setError(null);
+      try {
+        const res = await window.fleet.envEditor.write(
+          selected.absPath,
+          text,
+          force ? undefined : mtimeMsRef.current
+        );
+        if (!res.ok && res.externalChange) {
+          setExternalChange(true);
+          return;
+        }
+        setOriginalText(text);
+        mtimeMsRef.current = res.mtimeMs;
+        setExternalChange(false);
+        void reload(); // refresh var counts
+        showToast('Saved');
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to save file');
+      } finally {
+        setSaving(false);
       }
-      setOriginalText(text);
-      mtimeMsRef.current = res.mtimeMs;
-      setExternalChange(false);
-      void reload();
-      showToast('Saved');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save file');
-    } finally {
-      setSaving(false);
-    }
-  }, [selected, parsed, saving, reload, showToast]);
+    },
+    [selected, parsed, saving, reload, showToast]
+  );
+
+  const save = useCallback(() => {
+    void writeFile(false);
+  }, [writeFile]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        if (dirty) void save();
+        if (dirty) save();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -218,7 +233,7 @@ export function EnvEditorModal({
             <ChevronDown size={13} className="text-neutral-500" />
           </button>
           <button
-            onClick={() => void save()}
+            onClick={() => save()}
             disabled={!dirty || saving}
             title="Save (⌘S)"
             className="ml-auto inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:bg-neutral-800 disabled:text-neutral-600 disabled:active:scale-100"
@@ -255,6 +270,7 @@ export function EnvEditorModal({
                 <button
                   onClick={() => {
                     setExternalChange(false);
+                    // Shallow-clone selected to force the [selected] loader effect to re-read from disk.
                     setSelected((s) => (s ? { ...s } : s));
                   }}
                   className="font-medium underline active:scale-95"
@@ -263,15 +279,7 @@ export function EnvEditorModal({
                 </button>
                 <button
                   onClick={() => {
-                    if (!selected || !parsed) return;
-                    const text = serializeEnvFile(parsed);
-                    setExternalChange(false);
-                    void window.fleet.envEditor.write(selected.absPath, text).then((r) => {
-                      mtimeMsRef.current = r.mtimeMs;
-                      setOriginalText(text);
-                      void reload();
-                      showToast('Saved');
-                    });
+                    void writeFile(true);
                   }}
                   className="font-medium underline active:scale-95"
                 >
