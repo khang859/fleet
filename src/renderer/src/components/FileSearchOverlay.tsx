@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, ArrowDownAZ, Clock, HardDrive, Image, FolderOpen, Layers } from 'lucide-react';
+import { Overlay } from './Overlay';
 import { createLogger } from '../logger';
 const log = createLogger('overlay:file-search');
 import { useWorkspaceStore } from '../store/workspace-store';
@@ -438,8 +439,6 @@ export function FileSearchOverlay({
     }
   };
 
-  if (!isOpen) return null;
-
   const placeholder =
     scope === 'generated'
       ? 'Search generated images...'
@@ -651,95 +650,96 @@ export function FileSearchOverlay({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-fleet-bg/60" onClick={onClose}>
-      <div
-        className="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Search input */}
-        <div className="px-3 py-2 border-b border-fleet-border flex items-center gap-2">
-          <Search size={14} className="text-fleet-text-subtle shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={placeholder}
-            className="flex-1 bg-transparent text-sm text-fleet-text outline-none placeholder-fleet-text-subtle"
-          />
-          {isLoading && <span className="text-xs text-fleet-text-subtle">Searching...</span>}
-        </div>
+    <Overlay
+      open={isOpen}
+      onClose={onClose}
+      containerClassName="justify-center"
+      backdropClassName="bg-fleet-bg/60"
+      panelClassName="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl overflow-hidden"
+    >
+      {/* Search input */}
+      <div className="px-3 py-2 border-b border-fleet-border flex items-center gap-2">
+        <Search size={14} className="text-fleet-text-subtle shrink-0" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          className="flex-1 bg-transparent text-sm text-fleet-text outline-none placeholder-fleet-text-subtle"
+        />
+        {isLoading && <span className="text-xs text-fleet-text-subtle">Searching...</span>}
+      </div>
 
-        {/* Scope tabs */}
-        <div className="px-3 py-1.5 border-b border-fleet-border flex items-center gap-1">
-          {SCOPE_OPTIONS.map(({ id, label, icon: Icon }) => {
-            const count =
-              id === 'generated'
-                ? generatedResultCount
-                : id === 'files'
-                  ? fileResultCount
-                  : undefined;
-            return (
+      {/* Scope tabs */}
+      <div className="px-3 py-1.5 border-b border-fleet-border flex items-center gap-1">
+        {SCOPE_OPTIONS.map(({ id, label, icon: Icon }) => {
+          const count =
+            id === 'generated'
+              ? generatedResultCount
+              : id === 'files'
+                ? fileResultCount
+                : undefined;
+          return (
+            <button
+              key={id}
+              onClick={() => setScope(id)}
+              className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
+                scope === id
+                  ? 'bg-fleet-surface-3 text-fleet-text'
+                  : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
+              }`}
+            >
+              <Icon size={11} />
+              {label}
+              {count !== undefined && count > 0 && (
+                <span className="text-[10px] text-fleet-text-subtle ml-0.5">({count})</span>
+              )}
+            </button>
+          );
+        })}
+        {/* Sort controls (only for file-based scopes) */}
+        {scope !== 'generated' && results.length > 0 && (
+          <div className="ml-auto flex items-center gap-1">
+            <span className="text-[10px] text-fleet-text-subtle mr-1">Sort:</span>
+            {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
-                onClick={() => setScope(id)}
-                className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
-                  scope === id
+                onClick={() => setSort(id)}
+                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                  sort === id
                     ? 'bg-fleet-surface-3 text-fleet-text'
                     : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
                 }`}
               >
-                <Icon size={11} />
+                <Icon size={10} />
                 {label}
-                {count !== undefined && count > 0 && (
-                  <span className="text-[10px] text-fleet-text-subtle ml-0.5">({count})</span>
-                )}
               </button>
-            );
-          })}
-          {/* Sort controls (only for file-based scopes) */}
-          {scope !== 'generated' && results.length > 0 && (
-            <div className="ml-auto flex items-center gap-1">
-              <span className="text-[10px] text-fleet-text-subtle mr-1">Sort:</span>
-              {SORT_OPTIONS.map(({ id, label, icon: Icon }) => (
-                <button
-                  key={id}
-                  onClick={() => setSort(id)}
-                  className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
-                    sort === id
-                      ? 'bg-fleet-surface-3 text-fleet-text'
-                      : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
-                  }`}
-                >
-                  <Icon size={10} />
-                  {label}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Results */}
-        <div ref={listRef} className="overflow-y-auto py-1">
-          {scope === 'generated' && renderGeneratedScope()}
-          {scope === 'files' && renderFileResults()}
-          {scope === 'all' && renderAllScope()}
-        </div>
-
-        {/* Footer */}
-        <div className="px-3 py-1.5 border-t border-fleet-border flex items-center gap-3 text-xs text-fleet-text-subtle">
-          {!targetPaneId ? (
-            <span className="text-amber-500/80">No active terminal</span>
-          ) : (
-            <>
-              <span>↑↓ navigate</span>
-              <span>↵ paste</span>
-              <span>esc dismiss</span>
-            </>
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+
+      {/* Results */}
+      <div ref={listRef} className="overflow-y-auto py-1">
+        {scope === 'generated' && renderGeneratedScope()}
+        {scope === 'files' && renderFileResults()}
+        {scope === 'all' && renderAllScope()}
+      </div>
+
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-fleet-border flex items-center gap-3 text-xs text-fleet-text-subtle">
+        {!targetPaneId ? (
+          <span className="text-amber-500/80">No active terminal</span>
+        ) : (
+          <>
+            <span>↑↓ navigate</span>
+            <span>↵ paste</span>
+            <span>esc dismiss</span>
+          </>
+        )}
+      </div>
+    </Overlay>
   );
 }

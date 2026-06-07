@@ -2,6 +2,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronRight, KeyRound, Loader2, MoreHorizontal, X } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
+import { primaryBtn, neutralBtn } from '../../lib/button-styles';
+import { Overlay } from '../Overlay';
 import type {
   EnvSyncConfig,
   EnvSyncTarget,
@@ -56,13 +58,6 @@ function primaryAction(state: TargetSyncState): { dir: 'pull' | 'push'; label: s
 
 const inputCls =
   'w-full bg-neutral-800 text-sm text-neutral-200 rounded-md px-3 py-2 border border-neutral-700 transition-colors focus:border-neutral-500 focus:outline-none';
-
-const primaryBtn =
-  'inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:active:scale-100';
-
-// Small neutral pill button (Save / Add selected etc.).
-const neutralBtn =
-  'inline-flex items-center justify-center gap-2 rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 transition active:scale-[0.97] hover:bg-neutral-600 disabled:text-neutral-500 disabled:active:scale-100';
 
 const SPIN = <Loader2 size={14} className="animate-spin" />;
 
@@ -938,8 +933,6 @@ export function EnvSyncModal({
     }
   };
 
-  if (!isOpen) return null;
-
   const globalSummary = `${secrets.globalPresent ? 'Passphrase set' : 'No passphrase'} · ${authSummary(secrets.globalAuth)}`;
 
   // Effective AWS auth for the active repo: a per-repo override wins, else global.
@@ -948,10 +941,7 @@ export function EnvSyncModal({
   const authIsOverride = Boolean(repoAuthOverride);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
+    <Overlay open={isOpen} onClose={onClose}>
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -961,7 +951,6 @@ export function EnvSyncModal({
             onClose();
           }
         }}
-        onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85vh] w-[600px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
       >
         <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
@@ -1075,6 +1064,6 @@ export function EnvSyncModal({
           )}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }
