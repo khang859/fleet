@@ -210,7 +210,7 @@ type WorkspaceStore = {
   // File/image pane helpers
   openFile: (filePath: string) => string;
   openFileInTab: (
-    files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown'; label: string }>
+    files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
   addRecentFolder: (folderPath: string) => void;
@@ -1077,7 +1077,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
               ? 'image'
               : file.paneType === 'markdown'
                 ? 'markdown'
-                : 'file',
+                : file.paneType === 'pdf'
+                  ? 'pdf'
+                  : 'file',
           splitRoot: leaf
         };
         set((s) => ({

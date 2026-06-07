@@ -37,7 +37,8 @@ export type Tab = {
     | 'pi'
     | 'markdown'
     | 'kanban'
-    | 'artifacts';
+    | 'artifacts'
+    | 'pdf';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -67,7 +68,7 @@ export type PaneLeaf = {
   ptyPid?: number;
   shell?: string;
   cwd: string;
-  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi' | 'markdown' | 'kanban' | 'artifacts';
+  paneType?: 'terminal' | 'file' | 'image' | 'images' | 'pi' | 'markdown' | 'kanban' | 'artifacts' | 'pdf';
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;

@@ -444,7 +444,7 @@ Open files or images in Fleet tabs.
 ## When to use
 
 Use \`fleet open\` when you want to display a file or image in the Fleet app UI.
-Supports code files and common image formats (png, jpg, gif, webp, svg).
+Supports code files, common image formats (png, jpg, gif, webp, svg), and PDFs.
 
 ## Usage
 
@@ -453,7 +453,7 @@ Supports code files and common image formats (png, jpg, gif, webp, svg).
 ## Arguments
 
   <path>    One or more file paths to open. Supports relative and absolute paths.
-            Images are opened in image viewer tabs; other files in code tabs.
+            Images open in image viewer tabs; PDFs in a PDF viewer; other files in code tabs.
 
 ## Examples
 
@@ -461,6 +461,7 @@ Supports code files and common image formats (png, jpg, gif, webp, svg).
 fleet open src/main.ts
 fleet open screenshot.png diagram.svg
 fleet open ./README.md ../other-repo/notes.txt
+fleet open report.pdf
 \`\`\``,
 
   pi: `# fleet pi
@@ -689,7 +690,7 @@ export async function runCLI(
     }
 
     const errors: string[] = [];
-    const files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' }> = [];
+    const files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf' }> = [];
 
     for (const p of paths) {
       const resolved = resolve(p);

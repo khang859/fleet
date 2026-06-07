@@ -226,8 +226,14 @@ export class SocketServer extends EventEmitter {
         const payload = {
           files: files.map((f) => {
             const filePath = typeof f.path === 'string' ? f.path : '';
-            const paneType: 'file' | 'image' | 'markdown' =
-              f.paneType === 'image' ? 'image' : f.paneType === 'markdown' ? 'markdown' : 'file';
+            const paneType: 'file' | 'image' | 'markdown' | 'pdf' =
+              f.paneType === 'image'
+                ? 'image'
+                : f.paneType === 'markdown'
+                  ? 'markdown'
+                  : f.paneType === 'pdf'
+                    ? 'pdf'
+                    : 'file';
             return {
               path: filePath,
               paneType,
