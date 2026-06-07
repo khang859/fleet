@@ -176,7 +176,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
       {/* Sub-tab bar */}
       <div className="flex-shrink-0 flex items-center gap-0 border-b border-neutral-800 bg-neutral-950/60 px-2">
         <button
-          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors active:scale-[0.97] ${
             activeView === 'preview'
               ? 'border-teal-400 text-neutral-100'
               : 'border-transparent text-neutral-500 hover:text-neutral-300'
@@ -186,7 +186,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
           Preview
         </button>
         <button
-          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors active:scale-[0.97] ${
             activeView === 'raw'
               ? 'border-teal-400 text-neutral-100'
               : 'border-transparent text-neutral-500 hover:text-neutral-300'

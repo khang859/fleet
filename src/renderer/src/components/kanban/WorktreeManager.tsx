@@ -62,17 +62,21 @@ export function WorktreeManager({ onOpenTask }: { onOpenTask: () => void }): Rea
         <div className="ml-auto flex items-center gap-2 text-xs">
           <button
             onClick={() => void loadWorktrees()}
-            className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800"
+            className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
           >
             <RefreshCw size={12} /> Refresh
           </button>
           <button
             onClick={() => void pruneAll()}
             disabled={busy !== null || mergedCount === 0}
-            className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 text-white hover:bg-emerald-600 disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 text-white transition active:scale-[0.97] hover:bg-emerald-600 disabled:opacity-40 disabled:active:scale-100"
             title="Remove every merged worktree on this board"
           >
-            {busy === 'bulk' ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            {busy === 'bulk' ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Trash2 size={12} />
+            )}
             Prune merged ({mergedCount})
           </button>
         </div>
@@ -101,7 +105,7 @@ export function WorktreeManager({ onOpenTask }: { onOpenTask: () => void }): Rea
                     void openTask(w.taskId);
                     onOpenTask();
                   }}
-                  className="truncate text-left text-sm font-medium text-neutral-200 hover:underline"
+                  className="truncate text-left text-sm font-medium text-neutral-200 transition active:scale-[0.97] hover:underline"
                   title={w.title}
                 >
                   {w.title}
@@ -140,7 +144,7 @@ export function WorktreeManager({ onOpenTask }: { onOpenTask: () => void }): Rea
                 <button
                   onClick={() => void prune(w.taskId)}
                   disabled={busy !== null || w.status === 'running' || w.status === 'review'}
-                  className="ml-auto inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800 disabled:opacity-40"
+                  className="ml-auto inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:opacity-40 disabled:active:scale-100"
                   title={
                     w.status === 'running' || w.status === 'review'
                       ? `finish the ${w.status} task first`

@@ -83,7 +83,7 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
           />
           <button
             onClick={() => setEditor({ feature: null })}
-            className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-white hover:bg-blue-500"
+            className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-white transition active:scale-[0.97] hover:bg-blue-500"
           >
             <Plus size={12} /> New feature
           </button>
@@ -120,14 +120,14 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
                     <span className="ml-auto flex items-center gap-1.5">
                       <button
                         onClick={() => focus(feature.id)}
-                        className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 hover:bg-neutral-800"
+                        className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-0.5 text-[11px] text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
                         title="Focus the board on this feature"
                       >
                         <Target size={11} /> Focus
                       </button>
                       <button
                         onClick={() => setEditor({ feature })}
-                        className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+                        className="rounded p-1 text-neutral-400 transition active:scale-90 hover:bg-neutral-800"
                         title="Edit feature"
                       >
                         <Pencil size={12} />
@@ -135,7 +135,7 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
                       {feature.status === 'archived' ? (
                         <button
                           onClick={() => void updateFeature(feature.id, { status: 'active' })}
-                          className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+                          className="rounded p-1 text-neutral-400 transition active:scale-90 hover:bg-neutral-800"
                           title="Unarchive feature"
                         >
                           <RotateCcw size={12} />
@@ -143,7 +143,7 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
                       ) : (
                         <button
                           onClick={() => void archiveFeature(feature.id)}
-                          className="rounded p-1 text-neutral-400 hover:bg-neutral-800"
+                          className="rounded p-1 text-neutral-400 transition active:scale-90 hover:bg-neutral-800"
                           title="Archive feature"
                         >
                           <Archive size={12} />
@@ -189,7 +189,11 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
         )}
       </div>
 
-      {editor && <FeaturePickerModal feature={editor.feature} onClose={() => setEditor(null)} />}
+      <FeaturePickerModal
+        open={editor !== null}
+        feature={editor?.feature ?? null}
+        onClose={() => setEditor(null)}
+      />
     </div>
   );
 }

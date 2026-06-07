@@ -19,7 +19,7 @@ export function RuneSection(): React.JSX.Element {
         <button
           onClick={recheck}
           disabled={loading}
-          className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40"
+          className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40 transition active:scale-[0.97] disabled:active:scale-100"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
           Re-check
@@ -47,7 +47,7 @@ export function RuneSection(): React.JSX.Element {
             Then click Re-check.{' '}
             <button
               onClick={() => void window.fleet.shell.openExternal(RUNE_REPO_URL)}
-              className="underline hover:text-neutral-300"
+              className="underline hover:text-neutral-300 transition active:scale-[0.97]"
             >
               Install guide
             </button>

@@ -89,7 +89,7 @@ export function PaneHeader({ paneId, label, labelIsCustom }: PaneHeaderProps): R
       )}
       {labelIsCustom && !isEditing && (
         <button
-          className="ml-1 text-neutral-500 hover:text-neutral-300 transition-colors"
+          className="ml-1 text-neutral-500 hover:text-neutral-300 transition-colors active:scale-[0.97]"
           onClick={() => resetPaneLabel(paneId)}
           title="Clear custom title and show path"
           aria-label="Clear pane title"

@@ -38,7 +38,7 @@ export function ImageGallery(): React.JSX.Element {
     <div className="flex flex-col h-full bg-neutral-900">
       <div className="flex items-center gap-1 px-3 pt-2 border-b border-neutral-800">
         <button
-          className={`px-3 py-1.5 text-sm rounded-t ${view !== 'settings' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
+          className={`px-3 py-1.5 text-sm rounded-t transition active:scale-[0.97] ${view !== 'settings' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
           onClick={() => {
             setView('grid');
             setSelectedId(null);
@@ -52,7 +52,7 @@ export function ImageGallery(): React.JSX.Element {
           )}
         </button>
         <button
-          className={`px-3 py-1.5 text-sm rounded-t ${view === 'settings' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
+          className={`px-3 py-1.5 text-sm rounded-t transition active:scale-[0.97] ${view === 'settings' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'}`}
           onClick={() => setView('settings')}
         >
           Settings

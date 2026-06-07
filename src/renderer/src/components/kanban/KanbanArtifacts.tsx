@@ -89,7 +89,7 @@ function ArtifactRow({
               onClick={() => void restoreArtifact(art.id)}
               title="Restore"
               aria-label="Restore artifact"
-              className="text-neutral-400 hover:text-emerald-400"
+              className="text-neutral-400 transition active:scale-90 hover:text-emerald-400"
             >
               <RotateCcw size={12} />
             </button>
@@ -99,7 +99,7 @@ function ArtifactRow({
                 onClick={() => void togglePreview()}
                 title="Preview"
                 aria-label="Preview artifact"
-                className={`hover:text-blue-400 ${open ? 'text-blue-400' : 'text-neutral-400'}`}
+                className={`hover:text-blue-400 transition active:scale-90 ${open ? 'text-blue-400' : 'text-neutral-400'}`}
               >
                 <Eye size={12} />
               </button>
@@ -107,7 +107,7 @@ function ArtifactRow({
                 onClick={() => void discardArtifact(art.id)}
                 title="Discard"
                 aria-label="Discard artifact"
-                className="text-neutral-400 hover:text-amber-400"
+                className="text-neutral-400 transition active:scale-90 hover:text-amber-400"
               >
                 <Trash2 size={12} />
               </button>
@@ -117,7 +117,7 @@ function ArtifactRow({
             onClick={() => setMenu((v) => !v)}
             title="More actions"
             aria-label="More artifact actions"
-            className={`hover:text-neutral-200 ${menu ? 'text-neutral-200' : 'text-neutral-400'}`}
+            className={`hover:text-neutral-200 transition active:scale-90 ${menu ? 'text-neutral-200' : 'text-neutral-400'}`}
           >
             <MoreHorizontal size={12} />
           </button>
@@ -131,7 +131,7 @@ function ArtifactRow({
               setMenu(false);
               void saveArtifactCopy(art.id);
             }}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-neutral-300 hover:bg-neutral-800"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
           >
             <Download size={11} /> Download
           </button>
@@ -140,7 +140,7 @@ function ArtifactRow({
               setMenu(false);
               void revealArtifact(art.id);
             }}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-neutral-300 hover:bg-neutral-800"
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800"
           >
             <FolderOpen size={11} /> Reveal
           </button>
@@ -149,13 +149,13 @@ function ArtifactRow({
               <span className="ml-1 text-neutral-600">Use as input:</span>
               <button
                 onClick={() => seedAsInput('task')}
-                className="rounded px-1.5 py-0.5 text-blue-300 hover:bg-neutral-800"
+                className="rounded px-1.5 py-0.5 text-blue-300 transition active:scale-[0.97] hover:bg-neutral-800"
               >
                 New task
               </button>
               <button
                 onClick={() => seedAsInput('swarm')}
-                className="rounded px-1.5 py-0.5 text-purple-300 hover:bg-neutral-800"
+                className="rounded px-1.5 py-0.5 text-purple-300 transition active:scale-[0.97] hover:bg-neutral-800"
               >
                 New swarm
               </button>
@@ -168,7 +168,7 @@ function ArtifactRow({
                 void removeArtifact(art.id);
               }
             }}
-            className="ml-auto rounded px-1.5 py-0.5 text-red-400 hover:bg-red-900/40"
+            className="ml-auto rounded px-1.5 py-0.5 text-red-400 transition active:scale-[0.97] hover:bg-red-900/40"
           >
             Delete permanently
           </button>
@@ -224,7 +224,7 @@ export function OutputsSection({ detail }: { detail: TaskDetail }): React.JSX.El
           <div className="mt-1 flex gap-1.5">
             <button
               onClick={() => void revealTaskWorkspace(detail.task.id)}
-              className="rounded border border-amber-700/60 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-900/40"
+              className="rounded border border-amber-700/60 px-2 py-0.5 text-[10px] text-amber-200 transition active:scale-[0.97] hover:bg-amber-900/40"
             >
               Reveal folder
             </button>
@@ -234,7 +234,7 @@ export function OutputsSection({ detail }: { detail: TaskDetail }): React.JSX.El
                   void discardTaskWorkspaceLeftovers(detail.task.id);
                 }
               }}
-              className="rounded border border-amber-700/60 px-2 py-0.5 text-[10px] text-amber-200 hover:bg-amber-900/40"
+              className="rounded border border-amber-700/60 px-2 py-0.5 text-[10px] text-amber-200 transition active:scale-[0.97] hover:bg-amber-900/40"
             >
               Discard them
             </button>
@@ -250,7 +250,7 @@ export function OutputsSection({ detail }: { detail: TaskDetail }): React.JSX.El
         <>
           <button
             onClick={() => setShowOther((v) => !v)}
-            className="my-1 text-[10px] text-neutral-500 hover:text-neutral-300"
+            className="my-1 text-[10px] text-neutral-500 transition active:scale-[0.97] hover:text-neutral-300"
           >
             {showOther ? '▾' : '▸'} {others.length} other file{others.length === 1 ? '' : 's'}
           </button>

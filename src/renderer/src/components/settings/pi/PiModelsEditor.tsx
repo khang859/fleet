@@ -20,7 +20,7 @@ export function PiModelsEditor({ models, onChange }: Props): React.JSX.Element {
         <button
           type="button"
           onClick={add}
-          className="text-xs px-2 py-0.5 bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-200"
+          className="text-xs px-2 py-0.5 bg-neutral-700 hover:bg-neutral-600 rounded border border-neutral-600 text-neutral-200 transition active:scale-[0.97]"
         >
           + Add model
         </button>
@@ -79,7 +79,7 @@ export function PiModelsEditor({ models, onChange }: Props): React.JSX.Element {
             <button
               type="button"
               onClick={() => remove(i)}
-              className="text-neutral-500 hover:text-red-400 px-1"
+              className="text-neutral-500 hover:text-red-400 px-1 transition active:scale-90"
               aria-label="Remove model"
             >
               ×

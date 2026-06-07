@@ -109,7 +109,7 @@ export function PiSection(): React.JSX.Element {
         Failed to read pi config: {state.message}
         <button
           onClick={() => void window.fleet.piConfig.openConfigFolder()}
-          className="ml-2 underline"
+          className="ml-2 underline transition active:scale-[0.97]"
         >
           Open config folder
         </button>

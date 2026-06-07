@@ -233,7 +233,7 @@ export function KanbanSection(): React.JSX.Element | null {
                 ]
               })
             }
-            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800"
+            className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 transition active:scale-[0.97]"
           >
             + New profile
           </button>
@@ -302,7 +302,7 @@ function OrchestratorSection({
         <button
           onClick={() => update({ model: '', instructions: DEFAULT_ORCHESTRATOR_INSTRUCTIONS })}
           disabled={isDefault && orchestrator.model === ''}
-          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
+          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent transition active:scale-[0.97] disabled:active:scale-100"
         >
           Reset to default
         </button>

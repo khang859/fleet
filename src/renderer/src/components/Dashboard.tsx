@@ -55,7 +55,7 @@ export function Dashboard({
         {/* New Terminal Action */}
         <button
           onClick={onNewTerminal}
-          className="flex items-center gap-3 text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer group"
+          className="flex items-center gap-3 text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer group active:scale-[0.97]"
         >
           <Terminal size={16} />
           <span className="text-sm">New Terminal</span>
@@ -74,7 +74,7 @@ export function Dashboard({
                 <li key={folder}>
                   <button
                     onClick={() => onOpenFolder(folder)}
-                    className="text-sm text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer truncate block w-full text-left"
+                    className="text-sm text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer truncate block w-full text-left active:scale-[0.97]"
                   >
                     {shortenPath(folder)}
                   </button>
@@ -96,7 +96,7 @@ export function Dashboard({
                 <li key={file}>
                   <button
                     onClick={() => onOpenFile(file)}
-                    className="text-sm text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer truncate block w-full text-left"
+                    className="text-sm text-neutral-400 hover:text-cyan-400 transition-colors cursor-pointer truncate block w-full text-left active:scale-[0.97]"
                   >
                     {shortenPath(file)}
                   </button>

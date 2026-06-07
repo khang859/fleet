@@ -10,7 +10,7 @@ export function ShortcutsHint(): React.JSX.Element {
   return (
     <button
       onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-shortcuts'))}
-      className={`${positionClass} w-6 h-6 rounded-full bg-neutral-800/80 border border-neutral-700 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/80 text-xs flex items-center justify-center transition-colors`}
+      className={`${positionClass} w-6 h-6 rounded-full bg-neutral-800/80 border border-neutral-700 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-700/80 text-xs flex items-center justify-center transition-colors active:scale-90`}
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       title={`Keyboard Shortcuts (${hint})`}
     >

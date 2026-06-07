@@ -315,8 +315,8 @@ export function TelescopeModal({
                 }}
                 className={
                   isLast
-                    ? 'text-neutral-200 cursor-default'
-                    : 'text-neutral-400 hover:text-neutral-200 transition-colors'
+                    ? 'text-neutral-200 cursor-default transition active:scale-[0.97]'
+                    : 'text-neutral-400 hover:text-neutral-200 transition-colors active:scale-[0.97]'
                 }
               >
                 {segment}
@@ -399,7 +399,7 @@ export function TelescopeModal({
                         setQuery('');
                         inputRef.current?.focus();
                       }}
-                      className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded transition-colors ${
+                      className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded transition-colors active:scale-[0.97] ${
                         isActive
                           ? 'bg-neutral-700 text-neutral-200'
                           : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
@@ -444,7 +444,7 @@ export function TelescopeModal({
                 <button
                   key={item.id}
                   data-result-index={i}
-                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors active:scale-[0.97] ${
                     isSelected
                       ? 'bg-neutral-700 text-white'
                       : item.data?.isIgnored

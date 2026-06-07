@@ -625,7 +625,7 @@ export function App(): React.JSX.Element {
             <MiniSidebarTooltip label="Show sidebar">
               <button
                 onClick={() => setSidebarCollapsed(false)}
-                className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors"
+                className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors active:scale-90"
               >
                 <svg
                   width="16"
@@ -657,7 +657,7 @@ export function App(): React.JSX.Element {
                   <MiniSidebarTooltip label={tab.label} key={tab.id}>
                     <button
                       onClick={() => setActiveTab(tab.id)}
-                      className={`p-1 rounded transition-colors ${
+                      className={`p-1 rounded transition-colors active:scale-90 ${
                         isActive
                           ? 'bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
                           : 'hover:bg-fleet-surface-2'
@@ -700,7 +700,7 @@ export function App(): React.JSX.Element {
                   <MiniSidebarTooltip label="Kanban" key={tab.id}>
                     <button
                       onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
+                      className={`p-1.5 rounded transition-colors active:scale-90 ${
                         isKanbanActive
                           ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
                           : 'hover:bg-fleet-surface-2'
@@ -723,7 +723,7 @@ export function App(): React.JSX.Element {
                   <MiniSidebarTooltip label="Images" key={tab.id}>
                     <button
                       onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
+                      className={`p-1.5 rounded transition-colors active:scale-90 ${
                         isImagesActive
                           ? 'bg-purple-900/40 ring-1 ring-purple-500/30'
                           : 'hover:bg-fleet-surface-2'
@@ -754,7 +754,7 @@ export function App(): React.JSX.Element {
                   <MiniSidebarTooltip label="Annotate" key={tab.id}>
                     <button
                       onClick={() => setActiveTab(tab.id)}
-                      className={`p-1.5 rounded transition-colors ${
+                      className={`p-1.5 rounded transition-colors active:scale-90 ${
                         isAnnotateActive
                           ? 'bg-cyan-900/40 ring-1 ring-cyan-500/30'
                           : 'hover:bg-fleet-surface-2'
@@ -775,7 +775,7 @@ export function App(): React.JSX.Element {
             <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
               <MiniSidebarTooltip label={workspace.label}>
                 <Popover.Trigger asChild>
-                  <button className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors">
+                  <button className="p-2 text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2 rounded transition-colors active:scale-90">
                     <svg
                       width="16"
                       height="16"
@@ -807,7 +807,7 @@ export function App(): React.JSX.Element {
                     miniWsList.map((ws) => (
                       <button
                         key={ws.id}
-                        className="w-full px-3 py-1.5 text-sm text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-3 text-left flex items-center justify-between"
+                        className="w-full px-3 py-1.5 text-sm text-fleet-text-secondary hover:text-fleet-text hover:bg-fleet-surface-3 text-left flex items-center justify-between transition active:scale-[0.97]"
                         onClick={() => void handleMiniWsSwitch(ws.id)}
                       >
                         <span className="truncate">{ws.label}</span>
@@ -834,7 +834,7 @@ export function App(): React.JSX.Element {
                 <MiniSidebarTooltip label="Settings">
                   <button
                     onClick={() => document.dispatchEvent(new CustomEvent('fleet:toggle-settings'))}
-                    className={`p-2 rounded transition-colors ${
+                    className={`p-2 rounded transition-colors active:scale-90 ${
                       isSettingsActive
                         ? 'text-fleet-text bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
                         : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'

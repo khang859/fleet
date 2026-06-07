@@ -54,7 +54,10 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 p-3 border-b border-neutral-800">
-        <button className="text-neutral-400 hover:text-white text-sm" onClick={onBack}>
+        <button
+          className="text-neutral-400 hover:text-white text-sm transition active:scale-[0.97]"
+          onClick={onBack}
+        >
           &larr; Back
         </button>
         <span className="text-sm text-neutral-500 font-mono">{gen.id}</span>
@@ -173,7 +176,7 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
               {actions.map((action) => (
                 <button
                   key={action.id}
-                  className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 disabled:opacity-50"
+                  className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 disabled:opacity-50 transition active:scale-[0.97] disabled:active:scale-100"
                   disabled={runningAction !== null}
                   onClick={() => handleAction(action.actionType, images[0].filename!)}
                 >
@@ -185,20 +188,20 @@ export function ImageDetail({ generation, onBack }: ImageDetailProps): React.JSX
           <div className="pt-3 border-t border-neutral-800 space-y-2">
             {(gen.status === 'failed' || gen.status === 'timeout' || gen.status === 'partial') && (
               <button
-                className="w-full text-sm bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5"
+                className="w-full text-sm bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5 transition active:scale-[0.97]"
                 onClick={handleRetry}
               >
                 Retry
               </button>
             )}
             <button
-              className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5"
+              className="w-full text-sm bg-neutral-700 hover:bg-neutral-600 text-neutral-200 rounded px-3 py-1.5 transition active:scale-[0.97]"
               onClick={handleCopyPath}
             >
               Copy Path
             </button>
             <button
-              className="w-full text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300 rounded px-3 py-1.5"
+              className="w-full text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300 rounded px-3 py-1.5 transition active:scale-[0.97]"
               onClick={handleDelete}
             >
               Delete

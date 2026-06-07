@@ -313,7 +313,7 @@ export function GeneralSection(): React.JSX.Element {
                 onClick={() => {
                   void updateSettings({ general: { accentColor: accent.id } });
                 }}
-                className={`h-6 w-6 rounded-full border transition-shadow ${
+                className={`h-6 w-6 rounded-full border transition-shadow active:scale-90 ${
                   selected ? 'border-white fleet-accent-ring-pane' : 'border-fleet-border-strong'
                 }`}
                 style={{ backgroundColor: accent.value }}
@@ -336,7 +336,7 @@ export function GeneralSection(): React.JSX.Element {
             <button
               type="button"
               onClick={() => void pickBackgroundImage()}
-              className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle"
+              className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle transition active:scale-[0.97]"
             >
               {bg.imagePath ? 'Change…' : 'Browse…'}
             </button>
@@ -344,7 +344,7 @@ export function GeneralSection(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => saveBackground({ imagePath: null })}
-                className="text-fleet-text-secondary text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle"
+                className="text-fleet-text-secondary text-sm rounded px-2 py-1 border border-fleet-border-strong hover:border-fleet-text-subtle transition active:scale-[0.97]"
               >
                 Clear
               </button>

@@ -51,19 +51,22 @@ export function SearchBar({
       />
       <button
         onClick={() => onSearchPrevious(query)}
-        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors active:scale-90"
         title="Previous match (Shift+Enter)"
       >
         <ChevronUp size={14} />
       </button>
       <button
         onClick={() => onSearch(query)}
-        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+        className="p-0.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors active:scale-90"
         title="Next match (Enter)"
       >
         <ChevronDown size={14} />
       </button>
-      <button onClick={onClose} className="text-neutral-500 hover:text-white text-sm ml-1">
+      <button
+        onClick={onClose}
+        className="text-neutral-500 hover:text-white text-sm ml-1 transition active:scale-90"
+      >
         &times;
       </button>
     </div>

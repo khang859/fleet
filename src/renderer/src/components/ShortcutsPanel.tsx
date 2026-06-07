@@ -1,3 +1,4 @@
+import { Overlay } from './Overlay';
 import { ALL_SHORTCUTS, formatShortcut } from '../lib/shortcuts';
 
 const SHORTCUTS = ALL_SHORTCUTS.filter((s) => s.id !== 'command-palette').map((s) => ({
@@ -11,20 +12,15 @@ type ShortcutsPanelProps = {
 };
 
 export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.JSX.Element | null {
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="bg-neutral-900 border border-neutral-700 rounded-lg w-[360px] shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Overlay open={isOpen} onClose={onClose}>
+      <div className="bg-neutral-900 border border-neutral-700 rounded-lg w-[360px] shadow-xl">
         <div className="flex items-center justify-between px-4 py-3 border-b border-neutral-800">
           <h2 className="text-sm font-semibold text-white">Keyboard Shortcuts</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-white">
+          <button
+            onClick={onClose}
+            className="text-neutral-500 transition hover:text-white active:scale-90"
+          >
             &times;
           </button>
         </div>
@@ -39,6 +35,6 @@ export function ShortcutsPanel({ isOpen, onClose }: ShortcutsPanelProps): React.
           ))}
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

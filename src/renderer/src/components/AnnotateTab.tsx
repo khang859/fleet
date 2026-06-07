@@ -74,7 +74,7 @@ export function AnnotateTab(): React.JSX.Element {
         <div className="flex items-center gap-2 px-3 py-2 border-b border-neutral-800">
           <button
             onClick={() => setSelectedId(null)}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
           >
             <ArrowLeft size={16} />
           </button>
@@ -87,7 +87,7 @@ export function AnnotateTab(): React.JSX.Element {
           </div>
           <button
             onClick={() => handleCopyPath(selectedId)}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
             title="Copy path"
           >
             <ClipboardCopy size={14} />
@@ -97,7 +97,7 @@ export function AnnotateTab(): React.JSX.Element {
               void deleteAnnotation(selectedId);
               setSelectedId(null);
             }}
-            className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
+            className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800 transition active:scale-90"
             title="Delete"
           >
             <Trash2 size={14} />
@@ -131,7 +131,7 @@ export function AnnotateTab(): React.JSX.Element {
               {/* Element header — always visible */}
               <button
                 onClick={() => toggleElement(i)}
-                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-neutral-900 text-left"
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-neutral-900 text-left transition active:scale-[0.97]"
               >
                 <span className="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-900 text-cyan-300 text-xs flex items-center justify-center">
                   {i + 1}
@@ -206,7 +206,7 @@ export function AnnotateTab(): React.JSX.Element {
         </div>
         <button
           onClick={() => openAnnotateModal()}
-          className="px-2.5 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500"
+          className="px-2.5 py-1 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500 transition active:scale-[0.97]"
         >
           New
         </button>
@@ -223,7 +223,7 @@ export function AnnotateTab(): React.JSX.Element {
           <p className="text-sm">No annotations yet</p>
           <button
             onClick={() => openAnnotateModal()}
-            className="px-3 py-1.5 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500"
+            className="px-3 py-1.5 text-xs bg-cyan-600 text-white rounded hover:bg-cyan-500 transition active:scale-[0.97]"
           >
             New Annotation
           </button>
@@ -257,7 +257,7 @@ export function AnnotateTab(): React.JSX.Element {
                     e.stopPropagation();
                     handleCopyPath(ann.id);
                   }}
-                  className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+                  className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition active:scale-90"
                   title="Copy path"
                 >
                   <ClipboardCopy size={14} />
@@ -268,7 +268,7 @@ export function AnnotateTab(): React.JSX.Element {
                     void deleteAnnotation(ann.id);
                     if (selectedId === ann.id) setSelectedId(null);
                   }}
-                  className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800"
+                  className="p-1 text-neutral-400 hover:text-red-400 rounded hover:bg-neutral-800 transition active:scale-90"
                   title="Delete"
                 >
                   <Trash2 size={14} />

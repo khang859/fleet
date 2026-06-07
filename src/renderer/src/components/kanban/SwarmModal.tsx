@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
 import type { SwarmWorkerSpec } from '../../../../shared/kanban-types';
@@ -25,7 +25,13 @@ export function rowsToWorkerSpecs(rows: WorkerRow[]): SwarmWorkerSpec[] {
     }));
 }
 
-export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Element {
+export function SwarmModal({
+  open,
+  onClose
+}: {
+  open: boolean;
+  onClose: () => void;
+}): React.JSX.Element | null {
   const createSwarm = useKanbanStore((s) => s.createSwarm);
   const createSwarmFromArtifact = useKanbanStore((s) => s.createSwarmFromArtifact);
   const seed = useKanbanStore((s) => s.seed);
@@ -42,6 +48,23 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
   const [folder, setFolder] = useState('');
   const [isolated, setIsolated] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Re-seed the form each time the modal opens (it now stays mounted so its exit
+  // animation can play, so state must be reset on open rather than on mount).
+  const prevOpen = useRef(false);
+  useEffect(() => {
+    if (open && !prevOpen.current) {
+      setGoal('');
+      setRows([{ profile: firstWorker, title: '', skills: '' }]);
+      setVerifier(firstWorker);
+      setSynthesizer(firstWorker);
+      setMode('scratch');
+      setFolder('');
+      setIsolated(true);
+      setError(null);
+    }
+    prevOpen.current = open;
+  }, [open, firstWorker]);
 
   async function pickFolder(): Promise<void> {
     const path = await window.fleet.showFolderPicker();
@@ -90,7 +113,7 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
 
   return (
     <Overlay
-      open
+      open={open}
       onClose={onClose}
       panelClassName="w-[560px] max-h-[80vh] overflow-y-auto rounded-lg border border-neutral-800 bg-neutral-900 p-4"
     >
@@ -141,7 +164,7 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
           />
           <button
             onClick={() => setRows(rows.filter((_, j) => j !== i))}
-            className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+            className="rounded px-2 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-90 disabled:active:scale-100"
             disabled={rows.length === 1}
           >
             ×
@@ -150,7 +173,7 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
       ))}
       <button
         onClick={() => setRows([...rows, { profile: firstWorker, title: '', skills: '' }])}
-        className="mb-3 rounded px-2 py-1 text-xs text-blue-400 hover:bg-neutral-800"
+        className="mb-3 rounded px-2 py-1 text-xs text-blue-400 transition hover:bg-neutral-800 active:scale-[0.97]"
       >
         + Add worker
       </button>
@@ -217,7 +240,7 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
             />
             <button
               onClick={() => void pickFolder()}
-              className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+              className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-[0.97]"
             >
               Browse…
             </button>
@@ -243,13 +266,13 @@ export function SwarmModal({ onClose }: { onClose: () => void }): React.JSX.Elem
       <div className="flex justify-end gap-2">
         <button
           onClick={onClose}
-          className="rounded px-3 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+          className="rounded px-3 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97]"
         >
           Cancel
         </button>
         <button
           onClick={() => void submit()}
-          className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500"
+          className="rounded bg-blue-600 px-3 py-1 text-xs text-white transition hover:bg-blue-500 active:scale-[0.97]"
         >
           Create Swarm
         </button>

@@ -79,7 +79,7 @@ export function PiApiKeyInput({ value, onChange }: Props): React.JSX.Element {
             key={k.kind}
             type="button"
             onClick={() => handleKindChange(k.kind)}
-            className={`px-2 py-1 text-xs ${
+            className={`px-2 py-1 text-xs transition active:scale-[0.97] ${
               k.kind === kind
                 ? 'bg-neutral-700 text-neutral-100'
                 : 'bg-neutral-900 text-neutral-400 hover:text-neutral-200'

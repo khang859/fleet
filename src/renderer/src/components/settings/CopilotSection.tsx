@@ -216,7 +216,7 @@ export function CopilotSection(): React.JSX.Element | null {
           />
           <button
             onClick={() => void handleBrowseConfigDir()}
-            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
+            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
           >
             Browse
           </button>
@@ -251,7 +251,7 @@ export function CopilotSection(): React.JSX.Element | null {
           </span>
           <button
             onClick={() => void (hookInstalled ? handleUninstallHooks() : handleInstallHooks())}
-            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
+            className="px-2 py-1 text-sm bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
           >
             {hookInstalled ? 'Uninstall' : 'Install'}
           </button>
@@ -296,7 +296,7 @@ export function CopilotSection(): React.JSX.Element | null {
                 <div key={ws.id} className="border border-fleet-border-strong rounded">
                   <button
                     onClick={() => handleWsExpandToggle(ws.id)}
-                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50"
+                    className="w-full flex items-center justify-between px-3 py-2 text-sm text-fleet-text-secondary hover:bg-fleet-surface-2/50 transition active:scale-[0.97]"
                   >
                     <span className="flex items-center gap-2">
                       {ws.label}
@@ -325,7 +325,7 @@ export function CopilotSection(): React.JSX.Element | null {
                           />
                           <button
                             onClick={() => void handleBrowseWsConfigDir(ws.id)}
-                            className="px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
+                            className="px-2 py-1 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
                           >
                             Browse
                           </button>
@@ -356,7 +356,7 @@ export function CopilotSection(): React.JSX.Element | null {
                                     ? handleWsUninstallHooks(ws.id, wsConfigDir)
                                     : handleWsInstallHooks(ws.id, wsConfigDir))
                                 }
-                                className="px-2 py-0.5 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary"
+                                className="px-2 py-0.5 text-xs bg-fleet-surface-3 hover:bg-fleet-surface-3 rounded border border-fleet-border-strong text-fleet-text-secondary transition active:scale-[0.97]"
                               >
                                 {installed ? 'Uninstall' : 'Install'}
                               </button>

@@ -58,7 +58,10 @@ function PassphraseControl({
   return present ? (
     <div className="flex items-center gap-2">
       <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
-      <button className="text-xs text-red-400" onClick={() => void clear()}>
+      <button
+        className="text-xs text-red-400 transition active:scale-[0.97]"
+        onClick={() => void clear()}
+      >
         {clearLabel}
       </button>
     </div>
@@ -75,7 +78,7 @@ function PassphraseControl({
       <button
         disabled={!draft || !encAvailable}
         onClick={() => void save()}
-        className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
+        className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
       >
         Save
       </button>
@@ -196,11 +199,17 @@ function AuthControl({
       )}
 
       <div className="flex items-center gap-2">
-        <button onClick={() => void save()} className="text-xs bg-neutral-700 rounded px-2 py-1">
+        <button
+          onClick={() => void save()}
+          className="text-xs bg-neutral-700 rounded px-2 py-1 transition active:scale-[0.97]"
+        >
           Save
         </button>
         {redacted && (
-          <button className="text-xs text-red-400" onClick={() => void reset()}>
+          <button
+            className="text-xs text-red-400 transition active:scale-[0.97]"
+            onClick={() => void reset()}
+          >
             {resetLabel}
           </button>
         )}
@@ -325,10 +334,16 @@ function RepoCard({
               placeholder="Region"
               className={`${inputCls} w-28`}
             />
-            <button className="text-xs text-blue-400" onClick={() => void saveBucketRegion()}>
+            <button
+              className="text-xs text-blue-400 transition active:scale-[0.97]"
+              onClick={() => void saveBucketRegion()}
+            >
               Save
             </button>
-            <button className="text-xs text-neutral-400" onClick={() => setEditing(false)}>
+            <button
+              className="text-xs text-neutral-400 transition active:scale-[0.97]"
+              onClick={() => setEditing(false)}
+            >
               Cancel
             </button>
           </div>
@@ -337,7 +352,10 @@ function RepoCard({
             <span className="text-xs text-neutral-500">
               {config.bucket} · {config.region}
             </span>
-            <button className="text-xs text-blue-400" onClick={startEdit}>
+            <button
+              className="text-xs text-blue-400 transition active:scale-[0.97]"
+              onClick={startEdit}
+            >
               Edit
             </button>
           </div>
@@ -365,13 +383,13 @@ function RepoCard({
               <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
               <td className="py-1 text-right">
                 <button
-                  className="text-xs text-blue-400 mr-2"
+                  className="text-xs text-blue-400 mr-2 transition active:scale-[0.97]"
                   onClick={() => void doSync(repoDir, t.envFile, 'pull')}
                 >
                   Pull
                 </button>
                 <button
-                  className="text-xs text-blue-400"
+                  className="text-xs text-blue-400 transition active:scale-[0.97]"
                   onClick={() => void doSync(repoDir, t.envFile, 'push')}
                 >
                   Push
@@ -384,7 +402,10 @@ function RepoCard({
 
       <div className="mt-2">
         {candidates === null ? (
-          <button className="text-xs text-blue-400" onClick={() => void runScan()}>
+          <button
+            className="text-xs text-blue-400 transition active:scale-[0.97]"
+            onClick={() => void runScan()}
+          >
             Scan for env files
           </button>
         ) : (
@@ -408,12 +429,15 @@ function RepoCard({
             <div className="mt-2 flex items-center gap-2">
               <button
                 disabled={selected.size === 0}
-                className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
+                className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
                 onClick={() => void addSelected()}
               >
                 Add selected
               </button>
-              <button className="text-xs text-neutral-400" onClick={closeScan}>
+              <button
+                className="text-xs text-neutral-400 transition active:scale-[0.97]"
+                onClick={closeScan}
+              >
                 Cancel
               </button>
             </div>

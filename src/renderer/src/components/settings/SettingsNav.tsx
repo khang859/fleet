@@ -43,7 +43,7 @@ export function SettingsNav({
         <button
           key={section.id}
           onClick={() => onChange(section.id)}
-          className={`w-full text-left px-2 py-1.5 text-sm rounded-md transition-colors ${
+          className={`w-full text-left px-2 py-1.5 text-sm rounded-md transition-colors active:scale-[0.97] ${
             active === section.id
               ? 'text-white bg-neutral-800 border-l-2 fleet-accent-border pl-[6px]'
               : 'text-neutral-400 hover:text-white hover:bg-neutral-800/50'

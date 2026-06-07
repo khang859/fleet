@@ -416,7 +416,7 @@ function FileEntry({
   return (
     <button
       onClick={onClick}
-      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-neutral-800 transition-colors flex items-center gap-2 ${active ? 'bg-neutral-800' : ''}`}
+      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-neutral-800 transition-colors active:scale-[0.97] flex items-center gap-2 ${active ? 'bg-neutral-800' : ''}`}
     >
       <span className={`font-mono text-[10px] ${STATUS_COLORS[file.status]}`}>
         {STATUS_LABELS[file.status]}

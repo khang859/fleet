@@ -81,7 +81,7 @@ export function ImageGrid({ generations, onSelect }: ImageGridProps): React.JSX.
         {sorted.map((gen) => (
           <button
             key={gen.id}
-            className="relative bg-neutral-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all aspect-square group"
+            className="relative bg-neutral-800 rounded-lg overflow-hidden cursor-pointer hover:ring-2 hover:ring-cyan-500 transition-all aspect-square group active:scale-[0.97]"
             onClick={() => onSelect(gen.id)}
           >
             <Thumbnail generation={gen} />

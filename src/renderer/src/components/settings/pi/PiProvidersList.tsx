@@ -196,7 +196,7 @@ export function PiProvidersList({
         <button
           type="button"
           onClick={() => setPickerOpen(true)}
-          className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white"
+          className="text-xs px-2 py-1 bg-blue-600 hover:bg-blue-500 rounded text-white transition active:scale-[0.97]"
         >
           + Add custom
         </button>
@@ -209,7 +209,7 @@ export function PiProvidersList({
             <button
               type="button"
               onClick={() => setSecondaryOpen((o) => !o)}
-              className="text-xs text-neutral-400 hover:text-neutral-200 underline"
+              className="text-xs text-neutral-400 hover:text-neutral-200 underline transition active:scale-[0.97]"
             >
               {secondaryOpen ? 'Hide' : `Show ${ordered.secondary.length} more providers`}
             </button>
@@ -218,15 +218,14 @@ export function PiProvidersList({
         )}
       </div>
 
-      {pickerOpen && (
-        <PiPresetPicker
-          onPick={(presetId) => {
-            setPickerOpen(false);
-            onAddCustom(presetId);
-          }}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
+      <PiPresetPicker
+        open={pickerOpen}
+        onPick={(presetId) => {
+          setPickerOpen(false);
+          onAddCustom(presetId);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </section>
   );
 }

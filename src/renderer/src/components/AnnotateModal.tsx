@@ -3,6 +3,7 @@ import { X, Crosshair, MousePointer, Pencil } from 'lucide-react';
 import type { AnnotateMode } from '../../../shared/annotate-types';
 import { useAnnotationStore } from '../store/annotation-store';
 import { registerAnnotateModalOpener } from '../lib/annotate-modal-bridge';
+import { Overlay } from './Overlay';
 
 interface AnnotateModalProps {
   open: boolean;
@@ -42,8 +43,6 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
     setTimeout(() => inputRef.current?.focus(), 50);
   }, [isOpen]);
 
-  if (!isOpen) return null;
-
   const handleClose = (): void => {
     setUrl('');
     setMode('select');
@@ -62,20 +61,12 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
       e.preventDefault();
       handleStart();
     }
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      handleClose();
-    }
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={handleClose}
-    >
+    <Overlay open={isOpen} onClose={handleClose}>
       <div
         className="relative w-[480px] bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl p-6"
-        onClick={(e) => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
         {/* Header */}
@@ -86,7 +77,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
           </div>
           <button
             onClick={handleClose}
-            className="p-1 text-neutral-500 hover:text-white rounded hover:bg-neutral-800"
+            className="p-1 text-neutral-500 hover:text-white rounded transition hover:bg-neutral-800 active:scale-90"
           >
             <X size={16} />
           </button>
@@ -112,7 +103,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
           <div className="flex gap-2">
             <button
               onClick={() => setMode('select')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition active:scale-[0.97] ${
                 mode === 'select'
                   ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
                   : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
@@ -123,7 +114,7 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
             </button>
             <button
               onClick={() => setMode('draw')}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition-colors ${
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-md border text-sm transition active:scale-[0.97] ${
                 mode === 'draw'
                   ? 'border-cyan-500 bg-cyan-500/10 text-cyan-400'
                   : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:border-neutral-600'
@@ -139,18 +130,18 @@ export function AnnotateModal({ open, onClose }: AnnotateModalProps): React.JSX.
         <div className="flex justify-end gap-2">
           <button
             onClick={handleClose}
-            className="px-3 py-1.5 text-sm text-neutral-400 hover:text-white rounded-md hover:bg-neutral-800"
+            className="px-3 py-1.5 text-sm text-neutral-400 hover:text-white rounded-md transition hover:bg-neutral-800 active:scale-[0.97]"
           >
             Cancel
           </button>
           <button
             onClick={handleStart}
-            className="px-3 py-1.5 text-sm bg-cyan-600 text-white rounded-md hover:bg-cyan-500"
+            className="px-3 py-1.5 text-sm bg-cyan-600 text-white rounded-md transition hover:bg-cyan-500 active:scale-[0.97]"
           >
             Start
           </button>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

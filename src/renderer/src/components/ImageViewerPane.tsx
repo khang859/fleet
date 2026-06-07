@@ -314,7 +314,7 @@ function ToolbarButton({
 }): React.JSX.Element {
   return (
     <button
-      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+      className="text-neutral-300 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 transition-colors disabled:opacity-50 disabled:pointer-events-none active:scale-[0.97] disabled:active:scale-100"
       onClick={onClick}
       title={title}
       disabled={disabled}

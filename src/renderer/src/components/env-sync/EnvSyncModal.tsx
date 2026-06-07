@@ -100,7 +100,7 @@ function Disclosure({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-neutral-800/40"
+        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-neutral-800/40 active:scale-[0.97]"
       >
         <ChevronRight
           size={15}
@@ -160,7 +160,7 @@ function PassphraseControl({
       <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
       <button
         disabled={clearing}
-        className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500"
+        className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500 active:scale-[0.97] disabled:active:scale-100"
         onClick={() => void clear()}
       >
         {clearing && SPIN}
@@ -319,7 +319,7 @@ function AuthControl({
         {redacted && (
           <button
             disabled={resetting}
-            className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500"
+            className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500 active:scale-[0.97] disabled:active:scale-100"
             onClick={() => void reset()}
           >
             {resetting && SPIN}
@@ -364,7 +364,7 @@ function RepoAuthOverride({
           Inherits global ({authSummary(globalAuth)})
         </span>
         <button
-          className="text-xs text-blue-400 transition-colors hover:text-blue-300"
+          className="text-xs text-blue-400 transition-colors hover:text-blue-300 active:scale-[0.97]"
           onClick={() => setEditing(true)}
         >
           Override
@@ -634,14 +634,14 @@ function RepoManager({
             />
             <button
               disabled={savingBucket}
-              className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
+              className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500 active:scale-[0.97] disabled:active:scale-100"
               onClick={() => void saveBucketRegion()}
             >
               {savingBucket && <Loader2 size={12} className="animate-spin" />}
               Save
             </button>
             <button
-              className="text-xs text-neutral-400 transition-colors hover:text-neutral-200"
+              className="text-xs text-neutral-400 transition-colors hover:text-neutral-200 active:scale-[0.97]"
               onClick={() => setEditing(false)}
             >
               Cancel
@@ -653,7 +653,7 @@ function RepoManager({
               {config.bucket} · {config.region}
             </span>
             <button
-              className="text-xs text-blue-400 transition-colors hover:text-blue-300"
+              className="text-xs text-blue-400 transition-colors hover:text-blue-300 active:scale-[0.97]"
               onClick={startEdit}
             >
               Edit
@@ -663,14 +663,14 @@ function RepoManager({
                 <span className="text-neutral-400">Create in {config.region}?</span>
                 <button
                   disabled={creatingBucket}
-                  className="inline-flex items-center gap-1.5 text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
+                  className="inline-flex items-center gap-1.5 text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500 active:scale-[0.97] disabled:active:scale-100"
                   onClick={() => void createBucket()}
                 >
                   {creatingBucket && <Loader2 size={12} className="animate-spin" />}
                   {creatingBucket ? 'Creating…' : 'Create'}
                 </button>
                 <button
-                  className="text-neutral-400 transition-colors hover:text-neutral-200"
+                  className="text-neutral-400 transition-colors hover:text-neutral-200 active:scale-[0.97]"
                   onClick={() => setConfirmBucket(false)}
                 >
                   Cancel
@@ -678,7 +678,7 @@ function RepoManager({
               </span>
             ) : (
               <button
-                className="text-xs text-blue-400 transition-colors hover:text-blue-300"
+                className="text-xs text-blue-400 transition-colors hover:text-blue-300 active:scale-[0.97]"
                 onClick={() => setConfirmBucket(true)}
               >
                 Create bucket
@@ -721,7 +721,7 @@ function RepoManager({
                         <button
                           aria-label="More actions"
                           disabled={busyRow === t.envFile}
-                          className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50"
+                          className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50 active:scale-90 disabled:active:scale-100"
                           onClick={() => setMenuFor(menuFor === t.envFile ? null : t.envFile)}
                         >
                           <MoreHorizontal size={15} />
@@ -729,13 +729,13 @@ function RepoManager({
                         {menuFor === t.envFile && (
                           <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-neutral-700 bg-neutral-800 py-1.5 text-left shadow-xl">
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700 active:scale-[0.97]"
                               onClick={() => void doSync(t.envFile, 'pull')}
                             >
                               Pull from remote
                             </button>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700 active:scale-[0.97]"
                               onClick={() => void doSync(t.envFile, 'push')}
                             >
                               Push to remote
@@ -745,13 +745,13 @@ function RepoManager({
                               Delivery
                             </div>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700 active:scale-[0.97]"
                               onClick={() => void changeDelivery(t.envFile, 'file')}
                             >
                               {t.delivery === 'file' ? '✓ ' : '  '}Write file
                             </button>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700 active:scale-[0.97]"
                               onClick={() => void changeDelivery(t.envFile, 'inject')}
                             >
                               {t.delivery === 'inject' ? '✓ ' : '  '}Inject into env
@@ -779,7 +779,7 @@ function RepoManager({
         {candidates === null ? (
           <button
             disabled={scanning}
-            className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
+            className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500 active:scale-[0.97] disabled:active:scale-100"
             onClick={() => void runScan()}
           >
             {scanning && <Loader2 size={12} className="animate-spin" />}
@@ -813,7 +813,7 @@ function RepoManager({
                 Add selected
               </button>
               <button
-                className="text-xs text-neutral-400 transition-colors hover:text-neutral-200"
+                className="text-xs text-neutral-400 transition-colors hover:text-neutral-200 active:scale-[0.97]"
                 onClick={closeScan}
               >
                 Cancel

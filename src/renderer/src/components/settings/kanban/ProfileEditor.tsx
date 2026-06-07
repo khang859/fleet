@@ -25,7 +25,7 @@ export function ProfileEditor({
         />
         <button
           onClick={onDelete}
-          className="rounded px-2 py-1 text-xs text-red-400 hover:bg-neutral-800"
+          className="rounded px-2 py-1 text-xs text-red-400 hover:bg-neutral-800 transition active:scale-[0.97]"
         >
           Delete
         </button>

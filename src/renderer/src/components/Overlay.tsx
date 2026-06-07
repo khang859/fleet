@@ -12,6 +12,8 @@ type OverlayProps = {
   containerClassName?: string;
   /** Close when the Escape key is pressed. Default true. */
   closeOnEscape?: boolean;
+  /** Close when the backdrop (area outside the panel) is clicked. Default true. */
+  closeOnBackdrop?: boolean;
   /** Backdrop tint classes. Default `bg-black/60`. */
   backdropClassName?: string;
 };
@@ -31,6 +33,7 @@ export function Overlay({
   panelClassName = '',
   containerClassName = 'items-center justify-center',
   closeOnEscape = true,
+  closeOnBackdrop = true,
   backdropClassName = 'bg-black/60'
 }: OverlayProps): React.JSX.Element | null {
   const { mounted, state } = usePresence(open, ENTER_EXIT_MS);
@@ -49,7 +52,7 @@ export function Overlay({
   return (
     <div
       data-state={state}
-      onClick={onClose}
+      onClick={closeOnBackdrop ? onClose : undefined}
       className={`fixed inset-0 z-50 flex ${containerClassName} ${backdropClassName} duration-150 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0`}
     >
       <div

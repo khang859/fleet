@@ -28,7 +28,7 @@ export function PiAdvancedAccordion({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="text-sm text-neutral-300 hover:text-neutral-100"
+        className="text-sm text-neutral-300 hover:text-neutral-100 transition active:scale-[0.97]"
       >
         {open ? '▾' : '▸'} Advanced
       </button>
@@ -65,7 +65,7 @@ export function PiAdvancedAccordion({
             <button
               type="button"
               onClick={() => void onOpenConfigFolder()}
-              className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800"
+              className="text-xs px-2 py-1 rounded border border-neutral-700 hover:bg-neutral-800 transition active:scale-[0.97]"
             >
               Open
             </button>
