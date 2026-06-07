@@ -5,7 +5,13 @@ import rehypeHighlight from 'rehype-highlight';
 import type { Components } from 'react-markdown';
 import { FileEditorPane } from './FileEditorPane';
 import { PathChromeHeader } from './PathChromeHeader';
+import { CodeBlock } from './markdown/CodeBlock';
+import { CopyDocMenu } from './markdown/CopyDocMenu';
+import { MarkdownFindBar } from './markdown/MarkdownFindBar';
+import { MarkdownContextMenu } from './markdown/MarkdownContextMenu';
+import { useMarkdownFind } from '../hooks/use-markdown-find';
 import { useWorkspaceStore } from '../store/workspace-store';
+import { useToastStore } from '../store/toast-store';
 import { dirname, resolve } from '../lib/path-utils';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -41,7 +47,103 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
   const [fileSize, setFileSize] = useState(0);
   const [previewContent, setPreviewContent] = useState<string>('');
   const contentRef = useRef<string>('');
+  const previewRef = useRef<HTMLDivElement>(null);
   const openFileInTab = useWorkspaceStore((s) => s.openFileInTab);
+
+  // Find-in-document (preview only)
+  const [searchOpen, setSearchOpen] = useState(false);
+  const {
+    query,
+    setQuery,
+    matchCount,
+    currentIndex,
+    next: findNext,
+    prev: findPrev,
+    clear: clearFind
+  } = useMarkdownFind(previewRef, previewContent, paneId);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setQuery('');
+    clearFind();
+  }, [setQuery, clearFind]);
+
+  // Cmd/Ctrl+F toggles the find bar — reuses the global "Search in pane" event,
+  // which carries the active paneId. Preview view only; Raw uses the editor's own search.
+  const activeViewRef = useRef<ViewMode>(activeView);
+  activeViewRef.current = activeView;
+  const searchOpenRef = useRef(searchOpen);
+  searchOpenRef.current = searchOpen;
+  useEffect(() => {
+    const handler = (e: Event): void => {
+      if (!(e instanceof CustomEvent)) return;
+      const detail: unknown = e.detail;
+      if (typeof detail !== 'object' || detail === null || !('paneId' in detail)) return;
+      if (detail.paneId !== paneId) return;
+      if (activeViewRef.current !== 'preview') return;
+      if (searchOpenRef.current) closeSearch();
+      else setSearchOpen(true);
+    };
+    document.addEventListener('fleet:toggle-search', handler);
+    return () => document.removeEventListener('fleet:toggle-search', handler);
+  }, [paneId, closeSearch]);
+
+  // ── Copy helpers (shared by auto-copy, the context menu, and copy-feedback) ──
+  const showToast = useToastStore((s) => s.show);
+
+  const copyText = useCallback(
+    (text: string, label: string) => {
+      if (!text) return;
+      void navigator.clipboard.writeText(text).then(() => showToast(label));
+    },
+    [showToast]
+  );
+
+  // The current selection's text, but only if it lives inside the preview.
+  const getSelectedText = useCallback((): string => {
+    const el = previewRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel || sel.isCollapsed || sel.rangeCount === 0) return '';
+    if (!el.contains(sel.getRangeAt(0).commonAncestorContainer)) return '';
+    return sel.toString().trim();
+  }, []);
+
+  const copySelection = useCallback(() => {
+    copyText(getSelectedText(), 'Copied selection');
+  }, [copyText, getSelectedText]);
+
+  const selectAllDoc = useCallback(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+  }, []);
+
+  // Cmd/Ctrl+A inside the preview selects only the document, not the whole app.
+  const handlePreviewKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+        if (!previewRef.current) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectAllDoc();
+      }
+    },
+    [selectAllDoc]
+  );
+
+  // Auto-copy on highlight: when a drag/selection settles, copy it. Confirms with a toast.
+  const handlePreviewMouseUp = useCallback(() => {
+    copyText(getSelectedText(), 'Copied selection');
+  }, [copyText, getSelectedText]);
+
+  // Native Cmd/Ctrl+C: the browser already copied the selection — just confirm it.
+  const handlePreviewCopy = useCallback(() => {
+    if (getSelectedText()) showToast('Copied selection');
+  }, [getSelectedText, showToast]);
 
   // Load file content on mount
   useEffect(() => {
@@ -67,18 +169,25 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
   }, []);
 
   // Refresh preview content when switching to preview tab
-  const handleTabSwitch = useCallback((view: ViewMode) => {
-    if (view === 'preview') {
-      setPreviewContent(contentRef.current);
-    }
-    setActiveView(view);
-  }, []);
+  const handleTabSwitch = useCallback(
+    (view: ViewMode) => {
+      if (view === 'preview') {
+        setPreviewContent(contentRef.current);
+      } else {
+        // Leaving preview — tear down any open find so highlights don't linger.
+        closeSearch();
+      }
+      setActiveView(view);
+    },
+    [closeSearch]
+  );
 
   // Custom link renderer for Fleet-aware navigation
   const baseDir = useMemo(() => dirname(filePath), [filePath]);
 
   const markdownComponents = useMemo<Components>(
     () => ({
+      pre: CodeBlock,
       a: ({ href, children, ...props }) => {
         if (!href) return <span {...props}>{children}</span>;
 
@@ -195,21 +304,48 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
         >
           Raw
         </button>
+
+        {activeView === 'preview' && (
+          <div className="ml-auto">
+            <CopyDocMenu
+              getMarkdown={() => contentRef.current}
+              getText={() => previewRef.current?.innerText ?? ''}
+            />
+          </div>
+        )}
       </div>
 
       {/* Content area — both views stay mounted to preserve editor state */}
       <div className="flex-1 min-h-0 overflow-hidden relative">
-        <div className={`h-full overflow-y-auto ${activeView === 'preview' ? '' : 'hidden'}`}>
-          <div className="max-w-3xl mx-auto px-8 py-6 text-neutral-300 leading-relaxed markdown-preview">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={markdownComponents}
+        <MarkdownContextMenu
+          getSelectedText={getSelectedText}
+          onCopySelection={copySelection}
+          onCopyMarkdown={() => copyText(contentRef.current, 'Copied as Markdown')}
+          onCopyText={() => copyText(previewRef.current?.innerText ?? '', 'Copied as plain text')}
+          onSelectAll={selectAllDoc}
+          onFind={() => setSearchOpen(true)}
+        >
+          <div
+            className={`h-full overflow-y-auto outline-none ${activeView === 'preview' ? '' : 'hidden'}`}
+            tabIndex={0}
+            onKeyDown={handlePreviewKeyDown}
+            onMouseUp={handlePreviewMouseUp}
+            onCopy={handlePreviewCopy}
+          >
+            <div
+              ref={previewRef}
+              className="max-w-3xl mx-auto px-8 py-6 text-neutral-300 leading-relaxed markdown-preview"
             >
-              {previewContent}
-            </ReactMarkdown>
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={markdownComponents}
+              >
+                {previewContent}
+              </ReactMarkdown>
+            </div>
           </div>
-        </div>
+        </MarkdownContextMenu>
         <div className={`h-full ${activeView === 'raw' ? '' : 'hidden'}`}>
           <FileEditorPane
             paneId={paneId}
@@ -218,6 +354,18 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
             showPathChrome={false}
           />
         </div>
+        {activeView === 'preview' && (
+          <MarkdownFindBar
+            isOpen={searchOpen}
+            query={query}
+            matchCount={matchCount}
+            currentIndex={currentIndex}
+            onQueryChange={setQuery}
+            onNext={findNext}
+            onPrev={findPrev}
+            onClose={closeSearch}
+          />
+        )}
       </div>
 
       {/* Footer with path */}

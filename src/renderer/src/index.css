@@ -264,3 +264,13 @@ body,
   border-radius: 0.375rem;
   margin-bottom: 0.75rem;
 }
+
+/* Make rendered prose selectable (Electron's default can otherwise swallow it). */
+.markdown-preview {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+/* Find-in-document highlight colors are injected per-pane by useMarkdownFind, since
+   the CSS Custom Highlight registry is document-global and namespaced by paneId. */
