@@ -74,7 +74,7 @@ export function FileNavigator({
                     onClick={() => onSelect(f)}
                     disabled={!f.readable}
                     title={f.readable ? f.relPath : 'Cannot read this file'}
-                    className={`group flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs transition-colors ${
+                    className={`group flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs transition-colors active:scale-[0.98] ${
                       selected
                         ? 'bg-blue-950/50 font-semibold text-white shadow-[inset_3px_0_0_0_#3b82f6]'
                         : 'text-neutral-300 hover:bg-neutral-800'

@@ -36,9 +36,7 @@ export function parseEnvFile(text: string): ParsedEnvFile {
 }
 
 export function serializeEnvFile(parsed: ParsedEnvFile): string {
-  const body = parsed.lines
-    .map((l) => (l.kind === 'blank' ? '' : l.raw))
-    .join('\n');
+  const body = parsed.lines.map((l) => (l.kind === 'blank' ? '' : l.raw)).join('\n');
   return parsed.trailingNewline ? `${body}\n` : body;
 }
 

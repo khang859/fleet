@@ -9,7 +9,8 @@ import {
   EyeOff,
   Save,
   AlertTriangle,
-  Loader2
+  Loader2,
+  FilePlus2
 } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
 import { NewFileDialog } from './NewFileDialog';
@@ -288,7 +289,7 @@ export function EnvEditorModal({
           }
         }}
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[85vh] w-[860px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
+        className="env-editor-pop flex h-[85vh] w-[860px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
       >
         <div className="flex items-center gap-3 border-b border-neutral-800 px-5 py-3">
           <h2 className="text-base font-semibold text-neutral-100">Env Editor</h2>
@@ -423,10 +424,24 @@ export function EnvEditorModal({
                 />
               )
             ) : (
-              <div className="flex flex-1 items-center justify-center p-6 text-sm text-neutral-500">
-                {files.length === 0
-                  ? 'No .env files in this folder yet.'
-                  : 'Select a file to edit.'}
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+                <FilePlus2 size={28} className="text-neutral-600" />
+                <p className="text-sm text-neutral-400">
+                  {files.length === 0
+                    ? 'No .env files in this folder.'
+                    : 'Select a file from the left to edit it.'}
+                </p>
+                {files.length === 0 && (
+                  <button
+                    onClick={() => {
+                      setNewFileError(null);
+                      setNewFileOpen(true);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 active:scale-[0.97]"
+                  >
+                    <FilePlus2 size={15} /> Create .env file
+                  </button>
+                )}
               </div>
             )}
             {newFileOpen && (

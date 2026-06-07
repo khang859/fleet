@@ -11,7 +11,13 @@ import {
 import { join, relative, sep, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseEnvFile } from '../../shared/env-parse';
-import type { EnvFileEntry, EnvReadResult, EnvWriteResult, EnvPathResult, EnvTrashResult } from '../../shared/env-editor-types';
+import type {
+  EnvFileEntry,
+  EnvReadResult,
+  EnvWriteResult,
+  EnvPathResult,
+  EnvTrashResult
+} from '../../shared/env-editor-types';
 
 const EXCLUDE_DIRS = new Set([
   'node_modules',
