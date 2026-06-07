@@ -289,7 +289,9 @@ void app.whenReady().then(async () => {
   // Serve local PDFs to the bundled pdf.js viewer (fetch works through custom
   // schemes even though Chromium's native PDF viewer does not on Electron 39).
   protocol.handle('fleet-pdf', async (request) => {
-    const filePath = fileURLToPath(`file://${new URL(request.url).pathname}`);
+    // resolve() normalizes any `..` segments so the .pdf suffix check below is
+    // a meaningful guard, not bypassable via traversal.
+    const filePath = resolve(fileURLToPath(`file://${new URL(request.url).pathname}`));
     if (!filePath.toLowerCase().endsWith('.pdf')) {
       return new Response('Forbidden', { status: 403 });
     }
