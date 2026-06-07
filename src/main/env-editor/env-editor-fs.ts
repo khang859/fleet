@@ -5,7 +5,8 @@ import {
   writeFileSync,
   renameSync,
   existsSync,
-  mkdtempSync
+  mkdtempSync,
+  unlinkSync
 } from 'node:fs';
 import { join, relative, sep, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -70,7 +71,8 @@ function sortEntries(entries: EnvFileEntry[]): EnvFileEntry[] {
 let tmpCounter = 0;
 
 export function readEnvFile(absPath: string): EnvReadResult {
-  return { text: readFileSync(absPath, 'utf8'), mtimeMs: statSync(absPath).mtimeMs };
+  const mtimeMs = statSync(absPath).mtimeMs;
+  return { text: readFileSync(absPath, 'utf8'), mtimeMs };
 }
 
 /** Atomic write (temp + rename). If expectedMtimeMs is given and the file is newer, refuse. */
@@ -79,15 +81,25 @@ export function writeEnvFile(
   text: string,
   expectedMtimeMs?: number
 ): EnvWriteResult {
+  // If the file was deleted externally, skip the conflict check and write fresh.
   if (expectedMtimeMs !== undefined && existsSync(absPath)) {
     const current = statSync(absPath).mtimeMs;
     if (current > expectedMtimeMs) {
       return { ok: false, externalChange: true, mtimeMs: current };
     }
   }
-  const tmp = `${absPath}.fleet-tmp-${process.pid}-${tmpCounter++}`;
+  const tmp = `${absPath}.fleet-tmp-${process.pid}-${Date.now()}-${tmpCounter++}`;
   writeFileSync(tmp, text, 'utf8');
-  renameSync(tmp, absPath);
+  try {
+    renameSync(tmp, absPath);
+  } catch (err) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      /* best-effort temp cleanup */
+    }
+    throw err;
+  }
   return { ok: true, mtimeMs: statSync(absPath).mtimeMs };
 }
 

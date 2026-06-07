@@ -46,7 +46,7 @@ describe('listEnvFiles', () => {
 });
 
 describe('env-editor fs ops', () => {
-  it('reads and writes atomically, returning a new mtime', () => {
+  it('reads and writes, returning updated content', () => {
     const p = join(root, '.env');
     writeFileSync(p, 'A=1\n');
     const read = readEnvFile(p);
