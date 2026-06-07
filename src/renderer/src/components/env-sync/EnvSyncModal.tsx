@@ -858,13 +858,22 @@ export function EnvSyncModal({
     setSecrets(await window.fleet.envSync.getSecrets());
   }, []);
 
-  // Reload the config + statuses for the already-resolved repoDir.
+  // Reload the config + statuses for the already-resolved repoDir. Notifies the
+  // toolbar badge so it re-aggregates instead of going stale until a refresh.
   const reload = useCallback(async (): Promise<void> => {
     if (!repoDir) return;
     const cfg = await window.fleet.envSync.getConfig(repoDir);
     setConfig(cfg);
     setStatuses(cfg ? await window.fleet.envSync.status(repoDir) : []);
+    window.dispatchEvent(new CustomEvent('env-sync:changed'));
   }, [repoDir]);
+
+  // Secret/auth changes can flip a target between error and synced, so refresh
+  // both the redacted secrets and the statuses (and thus the badge).
+  const onSecretsChanged = useCallback(async (): Promise<void> => {
+    await reloadSecrets();
+    await reload();
+  }, [reloadSecrets, reload]);
 
   // On open, resolve which repo dir this pane maps to and load its state.
   useEffect(() => {
@@ -1026,7 +1035,7 @@ export function EnvSyncModal({
                     present={secrets.globalPresent}
                     encAvailable={encAvailable}
                     clearLabel="Clear"
-                    onChanged={reloadSecrets}
+                    onChanged={onSecretsChanged}
                   />
                 </Field>
                 <Field label="AWS authentication">
@@ -1034,7 +1043,7 @@ export function EnvSyncModal({
                     redacted={secrets.globalAuth}
                     encAvailable={encAvailable}
                     resetLabel="Reset to default chain"
-                    onChanged={reloadSecrets}
+                    onChanged={onSecretsChanged}
                   />
                 </Field>
               </Disclosure>
@@ -1048,7 +1057,7 @@ export function EnvSyncModal({
                       present={Boolean(secrets.repoOverrides[config.id]?.present)}
                       encAvailable={encAvailable}
                       clearLabel="Use global"
-                      onChanged={reloadSecrets}
+                      onChanged={onSecretsChanged}
                     />
                   </Field>
                   <Field label="AWS auth override">
@@ -1057,7 +1066,7 @@ export function EnvSyncModal({
                       override={secrets.authRepoOverrides[config.id]}
                       globalAuth={secrets.globalAuth}
                       encAvailable={encAvailable}
-                      onChanged={reloadSecrets}
+                      onChanged={onSecretsChanged}
                     />
                   </Field>
                 </Disclosure>

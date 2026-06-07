@@ -33,6 +33,7 @@ export function EnvSyncConflictDialog(): React.JSX.Element | null {
     showToast(res.ok ? `Resolved ${target.envFile} (${choice})` : 'Resolve failed', {
       duration: 5000
     });
+    if (res.ok) window.dispatchEvent(new CustomEvent('env-sync:changed'));
     setTarget(null);
     setDiff(null);
   };

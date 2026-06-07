@@ -31,15 +31,22 @@ export function EnvSyncBadge({ cwd }: { cwd: string | undefined }): React.JSX.El
       return;
     }
     let active = true;
-    fetchAggState(cwd)
-      .then((state) => {
-        if (active) setAgg(state);
-      })
-      .catch(() => {
-        if (active) setAgg('error');
-      });
+    const load = (): void => {
+      fetchAggState(cwd)
+        .then((state) => {
+          if (active) setAgg(state);
+        })
+        .catch(() => {
+          if (active) setAgg('error');
+        });
+    };
+    load();
+    // Re-aggregate whenever the modal (or any flow) mutates env-sync state, so the
+    // badge reflects fixes immediately instead of going stale until a refresh.
+    window.addEventListener('env-sync:changed', load);
     return () => {
       active = false;
+      window.removeEventListener('env-sync:changed', load);
     };
   }, [cwd]);
 
