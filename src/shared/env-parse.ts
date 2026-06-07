@@ -1,12 +1,16 @@
 /** One physical line, preserved for round-trip fidelity. */
 export type EnvLine =
-  | { kind: 'var'; key: string; value: string; raw: string }
+  | { kind: 'var'; id: number; key: string; value: string; raw: string }
   | { kind: 'comment'; raw: string }
   | { kind: 'blank'; raw: string };
 
 export type VarLine = Extract<EnvLine, { kind: 'var' }>;
 
 export type ParsedEnvFile = { lines: EnvLine[]; trailingNewline: boolean };
+
+/** Stable id for var rows, so React keys survive edits and deletes (not serialized). */
+let varIdCounter = 0;
+const nextVarId = (): number => ++varIdCounter;
 
 /** Parse .env text into ordered lines. Splits on '\n' only so CRLF is kept in raw. */
 export function parseEnvFile(text: string): ParsedEnvFile {
@@ -30,7 +34,7 @@ export function parseEnvFile(text: string): ParsedEnvFile {
     ) {
       value = value.slice(1, -1);
     }
-    return { kind: 'var', key, value, raw };
+    return { kind: 'var', id: nextVarId(), key, value, raw };
   });
   return { lines, trailingNewline };
 }
@@ -49,11 +53,11 @@ export function formatVarLine(key: string, value: string, originalRaw?: string):
 }
 
 export function updateVarLine(line: VarLine, key: string, value: string): VarLine {
-  return { kind: 'var', key, value, raw: formatVarLine(key, value, line.raw) };
+  return { kind: 'var', id: line.id, key, value, raw: formatVarLine(key, value, line.raw) };
 }
 
 export function newVarLine(key: string, value: string): VarLine {
-  return { kind: 'var', key, value, raw: formatVarLine(key, value) };
+  return { kind: 'var', id: nextVarId(), key, value, raw: formatVarLine(key, value) };
 }
 
 export function countVars(text: string): number {
