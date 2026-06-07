@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { Overlay } from './Overlay';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { fuzzyMatch } from '../lib/commands';
 import { getFileIcon } from '../lib/file-icons';
@@ -123,86 +124,84 @@ export function QuickOpenOverlay({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Search input */}
-        <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-2">
-          <svg
-            className="text-neutral-500 shrink-0"
-            width="14"
-            height="14"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          >
-            <circle cx="6.5" cy="6.5" r="4.5" />
-            <line x1="10.5" y1="10.5" x2="14" y2="14" />
-          </svg>
-          <input
-            ref={inputRef}
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Search files..."
-            className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500"
-          />
-          {isLoading && <span className="text-xs text-neutral-500">Loading...</span>}
-        </div>
+    <Overlay
+      open={isOpen}
+      onClose={onClose}
+      containerClassName="justify-center"
+      panelClassName="mt-[15vh] w-[560px] max-h-[60vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden"
+    >
+      {/* Search input */}
+      <div className="px-3 py-2 border-b border-neutral-800 flex items-center gap-2">
+        <svg
+          className="text-neutral-500 shrink-0"
+          width="14"
+          height="14"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+        >
+          <circle cx="6.5" cy="6.5" r="4.5" />
+          <line x1="10.5" y1="10.5" x2="14" y2="14" />
+        </svg>
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search files..."
+          className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500"
+        />
+        {isLoading && <span className="text-xs text-neutral-500">Loading...</span>}
+      </div>
 
-        {/* Results */}
-        <div ref={listRef} className="overflow-y-auto py-1">
-          {results.length === 0 && !isLoading ? (
-            <div className="px-3 py-4 text-sm text-neutral-500 text-center">
-              {query ? 'No matching files' : 'No recent files'}
-            </div>
-          ) : (
-            results.map((file, i) => (
-              <button
-                key={file.path}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                  i === selectedIndex
-                    ? 'bg-neutral-700 text-white'
-                    : 'text-neutral-300 hover:bg-neutral-800'
-                }`}
-                onMouseEnter={() => setSelectedIndex(i)}
-                onClick={() => handleSelect(file)}
-              >
-                <span className="text-neutral-500 shrink-0">{getFileIcon(file.name)}</span>
-                <div className="flex flex-col min-w-0">
-                  <span className="truncate font-medium">
-                    <HighlightedText text={file.name} query={query} />
-                  </span>
-                  {file.relativePath !== file.name && (
-                    <span className="truncate text-xs text-neutral-600">
-                      {file.relativePath.includes('/')
-                        ? file.relativePath.split('/').slice(0, -1).join('/')
-                        : file.relativePath}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))
-          )}
-        </div>
-
-        {/* Footer hint */}
-        {results.length > 0 && (
-          <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
-            <span>↑↓ navigate</span>
-            <span>↵ open</span>
-            <span>esc dismiss</span>
+      {/* Results */}
+      <div ref={listRef} className="overflow-y-auto py-1">
+        {results.length === 0 && !isLoading ? (
+          <div className="px-3 py-4 text-sm text-neutral-500 text-center">
+            {query ? 'No matching files' : 'No recent files'}
           </div>
+        ) : (
+          results.map((file, i) => (
+            <button
+              key={file.path}
+              className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                i === selectedIndex
+                  ? 'bg-neutral-700 text-white'
+                  : 'text-neutral-300 hover:bg-neutral-800'
+              }`}
+              onMouseEnter={() => setSelectedIndex(i)}
+              onClick={() => handleSelect(file)}
+            >
+              <span className="text-neutral-500 shrink-0">{getFileIcon(file.name)}</span>
+              <div className="flex flex-col min-w-0">
+                <span className="truncate font-medium">
+                  <HighlightedText text={file.name} query={query} />
+                </span>
+                {file.relativePath !== file.name && (
+                  <span className="truncate text-xs text-neutral-600">
+                    {file.relativePath.includes('/')
+                      ? file.relativePath.split('/').slice(0, -1).join('/')
+                      : file.relativePath}
+                  </span>
+                )}
+              </div>
+            </button>
+          ))
         )}
       </div>
-    </div>
+
+      {/* Footer hint */}
+      {results.length > 0 && (
+        <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
+          <span>↑↓ navigate</span>
+          <span>↵ open</span>
+          <span>esc dismiss</span>
+        </div>
+      )}
+    </Overlay>
   );
 }

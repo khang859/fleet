@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import 'tw-animate-css';
 @import 'highlight.js/styles/atom-one-dark.css';
 @plugin "@tailwindcss/typography";
 
@@ -135,6 +136,18 @@ body,
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse {
     animation: none !important;
+  }
+  /* Neutralize entrance/exit motion and tactile press scaling for users
+     who prefer reduced motion. Opacity still resolves so nothing vanishes. */
+  .animate-in,
+  .animate-out {
+    animation: none !important;
+  }
+  .active\:scale-\[0\.97\]:active,
+  .active\:scale-\[0\.94\]:active,
+  .active\:scale-95:active,
+  .active\:scale-90:active {
+    transform: none !important;
   }
 }
 

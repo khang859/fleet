@@ -5,6 +5,7 @@ import { DiffView, DiffModeEnum, DiffFile, type DiffHighlighter } from '@git-dif
 import '@git-diff-view/react/styles/diff-view.css';
 import type { GitStatusPayload, GitFileStatus } from '../../../shared/ipc-api';
 import { getLanguageForPath } from '../../../shared/languages';
+import { Overlay } from './Overlay';
 
 type DiffHighlighterInstance = Omit<DiffHighlighter, 'getHighlighterEngine'> | undefined;
 
@@ -161,11 +162,9 @@ export function GitChangesModal({
     [onClose, filteredFiles, activeFileIndex, scrollToFile]
   );
 
-  if (!isOpen) return null;
-
   if (!cwd) {
     return (
-      <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+      <ModalShell open={isOpen} onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage
           icon={<AlertCircle size={32} />}
           message="Working directory not available"
@@ -177,7 +176,7 @@ export function GitChangesModal({
 
   if (loading) {
     return (
-      <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+      <ModalShell open={isOpen} onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage
           icon={<Loader2 size={32} className="animate-spin" />}
           message="Loading changes..."
@@ -188,7 +187,7 @@ export function GitChangesModal({
 
   if (data?.error) {
     return (
-      <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+      <ModalShell open={isOpen} onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage
           icon={<AlertCircle size={32} className="text-red-400" />}
           message={data.error}
@@ -200,7 +199,7 @@ export function GitChangesModal({
 
   if (data && !data.isRepo) {
     return (
-      <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+      <ModalShell open={isOpen} onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage
           icon={<GitBranch size={32} />}
           message="Not a git repository"
@@ -212,7 +211,7 @@ export function GitChangesModal({
 
   if (data?.files.length === 0) {
     return (
-      <ModalShell onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
+      <ModalShell open={isOpen} onClose={onClose} onKeyDown={handleKeyDown} modalRef={modalRef}>
         <StateMessage icon={<GitBranch size={32} />} message="No changes" onClose={onClose} />
       </ModalShell>
     );
@@ -223,6 +222,7 @@ export function GitChangesModal({
 
   return (
     <ModalShell
+      open={isOpen}
       onClose={onClose}
       onKeyDown={handleKeyDown}
       modalRef={modalRef}
@@ -250,11 +250,14 @@ export function GitChangesModal({
                 diffMode === DiffModeEnum.Unified ? DiffModeEnum.Split : DiffModeEnum.Unified
               )
             }
-            className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            className="px-2 py-1 text-xs text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-[0.97]"
           >
             {diffMode === DiffModeEnum.Unified ? 'Split' : 'Unified'}
           </button>
-          <button onClick={onClose} className="p-1 text-neutral-500 hover:text-white">
+          <button
+            onClick={onClose}
+            className="p-1 text-neutral-500 hover:text-white transition active:scale-90"
+          >
             <X size={16} />
           </button>
         </div>
@@ -315,12 +318,14 @@ export function GitChangesModal({
 // --- Sub-components ---
 
 function ModalShell({
+  open,
   children,
   onClose,
   onKeyDown,
   modalRef,
   showCloseButton = true
 }: {
+  open: boolean;
   children: React.ReactNode;
   onClose: () => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
@@ -328,33 +333,29 @@ function ModalShell({
   showCloseButton?: boolean;
 }): React.JSX.Element {
   useEffect(() => {
-    modalRef.current?.focus();
-  }, [modalRef]);
+    if (open) modalRef.current?.focus();
+  }, [open, modalRef]);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
+    <Overlay open={open} onClose={onClose}>
       <div
         ref={modalRef}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        onClick={(e) => e.stopPropagation()}
         className="relative bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl flex flex-col outline-none"
         style={{ width: 'calc(100vw - 64px)', height: 'calc(100vh - 48px)' }}
       >
         {showCloseButton && (
           <button
             onClick={onClose}
-            className="absolute top-3 right-3 z-10 p-1 text-neutral-500 hover:text-white"
+            className="absolute top-3 right-3 z-10 p-1 text-neutral-500 hover:text-white transition active:scale-90"
           >
             <X size={16} />
           </button>
         )}
         {children}
       </div>
-    </div>
+    </Overlay>
   );
 }
 
@@ -372,7 +373,10 @@ function StateMessage({
       {icon}
       <span className="text-sm">{message}</span>
       {onClose && (
-        <button onClick={onClose} className="text-xs text-neutral-600 hover:text-white mt-2">
+        <button
+          onClick={onClose}
+          className="text-xs text-neutral-600 hover:text-white mt-2 transition active:scale-[0.97]"
+        >
           Close
         </button>
       )}

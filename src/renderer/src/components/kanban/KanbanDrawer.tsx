@@ -232,7 +232,10 @@ export function KanbanDrawer(): React.JSX.Element | null {
         <span className="font-mono text-xs text-neutral-500">
           {t.id} · {t.status}
         </span>
-        <button onClick={closeTask} className="rounded p-1 text-neutral-400 hover:bg-neutral-800">
+        <button
+          onClick={closeTask}
+          className="rounded p-1 text-neutral-400 transition active:scale-90 hover:bg-neutral-800"
+        >
           <X size={14} />
         </button>
       </div>
@@ -494,7 +497,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                     <button
                       onClick={() => void runReview('merge')}
                       disabled={reviewBusy !== null}
-                      className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 font-medium text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded bg-emerald-700 px-2 py-1 font-medium text-white transition active:scale-[0.97] hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                     >
                       <GitMerge size={12} />
                       {reviewBusy === 'merge' ? 'Merging…' : `Merge to ${t.baseBranch}`}
@@ -502,7 +505,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                     <button
                       onClick={() => void runReview('pr')}
                       disabled={reviewBusy !== null}
-                      className="inline-flex items-center gap-1 rounded border border-sky-700 px-2 py-1 text-sky-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded border border-sky-700 px-2 py-1 text-sky-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                     >
                       <GitPullRequest size={12} />
                       {reviewBusy === 'pr' ? 'Opening…' : 'Make Pull Request'}
@@ -512,7 +515,7 @@ export function KanbanDrawer(): React.JSX.Element | null {
                 <button
                   onClick={() => void runReview('accept')}
                   disabled={reviewBusy !== null}
-                  className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-neutral-300 hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded border border-neutral-700 px-2 py-1 text-neutral-300 transition active:scale-[0.97] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                 >
                   <Check size={12} />
                   {reviewBusy === 'accept' ? 'Accepting…' : 'Do Nothing'}
@@ -899,7 +902,7 @@ function BlockedReply({
           <button
             onClick={resume}
             disabled={resuming}
-            className="rounded bg-blue-600 px-2 py-1 font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded bg-blue-600 px-2 py-1 font-medium text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
           >
             {resuming ? 'Resuming…' : 'Reply & Resume ▶'}
           </button>

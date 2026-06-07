@@ -288,7 +288,7 @@ export function KanbanBoard(): React.JSX.Element {
                 setBoardEditor({ mode: 'rename' });
               }}
               disabled={activeBoardSlug === 'default'}
-              className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40"
+              className="rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800 disabled:opacity-40 disabled:active:scale-100"
               title="Rename board"
             >
               Rename
@@ -308,7 +308,7 @@ export function KanbanBoard(): React.JSX.Element {
                 }
               }}
               disabled={activeBoardSlug === 'default'}
-              className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-red-900/40 disabled:opacity-40"
+              className="rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-red-900/40 disabled:opacity-40 disabled:active:scale-100"
               title="Delete board"
             >
               Delete
@@ -352,14 +352,14 @@ export function KanbanBoard(): React.JSX.Element {
             </button>
             <button
               onClick={() => setSwarming(true)}
-              className="inline-flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-xs text-white hover:bg-purple-500"
+              className="inline-flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-xs text-white transition active:scale-[0.97] hover:bg-purple-500"
               title="Create a swarm: workers → verifier → synthesizer"
             >
               <Network size={12} /> Swarm
             </button>
             <button
               onClick={() => setCreating(true)}
-              className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
+              className="inline-flex items-center gap-1 rounded bg-blue-600 px-2 py-1 text-xs text-white transition active:scale-[0.97] hover:bg-blue-500"
             >
               <Plus size={12} /> New Task
             </button>
@@ -380,13 +380,13 @@ export function KanbanBoard(): React.JSX.Element {
               />
               <button
                 onClick={() => void handleBoardSubmit()}
-                className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500"
+                className="rounded bg-blue-600 px-2 py-1 text-xs text-white transition active:scale-[0.97] hover:bg-blue-500"
               >
                 {boardEditor.mode === 'new' ? 'Create' : 'Save'}
               </button>
               <button
                 onClick={() => setBoardEditor(null)}
-                className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+                className="rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800"
               >
                 Cancel
               </button>
@@ -508,7 +508,7 @@ export function KanbanBoard(): React.JSX.Element {
                     newFolder.trim() !== '' &&
                     folderIsRepo !== true
                   }
-                  className="rounded bg-blue-600 px-2 py-1 text-xs text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded bg-blue-600 px-2 py-1 text-xs text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100"
                 >
                   Create
                 </button>
@@ -517,7 +517,7 @@ export function KanbanBoard(): React.JSX.Element {
                     setCreating(false);
                     clearSeed();
                   }}
-                  className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+                  className="rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800"
                 >
                   Cancel
                 </button>

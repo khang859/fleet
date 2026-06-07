@@ -18,6 +18,7 @@ import { serializePane } from '../hooks/use-terminal';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
 import { getFileSave } from '../lib/file-save-registry';
+import { popperAnim, dialogFadeAnim } from '../lib/motion';
 import type { Workspace, PaneLeaf, Tab } from '../../../shared/types';
 import { SidebarResizeHandle } from './SidebarResizeHandle';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-constants';
@@ -147,7 +148,7 @@ function GroupHeader({
               <span className="text-[10px] text-fleet-text-subtle">{tabCount} tabs</span>
             )}
             <button
-              className="opacity-60 group-hover/header:opacity-100 text-fleet-text-muted hover:text-fleet-text w-5 h-5 flex items-center justify-center text-sm rounded border border-fleet-border-strong hover:border-fleet-border-strong hover:bg-fleet-surface-3 transition-all cursor-pointer"
+              className="opacity-60 group-hover/header:opacity-100 text-fleet-text-muted hover:text-fleet-text w-5 h-5 flex items-center justify-center text-sm rounded border border-fleet-border-strong hover:border-fleet-border-strong hover:bg-fleet-surface-3 transition active:scale-90 cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 onAddWorktree();
@@ -160,7 +161,9 @@ function GroupHeader({
         </div>
       </ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
+        <ContextMenu.Content
+          className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
+        >
           <ContextMenu.Item
             className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
             onSelect={() => {
@@ -1119,7 +1122,9 @@ export function Sidebar({
                 </span>
               </ContextMenu.Trigger>
               <ContextMenu.Portal>
-                <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
+                <ContextMenu.Content
+                  className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
+                >
                   <ContextMenu.Item
                     className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
                     onSelect={() => {
@@ -1143,14 +1148,14 @@ export function Sidebar({
           )}
           {/* Add tab button */}
           <button
-            className="text-fleet-text-subtle hover:text-fleet-text text-lg leading-none px-1 rounded hover:bg-fleet-surface-2 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text text-lg leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => addTab(undefined, window.fleet.homeDir)}
             title={`New Tab (${formatShortcut(getShortcut('new-tab')!)})`}
           >
             +
           </button>
           <button
-            className="text-fleet-text-subtle hover:text-fleet-text px-1 rounded hover:bg-fleet-surface-2 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={onCollapse}
             title="Collapse sidebar"
           >
@@ -1404,7 +1409,7 @@ export function Sidebar({
             Workspaces
           </span>
           <button
-            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition-colors"
+            className="text-fleet-text-subtle hover:text-fleet-text text-sm leading-none px-1 rounded hover:bg-fleet-surface-2 transition active:scale-90"
             onClick={() => {
               setShowNewWsInput(true);
               setNewWsName('');
@@ -1449,7 +1454,7 @@ export function Sidebar({
                   <span className="text-red-400">Delete this workspace?</span>
                   <div className="flex gap-2">
                     <button
-                      className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition-colors"
+                      className="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white rounded transition active:scale-[0.97]"
                       onClick={() => {
                         void handleDeleteWorkspace(ws.id);
                       }}
@@ -1457,7 +1462,7 @@ export function Sidebar({
                       Delete
                     </button>
                     <button
-                      className="px-2 py-0.5 bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text-secondary rounded transition-colors"
+                      className="px-2 py-0.5 bg-fleet-surface-3 hover:bg-fleet-surface-3 text-fleet-text-secondary rounded transition active:scale-[0.97]"
                       onClick={() => setDeleteConfirmId(null)}
                     >
                       Cancel
@@ -1485,7 +1490,7 @@ export function Sidebar({
                 <ContextMenu.Root>
                   <ContextMenu.Trigger asChild>
                     <button
-                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded-md transition-colors"
+                      className="w-full flex items-center justify-between px-2 py-1.5 text-sm text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded-md transition active:scale-[0.97]"
                       onClick={() => handleSwitchWorkspace(ws.id)}
                       title={`Switch to ${ws.label}`}
                     >
@@ -1496,7 +1501,9 @@ export function Sidebar({
                     </button>
                   </ContextMenu.Trigger>
                   <ContextMenu.Portal>
-                    <ContextMenu.Content className="min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50">
+                    <ContextMenu.Content
+                      className={`min-w-[140px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg p-1 text-sm text-fleet-text z-50 ${popperAnim}`}
+                    >
                       <ContextMenu.Item
                         className="px-2 py-1.5 rounded cursor-pointer outline-none focus:bg-fleet-surface-3 hover:bg-fleet-surface-3"
                         onSelect={() => {
@@ -1529,7 +1536,7 @@ export function Sidebar({
           );
           return (
             <button
-              className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md transition-colors ${
+              className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded-md transition active:scale-[0.97] ${
                 isSettingsActive
                   ? 'text-fleet-text bg-fleet-surface-3 ring-1 ring-fleet-border-strong'
                   : 'text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2'
@@ -1555,8 +1562,10 @@ export function Sidebar({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-fleet-bg/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm">
+          <Dialog.Overlay className={`fixed inset-0 bg-fleet-bg/60 z-50 ${dialogFadeAnim}`} />
+          <Dialog.Content
+            className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm ${dialogFadeAnim}`}
+          >
             <Dialog.Title className="text-base font-semibold text-fleet-text mb-1">
               Save changes to &ldquo;{fileCloseConfirm?.label}&rdquo;?
             </Dialog.Title>
@@ -1565,7 +1574,7 @@ export function Sidebar({
             </Dialog.Description>
             <div className="flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition active:scale-[0.97]"
                 onClick={() => {
                   if (fileCloseConfirm) doCloseTab(fileCloseConfirm.tabId);
                   setFileCloseConfirm(null);
@@ -1574,14 +1583,14 @@ export function Sidebar({
                 Don&apos;t Save
               </button>
               <button
-                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition active:scale-[0.97]"
                 onClick={() => setFileCloseConfirm(null)}
               >
                 Cancel
               </button>
               <button
                 disabled={fileSaving}
-                className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors font-medium"
+                className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition active:scale-[0.97] disabled:active:scale-100 font-medium"
                 onClick={() => {
                   if (!fileCloseConfirm) return;
                   setFileSaving(true);
@@ -1614,8 +1623,10 @@ export function Sidebar({
         }}
       >
         <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 bg-fleet-bg/60 z-50" />
-          <Dialog.Content className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm">
+          <Dialog.Overlay className={`fixed inset-0 bg-fleet-bg/60 z-50 ${dialogFadeAnim}`} />
+          <Dialog.Content
+            className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 bg-fleet-surface border border-fleet-border-strong rounded-lg shadow-xl p-5 w-80 text-sm ${dialogFadeAnim}`}
+          >
             <Dialog.Title className="text-base font-semibold text-fleet-text mb-1">
               Remove worktree &ldquo;{worktreeCloseConfirm?.label}&rdquo;?
             </Dialog.Title>
@@ -1625,13 +1636,13 @@ export function Sidebar({
             </Dialog.Description>
             <div className="flex justify-end gap-2">
               <button
-                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition-colors"
+                className="px-3 py-1.5 text-xs text-fleet-text-muted hover:text-fleet-text hover:bg-fleet-surface-2 rounded transition active:scale-[0.97]"
                 onClick={() => setWorktreeCloseConfirm(null)}
               >
                 Cancel
               </button>
               <button
-                className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors font-medium"
+                className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition active:scale-[0.97] font-medium"
                 onClick={confirmWorktreeClose}
               >
                 Remove
