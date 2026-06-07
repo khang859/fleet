@@ -9,6 +9,8 @@ import { createBrowseMode } from './modes/browse-mode';
 import { createPanesMode } from './modes/panes-mode';
 import type { TelescopeMode, TelescopeItem } from './types';
 import { ShikiPreview } from './ShikiPreview';
+import { Overlay } from '../Overlay';
+import { tooltipAnim } from '../../lib/motion';
 
 const IMAGE_EXTENSIONS = new Set([
   'png',
@@ -284,8 +286,6 @@ export function TelescopeModal({
     [results, selectedIndex, activeMode, activeModeId, query, modeList, onClose]
   );
 
-  if (!isOpen) return null;
-
   const browseBreadcrumbs = activeModeId === 'browse' && activeMode?.breadcrumbs;
 
   const renderBreadcrumbs = (): React.JSX.Element | null => {
@@ -361,138 +361,138 @@ export function TelescopeModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center bg-black/60" onClick={onClose}>
-      <div
-        className="mt-[10vh] w-[800px] h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header: search input + mode tabs */}
-        <div className="flex items-center border-b border-neutral-700">
-          {/* Search input */}
-          <div className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0">
-            <Search size={14} className="text-neutral-500 shrink-0" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={activeMode?.placeholder ?? 'Search...'}
-              className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500 min-w-0"
-            />
-          </div>
-
-          {/* Mode tabs */}
-          <div className="flex items-center gap-0.5 px-2 py-1.5 border-l border-neutral-700 shrink-0">
-            <Tooltip.Provider delayDuration={500}>
-              {modeList.map((mode, i) => {
-                const Icon = mode.icon;
-                const shortcut = `${modKey}${i + 1}`;
-                const isActive = mode.id === activeModeId;
-                return (
-                  <Tooltip.Root key={mode.id}>
-                    <Tooltip.Trigger asChild>
-                      <button
-                        onClick={() => {
-                          setActiveModeId(mode.id);
-                          setQuery('');
-                          inputRef.current?.focus();
-                        }}
-                        className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded transition-colors ${
-                          isActive
-                            ? 'bg-neutral-700 text-neutral-200'
-                            : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
-                        }`}
-                      >
-                        <Icon size={12} />
-                        {mode.label}
-                      </button>
-                    </Tooltip.Trigger>
-                    <Tooltip.Portal>
-                      <Tooltip.Content
-                        side="bottom"
-                        className="z-50 rounded bg-neutral-800 border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 shadow-md"
-                        sideOffset={4}
-                      >
-                        {shortcut}
-                        <Tooltip.Arrow className="fill-neutral-800" />
-                      </Tooltip.Content>
-                    </Tooltip.Portal>
-                  </Tooltip.Root>
-                );
-              })}
-            </Tooltip.Provider>
-          </div>
+    <Overlay
+      open={isOpen}
+      onClose={onClose}
+      containerClassName="justify-center"
+      panelClassName="mt-[10vh] w-[800px] h-[70vh] flex flex-col bg-neutral-900 border border-neutral-700 rounded-lg shadow-xl overflow-hidden self-start"
+    >
+      {/* Header: search input + mode tabs */}
+      <div className="flex items-center border-b border-neutral-700">
+        {/* Search input */}
+        <div className="flex items-center gap-2 px-3 py-2 flex-1 min-w-0">
+          <Search size={14} className="text-neutral-500 shrink-0" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={activeMode?.placeholder ?? 'Search...'}
+            className="flex-1 bg-transparent text-sm text-white outline-none placeholder-neutral-500 min-w-0"
+          />
         </div>
 
-        {/* Breadcrumbs (browse mode only) */}
-        {renderBreadcrumbs()}
-
-        {/* Body */}
-        <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
-          {/* Results column */}
-          <div ref={listRef} className="w-[40%] overflow-y-auto border-r border-neutral-800 py-1">
-            {results.length === 0 ? (
-              <div className="px-3 py-4 text-xs text-neutral-600 text-center italic">
-                {query ? 'No results' : 'Type to search'}
-              </div>
-            ) : (
-              results.map((item, i) => {
-                const isSelected = i === selectedIndex;
-                return (
-                  <button
-                    key={item.id}
-                    data-result-index={i}
-                    className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
-                      isSelected
-                        ? 'bg-neutral-700 text-white'
-                        : item.data?.isIgnored
-                          ? 'text-neutral-600 hover:bg-neutral-800'
-                          : 'text-neutral-300 hover:bg-neutral-800'
-                    }`}
-                    onMouseEnter={() => setSelectedIndex(i)}
-                    onClick={() => {
-                      if (!activeMode) return;
-                      const isDirectory = item.data?.isDirectory;
-                      if (activeModeId === 'browse' && isDirectory === true) {
-                        activeMode.onSelect(item);
+        {/* Mode tabs */}
+        <div className="flex items-center gap-0.5 px-2 py-1.5 border-l border-neutral-700 shrink-0">
+          <Tooltip.Provider delayDuration={500}>
+            {modeList.map((mode, i) => {
+              const Icon = mode.icon;
+              const shortcut = `${modKey}${i + 1}`;
+              const isActive = mode.id === activeModeId;
+              return (
+                <Tooltip.Root key={mode.id}>
+                  <Tooltip.Trigger asChild>
+                    <button
+                      onClick={() => {
+                        setActiveModeId(mode.id);
                         setQuery('');
-                        setSelectedIndex(0);
-                      } else {
-                        activeMode.onSelect(item);
-                        onClose();
-                      }
-                    }}
-                  >
-                    <span className="text-neutral-500 shrink-0 flex items-center">{item.icon}</span>
-                    <div className="flex flex-col min-w-0 flex-1">
-                      <span className="truncate text-sm font-medium">{item.title}</span>
-                      {item.subtitle && (
-                        <span className="truncate text-xs text-neutral-500">{item.subtitle}</span>
-                      )}
-                    </div>
-                    {item.meta && (
-                      <span className="text-[10px] text-neutral-600 shrink-0">{item.meta}</span>
-                    )}
-                  </button>
-                );
-              })
-            )}
-          </div>
-
-          {/* Preview column */}
-          <div className="w-[60%] overflow-auto p-3">{renderPreviewPanel()}</div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
-          <span>↑↓ navigate</span>
-          <span>↵ open/focus</span>
-          {activeModeId !== 'panes' && <span>⇧↵ paste path</span>}
-          {activeModeId === 'browse' && <span>⌫ up dir</span>}
-          <span>esc dismiss</span>
+                        inputRef.current?.focus();
+                      }}
+                      className={`flex items-center gap-1.5 px-2 py-1 text-[11px] rounded transition-colors ${
+                        isActive
+                          ? 'bg-neutral-700 text-neutral-200'
+                          : 'text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800'
+                      }`}
+                    >
+                      <Icon size={12} />
+                      {mode.label}
+                    </button>
+                  </Tooltip.Trigger>
+                  <Tooltip.Portal>
+                    <Tooltip.Content
+                      side="bottom"
+                      className={`z-50 rounded bg-neutral-800 border border-neutral-700 px-2 py-1 text-[11px] text-neutral-300 shadow-md ${tooltipAnim}`}
+                      sideOffset={4}
+                    >
+                      {shortcut}
+                      <Tooltip.Arrow className="fill-neutral-800" />
+                    </Tooltip.Content>
+                  </Tooltip.Portal>
+                </Tooltip.Root>
+              );
+            })}
+          </Tooltip.Provider>
         </div>
       </div>
-    </div>
+
+      {/* Breadcrumbs (browse mode only) */}
+      {renderBreadcrumbs()}
+
+      {/* Body */}
+      <div className="flex flex-row flex-1 min-h-0 overflow-hidden">
+        {/* Results column */}
+        <div ref={listRef} className="w-[40%] overflow-y-auto border-r border-neutral-800 py-1">
+          {results.length === 0 ? (
+            <div className="px-3 py-4 text-xs text-neutral-600 text-center italic">
+              {query ? 'No results' : 'Type to search'}
+            </div>
+          ) : (
+            results.map((item, i) => {
+              const isSelected = i === selectedIndex;
+              return (
+                <button
+                  key={item.id}
+                  data-result-index={i}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+                    isSelected
+                      ? 'bg-neutral-700 text-white'
+                      : item.data?.isIgnored
+                        ? 'text-neutral-600 hover:bg-neutral-800'
+                        : 'text-neutral-300 hover:bg-neutral-800'
+                  }`}
+                  onMouseEnter={() => setSelectedIndex(i)}
+                  onClick={() => {
+                    if (!activeMode) return;
+                    const isDirectory = item.data?.isDirectory;
+                    if (activeModeId === 'browse' && isDirectory === true) {
+                      activeMode.onSelect(item);
+                      setQuery('');
+                      setSelectedIndex(0);
+                    } else {
+                      activeMode.onSelect(item);
+                      onClose();
+                    }
+                  }}
+                >
+                  <span className="text-neutral-500 shrink-0 flex items-center">{item.icon}</span>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="truncate text-sm font-medium">{item.title}</span>
+                    {item.subtitle && (
+                      <span className="truncate text-xs text-neutral-500">{item.subtitle}</span>
+                    )}
+                  </div>
+                  {item.meta && (
+                    <span className="text-[10px] text-neutral-600 shrink-0">{item.meta}</span>
+                  )}
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        {/* Preview column */}
+        <div className="w-[60%] overflow-auto p-3">{renderPreviewPanel()}</div>
+      </div>
+
+      {/* Footer */}
+      <div className="px-3 py-1.5 border-t border-neutral-800 flex items-center gap-3 text-xs text-neutral-600">
+        <span>↑↓ navigate</span>
+        <span>↵ open/focus</span>
+        {activeModeId !== 'panes' && <span>⇧↵ paste path</span>}
+        {activeModeId === 'browse' && <span>⌫ up dir</span>}
+        <span>esc dismiss</span>
+      </div>
+    </Overlay>
   );
 }

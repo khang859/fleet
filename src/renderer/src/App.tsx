@@ -39,6 +39,7 @@ import { ToastContainer } from './components/ToastContainer';
 import type { PiPlanOpenPayload } from '../../shared/ipc-api';
 import { useKanbanAttention } from './hooks/useKanbanAttention';
 import { getAccentCssVars } from './lib/theme';
+import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
@@ -58,7 +59,7 @@ function MiniSidebarTooltip({
           <Tooltip.Content
             side="right"
             sideOffset={8}
-            className="px-2 py-1 text-xs text-fleet-text bg-fleet-surface-2 border border-fleet-border-strong rounded shadow-lg z-50"
+            className={`px-2 py-1 text-xs text-fleet-text bg-fleet-surface-2 border border-fleet-border-strong rounded shadow-lg z-50 ${tooltipAnim}`}
           >
             {label}
             <Tooltip.Arrow className="fill-fleet-surface-2" />
@@ -787,7 +788,7 @@ export function App(): React.JSX.Element {
                 <Popover.Content
                   side="right"
                   sideOffset={8}
-                  className="min-w-[180px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg py-1 z-50"
+                  className={`min-w-[180px] bg-fleet-surface-2 border border-fleet-border-strong rounded-md shadow-lg py-1 z-50 ${popperAnim}`}
                 >
                   <div className="px-3 py-1.5 text-[10px] text-fleet-text-subtle uppercase tracking-wider">
                     Current: {workspace.label}
@@ -912,20 +913,20 @@ export function App(): React.JSX.Element {
             )}
             {/* Undo close tab toast (NNG: undo > confirmation dialogs for divided-attention UX) */}
             {showUndoToast && lastClosedTab && (
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-lg text-sm">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 bg-fleet-surface-2 border border-fleet-border-strong rounded-lg shadow-lg text-sm duration-150 animate-in fade-in-0 slide-in-from-bottom-2">
                 <span className="text-fleet-text-secondary">
                   {lastClosedTab.tab.worktreePath ? 'Removing worktree' : 'Closed'} {'"'}
                   {lastClosedTab.tab.label}
                   {'"'}
                 </span>
                 <button
-                  className="text-blue-400 hover:text-blue-300 font-medium"
+                  className="text-blue-400 hover:text-blue-300 font-medium transition active:scale-95"
                   onClick={handleUndo}
                 >
                   Undo
                 </button>
                 <button
-                  className="text-fleet-text-subtle hover:text-fleet-text-secondary"
+                  className="text-fleet-text-subtle hover:text-fleet-text-secondary transition active:scale-90"
                   onClick={() => {
                     setShowUndoToast(false);
                     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);

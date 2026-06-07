@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
+import { tooltipAnim } from '../lib/motion';
 
 function shortcutLabel(id: string): string {
   const def = getShortcut(id);
@@ -33,7 +34,7 @@ function ToolbarTooltip({
         <Tooltip.Content
           side="bottom"
           sideOffset={6}
-          className="px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50"
+          className={`px-2 py-1 text-xs text-white bg-neutral-800 border border-neutral-700 rounded shadow-lg z-50 ${tooltipAnim}`}
         >
           {label}
           <Tooltip.Arrow className="fill-neutral-800" />
@@ -87,7 +88,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitHorizontal();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <Columns2 size={14} />
             </button>
@@ -100,7 +101,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onSplitVertical();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <Rows2 size={14} />
             </button>
@@ -113,7 +114,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onGitChanges();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <GitBranch size={14} />
             </button>
@@ -126,7 +127,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onFileSearch();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <FileSearch size={14} />
             </button>
@@ -139,7 +140,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onClipboardHistory();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <Clipboard size={14} />
             </button>
@@ -152,7 +153,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onInjectSkills();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <BookOpen size={14} />
             </button>
@@ -165,7 +166,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onAnnotate();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <Crosshair size={14} />
             </button>
@@ -178,7 +179,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onTelescope();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <Telescope size={14} />
             </button>
@@ -191,7 +192,7 @@ export function PaneToolbar({
                 e.stopPropagation();
                 onEnvSync();
               }}
-              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
             >
               <FolderSync size={14} />
             </button>
@@ -203,7 +204,7 @@ export function PaneToolbar({
               e.stopPropagation();
               onSearch();
             }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
           >
             <Search size={14} />
           </button>
@@ -214,7 +215,7 @@ export function PaneToolbar({
               e.stopPropagation();
               onClose();
             }}
-            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition active:scale-90"
           >
             <X size={14} />
           </button>
