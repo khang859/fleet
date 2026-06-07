@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import { existsSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { join, dirname, resolve } from 'path';
 import { homedir } from 'os';
 import { PtyManager } from './pty-manager';
@@ -273,6 +273,7 @@ if (!IS_FLEET_DEV) {
 // Register fleet-image:// protocol to serve local images without base64 IPC overhead
 protocol.registerSchemesAsPrivileged([
   { scheme: 'fleet-image', privileges: { supportFetchAPI: true, stream: true } },
+  { scheme: 'fleet-pdf', privileges: { supportFetchAPI: true, stream: true } },
   {
     scheme: 'fleet-asset',
     privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
@@ -283,6 +284,16 @@ void app.whenReady().then(async () => {
   protocol.handle('fleet-image', async (request) => {
     const filePath = decodeURIComponent(new URL(request.url).pathname);
     return net.fetch(`file://${filePath}`);
+  });
+
+  // Serve local PDFs to the bundled pdf.js viewer (fetch works through custom
+  // schemes even though Chromium's native PDF viewer does not on Electron 39).
+  protocol.handle('fleet-pdf', async (request) => {
+    const filePath = fileURLToPath(`file://${new URL(request.url).pathname}`);
+    if (!filePath.toLowerCase().endsWith('.pdf')) {
+      return new Response('Forbidden', { status: 403 });
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
   });
 
   // Serve static assets from resources/ directory (mascot sprites, etc.)
