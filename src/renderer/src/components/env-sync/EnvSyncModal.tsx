@@ -1,6 +1,6 @@
 // src/renderer/src/components/env-sync/EnvSyncModal.tsx
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronRight, MoreHorizontal, X } from 'lucide-react';
+import { ChevronRight, KeyRound, MoreHorizontal, X } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
 import type {
   EnvSyncConfig,
@@ -848,6 +848,11 @@ export function EnvSyncModal({
 
   const globalSummary = `${secrets.globalPresent ? 'Passphrase set' : 'No passphrase'} · ${authSummary(secrets.globalAuth)}`;
 
+  // Effective AWS auth for the active repo: a per-repo override wins, else global.
+  const repoAuthOverride = config ? secrets.authRepoOverrides[config.id] : undefined;
+  const effectiveAuth = repoAuthOverride ?? secrets.globalAuth;
+  const authIsOverride = Boolean(repoAuthOverride);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -874,6 +879,25 @@ export function EnvSyncModal({
             <X size={16} />
           </button>
         </div>
+
+        {!loading && (
+          <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-800/40 px-6 py-2.5 text-xs">
+            <KeyRound size={13} className="shrink-0 text-neutral-500" />
+            <span className="text-neutral-400">Active AWS credentials:</span>
+            <span className="truncate font-medium text-neutral-100">
+              {authSummary(effectiveAuth)}
+            </span>
+            <span
+              className={`ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                authIsOverride
+                  ? 'bg-amber-500/15 text-amber-300'
+                  : 'bg-neutral-700/50 text-neutral-400'
+              }`}
+            >
+              {authIsOverride ? 'repo override' : 'global'}
+            </span>
+          </div>
+        )}
 
         <div className="space-y-5 overflow-y-auto p-6">
           {!encAvailable && (
