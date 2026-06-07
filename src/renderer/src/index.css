@@ -143,10 +143,7 @@ body,
   .animate-out {
     animation: none !important;
   }
-  .active\:scale-\[0\.97\]:active,
-  .active\:scale-\[0\.94\]:active,
-  .active\:scale-95:active,
-  .active\:scale-90:active {
+  [class*='active:scale-']:active {
     transform: none !important;
   }
 }

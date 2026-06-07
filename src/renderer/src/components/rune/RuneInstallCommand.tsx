@@ -23,7 +23,7 @@ export function RuneInstallCommand(): React.JSX.Element {
       <button
         onClick={copy}
         aria-label="Copy install command"
-        className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 px-2 py-1.5 text-xs hover:bg-neutral-800"
+        className="flex shrink-0 items-center gap-1 rounded border border-neutral-700 px-2 py-1.5 text-xs hover:bg-neutral-800 transition active:scale-[0.97]"
       >
         {copied ? (
           <Check className="h-3.5 w-3.5 text-green-400" />

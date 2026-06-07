@@ -59,7 +59,7 @@ export function FeaturePickerModal({
     const repo = repoPath.trim() === '' ? null : repoPath.trim();
     const base = baseBranch.trim() === '' ? null : baseBranch.trim();
     try {
-      if (editing && shown) {
+      if (shown) {
         await updateFeature(shown.id, { name: trimmed, repoPath: repo, baseBranch: base });
       } else {
         const created = await createFeature({

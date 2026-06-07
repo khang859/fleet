@@ -219,7 +219,7 @@ export function TerminalPane({
       <div ref={containerRef} className="relative z-10 h-full w-full" />
       {isScrolledUp && (
         <button
-          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors"
+          className="absolute bottom-3 right-3 z-40 flex items-center gap-1.5 rounded-md bg-fleet-surface-2/90 px-2.5 py-1.5 text-xs text-fleet-text-secondary shadow-lg backdrop-blur-sm hover:bg-fleet-surface-3 transition-colors active:scale-[0.97]"
           onClick={(e) => {
             e.stopPropagation();
             scrollToBottom();

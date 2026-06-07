@@ -197,7 +197,7 @@ function GeneratedThumbnail({
           size: 0
         })
       }
-      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0"
+      className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0 active:scale-[0.97]"
       title={generation.prompt}
     >
       {src ? (
@@ -467,7 +467,7 @@ export function FileSearchOverlay({
             </p>
             <button
               onClick={() => setScope('all')}
-              className="mt-2 text-xs text-blue-400 hover:text-blue-300"
+              className="mt-2 text-xs text-blue-400 hover:text-blue-300 transition active:scale-[0.97]"
             >
               Search All instead
             </button>
@@ -557,7 +557,7 @@ export function FileSearchOverlay({
           <button
             key={file.path}
             data-result-index={i}
-            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors ${
+            className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left transition-colors active:scale-[0.97] ${
               i === selectedIndex
                 ? 'bg-fleet-surface-3 text-fleet-text'
                 : 'text-fleet-text-secondary hover:bg-fleet-surface-2'
@@ -594,7 +594,7 @@ export function FileSearchOverlay({
               {completedGenerations.length > 5 && (
                 <button
                   onClick={() => setScope('generated')}
-                  className="text-blue-400 hover:text-blue-300 normal-case tracking-normal"
+                  className="text-blue-400 hover:text-blue-300 normal-case tracking-normal transition active:scale-[0.97]"
                 >
                   See all {completedGenerations.length} →
                 </button>
@@ -618,7 +618,7 @@ export function FileSearchOverlay({
                 <button
                   key={img.path}
                   onClick={() => handleSelect(img)}
-                  className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0"
+                  className="group relative flex flex-col items-center gap-1 p-1.5 rounded hover:bg-fleet-surface-2 transition-colors shrink-0 active:scale-[0.97]"
                   title={img.path}
                 >
                   {img.thumbnailDataUrl ? (
@@ -685,7 +685,7 @@ export function FileSearchOverlay({
             <button
               key={id}
               onClick={() => setScope(id)}
-              className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors ${
+              className={`flex items-center gap-1 px-2 py-1 text-[11px] rounded transition-colors active:scale-[0.97] ${
                 scope === id
                   ? 'bg-fleet-surface-3 text-fleet-text'
                   : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'
@@ -707,7 +707,7 @@ export function FileSearchOverlay({
               <button
                 key={id}
                 onClick={() => setSort(id)}
-                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors ${
+                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] rounded transition-colors active:scale-[0.97] ${
                   sort === id
                     ? 'bg-fleet-surface-3 text-fleet-text'
                     : 'text-fleet-text-subtle hover:text-fleet-text-secondary hover:bg-fleet-surface-2'

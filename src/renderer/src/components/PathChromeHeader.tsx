@@ -30,7 +30,7 @@ export function PathChromeHeader({ filePath }: Props): React.JSX.Element {
       <button
         type="button"
         onClick={handleCopy}
-        className="shrink-0 p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors"
+        className="shrink-0 p-1 rounded hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 transition-colors active:scale-90"
         title={copied ? 'Copied!' : 'Copy path'}
         aria-label="Copy path"
       >

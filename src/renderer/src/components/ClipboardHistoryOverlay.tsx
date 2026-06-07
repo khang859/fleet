@@ -141,7 +141,7 @@ export function ClipboardHistoryOverlay({
           filtered.map((entry, i) => (
             <button
               key={entry.id}
-              className={`w-full flex flex-col gap-0.5 px-3 py-2 text-left transition-colors ${
+              className={`w-full flex flex-col gap-0.5 px-3 py-2 text-left transition-colors active:scale-[0.97] ${
                 i === selectedIndex
                   ? 'bg-neutral-700 text-white'
                   : 'text-neutral-300 hover:bg-neutral-800'

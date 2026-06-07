@@ -71,13 +71,13 @@ export function ImageSettings(): React.JSX.Element {
               }}
             />
             <button
-              className="text-xs text-neutral-400 hover:text-neutral-200 px-2"
+              className="text-xs text-neutral-400 hover:text-neutral-200 px-2 transition active:scale-[0.97]"
               onClick={() => setApiKeyVisible(!apiKeyVisible)}
             >
               {apiKeyVisible ? 'Hide' : 'Show'}
             </button>
             <button
-              className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5"
+              className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5 transition active:scale-[0.97]"
               onClick={handleApiKeySave}
             >
               Save
@@ -162,7 +162,7 @@ export function ImageSettings(): React.JSX.Element {
                         }}
                       />
                       <button
-                        className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5"
+                        className="text-xs bg-cyan-600 hover:bg-cyan-500 text-white rounded px-3 py-1.5 transition active:scale-[0.97]"
                         onClick={() => handleActionModelSave(action.actionType)}
                       >
                         Save

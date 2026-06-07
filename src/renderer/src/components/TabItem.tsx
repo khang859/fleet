@@ -271,7 +271,7 @@ export function TabItem({
 
           {/* Always-visible close button (dimmed when not hovered) */}
           <button
-            className="opacity-40 group-hover:opacity-100 px-1 text-fleet-text-muted hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity"
+            className="opacity-40 group-hover:opacity-100 px-1 text-fleet-text-muted hover:text-red-400 hover:border-2 hover:border-red-500 rounded transition-opacity active:scale-90"
             onClick={(e) => {
               e.stopPropagation();
               onClose();
