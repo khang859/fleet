@@ -1,5 +1,5 @@
 // src/renderer/src/components/env-sync/EnvSyncModal.tsx
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
 import type {
@@ -433,37 +433,51 @@ function RepoManager({
         <table className="mt-2 w-full text-xs">
           <tbody>
             {statuses.map((t) => (
-              <tr key={t.envFile} className="border-t border-neutral-800">
-                <td className="py-1 text-neutral-300">{t.envFile}</td>
-                <td className="py-1">
-                  <select
-                    value={t.delivery}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === 'file' || v === 'inject') void changeDelivery(t.envFile, v);
-                    }}
-                    className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-neutral-400"
+              <Fragment key={t.envFile}>
+                <tr className="border-t border-neutral-800">
+                  <td className="py-1 text-neutral-300">{t.envFile}</td>
+                  <td className="py-1">
+                    <select
+                      value={t.delivery}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === 'file' || v === 'inject') void changeDelivery(t.envFile, v);
+                      }}
+                      className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-neutral-400"
+                    >
+                      <option value="file">file</option>
+                      <option value="inject">inject</option>
+                    </select>
+                  </td>
+                  <td
+                    className={`py-1 ${t.state === 'error' ? 'text-red-400' : 'text-neutral-400'}`}
+                    title={t.error}
                   >
-                    <option value="file">file</option>
-                    <option value="inject">inject</option>
-                  </select>
-                </td>
-                <td className="py-1 text-neutral-400">{STATUS_LABEL[t.state]}</td>
-                <td className="py-1 text-right">
-                  <button
-                    className="text-xs text-blue-400 mr-2"
-                    onClick={() => void doSync(t.envFile, 'pull')}
-                  >
-                    Pull
-                  </button>
-                  <button
-                    className="text-xs text-blue-400"
-                    onClick={() => void doSync(t.envFile, 'push')}
-                  >
-                    Push
-                  </button>
-                </td>
-              </tr>
+                    {STATUS_LABEL[t.state]}
+                  </td>
+                  <td className="py-1 text-right">
+                    <button
+                      className="text-xs text-blue-400 mr-2"
+                      onClick={() => void doSync(t.envFile, 'pull')}
+                    >
+                      Pull
+                    </button>
+                    <button
+                      className="text-xs text-blue-400"
+                      onClick={() => void doSync(t.envFile, 'push')}
+                    >
+                      Push
+                    </button>
+                  </td>
+                </tr>
+                {t.error && (
+                  <tr>
+                    <td colSpan={4} className="pb-2 text-[11px] leading-snug text-red-400">
+                      {t.error}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
