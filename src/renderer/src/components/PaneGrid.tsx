@@ -4,6 +4,7 @@ import type { TerminalThemeId } from '../../../shared/theme-presets';
 import { TerminalPane } from './TerminalPane';
 import { PaneHeader } from './PaneHeader';
 import { ImageViewerPane } from './ImageViewerPane';
+import { PdfViewerPane } from './PdfViewerPane';
 import { FileEditorPane } from './FileEditorPane';
 import { MarkdownPane } from './MarkdownPane';
 import { useWorkspaceStore } from '../store/workspace-store';
@@ -172,6 +173,13 @@ export function PaneGrid({
           return (
             <div key={leaf.id} style={rectStyle(leaf.rect)}>
               <ImageViewerPane filePath={leaf.node.filePath ?? ''} />
+            </div>
+          );
+        }
+        if (leaf.node.paneType === 'pdf') {
+          return (
+            <div key={leaf.id} style={rectStyle(leaf.rect)}>
+              <PdfViewerPane filePath={leaf.node.filePath ?? ''} />
             </div>
           );
         }

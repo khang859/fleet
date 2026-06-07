@@ -30,6 +30,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   '.mdx': FileText,
   '.txt': FileText,
   '.rst': FileText,
+  '.pdf': FileText,
   // Config
   '.yaml': FileText,
   '.yml': FileText,
