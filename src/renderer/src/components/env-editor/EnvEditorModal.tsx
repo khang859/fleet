@@ -93,6 +93,8 @@ export function EnvEditorModal({
     });
   }, []);
 
+  // Works in both modes: in raw mode onRawChange keeps `parsed` in sync, and
+  // serializeEnvFile(parseEnvFile(x)) === x is a round-trip invariant of the parser.
   const dirty = parsed !== null && serializeEnvFile(parsed) !== originalText;
 
   const rawOnly = originalText.length > RAW_ONLY_BYTES;
@@ -176,18 +178,20 @@ export function EnvEditorModal({
                 )}
                 {dirty && <span className="text-[10px] text-amber-400">● unsaved</span>}
                 <div className="ml-auto flex items-center gap-2">
-                  <button
-                    onClick={() => setRevealAll((v) => !v)}
-                    className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-95"
-                  >
-                    {revealAll ? <EyeOff size={13} /> : <Eye size={13} />}
-                    {revealAll ? 'Hide all' : 'Reveal all'}
-                  </button>
+                  {effectiveMode !== 'raw' && (
+                    <button
+                      onClick={() => setRevealAll((v) => !v)}
+                      className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-95"
+                    >
+                      {revealAll ? <EyeOff size={13} /> : <Eye size={13} />}
+                      {revealAll ? 'Hide all' : 'Reveal all'}
+                    </button>
+                  )}
                   {!rawOnly && (
                     <div className="flex overflow-hidden rounded-md border border-neutral-700 text-xs">
                       <button
                         onClick={showForm}
-                        className={`flex items-center gap-1 px-2.5 py-1 transition ${
+                        className={`flex items-center gap-1 px-2.5 py-1 transition active:scale-95 ${
                           mode === 'form'
                             ? 'bg-blue-600 text-white'
                             : 'text-neutral-400 hover:bg-neutral-800'
@@ -197,7 +201,7 @@ export function EnvEditorModal({
                       </button>
                       <button
                         onClick={showRaw}
-                        className={`flex items-center gap-1 px-2.5 py-1 transition ${
+                        className={`flex items-center gap-1 px-2.5 py-1 transition active:scale-95 ${
                           mode === 'raw'
                             ? 'bg-blue-600 text-white'
                             : 'text-neutral-400 hover:bg-neutral-800'
