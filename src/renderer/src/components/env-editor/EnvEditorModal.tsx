@@ -12,6 +12,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
+import { NewFileDialog } from './NewFileDialog';
 import { FileNavigator } from './FileNavigator';
 import { EnvForm } from './EnvForm';
 import { EnvRawEditor } from './EnvRawEditor';
@@ -49,6 +50,8 @@ export function EnvEditorModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [externalChange, setExternalChange] = useState(false);
+  const [newFileOpen, setNewFileOpen] = useState(false);
+  const [newFileError, setNewFileError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) setRoot(cwd);
@@ -200,6 +203,66 @@ export function EnvEditorModal({
     [dirty]
   );
 
+  const dialogGroups = (() => {
+    const gs = Array.from(new Set(files.map((f) => f.group)));
+    return gs.length ? gs : ['·root'];
+  })();
+
+  const createFile = useCallback(
+    async (group: string, name: string) => {
+      if (!root) return;
+      setNewFileError(null);
+      const dir = group === '·root' ? root : `${root}/${group}`;
+      try {
+        const { absPath } = await window.fleet.envEditor.create(dir, name);
+        setNewFileOpen(false);
+        await reload();
+        const list = await window.fleet.envEditor.list(root);
+        const created = list.find((f) => f.absPath === absPath) ?? null;
+        if (created) setSelected(created);
+      } catch (e) {
+        setNewFileError(e instanceof Error ? e.message : 'Could not create file');
+      }
+    },
+    [root, reload]
+  );
+
+  const renameFile = useCallback(
+    async (file: EnvFileEntry, newName: string) => {
+      if (!root || newName === file.name || !newName.startsWith('.env')) return;
+      try {
+        const { absPath } = await window.fleet.envEditor.rename(file.absPath, newName);
+        await reload();
+        if (selected?.absPath === file.absPath) {
+          const list = await window.fleet.envEditor.list(root);
+          setSelected(list.find((f) => f.absPath === absPath) ?? null);
+        }
+      } catch (e) {
+        showToast(e instanceof Error ? e.message : 'Could not rename file');
+      }
+    },
+    [reload, root, selected, showToast]
+  );
+
+  const deleteFile = useCallback(
+    async (file: EnvFileEntry) => {
+      const { trashPath } = await window.fleet.envEditor.delete(file.absPath);
+      if (selected?.absPath === file.absPath) setSelected(null);
+      await reload();
+      showToast(`Deleted ${file.name}`, {
+        action: {
+          label: 'Undo',
+          onClick: () => {
+            void window.fleet.envEditor.restore(trashPath, file.absPath).then(() => {
+              void reload();
+            });
+          }
+        }
+      });
+    },
+    [reload, selected, showToast]
+  );
+
   if (!isOpen) return null;
 
   return (
@@ -255,9 +318,14 @@ export function EnvEditorModal({
             selectedPath={selected?.absPath ?? null}
             dirtyPaths={dirty && selected ? new Set([selected.absPath]) : new Set()}
             onSelect={selectFile}
-            onNewFile={() => undefined}
+            onNewFile={() => {
+              setNewFileError(null);
+              setNewFileOpen(true);
+            }}
+            onRename={(file, newName) => void renameFile(file, newName)}
+            onDelete={(file) => void deleteFile(file)}
           />
-          <div className="flex min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             {error && (
               <div className="flex items-center gap-2 border-b border-red-800 bg-red-950/40 px-4 py-2 text-xs text-red-300">
                 <AlertTriangle size={13} /> {error}
@@ -352,6 +420,14 @@ export function EnvEditorModal({
                   ? 'No .env files in this folder yet.'
                   : 'Select a file to edit.'}
               </div>
+            )}
+            {newFileOpen && (
+              <NewFileDialog
+                groups={dialogGroups}
+                error={newFileError}
+                onCancel={() => setNewFileOpen(false)}
+                onCreate={(group, name) => void createFile(group, name)}
+              />
             )}
           </div>
         </div>

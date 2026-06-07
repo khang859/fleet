@@ -1,5 +1,5 @@
 import { Fragment, useMemo, useState } from 'react';
-import { Search, FilePlus2 } from 'lucide-react';
+import { Search, FilePlus2, Pencil, Trash2 } from 'lucide-react';
 import type { EnvFileEntry } from '../../../../shared/env-editor-types';
 
 type Props = {
@@ -8,6 +8,8 @@ type Props = {
   dirtyPaths: Set<string>;
   onSelect: (file: EnvFileEntry) => void;
   onNewFile: () => void;
+  onRename: (file: EnvFileEntry, newName: string) => void;
+  onDelete: (file: EnvFileEntry) => void;
 };
 
 export function FileNavigator({
@@ -15,9 +17,13 @@ export function FileNavigator({
   selectedPath,
   dirtyPaths,
   onSelect,
-  onNewFile
+  onNewFile,
+  onRename,
+  onDelete
 }: Props): React.JSX.Element {
   const [filter, setFilter] = useState('');
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [draft, setDraft] = useState('');
 
   const groups = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -68,22 +74,88 @@ export function FileNavigator({
                     onClick={() => onSelect(f)}
                     disabled={!f.readable}
                     title={f.readable ? f.relPath : 'Cannot read this file'}
-                    className={`flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs transition-colors ${
+                    className={`group flex w-full items-center gap-2 px-3 py-1.5 text-left font-mono text-xs transition-colors ${
                       selected
                         ? 'bg-blue-950/50 font-semibold text-white shadow-[inset_3px_0_0_0_#3b82f6]'
                         : 'text-neutral-300 hover:bg-neutral-800'
                     } ${f.isTemplate ? (selected ? 'italic' : 'italic text-neutral-500') : ''} disabled:cursor-not-allowed disabled:opacity-40`}
                   >
-                    <span className="truncate">{f.name}</span>
-                    {dirty && (
-                      <span
-                        className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]"
-                        aria-label="unsaved changes"
+                    {renaming === f.absPath ? (
+                      <input
+                        autoFocus
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            onRename(f, draft);
+                            setRenaming(null);
+                          } else if (e.key === 'Escape') {
+                            setRenaming(null);
+                          }
+                        }}
+                        onBlur={() => setRenaming(null)}
+                        spellCheck={false}
+                        className="w-full rounded border border-blue-500 bg-neutral-800 px-1 py-0.5 font-mono text-xs text-neutral-100 outline-none"
                       />
+                    ) : (
+                      <>
+                        <span className="truncate">{f.name}</span>
+                        {dirty && (
+                          <span
+                            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_6px_rgba(245,158,11,0.6)]"
+                            aria-label="unsaved changes"
+                          />
+                        )}
+                        <span className="ml-auto flex items-center gap-1">
+                          <span className="text-[9px] text-neutral-600 group-hover:hidden">
+                            {f.varCount}
+                          </span>
+                          <span className="hidden items-center gap-1 group-hover:flex">
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDraft(f.name);
+                                setRenaming(f.absPath);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setDraft(f.name);
+                                  setRenaming(f.absPath);
+                                }
+                              }}
+                              title="Rename"
+                              className="rounded p-0.5 text-neutral-500 transition hover:text-neutral-200 active:scale-90"
+                            >
+                              <Pencil size={11} />
+                            </span>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDelete(f);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  onDelete(f);
+                                }
+                              }}
+                              title="Delete"
+                              className="rounded p-0.5 text-neutral-500 transition hover:text-red-400 active:scale-90"
+                            >
+                              <Trash2 size={11} />
+                            </span>
+                          </span>
+                        </span>
+                      </>
                     )}
-                    <span className="ml-auto shrink-0 text-[9px] text-neutral-600">
-                      {f.varCount}
-                    </span>
                   </button>
                 );
               })}
