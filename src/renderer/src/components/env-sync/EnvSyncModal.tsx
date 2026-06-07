@@ -678,15 +678,16 @@ export function EnvSyncModal({
 
           {loading ? (
             <p className="text-xs text-neutral-500">Loading…</p>
-          ) : !repoDir ? (
-            <p className="text-xs text-neutral-500">
-              No active terminal directory — focus a pane to manage its env sync.
-            </p>
-          ) : config ? (
+          ) : (
             <>
+              {/* Global settings are shared across every repo — always shown so the
+                  current passphrase/auth state is visible while initializing or managing. */}
               <div className="space-y-2 border-b border-neutral-800 pb-3">
+                <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  Global settings
+                </h3>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="w-32 text-xs text-neutral-500">Global passphrase</span>
+                  <span className="w-32 text-xs text-neutral-500">Passphrase</span>
                   <PassphraseControl
                     present={secrets.globalPresent}
                     encAvailable={encAvailable}
@@ -704,18 +705,25 @@ export function EnvSyncModal({
                   />
                 </div>
               </div>
-              <RepoManager
-                repoDir={repoDir}
-                config={config}
-                statuses={statuses}
-                encAvailable={encAvailable}
-                secrets={secrets}
-                reload={reload}
-                reloadSecrets={reloadSecrets}
-              />
+
+              {!repoDir ? (
+                <p className="text-xs text-neutral-500">
+                  No active terminal directory — focus a pane to manage its env sync.
+                </p>
+              ) : config ? (
+                <RepoManager
+                  repoDir={repoDir}
+                  config={config}
+                  statuses={statuses}
+                  encAvailable={encAvailable}
+                  secrets={secrets}
+                  reload={reload}
+                  reloadSecrets={reloadSecrets}
+                />
+              ) : (
+                <InitForm repoDir={repoDir} onCreate={createConfig} />
+              )}
             </>
-          ) : (
-            <InitForm repoDir={repoDir} onCreate={createConfig} />
           )}
         </div>
       </div>
