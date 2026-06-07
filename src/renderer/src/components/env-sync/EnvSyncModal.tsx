@@ -1,6 +1,6 @@
 // src/renderer/src/components/env-sync/EnvSyncModal.tsx
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { ChevronRight, KeyRound, MoreHorizontal, X } from 'lucide-react';
+import { ChevronRight, KeyRound, Loader2, MoreHorizontal, X } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
 import type {
   EnvSyncConfig,
@@ -55,10 +55,16 @@ function primaryAction(state: TargetSyncState): { dir: 'pull' | 'push'; label: s
 }
 
 const inputCls =
-  'w-full bg-neutral-800 text-sm text-neutral-200 rounded-md px-3 py-2 border border-neutral-700 focus:border-neutral-500 focus:outline-none';
+  'w-full bg-neutral-800 text-sm text-neutral-200 rounded-md px-3 py-2 border border-neutral-700 transition-colors focus:border-neutral-500 focus:outline-none';
 
 const primaryBtn =
-  'rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500';
+  'inline-flex items-center justify-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 disabled:active:scale-100';
+
+// Small neutral pill button (Save / Add selected etc.).
+const neutralBtn =
+  'inline-flex items-center justify-center gap-2 rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 transition active:scale-[0.97] hover:bg-neutral-600 disabled:text-neutral-500 disabled:active:scale-100';
+
+const SPIN = <Loader2 size={14} className="animate-spin" />;
 
 function basename(dir: string): string {
   const parts = dir.split(/[\\/]/).filter(Boolean);
@@ -99,7 +105,7 @@ function Disclosure({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+        className="flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors hover:bg-neutral-800/40"
       >
         <ChevronRight
           size={15}
@@ -130,22 +136,39 @@ function PassphraseControl({
 }): React.JSX.Element {
   const showToast = useToastStore((s) => s.show);
   const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const save = async (): Promise<void> => {
-    await window.fleet.envSync.setPassphrase({ id, passphrase: draft });
-    setDraft('');
-    await onChanged();
-    showToast('Passphrase saved');
+    setSaving(true);
+    try {
+      await window.fleet.envSync.setPassphrase({ id, passphrase: draft });
+      setDraft('');
+      await onChanged();
+      showToast('Passphrase saved');
+    } finally {
+      setSaving(false);
+    }
   };
   const clear = async (): Promise<void> => {
-    await window.fleet.envSync.clearPassphrase({ id });
-    await onChanged();
+    setClearing(true);
+    try {
+      await window.fleet.envSync.clearPassphrase({ id });
+      await onChanged();
+    } finally {
+      setClearing(false);
+    }
   };
 
   return present ? (
     <div className="flex items-center gap-3">
       <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
-      <button className="text-xs text-red-400 hover:text-red-300" onClick={() => void clear()}>
+      <button
+        disabled={clearing}
+        className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500"
+        onClick={() => void clear()}
+      >
+        {clearing && SPIN}
         {clearLabel}
       </button>
     </div>
@@ -160,10 +183,11 @@ function PassphraseControl({
         className={inputCls}
       />
       <button
-        disabled={!draft || !encAvailable}
+        disabled={!draft || !encAvailable || saving}
         onClick={() => void save()}
-        className="shrink-0 rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-600 disabled:text-neutral-500"
+        className={`shrink-0 ${neutralBtn}`}
       >
+        {saving && SPIN}
         Save
       </button>
     </div>
@@ -189,6 +213,8 @@ function AuthControl({
   const [accessKeyId, setAccessKeyId] = useState('');
   const [secretAccessKey, setSecretAccessKey] = useState('');
   const [sessionToken, setSessionToken] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     setMode(redacted?.mode ?? 'default-chain');
@@ -203,6 +229,7 @@ function AuthControl({
       auth.secretAccessKey = secretAccessKey;
       if (sessionToken) auth.sessionToken = sessionToken;
     }
+    setSaving(true);
     try {
       await window.fleet.envSync.setAuth({ id, auth });
       setAccessKeyId('');
@@ -214,11 +241,18 @@ function AuthControl({
       showToast(`Could not save AWS auth: ${err instanceof Error ? err.message : 'unknown'}`, {
         duration: 6000
       });
+    } finally {
+      setSaving(false);
     }
   };
   const reset = async (): Promise<void> => {
-    await window.fleet.envSync.clearAuth({ id });
-    await onChanged();
+    setResetting(true);
+    try {
+      await window.fleet.envSync.clearAuth({ id });
+      await onChanged();
+    } finally {
+      setResetting(false);
+    }
   };
 
   return (
@@ -283,14 +317,17 @@ function AuthControl({
       )}
 
       <div className="flex items-center gap-3">
-        <button
-          onClick={() => void save()}
-          className="rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-600"
-        >
+        <button disabled={saving} onClick={() => void save()} className={neutralBtn}>
+          {saving && SPIN}
           Save
         </button>
         {redacted && (
-          <button className="text-xs text-red-400 hover:text-red-300" onClick={() => void reset()}>
+          <button
+            disabled={resetting}
+            className="inline-flex items-center gap-1.5 text-xs text-red-400 transition-colors hover:text-red-300 disabled:text-neutral-500"
+            onClick={() => void reset()}
+          >
+            {resetting && SPIN}
             {resetLabel}
           </button>
         )}
@@ -332,7 +369,7 @@ function RepoAuthOverride({
           Inherits global ({authSummary(globalAuth)})
         </span>
         <button
-          className="text-xs text-blue-400 hover:text-blue-300"
+          className="text-xs text-blue-400 transition-colors hover:text-blue-300"
           onClick={() => setEditing(true)}
         >
           Override
@@ -366,6 +403,7 @@ function InitForm({
   const [id, setId] = useState(basename(repoDir));
   const [bucket, setBucket] = useState('');
   const [region, setRegion] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const create = async (): Promise<void> => {
     const trimmedId = id.trim();
@@ -375,13 +413,18 @@ function InitForm({
       showToast('Id, bucket, and region are required', { duration: 4000 });
       return;
     }
-    await onCreate({
-      version: 1,
-      id: trimmedId,
-      bucket: trimmedBucket,
-      region: trimmedRegion,
-      targets: []
-    });
+    setCreating(true);
+    try {
+      await onCreate({
+        version: 1,
+        id: trimmedId,
+        bucket: trimmedBucket,
+        region: trimmedRegion,
+        targets: []
+      });
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -413,7 +456,8 @@ function InitForm({
           className={inputCls}
         />
       </Field>
-      <button onClick={() => void create()} className={primaryBtn}>
+      <button disabled={creating} onClick={() => void create()} className={primaryBtn}>
+        {creating && SPIN}
         Create config
       </button>
     </div>
@@ -443,6 +487,11 @@ function RepoManager({
   const [creatingBucket, setCreatingBucket] = useState(false);
   // envFile whose row "more actions" menu is open, or null.
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  // In-flight async feedback.
+  const [busyRow, setBusyRow] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [savingBucket, setSavingBucket] = useState(false);
 
   const createBucket = async (): Promise<void> => {
     setCreatingBucket(true);
@@ -483,18 +532,28 @@ function RepoManager({
       showToast('Bucket and region are required', { duration: 4000 });
       return;
     }
-    if (await saveConfig({ ...config, bucket, region })) {
-      setEditing(false);
-      showToast('Saved bucket/region');
+    setSavingBucket(true);
+    try {
+      if (await saveConfig({ ...config, bucket, region })) {
+        setEditing(false);
+        showToast('Saved bucket/region');
+      }
+    } finally {
+      setSavingBucket(false);
     }
   };
 
   const runScan = async (): Promise<void> => {
-    const found = await window.fleet.envSync.scan(repoDir);
-    const existing = new Set(config.targets.map((t) => t.envFile));
-    const fresh = found.filter((f) => !existing.has(f));
-    setCandidates(fresh);
-    setSelected(new Set(fresh));
+    setScanning(true);
+    try {
+      const found = await window.fleet.envSync.scan(repoDir);
+      const existing = new Set(config.targets.map((t) => t.envFile));
+      const fresh = found.filter((f) => !existing.has(f));
+      setCandidates(fresh);
+      setSelected(new Set(fresh));
+    } finally {
+      setScanning(false);
+    }
   };
 
   const toggleCandidate = (path: string): void => {
@@ -517,9 +576,14 @@ function RepoManager({
       delivery: 'file'
     }));
     if (additions.length === 0) return;
-    if (await saveConfig({ ...config, targets: [...config.targets, ...additions] })) {
-      closeScan();
-      showToast(`Added ${additions.length} target${additions.length === 1 ? '' : 's'}`);
+    setAdding(true);
+    try {
+      if (await saveConfig({ ...config, targets: [...config.targets, ...additions] })) {
+        closeScan();
+        showToast(`Added ${additions.length} target${additions.length === 1 ? '' : 's'}`);
+      }
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -531,17 +595,24 @@ function RepoManager({
 
   const doSync = async (envFile: string, dir: 'pull' | 'push'): Promise<void> => {
     setMenuFor(null);
-    const res =
-      dir === 'pull'
-        ? await window.fleet.envSync.pull(repoDir, envFile, false)
-        : await window.fleet.envSync.push(repoDir, envFile, false);
-    if (res.ok) {
-      showToast(`${dir === 'pull' ? 'Pulled' : 'Pushed'} ${envFile}`);
-      await reload();
-    } else if ('conflict' in res && res.conflict) {
-      window.dispatchEvent(new CustomEvent('env-sync:conflict', { detail: { repoDir, envFile } }));
-    } else {
-      showToast(`Sync failed: ${'error' in res ? res.error : 'unknown'}`, { duration: 6000 });
+    setBusyRow(envFile);
+    try {
+      const res =
+        dir === 'pull'
+          ? await window.fleet.envSync.pull(repoDir, envFile, false)
+          : await window.fleet.envSync.push(repoDir, envFile, false);
+      if (res.ok) {
+        showToast(`${dir === 'pull' ? 'Pulled' : 'Pushed'} ${envFile}`);
+        await reload();
+      } else if ('conflict' in res && res.conflict) {
+        window.dispatchEvent(
+          new CustomEvent('env-sync:conflict', { detail: { repoDir, envFile } })
+        );
+      } else {
+        showToast(`Sync failed: ${'error' in res ? res.error : 'unknown'}`, { duration: 6000 });
+      }
+    } finally {
+      setBusyRow(null);
     }
   };
 
@@ -567,13 +638,15 @@ function RepoManager({
               className="w-28 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200"
             />
             <button
-              className="text-xs text-blue-400 hover:text-blue-300"
+              disabled={savingBucket}
+              className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
               onClick={() => void saveBucketRegion()}
             >
+              {savingBucket && <Loader2 size={12} className="animate-spin" />}
               Save
             </button>
             <button
-              className="text-xs text-neutral-400 hover:text-neutral-200"
+              className="text-xs text-neutral-400 transition-colors hover:text-neutral-200"
               onClick={() => setEditing(false)}
             >
               Cancel
@@ -584,7 +657,10 @@ function RepoManager({
             <span className="text-xs text-neutral-500">
               {config.bucket} · {config.region}
             </span>
-            <button className="text-xs text-blue-400 hover:text-blue-300" onClick={startEdit}>
+            <button
+              className="text-xs text-blue-400 transition-colors hover:text-blue-300"
+              onClick={startEdit}
+            >
               Edit
             </button>
             {confirmBucket ? (
@@ -592,13 +668,14 @@ function RepoManager({
                 <span className="text-neutral-400">Create in {config.region}?</span>
                 <button
                   disabled={creatingBucket}
-                  className="text-blue-400 hover:text-blue-300 disabled:text-neutral-500"
+                  className="inline-flex items-center gap-1.5 text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
                   onClick={() => void createBucket()}
                 >
+                  {creatingBucket && <Loader2 size={12} className="animate-spin" />}
                   {creatingBucket ? 'Creating…' : 'Create'}
                 </button>
                 <button
-                  className="text-neutral-400 hover:text-neutral-200"
+                  className="text-neutral-400 transition-colors hover:text-neutral-200"
                   onClick={() => setConfirmBucket(false)}
                 >
                   Cancel
@@ -606,7 +683,7 @@ function RepoManager({
               </span>
             ) : (
               <button
-                className="text-xs text-blue-400 hover:text-blue-300"
+                className="text-xs text-blue-400 transition-colors hover:text-blue-300"
                 onClick={() => setConfirmBucket(true)}
               >
                 Create bucket
@@ -636,15 +713,20 @@ function RepoManager({
                       <div className="relative inline-flex items-center justify-end gap-2">
                         {action && (
                           <button
-                            className="rounded-md bg-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-neutral-600"
+                            disabled={busyRow === t.envFile}
+                            className="inline-flex items-center gap-1.5 rounded-md bg-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-100 transition active:scale-[0.94] hover:bg-neutral-600 disabled:active:scale-100"
                             onClick={() => void doSync(t.envFile, action.dir)}
                           >
+                            {busyRow === t.envFile && (
+                              <Loader2 size={12} className="animate-spin" />
+                            )}
                             {action.label}
                           </button>
                         )}
                         <button
                           aria-label="More actions"
-                          className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+                          disabled={busyRow === t.envFile}
+                          className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-50"
                           onClick={() => setMenuFor(menuFor === t.envFile ? null : t.envFile)}
                         >
                           <MoreHorizontal size={15} />
@@ -652,13 +734,13 @@ function RepoManager({
                         {menuFor === t.envFile && (
                           <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-neutral-700 bg-neutral-800 py-1.5 text-left shadow-xl">
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
                               onClick={() => void doSync(t.envFile, 'pull')}
                             >
                               Pull from remote
                             </button>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
                               onClick={() => void doSync(t.envFile, 'push')}
                             >
                               Push to remote
@@ -668,13 +750,13 @@ function RepoManager({
                               Delivery
                             </div>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
                               onClick={() => void changeDelivery(t.envFile, 'file')}
                             >
                               {t.delivery === 'file' ? '✓ ' : '  '}Write file
                             </button>
                             <button
-                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 transition-colors hover:bg-neutral-700"
                               onClick={() => void changeDelivery(t.envFile, 'inject')}
                             >
                               {t.delivery === 'inject' ? '✓ ' : '  '}Inject into env
@@ -701,10 +783,12 @@ function RepoManager({
       <div className="mt-5">
         {candidates === null ? (
           <button
-            className="text-xs text-blue-400 hover:text-blue-300"
+            disabled={scanning}
+            className="inline-flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300 disabled:text-neutral-500"
             onClick={() => void runScan()}
           >
-            + Scan for env files
+            {scanning && <Loader2 size={12} className="animate-spin" />}
+            {scanning ? 'Scanning…' : '+ Scan for env files'}
           </button>
         ) : (
           <div className="rounded-lg border border-neutral-800 p-4">
@@ -726,14 +810,15 @@ function RepoManager({
             )}
             <div className="mt-4 flex items-center gap-3">
               <button
-                disabled={selected.size === 0}
-                className="rounded-md bg-neutral-700 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-600 disabled:text-neutral-500"
+                disabled={selected.size === 0 || adding}
+                className="inline-flex items-center gap-1.5 rounded-md bg-neutral-700 px-3 py-1.5 text-xs text-neutral-100 transition active:scale-[0.96] hover:bg-neutral-600 disabled:text-neutral-500 disabled:active:scale-100"
                 onClick={() => void addSelected()}
               >
+                {adding && <Loader2 size={12} className="animate-spin" />}
                 Add selected
               </button>
               <button
-                className="text-xs text-neutral-400 hover:text-neutral-200"
+                className="text-xs text-neutral-400 transition-colors hover:text-neutral-200"
                 onClick={closeScan}
               >
                 Cancel
@@ -874,7 +959,7 @@ export function EnvSyncModal({
           <h2 className="text-base font-semibold text-neutral-100">Env Sync</h2>
           <button
             onClick={onClose}
-            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-white"
+            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-white active:scale-90"
           >
             <X size={16} />
           </button>
