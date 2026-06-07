@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.56.0
+
+- **PDF viewing** — `fleet open <file>.pdf` now opens PDFs in a dedicated viewer tab instead of being rejected as a binary file. Pages render with a bundled **pdf.js** engine (no external reader needed), with **page navigation**, **zoom in/out**, and **Fit width** controls in the status bar.
+- PDF text is **selectable and copyable** — drag to highlight any text and press **Cmd/Ctrl+C**, just like a real document.
+- Open PDFs alongside anything else: `fleet open report.pdf src/main/index.ts` opens a PDF viewer and a code tab side by side, and restored PDF tabs re-render on relaunch.
+
 ## v2.55.0
 
 - Markdown doc tabs (`fleet open <file>.md`) gain real **copy tooling**: you can now **select and copy** any text, and highlighting auto-copies it with a **"Copied" toast** so you always know it worked — whether you highlight, press **Cmd/Ctrl+C**, or use the new **right-click menu**.
