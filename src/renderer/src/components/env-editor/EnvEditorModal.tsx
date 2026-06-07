@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, Folder, ChevronDown } from 'lucide-react';
 import { FileNavigator } from './FileNavigator';
+import { EnvForm } from './EnvForm';
 import type { EnvFileEntry } from '../../../../shared/env-editor-types';
+import {
+  parseEnvFile,
+  serializeEnvFile,
+  type EnvLine,
+  type ParsedEnvFile
+} from '../../../../shared/env-parse';
 
 export function EnvEditorModal({
   isOpen,
@@ -16,6 +23,11 @@ export function EnvEditorModal({
   const [root, setRoot] = useState<string | undefined>(cwd);
   const [files, setFiles] = useState<EnvFileEntry[]>([]);
   const [selected, setSelected] = useState<EnvFileEntry | null>(null);
+  const [parsed, setParsed] = useState<ParsedEnvFile | null>(null);
+  const [originalText, setOriginalText] = useState('');
+  const mtimeMsRef = useRef(0);
+  const [revealAll, setRevealAll] = useState(false);
+  const [revealed, setRevealed] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (isOpen) setRoot(cwd);
@@ -37,6 +49,42 @@ export function EnvEditorModal({
   useEffect(() => {
     if (isOpen) panelRef.current?.focus();
   }, [isOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRevealed(new Set());
+    setRevealAll(false);
+    if (!selected) {
+      setParsed(null);
+      setOriginalText('');
+      return;
+    }
+    void window.fleet.envEditor.read(selected.absPath).then((res) => {
+      if (cancelled) return;
+      setOriginalText(res.text);
+      mtimeMsRef.current = res.mtimeMs;
+      setParsed(parseEnvFile(res.text));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
+  const setLines = useCallback(
+    (lines: EnvLine[]) => setParsed((p) => (p ? { ...p, lines } : p)),
+    []
+  );
+
+  const toggleReveal = useCallback((index: number) => {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }, []);
+
+  const dirty = parsed !== null && serializeEnvFile(parsed) !== originalText;
 
   const pickFolder = useCallback(async () => {
     const dir = await window.fleet.showFolderPicker();
@@ -90,13 +138,19 @@ export function EnvEditorModal({
           <FileNavigator
             files={files}
             selectedPath={selected?.absPath ?? null}
-            dirtyPaths={new Set()}
+            dirtyPaths={dirty && selected ? new Set([selected.absPath]) : new Set()}
             onSelect={setSelected}
             onNewFile={() => undefined}
           />
           <div className="flex min-h-0 flex-1 flex-col">
-            {selected ? (
-              <div className="p-6 text-sm text-neutral-400">Selected: {selected.relPath}</div>
+            {selected && parsed ? (
+              <EnvForm
+                lines={parsed.lines}
+                revealAll={revealAll}
+                revealed={revealed}
+                onToggleReveal={toggleReveal}
+                onChange={setLines}
+              />
             ) : (
               <div className="flex flex-1 items-center justify-center p-6 text-sm text-neutral-500">
                 {files.length === 0
