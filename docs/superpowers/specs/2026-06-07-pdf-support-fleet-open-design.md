@@ -183,6 +183,10 @@ Behavior:
 5. Cleanup: `page.cleanup()` and `pdfDocument.destroy()` on unmount / filePath
    change to avoid worker leaks.
 
+All loading/error/control/zoom/page motion follows the **Motion & interaction
+design** section below — reuse `ToolbarButton`, snap zoom/page, show a
+`Loader2` spinner during parse, render errors instantly.
+
 ### pdf.js worker & font assets
 
 **Dependency:** add `pdfjs-dist` (latest 4.x).
@@ -205,6 +209,40 @@ getDocument({ url, cMapUrl, cMapPacked: true, standardFontDataUrl })
 ```
 The hand-made test PDF uses Helvetica, so this is required for it to render
 text — verify with `/tmp/fleet-test.pdf`.
+
+## Motion & interaction design (NN/g + Baymard-grounded)
+
+Guiding principle from the research: this is a **productivity pane next to
+terminals/editors — devs value speed, so motion must be functional, never
+decorative.** NN/g: *"gratuitous animations distract and annoy"*; response-time
+limits are 0.1s (instant) / 1s (flow preserved) / 10s (attention lost). Fleet's
+existing viewer conventions already match this (ImageViewerPane snaps zoom, shows
+errors instantly), so the rule is **reuse existing primitives, stay 100–250ms,
+snap where ImageViewerPane snaps.** Sources: NN/g *Response Time Limits*,
+*Animation Duration & Easing*, *The Role of Animation and Motion in UX*,
+*Skeleton Screens 101*, *Error-Message Guidelines*, *Empty States*; Baymard
+*Making a Slow Site Appear Fast* (secondary).
+
+| Interaction | Behavior | Primitive (file:line) |
+|---|---|---|
+| Control press/hover (prev/next, zoom −/+/fit) | Feedback <0.1s. Reuse the `ToolbarButton` pattern: `transition-colors hover:bg-white/10 active:scale-[0.97] disabled:active:scale-100`. Auto reduced-motion-safe. | `ImageViewerPane.tsx:304-325` |
+| Zoom change | **Snap, no transition** on the canvas (instant feel; a scale tween reads sluggish). Show the level as a persistent `%` in the status bar, click-to-fit. | `ImageViewerPane.tsx:234,258` |
+| Page change | **Snap** — render the new page directly, no slide/fade. Research: animated page-turns are distracting on a repeated low-stakes action. Optional nice-to-have: ~150ms ease-out emphasis on the `1 / N` indicator so success registers. | convention |
+| Initial document load | **Deviation from ImageViewerPane (which shows nothing):** PDF parse commonly exceeds the 1s flow limit, so show a centered `<Loader2 className="animate-spin" />` + `Loading…` after load begins. Under 1s it'll flash-and-go — acceptable; do **not** fake a skeleton (no known layout to mimic, and no Skeleton component exists). | `EnvSyncModal.tsx:62`, `MarkdownPane.tsx:253` |
+| Large-PDF progress (>10s) | *Nice-to-have:* if pdf.js `getDocument(...).onProgress` yields real monotonic progress, show a determinate bar (`transition-all duration-300`). Only with real progress — a stuttery bar makes users "watch the clock" (Baymard). Otherwise keep the spinner. | `UpdatesSection.tsx:111` |
+| Error state (missing / invalid PDF) | Shown instantly, centered `text-neutral-400 text-sm`, **no entrance animation** (match ImageViewerPane). Message must be explicit + give a next step; never signal by motion/color alone. | `ImageViewerPane.tsx:216-220` |
+| Empty state (pane with no doc) | Designed, not blank — short "No PDF loaded" line. No animation. | NN/g *Empty States* |
+| Transient feedback (e.g. "Reached last page") | *Nice-to-have:* `useToastStore().show(msg)` — never build a new notifier. | `store/toast-store.ts` |
+
+**Reduced motion:** handled globally by `index.css:136-149` (neutralizes
+`animate-in/out`, `animate-pulse`, `active:scale-*`). Since zoom/page **snap**
+(no CSS transition), nothing extra is needed. The loader's `animate-spin` is not
+covered by that block; acceptable for v1 (it's a loader, not decorative) — note
+it as a known minor gap.
+
+**Skip (decorative):** spring/bounce/overshoot easing, canvas zoom tweens,
+directional/page-curl transitions, simultaneous animations, animating status-bar
+text. NN/g explicitly warns against these for productivity tools.
 
 ### Tests
 
