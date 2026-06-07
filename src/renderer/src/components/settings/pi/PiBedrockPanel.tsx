@@ -85,10 +85,7 @@ export function PiBedrockPanel({
     await load();
   };
 
-  const writeSecret = async (
-    field: BedrockSecretField,
-    value: string
-  ): Promise<void> => {
+  const writeSecret = async (field: BedrockSecretField, value: string): Promise<void> => {
     await writePatch({ [field]: value });
     if (field === 'secretAccessKey') setSecretDraft('');
     else if (field === 'sessionToken') setSessionDraft('');
@@ -116,7 +113,7 @@ export function PiBedrockPanel({
             <button
               type="button"
               onClick={() => void onLegacyMigrate()}
-              className="rounded bg-amber-700 px-2 py-1 text-white hover:bg-amber-600"
+              className="rounded bg-amber-700 px-2 py-1 text-white hover:bg-amber-600 transition active:scale-[0.97]"
             >
               Move
             </button>
@@ -126,7 +123,7 @@ export function PiBedrockPanel({
                 setLegacyBannerDismissed(true);
                 onLegacyKeepAsCustom();
               }}
-              className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800"
+              className="rounded border border-neutral-700 px-2 py-1 hover:bg-neutral-800 transition active:scale-[0.97]"
             >
               Keep as custom
             </button>
@@ -228,7 +225,7 @@ export function PiBedrockPanel({
               <button
                 type="button"
                 onClick={() => void clearSecret('bearerToken')}
-                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 transition active:scale-[0.97]"
               >
                 Clear
               </button>
@@ -237,7 +234,7 @@ export function PiBedrockPanel({
                 onClick={() => {
                   setState({ ...state, bearerTokenPresent: false });
                 }}
-                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 transition active:scale-[0.97]"
               >
                 Replace
               </button>
@@ -254,7 +251,7 @@ export function PiBedrockPanel({
                 type="button"
                 disabled={!bearerDraft}
                 onClick={() => void writeSecret('bearerToken', bearerDraft)}
-                className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500"
+                className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
               >
                 Save
               </button>
@@ -285,7 +282,7 @@ export function PiBedrockPanel({
                 <button
                   type="button"
                   onClick={() => void clearSecret('secretAccessKey')}
-                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 transition active:scale-[0.97]"
                 >
                   Clear
                 </button>
@@ -294,7 +291,7 @@ export function PiBedrockPanel({
                   onClick={() => {
                     setState({ ...state, secretAccessKeyPresent: false });
                   }}
-                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 transition active:scale-[0.97]"
                 >
                   Replace
                 </button>
@@ -311,7 +308,7 @@ export function PiBedrockPanel({
                   type="button"
                   disabled={!secretDraft}
                   onClick={() => void writeSecret('secretAccessKey', secretDraft)}
-                  className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500"
+                  className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
                 >
                   Save
                 </button>
@@ -328,7 +325,7 @@ export function PiBedrockPanel({
                 <button
                   type="button"
                   onClick={() => void clearSecret('sessionToken')}
-                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800"
+                  className="text-xs rounded border border-neutral-700 px-2 py-0.5 hover:bg-neutral-800 transition active:scale-[0.97]"
                 >
                   Clear
                 </button>
@@ -345,7 +342,7 @@ export function PiBedrockPanel({
                   type="button"
                   disabled={!sessionDraft}
                   onClick={() => void writeSecret('sessionToken', sessionDraft)}
-                  className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500"
+                  className="text-xs rounded bg-blue-600 px-2 py-0.5 text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 transition active:scale-[0.97] disabled:active:scale-100"
                 >
                   Save
                 </button>

@@ -42,7 +42,7 @@ export function PiProviderRow(props: PiProviderRowProps): React.JSX.Element {
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-neutral-900/40"
+        className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-neutral-900/40 transition active:scale-[0.97]"
       >
         <span className={`w-2 h-2 rounded-full ${dotClass[props.dotColor]}`} aria-hidden />
         <span className="text-sm text-neutral-200 min-w-[140px]">{props.label}</span>

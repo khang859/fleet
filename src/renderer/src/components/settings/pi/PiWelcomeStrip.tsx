@@ -14,7 +14,7 @@ export function PiWelcomeStrip({ onPick, onShowMore }: Props): React.JSX.Element
         <button
           type="button"
           onClick={() => onPick('anthropic')}
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px]"
+          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px] transition active:scale-[0.97]"
         >
           <div className="font-medium">Anthropic</div>
           <div className="text-xs text-neutral-500">Sign in with a Claude subscription</div>
@@ -22,7 +22,7 @@ export function PiWelcomeStrip({ onPick, onShowMore }: Props): React.JSX.Element
         <button
           type="button"
           onClick={() => onPick('amazon-bedrock')}
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px]"
+          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px] transition active:scale-[0.97]"
         >
           <div className="font-medium">Amazon Bedrock</div>
           <div className="text-xs text-neutral-500">Use your AWS account</div>
@@ -30,7 +30,7 @@ export function PiWelcomeStrip({ onPick, onShowMore }: Props): React.JSX.Element
         <button
           type="button"
           onClick={() => onPick('ollama')}
-          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px]"
+          className="rounded border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-800 text-left min-w-[140px] transition active:scale-[0.97]"
         >
           <div className="font-medium">Ollama (local)</div>
           <div className="text-xs text-neutral-500">Run models on this machine</div>
@@ -38,7 +38,7 @@ export function PiWelcomeStrip({ onPick, onShowMore }: Props): React.JSX.Element
         <button
           type="button"
           onClick={onShowMore}
-          className="text-xs text-neutral-400 underline hover:text-neutral-200 self-center"
+          className="text-xs text-neutral-400 underline hover:text-neutral-200 self-center transition active:scale-[0.97]"
         >
           more providers ▸
         </button>

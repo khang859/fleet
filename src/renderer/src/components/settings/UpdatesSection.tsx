@@ -77,7 +77,7 @@ export function UpdatesSection(): React.JSX.Element {
         {updateStatus.state === 'ready' ? (
           <button
             onClick={() => window.fleet.updates.installUpdate()}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
+            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors active:scale-[0.97]"
           >
             Restart to Update
           </button>
@@ -87,7 +87,7 @@ export function UpdatesSection(): React.JSX.Element {
               void window.fleet.updates.checkForUpdates();
             }}
             disabled={updateStatus.state === 'checking' || updateStatus.state === 'downloading'}
-            className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
           >
             {updateStatus.state === 'checking' ? 'Checking...' : 'Check for Updates'}
           </button>
@@ -147,7 +147,7 @@ export function UpdatesSection(): React.JSX.Element {
             void checkPi();
           }}
           disabled={piChecking || !piInstalled}
-          className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 text-sm bg-neutral-700 hover:bg-neutral-600 text-white rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.97] disabled:active:scale-100"
         >
           {piChecking ? 'Checking...' : 'Check for Pi Updates'}
         </button>

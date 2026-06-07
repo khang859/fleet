@@ -169,7 +169,7 @@ export function PiProviderForm({
         <button
           type="button"
           onClick={() => void onDelete()}
-          className="px-2 py-1 text-xs rounded border border-red-700/50 text-red-400 hover:bg-red-900/30"
+          className="px-2 py-1 text-xs rounded border border-red-700/50 text-red-400 hover:bg-red-900/30 transition active:scale-[0.97]"
         >
           Delete provider
         </button>
@@ -177,7 +177,7 @@ export function PiProviderForm({
           <button
             type="button"
             onClick={onCancel}
-            className="px-3 py-1 text-sm rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800"
+            className="px-3 py-1 text-sm rounded border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition active:scale-[0.97]"
           >
             Cancel
           </button>
@@ -185,7 +185,7 @@ export function PiProviderForm({
             type="button"
             disabled={!idValid}
             onClick={() => void handleSave()}
-            className="px-3 py-1 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white"
+            className="px-3 py-1 text-sm rounded bg-blue-600 hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500 text-white transition active:scale-[0.97] disabled:active:scale-100"
           >
             Save
           </button>
