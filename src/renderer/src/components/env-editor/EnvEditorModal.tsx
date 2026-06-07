@@ -282,7 +282,7 @@ export function EnvEditorModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 duration-150 animate-in fade-in-0"
       onClick={requestClose}
     >
       <div
@@ -295,7 +295,7 @@ export function EnvEditorModal({
           }
         }}
         onClick={(e) => e.stopPropagation()}
-        className="env-editor-pop flex h-[85vh] w-[860px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
+        className="flex h-[85vh] w-[860px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl duration-150 animate-in fade-in-0 zoom-in-95"
       >
         <div className="flex items-center gap-3 border-b border-neutral-800 px-5 py-3">
           <h2 className="text-base font-semibold text-neutral-100">Env Editor</h2>

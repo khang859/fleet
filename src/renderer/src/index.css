@@ -151,15 +151,6 @@ body,
   }
 }
 
-@keyframes env-editor-pop {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
-}
-.env-editor-pop { animation: env-editor-pop 200ms ease-out; }
-@media (prefers-reduced-motion: reduce) {
-  .env-editor-pop { animation: none; }
-}
-
 /* ── Markdown Preview Prose Styles ──────────────────────────────────── */
 
 .markdown-preview h1 {
