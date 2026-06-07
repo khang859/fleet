@@ -74,6 +74,15 @@ import type { EnvSyncSecrets } from './env-sync/env-sync-secrets';
 import { readConfig, writeConfig, findNearestConfig } from './env-sync/env-sync-config';
 import { scanCandidates } from './env-sync/env-file';
 import type { EnvSyncConfig, ConflictChoice } from '../shared/env-sync-types';
+import {
+  listEnvFiles,
+  readEnvFile,
+  writeEnvFile,
+  createEnvFile,
+  renameEnvFile,
+  softDeleteEnvFile,
+  restoreEnvFile
+} from './env-editor/env-editor-fs';
 import type {
   EnvSyncSetPassphraseRequest,
   EnvSyncClearPassphraseRequest,
@@ -855,6 +864,33 @@ export function registerIpcHandlers(
     available: envSyncSecrets.isEncryptionAvailable(),
     backend: process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : undefined
   }));
+
+  // ── Env Editor ──────────────────────────────────────────────────────────
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_LIST, (_e, root: string) => listEnvFiles(root));
+
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_READ, (_e, absPath: string) => readEnvFile(absPath));
+
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_EDITOR_WRITE,
+    (_e, absPath: string, text: string, expectedMtimeMs?: number) =>
+      writeEnvFile(absPath, text, expectedMtimeMs)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_CREATE, (_e, dir: string, name: string) =>
+    createEnvFile(dir, name)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_RENAME, (_e, absPath: string, newName: string) =>
+    renameEnvFile(absPath, newName)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_DELETE, (_e, absPath: string) =>
+    softDeleteEnvFile(absPath)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_RESTORE, (_e, trashPath: string, absPath: string) =>
+    restoreEnvFile(trashPath, absPath)
+  );
 }
 
 // Exported for testing

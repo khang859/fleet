@@ -113,6 +113,13 @@ import type {
   SyncOutcome,
   RedactedEnvSyncSecrets
 } from '../shared/ipc-api';
+import type {
+  EnvFileEntry,
+  EnvReadResult,
+  EnvWriteResult,
+  EnvPathResult,
+  EnvTrashResult
+} from '../shared/env-editor-types';
 
 type Unsubscribe = () => void;
 
@@ -636,6 +643,26 @@ const fleetApi = {
       typedInvoke<{ available: boolean; backend?: string }>(
         IPC_CHANNELS.ENV_SYNC_ENCRYPTION_AVAILABLE
       )
+  },
+  envEditor: {
+    list: async (root: string): Promise<EnvFileEntry[]> =>
+      typedInvoke<EnvFileEntry[]>(IPC_CHANNELS.ENV_EDITOR_LIST, root),
+    read: async (absPath: string): Promise<EnvReadResult> =>
+      typedInvoke<EnvReadResult>(IPC_CHANNELS.ENV_EDITOR_READ, absPath),
+    write: async (
+      absPath: string,
+      text: string,
+      expectedMtimeMs?: number
+    ): Promise<EnvWriteResult> =>
+      typedInvoke<EnvWriteResult>(IPC_CHANNELS.ENV_EDITOR_WRITE, absPath, text, expectedMtimeMs),
+    create: async (dir: string, name: string): Promise<EnvPathResult> =>
+      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_CREATE, dir, name),
+    rename: async (absPath: string, newName: string): Promise<EnvPathResult> =>
+      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_RENAME, absPath, newName),
+    delete: async (absPath: string): Promise<EnvTrashResult> =>
+      typedInvoke<EnvTrashResult>(IPC_CHANNELS.ENV_EDITOR_DELETE, absPath),
+    restore: async (trashPath: string, absPath: string): Promise<{ ok: true }> =>
+      typedInvoke<{ ok: true }>(IPC_CHANNELS.ENV_EDITOR_RESTORE, trashPath, absPath)
   }
 };
 
