@@ -28,6 +28,7 @@ import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
 import { TelescopeModal } from './components/Telescope/TelescopeModal';
+import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
@@ -142,6 +143,7 @@ export function App(): React.JSX.Element {
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
+  const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [planModalQueue, setPlanModalQueue] = useState<PiPlanModalEntry[]>([]);
   const [updateReady, setUpdateReady] = useState(false);
 
@@ -230,6 +232,13 @@ export function App(): React.JSX.Element {
     const handler = (): void => setGitChangesOpen((prev) => !prev);
     document.addEventListener('fleet:toggle-git-changes', handler);
     return () => document.removeEventListener('fleet:toggle-git-changes', handler);
+  }, []);
+
+  // Env sync modal toggle
+  useEffect(() => {
+    const handler = (): void => setEnvSyncOpen((prev) => !prev);
+    document.addEventListener('fleet:toggle-env-sync', handler);
+    return () => document.removeEventListener('fleet:toggle-env-sync', handler);
   }, []);
 
   // Quick open toggle (Cmd+P)
@@ -978,6 +987,11 @@ export function App(): React.JSX.Element {
         isOpen={telescopeOpen}
         onClose={() => setTelescopeOpen(false)}
         cwd={focusedPaneCwd ?? window.fleet.homeDir}
+      />
+      <EnvSyncModal
+        isOpen={envSyncOpen}
+        onClose={() => setEnvSyncOpen(false)}
+        cwd={focusedPaneCwd}
       />
       <AnnotateModal open={false} onClose={() => {}} />
       <PiPlanModal

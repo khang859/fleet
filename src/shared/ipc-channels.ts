@@ -32,6 +32,7 @@ export const IPC_CHANNELS = {
   ENV_SYNC_ENCRYPTION_AVAILABLE: 'env-sync:encryption-available',
   ENV_SYNC_DISCOVER: 'env-sync:discover',
   GIT_IS_REPO: 'git:is-repo',
+  GIT_REPO_ROOT: 'git:repo-root',
   GIT_STATUS: 'git:status',
   PTY_DRAIN: 'fleet:pty-drain',
   PTY_ATTACH: 'pty:attach',

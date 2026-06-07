@@ -309,6 +309,10 @@ export function registerIpcHandlers(
     return gitService.checkIsRepo(cwd);
   });
 
+  ipcMain.handle(IPC_CHANNELS.GIT_REPO_ROOT, async (_event, cwd: string) => {
+    return gitService.repoRoot(cwd);
+  });
+
   ipcMain.handle(IPC_CHANNELS.GIT_STATUS, async (_event, cwd: string, baseRef?: string) => {
     return gitService.getFullStatus(cwd, baseRef);
   });

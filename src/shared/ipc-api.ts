@@ -127,6 +127,11 @@ export type GitIsRepoPayload = {
   isRepo: boolean;
 };
 
+export type GitRepoRootPayload = {
+  /** Absolute path to the git toplevel, or null if cwd is not in a repo. */
+  root: string | null;
+};
+
 export type FileOpenInTabPayload = {
   files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown'; label: string }>;
 };

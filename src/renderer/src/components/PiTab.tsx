@@ -186,6 +186,7 @@ function PiTerminal({
         }}
         onAnnotate={() => openAnnotateModal()}
         onTelescope={() => document.dispatchEvent(new CustomEvent('fleet:toggle-telescope'))}
+        onEnvSync={() => document.dispatchEvent(new CustomEvent('fleet:toggle-env-sync'))}
       />
       <SearchBar
         isOpen={searchOpen}

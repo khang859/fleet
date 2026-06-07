@@ -14,6 +14,7 @@ import type {
   PaneFocusedPayload,
   GitStatusPayload,
   GitIsRepoPayload,
+  GitRepoRootPayload,
   HostPlatform,
   FileOpenInTabPayload,
   ReaddirResponse,
@@ -222,6 +223,8 @@ const fleetApi = {
   git: {
     isRepo: async (cwd: string): Promise<GitIsRepoPayload> =>
       typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
+    repoRoot: async (cwd: string): Promise<GitRepoRootPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_REPO_ROOT, cwd),
     getStatus: async (cwd: string, baseRef?: string): Promise<GitStatusPayload> =>
       typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef)
   },

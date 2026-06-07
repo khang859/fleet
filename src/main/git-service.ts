@@ -1,5 +1,10 @@
 import { simpleGit, type SimpleGit, type FileStatusResult } from 'simple-git';
-import type { GitStatusPayload, GitIsRepoPayload, GitFileStatus } from '../shared/ipc-api';
+import type {
+  GitStatusPayload,
+  GitIsRepoPayload,
+  GitRepoRootPayload,
+  GitFileStatus
+} from '../shared/ipc-api';
 
 export class GitService {
   private getGit(cwd: string): SimpleGit {
@@ -12,6 +17,15 @@ export class GitService {
       return { isRepo };
     } catch {
       return { isRepo: false };
+    }
+  }
+
+  async repoRoot(cwd: string): Promise<GitRepoRootPayload> {
+    try {
+      const root = (await this.getGit(cwd).revparse(['--show-toplevel'])).trim();
+      return { root: root || null };
+    } catch {
+      return { root: null };
     }
   }
 

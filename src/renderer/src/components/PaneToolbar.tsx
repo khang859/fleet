@@ -8,7 +8,8 @@ import {
   Clipboard,
   BookOpen,
   Crosshair,
-  Telescope
+  Telescope,
+  FolderSync
 } from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import { formatShortcut, getShortcut } from '../lib/shortcuts';
@@ -55,6 +56,7 @@ type PaneToolbarProps = {
   onInjectSkills?: () => void;
   onAnnotate?: () => void;
   onTelescope?: () => void;
+  onEnvSync?: () => void;
 };
 
 export function PaneToolbar({
@@ -69,7 +71,8 @@ export function PaneToolbar({
   onClipboardHistory,
   onInjectSkills,
   onAnnotate,
-  onTelescope
+  onTelescope,
+  onEnvSync
 }: PaneToolbarProps): React.JSX.Element {
   return (
     <Tooltip.Provider delayDuration={300}>
@@ -178,6 +181,19 @@ export function PaneToolbar({
               className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
             >
               <Telescope size={14} />
+            </button>
+          </ToolbarTooltip>
+        )}
+        {onEnvSync && (
+          <ToolbarTooltip label="Env Sync">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnvSync();
+              }}
+              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-700 transition-colors"
+            >
+              <FolderSync size={14} />
             </button>
           </ToolbarTooltip>
         )}
