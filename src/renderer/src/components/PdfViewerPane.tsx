@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import './pdf-text-layer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -36,8 +37,10 @@ type PdfViewerPaneProps = {
 export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const docRef = useRef<PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<RenderTask | null>(null);
+  const textLayerInstanceRef = useRef<pdfjs.TextLayer | null>(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +135,29 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
         } catch {
           // Render cancelled (page/zoom changed mid-render) — expected, ignore.
         }
+        if (cancelled) return;
+
+        // Overlay a transparent text layer so the page text is selectable and
+        // copyable. setLayerDimensions (inside TextLayer) sizes the container via
+        // calc(var(--scale-factor) * pageWidth), so --scale-factor must equal the
+        // CSS scale (zoom, not the HiDPI outputScale).
+        const textLayerDiv = textLayerRef.current;
+        if (textLayerDiv) {
+          textLayerInstanceRef.current?.cancel();
+          textLayerDiv.replaceChildren();
+          textLayerDiv.style.setProperty('--scale-factor', String(zoom));
+          const textLayer = new pdfjs.TextLayer({
+            textContentSource: page.streamTextContent(),
+            container: textLayerDiv,
+            viewport
+          });
+          textLayerInstanceRef.current = textLayer;
+          try {
+            await textLayer.render();
+          } catch {
+            // Text-layer render cancelled (page/zoom changed) — expected, ignore.
+          }
+        }
       } finally {
         page.cleanup();
       }
@@ -140,6 +166,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
 
     return () => {
       cancelled = true;
+      textLayerInstanceRef.current?.cancel();
     };
   }, [pageNum, zoom, loading, error, numPages]);
 
@@ -167,7 +194,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
   const zoomPercent = Math.round(zoom * 100);
 
   return (
-    <div className="flex flex-col h-full w-full bg-neutral-900 select-none">
+    <div className="flex flex-col h-full w-full bg-neutral-900">
       {/* Document viewport */}
       <div ref={containerRef} className="flex-1 overflow-auto relative flex justify-center">
         {error && (
@@ -181,7 +208,12 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
             Loading…
           </div>
         )}
-        {!error && <canvas ref={canvasRef} className="my-4 shadow-lg shadow-black/40 h-fit" />}
+        {!error && (
+          <div className="relative my-4 h-fit shadow-lg shadow-black/40">
+            <canvas ref={canvasRef} className="block" />
+            <div ref={textLayerRef} className="textLayer" />
+          </div>
+        )}
       </div>
 
       {/* Status bar */}

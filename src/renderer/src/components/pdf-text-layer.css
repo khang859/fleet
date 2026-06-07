@@ -1,0 +1,40 @@
+/* Minimal pdf.js text-layer styles, scoped to `.textLayer`, so rendered PDF text
+   is selectable and copyable. These mirror the essential rules from
+   pdfjs-dist/web/pdf_viewer.css without pulling in its global `:root` theme
+   variables (which would leak into the app). The text spans sit transparently
+   over the canvas; selecting them highlights the underlying glyphs. */
+.textLayer {
+  position: absolute;
+  text-align: initial;
+  inset: 0;
+  overflow: clip;
+  opacity: 1;
+  line-height: 1;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  z-index: 0;
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+}
+
+.textLayer span.markedContent {
+  top: 0;
+  height: 0;
+}
+
+.textLayer span[role='img'] {
+  user-select: none;
+  cursor: default;
+}
+
+.textLayer ::selection {
+  background: rgb(0 100 255 / 0.35);
+}
