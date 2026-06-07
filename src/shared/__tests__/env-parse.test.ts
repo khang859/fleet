@@ -4,7 +4,8 @@ import {
   serializeEnvFile,
   formatVarLine,
   updateVarLine,
-  newVarLine
+  newVarLine,
+  countVars
 } from '../env-parse';
 
 const SAMPLE = `# Database
@@ -33,7 +34,9 @@ describe('env-parse', () => {
   it('preserves comments and ordering when one value changes', () => {
     const parsed = parseEnvFile(SAMPLE);
     const idx = parsed.lines.findIndex((l) => l.kind === 'var' && l.key === 'PORT');
-    parsed.lines[idx] = updateVarLine(parsed.lines[idx] as never, 'PORT', '4000');
+    const portLine = parsed.lines[idx];
+    if (portLine.kind !== 'var') throw new Error('expected PORT var line');
+    parsed.lines[idx] = updateVarLine(portLine, 'PORT', '4000');
     const out = serializeEnvFile(parsed);
     expect(out).toContain('# Database');
     expect(out).toContain('PORT=4000');
@@ -49,5 +52,13 @@ describe('env-parse', () => {
 
   it('creates a new var line', () => {
     expect(newVarLine('NEW', 'v')).toMatchObject({ kind: 'var', key: 'NEW', value: 'v', raw: 'NEW=v' });
+  });
+
+  it('formatVarLine combines export prefix with quoting', () => {
+    expect(formatVarLine('K', 'a b', 'export K=old')).toBe('export K="a b"');
+  });
+
+  it('countVars counts only var lines', () => {
+    expect(countVars(SAMPLE)).toBe(4);
   });
 });

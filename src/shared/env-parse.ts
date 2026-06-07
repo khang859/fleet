@@ -24,8 +24,9 @@ export function parseEnvFile(text: string): ParsedEnvFile {
     if (!key) return { kind: 'comment', raw };
     let value = body.slice(eq + 1).trim();
     if (
-      (value.startsWith('"') && value.endsWith('"')) ||
-      (value.startsWith("'") && value.endsWith("'"))
+      value.length >= 2 &&
+      ((value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'")))
     ) {
       value = value.slice(1, -1);
     }
