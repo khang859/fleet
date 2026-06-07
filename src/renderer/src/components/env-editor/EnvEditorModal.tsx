@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Folder, ChevronDown, Table, Code, Eye, EyeOff } from 'lucide-react';
+import {
+  X,
+  Folder,
+  ChevronDown,
+  Table,
+  Code,
+  Eye,
+  EyeOff,
+  Save,
+  AlertTriangle,
+  Loader2
+} from 'lucide-react';
+import { useToastStore } from '../../store/toast-store';
 import { FileNavigator } from './FileNavigator';
 import { EnvForm } from './EnvForm';
 import { EnvRawEditor } from './EnvRawEditor';
@@ -33,6 +45,10 @@ export function EnvEditorModal({
   const [revealed, setRevealed] = useState<Set<number>>(new Set());
   const [mode, setMode] = useState<'form' | 'raw'>('form');
   const [rawText, setRawText] = useState('');
+  const showToast = useToastStore((s) => s.show);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [externalChange, setExternalChange] = useState(false);
 
   useEffect(() => {
     if (isOpen) setRoot(cwd);
@@ -59,6 +75,8 @@ export function EnvEditorModal({
     let cancelled = false;
     setRevealed(new Set());
     setRevealAll(false);
+    setError(null);
+    setExternalChange(false);
     if (!selected) {
       setParsed(null);
       setOriginalText('');
@@ -119,12 +137,60 @@ export function EnvEditorModal({
     }
   }, []);
 
+  const save = useCallback(async () => {
+    if (!selected || !parsed || saving) return;
+    const text = serializeEnvFile(parsed);
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await window.fleet.envEditor.write(selected.absPath, text, mtimeMsRef.current);
+      if (!res.ok && res.externalChange) {
+        setExternalChange(true);
+        return;
+      }
+      setOriginalText(text);
+      mtimeMsRef.current = res.mtimeMs;
+      setExternalChange(false);
+      void reload();
+      showToast('Saved');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save file');
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, parsed, saving, reload, showToast]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (dirty) void save();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, dirty, save]);
+
+  const requestClose = useCallback(() => {
+    if (dirty && !window.confirm('Discard unsaved changes?')) return;
+    onClose();
+  }, [dirty, onClose]);
+
+  const selectFile = useCallback(
+    (file: EnvFileEntry) => {
+      if (dirty && !window.confirm('Discard unsaved changes to this file?')) return;
+      setSelected(file);
+    },
+    [dirty]
+  );
+
   if (!isOpen) return null;
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         ref={panelRef}
@@ -132,7 +198,7 @@ export function EnvEditorModal({
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
             e.preventDefault();
-            onClose();
+            requestClose();
           }
         }}
         onClick={(e) => e.stopPropagation()}
@@ -152,8 +218,17 @@ export function EnvEditorModal({
             <ChevronDown size={13} className="text-neutral-500" />
           </button>
           <button
-            onClick={onClose}
-            className="ml-auto rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-white active:scale-90"
+            onClick={() => void save()}
+            disabled={!dirty || saving}
+            title="Save (⌘S)"
+            className="ml-auto inline-flex items-center gap-2 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition active:scale-[0.97] hover:bg-blue-500 disabled:bg-neutral-800 disabled:text-neutral-600 disabled:active:scale-100"
+          >
+            {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            Save
+          </button>
+          <button
+            onClick={requestClose}
+            className="rounded-md p-1.5 text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-white active:scale-90"
           >
             <X size={16} />
           </button>
@@ -164,10 +239,46 @@ export function EnvEditorModal({
             files={files}
             selectedPath={selected?.absPath ?? null}
             dirtyPaths={dirty && selected ? new Set([selected.absPath]) : new Set()}
-            onSelect={setSelected}
+            onSelect={selectFile}
             onNewFile={() => undefined}
           />
           <div className="flex min-h-0 flex-1 flex-col">
+            {error && (
+              <div className="flex items-center gap-2 border-b border-red-800 bg-red-950/40 px-4 py-2 text-xs text-red-300">
+                <AlertTriangle size={13} /> {error}
+              </div>
+            )}
+            {externalChange && (
+              <div className="flex items-center gap-2 border-b border-amber-800 bg-amber-950/40 px-4 py-2 text-xs text-amber-300">
+                <AlertTriangle size={13} />
+                This file changed on disk.
+                <button
+                  onClick={() => {
+                    setExternalChange(false);
+                    setSelected((s) => (s ? { ...s } : s));
+                  }}
+                  className="font-medium underline active:scale-95"
+                >
+                  Reload
+                </button>
+                <button
+                  onClick={() => {
+                    if (!selected || !parsed) return;
+                    const text = serializeEnvFile(parsed);
+                    setExternalChange(false);
+                    void window.fleet.envEditor.write(selected.absPath, text).then((r) => {
+                      mtimeMsRef.current = r.mtimeMs;
+                      setOriginalText(text);
+                      void reload();
+                      showToast('Saved');
+                    });
+                  }}
+                  className="font-medium underline active:scale-95"
+                >
+                  Overwrite
+                </button>
+              </div>
+            )}
             {selected && (
               <div className="flex items-center gap-2 border-b border-neutral-800 px-4 py-2">
                 <span className="font-mono text-xs text-neutral-200">{selected.name}</span>
