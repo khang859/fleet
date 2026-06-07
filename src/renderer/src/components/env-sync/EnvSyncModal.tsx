@@ -1,6 +1,6 @@
 // src/renderer/src/components/env-sync/EnvSyncModal.tsx
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronRight, MoreHorizontal, X } from 'lucide-react';
 import { useToastStore } from '../../store/toast-store';
 import type {
   EnvSyncConfig,
@@ -24,12 +24,95 @@ const STATUS_LABEL: Record<TargetSyncState, string> = {
   error: 'Error'
 };
 
+// Status text colour by state: green = settled, amber = action available, red = problem.
+const STATE_TEXT: Record<TargetSyncState, string> = {
+  'in-sync': 'text-emerald-400',
+  'remote-ahead': 'text-amber-400',
+  'local-ahead': 'text-amber-400',
+  conflict: 'text-red-400',
+  'local-only': 'text-amber-400',
+  'remote-only': 'text-amber-400',
+  'no-remote-no-local': 'text-neutral-500',
+  error: 'text-red-400'
+};
+
+/** The single recommended sync action for a state, or null when nothing to do. */
+function primaryAction(state: TargetSyncState): { dir: 'pull' | 'push'; label: string } | null {
+  switch (state) {
+    case 'remote-ahead':
+    case 'remote-only':
+      return { dir: 'pull', label: 'Pull' };
+    case 'local-ahead':
+    case 'local-only':
+      return { dir: 'push', label: 'Push' };
+    case 'conflict':
+      return { dir: 'pull', label: 'Resolve' };
+    case 'in-sync':
+    case 'no-remote-no-local':
+    case 'error':
+      return null;
+  }
+}
+
 const inputCls =
-  'bg-neutral-800 text-sm text-neutral-200 rounded px-2 py-1 border border-neutral-700';
+  'w-full bg-neutral-800 text-sm text-neutral-200 rounded-md px-3 py-2 border border-neutral-700 focus:border-neutral-500 focus:outline-none';
+
+const primaryBtn =
+  'rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:bg-neutral-700 disabled:text-neutral-500';
 
 function basename(dir: string): string {
   const parts = dir.split(/[\\/]/).filter(Boolean);
   return parts[parts.length - 1] ?? dir;
+}
+
+/** Vertical label + control. Top-aligned labels read ~50% faster than left-aligned. */
+function Field({
+  label,
+  children
+}: {
+  label: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-neutral-400">{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** Collapsible section so advanced/secondary controls stay out of the way until needed. */
+function Disclosure({
+  title,
+  summary,
+  defaultOpen = false,
+  children
+}: {
+  title: string;
+  summary?: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg border border-neutral-800">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+      >
+        <ChevronRight
+          size={15}
+          className={`shrink-0 text-neutral-500 transition-transform ${open ? 'rotate-90' : ''}`}
+        />
+        <span className="text-sm font-medium text-neutral-300">{title}</span>
+        {summary && !open && (
+          <span className="ml-auto truncate pl-3 text-xs text-neutral-500">{summary}</span>
+        )}
+      </button>
+      {open && <div className="space-y-4 border-t border-neutral-800 px-4 py-4">{children}</div>}
+    </div>
+  );
 }
 
 function PassphraseControl({
@@ -60,14 +143,14 @@ function PassphraseControl({
   };
 
   return present ? (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       <span className="text-sm text-neutral-400">●●●●●●●● (set)</span>
-      <button className="text-xs text-red-400" onClick={() => void clear()}>
+      <button className="text-xs text-red-400 hover:text-red-300" onClick={() => void clear()}>
         {clearLabel}
       </button>
     </div>
   ) : (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-3">
       <input
         type="password"
         autoComplete="off"
@@ -79,7 +162,7 @@ function PassphraseControl({
       <button
         disabled={!draft || !encAvailable}
         onClick={() => void save()}
-        className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
+        className="shrink-0 rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-600 disabled:text-neutral-500"
       >
         Save
       </button>
@@ -139,7 +222,7 @@ function AuthControl({
   };
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       <select
         value={mode}
         onChange={(e) => {
@@ -166,7 +249,7 @@ function AuthControl({
       )}
 
       {mode === 'static' && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {redacted?.mode === 'static' && redacted.hasAccessKeyId ? (
             <span className="text-sm text-neutral-400">
               Static keys ●●●● (set) — re-enter below to replace
@@ -199,12 +282,15 @@ function AuthControl({
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-        <button onClick={() => void save()} className="text-xs bg-neutral-700 rounded px-2 py-1">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => void save()}
+          className="rounded-md bg-neutral-700 px-3 py-2 text-sm text-neutral-100 hover:bg-neutral-600"
+        >
           Save
         </button>
         {redacted && (
-          <button className="text-xs text-red-400" onClick={() => void reset()}>
+          <button className="text-xs text-red-400 hover:text-red-300" onClick={() => void reset()}>
             {resetLabel}
           </button>
         )}
@@ -241,9 +327,14 @@ function RepoAuthOverride({
 
   if (!override && !editing) {
     return (
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-neutral-400">Inherits global ({authSummary(globalAuth)})</span>
-        <button className="text-xs text-blue-400" onClick={() => setEditing(true)}>
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-neutral-400">
+          Inherits global ({authSummary(globalAuth)})
+        </span>
+        <button
+          className="text-xs text-blue-400 hover:text-blue-300"
+          onClick={() => setEditing(true)}
+        >
           Override
         </button>
       </div>
@@ -294,37 +385,35 @@ function InitForm({
   };
 
   return (
-    <div className="space-y-3">
-      <p className="text-xs text-neutral-400">
-        No <code>.fleet/env-sync.json</code> here yet. Create one to start syncing env files.
-      </p>
-      <p className="break-all text-xs text-neutral-500">{repoDir}</p>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">Repo id (S3 namespace)</span>
+    <div className="space-y-5 rounded-lg border border-neutral-800 p-5">
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-neutral-200">Set up this repo</h3>
+        <p className="text-xs text-neutral-500">
+          No <code className="text-neutral-400">.fleet/env-sync.json</code> here yet. Create one to
+          start syncing env files.
+        </p>
+        <p className="break-all pt-1 text-xs text-neutral-600">{repoDir}</p>
+      </div>
+      <Field label="Repo id (S3 namespace)">
         <input value={id} onChange={(e) => setId(e.target.value)} className={inputCls} />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">S3 bucket</span>
+      </Field>
+      <Field label="S3 bucket">
         <input
           value={bucket}
           onChange={(e) => setBucket(e.target.value)}
           placeholder="my-fleet-env-bucket"
           className={inputCls}
         />
-      </label>
-      <label className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">AWS region</span>
+      </Field>
+      <Field label="AWS region">
         <input
           value={region}
           onChange={(e) => setRegion(e.target.value)}
           placeholder="us-east-1"
           className={inputCls}
         />
-      </label>
-      <button
-        onClick={() => void create()}
-        className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500"
-      >
+      </Field>
+      <button onClick={() => void create()} className={primaryBtn}>
         Create config
       </button>
     </div>
@@ -335,18 +424,12 @@ function RepoManager({
   repoDir,
   config,
   statuses,
-  encAvailable,
-  secrets,
-  reload,
-  reloadSecrets
+  reload
 }: {
   repoDir: string;
   config: EnvSyncConfig;
   statuses: TargetStatus[];
-  encAvailable: boolean;
-  secrets: RedactedEnvSyncSecrets;
   reload: () => Promise<void>;
-  reloadSecrets: () => Promise<void>;
 }): React.JSX.Element {
   const showToast = useToastStore((s) => s.show);
 
@@ -358,6 +441,8 @@ function RepoManager({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBucket, setConfirmBucket] = useState(false);
   const [creatingBucket, setCreatingBucket] = useState(false);
+  // envFile whose row "more actions" menu is open, or null.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
 
   const createBucket = async (): Promise<void> => {
     setCreatingBucket(true);
@@ -440,10 +525,12 @@ function RepoManager({
 
   const changeDelivery = async (envFile: string, delivery: 'file' | 'inject'): Promise<void> => {
     const targets = config.targets.map((t) => (t.envFile === envFile ? { ...t, delivery } : t));
+    setMenuFor(null);
     await saveConfig({ ...config, targets });
   };
 
   const doSync = async (envFile: string, dir: 'pull' | 'push'): Promise<void> => {
+    setMenuFor(null);
     const res =
       dir === 'pull'
         ? await window.fleet.envSync.pull(repoDir, envFile, false)
@@ -459,175 +546,201 @@ function RepoManager({
   };
 
   return (
-    <div className="space-y-4">
-      <div className="rounded border border-neutral-800 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-sm text-neutral-200">{config.id}</span>
-          {editing ? (
-            <div className="flex items-center gap-2">
-              <input
-                value={bucketDraft}
-                onChange={(e) => setBucketDraft(e.target.value)}
-                placeholder="Bucket"
-                className={`${inputCls} w-36`}
-              />
-              <input
-                value={regionDraft}
-                onChange={(e) => setRegionDraft(e.target.value)}
-                placeholder="Region"
-                className={`${inputCls} w-28`}
-              />
-              <button className="text-xs text-blue-400" onClick={() => void saveBucketRegion()}>
-                Save
+    <div className="rounded-lg border border-neutral-800 p-5">
+      {/* Click-away catcher for the row action menu. */}
+      {menuFor && <div className="fixed inset-0 z-10" onClick={() => setMenuFor(null)} />}
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-semibold text-neutral-200">{config.id}</span>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <input
+              value={bucketDraft}
+              onChange={(e) => setBucketDraft(e.target.value)}
+              placeholder="Bucket"
+              className="w-36 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200"
+            />
+            <input
+              value={regionDraft}
+              onChange={(e) => setRegionDraft(e.target.value)}
+              placeholder="Region"
+              className="w-28 rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-sm text-neutral-200"
+            />
+            <button
+              className="text-xs text-blue-400 hover:text-blue-300"
+              onClick={() => void saveBucketRegion()}
+            >
+              Save
+            </button>
+            <button
+              className="text-xs text-neutral-400 hover:text-neutral-200"
+              onClick={() => setEditing(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-neutral-500">
+              {config.bucket} · {config.region}
+            </span>
+            <button className="text-xs text-blue-400 hover:text-blue-300" onClick={startEdit}>
+              Edit
+            </button>
+            {confirmBucket ? (
+              <span className="flex items-center gap-2 text-xs">
+                <span className="text-neutral-400">Create in {config.region}?</span>
+                <button
+                  disabled={creatingBucket}
+                  className="text-blue-400 hover:text-blue-300 disabled:text-neutral-500"
+                  onClick={() => void createBucket()}
+                >
+                  {creatingBucket ? 'Creating…' : 'Create'}
+                </button>
+                <button
+                  className="text-neutral-400 hover:text-neutral-200"
+                  onClick={() => setConfirmBucket(false)}
+                >
+                  Cancel
+                </button>
+              </span>
+            ) : (
+              <button
+                className="text-xs text-blue-400 hover:text-blue-300"
+                onClick={() => setConfirmBucket(true)}
+              >
+                Create bucket
               </button>
-              <button className="text-xs text-neutral-400" onClick={() => setEditing(false)}>
+            )}
+          </div>
+        )}
+      </div>
+
+      {statuses.length === 0 ? (
+        <p className="mt-5 text-xs text-neutral-500">
+          No env files tracked yet. Scan to add some below.
+        </p>
+      ) : (
+        <table className="mt-5 w-full border-separate border-spacing-y-1 text-sm">
+          <tbody>
+            {statuses.map((t) => {
+              const action = primaryAction(t.state);
+              return (
+                <Fragment key={t.envFile}>
+                  <tr>
+                    <td className="py-2 pr-3 text-neutral-200">{t.envFile}</td>
+                    <td className={`py-2 pr-3 ${STATE_TEXT[t.state]}`} title={t.error}>
+                      {STATUS_LABEL[t.state]}
+                    </td>
+                    <td className="py-2 text-right">
+                      <div className="relative inline-flex items-center justify-end gap-2">
+                        {action && (
+                          <button
+                            className="rounded-md bg-neutral-700 px-3 py-1.5 text-xs font-medium text-neutral-100 hover:bg-neutral-600"
+                            onClick={() => void doSync(t.envFile, action.dir)}
+                          >
+                            {action.label}
+                          </button>
+                        )}
+                        <button
+                          aria-label="More actions"
+                          className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-neutral-200"
+                          onClick={() => setMenuFor(menuFor === t.envFile ? null : t.envFile)}
+                        >
+                          <MoreHorizontal size={15} />
+                        </button>
+                        {menuFor === t.envFile && (
+                          <div className="absolute right-0 top-full z-20 mt-1 w-44 rounded-md border border-neutral-700 bg-neutral-800 py-1.5 text-left shadow-xl">
+                            <button
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              onClick={() => void doSync(t.envFile, 'pull')}
+                            >
+                              Pull from remote
+                            </button>
+                            <button
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              onClick={() => void doSync(t.envFile, 'push')}
+                            >
+                              Push to remote
+                            </button>
+                            <div className="my-1.5 border-t border-neutral-700" />
+                            <div className="px-3 py-1 text-[11px] uppercase tracking-wide text-neutral-500">
+                              Delivery
+                            </div>
+                            <button
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              onClick={() => void changeDelivery(t.envFile, 'file')}
+                            >
+                              {t.delivery === 'file' ? '✓ ' : '  '}Write file
+                            </button>
+                            <button
+                              className="block w-full px-3 py-1.5 text-left text-xs text-neutral-200 hover:bg-neutral-700"
+                              onClick={() => void changeDelivery(t.envFile, 'inject')}
+                            >
+                              {t.delivery === 'inject' ? '✓ ' : '  '}Inject into env
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {t.error && (
+                    <tr>
+                      <td colSpan={3} className="pb-2 text-xs leading-relaxed text-red-400">
+                        {t.error}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      <div className="mt-5">
+        {candidates === null ? (
+          <button
+            className="text-xs text-blue-400 hover:text-blue-300"
+            onClick={() => void runScan()}
+          >
+            + Scan for env files
+          </button>
+        ) : (
+          <div className="rounded-lg border border-neutral-800 p-4">
+            {candidates.length === 0 ? (
+              <p className="text-xs text-neutral-500">No new env files found.</p>
+            ) : (
+              <div className="space-y-2">
+                {candidates.map((path) => (
+                  <label key={path} className="flex items-center gap-3 text-sm text-neutral-300">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(path)}
+                      onChange={() => toggleCandidate(path)}
+                    />
+                    {path}
+                  </label>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                disabled={selected.size === 0}
+                className="rounded-md bg-neutral-700 px-3 py-1.5 text-xs text-neutral-100 hover:bg-neutral-600 disabled:text-neutral-500"
+                onClick={() => void addSelected()}
+              >
+                Add selected
+              </button>
+              <button
+                className="text-xs text-neutral-400 hover:text-neutral-200"
+                onClick={closeScan}
+              >
                 Cancel
               </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-neutral-500">
-                {config.bucket} · {config.region}
-              </span>
-              <button className="text-xs text-blue-400" onClick={startEdit}>
-                Edit
-              </button>
-              {confirmBucket ? (
-                <span className="flex items-center gap-1 text-xs">
-                  <span className="text-neutral-400">Create in {config.region}?</span>
-                  <button
-                    disabled={creatingBucket}
-                    className="text-blue-400 disabled:text-neutral-500"
-                    onClick={() => void createBucket()}
-                  >
-                    {creatingBucket ? 'Creating…' : 'Create'}
-                  </button>
-                  <button className="text-neutral-400" onClick={() => setConfirmBucket(false)}>
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button className="text-xs text-blue-400" onClick={() => setConfirmBucket(true)}>
-                  Create bucket
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-
-        <table className="mt-2 w-full text-xs">
-          <tbody>
-            {statuses.map((t) => (
-              <Fragment key={t.envFile}>
-                <tr className="border-t border-neutral-800">
-                  <td className="py-1 text-neutral-300">{t.envFile}</td>
-                  <td className="py-1">
-                    <select
-                      value={t.delivery}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === 'file' || v === 'inject') void changeDelivery(t.envFile, v);
-                      }}
-                      className="rounded border border-neutral-700 bg-neutral-800 px-1 py-0.5 text-neutral-400"
-                    >
-                      <option value="file">file</option>
-                      <option value="inject">inject</option>
-                    </select>
-                  </td>
-                  <td
-                    className={`py-1 ${t.state === 'error' ? 'text-red-400' : 'text-neutral-400'}`}
-                    title={t.error}
-                  >
-                    {STATUS_LABEL[t.state]}
-                  </td>
-                  <td className="py-1 text-right">
-                    <button
-                      className="text-xs text-blue-400 mr-2"
-                      onClick={() => void doSync(t.envFile, 'pull')}
-                    >
-                      Pull
-                    </button>
-                    <button
-                      className="text-xs text-blue-400"
-                      onClick={() => void doSync(t.envFile, 'push')}
-                    >
-                      Push
-                    </button>
-                  </td>
-                </tr>
-                {t.error && (
-                  <tr>
-                    <td colSpan={4} className="pb-2 text-[11px] leading-snug text-red-400">
-                      {t.error}
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
-            ))}
-          </tbody>
-        </table>
-
-        <div className="mt-2">
-          {candidates === null ? (
-            <button className="text-xs text-blue-400" onClick={() => void runScan()}>
-              Scan for env files
-            </button>
-          ) : (
-            <div className="rounded border border-neutral-800 p-2">
-              {candidates.length === 0 ? (
-                <p className="text-xs text-neutral-500">No new env files found.</p>
-              ) : (
-                <div className="space-y-1">
-                  {candidates.map((path) => (
-                    <label key={path} className="flex items-center gap-2 text-xs text-neutral-300">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(path)}
-                        onChange={() => toggleCandidate(path)}
-                      />
-                      {path}
-                    </label>
-                  ))}
-                </div>
-              )}
-              <div className="mt-2 flex items-center gap-2">
-                <button
-                  disabled={selected.size === 0}
-                  className="text-xs bg-neutral-700 rounded px-2 py-1 disabled:text-neutral-500"
-                  onClick={() => void addSelected()}
-                >
-                  Add selected
-                </button>
-                <button className="text-xs text-neutral-400" onClick={closeScan}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-3 space-y-2 border-t border-neutral-800 pt-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="w-32 text-xs text-neutral-500">Passphrase override</span>
-            <PassphraseControl
-              id={config.id}
-              present={Boolean(secrets.repoOverrides[config.id]?.present)}
-              encAvailable={encAvailable}
-              clearLabel="Use global"
-              onChanged={reloadSecrets}
-            />
           </div>
-          <div className="flex items-start justify-between gap-2">
-            <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth override</span>
-            <RepoAuthOverride
-              id={config.id}
-              override={secrets.authRepoOverrides[config.id]}
-              globalAuth={secrets.globalAuth}
-              encAvailable={encAvailable}
-              onChanged={reloadSecrets}
-            />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -733,6 +846,8 @@ export function EnvSyncModal({
 
   if (!isOpen) return null;
 
+  const globalSummary = `${secrets.globalPresent ? 'Passphrase set' : 'No passphrase'} · ${authSummary(secrets.globalAuth)}`;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
@@ -748,27 +863,27 @@ export function EnvSyncModal({
           }
         }}
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[80vh] w-[560px] flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl"
+        className="flex max-h-[85vh] w-[600px] flex-col overflow-hidden rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl"
       >
-        <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <h2 className="text-base font-semibold text-neutral-200">Env Sync</h2>
+        <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
+          <h2 className="text-base font-semibold text-neutral-100">Env Sync</h2>
           <button
             onClick={onClose}
-            className="rounded p-1 text-neutral-500 hover:bg-neutral-800 hover:text-white"
+            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-800 hover:text-white"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="space-y-4 overflow-y-auto p-4">
+        <div className="space-y-5 overflow-y-auto p-6">
           {!encAvailable && (
-            <div className="rounded border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
+            <div className="rounded-lg border border-red-700 bg-red-950/40 p-4 text-sm text-red-300">
               OS keychain encryption is unavailable. Passphrases and static AWS keys cannot be
               stored securely on this machine.
             </div>
           )}
           {encAvailable && encBackend === 'basic_text' && (
-            <div className="rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-300">
+            <div className="rounded-lg border border-amber-700 bg-amber-950/40 p-4 text-sm text-amber-300">
               This Linux session uses the <code>basic_text</code> keychain backend — stored secrets
               are NOT meaningfully encrypted. Configure libsecret (gnome-keyring) or kwallet for
               real protection.
@@ -776,51 +891,67 @@ export function EnvSyncModal({
           )}
 
           {loading ? (
-            <p className="text-xs text-neutral-500">Loading…</p>
+            <p className="text-sm text-neutral-500">Loading…</p>
+          ) : !repoDir ? (
+            <p className="text-sm text-neutral-500">
+              No active terminal directory — focus a pane to manage its env sync.
+            </p>
           ) : (
             <>
-              {/* Global settings are shared across every repo — always shown so the
-                  current passphrase/auth state is visible while initializing or managing. */}
-              <div className="space-y-2 border-b border-neutral-800 pb-3">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-500">
-                  Global settings
-                </h3>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="w-32 text-xs text-neutral-500">Passphrase</span>
+              {/* Primary: this repo. */}
+              {config ? (
+                <RepoManager
+                  repoDir={repoDir}
+                  config={config}
+                  statuses={statuses}
+                  reload={reload}
+                />
+              ) : (
+                <InitForm repoDir={repoDir} onCreate={createConfig} />
+              )}
+
+              {/* Secondary: shared account settings, collapsed with a state summary. */}
+              <Disclosure title="Global account" summary={globalSummary}>
+                <Field label="Encryption passphrase">
                   <PassphraseControl
                     present={secrets.globalPresent}
                     encAvailable={encAvailable}
                     clearLabel="Clear"
                     onChanged={reloadSecrets}
                   />
-                </div>
-                <div className="flex items-start justify-between gap-2">
-                  <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth</span>
+                </Field>
+                <Field label="AWS authentication">
                   <AuthControl
                     redacted={secrets.globalAuth}
                     encAvailable={encAvailable}
                     resetLabel="Reset to default chain"
                     onChanged={reloadSecrets}
                   />
-                </div>
-              </div>
+                </Field>
+              </Disclosure>
 
-              {!repoDir ? (
-                <p className="text-xs text-neutral-500">
-                  No active terminal directory — focus a pane to manage its env sync.
-                </p>
-              ) : config ? (
-                <RepoManager
-                  repoDir={repoDir}
-                  config={config}
-                  statuses={statuses}
-                  encAvailable={encAvailable}
-                  secrets={secrets}
-                  reload={reload}
-                  reloadSecrets={reloadSecrets}
-                />
-              ) : (
-                <InitForm repoDir={repoDir} onCreate={createConfig} />
+              {/* Advanced: per-repo overrides, only meaningful once a config exists. */}
+              {config && (
+                <Disclosure title="Advanced — this repo overrides">
+                  <Field label="Passphrase override">
+                    <PassphraseControl
+                      id={config.id}
+                      present={Boolean(secrets.repoOverrides[config.id]?.present)}
+                      encAvailable={encAvailable}
+                      clearLabel="Use global"
+                      onChanged={reloadSecrets}
+                    />
+                  </Field>
+                  <Field label="AWS auth override">
+                    <RepoAuthOverride
+                      id={config.id}
+                      override={secrets.authRepoOverrides[config.id]}
+                      globalAuth={secrets.globalAuth}
+                      encAvailable={encAvailable}
+                      onChanged={reloadSecrets}
+                    />
+                  </Field>
+                </Disclosure>
               )}
             </>
           )}
