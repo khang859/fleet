@@ -8,6 +8,7 @@ type Props = {
   revealAll: boolean;
   revealed: Set<number>;
   onToggleReveal: (index: number) => void;
+  onResetReveal: () => void;
   onChange: (lines: EnvLine[]) => void;
 };
 
@@ -18,6 +19,7 @@ export function EnvForm({
   revealAll,
   revealed,
   onToggleReveal,
+  onResetReveal,
   onChange
 }: Props): React.JSX.Element {
   // Var lines paired with their absolute index, cast-free via a type guard.
@@ -47,6 +49,7 @@ export function EnvForm({
 
   const removeLine = (index: number): void => {
     onChange(lines.filter((_, i) => i !== index));
+    onResetReveal();
   };
 
   const addVar = (): void => {
@@ -65,7 +68,7 @@ export function EnvForm({
         const isDup = Boolean(line.key) && dupKeys.has(line.key);
         return (
           <div
-            key={`${index}-${line.key}`}
+            key={index}
             className="group flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-neutral-800/60 focus-within:bg-neutral-800/80 focus-within:shadow-[inset_0_0_0_1px_#2563eb]"
           >
             <input

@@ -149,6 +149,7 @@ export function EnvEditorModal({
                 revealAll={revealAll}
                 revealed={revealed}
                 onToggleReveal={toggleReveal}
+                onResetReveal={() => setRevealed(new Set())}
                 onChange={setLines}
               />
             ) : (
