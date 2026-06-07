@@ -103,6 +103,7 @@ import type {
 import type {
   EnvSyncConfig,
   ConflictChoice,
+  BucketCreateResult,
   EnvSyncSetPassphraseRequest,
   EnvSyncClearPassphraseRequest,
   EnvSyncSetAuthRequest,
@@ -619,6 +620,8 @@ const fleetApi = {
       typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_RESOLVE, repoDir, envFile, choice),
     diff: async (repoDir: string, envFile: string): Promise<SyncOutcome> =>
       typedInvoke<SyncOutcome>(IPC_CHANNELS.ENV_SYNC_DIFF, repoDir, envFile),
+    createBucket: async (repoDir: string): Promise<BucketCreateResult> =>
+      typedInvoke<BucketCreateResult>(IPC_CHANNELS.ENV_SYNC_CREATE_BUCKET, repoDir),
     getSecrets: async (): Promise<RedactedEnvSyncSecrets> =>
       typedInvoke<RedactedEnvSyncSecrets>(IPC_CHANNELS.ENV_SYNC_GET_SECRETS),
     setPassphrase: async (req: EnvSyncSetPassphraseRequest): Promise<void> =>

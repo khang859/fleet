@@ -395,6 +395,7 @@ export type {
   EnvDiff,
   SyncOutcome,
   ConflictChoice,
+  BucketCreateResult,
   RedactedEnvSyncSecrets,
   RedactedEnvSyncAuth,
   EnvSyncAuthMode,

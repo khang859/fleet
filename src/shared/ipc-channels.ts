@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
   ENV_SYNC_PUSH: 'env-sync:push',
   ENV_SYNC_RESOLVE: 'env-sync:resolve',
   ENV_SYNC_DIFF: 'env-sync:diff',
+  ENV_SYNC_CREATE_BUCKET: 'env-sync:create-bucket',
   ENV_SYNC_GET_SECRETS: 'env-sync:get-secrets',
   ENV_SYNC_SET_PASSPHRASE: 'env-sync:set-passphrase',
   ENV_SYNC_CLEAR_PASSPHRASE: 'env-sync:clear-passphrase',

@@ -3,7 +3,9 @@ import {
   S3Client,
   HeadObjectCommand,
   GetObjectCommand,
-  PutObjectCommand
+  PutObjectCommand,
+  CreateBucketCommand,
+  BucketLocationConstraint
 } from '@aws-sdk/client-s3';
 import { fromNodeProviderChain } from '@aws-sdk/credential-providers';
 import type { AwsCredentialIdentity, AwsCredentialIdentityProvider } from '@smithy/types';
@@ -108,6 +110,9 @@ function describeS3Error(err: unknown): string {
   }
   if (name === 'NoSuchBucket') {
     return 'Bucket does not exist. Create it or fix the bucket name.';
+  }
+  if (name === 'BucketAlreadyExists') {
+    return 'That bucket name is already taken globally by another account — choose a different name.';
   }
   if (status === 400) {
     return 'Request rejected (HTTP 400) — often a wrong region or an invalid bucket name.';
@@ -215,6 +220,36 @@ export async function put(
   } catch (err) {
     // Preserve name/$metadata so isPreconditionFailed/isConditionalConflict still
     // narrow in the manager; enrichMessage only rewrites the human-facing message.
+    enrichMessage(err);
+    throw err;
+  }
+}
+
+/**
+ * us-east-1 must omit the LocationConstraint (it's the null default); every other
+ * region must send it. Membership-check the SDK enum rather than casting a raw
+ * string, so an unrecognized region simply omits the constraint.
+ */
+function locationConstraint(region: string): BucketLocationConstraint | undefined {
+  return Object.values(BucketLocationConstraint).find((v) => v === region);
+}
+
+/** Create the bucket. Treats "already owned by you" as success (idempotent). */
+export async function createBucket(
+  bucket: string,
+  region: string,
+  auth: EnvSyncAuthResolved
+): Promise<void> {
+  const constraint = locationConstraint(region);
+  try {
+    await client(region, auth).send(
+      new CreateBucketCommand({
+        Bucket: bucket,
+        ...(constraint ? { CreateBucketConfiguration: { LocationConstraint: constraint } } : {})
+      })
+    );
+  } catch (err) {
+    if (errorName(err) === 'BucketAlreadyOwnedByYou') return;
     enrichMessage(err);
     throw err;
   }

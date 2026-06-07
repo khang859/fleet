@@ -57,6 +57,9 @@ function fakeS3() {
       objs.set(`${b}/${k}`, { body, etag });
       return { etag };
     },
+    createBucket: async (): Promise<void> => {
+      await Promise.resolve();
+    },
     isPreconditionFailed: (err: unknown) =>
       err instanceof Error && err.name === 'PreconditionFailed',
     isConditionalConflict: (err: unknown) =>

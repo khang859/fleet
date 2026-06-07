@@ -818,6 +818,10 @@ export function registerIpcHandlers(
     envSyncManager.diff(repoDir, envFile)
   );
 
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_CREATE_BUCKET, async (_e, repoDir: string) =>
+    envSyncManager.createBucket(repoDir)
+  );
+
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_GET_SECRETS, () => envSyncSecrets.getRedacted());
 
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_SET_PASSPHRASE, (_e, req: EnvSyncSetPassphraseRequest) => {

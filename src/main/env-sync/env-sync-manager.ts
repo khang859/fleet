@@ -18,6 +18,7 @@ import type {
   EnvSyncTarget,
   TargetStatus,
   SyncOutcome,
+  BucketCreateResult,
   EnvSyncAuthResolved
 } from '../../shared/env-sync-types';
 
@@ -33,6 +34,7 @@ interface S3Like {
   head: typeof realS3.head;
   get: typeof realS3.get;
   put: typeof realS3.put;
+  createBucket: typeof realS3.createBucket;
   isPreconditionFailed: typeof realS3.isPreconditionFailed;
   isConditionalConflict: typeof realS3.isConditionalConflict;
 }
@@ -104,6 +106,19 @@ export class EnvSyncManager {
   private readLocal(repoDir: string, target: EnvSyncTarget): string | null {
     const p = join(repoDir, target.envFile);
     return existsSync(p) ? readFileSync(p, 'utf8') : null;
+  }
+
+  /** Create the repo's configured S3 bucket using its resolved auth. */
+  async createBucket(repoDir: string): Promise<BucketCreateResult> {
+    const config = readConfig(repoDir);
+    if (!config) return { ok: false, error: 'No env-sync config found for this repo.' };
+    try {
+      const auth = this.secrets.resolveAuth(config.id);
+      await this.s3.createBucket(config.bucket, config.region, auth);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   async status(repoDir: string): Promise<TargetStatus[]> {

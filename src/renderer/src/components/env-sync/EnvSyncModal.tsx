@@ -356,6 +356,21 @@ function RepoManager({
   // null = scan panel closed; an array (possibly empty) = panel open with results.
   const [candidates, setCandidates] = useState<string[] | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBucket, setConfirmBucket] = useState(false);
+  const [creatingBucket, setCreatingBucket] = useState(false);
+
+  const createBucket = async (): Promise<void> => {
+    setCreatingBucket(true);
+    const res = await window.fleet.envSync.createBucket(repoDir);
+    setCreatingBucket(false);
+    setConfirmBucket(false);
+    if (res.ok) {
+      showToast(`Created bucket ${config.bucket}`);
+      await reload();
+    } else {
+      showToast(`Create bucket failed: ${res.error}`, { duration: 6000 });
+    }
+  };
 
   const saveConfig = async (next: EnvSyncConfig): Promise<boolean> => {
     try {
@@ -477,6 +492,25 @@ function RepoManager({
               <button className="text-xs text-blue-400" onClick={startEdit}>
                 Edit
               </button>
+              {confirmBucket ? (
+                <span className="flex items-center gap-1 text-xs">
+                  <span className="text-neutral-400">Create in {config.region}?</span>
+                  <button
+                    disabled={creatingBucket}
+                    className="text-blue-400 disabled:text-neutral-500"
+                    onClick={() => void createBucket()}
+                  >
+                    {creatingBucket ? 'Creating…' : 'Create'}
+                  </button>
+                  <button className="text-neutral-400" onClick={() => setConfirmBucket(false)}>
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button className="text-xs text-blue-400" onClick={() => setConfirmBucket(true)}>
+                  Create bucket
+                </button>
+              )}
             </div>
           )}
         </div>

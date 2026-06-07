@@ -58,6 +58,9 @@ export type SyncOutcome =
 
 export type ConflictChoice = 'keep-local' | 'keep-remote';
 
+/** Result of a create-bucket request. */
+export type BucketCreateResult = { ok: true } | { ok: false; error: string };
+
 /** AWS auth mode selectable per repo (global default + per-repo override). */
 export type EnvSyncAuthMode = 'default-chain' | 'profile' | 'static';
 
