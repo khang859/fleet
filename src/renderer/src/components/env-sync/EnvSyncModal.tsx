@@ -213,6 +213,57 @@ function AuthControl({
   );
 }
 
+function authSummary(a: RedactedEnvSyncAuth | undefined): string {
+  if (!a || a.mode === 'default-chain') return 'Default credential chain';
+  if (a.mode === 'profile') return `Profile: ${a.profile || '(unset)'}`;
+  return 'Static keys';
+}
+
+/**
+ * Per-repo AWS auth override. When no override is stored the repo inherits the
+ * global auth, so show that explicitly (with an Override button) instead of a
+ * populated default-chain dropdown that looks like an active default-chain choice.
+ */
+function RepoAuthOverride({
+  id,
+  override,
+  globalAuth,
+  encAvailable,
+  onChanged
+}: {
+  id: string;
+  override: RedactedEnvSyncAuth | undefined;
+  globalAuth: RedactedEnvSyncAuth | undefined;
+  encAvailable: boolean;
+  onChanged: () => Promise<void>;
+}): React.JSX.Element {
+  const [editing, setEditing] = useState(false);
+
+  if (!override && !editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-neutral-400">Inherits global ({authSummary(globalAuth)})</span>
+        <button className="text-xs text-blue-400" onClick={() => setEditing(true)}>
+          Override
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <AuthControl
+      id={id}
+      redacted={override}
+      encAvailable={encAvailable}
+      resetLabel="Use global default"
+      onChanged={async () => {
+        setEditing(false);
+        await onChanged();
+      }}
+    />
+  );
+}
+
 function InitForm({
   repoDir,
   onCreate
@@ -534,11 +585,11 @@ function RepoManager({
           </div>
           <div className="flex items-start justify-between gap-2">
             <span className="w-32 pt-1 text-xs text-neutral-500">AWS auth override</span>
-            <AuthControl
+            <RepoAuthOverride
               id={config.id}
-              redacted={secrets.authRepoOverrides[config.id]}
+              override={secrets.authRepoOverrides[config.id]}
+              globalAuth={secrets.globalAuth}
               encAvailable={encAvailable}
-              resetLabel="Use global default"
               onChanged={reloadSecrets}
             />
           </div>

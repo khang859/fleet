@@ -87,6 +87,49 @@ function isNotFound(err: unknown): boolean {
   return name === 'NotFound' || name === 'NoSuchKey' || httpStatus(err) === 404;
 }
 
+function isAwsError(err: unknown): boolean {
+  return typeof err === 'object' && err !== null && '$metadata' in err;
+}
+
+/**
+ * HEAD responses carry no error body, so the AWS SDK frequently surfaces
+ * access/region failures as a bare "UnknownError" with only an HTTP status.
+ * Map the common cases to actionable text; otherwise keep whatever detail exists.
+ */
+function describeS3Error(err: unknown): string {
+  const name = errorName(err);
+  const status = httpStatus(err);
+  const raw = err instanceof Error ? err.message : String(err);
+  if (status === 301 || name === 'PermanentRedirect') {
+    return 'Wrong region for this bucket (HTTP 301). Set the region to match where the bucket lives.';
+  }
+  if (status === 403 || name === 'AccessDenied' || name === 'Forbidden') {
+    return 'Access denied (HTTP 403). Check the credentials and that they may access this bucket/key.';
+  }
+  if (name === 'NoSuchBucket') {
+    return 'Bucket does not exist. Create it or fix the bucket name.';
+  }
+  if (status === 400) {
+    return 'Request rejected (HTTP 400) — often a wrong region or an invalid bucket name.';
+  }
+  const parts = [
+    name && name !== 'UnknownError' ? name : null,
+    raw && raw !== 'UnknownError' ? raw : null,
+    status ? `HTTP ${status}` : null
+  ].filter(Boolean);
+  return parts.length ? parts.join(' — ') : 'Unknown S3 error';
+}
+
+/**
+ * Rewrite the message of an AWS service error in place. Only touches errors that
+ * carry `$metadata` (real S3 responses) so our own thrown errors and credential
+ * errors keep their native messages — and `name`/`$metadata` are preserved so the
+ * 412/409 predicates in the manager still narrow correctly.
+ */
+function enrichMessage(err: unknown): void {
+  if (err instanceof Error && isAwsError(err)) err.message = describeS3Error(err);
+}
+
 /**
  * 412 PreconditionFailed: the `If-Match`/`If-None-Match` precondition no longer
  * holds — the remote ETag genuinely diverged (someone else pushed), or a
@@ -123,6 +166,7 @@ export async function head(
     return { etag: r.ETag ?? '' };
   } catch (err) {
     if (isNotFound(err)) return null;
+    enrichMessage(err);
     throw err;
   }
 }
@@ -133,10 +177,15 @@ export async function get(
   key: string,
   auth: EnvSyncAuthResolved
 ): Promise<S3Get> {
-  const r = await client(region, auth).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  if (!r.Body) throw new Error(`S3 object ${key} returned an empty body`);
-  const bytes = await r.Body.transformToByteArray();
-  return { body: Buffer.from(bytes), etag: r.ETag ?? '' };
+  try {
+    const r = await client(region, auth).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    if (!r.Body) throw new Error(`S3 object ${key} returned an empty body`);
+    const bytes = await r.Body.transformToByteArray();
+    return { body: Buffer.from(bytes), etag: r.ETag ?? '' };
+  } catch (err) {
+    enrichMessage(err);
+    throw err;
+  }
 }
 
 /**
@@ -152,14 +201,21 @@ export async function put(
   auth: EnvSyncAuthResolved,
   ifMatch?: string
 ): Promise<S3Put> {
-  const r = await client(region, auth).send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: 'application/octet-stream',
-      ...(ifMatch ? { IfMatch: ifMatch } : { IfNoneMatch: '*' })
-    })
-  );
-  return { etag: r.ETag ?? '' };
+  try {
+    const r = await client(region, auth).send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: 'application/octet-stream',
+        ...(ifMatch ? { IfMatch: ifMatch } : { IfNoneMatch: '*' })
+      })
+    );
+    return { etag: r.ETag ?? '' };
+  } catch (err) {
+    // Preserve name/$metadata so isPreconditionFailed/isConditionalConflict still
+    // narrow in the manager; enrichMessage only rewrites the human-facing message.
+    enrichMessage(err);
+    throw err;
+  }
 }
