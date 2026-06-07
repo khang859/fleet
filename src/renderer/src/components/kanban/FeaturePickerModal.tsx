@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { Overlay } from '../Overlay';
 import { useKanbanStore } from '../../store/kanban-store';
 import type { Feature } from '../../../../shared/kanban-types';
 
@@ -7,23 +8,42 @@ import type { Feature } from '../../../../shared/kanban-types';
  * member tasks are detached, then the feature row is removed).
  */
 export function FeaturePickerModal({
+  open,
   feature,
   onClose
 }: {
+  open: boolean;
   feature: Feature | null;
   onClose: () => void;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const activeBoardSlug = useKanbanStore((s) => s.activeBoardSlug);
   const createFeature = useKanbanStore((s) => s.createFeature);
   const updateFeature = useKanbanStore((s) => s.updateFeature);
   const deleteFeature = useKanbanStore((s) => s.deleteFeature);
   const setFocusedFeature = useKanbanStore((s) => s.setFocusedFeature);
 
-  const editing = feature !== null;
+  // Snapshot the feature being edited so its values stay stable through the exit
+  // animation (the parent clears `feature` to null the moment it closes us).
+  const [shown, setShown] = useState<Feature | null>(feature);
   const [name, setName] = useState(feature?.name ?? '');
   const [repoPath, setRepoPath] = useState(feature?.repoPath ?? '');
   const [baseBranch, setBaseBranch] = useState(feature?.baseBranch ?? '');
   const [error, setError] = useState<string | null>(null);
+
+  // Re-seed the form from the incoming feature each time the modal opens.
+  const prevOpen = useRef(false);
+  useEffect(() => {
+    if (open && !prevOpen.current) {
+      setShown(feature);
+      setName(feature?.name ?? '');
+      setRepoPath(feature?.repoPath ?? '');
+      setBaseBranch(feature?.baseBranch ?? '');
+      setError(null);
+    }
+    prevOpen.current = open;
+  }, [open, feature]);
+
+  const editing = shown !== null;
 
   async function pickFolder(): Promise<void> {
     const path = await window.fleet.showFolderPicker();
@@ -39,8 +59,8 @@ export function FeaturePickerModal({
     const repo = repoPath.trim() === '' ? null : repoPath.trim();
     const base = baseBranch.trim() === '' ? null : baseBranch.trim();
     try {
-      if (editing) {
-        await updateFeature(feature.id, { name: trimmed, repoPath: repo, baseBranch: base });
+      if (editing && shown) {
+        await updateFeature(shown.id, { name: trimmed, repoPath: repo, baseBranch: base });
       } else {
         const created = await createFeature({
           boardId: activeBoardSlug,
@@ -57,16 +77,16 @@ export function FeaturePickerModal({
   }
 
   async function handleDelete(): Promise<void> {
-    if (!feature) return;
+    if (!shown) return;
     if (
       !window.confirm(
-        `Delete feature "${feature.name}"? Its tasks are kept but un-grouped from the feature.`
+        `Delete feature "${shown.name}"? Its tasks are kept but un-grouped from the feature.`
       )
     ) {
       return;
     }
     try {
-      await deleteFeature(feature.id);
+      await deleteFeature(shown.id);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -74,14 +94,8 @@ export function FeaturePickerModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-    >
-      <div
-        className="w-[460px] rounded-lg border border-neutral-800 bg-neutral-900 p-4"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Overlay open={open} onClose={onClose}>
+      <div className="w-[460px] rounded-lg border border-neutral-800 bg-neutral-900 p-4">
         <h2 className="mb-3 text-sm font-semibold text-neutral-100">
           {editing ? 'Edit feature' : 'New feature'}
         </h2>
@@ -110,7 +124,7 @@ export function FeaturePickerModal({
             />
             <button
               onClick={() => void pickFolder()}
-              className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 hover:bg-neutral-800"
+              className="rounded border border-neutral-700 px-2 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 active:scale-[0.97]"
             >
               Browse…
             </button>
@@ -130,7 +144,7 @@ export function FeaturePickerModal({
           {editing ? (
             <button
               onClick={() => void handleDelete()}
-              className="rounded px-3 py-1 text-xs text-red-400 hover:bg-red-900/40"
+              className="rounded px-3 py-1 text-xs text-red-400 transition hover:bg-red-900/40 active:scale-[0.97]"
             >
               Delete
             </button>
@@ -140,19 +154,19 @@ export function FeaturePickerModal({
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="rounded px-3 py-1 text-xs text-neutral-400 hover:bg-neutral-800"
+              className="rounded px-3 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97]"
             >
               Cancel
             </button>
             <button
               onClick={() => void submit()}
-              className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-500"
+              className="rounded bg-blue-600 px-3 py-1 text-xs text-white transition hover:bg-blue-500 active:scale-[0.97]"
             >
               {editing ? 'Save' : 'Create'}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </Overlay>
   );
 }

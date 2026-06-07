@@ -41,12 +41,16 @@ export function FeatureSelector(): React.JSX.Element {
       <button
         onClick={() => focused && setEditor({ feature: focused })}
         disabled={!focused}
-        className="rounded px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 disabled:opacity-40"
+        className="rounded px-2 py-1 text-xs text-neutral-400 transition hover:bg-neutral-800 active:scale-[0.97] disabled:opacity-40 disabled:active:scale-100"
         title="Edit focused feature"
       >
         <Pencil size={12} />
       </button>
-      {editor && <FeaturePickerModal feature={editor.feature} onClose={() => setEditor(null)} />}
+      <FeaturePickerModal
+        open={editor !== null}
+        feature={editor?.feature ?? null}
+        onClose={() => setEditor(null)}
+      />
     </>
   );
 }

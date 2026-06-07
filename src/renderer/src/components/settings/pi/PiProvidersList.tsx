@@ -218,15 +218,14 @@ export function PiProvidersList({
         )}
       </div>
 
-      {pickerOpen && (
-        <PiPresetPicker
-          onPick={(presetId) => {
-            setPickerOpen(false);
-            onAddCustom(presetId);
-          }}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
+      <PiPresetPicker
+        open={pickerOpen}
+        onPick={(presetId) => {
+          setPickerOpen(false);
+          onAddCustom(presetId);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </section>
   );
 }

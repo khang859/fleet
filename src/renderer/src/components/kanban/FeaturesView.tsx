@@ -189,7 +189,11 @@ export function FeaturesView({ onFocus }: { onFocus: () => void }): React.JSX.El
         )}
       </div>
 
-      {editor && <FeaturePickerModal feature={editor.feature} onClose={() => setEditor(null)} />}
+      <FeaturePickerModal
+        open={editor !== null}
+        feature={editor?.feature ?? null}
+        onClose={() => setEditor(null)}
+      />
     </div>
   );
 }

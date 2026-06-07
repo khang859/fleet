@@ -569,14 +569,13 @@ export function KanbanBoard(): React.JSX.Element {
 
           {openTaskId && <KanbanDrawer />}
 
-          {swarming && (
-            <SwarmModal
-              onClose={() => {
-                setSwarming(false);
-                clearSeed();
-              }}
-            />
-          )}
+          <SwarmModal
+            open={swarming}
+            onClose={() => {
+              setSwarming(false);
+              clearSeed();
+            }}
+          />
         </>
       )}
     </div>
