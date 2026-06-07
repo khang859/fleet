@@ -4,6 +4,7 @@ import {
   readFileSync,
   writeFileSync,
   renameSync,
+  copyFileSync,
   existsSync,
   mkdtempSync,
   unlinkSync
@@ -111,6 +112,9 @@ export function writeEnvFile(
 
 function assertEnvName(name: string): void {
   if (!name.startsWith('.env')) throw new Error('File name must start with ".env"');
+  if (name.includes('/') || name.includes('\\') || name.includes('\0')) {
+    throw new Error('File name must not contain path separators');
+  }
 }
 
 export function createEnvFile(dir: string, name: string): EnvPathResult {
@@ -129,15 +133,28 @@ export function renameEnvFile(absPath: string, newName: string): EnvPathResult {
   return { absPath: next };
 }
 
+function moveFile(src: string, dest: string): void {
+  try {
+    renameSync(src, dest);
+  } catch (err) {
+    if (err instanceof Error && 'code' in err && err.code === 'EXDEV') {
+      copyFileSync(src, dest);
+      unlinkSync(src);
+    } else {
+      throw err;
+    }
+  }
+}
+
 export function softDeleteEnvFile(absPath: string): EnvTrashResult {
   const trashDir = mkdtempSync(join(tmpdir(), 'fleet-env-trash-'));
   const trashPath = join(trashDir, basename(absPath));
-  renameSync(absPath, trashPath);
+  moveFile(absPath, trashPath);
   return { trashPath };
 }
 
 export function restoreEnvFile(trashPath: string, absPath: string): { ok: true } {
-  renameSync(trashPath, absPath);
+  moveFile(trashPath, absPath);
   return { ok: true };
 }
 

@@ -81,6 +81,14 @@ describe('env-editor fs ops', () => {
     expect(existsSync(a)).toBe(false);
   });
 
+  it('rejects file names containing path separators', () => {
+    expect(() => createEnvFile(root, '.env/../evil')).toThrow();
+    expect(() => createEnvFile(root, '.env/local')).toThrow();
+    const p = join(root, '.env');
+    writeFileSync(p, 'A=1\n');
+    expect(() => renameEnvFile(p, '.env/../evil')).toThrow();
+  });
+
   it('soft-deletes and restores', () => {
     const p = join(root, '.env');
     writeFileSync(p, 'A=1\n');

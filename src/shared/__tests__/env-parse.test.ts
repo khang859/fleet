@@ -61,4 +61,9 @@ describe('env-parse', () => {
   it('countVars counts only var lines', () => {
     expect(countVars(SAMPLE)).toBe(4);
   });
+
+  it('round-trips whitespace-only blank lines byte-for-byte', () => {
+    const text = 'A=1\n   \n\t\nB=2\n';
+    expect(serializeEnvFile(parseEnvFile(text))).toBe(text);
+  });
 });

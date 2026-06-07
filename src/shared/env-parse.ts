@@ -2,7 +2,7 @@
 export type EnvLine =
   | { kind: 'var'; key: string; value: string; raw: string }
   | { kind: 'comment'; raw: string }
-  | { kind: 'blank' };
+  | { kind: 'blank'; raw: string };
 
 export type VarLine = Extract<EnvLine, { kind: 'var' }>;
 
@@ -15,7 +15,7 @@ export function parseEnvFile(text: string): ParsedEnvFile {
   if (trailingNewline) raws.pop();
   const lines: EnvLine[] = raws.map((raw) => {
     const trimmed = raw.trim();
-    if (trimmed === '') return { kind: 'blank' };
+    if (trimmed === '') return { kind: 'blank', raw };
     if (trimmed.startsWith('#')) return { kind: 'comment', raw };
     const body = trimmed.startsWith('export ') ? trimmed.slice(7) : trimmed;
     const eq = body.indexOf('=');
@@ -36,7 +36,7 @@ export function parseEnvFile(text: string): ParsedEnvFile {
 }
 
 export function serializeEnvFile(parsed: ParsedEnvFile): string {
-  const body = parsed.lines.map((l) => (l.kind === 'blank' ? '' : l.raw)).join('\n');
+  const body = parsed.lines.map((l) => l.raw).join('\n');
   return parsed.trailingNewline ? `${body}\n` : body;
 }
 
