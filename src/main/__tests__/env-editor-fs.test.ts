@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
-import { listEnvFiles } from '../env-editor/env-editor-fs';
+import { listEnvFiles, readEnvFile, writeEnvFile, createEnvFile, renameEnvFile, softDeleteEnvFile, restoreEnvFile } from '../env-editor/env-editor-fs';
 
 let root: string;
 beforeEach(() => {
@@ -42,5 +42,51 @@ describe('listEnvFiles', () => {
     writeFileSync(join(root, 'pkg', '.env'), '');
     writeFileSync(join(root, '.env'), '');
     expect(listEnvFiles(root)[0].group).toBe('·root');
+  });
+});
+
+describe('env-editor fs ops', () => {
+  it('reads and writes atomically, returning a new mtime', () => {
+    const p = join(root, '.env');
+    writeFileSync(p, 'A=1\n');
+    const read = readEnvFile(p);
+    expect(read.text).toBe('A=1\n');
+    const res = writeEnvFile(p, 'A=2\n');
+    expect(res.ok).toBe(true);
+    expect(readEnvFile(p).text).toBe('A=2\n');
+  });
+
+  it('detects external change via mtime', () => {
+    const p = join(root, '.env');
+    writeFileSync(p, 'A=1\n');
+    const stale = readEnvFile(p).mtimeMs - 1000;
+    writeFileSync(p, 'A=changed\n'); // simulate external edit (newer mtime)
+    const res = writeEnvFile(p, 'A=2\n', stale);
+    expect(res.ok).toBe(false);
+    expect(res.externalChange).toBe(true);
+  });
+
+  it('creates a file, rejecting non-.env names and collisions', () => {
+    const { absPath } = createEnvFile(root, '.env.local');
+    expect(existsSync(absPath)).toBe(true);
+    expect(() => createEnvFile(root, 'notenv')).toThrow();
+    expect(() => createEnvFile(root, '.env.local')).toThrow();
+  });
+
+  it('renames with collision protection', () => {
+    const a = join(root, '.env');
+    writeFileSync(a, 'A=1\n');
+    const { absPath } = renameEnvFile(a, '.env.bak');
+    expect(basename(absPath)).toBe('.env.bak');
+    expect(existsSync(a)).toBe(false);
+  });
+
+  it('soft-deletes and restores', () => {
+    const p = join(root, '.env');
+    writeFileSync(p, 'A=1\n');
+    const { trashPath } = softDeleteEnvFile(p);
+    expect(existsSync(p)).toBe(false);
+    restoreEnvFile(trashPath, p);
+    expect(readEnvFile(p).text).toBe('A=1\n');
   });
 });

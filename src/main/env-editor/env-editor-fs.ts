@@ -10,7 +10,7 @@ import {
 import { join, relative, sep, dirname, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseEnvFile } from '../../shared/env-parse';
-import type { EnvFileEntry } from '../../shared/env-editor-types';
+import type { EnvFileEntry, EnvReadResult, EnvWriteResult, EnvPathResult, EnvTrashResult } from '../../shared/env-editor-types';
 
 const EXCLUDE_DIRS = new Set([
   'node_modules',
@@ -65,6 +65,62 @@ function sortEntries(entries: EnvFileEntry[]): EnvFileEntry[] {
     }
     return a.name.localeCompare(b.name);
   });
+}
+
+let tmpCounter = 0;
+
+export function readEnvFile(absPath: string): EnvReadResult {
+  return { text: readFileSync(absPath, 'utf8'), mtimeMs: statSync(absPath).mtimeMs };
+}
+
+/** Atomic write (temp + rename). If expectedMtimeMs is given and the file is newer, refuse. */
+export function writeEnvFile(
+  absPath: string,
+  text: string,
+  expectedMtimeMs?: number
+): EnvWriteResult {
+  if (expectedMtimeMs !== undefined && existsSync(absPath)) {
+    const current = statSync(absPath).mtimeMs;
+    if (current > expectedMtimeMs) {
+      return { ok: false, externalChange: true, mtimeMs: current };
+    }
+  }
+  const tmp = `${absPath}.fleet-tmp-${process.pid}-${tmpCounter++}`;
+  writeFileSync(tmp, text, 'utf8');
+  renameSync(tmp, absPath);
+  return { ok: true, mtimeMs: statSync(absPath).mtimeMs };
+}
+
+function assertEnvName(name: string): void {
+  if (!name.startsWith('.env')) throw new Error('File name must start with ".env"');
+}
+
+export function createEnvFile(dir: string, name: string): EnvPathResult {
+  assertEnvName(name);
+  const full = join(dir, name);
+  if (existsSync(full)) throw new Error('A file with that name already exists');
+  writeFileSync(full, '', 'utf8');
+  return { absPath: full };
+}
+
+export function renameEnvFile(absPath: string, newName: string): EnvPathResult {
+  assertEnvName(newName);
+  const next = join(dirname(absPath), newName);
+  if (existsSync(next)) throw new Error('A file with that name already exists');
+  renameSync(absPath, next);
+  return { absPath: next };
+}
+
+export function softDeleteEnvFile(absPath: string): EnvTrashResult {
+  const trashDir = mkdtempSync(join(tmpdir(), 'fleet-env-trash-'));
+  const trashPath = join(trashDir, basename(absPath));
+  renameSync(absPath, trashPath);
+  return { trashPath };
+}
+
+export function restoreEnvFile(trashPath: string, absPath: string): { ok: true } {
+  renameSync(trashPath, absPath);
+  return { ok: true };
 }
 
 /** Recursively find all .env* files under root (templates included). */
