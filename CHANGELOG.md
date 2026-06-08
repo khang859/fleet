@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.57.1
+
+- Rune settings: replaced the separate provider/profile controls with one **Active provider** selector that shows both base providers and provider profiles, so it is clear which provider Rune will actually use.
+- Selecting a base provider now clears the active profile, while selecting a profile preserves the base provider as a fallback.
+- Active provider profiles can be edited directly from the Provider section, with safer optimistic updates for quick model/endpoint edits.
+
 ## v2.57.0
 
 - **Edit Rune settings in-app** — Settings → Rune now has a full editor for `~/.rune/settings.json`, so you no longer need to drop into Rune's terminal UI to configure it. Set your **provider** and model, **thinking effort**, **icon/activity** styles, **auto-compact**, **web fetch/search**, and **subagents** (concurrency, timeout, retention) right from Fleet.
