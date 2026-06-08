@@ -13,6 +13,7 @@ import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
 import { clearCreatedPty, restartingPanes, serializePane } from './hooks/use-terminal';
 import { initCwdListener, useCwdStore } from './store/cwd-store';
+import { initRemoteListener } from './store/remote-store';
 import { useSettingsStore } from './store/settings-store';
 import { useShellProfilesStore } from './store/shell-profiles-store';
 import { useHomesStore } from './store/homes-store';
@@ -173,6 +174,11 @@ export function App(): React.JSX.Element {
   // Subscribe to live CWD updates from main process
   useEffect(() => {
     return initCwdListener();
+  }, []);
+
+  // Subscribe to remote-session (ssh/mosh) state from main process
+  useEffect(() => {
+    return initRemoteListener();
   }, []);
 
   // Listen for focus-pane from main process (copilot "Go to Terminal", OS notifications)

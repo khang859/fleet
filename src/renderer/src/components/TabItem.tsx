@@ -8,6 +8,7 @@ import type { NotificationLevel } from '../../../shared/types';
 import type { PathContext } from '../../../shared/shell-profiles';
 import { cwdBasename } from '../store/workspace-store';
 import { useCwdStore } from '../store/cwd-store';
+import { useRemoteStore } from '../store/remote-store';
 import { useNotificationStore } from '../store/notification-store';
 import { shortenPath } from '../lib/shorten-path';
 import { popperAnim } from '../lib/motion';
@@ -106,6 +107,8 @@ export function TabItem({
   // Granular CWD subscription — only re-renders when THIS pane's CWD changes
   const liveCwd = useCwdStore((s) => (drivingPaneId ? s.cwds.get(drivingPaneId) : undefined));
   const cwd = liveCwd ?? fallbackCwd;
+  // Granular subscription — only re-renders when THIS pane's remote state changes
+  const isRemote = useRemoteStore((s) => (drivingPaneId ? s.remotes.has(drivingPaneId) : false));
   const activity = useNotificationStore((s) =>
     drivingPaneId ? s.getActivity(drivingPaneId) : undefined
   );
@@ -252,8 +255,18 @@ export function TabItem({
             />
           ) : (
             <div className="flex-1 min-w-0" onDoubleClick={handleDoubleClick}>
-              <div className="truncate text-sm leading-tight">
-                {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
+              <div className="flex items-center gap-1.5">
+                <span className="truncate text-sm leading-tight">
+                  {labelIsCustom ? label : cwdBasename(cwd, pathContext ?? 'posix')}
+                </span>
+                {isRemote && (
+                  <span
+                    className="flex-shrink-0 rounded bg-purple-500/20 px-1 py-px text-[9px] font-medium uppercase leading-none tracking-wide text-purple-300"
+                    aria-label="remote session"
+                  >
+                    remote
+                  </span>
+                )}
               </div>
               <div className="truncate text-xs leading-tight text-fleet-text-muted">
                 {worktreeBranch ? (

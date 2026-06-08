@@ -15,7 +15,8 @@ export type FleetEvent =
     }
   | { type: 'command-started'; paneId: string; timestamp: number }
   | { type: 'workspace-loaded'; workspaceId: string }
-  | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' };
+  | { type: 'cwd-changed'; paneId: string; cwd: string; source: 'osc7' | 'poll' }
+  | { type: 'remote-session-change'; paneId: string; remote: boolean };
 
 type EventMap = {
   [K in FleetEvent['type']]: Extract<FleetEvent, { type: K }>;

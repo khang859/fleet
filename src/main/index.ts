@@ -574,6 +574,17 @@ void app.whenReady().then(async () => {
     }
   });
 
+  // Forward remote-session changes (ssh/mosh/…) to renderer via IPC
+  eventBus.on('remote-session-change', (event) => {
+    const w = mainWindow;
+    if (w && !w.isDestroyed()) {
+      w.webContents.send(IPC_CHANNELS.REMOTE_STATE, {
+        paneId: event.paneId,
+        remote: event.remote
+      });
+    }
+  });
+
   // OS notifications — coalesced to prevent burst fatigue (Baymard/NNG)
   let pendingOsNotifications: Array<{ paneId: string; level: string }> = [];
   let osNotifTimer: ReturnType<typeof setTimeout> | null = null;

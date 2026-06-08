@@ -72,6 +72,7 @@ export const IPC_CHANNELS = {
   IMAGES_LIST_ACTIONS: 'images:list-actions',
   LOG_BATCH: 'log:batch',
   ACTIVITY_STATE: 'activity:state',
+  REMOTE_STATE: 'remote:state',
   WORKTREE_CREATE: 'worktree:create',
   WORKTREE_REMOVE: 'worktree:remove',
   // Copilot

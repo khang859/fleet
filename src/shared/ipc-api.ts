@@ -103,6 +103,12 @@ export type PaneFocusedPayload = {
   paneId: string;
 };
 
+export type RemoteStatePayload = {
+  paneId: string;
+  /** True when the pane's foreground process is a remote-shell client (ssh, mosh, etc.). */
+  remote: boolean;
+};
+
 export type PtyCwdPayload = {
   paneId: string;
   cwd: string;

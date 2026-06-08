@@ -26,6 +26,7 @@ import type {
   ClipboardHistoryResponse,
   LogEntry,
   ActivityStatePayload,
+  RemoteStatePayload,
   WorktreeCreateRequest,
   WorktreeCreateResponse,
   WorktreeRemoveRequest,
@@ -214,6 +215,10 @@ const fleetApi = {
   activity: {
     onStateChange: (callback: (payload: ActivityStatePayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.ACTIVITY_STATE, callback)
+  },
+  remote: {
+    onStateChange: (callback: (payload: RemoteStatePayload) => void): Unsubscribe =>
+      onChannel(IPC_CHANNELS.REMOTE_STATE, callback)
   },
   homeDir: getHomeDir(),
   platform: ((): HostPlatform => {

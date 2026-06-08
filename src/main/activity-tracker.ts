@@ -6,11 +6,24 @@ const log = createLogger('activity-tracker');
 
 const SHELL_NAMES = new Set(['zsh', 'bash', 'fish', 'sh', 'pwsh', 'powershell', 'cmd.exe']);
 
+// Foreground process names that mean the pane is driving a remote/non-local shell.
+const REMOTE_NAMES = new Set([
+  'ssh',
+  'mosh',
+  'mosh-client',
+  'et',
+  'telnet',
+  'rsh',
+  'autossh',
+  'sshpass'
+]);
+
 type PaneState = {
   state: ActivityState;
   silenceTimer: ReturnType<typeof setTimeout> | null;
   lastOutputAt: number;
   exited: boolean;
+  remote: boolean;
 };
 
 export type ActivityTrackerOptions = {
@@ -38,13 +51,21 @@ export class ActivityTracker {
       state: 'idle',
       silenceTimer: null,
       lastOutputAt: 0,
-      exited: false
+      exited: false,
+      remote: false
     });
   }
 
   untrackPane(paneId: string): void {
     const pane = this.panes.get(paneId);
     if (pane?.silenceTimer) clearTimeout(pane.silenceTimer);
+    if (pane?.remote) {
+      this.eventBus.emit('remote-session-change', {
+        type: 'remote-session-change',
+        paneId,
+        remote: false
+      });
+    }
     this.panes.delete(paneId);
   }
 
@@ -71,6 +92,17 @@ export class ActivityTracker {
   onExit(paneId: string, exitCode: number): void {
     const pane = this.panes.get(paneId);
     if (!pane) return;
+
+    // Clear remote flag now — pollProcesses skips exited panes, so the
+    // foreground-process check can't revert it after this point.
+    if (pane.remote) {
+      pane.remote = false;
+      this.eventBus.emit('remote-session-change', {
+        type: 'remote-session-change',
+        paneId,
+        remote: false
+      });
+    }
 
     pane.exited = true;
     if (pane.silenceTimer) {
@@ -120,6 +152,20 @@ export class ActivityTracker {
       // provides a confirming signal, not an override.
       if (isAtShell && pane.state === 'working') {
         log.debug('process poll: shell at prompt while working', { paneId, processName });
+      }
+
+      // Detect remote-shell sessions (ssh, mosh, …) by foreground process name.
+      // node-pty reports the foreground process for the whole session, so this
+      // flips true on connect and false again when the client exits.
+      const isRemote = REMOTE_NAMES.has(processName);
+      if (isRemote !== pane.remote) {
+        pane.remote = isRemote;
+        log.debug('remote session change', { paneId, processName, remote: isRemote });
+        this.eventBus.emit('remote-session-change', {
+          type: 'remote-session-change',
+          paneId,
+          remote: isRemote
+        });
       }
     }
   }

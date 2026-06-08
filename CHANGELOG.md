@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.58.0
+
+- **Remote session indicator** — tabs now show a **remote** pill in the sidebar when the terminal is in an SSH/mosh session, so you can tell at a glance which tabs are on a remote host versus your local machine. Detection covers `ssh`, `mosh`, `et`, `telnet`, `rsh`, `autossh`, and `sshpass`, and the pill clears automatically when you disconnect.
+
 ## v2.57.1
 
 - Rune settings: replaced the separate provider/profile controls with one **Active provider** selector that shows both base providers and provider profiles, so it is clear which provider Rune will actually use.
