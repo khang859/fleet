@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.60.0
+
+- **Rune installs where your shell can find it** — the Settings → Rune install/update button now installs Rune into `~/.fleet/bin` (a directory Fleet keeps on your PATH) instead of letting the install script pick `/usr/local/bin`, which isn't on PATH for Homebrew-on-Apple-Silicon setups and left `rune` as "command not found".
+- **More reliable WSL distro detection** — Fleet now decodes `wsl.exe` output correctly even when it omits a byte-order mark (previously this dropped every distro), falls back to `wsl --list --quiet` when needed, and pins the absolute `System32\wsl.exe` path instead of relying on PATH.
+- **Default shell profile** — you can now set a preferred shell profile that new tabs use by default, falling back to auto-detection when it's unset.
+
 ## v2.59.0
 
 - **One-click Rune install & update** — the Settings → Rune tab now installs Rune for you. When Rune isn't found, an **Install Rune** button runs the install script directly; when it's already installed, an **Update** button re-runs it and reports the version change (e.g. _Updated v1.0.0 → v1.1.0_, or _Already on the latest_). The copyable command and install guide remain as a manual fallback.
