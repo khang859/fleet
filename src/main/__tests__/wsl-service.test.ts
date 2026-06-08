@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseListVerbose, WslService } from '../wsl-service';
+import { parseListVerbose, parseListQuiet, wslExePath, WslService } from '../wsl-service';
 
 describe('parseListVerbose', () => {
   it('parses a real-world wsl --list --verbose output (UTF-16LE)', () => {
@@ -39,6 +39,54 @@ describe('parseListVerbose', () => {
     const utf16le = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(utf8, 'utf16le')]);
     const distros = parseListVerbose(utf16le);
     expect(distros[0].state).toBe('installing');
+  });
+
+  it('parses UTF-16LE output WITHOUT a BOM (the real-world failure mode)', () => {
+    // Some wsl.exe versions emit UTF-16LE with no BOM. The old utf-8 fallback
+    // turned this into NUL-interleaved garbage and dropped every distro.
+    const utf8 = '  NAME            STATE     VERSION\r\n* Ubuntu-22.04    Running   2\r\n';
+    const utf16leNoBom = Buffer.from(utf8, 'utf16le');
+    expect(utf16leNoBom[0]).not.toBe(0xff); // sanity: no BOM
+    const distros = parseListVerbose(utf16leNoBom);
+    expect(distros).toEqual([
+      { name: 'Ubuntu-22.04', version: 2, isDefault: true, state: 'running' }
+    ]);
+  });
+});
+
+describe('parseListQuiet', () => {
+  it('parses names-only output and marks the first as default', () => {
+    const utf16le = Buffer.concat([
+      Buffer.from([0xff, 0xfe]),
+      Buffer.from('Ubuntu-22.04\r\nDebian\r\n', 'utf16le')
+    ]);
+    expect(parseListQuiet(utf16le)).toEqual([
+      { name: 'Ubuntu-22.04', version: 2, isDefault: true, state: 'stopped' },
+      { name: 'Debian', version: 2, isDefault: false, state: 'stopped' }
+    ]);
+  });
+
+  it('returns empty when there are no distros', () => {
+    const utf16le = Buffer.concat([
+      Buffer.from([0xff, 0xfe]),
+      Buffer.from('Windows Subsystem for Linux has no installed distributions.\r\n', 'utf16le')
+    ]);
+    expect(parseListQuiet(utf16le)).toEqual([]);
+  });
+});
+
+describe('wslExePath', () => {
+  it('resolves to the pinned System32 path', () => {
+    const prev = process.env.SystemRoot;
+    process.env.SystemRoot = 'C:\\Windows';
+    try {
+      const p = wslExePath();
+      expect(p.startsWith('C:\\Windows')).toBe(true);
+      expect(/[\\/]System32[\\/]wsl\.exe$/.test(p)).toBe(true);
+    } finally {
+      if (prev === undefined) delete process.env.SystemRoot;
+      else process.env.SystemRoot = prev;
+    }
   });
 });
 

@@ -814,7 +814,13 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.SHELL_PROFILES_LIST, async (): Promise<ShellProfilesListResponse> => {
     const profiles = await shellProfileRegistry.enumerate();
-    const defaultProfileId = await shellProfileRegistry.getDefaultProfileId();
+    // Honor a user-chosen default if it still resolves to an existing profile;
+    // otherwise fall back to auto-detection (WSL default → first WSL → PowerShell).
+    const preferred = settingsStore.get().general.defaultShellProfileId;
+    const defaultProfileId =
+      preferred && profiles.some((p) => p.id === preferred)
+        ? preferred
+        : await shellProfileRegistry.getDefaultProfileId();
     return { profiles, defaultProfileId };
   });
 

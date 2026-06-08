@@ -1,5 +1,6 @@
 import * as pty from 'node-pty';
 import { getDefaultShell } from './shell-detection';
+import { wslExePath } from './wsl-service';
 import { createLogger } from './logger';
 import type { ShellProfile } from '../shared/shell-profiles';
 
@@ -68,7 +69,8 @@ export class PtyManager {
         opts.profile.pathContext === 'win32' || opts.profile.pathContext === 'posix'
           ? ''
           : opts.profile.pathContext.distro;
-      shell = opts.profile.command;
+      // Pin the absolute System32 path rather than relying on PATH for wsl.exe.
+      shell = wslExePath();
       // Trailing `~` forces the WSL shell to land in $HOME, overriding the
       // Windows cwd that node-pty passes to wsl.exe. Microsoft documents this
       // pattern as `wsl ~`.

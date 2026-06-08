@@ -31,6 +31,7 @@ export const COPILOT_SOCKET_PATH =
 export const DEFAULT_SETTINGS: FleetSettings = {
   general: {
     defaultShell: '',
+    defaultShellProfileId: '',
     scrollbackSize: DEFAULT_SCROLLBACK,
     fontFamily: 'JetBrains Mono Nerd Font, Symbols Nerd Font, monospace',
     fontSize: 14,

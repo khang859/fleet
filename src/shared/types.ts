@@ -220,6 +220,8 @@ export type TerminalBackground = {
 export type FleetSettings = {
   general: {
     defaultShell: string;
+    /** Preferred shell profile id for new tabs (e.g. 'wsl.Ubuntu-22.04'). Empty = auto-detect. */
+    defaultShellProfileId: string;
     scrollbackSize: number;
     fontFamily: string;
     fontSize: number;

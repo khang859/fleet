@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PtyManager } from '../pty-manager';
+import { wslExePath } from '../wsl-service';
 
 // Mock logger to avoid Winston timers interfering with vi.useFakeTimers()
 vi.mock('../logger', () => ({
@@ -301,8 +302,9 @@ describe('PtyManager profile-aware spawn', () => {
         pathContext: { kind: 'wsl', distro: 'Ubuntu-22.04' }
       }
     });
+    // PtyManager pins the absolute System32 path rather than the bare `wsl.exe`.
     expect(ptyModule.spawn).toHaveBeenCalledWith(
-      'wsl.exe',
+      wslExePath(),
       ['-d', 'Ubuntu-22.04', '~'],
       expect.objectContaining({ cwd: 'C:\\Users\\khang\\dev' })
     );
