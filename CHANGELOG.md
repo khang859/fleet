@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.59.0
+
+- **One-click Rune install & update** — the Settings → Rune tab now installs Rune for you. When Rune isn't found, an **Install Rune** button runs the install script directly; when it's already installed, an **Update** button re-runs it and reports the version change (e.g. _Updated v1.0.0 → v1.1.0_, or _Already on the latest_). The copyable command and install guide remain as a manual fallback.
+
 ## v2.58.0
 
 - **Remote session indicator** — tabs now show a **remote** pill in the sidebar when the terminal is in an SSH/mosh session, so you can tell at a glance which tabs are on a remote host versus your local machine. Detection covers `ssh`, `mosh`, `et`, `telnet`, `rsh`, `autossh`, and `sshpass`, and the pill clears automatically when you disconnect.
