@@ -1,5 +1,12 @@
 # Changelog
 
+## v2.57.0
+
+- **Edit Rune settings in-app** — Settings → Rune now has a full editor for `~/.rune/settings.json`, so you no longer need to drop into Rune's terminal UI to configure it. Set your **provider** and model, **thinking effort**, **icon/activity** styles, **auto-compact**, **web fetch/search**, and **subagents** (concurrency, timeout, retention) right from Fleet.
+- **API keys** — manage Rune's Groq, RunPod, OpenRouter, Brave, and Tavily keys as redacted set/clear fields (stored in `~/.rune/secrets.json`).
+- **Advanced** — configure Ollama endpoint/`num_ctx`/think, RunPod & OpenRouter endpoints, repo-map, and add/edit/delete **provider profiles** with an active-profile selector.
+- Edits write straight to Rune's config files and preserve any keys Fleet doesn't manage; clearing a field resets it to Rune's default.
+
 ## v2.56.0
 
 - **PDF viewing** — `fleet open <file>.pdf` now opens PDFs in a dedicated viewer tab instead of being rejected as a binary file. Pages render with a bundled **pdf.js** engine (no external reader needed), with **page navigation**, **zoom in/out**, and **Fit width** controls in the status bar.
