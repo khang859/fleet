@@ -52,6 +52,9 @@ import type { AnnotationStore } from './annotation-store';
 import type { AnnotateService } from './annotate-service';
 import type { PiAgentManager } from './pi-agent-manager';
 import type { RuneManager } from './rune-manager';
+import type { RuneConfigManager } from './rune-config-manager';
+import { RuneConfigParseError, RuneConfigValidationError } from './rune-config-manager';
+import type { RuneSettings } from '../shared/rune-config-types';
 import type { FleetBridgeServer } from './fleet-bridge';
 import type { PiConfigManager } from './pi-config-manager';
 import { PiConfigParseError, PiConfigValidationError } from './pi-config-manager';
@@ -107,6 +110,7 @@ export function registerIpcHandlers(
   annotateService: AnnotateService,
   piAgentManager: PiAgentManager,
   runeManager: RuneManager,
+  runeConfigManager: RuneConfigManager,
   fleetBridge: FleetBridgeServer,
   piConfigManager: PiConfigManager,
   piAuthInspector: PiAuthInspector,
@@ -628,6 +632,64 @@ export function registerIpcHandlers(
   }));
 
   ipcMain.handle(IPC_CHANNELS.RUNE_VERSION, async () => runeManager.getVersion());
+
+  function toRuneConfigError(err: unknown): Error {
+    if (err instanceof RuneConfigParseError) {
+      const e = new Error(err.message);
+      e.name = 'RuneConfigParseError';
+      Object.assign(e, { file: err.file, rawSnippet: err.rawSnippet });
+      return e;
+    }
+    if (err instanceof RuneConfigValidationError) {
+      const e = new Error(err.message);
+      e.name = 'RuneConfigValidationError';
+      Object.assign(e, { file: err.file, issues: err.issues });
+      return e;
+    }
+    return toError(err);
+  }
+
+  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_READ_SETTINGS, async () => {
+    try {
+      return await runeConfigManager.readSettings();
+    } catch (err) {
+      throw toRuneConfigError(err);
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.RUNE_CONFIG_WRITE_SETTINGS,
+    async (_event, patch: Partial<RuneSettings>) => {
+      try {
+        await runeConfigManager.writeSettings(patch);
+      } catch (err) {
+        throw toRuneConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_READ_SECRETS, async () => {
+    try {
+      return await runeConfigManager.readSecrets();
+    } catch (err) {
+      throw toRuneConfigError(err);
+    }
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.RUNE_CONFIG_WRITE_SECRETS,
+    async (_event, patch: Record<string, string>) => {
+      try {
+        await runeConfigManager.writeSecrets(patch);
+      } catch (err) {
+        throw toRuneConfigError(err);
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.RUNE_CONFIG_OPEN_FOLDER, async () => {
+    await runeConfigManager.openConfigFolder();
+  });
 
   ipcMain.handle(IPC_CHANNELS.PI_PLAN_RESPOND, (_event, req: PiPlanResponseRequest) => {
     const delivered = fleetBridge.sendEvent(req.paneId, {

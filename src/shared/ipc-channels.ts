@@ -110,6 +110,11 @@ export const IPC_CHANNELS = {
   ANNOTATE_DELETE: 'annotate:delete',
   // Rune Agent
   RUNE_VERSION: 'rune:version',
+  RUNE_CONFIG_READ_SETTINGS: 'rune:config:read-settings',
+  RUNE_CONFIG_WRITE_SETTINGS: 'rune:config:write-settings',
+  RUNE_CONFIG_READ_SECRETS: 'rune:config:read-secrets',
+  RUNE_CONFIG_WRITE_SECRETS: 'rune:config:write-secrets',
+  RUNE_CONFIG_OPEN_FOLDER: 'rune:config:open-folder',
 
   // Pi Agent
   PI_OPEN: 'pi:open',

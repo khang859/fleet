@@ -2,6 +2,7 @@ import { CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { useRuneStatus } from '../../../hooks/use-rune-status';
 import { RuneInstallCommand } from '../../rune/RuneInstallCommand';
 import { RUNE_REPO_URL } from '../../../../../shared/rune';
+import { RuneSettingsEditor } from './RuneSettingsEditor';
 
 export function RuneSection(): React.JSX.Element {
   const { status, loading, recheck } = useRuneStatus();
@@ -29,12 +30,15 @@ export function RuneSection(): React.JSX.Element {
       {loading && status === null ? (
         <div className="text-sm text-neutral-400">Checking for Rune…</div>
       ) : status?.installed ? (
-        <div className="flex items-center gap-2 rounded border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-300">
-          <CheckCircle2 className="h-4 w-4 shrink-0" />
-          <span>
-            Rune is installed — <span className="font-mono">v{status.version}</span>.
-          </span>
-        </div>
+        <>
+          <div className="flex items-center gap-2 rounded border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-300">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            <span>
+              Rune is installed — <span className="font-mono">v{status.version}</span>.
+            </span>
+          </div>
+          <RuneSettingsEditor />
+        </>
       ) : (
         <div className="space-y-3 rounded border border-amber-700/40 bg-amber-900/20 p-3">
           <div className="flex items-center gap-2 text-sm text-amber-200">

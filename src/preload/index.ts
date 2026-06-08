@@ -79,6 +79,7 @@ import type {
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type { RuneStatus } from '../shared/rune';
+import type { RuneSettings, RuneSecrets } from '../shared/rune-config-types';
 import type {
   Workspace,
   FleetSettings,
@@ -406,7 +407,16 @@ const fleetApi = {
       onChannel(IPC_CHANNELS.ANNOTATE_COMPLETED, callback)
   },
   rune: {
-    getVersion: async (): Promise<RuneStatus> => typedInvoke(IPC_CHANNELS.RUNE_VERSION)
+    getVersion: async (): Promise<RuneStatus> => typedInvoke(IPC_CHANNELS.RUNE_VERSION),
+    readSettings: async (): Promise<RuneSettings> =>
+      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_READ_SETTINGS),
+    writeSettings: async (patch: Partial<RuneSettings>): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_WRITE_SETTINGS, patch),
+    readSecrets: async (): Promise<RuneSecrets> =>
+      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_READ_SECRETS),
+    writeSecrets: async (patch: Record<string, string>): Promise<void> =>
+      typedInvoke(IPC_CHANNELS.RUNE_CONFIG_WRITE_SECRETS, patch),
+    openConfigFolder: async (): Promise<void> => typedInvoke(IPC_CHANNELS.RUNE_CONFIG_OPEN_FOLDER)
   },
   pi: {
     onOpen: (callback: (payload: PiOpenPayload) => void): Unsubscribe =>

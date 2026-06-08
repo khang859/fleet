@@ -61,6 +61,7 @@ import {
   lastLogLine
 } from './kanban/spawn-worker';
 import { RuneManager } from './rune-manager';
+import { RuneConfigManager } from './rune-config-manager';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
@@ -97,6 +98,7 @@ const annotationStore = new AnnotationStore(ANNOTATIONS_DIR);
 const annotateService = new AnnotateService(annotationStore);
 const piAgentManager = new PiAgentManager();
 const runeManager = new RuneManager();
+const runeConfigManager = new RuneConfigManager();
 const piConfigManager = new PiConfigManager();
 const piEnvInjectionManager = new PiEnvInjectionManager();
 const envSyncSecrets = new EnvSyncSecrets();
@@ -377,6 +379,7 @@ void app.whenReady().then(async () => {
     annotateService,
     piAgentManager,
     runeManager,
+    runeConfigManager,
     fleetBridge,
     piConfigManager,
     piAuthInspector,
