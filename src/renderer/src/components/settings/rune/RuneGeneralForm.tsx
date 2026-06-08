@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import { RuneSelect, RuneToggle, RuneText } from './RuneControls';
 import {
   RUNE_PROVIDERS,
@@ -61,8 +62,17 @@ function Section({
 export function RuneGeneralForm({ settings, onChange }: Props): React.JSX.Element {
   const provider = settings.provider ?? '';
   const activeProfileId = settings.active_profile ?? '';
-  const profiles = settings.profiles ?? [];
-  const activeProfile = profiles.find((p) => p.id === activeProfileId);
+  const [profiles, setProfiles] = useState<RuneProviderProfile[]>(settings.profiles ?? []);
+  const inFlightProfileWrites = useRef(0);
+
+  useEffect(() => {
+    if (inFlightProfileWrites.current === 0) setProfiles(settings.profiles ?? []);
+  }, [settings.profiles]);
+
+  const selectableProfiles = profiles.filter((p) => p.id.trim());
+  const activeProfile = activeProfileId.trim()
+    ? selectableProfiles.find((p) => p.id === activeProfileId)
+    : undefined;
   const web = settings.web ?? {};
   const subagents = settings.subagents ?? {};
   const autoCompact = settings.auto_compact ?? {};
@@ -75,7 +85,7 @@ export function RuneGeneralForm({ settings, onChange }: Props): React.JSX.Elemen
   const providerOptions = [
     { value: '', label: 'none' },
     ...RUNE_PROVIDERS.map((p) => ({ value: `provider:${p}`, label: p })),
-    ...profiles.map((p) => ({
+    ...selectableProfiles.map((p) => ({
       value: `profile:${p.id}`,
       label: `profile: ${profileDisplayName(p)} — ${activeProviderLabel(p.provider)}`
     }))
@@ -88,8 +98,11 @@ export function RuneGeneralForm({ settings, onChange }: Props): React.JSX.Elemen
 
   const updateActiveProfile = (patch: Partial<RuneProviderProfile>): void => {
     if (!activeProfile) return;
-    void onChange({
-      profiles: profiles.map((p) => (p.id === activeProfile.id ? { ...p, ...patch } : p))
+    const next = profiles.map((p) => (p.id === activeProfile.id ? { ...p, ...patch } : p));
+    setProfiles(next);
+    inFlightProfileWrites.current += 1;
+    void Promise.resolve(onChange({ profiles: next })).finally(() => {
+      inFlightProfileWrites.current -= 1;
     });
   };
 
@@ -102,9 +115,7 @@ export function RuneGeneralForm({ settings, onChange }: Props): React.JSX.Elemen
           options={providerOptions}
           onChange={(v) => {
             if (v.startsWith('profile:')) {
-              const id = v.slice('profile:'.length);
-              const profile = profiles.find((p) => p.id === id);
-              void onChange({ provider: profile?.provider ?? provider, active_profile: id });
+              void onChange({ active_profile: v.slice('profile:'.length) });
               return;
             }
             if (v.startsWith('provider:')) {
