@@ -53,11 +53,14 @@ describe('RuneManager.installOrUpdate', () => {
       previousVersion: null,
       status: { installed: true, version: '1.2.0' }
     });
-    // The script ran through a shell because the install command is a pipe.
+    // The script ran through a shell because the install command is a pipe, and we pin the
+    // install dir to ~/.fleet/bin so the binary lands somewhere on the user's PATH.
     expect(execFileMock).toHaveBeenCalledWith(
       'sh',
       ['-c', expect.any(String)],
-      expect.anything(),
+      expect.objectContaining({
+        env: expect.objectContaining({ RUNE_INSTALL_DIR: expect.stringContaining('.fleet') })
+      }),
       expect.any(Function)
     );
   });

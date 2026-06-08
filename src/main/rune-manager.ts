@@ -1,5 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { createLogger } from './logger';
 import type { RuneStatus, RuneInstallResult } from '../shared/rune';
 import { RUNE_INSTALL_COMMAND } from '../shared/rune';
@@ -10,6 +12,14 @@ const log = createLogger('rune-manager');
 const VERSION_TIMEOUT_MS = 5000;
 /** The install script downloads a release binary, so give it room over a slow connection. */
 const INSTALL_TIMEOUT_MS = 120_000;
+/**
+ * Where the button installs rune. install.sh honors RUNE_INSTALL_DIR; left to its own devices it
+ * prefers /usr/local/bin when writable, which isn't on a Homebrew-on-arm64 user's PATH — the binary
+ * lands but `rune` is "command not found". ~/.fleet/bin is the one directory Fleet guarantees is on
+ * PATH (index.ts prepends it; install-fleet-cli.ts adds it to shell profiles), so installing here
+ * keeps the version probe, the Kanban dispatcher's spawn, and the user's terminal in agreement.
+ */
+const RUNE_INSTALL_DIR = join(homedir(), '.fleet', 'bin');
 
 /**
  * Probes for the user-installed `rune` binary on PATH. Rune is a critical dependency for the
@@ -58,7 +68,11 @@ export class RuneManager {
 
     try {
       // The command is a pipe (`curl … | sh`), so it needs a shell — execFile alone won't run it.
-      await execFileAsync('sh', ['-c', RUNE_INSTALL_COMMAND], { timeout: INSTALL_TIMEOUT_MS });
+      // RUNE_INSTALL_DIR pins the target to a dir Fleet keeps on PATH (see the constant above).
+      await execFileAsync('sh', ['-c', RUNE_INSTALL_COMMAND], {
+        timeout: INSTALL_TIMEOUT_MS,
+        env: { ...process.env, RUNE_INSTALL_DIR }
+      });
     } catch (err) {
       const stderr =
         err && typeof err === 'object' && 'stderr' in err ? String(err.stderr).trim() : '';
