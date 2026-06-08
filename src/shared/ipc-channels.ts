@@ -111,6 +111,7 @@ export const IPC_CHANNELS = {
   ANNOTATE_DELETE: 'annotate:delete',
   // Rune Agent
   RUNE_VERSION: 'rune:version',
+  RUNE_INSTALL: 'rune:install',
   RUNE_CONFIG_READ_SETTINGS: 'rune:config:read-settings',
   RUNE_CONFIG_WRITE_SETTINGS: 'rune:config:write-settings',
   RUNE_CONFIG_READ_SECRETS: 'rune:config:read-secrets',

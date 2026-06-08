@@ -79,7 +79,7 @@ import type {
   PruneResult
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
-import type { RuneStatus } from '../shared/rune';
+import type { RuneStatus, RuneInstallResult } from '../shared/rune';
 import type { RuneSettings, RuneSecrets } from '../shared/rune-config-types';
 import type {
   Workspace,
@@ -413,6 +413,7 @@ const fleetApi = {
   },
   rune: {
     getVersion: async (): Promise<RuneStatus> => typedInvoke(IPC_CHANNELS.RUNE_VERSION),
+    install: async (): Promise<RuneInstallResult> => typedInvoke(IPC_CHANNELS.RUNE_INSTALL),
     readSettings: async (): Promise<RuneSettings> =>
       typedInvoke(IPC_CHANNELS.RUNE_CONFIG_READ_SETTINGS),
     writeSettings: async (patch: Partial<RuneSettings>): Promise<void> =>

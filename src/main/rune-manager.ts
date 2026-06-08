@@ -1,12 +1,15 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLogger } from './logger';
-import type { RuneStatus } from '../shared/rune';
+import type { RuneStatus, RuneInstallResult } from '../shared/rune';
+import { RUNE_INSTALL_COMMAND } from '../shared/rune';
 
 const execFileAsync = promisify(execFile);
 const log = createLogger('rune-manager');
 
 const VERSION_TIMEOUT_MS = 5000;
+/** The install script downloads a release binary, so give it room over a slow connection. */
+const INSTALL_TIMEOUT_MS = 120_000;
 
 /**
  * Probes for the user-installed `rune` binary on PATH. Rune is a critical dependency for the
@@ -41,6 +44,36 @@ export class RuneManager {
       });
       return { installed: false };
     }
+  }
+
+  /**
+   * Install (or update) Rune by running the same `curl … | sh` one-liner we show the user. Install
+   * and update are one operation — re-running install.sh replaces the binary in place. Returns the
+   * version from before the run alongside a fresh probe so the renderer can report install vs.
+   * update and whether the version changed. Throws (with the script's stderr) if the script fails.
+   */
+  async installOrUpdate(): Promise<RuneInstallResult> {
+    const before = await this.getVersion();
+    const previousVersion = before.installed ? before.version : null;
+
+    try {
+      // The command is a pipe (`curl … | sh`), so it needs a shell — execFile alone won't run it.
+      await execFileAsync('sh', ['-c', RUNE_INSTALL_COMMAND], { timeout: INSTALL_TIMEOUT_MS });
+    } catch (err) {
+      const stderr =
+        err && typeof err === 'object' && 'stderr' in err ? String(err.stderr).trim() : '';
+      const message = stderr || (err instanceof Error ? err.message : String(err));
+      log.warn('rune install script failed', { error: message });
+      throw new Error(`Rune install failed: ${message}`);
+    }
+
+    const status = await this.getVersion();
+    log.info('rune install/update complete', {
+      previousVersion,
+      installed: status.installed,
+      version: status.installed ? status.version : null
+    });
+    return { previousVersion, status };
   }
 
   /** Synchronous best-effort: null when never probed, else the last known install state. */

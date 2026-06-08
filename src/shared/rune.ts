@@ -6,6 +6,14 @@
 /** Result of probing for the `rune` binary. */
 export type RuneStatus = { installed: true; version: string } | { installed: false };
 
+/**
+ * Result of running the install script (install or update — they're the same operation, since
+ * re-running install.sh replaces the binary in place). `previousVersion` is null when Rune wasn't
+ * installed beforehand; `status` is a fresh re-probe so the renderer can report install vs. update
+ * and whether the version actually changed.
+ */
+export type RuneInstallResult = { previousVersion: string | null; status: RuneStatus };
+
 export const RUNE_REPO_URL = 'https://github.com/khang859/rune';
 
 /** One-liner shown wherever we tell the user to install Rune. */

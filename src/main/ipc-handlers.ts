@@ -633,6 +633,8 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.RUNE_VERSION, async () => runeManager.getVersion());
 
+  ipcMain.handle(IPC_CHANNELS.RUNE_INSTALL, async () => runeManager.installOrUpdate());
+
   function toRuneConfigError(err: unknown): Error {
     if (err instanceof RuneConfigParseError) {
       const e = new Error(err.message);

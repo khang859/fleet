@@ -1,11 +1,24 @@
-import { CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 import { useRuneStatus } from '../../../hooks/use-rune-status';
+import { useRuneInstall } from '../../../hooks/use-rune-install';
 import { RuneInstallCommand } from '../../rune/RuneInstallCommand';
-import { RUNE_REPO_URL } from '../../../../../shared/rune';
+import { RUNE_REPO_URL, type RuneInstallResult } from '../../../../../shared/rune';
 import { RuneSettingsEditor } from './RuneSettingsEditor';
+
+/** Human-readable summary of a finished install/update run. */
+function installMessage(result: RuneInstallResult): string {
+  if (!result.status.installed) {
+    return "Install ran, but Rune still isn't on your PATH. Restart Fleet, or add its install directory to your PATH, then Re-check.";
+  }
+  const { version } = result.status;
+  if (result.previousVersion === null) return `Rune installed — v${version}.`;
+  if (result.previousVersion === version) return `Already on the latest — v${version}.`;
+  return `Updated v${result.previousVersion} → v${version}.`;
+}
 
 export function RuneSection(): React.JSX.Element {
   const { status, loading, recheck } = useRuneStatus();
+  const { install, running, result, error } = useRuneInstall(recheck);
 
   return (
     <div className="space-y-6">
@@ -31,12 +44,28 @@ export function RuneSection(): React.JSX.Element {
         <div className="text-sm text-neutral-400">Checking for Rune…</div>
       ) : status?.installed ? (
         <>
-          <div className="flex items-center gap-2 rounded border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-300">
-            <CheckCircle2 className="h-4 w-4 shrink-0" />
-            <span>
-              Rune is installed — <span className="font-mono">v{status.version}</span>.
-            </span>
+          <div className="flex items-center justify-between gap-2 rounded border border-green-700/40 bg-green-900/20 px-3 py-2 text-sm text-green-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span>
+                Rune is installed — <span className="font-mono">v{status.version}</span>.
+              </span>
+            </div>
+            <button
+              onClick={install}
+              disabled={running}
+              className="flex shrink-0 items-center gap-1 rounded border border-green-700/50 px-2 py-1 text-xs text-green-200 hover:bg-green-900/40 disabled:opacity-50 transition active:scale-[0.97] disabled:active:scale-100"
+            >
+              {running ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              {running ? 'Updating…' : 'Update'}
+            </button>
           </div>
+          {result && <p className="text-xs text-neutral-400">{installMessage(result)}</p>}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <RuneSettingsEditor />
         </>
       ) : (
@@ -45,7 +74,21 @@ export function RuneSection(): React.JSX.Element {
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>Rune isn&apos;t installed. Kanban tasks can&apos;t run until it is.</span>
           </div>
-          <p className="text-xs text-neutral-400">Install it by running this in your terminal:</p>
+          <button
+            onClick={install}
+            disabled={running}
+            className="flex items-center gap-1.5 rounded bg-amber-600/90 px-3 py-1.5 text-sm font-medium text-amber-50 hover:bg-amber-600 disabled:opacity-50 transition active:scale-[0.97] disabled:active:scale-100"
+          >
+            {running ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {running ? 'Installing…' : 'Install Rune'}
+          </button>
+          {error && <p className="text-xs text-red-400">{error}</p>}
+          {result && <p className="text-xs text-neutral-400">{installMessage(result)}</p>}
+          <p className="text-xs text-neutral-400">Or run this in your terminal yourself:</p>
           <RuneInstallCommand />
           <p className="text-xs text-neutral-500">
             Then click Re-check.{' '}
