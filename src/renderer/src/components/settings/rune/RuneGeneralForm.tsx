@@ -12,6 +12,7 @@ import {
   RUNE_SUBAGENT_RETAIN,
   RUNE_PROVIDER_MODEL_FIELD,
   type RuneProvider,
+  type RuneProviderProfile,
   type RuneSettings
 } from '../../../../../shared/rune-config-types';
 
@@ -27,10 +28,13 @@ type Props = {
 // rune's DefaultSettings (internal/config/settings.go) — what the agent uses
 // when a key is absent from settings.json. The UI shows these as the current
 // value so the dropdowns reflect rune's real behavior.
-const PROVIDER_OPTIONS = [
-  { value: '', label: 'none' },
-  ...RUNE_PROVIDERS.map((p) => ({ value: p, label: p }))
-];
+function activeProviderLabel(provider: string): string {
+  return provider || 'unknown';
+}
+
+function profileDisplayName(profile: RuneProviderProfile): string {
+  return profile.name?.trim() || profile.id;
+}
 
 function numOptions(
   values: readonly number[],
@@ -56,33 +60,92 @@ function Section({
 
 export function RuneGeneralForm({ settings, onChange }: Props): React.JSX.Element {
   const provider = settings.provider ?? '';
+  const activeProfileId = settings.active_profile ?? '';
+  const profiles = settings.profiles ?? [];
+  const activeProfile = profiles.find((p) => p.id === activeProfileId);
   const web = settings.web ?? {};
   const subagents = settings.subagents ?? {};
   const autoCompact = settings.auto_compact ?? {};
 
-  const modelField = isRuneProvider(provider) ? RUNE_PROVIDER_MODEL_FIELD[provider] : undefined;
+  const selectionValue = activeProfile
+    ? `profile:${activeProfile.id}`
+    : provider
+      ? `provider:${provider}`
+      : '';
+  const providerOptions = [
+    { value: '', label: 'none' },
+    ...RUNE_PROVIDERS.map((p) => ({ value: `provider:${p}`, label: p })),
+    ...profiles.map((p) => ({
+      value: `profile:${p.id}`,
+      label: `profile: ${profileDisplayName(p)} — ${activeProviderLabel(p.provider)}`
+    }))
+  ];
+
+  const modelField =
+    !activeProfile && isRuneProvider(provider) ? RUNE_PROVIDER_MODEL_FIELD[provider] : undefined;
   const rawModel = modelField ? settings[modelField] : undefined;
   const modelValue = typeof rawModel === 'string' ? rawModel : '';
+
+  const updateActiveProfile = (patch: Partial<RuneProviderProfile>): void => {
+    if (!activeProfile) return;
+    void onChange({
+      profiles: profiles.map((p) => (p.id === activeProfile.id ? { ...p, ...patch } : p))
+    });
+  };
 
   return (
     <div className="space-y-6">
       <Section title="Provider">
         <RuneSelect
-          label="Provider"
-          value={provider}
-          options={PROVIDER_OPTIONS}
-          onChange={(v) => void onChange({ provider: v })}
+          label="Active provider"
+          value={selectionValue}
+          options={providerOptions}
+          onChange={(v) => {
+            if (v.startsWith('profile:')) {
+              const id = v.slice('profile:'.length);
+              const profile = profiles.find((p) => p.id === id);
+              void onChange({ provider: profile?.provider ?? provider, active_profile: id });
+              return;
+            }
+            if (v.startsWith('provider:')) {
+              void onChange({ provider: v.slice('provider:'.length), active_profile: '' });
+              return;
+            }
+            void onChange({ provider: '', active_profile: '' });
+          }}
         />
-        {modelField && (
-          <RuneText
-            label={`${provider} model`}
-            value={modelValue}
-            placeholder="model id"
-            // Send the raw value (incl. empty) — rune treats an empty model as
-            // "use the provider default". Sending undefined would be skipped by
-            // the main-process merge, making a clear a silent no-op.
-            onCommit={(v) => void onChange({ [modelField]: v })}
-          />
+        <p className="text-xs text-neutral-500">
+          Choose a base provider or a provider profile. Profiles override the base provider until
+          you select a base provider again.
+        </p>
+        {activeProfile ? (
+          <>
+            <RuneText
+              label="Profile model"
+              value={activeProfile.model ?? ''}
+              placeholder="model id"
+              onCommit={(v) => updateActiveProfile({ model: v || undefined })}
+            />
+            <RuneText
+              label="Profile endpoint"
+              value={activeProfile.endpoint ?? ''}
+              placeholder="provider default"
+              widthClass="w-72"
+              onCommit={(v) => updateActiveProfile({ endpoint: v || undefined })}
+            />
+          </>
+        ) : (
+          modelField && (
+            <RuneText
+              label={`${provider} model`}
+              value={modelValue}
+              placeholder="model id"
+              // Send the raw value (incl. empty) — rune treats an empty model as
+              // "use the provider default". Sending undefined would be skipped by
+              // the main-process merge, making a clear a silent no-op.
+              onCommit={(v) => void onChange({ [modelField]: v, active_profile: '' })}
+            />
+          )
         )}
       </Section>
 
