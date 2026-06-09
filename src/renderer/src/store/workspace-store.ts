@@ -97,6 +97,21 @@ function ensureImagesTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [imagesTab, ...workspace.tabs] };
 }
 
+/** Ensure workspace has a pinned Sessions tab; returns the workspace */
+function ensureSessionsTab(workspace: Workspace): Workspace {
+  if (workspace.tabs.some((t) => t.type === 'sessions')) return workspace;
+  const cwd = workspace.tabs[0]?.cwd ?? '/';
+  const sessionsTab: Tab = {
+    id: generateId(),
+    label: 'Sessions',
+    labelIsCustom: true,
+    cwd,
+    type: 'sessions',
+    splitRoot: createLeaf(cwd)
+  };
+  return { ...workspace, tabs: [sessionsTab, ...workspace.tabs] };
+}
+
 /** Ensure workspace has a pinned Annotate tab; mutates and returns the workspace */
 function ensureAnnotateTab(workspace: Workspace): Workspace {
   if (workspace.tabs.some((t) => t.type === 'annotate')) return workspace;
@@ -207,6 +222,7 @@ type WorkspaceStore = {
 
   ensureImagesTab: () => void;
   ensureKanbanTab: () => void;
+  ensureSessionsTab: () => void;
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
@@ -904,6 +920,14 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   ensureKanbanTab: () => {
     set((state) => {
       const updated = ensureKanbanTab(state.workspace);
+      if (updated === state.workspace) return state;
+      return { workspace: updated, isDirty: true };
+    });
+  },
+
+  ensureSessionsTab: () => {
+    set((state) => {
+      const updated = ensureSessionsTab(state.workspace);
       if (updated === state.workspace) return state;
       return { workspace: updated, isDirty: true };
     });

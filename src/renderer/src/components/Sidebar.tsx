@@ -24,6 +24,7 @@ import { SidebarResizeHandle } from './SidebarResizeHandle';
 import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-constants';
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
+import { SessionsTabCard } from './sessions/SessionsTabCard';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -1200,7 +1201,8 @@ export function Sidebar({
                 t.type !== 'images' &&
                 t.type !== 'settings' &&
                 t.type !== 'annotate' &&
-                t.type !== 'kanban'
+                t.type !== 'kanban' &&
+                t.type !== 'sessions'
             );
 
             const rendered: React.ReactNode[] = [];
@@ -1365,7 +1367,11 @@ export function Sidebar({
 
       {/* Pinned tools section */}
       {workspace.tabs.some(
-        (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+        (t) =>
+          t.type === 'images' ||
+          t.type === 'annotate' ||
+          t.type === 'kanban' ||
+          t.type === 'sessions'
       ) && (
         <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
           <div className="flex items-center px-2 py-1">
@@ -1398,6 +1404,16 @@ export function Sidebar({
             .filter((tab) => tab.type === 'annotate')
             .map((tab) => (
               <AnnotateTabCard
+                key={tab.id}
+                isActive={tab.id === activeTabId}
+                onClick={() => setActiveTab(tab.id)}
+              />
+            ))}
+          {/* Sessions tab (pinned, not closeable) */}
+          {workspace.tabs
+            .filter((tab) => tab.type === 'sessions')
+            .map((tab) => (
+              <SessionsTabCard
                 key={tab.id}
                 isActive={tab.id === activeTabId}
                 onClick={() => setActiveTab(tab.id)}

@@ -170,6 +170,19 @@ export function createCommandRegistry(): Command[] {
         const kanban = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'kanban');
         if (kanban) ws.setActiveTab(kanban.id);
       }
+    },
+    {
+      id: 'open-sessions',
+      label: 'Open Sessions',
+      category: 'Tabs',
+      execute: () => {
+        const ws = useWorkspaceStore.getState();
+        ws.ensureSessionsTab();
+        const sessions = useWorkspaceStore
+          .getState()
+          .workspace.tabs.find((t) => t.type === 'sessions');
+        if (sessions) ws.setActiveTab(sessions.id);
+      }
     }
   ];
 }
