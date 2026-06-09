@@ -7,6 +7,7 @@ export default defineConfig({
     environment: 'node',
     include: [
       'src/main/__tests__/**/*.test.ts',
+      'src/main/**/__tests__/**/*.test.ts',
       'src/shared/__tests__/**/*.test.ts',
       'src/renderer/src/**/__tests__/**/*.test.ts',
       'src/renderer/copilot/src/**/__tests__/**/*.test.ts'
