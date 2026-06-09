@@ -39,3 +39,4 @@ npx electron-rebuild -f -w better-sqlite3
 
    So `npm test` and `npm run dev` each rebuild for their own ABI on the way in — no manual `electron-rebuild` step, no clobbering.
 4. **Bootstrap ordering is a latent footgun.** Registering IPC handlers as the last line after several `await`/throwable calls means any earlier failure silently strips the whole feature's IPC. Consider registering handlers early / wrapping risky bootstrap steps so one failure doesn't take down unrelated wiring.
+5. **(2026-06-09) The self-healing hooks have two bypasses.** `npx vitest run` skips the `pretest` hook (only `npm test` triggers it), and `electron-builder install-app-deps` can report "finished" while leaving a stale Node-ABI binary in place (its staleness check trusts a marker, not the actual ABI). When `npm run dev` still hits `NODE_MODULE_VERSION` after a rebuild "succeeded", force it: `./node_modules/.bin/electron-rebuild --force --module-dir . --which-module better-sqlite3`.

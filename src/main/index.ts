@@ -51,6 +51,7 @@ import { KanbanDispatcher } from './kanban/kanban-dispatcher';
 import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
+import { PmChatService } from './kanban/pm-chat-service';
 import { prepareWorkspace, ensureFeatureBranch } from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import {
@@ -83,6 +84,7 @@ let kanbanDispatcher: KanbanDispatcher | undefined;
 let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
+let pmChat: PmChatService | undefined;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -927,7 +929,7 @@ void app.whenReady().then(async () => {
         throw new Error(RUNE_NOT_INSTALLED_MESSAGE);
       }
       const runToken = randomUUID();
-      kanbanMcpRef.registerRun(runToken, { taskId: task.id, runId, mode }, lock);
+      kanbanMcpRef.registerRun(runToken, { kind: 'task', taskId: task.id, runId, mode }, lock);
       const profiles = settingsStore.get().kanban.profiles;
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
@@ -1039,7 +1041,23 @@ void app.whenReady().then(async () => {
     () => settingsStore.get().kanban.profiles
   );
   kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
-  registerKanbanIpc(kanbanCommands);
+  kanbanMcp.setCommands(kanbanCommands);
+  pmChat = new PmChatService({
+    mcp: kanbanMcp,
+    mcpPort: kanbanMcpPort,
+    kanbanHome: KANBAN_HOME,
+    emitStatus: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);
+      }
+    },
+    emitTranscript: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_TRANSCRIPT, payload);
+      }
+    }
+  });
+  registerKanbanIpc(kanbanCommands, pmChat);
 
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
@@ -1077,6 +1095,7 @@ function shutdownAll(): void {
   annotateService.destroy();
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
+  pmChat?.dispose();
   void kanbanMcp?.stop();
   kanbanStore?.close();
 }

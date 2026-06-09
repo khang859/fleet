@@ -3,18 +3,35 @@ import { URL } from 'url';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { RunMode, SwarmInput, SwarmCreated, Task } from '../../shared/kanban-types';
+import type { KanbanCommands } from './kanban-commands';
+import type {
+  CreateTaskInput,
+  RunMode,
+  SwarmInput,
+  SwarmCreated,
+  Task
+} from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 import { finalizeWorktree, reviewStat, checkMergeConflicts } from './workspace';
 
 const log = createLogger('kanban-mcp');
 
-interface RunScope {
+/** A worker/orchestrator run bound to one task. */
+interface TaskScope {
+  kind: 'task';
   taskId: string;
   runId: number;
   mode: RunMode;
 }
+
+/** A PM chat turn scoped to a whole board — no task, no run, no claim. */
+interface BoardScope {
+  kind: 'board';
+  boardId: string;
+}
+
+export type RunScope = TaskScope | BoardScope;
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -208,6 +225,136 @@ const SPECIFY_TOOLS: McpTool[] = [
   ...WORKER_TOOLS.filter((t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat')
 ];
 
+/** Statuses the PM may set — mirrors MANUAL_STATUSES (dispatcher owns `running`). */
+const PM_SETTABLE_STATUSES = [
+  'triage',
+  'todo',
+  'ready',
+  'blocked',
+  'review',
+  'done',
+  'archived'
+] as const;
+
+/**
+ * Board-scoped tools for the PM chat. Unlike worker tools there is no implicit
+ * "current task" — every task-touching tool takes an explicit task_id. Mutations
+ * route through KanbanCommands so the PM obeys the same validation as the UI
+ * (running tasks are dispatcher-owned, review is worktree-only, etc.).
+ */
+const PM_TOOLS: McpTool[] = [
+  {
+    name: 'kanban_list',
+    description: 'List the board tasks. Optional filters by status and assignee.',
+    inputSchema: {
+      type: 'object',
+      properties: { status: { type: 'string' }, assignee: { type: 'string' } }
+    }
+  },
+  {
+    name: 'kanban_show',
+    description: 'Show one task by id: title, body, status, comments, prior run summaries.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' } },
+      required: ['task_id']
+    }
+  },
+  {
+    name: 'kanban_create',
+    description:
+      'Create a task on the board. Status defaults to todo (use triage for ideas needing ' +
+      'refinement). Pass feature_id to group it under a feature, parents for dependencies.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        body: { type: 'string' },
+        assignee: { type: 'string' },
+        priority: { type: 'number' },
+        status: { type: 'string', enum: ['triage', 'todo', 'ready', 'blocked'] },
+        parents: { type: 'array', items: { type: 'string' } },
+        feature_id: { type: 'string' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'kanban_update',
+    description: 'Update a task by id: title, body, priority, and/or assignee.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        title: { type: 'string' },
+        body: { type: 'string' },
+        priority: { type: 'number' },
+        assignee: { type: 'string' }
+      },
+      required: ['task_id']
+    }
+  },
+  {
+    name: 'kanban_set_status',
+    description:
+      'Move a task to a new status (triage/todo/ready/blocked/review/done/archived). ' +
+      'Running tasks are dispatcher-owned and cannot be moved.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        status: { type: 'string', enum: [...PM_SETTABLE_STATUSES] }
+      },
+      required: ['task_id', 'status']
+    }
+  },
+  {
+    name: 'kanban_comment',
+    description: 'Append a durable comment to a task thread.',
+    inputSchema: {
+      type: 'object',
+      properties: { task_id: { type: 'string' }, body: { type: 'string' } },
+      required: ['task_id', 'body']
+    }
+  },
+  {
+    name: 'kanban_link',
+    description: 'Add a dependency link: child waits for parent to be done.',
+    inputSchema: {
+      type: 'object',
+      properties: { parent_id: { type: 'string' }, child_id: { type: 'string' } },
+      required: ['parent_id', 'child_id']
+    }
+  },
+  {
+    name: 'kanban_feature_create',
+    description:
+      'Create a feature (task grouping) on this board. Returns its id; pass it to ' +
+      'kanban_create as feature_id to group tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        repo_path: { type: 'string' },
+        base_branch: { type: 'string' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'kanban_assign_feature',
+    description: 'Set or clear (pass null) a task feature membership.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        task_id: { type: 'string' },
+        feature_id: { type: ['string', 'null'] }
+      },
+      required: ['task_id', 'feature_id']
+    }
+  }
+];
+
 function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'decompose') return DECOMPOSE_TOOLS;
   if (mode === 'specify') return SPECIFY_TOOLS;
@@ -221,6 +368,7 @@ export class KanbanMcpServer {
 
   private store: KanbanStore;
   private swarmHandler: ((input: SwarmInput) => SwarmCreated) | null = null;
+  private commands: KanbanCommands | null = null;
   private getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>>;
   constructor(
     store: KanbanStore,
@@ -235,10 +383,15 @@ export class KanbanMcpServer {
     this.swarmHandler = handler;
   }
 
+  /** Inject the command layer; PM (board-scoped) tools route through it for validation. */
+  setCommands(commands: KanbanCommands): void {
+    this.commands = commands;
+  }
+
   /** Register a per-run token; returns the token to embed in the worker's MCP url. */
-  registerRun(token: string, scope: RunScope, claimLock: string): void {
+  registerRun(token: string, scope: RunScope, claimLock?: string): void {
     this.runs.set(token, scope);
-    this.claimLocks.set(token, claimLock);
+    if (claimLock) this.claimLocks.set(token, claimLock);
   }
 
   unregisterRun(token: string): void {
@@ -317,6 +470,7 @@ export class KanbanMcpServer {
         return;
       case 'tools/list': {
         const scope = this.runs.get(token);
+        if (scope?.kind === 'board') return this.rpcResult(res, rpcReq.id, { tools: PM_TOOLS });
         return this.rpcResult(res, rpcReq.id, { tools: toolsForMode(scope?.mode ?? 'work') });
       }
       case 'tools/call':
@@ -359,6 +513,213 @@ export class KanbanMcpServer {
     return { ...feature };
   }
 
+  /** A task resolved by id, only if it lives on the PM scope's board. */
+  private pmTask(scope: BoardScope, id: string): Task | null {
+    const t = this.store.getTask(id);
+    return t && t.boardId === scope.boardId ? t : null;
+  }
+
+  /** Board-scoped (PM chat) tool dispatch. Mutations route through KanbanCommands. */
+  private handlePmToolCall(
+    res: ServerResponse,
+    rpcReq: JsonRpcRequest,
+    scope: BoardScope,
+    name: string,
+    args: Record<string, unknown>
+  ): void {
+    const commands = this.commands;
+    if (!commands) return this.rpcError(res, rpcReq.id, 'kanban commands are not available');
+    if (!PM_TOOLS.some((t) => t.name === name)) {
+      return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+    }
+    try {
+      switch (name) {
+        case 'kanban_list': {
+          const a = z
+            .object({ status: z.string().optional(), assignee: z.string().optional() })
+            .parse(args);
+          let rows = this.store.listBoard(scope.boardId);
+          if (a.status) rows = rows.filter((c) => c.status === a.status);
+          if (a.assignee) rows = rows.filter((c) => c.assignee === a.assignee);
+          const lines = rows.map(
+            (c) => `${c.id}\t${c.status}\tp${c.priority}\t${c.assignee ?? '-'}\t${c.title}`
+          );
+          return this.text(res, rpcReq.id, lines.join('\n') || '(no tasks)');
+        }
+        case 'kanban_show': {
+          const a = z.object({ task_id: z.string() }).parse(args);
+          const detail = commands.show(a.task_id);
+          if (!detail || detail.task.boardId !== scope.boardId) {
+            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          }
+          const { task, comments, runs } = detail;
+          const summaries = runs.filter((r) => r.summary);
+          const lines = [
+            `# ${task.title} (${task.id})`,
+            `status: ${task.status}  priority: ${task.priority}  assignee: ${task.assignee ?? '-'}`,
+            task.featureId ? `feature: ${task.featureId}` : '',
+            '',
+            task.body || '(no body)',
+            comments.length ? '## Comments' : '',
+            ...comments.map((c) => `- ${c.author}: ${c.body}`),
+            summaries.length ? '## Prior runs' : '',
+            ...summaries.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`)
+          ].filter(Boolean);
+          return this.text(res, rpcReq.id, lines.join('\n'));
+        }
+        case 'kanban_create': {
+          const a = z
+            .object({
+              title: z.string(),
+              body: z.string().optional(),
+              assignee: z.string().optional(),
+              priority: z.number().optional(),
+              status: z.enum(['triage', 'todo', 'ready', 'blocked']).optional(),
+              parents: z.array(z.string()).optional(),
+              feature_id: z.string().optional()
+            })
+            .parse(args);
+          // Same phantom-assignee guard as the orchestrator's kanban_create.
+          const assignee = a.assignee?.trim() || null;
+          const workerNames = this.getProfiles()
+            .filter((p) => p.role === 'worker')
+            .map((p) => p.name);
+          if (assignee && workerNames.length > 0 && !workerNames.includes(assignee)) {
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
+            );
+          }
+          // A feature carries the repo its member tasks work in; inherit it so the
+          // PM never needs folder config. Featureless PM tasks start as scratch.
+          let workspace: Partial<
+            Pick<CreateTaskInput, 'workspaceKind' | 'repoPath' | 'baseBranch'>
+          > = { workspaceKind: 'scratch' };
+          if (a.feature_id) {
+            const feature = this.store.getFeature(a.feature_id);
+            if (!feature || feature.boardId !== scope.boardId) {
+              return this.rpcError(
+                res,
+                rpcReq.id,
+                `feature not found on this board: ${a.feature_id}`
+              );
+            }
+            if (feature.repoPath) {
+              workspace = {
+                workspaceKind: 'worktree',
+                repoPath: feature.repoPath,
+                baseBranch: feature.baseBranch
+              };
+            }
+          }
+          for (const p of a.parents ?? []) {
+            if (!this.pmTask(scope, p)) {
+              return this.rpcError(res, rpcReq.id, `parent task not found on this board: ${p}`);
+            }
+          }
+          const task = commands.create({
+            title: a.title,
+            body: a.body ?? '',
+            assignee,
+            priority: a.priority ?? 0,
+            status: a.status ?? 'todo',
+            boardId: scope.boardId,
+            featureId: a.feature_id ?? null,
+            ...workspace
+          });
+          for (const p of a.parents ?? []) commands.link(p, task.id);
+          return this.text(res, rpcReq.id, task.id);
+        }
+        case 'kanban_update': {
+          const a = z
+            .object({
+              task_id: z.string(),
+              title: z.string().optional(),
+              body: z.string().optional(),
+              priority: z.number().optional(),
+              assignee: z.string().optional()
+            })
+            .parse(args);
+          const existing = this.pmTask(scope, a.task_id);
+          if (!existing) {
+            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          }
+          // A running worker reads its task via kanban_show mid-turn; editing it
+          // out from under the worker is dispatcher territory, same as status.
+          if (existing.status === 'running') {
+            return this.rpcError(res, rpcReq.id, 'cannot update a running task');
+          }
+          commands.update(a.task_id, {
+            title: a.title,
+            body: a.body,
+            priority: a.priority,
+            ...(a.assignee !== undefined ? { assignee: a.assignee.trim() || null } : {})
+          });
+          return this.text(res, rpcReq.id, 'Task updated.');
+        }
+        case 'kanban_set_status': {
+          const a = z
+            .object({ task_id: z.string(), status: z.enum(PM_SETTABLE_STATUSES) })
+            .parse(args);
+          if (!this.pmTask(scope, a.task_id)) {
+            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          }
+          commands.setManualStatus(a.task_id, a.status);
+          return this.text(res, rpcReq.id, `Task ${a.task_id} moved to ${a.status}.`);
+        }
+        case 'kanban_comment': {
+          const a = z.object({ task_id: z.string(), body: z.string() }).parse(args);
+          if (!this.pmTask(scope, a.task_id)) {
+            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          }
+          this.store.addComment(a.task_id, 'pm', a.body);
+          this.store.appendEvent(a.task_id, null, 'comment_added', { author: 'pm' });
+          return this.text(res, rpcReq.id, 'Comment added.');
+        }
+        case 'kanban_link': {
+          const a = z.object({ parent_id: z.string(), child_id: z.string() }).parse(args);
+          if (!this.pmTask(scope, a.parent_id) || !this.pmTask(scope, a.child_id)) {
+            return this.rpcError(res, rpcReq.id, 'both tasks must exist on this board');
+          }
+          commands.link(a.parent_id, a.child_id);
+          return this.text(res, rpcReq.id, 'Linked.');
+        }
+        case 'kanban_feature_create': {
+          const a = z
+            .object({
+              name: z.string(),
+              repo_path: z.string().optional(),
+              base_branch: z.string().optional()
+            })
+            .parse(args);
+          const feature = commands.createFeature({
+            boardId: scope.boardId,
+            name: a.name,
+            repoPath: a.repo_path ?? null,
+            baseBranch: a.base_branch ?? null
+          });
+          return this.text(res, rpcReq.id, feature.id);
+        }
+        case 'kanban_assign_feature': {
+          const a = z
+            .object({ task_id: z.string(), feature_id: z.union([z.string(), z.null()]) })
+            .parse(args);
+          if (!this.pmTask(scope, a.task_id)) {
+            return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
+          }
+          commands.assignTaskToFeature(a.task_id, a.feature_id);
+          return this.text(res, rpcReq.id, 'Feature membership updated.');
+        }
+        default:
+          return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return this.rpcError(res, rpcReq.id, msg);
+    }
+  }
+
   private handleToolCall(res: ServerResponse, rpcReq: JsonRpcRequest, token: string): void {
     const scope = this.runs.get(token);
     if (!scope) return this.rpcError(res, rpcReq.id, 'unknown or missing run token');
@@ -366,6 +727,7 @@ export class KanbanMcpServer {
     const params = rpcReq.params ?? {};
     const name = String(params.name ?? '');
     const args = (params.arguments ?? {}) as Record<string, unknown>;
+    if (scope.kind === 'board') return this.handlePmToolCall(res, rpcReq, scope, name, args);
     const task = this.store.getTask(scope.taskId);
     if (!task) return this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
     const author = task.assignee ?? 'worker';

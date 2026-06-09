@@ -1,5 +1,6 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
 import type { ShellProfile, WslDistroState } from './shell-profiles';
+import type { TranscriptMessage } from './sessions';
 import type {
   UpdateTaskFields,
   TaskStatus,
@@ -392,6 +393,30 @@ export type KanbanPruneWorktreeResult = {
 export type KanbanAssignTaskToFeatureRequest = {
   taskId: string;
   featureId: string | null;
+};
+
+export type PmChatSendRequest = {
+  boardId: string;
+  text: string;
+};
+
+/** Full PM chat state for one board, returned by kanban:pm-state. */
+export type PmChatState = {
+  boardId: string;
+  inFlight: boolean;
+  error: string | null;
+  messages: TranscriptMessage[];
+};
+
+export type PmChatStatusPayload = {
+  boardId: string;
+  status: 'thinking' | 'idle' | 'error';
+  error?: string;
+};
+
+export type PmChatTranscriptPayload = {
+  boardId: string;
+  messages: TranscriptMessage[];
 };
 
 export type {
