@@ -122,6 +122,7 @@ import type {
   EnvPathResult,
   EnvTrashResult
 } from '../shared/env-editor-types';
+import type { SessionAgent, SessionSummary, SessionTranscript } from '../shared/sessions';
 
 type Unsubscribe = () => void;
 
@@ -679,6 +680,16 @@ const fleetApi = {
       typedInvoke<EnvTrashResult>(IPC_CHANNELS.ENV_EDITOR_DELETE, absPath),
     restore: async (trashPath: string, absPath: string): Promise<{ ok: true }> =>
       typedInvoke<{ ok: true }>(IPC_CHANNELS.ENV_EDITOR_RESTORE, trashPath, absPath)
+  },
+  sessions: {
+    list: async (): Promise<SessionSummary[]> => typedInvoke(IPC_CHANNELS.SESSIONS_LIST),
+    read: async (args: {
+      agent: SessionAgent;
+      id: string;
+      cwd: string;
+    }): Promise<SessionTranscript | null> => typedInvoke(IPC_CHANNELS.SESSIONS_READ, args),
+    onChanged: (callback: () => void): Unsubscribe =>
+      onChannel<void>(IPC_CHANNELS.SESSIONS_CHANGED, () => callback())
   }
 };
 
