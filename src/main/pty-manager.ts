@@ -71,10 +71,13 @@ export class PtyManager {
           : opts.profile.pathContext.distro;
       // Pin the absolute System32 path rather than relying on PATH for wsl.exe.
       shell = wslExePath();
-      // Trailing `~` forces the WSL shell to land in $HOME, overriding the
-      // Windows cwd that node-pty passes to wsl.exe. Microsoft documents this
-      // pattern as `wsl ~`.
-      baseArgs = ['-d', distro, '~'];
+      // `--cd ~` lands the WSL shell in $HOME, overriding the Windows cwd that
+      // node-pty passes to wsl.exe. NOTE: a bare trailing `~` does NOT work here —
+      // with `-d <distro>` present, wsl.exe treats `~` as a *command* and the
+      // login shell tries to exec the home dir ("permission denied"). The
+      // `wsl ~` shorthand only applies to the bare invocation; with a distro
+      // selected we must use the documented `--cd` flag.
+      baseArgs = ['-d', distro, '--cd', '~'];
     } else if (opts.profile?.kind === 'system') {
       shell = opts.profile.command;
       baseArgs = [...opts.profile.args];

@@ -302,10 +302,11 @@ describe('PtyManager profile-aware spawn', () => {
         pathContext: { kind: 'wsl', distro: 'Ubuntu-22.04' }
       }
     });
-    // PtyManager pins the absolute System32 path rather than the bare `wsl.exe`.
+    // PtyManager pins the absolute System32 path and uses `--cd ~` (not a bare
+    // trailing `~`, which wsl.exe would run as a command) to start in $HOME.
     expect(ptyModule.spawn).toHaveBeenCalledWith(
       wslExePath(),
-      ['-d', 'Ubuntu-22.04', '~'],
+      ['-d', 'Ubuntu-22.04', '--cd', '~'],
       expect.objectContaining({ cwd: 'C:\\Users\\khang\\dev' })
     );
   });
