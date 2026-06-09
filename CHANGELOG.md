@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.62.0
+
+- **Sessions tool — browse and resume past agent conversations** — a new pinned **Sessions** tab in the Tools section gathers every past **Rune** and **Claude Code** session in one place, grouped by project and searchable. Click a session to read its full transcript in-app, then hit **Resume ▸** to continue it in a new terminal tab opened in the session's original folder. Filter the list by agent (All / Rune / Claude Code) and set a preferred default in Settings → Rune — it defaults to Rune and remembers your choice. The library refreshes live as sessions change on disk.
+
 ## v2.61.1
 
 - **Fix: WSL tabs failed to open with "zsh: permission denied"** — when WSL was your default shell, new tabs launched `wsl.exe -d <distro> ~`, where wsl.exe treats the trailing `~` as a command and the login shell tried to execute your home directory. Fleet now uses the documented `--cd ~` flag, so WSL tabs open in your home directory as expected. (This only surfaced after WSL distro detection was fixed in 2.60.0.)
