@@ -35,6 +35,7 @@ import { ImageGallery } from './components/ImageGallery/ImageGallery';
 import { AnnotateTab } from './components/AnnotateTab';
 import { PiTab } from './components/PiTab';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
+import { SessionsTab } from './components/sessions/SessionsTab';
 import { PiPlanModal } from './components/PiPlanModal';
 import { AnnotateModal } from './components/AnnotateModal';
 import { ToastContainer } from './components/ToastContainer';
@@ -881,6 +882,8 @@ export function App(): React.JSX.Element {
                       />
                     ) : tab.type === 'kanban' ? (
                       <KanbanBoard />
+                    ) : tab.type === 'sessions' ? (
+                      <SessionsTab />
                     ) : (
                       <PaneGrid
                         root={tab.splitRoot}
