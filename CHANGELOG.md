@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.65.0
+
+- **PM chat for the Kanban board** — a new "Board PM" panel (green PM button in the board toolbar) lets you manage the board by conversation: describe features, bugs, or a pile of ideas and the PM shapes them into well-scoped tickets, refines specs, sets priorities, links dependencies, groups work into features, and moves cards — live on the board as you chat. Powered by headless Rune (one session per board, persisted across restarts; requires Rune ≥ v0.6.0 for `--resume` with `--prompt`). The PM gets a board-scoped kanban toolset and obeys the same rules as the UI: it can't touch running tasks or other boards. Errors (Rune missing, provider auth, crashes) surface in the panel, and turns time out after 5 minutes.
+
 ## v2.64.0
 
 - **Choose which sidebar Tools are shown** — the sidebar Tools section (Annotate, Kanban, Images, Sessions) is now configurable. A sliders button in the Tools header (and in the collapsed mini-sidebar) opens a picker where each tool can be toggled on or off, with an enabled count shown in the header. Tools default to Annotate only; Kanban is available as Experimental, while Images and Sessions are opt-in. Enabling a tool pins its tab; disabling removes it. The preference is global and persists across restarts. Sessions also gains an icon in the collapsed mini-sidebar.
