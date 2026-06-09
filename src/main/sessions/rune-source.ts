@@ -1,7 +1,14 @@
 // src/main/sessions/rune-source.ts
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { basename, join } from 'node:path';
 import { z } from 'zod';
-import { basename } from 'node:path';
-import type { SessionSummary, SessionTranscript, TranscriptBlock, TranscriptMessage } from '../../shared/sessions';
+import type {
+  SessionSummary,
+  SessionTranscript,
+  TranscriptBlock,
+  TranscriptMessage
+} from '../../shared/sessions';
 
 const contentBlockSchema = z
   .object({
@@ -75,7 +82,7 @@ function toRole(role: string): TranscriptMessage['role'] {
   return 'tool';
 }
 
-function toBlocks(content: z.infer<typeof contentBlockSchema>[]): TranscriptBlock[] {
+function toBlocks(content: Array<z.infer<typeof contentBlockSchema>>): TranscriptBlock[] {
   return content.map((b): TranscriptBlock => {
     switch (b.type) {
       case 'text':
@@ -88,7 +95,12 @@ function toBlocks(content: z.infer<typeof contentBlockSchema>[]): TranscriptBloc
           id: b.id
         };
       case 'tool_result':
-        return { type: 'tool_result', toolCallId: b.tool_call_id, output: b.output ?? '', isError: b.is_error };
+        return {
+          type: 'tool_result',
+          toolCallId: b.tool_call_id,
+          output: b.output ?? '',
+          isError: b.is_error
+        };
       default:
         return { type: 'image' };
     }
@@ -119,9 +131,47 @@ export function readRuneTranscript(raw: unknown, updatedAt: number): SessionTran
   const summary = summarizeRune(raw, updatedAt);
   if (!summary) return null;
   const session = runeSessionSchema.parse(raw);
-  const messages = activePath(session).map((node): TranscriptMessage => ({
-    role: toRole(node.message!.role),
-    blocks: toBlocks(node.message!.content)
-  }));
+  const messages = activePath(session).map(
+    (node): TranscriptMessage => ({
+      role: toRole(node.message!.role),
+      blocks: toBlocks(node.message!.content)
+    })
+  );
   return { summary, messages };
+}
+
+export function runeSessionsDir(): string {
+  const base =
+    process.env.RUNE_DIR && process.env.RUNE_DIR.length > 0
+      ? process.env.RUNE_DIR
+      : join(homedir(), '.rune');
+  return join(base, 'sessions');
+}
+
+export async function listRuneSessions(): Promise<SessionSummary[]> {
+  const dir = runeSessionsDir();
+  let files: string[];
+  try {
+    files = (await readdir(dir)).filter((f) => f.endsWith('.json'));
+  } catch {
+    return []; // dir may not exist
+  }
+  const out: SessionSummary[] = [];
+  for (const file of files) {
+    try {
+      const full = join(dir, file);
+      const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+      const summary = summarizeRune(JSON.parse(raw), st.mtimeMs);
+      if (summary) out.push(summary);
+    } catch {
+      // skip malformed file
+    }
+  }
+  return out;
+}
+
+export async function readRuneSession(id: string): Promise<SessionTranscript | null> {
+  const full = join(runeSessionsDir(), `${id}.json`);
+  const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+  return readRuneTranscript(JSON.parse(raw), st.mtimeMs);
 }

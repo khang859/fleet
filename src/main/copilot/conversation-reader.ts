@@ -13,7 +13,7 @@ type SessionParseState = {
   seenToolIds: Set<string>;
 };
 
-function cwdToProjectDir(cwd: string): string {
+export function cwdToProjectDir(cwd: string): string {
   return cwd.replace(/[/.]/g, '-');
 }
 
