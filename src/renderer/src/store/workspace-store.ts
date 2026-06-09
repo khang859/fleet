@@ -883,7 +883,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
         : undefined) ??
       migrated.tabs.find(
-        (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+        (t) =>
+          t.type !== 'images' &&
+          t.type !== 'annotate' &&
+          t.type !== 'kanban' &&
+          t.type !== 'sessions'
       ) ??
       migrated.tabs[0];
 
@@ -960,7 +964,11 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           ? migrated.tabs.find((t) => t.id === migrated.activeTabId)
           : undefined) ??
         migrated.tabs.find(
-          (t) => t.type !== 'images' && t.type !== 'annotate' && t.type !== 'kanban'
+          (t) =>
+            t.type !== 'images' &&
+            t.type !== 'annotate' &&
+            t.type !== 'kanban' &&
+            t.type !== 'sessions'
         ) ??
         migrated.tabs[0];
 

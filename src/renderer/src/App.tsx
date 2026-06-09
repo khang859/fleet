@@ -658,7 +658,8 @@ export function App(): React.JSX.Element {
                   t.type !== 'images' &&
                   t.type !== 'settings' &&
                   t.type !== 'annotate' &&
-                  t.type !== 'kanban'
+                  t.type !== 'kanban' &&
+                  t.type !== 'sessions'
               )
               .map((tab) => {
                 const isActive = tab.id === activeTabId;

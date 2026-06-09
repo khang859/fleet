@@ -8,14 +8,15 @@ function sc(id: string): ShortcutDef {
   return ALL_SHORTCUTS.find((s) => s.id === id)!;
 }
 
-/** Filter out pinned/special tabs (Kanban, Images, Annotate, Settings) — used for Cmd+1-9 tab switching */
+/** Filter out pinned/special tabs (Kanban, Images, Annotate, Sessions, Settings) — used for Cmd+1-9 tab switching */
 export function getNormalTabs<T extends { type?: string }>(tabs: T[]): T[] {
   return tabs.filter(
     (t) =>
       t.type !== 'images' &&
       t.type !== 'settings' &&
       t.type !== 'annotate' &&
-      t.type !== 'kanban'
+      t.type !== 'kanban' &&
+      t.type !== 'sessions'
   );
 }
 
