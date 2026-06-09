@@ -27,16 +27,28 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
     // If a session is open and still present, refresh its transcript.
     const sel = get().selected;
     if (sel && sessions.some((s) => s.agent === sel.agent && s.id === sel.id)) {
-      const transcript = await window.fleet.sessions.read(sel);
-      set({ transcript });
+      try {
+        const transcript = await window.fleet.sessions.read(sel);
+        const cur = get().selected;
+        if (cur?.id === sel.id && cur?.agent === sel.agent) set({ transcript });
+      } catch {
+        // ignore refresh failure; keep existing transcript
+      }
     }
   },
 
   select: async (s) => {
     const selected = { agent: s.agent, id: s.id, cwd: s.cwd };
     set({ selected, isLoadingTranscript: true, transcript: null });
-    const transcript = await window.fleet.sessions.read(selected);
-    // Ignore if the user selected something else meanwhile.
-    if (get().selected?.id === s.id) set({ transcript, isLoadingTranscript: false });
+    try {
+      const transcript = await window.fleet.sessions.read(selected);
+      const cur = get().selected;
+      if (cur?.id === s.id && cur?.agent === s.agent) {
+        set({ transcript, isLoadingTranscript: false });
+      }
+    } catch {
+      const cur = get().selected;
+      if (cur?.id === s.id && cur?.agent === s.agent) set({ isLoadingTranscript: false });
+    }
   }
 }));

@@ -381,11 +381,13 @@ export function App(): React.JSX.Element {
           addTab(undefined, window.fleet.homeDir);
           useWorkspaceStore.getState().ensureImagesTab();
           useWorkspaceStore.getState().ensureKanbanTab();
+          useWorkspaceStore.getState().ensureSessionsTab();
         }
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
         useWorkspaceStore.getState().ensureImagesTab();
         useWorkspaceStore.getState().ensureKanbanTab();
+        useWorkspaceStore.getState().ensureSessionsTab();
       }
 
       // Load all other saved workspaces into background so their PTYs warm up

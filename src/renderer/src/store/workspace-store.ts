@@ -875,7 +875,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         };
       });
     const migrated = ensureKanbanTab(
-      ensureAnnotateTab(ensureImagesTab({ ...workspace, tabs: migratedTabs }))
+      ensureAnnotateTab(ensureImagesTab(ensureSessionsTab({ ...workspace, tabs: migratedTabs })))
     );
 
     const restoredTab =
@@ -952,7 +952,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           };
         });
       const migrated = ensureKanbanTab(
-        ensureAnnotateTab(ensureImagesTab({ ...target, tabs: migratedTabs }))
+        ensureAnnotateTab(ensureImagesTab(ensureSessionsTab({ ...target, tabs: migratedTabs })))
       );
 
       const restoredTab =
