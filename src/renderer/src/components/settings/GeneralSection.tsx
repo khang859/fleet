@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSettingsStore } from '../../store/settings-store';
+import { useShellProfilesStore } from '../../store/shell-profiles-store';
 import { useDebouncedCallback } from '../../hooks/use-debounced-callback';
 import { SettingRow } from './SettingRow';
 import type { FontSelection, TerminalBackground } from '../../../../shared/types';
@@ -134,6 +135,19 @@ function FontFamilyPicker({
 
 export function GeneralSection(): React.JSX.Element {
   const { settings, updateSettings } = useSettingsStore();
+  const shellProfiles = useShellProfilesStore((s) => s.profiles);
+
+  // Profiles normally load at app startup; ensure they're present if Settings is
+  // the first thing to need them.
+  useEffect(() => {
+    void useShellProfilesStore.getState().load();
+  }, []);
+
+  const handleDefaultProfileChange = async (profileId: string): Promise<void> => {
+    await updateSettings({ general: { defaultShellProfileId: profileId } });
+    // Re-resolve the default so new tabs honor the change without a restart.
+    await useShellProfilesStore.getState().refresh();
+  };
 
   const [localShell, setLocalShell] = useState(settings?.general.defaultShell ?? '');
   const [localFontSize, setLocalFontSize] = useState(
@@ -214,6 +228,24 @@ export function GeneralSection(): React.JSX.Element {
           className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 w-48 border border-fleet-border-strong"
         />
       </SettingRow>
+      {shellProfiles.length > 0 && (
+        <SettingRow label="Default Profile">
+          <select
+            value={settings.general.defaultShellProfileId}
+            onChange={(e) => {
+              void handleDefaultProfileChange(e.target.value);
+            }}
+            className="bg-fleet-surface-2 text-fleet-text text-sm rounded px-2 py-1 border border-fleet-border-strong"
+          >
+            <option value="">(auto-detect)</option>
+            {shellProfiles.map((profile) => (
+              <option key={profile.id} value={profile.id}>
+                {profile.label}
+              </option>
+            ))}
+          </select>
+        </SettingRow>
+      )}
       <SettingRow label="Font Size">
         <input
           type="number"
