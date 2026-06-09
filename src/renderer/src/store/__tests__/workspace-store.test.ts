@@ -76,6 +76,13 @@ const WS_C: Workspace = {
 };
 
 beforeEach(() => {
+  // setToolVisible persists visibility through the settings bridge with a
+  // fire-and-forget updateSettings; the bare window.fleet stub from test-setup
+  // would make that call reject unhandled and fail the run.
+  (window.fleet as { settings: unknown }).settings = {
+    set: async () => undefined,
+    get: async () => ({})
+  };
   useWorkspaceStore.setState({
     workspace: WS_A,
     backgroundWorkspaces: new Map(),
