@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.64.0
+
+- **Choose which sidebar Tools are shown** — the sidebar Tools section (Annotate, Kanban, Images, Sessions) is now configurable. A sliders button in the Tools header (and in the collapsed mini-sidebar) opens a picker where each tool can be toggled on or off, with an enabled count shown in the header. Tools default to Annotate only; Kanban is available as Experimental, while Images and Sessions are opt-in. Enabling a tool pins its tab; disabling removes it. The preference is global and persists across restarts. Sessions also gains an icon in the collapsed mini-sidebar.
+
 ## v2.63.0
 
 - **Branch/DAG tree visualization for Rune sessions** — Rune persists each session as a branching graph (forks, clones, compaction), but the Sessions tool only ever showed the active path. A new collapsible tree rail in the transcript pane renders the full graph in `git log --graph` style: the active branch is marked, compaction nodes are badged, and per-node role/time/token-usage show on hover. Clicking a branch shows that path's transcript. Session-level subagents are surfaced in the rail. Single-branch Rune sessions and all Claude Code sessions keep the existing linear view.
