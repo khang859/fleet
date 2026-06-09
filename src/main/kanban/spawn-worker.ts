@@ -208,6 +208,11 @@ export function detectAuthFailure(logPath: string): boolean {
   return AUTH_FAILURE_RE.test(readLogTail(logPath));
 }
 
+/** Same auth/credential check for output already held in memory (PM chat stderr). */
+export function isAuthFailureText(text: string): boolean {
+  return AUTH_FAILURE_RE.test(text);
+}
+
 /**
  * Extracts the most recent rune `[error: …]` marker from a worker log — the
  * fatal provider/runtime error rune prints before dying (auth, a 4xx like

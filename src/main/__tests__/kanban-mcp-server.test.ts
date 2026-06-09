@@ -4,6 +4,8 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
 import { KanbanMcpServer } from '../kanban/kanban-mcp-server';
+import { KanbanDispatcher } from '../kanban/kanban-dispatcher';
+import { KanbanCommands } from '../kanban/kanban-commands';
 import { createSwarm } from '../kanban/kanban-swarm';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-mcp-test-${Date.now()}`);
@@ -65,7 +67,7 @@ describe('KanbanMcpServer', () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
     store.claimTask(t.id, 'LOCK', 100000);
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tok1', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok1', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
 
     const r = await rpc(`${base}?run=tok1`, 'tools/call', {
       name: 'kanban_complete',
@@ -82,7 +84,7 @@ describe('KanbanMcpServer', () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
     store.claimTask(t.id, 'LOCK', 100000);
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tok2', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok2', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     await rpc(`${base}?run=tok2`, 'tools/call', {
       name: 'kanban_block',
       arguments: { reason: 'review-required: see comment' }
@@ -93,7 +95,7 @@ describe('KanbanMcpServer', () => {
   it('kanban_comment appends a comment authored by the assignee', async () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'researcher' });
     const run = store.startRun(t.id, 'researcher', 1);
-    server.registerRun('tok3', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok3', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     await rpc(`${base}?run=tok3`, 'tools/call', {
       name: 'kanban_comment',
       arguments: { body: 'progress note' }
@@ -108,7 +110,7 @@ describe('KanbanMcpServer', () => {
     store.claimTask(t.id, 'LOCK', 1000);
     const before = store.getTask(t.id)?.claimExpires ?? 0;
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tok4', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok4', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     await rpc(`${base}?run=tok4`, 'tools/call', { name: 'kanban_heartbeat', arguments: {} });
     const after = store.getTask(t.id)?.claimExpires ?? 0;
     expect(after).toBeGreaterThanOrEqual(before);
@@ -122,7 +124,7 @@ describe('KanbanMcpServer', () => {
       assignee: 'r'
     });
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tok5', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok5', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     const r = await rpc(`${base}?run=tok5`, 'tools/call', { name: 'kanban_show', arguments: {} });
     expect(r.result.content[0].text).toMatch(/My task/);
     expect(r.result.content[0].text).toMatch(/do the thing/);
@@ -131,7 +133,7 @@ describe('KanbanMcpServer', () => {
   it('writes a task_event for each tool call', async () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tok6', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tok6', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     await rpc(`${base}?run=tok6`, 'tools/call', {
       name: 'kanban_comment',
       arguments: { body: 'x' }
@@ -144,7 +146,7 @@ describe('KanbanMcpServer', () => {
     const t = store.createTask({ title: 'x', status: 'ready', assignee: 'r' });
     store.claimTask(t.id, 'LOCK', 100000);
     const run = store.startRun(t.id, 'r', 1);
-    server.registerRun('tokX', { taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tokX', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'LOCK');
     await rpc(`${base}?run=tokX`, 'tools/call', {
       name: 'kanban_complete',
       arguments: { summary: 's' }
@@ -158,7 +160,7 @@ describe('KanbanMcpServer', () => {
   it('tools/list returns decompose tools for a decompose-mode token', async () => {
     const t = store.createTask({ title: 'big', status: 'running' });
     const run = store.startRun(t.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('dtok', { taskId: t.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('dtok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=dtok`, 'tools/list');
     const names = r.result.tools.map((x: { name: string }) => x.name);
     expect(names).toContain('kanban_create');
@@ -170,7 +172,7 @@ describe('KanbanMcpServer', () => {
   it('a worker-mode token cannot call kanban_create', async () => {
     const t = store.createTask({ title: 'x', status: 'running', assignee: 'r' });
     const run = store.startRun(t.id, 'r', 1, 'work');
-    server.registerRun('wtok', { taskId: t.id, runId: run.id, mode: 'work' }, 'L');
+    server.registerRun('wtok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'work' }, 'L');
     const r = await rpc(`${base}?run=wtok`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child' }
@@ -181,7 +183,7 @@ describe('KanbanMcpServer', () => {
   it('kanban_create makes a todo child linked to the orchestrator task', async () => {
     const parent = store.createTask({ title: 'big', status: 'running' });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('dtok2', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('dtok2', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=dtok2`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child task', assignee: 'default' }
@@ -198,7 +200,7 @@ describe('KanbanMcpServer', () => {
     store.createBoard('Research');
     const parent = store.createTask({ title: 'p', status: 'running', boardId: 'research' });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('btok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('btok', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=btok`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child' }
@@ -216,7 +218,7 @@ describe('KanbanMcpServer', () => {
       repoPath: '/src/myrepo'
     });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('itok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('itok', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=itok`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child' }
@@ -230,7 +232,7 @@ describe('KanbanMcpServer', () => {
   it('kanban_create leaves children as scratch when the parent is not a worktree', async () => {
     const parent = store.createTask({ title: 'big', status: 'running' });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('itok2', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('itok2', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=itok2`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child' }
@@ -249,7 +251,7 @@ describe('KanbanMcpServer', () => {
       // repoPath intentionally omitted
     });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('itok3', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('itok3', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=itok3`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child' }
@@ -264,7 +266,7 @@ describe('KanbanMcpServer', () => {
     const parent = store.createTask({ title: 'big', status: 'running' });
     const dep = store.createTask({ title: 'dep', status: 'todo' });
     const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-    server.registerRun('dtok3', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+    server.registerRun('dtok3', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
     const r = await rpc(`${base}?run=dtok3`, 'tools/call', {
       name: 'kanban_create',
       arguments: { title: 'child', parents: [dep.id] }
@@ -276,7 +278,7 @@ describe('KanbanMcpServer', () => {
   it('kanban_update (specify) rewrites the body and returns the task to todo', async () => {
     const t = store.createTask({ title: 'vague', body: 'old', status: 'running' });
     const run = store.startRun(t.id, 'orchestrator', 1, 'specify');
-    server.registerRun('stok', { taskId: t.id, runId: run.id, mode: 'specify' }, 'L');
+    server.registerRun('stok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'specify' }, 'L');
     const r = await rpc(`${base}?run=stok`, 'tools/call', {
       name: 'kanban_update',
       arguments: { title: 'clear title', body: 'a much fuller spec' }
@@ -300,7 +302,7 @@ describe('KanbanMcpServer', () => {
     store.setStatus(workerId, 'ready');
     store.claimTask(workerId, 'LOCK', 100000);
     const run = store.startRun(workerId, 'w', 1);
-    server.registerRun('toksw', { taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('toksw', { kind: 'task', taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
 
     const post = await rpc(`${base}?run=toksw`, 'tools/call', {
       name: 'kanban_swarm_post',
@@ -328,7 +330,7 @@ describe('KanbanMcpServer', () => {
     store.setStatus(workerId, 'ready');
     store.claimTask(workerId, 'LOCK', 100000);
     const run = store.startRun(workerId, 'w', 1);
-    server.registerRun('tokres', { taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tokres', { kind: 'task', taskId: workerId, runId: run.id, mode: 'work' }, 'LOCK');
     const r = await rpc(`${base}?run=tokres`, 'tools/call', {
       name: 'kanban_swarm_post',
       arguments: { root: created.rootId, key: '_authors', value: 'x' }
@@ -351,7 +353,7 @@ describe('KanbanMcpServer', () => {
     });
     store.claimTask(orch.id, 'LOCK', 100000);
     const run = store.startRun(orch.id, 'orchestrator', 1);
-    server.registerRun('tokorch', { taskId: orch.id, runId: run.id, mode: 'decompose' }, 'LOCK');
+    server.registerRun('tokorch', { kind: 'task', taskId: orch.id, runId: run.id, mode: 'decompose' }, 'LOCK');
 
     const r = await rpc(`${base}?run=tokorch`, 'tools/call', {
       name: 'kanban_swarm',
@@ -379,7 +381,7 @@ describe('KanbanMcpServer', () => {
       const url = `http://127.0.0.1:${port}/mcp`;
       const parent = store.createTask({ title: 'big', status: 'running' });
       const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-      profiled.registerRun('ptok', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      profiled.registerRun('ptok', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
       const r = await rpc(`${url}?run=ptok`, 'tools/call', {
         name: 'kanban_create',
         arguments: { title: 'child', assignee: 'backend-dev' }
@@ -403,7 +405,7 @@ describe('KanbanMcpServer', () => {
       const url = `http://127.0.0.1:${port}/mcp`;
       const parent = store.createTask({ title: 'big', status: 'running' });
       const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-      profiled.registerRun('ptok2', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      profiled.registerRun('ptok2', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
       const r = await rpc(`${url}?run=ptok2`, 'tools/call', {
         name: 'kanban_create',
         arguments: { title: 'child', assignee: 'orchestrator' }
@@ -422,7 +424,7 @@ describe('KanbanMcpServer', () => {
       const url = `http://127.0.0.1:${port}/mcp`;
       const parent = store.createTask({ title: 'big', status: 'running' });
       const run = store.startRun(parent.id, 'orchestrator', 1, 'decompose');
-      profiled.registerRun('ptok3', { taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
+      profiled.registerRun('ptok3', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' }, 'L');
       const r = await rpc(`${url}?run=ptok3`, 'tools/call', {
         name: 'kanban_create',
         arguments: { title: 'child', assignee: 'researcher' }
@@ -438,7 +440,7 @@ describe('KanbanMcpServer', () => {
     const plain = store.createTask({ title: 'plain', status: 'ready', assignee: 'r' });
     store.claimTask(plain.id, 'LOCK', 100000);
     const run = store.startRun(plain.id, 'r', 1);
-    server.registerRun('tokplain', { taskId: plain.id, runId: run.id, mode: 'work' }, 'LOCK');
+    server.registerRun('tokplain', { kind: 'task', taskId: plain.id, runId: run.id, mode: 'work' }, 'LOCK');
 
     const r = await rpc(`${base}?run=tokplain`, 'tools/call', {
       name: 'kanban_swarm_read',
@@ -446,5 +448,158 @@ describe('KanbanMcpServer', () => {
     });
     expect(r.error).toBeTruthy();
     expect(String(r.error.message)).toMatch(/not a swarm root/i);
+  });
+});
+
+describe('KanbanMcpServer board scope (PM chat)', () => {
+  let store: KanbanStore;
+  let server: KanbanMcpServer;
+  let base: string;
+
+  beforeEach(async () => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(join(TEST_DIR, `pm-${Math.random().toString(36).slice(2)}.db`));
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 0,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        maxDecompose: 1,
+        artifactRetentionDays: 0
+      }
+    });
+    const commands = new KanbanCommands(store, dispatcher, () => ({
+      workspaceKind: 'scratch',
+      maxRuntimeSeconds: null
+    }));
+    server = new KanbanMcpServer(store);
+    server.setCommands(commands);
+    server.registerRun('pmtok', { kind: 'board', boardId: 'default' });
+    const port = await server.start(0);
+    base = `http://127.0.0.1:${port}/mcp`;
+  });
+
+  afterEach(async () => {
+    await server.stop();
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('lists PM tools for a board token (no worker terminal tools)', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/list');
+    const names = r.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain('kanban_create');
+    expect(names).toContain('kanban_set_status');
+    expect(names).toContain('kanban_feature_create');
+    expect(names).not.toContain('kanban_complete');
+    expect(names).not.toContain('kanban_block');
+    expect(names).not.toContain('kanban_swarm');
+  });
+
+  it('kanban_create makes a scratch todo task on the scoped board', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'PM made this', body: 'spec', priority: 2 }
+    });
+    const id = String(r.result.content[0].text).trim();
+    const task = store.getTask(id);
+    expect(task?.title).toBe('PM made this');
+    expect(task?.status).toBe('todo');
+    expect(task?.priority).toBe(2);
+    expect(task?.boardId).toBe('default');
+    expect(task?.workspaceKind).toBe('scratch');
+  });
+
+  it('kanban_create links listed parents', async () => {
+    const parent = store.createTask({ title: 'parent', status: 'todo' });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'child', parents: [parent.id] }
+    });
+    const id = String(r.result.content[0].text).trim();
+    expect(store.parentsOf(id)).toContain(parent.id);
+  });
+
+  it('kanban_set_status moves a task but refuses running tasks', async () => {
+    const t = store.createTask({ title: 'm', status: 'todo' });
+    const ok = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_set_status',
+      arguments: { task_id: t.id, status: 'ready' }
+    });
+    expect(ok.error).toBeFalsy();
+    expect(store.getTask(t.id)?.status).toBe('ready');
+
+    const running = store.createTask({ title: 'r', status: 'running' });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_set_status',
+      arguments: { task_id: running.id, status: 'todo' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/running/i);
+  });
+
+  it('kanban_update edits title and priority of any board task', async () => {
+    const t = store.createTask({ title: 'old', status: 'todo' });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: t.id, title: 'new', priority: 5 }
+    });
+    expect(r.error).toBeFalsy();
+    const after = store.getTask(t.id);
+    expect(after?.title).toBe('new');
+    expect(after?.priority).toBe(5);
+  });
+
+  it('rejects tasks on a different board', async () => {
+    const other = store.createBoard('Other Board');
+    const t = store.createTask({ title: 'elsewhere', status: 'todo', boardId: other.slug });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_set_status',
+      arguments: { task_id: t.id, status: 'ready' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/not found on this board/i);
+  });
+
+  it('kanban_feature_create + kanban_create with feature_id inherit the feature repo', async () => {
+    const f = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_feature_create',
+      arguments: { name: 'Login flow', repo_path: '/tmp/some-repo', base_branch: 'main' }
+    });
+    const featureId = String(f.result.content[0].text).trim();
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'Add login form', feature_id: featureId }
+    });
+    const id = String(r.result.content[0].text).trim();
+    const task = store.getTask(id);
+    expect(task?.featureId).toBe(featureId);
+    expect(task?.workspaceKind).toBe('worktree');
+    expect(task?.repoPath).toBe('/tmp/some-repo');
+  });
+
+  it('worker tools are rejected on a board token', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_complete',
+      arguments: { summary: 'nope' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/unknown tool/i);
+  });
+
+  it('kanban_update refuses running tasks', async () => {
+    const t = store.createTask({ title: 'busy', status: 'running' });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: t.id, title: 'hijacked' }
+    });
+    expect(r.error).toBeTruthy();
+    expect(String(r.error.message)).toMatch(/running/i);
+    expect(store.getTask(t.id)?.title).toBe('busy');
   });
 });

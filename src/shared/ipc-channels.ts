@@ -204,6 +204,11 @@ export const IPC_CHANNELS = {
   KANBAN_LIST_WORKTREES: 'kanban:list-worktrees',
   KANBAN_PRUNE_WORKTREE: 'kanban:prune-worktree',
   KANBAN_PRUNE_MERGED_WORKTREES: 'kanban:prune-merged-worktrees',
+  KANBAN_PM_SEND: 'kanban:pm-send',
+  KANBAN_PM_STATE: 'kanban:pm-state',
+  KANBAN_PM_RESET: 'kanban:pm-reset',
+  KANBAN_PM_STATUS: 'kanban:pm-status',
+  KANBAN_PM_TRANSCRIPT: 'kanban:pm-transcript',
   // Sessions
   SESSIONS_LIST: 'sessions:list',
   SESSIONS_READ: 'sessions:read',

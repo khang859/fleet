@@ -59,7 +59,11 @@ import type {
   KanbanUpdateFeatureRequest,
   KanbanAssignTaskToFeatureRequest,
   KanbanConflictResult,
-  KanbanPruneWorktreeResult
+  KanbanPruneWorktreeResult,
+  PmChatSendRequest,
+  PmChatState,
+  PmChatStatusPayload,
+  PmChatTranscriptPayload
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -619,7 +623,17 @@ const fleetApi = {
     pruneWorktree: async (taskId: string): Promise<KanbanPruneWorktreeResult> =>
       typedInvoke<KanbanPruneWorktreeResult>(IPC_CHANNELS.KANBAN_PRUNE_WORKTREE, taskId),
     pruneMergedWorktrees: async (boardId: string): Promise<PruneResult> =>
-      typedInvoke<PruneResult>(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, boardId)
+      typedInvoke<PruneResult>(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, boardId),
+    pmSend: async (req: PmChatSendRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_PM_SEND, req),
+    pmState: async (boardId: string): Promise<PmChatState> =>
+      typedInvoke<PmChatState>(IPC_CHANNELS.KANBAN_PM_STATE, boardId),
+    pmReset: async (boardId: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_PM_RESET, boardId),
+    onPmStatus: (callback: (payload: PmChatStatusPayload) => void): Unsubscribe =>
+      onChannel<PmChatStatusPayload>(IPC_CHANNELS.KANBAN_PM_STATUS, callback),
+    onPmTranscript: (callback: (payload: PmChatTranscriptPayload) => void): Unsubscribe =>
+      onChannel<PmChatTranscriptPayload>(IPC_CHANNELS.KANBAN_PM_TRANSCRIPT, callback)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>

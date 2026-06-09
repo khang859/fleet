@@ -4,6 +4,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-channels';
 import { createLogger } from '../logger';
 import { readArtifactPreview } from './artifact-files';
 import type { KanbanCommands } from './kanban-commands';
+import type { PmChatService } from './pm-chat-service';
 import type {
   CreateTaskInput,
   TaskDetail,
@@ -34,12 +35,13 @@ import type {
   KanbanArtifactPreviewResponse,
   KanbanReuseArtifactRequest,
   KanbanCreateTaskFromArtifactRequest,
-  KanbanCreateSwarmFromArtifactRequest
+  KanbanCreateSwarmFromArtifactRequest,
+  PmChatSendRequest
 } from '../../shared/ipc-api';
 
 const log = createLogger('kanban-ipc');
 
-export function registerKanbanIpc(commands: KanbanCommands): void {
+export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatService): void {
   ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_BOARD, (_e, boardSlug?: string) =>
     commands.list({ boardSlug })
   );
@@ -319,6 +321,18 @@ export function registerKanbanIpc(commands: KanbanCommands): void {
   ipcMain.handle(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, (_e, boardId: string) =>
     commands.pruneMergedWorktrees(boardId)
   );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PM_SEND, (_e, req: PmChatSendRequest) => {
+    pmChat.sendMessage(req.boardId, req.text);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PM_STATE, async (_e, boardId: string) =>
+    pmChat.getState(boardId)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_PM_RESET, (_e, boardId: string) => {
+    pmChat.reset(boardId);
+  });
 
   log.info('kanban IPC handlers registered');
 }

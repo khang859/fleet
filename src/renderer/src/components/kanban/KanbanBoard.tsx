@@ -12,9 +12,12 @@ import {
   KanbanSquare,
   Package,
   Layers,
-  GitBranch
+  GitBranch,
+  Bot
 } from 'lucide-react';
 import { SwarmModal } from './SwarmModal';
+import { PmChatPanel } from './PmChatPanel';
+import { usePmChatStore } from '../../store/pm-chat-store';
 import { ArtifactsView } from './ArtifactsView';
 import { RuneMissingBanner } from './RuneMissingBanner';
 import { FeatureSelector } from './FeatureSelector';
@@ -47,6 +50,8 @@ export function KanbanBoard(): React.JSX.Element {
     setFocusedFeature
   } = useKanbanStore();
   const focusedFeature = features.find((f) => f.id === selectedFeatureId) ?? null;
+  const pmOpen = usePmChatStore((s) => s.panelOpen);
+  const togglePm = usePmChatStore((s) => s.togglePanel);
   const [view, setView] = useState<'board' | 'artifacts' | 'features' | 'worktrees'>('board');
   const [search, setSearch] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState<string>('');
@@ -355,6 +360,17 @@ export function KanbanBoard(): React.JSX.Element {
                 <Zap size={12} /> Nudge
               </button>
               <button
+                onClick={togglePm}
+                className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
+                  pmOpen
+                    ? 'bg-emerald-700 text-white'
+                    : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                }`}
+                title="Chat with the board PM to shape and create tickets"
+              >
+                <Bot size={12} /> PM
+              </button>
+              <button
                 onClick={() => setSwarming(true)}
                 className="inline-flex items-center gap-1 rounded bg-purple-600 px-2 py-1 text-xs text-white transition active:scale-[0.97] hover:bg-purple-500"
                 title="Create a swarm: workers → verifier → synthesizer"
@@ -573,6 +589,7 @@ export function KanbanBoard(): React.JSX.Element {
           </div>
 
           {openTaskId && <KanbanDrawer />}
+          {pmOpen && <PmChatPanel boardId={activeBoardSlug} shiftLeft={openTaskId !== null} />}
 
           <SwarmModal
             open={swarming}
