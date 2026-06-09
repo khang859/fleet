@@ -3,6 +3,7 @@ import type { WorkspaceKind } from './kanban-types';
 import type { KanbanNotifySettings } from './kanban-notifications';
 import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
 import type { SessionAgentFilter } from './sessions';
+import type { ToolVisibility } from './tools';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -257,6 +258,8 @@ export type FleetSettings = {
     /** Default + persisted agent filter for the Sessions tool. */
     preferredAgent: SessionAgentFilter;
   };
+  /** Which sidebar Tools are visible. Disabled tools have no pinned tab. */
+  tools: ToolVisibility;
   kanban: KanbanSettings;
 };
 

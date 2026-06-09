@@ -38,6 +38,7 @@ export class SettingsStore {
       copilot: { ...DEFAULT_SETTINGS.copilot, ...saved.copilot },
       annotate: { ...DEFAULT_SETTINGS.annotate, ...(saved.annotate ?? {}) },
       sessions: { ...DEFAULT_SETTINGS.sessions, ...(saved.sessions ?? {}) },
+      tools: { ...DEFAULT_SETTINGS.tools, ...(saved.tools ?? {}) },
       kanban: {
         ...DEFAULT_SETTINGS.kanban,
         ...saved.kanban,
@@ -71,6 +72,7 @@ export class SettingsStore {
       copilot: { ...current.copilot, ...(partial.copilot ?? {}) },
       annotate: { ...current.annotate, ...(partial.annotate ?? {}) },
       sessions: { ...current.sessions, ...(partial.sessions ?? {}) },
+      tools: { ...current.tools, ...(partial.tools ?? {}) },
       kanban: {
         ...current.kanban,
         ...(partial.kanban ?? {}),

@@ -2,7 +2,15 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import * as Dialog from '@radix-ui/react-dialog';
-import { Settings, Terminal, ImageIcon, ChevronRight, Bot, KanbanSquare } from 'lucide-react';
+import {
+  Settings,
+  Terminal,
+  ImageIcon,
+  ChevronRight,
+  Bot,
+  KanbanSquare,
+  SlidersHorizontal
+} from 'lucide-react';
 import { getFileIcon } from '../lib/file-icons';
 import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
@@ -25,6 +33,8 @@ import { DEFAULT_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH_RATIO } from './sidebar-consta
 import { EnvSyncBadge } from './env-sync/EnvSyncBadge';
 import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
+import { useSettingsStore } from '../store/settings-store';
+import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -477,10 +487,12 @@ function OffScreenBadgeSummary({
 
 export function Sidebar({
   updateReady,
-  onCollapse
+  onCollapse,
+  onOpenToolsConfig
 }: {
   updateReady?: boolean;
   onCollapse: () => void;
+  onOpenToolsConfig: () => void;
 }): React.JSX.Element {
   const {
     workspace,
@@ -536,6 +548,11 @@ export function Sidebar({
   const currentSidebarWidth = workspace.sidebarWidth ?? DEFAULT_SIDEBAR_WIDTH;
 
   // --- Drag-and-drop state ---
+  const toolSettings = useSettingsStore((s) => s.settings?.tools);
+  const enabledToolCount = toolSettings
+    ? TOGGLEABLE_TOOLS.filter((t) => toolSettings[t.type]).length
+    : 0;
+
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragType, setDragType] = useState<'tab' | 'group'>('tab');
   const [dropTarget, setDropTarget] = useState<{
@@ -863,20 +880,12 @@ export function Sidebar({
       }
     });
 
-    const imagesPaneId = crypto.randomUUID();
+    // Start empty; switchWorkspace seeds the default-visible tools, and the
+    // terminal tab is added right after (below).
     const newWs: Workspace = {
       id: crypto.randomUUID(),
       label: name,
-      tabs: [
-        {
-          id: crypto.randomUUID(),
-          label: 'Images',
-          labelIsCustom: true,
-          cwd: window.fleet.homeDir,
-          type: 'images',
-          splitRoot: { type: 'leaf', id: imagesPaneId, cwd: window.fleet.homeDir }
-        }
-      ]
+      tabs: []
     };
     useWorkspaceStore.getState().switchWorkspace(newWs);
 
@@ -1366,61 +1375,65 @@ export function Sidebar({
       </div>
 
       {/* Pinned tools section */}
-      {workspace.tabs.some(
-        (t) =>
-          t.type === 'images' ||
-          t.type === 'annotate' ||
-          t.type === 'kanban' ||
-          t.type === 'sessions'
-      ) && (
-        <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
-          <div className="flex items-center px-2 py-1">
-            <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
-              Tools
+      <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">
+        <div className="flex items-center justify-between px-2 py-1">
+          <span className="text-xs font-semibold text-fleet-text-subtle uppercase tracking-wider">
+            Tools
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-medium tabular-nums text-fleet-text-subtle">
+              {enabledToolCount}/{TOGGLEABLE_TOOLS.length}
             </span>
+            <button
+              className="text-fleet-text-subtle hover:text-fleet-text rounded p-0.5 hover:bg-fleet-surface-2 transition active:scale-90"
+              onClick={onOpenToolsConfig}
+              title="Configure tools"
+            >
+              <SlidersHorizontal size={13} />
+            </button>
           </div>
-          {/* Kanban tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'kanban')
-            .map((tab) => (
-              <KanbanTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {/* Images tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'images')
-            .map((tab) => (
-              <ImagesTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {/* Annotate tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'annotate')
-            .map((tab) => (
-              <AnnotateTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
-          {/* Sessions tab (pinned, not closeable) */}
-          {workspace.tabs
-            .filter((tab) => tab.type === 'sessions')
-            .map((tab) => (
-              <SessionsTabCard
-                key={tab.id}
-                isActive={tab.id === activeTabId}
-                onClick={() => setActiveTab(tab.id)}
-              />
-            ))}
         </div>
-      )}
+        {/* Kanban tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'kanban')
+          .map((tab) => (
+            <KanbanTabCard
+              key={tab.id}
+              isActive={tab.id === activeTabId}
+              onClick={() => setActiveTab(tab.id)}
+            />
+          ))}
+        {/* Images tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'images')
+          .map((tab) => (
+            <ImagesTabCard
+              key={tab.id}
+              isActive={tab.id === activeTabId}
+              onClick={() => setActiveTab(tab.id)}
+            />
+          ))}
+        {/* Annotate tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'annotate')
+          .map((tab) => (
+            <AnnotateTabCard
+              key={tab.id}
+              isActive={tab.id === activeTabId}
+              onClick={() => setActiveTab(tab.id)}
+            />
+          ))}
+        {/* Sessions tab (pinned, not closeable) */}
+        {workspace.tabs
+          .filter((tab) => tab.type === 'sessions')
+          .map((tab) => (
+            <SessionsTabCard
+              key={tab.id}
+              isActive={tab.id === activeTabId}
+              onClick={() => setActiveTab(tab.id)}
+            />
+          ))}
+      </div>
 
       {/* Bottom section: workspaces */}
       <div className="border-t border-fleet-border px-2 py-2 space-y-0.5">

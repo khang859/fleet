@@ -166,7 +166,7 @@ export function createCommandRegistry(): Command[] {
       category: 'Tabs',
       execute: () => {
         const ws = useWorkspaceStore.getState();
-        ws.ensureKanbanTab();
+        ws.setToolVisible('kanban', true);
         const kanban = useWorkspaceStore.getState().workspace.tabs.find((t) => t.type === 'kanban');
         if (kanban) ws.setActiveTab(kanban.id);
       }
@@ -177,7 +177,7 @@ export function createCommandRegistry(): Command[] {
       category: 'Tabs',
       execute: () => {
         const ws = useWorkspaceStore.getState();
-        ws.ensureSessionsTab();
+        ws.setToolVisible('sessions', true);
         const sessions = useWorkspaceStore
           .getState()
           .workspace.tabs.find((t) => t.type === 'sessions');

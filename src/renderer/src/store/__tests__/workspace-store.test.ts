@@ -137,16 +137,28 @@ describe('switchWorkspace', () => {
     expect(state.backgroundWorkspaces.has('ws-b')).toBe(true);
   });
 
-  it('ensures kanban, images, annotate and sessions tabs for an empty workspace', () => {
+  it('ensures only the default-visible tool (annotate) for an empty workspace', () => {
     const emptyWs: Workspace = { id: 'ws-empty', label: 'Empty', tabs: [] };
     useWorkspaceStore.getState().switchWorkspace(emptyWs);
     const state = useWorkspaceStore.getState();
-    // Empty workspaces get pinned kanban + images + annotate + sessions tabs automatically
-    expect(state.workspace.tabs).toHaveLength(4);
-    expect(state.workspace.tabs[0].type).toBe('kanban');
-    expect(state.workspace.tabs[1].type).toBe('images');
-    expect(state.workspace.tabs[2].type).toBe('annotate');
-    expect(state.workspace.tabs[3].type).toBe('sessions');
+    // Default tool visibility is annotate-only; other tools are opt-in.
+    expect(state.workspace.tabs).toHaveLength(1);
+    expect(state.workspace.tabs[0].type).toBe('annotate');
+  });
+
+  it('strips a disabled tool tab and recreates it when re-enabled', () => {
+    const emptyWs: Workspace = { id: 'ws-vis', label: 'Visibility', tabs: [] };
+    useWorkspaceStore.getState().switchWorkspace(emptyWs);
+    // Enabling kanban adds its pinned tab...
+    useWorkspaceStore.getState().setToolVisible('kanban', true);
+    expect(
+      useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')
+    ).toBe(true);
+    // ...and disabling it strips the tab again.
+    useWorkspaceStore.getState().setToolVisible('kanban', false);
+    expect(
+      useWorkspaceStore.getState().workspace.tabs.some((t) => t.type === 'kanban')
+    ).toBe(false);
   });
 
   it('strips the now-defunct pinned Artifacts tab from a persisted workspace', () => {

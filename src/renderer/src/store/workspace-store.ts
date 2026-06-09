@@ -1,7 +1,10 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
+import type { ToolType, ToolVisibility } from '../../../shared/tools';
+import { DEFAULT_SETTINGS } from '../../../shared/constants';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
+import { useSettingsStore } from './settings-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
@@ -151,6 +154,54 @@ function ensureKanbanTab(workspace: Workspace): Workspace {
   return { ...workspace, tabs: [kanbanTab, ...rest] };
 }
 
+/** Current global tool visibility, falling back to defaults before settings load. */
+function currentToolVisibility(): ToolVisibility {
+  return useSettingsStore.getState().settings?.tools ?? DEFAULT_SETTINGS.tools;
+}
+
+/**
+ * Reconcile a workspace's pinned tool tabs against the visibility preference:
+ * enabled tools get their tab ensured, disabled tools have their tab stripped.
+ */
+function applyToolVisibility(workspace: Workspace, vis: ToolVisibility): Workspace {
+  let ws = workspace;
+  if (vis.sessions) ws = ensureSessionsTab(ws);
+  if (vis.images) ws = ensureImagesTab(ws);
+  if (vis.annotate) ws = ensureAnnotateTab(ws);
+  if (vis.kanban) ws = ensureKanbanTab(ws);
+  const tabs = ws.tabs.filter((t) => {
+    switch (t.type) {
+      case 'annotate':
+        return vis.annotate;
+      case 'kanban':
+        return vis.kanban;
+      case 'images':
+        return vis.images;
+      case 'sessions':
+        return vis.sessions;
+      default:
+        return true;
+    }
+  });
+  return tabs.length === ws.tabs.length ? ws : { ...ws, tabs };
+}
+
+/** After tabs change, keep the active tab if it still exists; otherwise pick a sane replacement. */
+function resolveActiveTab(
+  ws: Workspace,
+  activeTabId: string | null,
+  activePaneId: string | null
+): { activeTabId: string | null; activePaneId: string | null } {
+  if (!activeTabId || ws.tabs.some((t) => t.id === activeTabId)) {
+    return { activeTabId, activePaneId };
+  }
+  const next = pickNextTab(ws.tabs, 0) ?? ws.tabs[0] ?? null;
+  return {
+    activeTabId: next?.id ?? null,
+    activePaneId: next ? (collectPaneIds(next.splitRoot)[0] ?? null) : null
+  };
+}
+
 /** Extract basename from a path for auto-labeling tabs. ctx defaults to 'posix'. */
 export function cwdBasename(cwd: string, ctx: PathContext = 'posix'): string {
   return pathBasename(cwd, ctx);
@@ -223,6 +274,8 @@ type WorkspaceStore = {
   ensureImagesTab: () => void;
   ensureKanbanTab: () => void;
   ensureSessionsTab: () => void;
+  setToolVisible: (type: ToolType, visible: boolean) => void;
+  reconcileToolTabs: () => void;
 
   // File/image pane helpers
   openFile: (filePath: string) => string;
@@ -874,8 +927,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           cwd: firstLeafCwd ?? t.cwd
         };
       });
-    const migrated = ensureKanbanTab(
-      ensureAnnotateTab(ensureImagesTab(ensureSessionsTab({ ...workspace, tabs: migratedTabs })))
+    const migrated = applyToolVisibility(
+      { ...workspace, tabs: migratedTabs },
+      currentToolVisibility()
     );
 
     const restoredTab =
@@ -937,6 +991,40 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     });
   },
 
+  setToolVisible: (type, visible) => {
+    logTabs.debug('setToolVisible', { type, visible });
+    const currentVis = currentToolVisibility();
+    const nextVis: ToolVisibility = { ...currentVis, [type]: visible };
+    void useSettingsStore.getState().updateSettings({ tools: { [type]: visible } });
+    set((state) => {
+      const updatedWs = applyToolVisibility(state.workspace, nextVis);
+      if (updatedWs === state.workspace) return state;
+      const active = resolveActiveTab(updatedWs, state.activeTabId, state.activePaneId);
+      return { workspace: updatedWs, ...active, isDirty: true };
+    });
+  },
+
+  reconcileToolTabs: () => {
+    const vis = currentToolVisibility();
+    set((state) => {
+      const updatedWs = applyToolVisibility(state.workspace, vis);
+      const newBackground = new Map(state.backgroundWorkspaces);
+      for (const [id, ws] of newBackground) {
+        newBackground.set(id, applyToolVisibility(ws, vis));
+      }
+      if (updatedWs === state.workspace) {
+        return { backgroundWorkspaces: newBackground };
+      }
+      const active = resolveActiveTab(updatedWs, state.activeTabId, state.activePaneId);
+      return {
+        workspace: updatedWs,
+        backgroundWorkspaces: newBackground,
+        ...active,
+        isDirty: true
+      };
+    });
+  },
+
   switchWorkspace: (ws) => {
     logLayout.debug('switchWorkspace', { targetId: ws.id, targetLabel: ws.label });
     const resolvedTarget = get().backgroundWorkspaces.get(ws.id) ?? ws;
@@ -955,8 +1043,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
             cwd: firstLeafCwd ?? t.cwd
           };
         });
-      const migrated = ensureKanbanTab(
-        ensureAnnotateTab(ensureImagesTab(ensureSessionsTab({ ...target, tabs: migratedTabs })))
+      const migrated = applyToolVisibility(
+        { ...target, tabs: migratedTabs },
+        currentToolVisibility()
       );
 
       const restoredTab =
@@ -1026,7 +1115,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
               cwd: firstLeafCwd ?? t.cwd
             };
           });
-          newBackground.set(ws.id, { ...ws, tabs: migratedTabs });
+          newBackground.set(
+            ws.id,
+            applyToolVisibility({ ...ws, tabs: migratedTabs }, currentToolVisibility())
+          );
         }
       }
       return { backgroundWorkspaces: newBackground };

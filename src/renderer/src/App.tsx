@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Terminal, ImageIcon, Settings, Crosshair, KanbanSquare } from 'lucide-react';
+import {
+  Terminal,
+  ImageIcon,
+  Settings,
+  Crosshair,
+  KanbanSquare,
+  History,
+  SlidersHorizontal
+} from 'lucide-react';
 import * as Tooltip from '@radix-ui/react-tooltip';
 import * as Popover from '@radix-ui/react-popover';
 import { getFileIcon } from './lib/file-icons';
@@ -28,6 +36,7 @@ import { GitChangesModal } from './components/GitChangesModal';
 import { QuickOpenOverlay } from './components/QuickOpenOverlay';
 import { FileSearchOverlay } from './components/FileSearchOverlay';
 import { ClipboardHistoryOverlay } from './components/ClipboardHistoryOverlay';
+import { ToolsConfigModal } from './components/ToolsConfigModal';
 import { TelescopeModal } from './components/Telescope/TelescopeModal';
 import { EnvSyncModal } from './components/env-sync/EnvSyncModal';
 import { EnvEditorModal } from './components/env-editor/EnvEditorModal';
@@ -146,6 +155,7 @@ export function App(): React.JSX.Element {
   const [quickOpenOpen, setQuickOpenOpen] = useState(false);
   const [fileSearchOpen, setFileSearchOpen] = useState(false);
   const [clipboardHistoryOpen, setClipboardHistoryOpen] = useState(false);
+  const [toolsConfigOpen, setToolsConfigOpen] = useState(false);
   const [telescopeOpen, setTelescopeOpen] = useState(false);
   const [envSyncOpen, setEnvSyncOpen] = useState(false);
   const [envEditorOpen, setEnvEditorOpen] = useState(false);
@@ -156,6 +166,15 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     void loadSettings();
   }, []);
+
+  // Reconcile pinned tool tabs whenever the visibility preference changes
+  // (also corrects the settings-load-vs-workspace-load race on startup).
+  const toolVisibility = settings?.tools;
+  useEffect(() => {
+    if (toolVisibility) {
+      useWorkspaceStore.getState().reconcileToolTabs();
+    }
+  }, [toolVisibility]);
 
   // Load shell profiles on startup; warm the WSL home cache so displayPath
   // can collapse `/home/<user>` to `~` in Telescope subtitles.
@@ -379,15 +398,11 @@ export function App(): React.JSX.Element {
         // If the restored workspace has no tabs, create a fresh one
         if (targetWs.tabs.length === 0) {
           addTab(undefined, window.fleet.homeDir);
-          useWorkspaceStore.getState().ensureImagesTab();
-          useWorkspaceStore.getState().ensureKanbanTab();
-          useWorkspaceStore.getState().ensureSessionsTab();
+          useWorkspaceStore.getState().reconcileToolTabs();
         }
       } else if (workspace.tabs.length === 0) {
         addTab(undefined, window.fleet.homeDir);
-        useWorkspaceStore.getState().ensureImagesTab();
-        useWorkspaceStore.getState().ensureKanbanTab();
-        useWorkspaceStore.getState().ensureSessionsTab();
+        useWorkspaceStore.getState().reconcileToolTabs();
       }
 
       // Load all other saved workspaces into background so their PTYs warm up
@@ -624,7 +639,11 @@ export function App(): React.JSX.Element {
       </div>
       <div className="flex flex-1 min-h-0">
         {!sidebarCollapsed ? (
-          <Sidebar updateReady={updateReady} onCollapse={() => setSidebarCollapsed(true)} />
+          <Sidebar
+            updateReady={updateReady}
+            onCollapse={() => setSidebarCollapsed(true)}
+            onOpenToolsConfig={() => setToolsConfigOpen(true)}
+          />
         ) : (
           <div
             className="flex flex-col items-center h-full w-11 bg-fleet-surface border-r border-fleet-border shrink-0 py-2 gap-1"
@@ -699,7 +718,11 @@ export function App(): React.JSX.Element {
             <div className="flex-1" />
             {/* Pinned tools section (mirrors expanded sidebar: tools above workspaces) */}
             {workspace.tabs.some(
-              (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
+              (t) =>
+                t.type === 'images' ||
+                t.type === 'annotate' ||
+                t.type === 'kanban' ||
+                t.type === 'sessions'
             ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
             {/* Kanban pinned icon */}
             {workspace.tabs
@@ -778,9 +801,39 @@ export function App(): React.JSX.Element {
                   </MiniSidebarTooltip>
                 );
               })}
-            {workspace.tabs.some(
-              (t) => t.type === 'images' || t.type === 'annotate' || t.type === 'kanban'
-            ) && <div className="w-6 h-px bg-fleet-border my-0.5" />}
+            {/* Sessions pinned icon */}
+            {workspace.tabs
+              .filter((t) => t.type === 'sessions')
+              .map((tab) => {
+                const isSessionsActive = tab.id === activeTabId;
+                return (
+                  <MiniSidebarTooltip label="Sessions" key={tab.id}>
+                    <button
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`p-1.5 rounded transition-colors active:scale-90 ${
+                        isSessionsActive
+                          ? 'bg-blue-900/40 ring-1 ring-blue-500/30'
+                          : 'hover:bg-fleet-surface-2'
+                      }`}
+                    >
+                      <History
+                        size={16}
+                        className={isSessionsActive ? 'text-blue-400' : 'text-blue-400/40'}
+                      />
+                    </button>
+                  </MiniSidebarTooltip>
+                );
+              })}
+            <div className="w-6 h-px bg-fleet-border my-0.5" />
+            {/* Configure tools */}
+            <MiniSidebarTooltip label="Configure tools">
+              <button
+                onClick={() => setToolsConfigOpen(true)}
+                className="p-1.5 rounded text-fleet-text-subtle hover:text-fleet-text hover:bg-fleet-surface-2 transition-colors active:scale-90"
+              >
+                <SlidersHorizontal size={16} />
+              </button>
+            </MiniSidebarTooltip>
             {/* Workspace switcher popover */}
             <Popover.Root open={miniWsOpen} onOpenChange={setMiniWsOpen}>
               <MiniSidebarTooltip label={workspace.label}>
@@ -1021,6 +1074,7 @@ export function App(): React.JSX.Element {
         cwd={focusedPaneCwd}
       />
       <AnnotateModal open={false} onClose={() => {}} />
+      <ToolsConfigModal open={toolsConfigOpen} onClose={() => setToolsConfigOpen(false)} />
       <PiPlanModal
         plan={activePlanModal}
         contentKey={activePlanModal ? activePlanModal.modalId : undefined}

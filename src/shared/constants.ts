@@ -99,6 +99,12 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   sessions: {
     preferredAgent: 'rune'
   },
+  tools: {
+    annotate: true,
+    kanban: false,
+    images: false,
+    sessions: false
+  },
   kanban: {
     dispatcher: {
       intervalMs: 5000,
