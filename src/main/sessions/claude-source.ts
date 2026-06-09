@@ -18,16 +18,23 @@ export function claudeProjectsDir(): string {
   return join(homedir(), '.claude', 'projects');
 }
 
-/** Read the cwd recorded in the first JSON line of an already-loaded transcript. */
-function cwdFromTranscript(content: string): string {
-  const firstLine = content.split('\n').find((l) => l.trim().length > 0);
-  if (!firstLine) return '';
-  try {
-    const parsed = cwdLineSchema.safeParse(JSON.parse(firstLine));
-    return parsed.success ? parsed.data.cwd : '';
-  } catch {
-    return '';
+/**
+ * Read the cwd recorded in a transcript. Recent Claude Code versions prepend
+ * metadata lines (`last-prompt`, `mode`, `file-history-snapshot`) that carry no
+ * cwd, so scan for the first line that actually has a top-level cwd rather than
+ * assuming it's on line 1.
+ */
+export function cwdFromTranscript(content: string): string {
+  for (const line of content.split('\n')) {
+    if (!line.includes('"cwd"')) continue;
+    try {
+      const parsed = cwdLineSchema.safeParse(JSON.parse(line));
+      if (parsed.success && parsed.data.cwd) return parsed.data.cwd;
+    } catch {
+      // skip malformed line
+    }
   }
+  return '';
 }
 
 export async function listClaudeSessions(): Promise<SessionSummary[]> {

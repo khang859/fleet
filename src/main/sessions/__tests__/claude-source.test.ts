@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { claudeMessagesToTranscriptMessages, claudePreview } from '../claude-source';
+import { claudeMessagesToTranscriptMessages, claudePreview, cwdFromTranscript } from '../claude-source';
 import { parseClaudeTranscript } from '../../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../../shared/types';
 
@@ -44,6 +44,22 @@ describe('claudeMessagesToTranscriptMessages', () => {
 describe('claudePreview', () => {
   it('returns the first user text', () => {
     expect(claudePreview(MESSAGES)).toBe('refactor the api');
+  });
+});
+
+describe('cwdFromTranscript', () => {
+  // Recent Claude Code versions prepend metadata lines that carry no cwd.
+  it('finds cwd past leading metadata lines (last-prompt/mode/file-history-snapshot)', () => {
+    const jsonl = [
+      JSON.stringify({ type: 'last-prompt', leafUuid: 'x', sessionId: 's' }),
+      JSON.stringify({ type: 'mode', mode: 'default' }),
+      JSON.stringify({ type: 'user', uuid: 'u1', cwd: '/Users/me/proj', message: { role: 'user', content: 'hi' } })
+    ].join('\n');
+    expect(cwdFromTranscript(jsonl)).toBe('/Users/me/proj');
+  });
+
+  it('returns empty string when no line carries a cwd', () => {
+    expect(cwdFromTranscript('{"type":"last-prompt"}\n{"type":"mode"}')).toBe('');
   });
 });
 

@@ -30,7 +30,15 @@ const nodeSchema = z
     children: z.array(z.string()).optional().default([]),
     has_message: z.boolean().optional().default(false),
     message: z
-      .object({ role: z.string(), content: z.array(contentBlockSchema).optional().default([]) })
+      .object({
+        role: z.string(),
+        // Rune writes `content: null` on nodes without message content; coerce
+        // null/undefined to [] so one such node can't fail the whole session.
+        content: z
+          .array(contentBlockSchema)
+          .nullish()
+          .transform((v) => v ?? [])
+      })
       .optional(),
     created: z.string().optional()
   })
