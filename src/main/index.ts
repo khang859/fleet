@@ -62,6 +62,8 @@ import {
 } from './kanban/spawn-worker';
 import { RuneManager } from './rune-manager';
 import { RuneConfigManager } from './rune-config-manager';
+import { SessionsService } from './sessions/service';
+import { registerSessionsIpcHandlers } from './sessions/ipc-handlers';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../shared/rune';
 import { registerKanbanIpc } from './kanban/kanban-ipc';
 import { KanbanCommands } from './kanban/kanban-commands';
@@ -74,6 +76,7 @@ const updaterLog = createLogger('auto-updater');
 
 let mainWindow: BrowserWindow | null = null;
 let socketSupervisor: SocketSupervisor | null = null;
+let sessionsService: SessionsService | null = null;
 let kanbanStore: KanbanStore | undefined;
 let kanbanMcp: KanbanMcpServer | undefined;
 let kanbanDispatcher: KanbanDispatcher | undefined;
@@ -1037,6 +1040,15 @@ void app.whenReady().then(async () => {
   );
   kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
   registerKanbanIpc(kanbanCommands);
+
+  sessionsService = new SessionsService();
+  registerSessionsIpcHandlers(sessionsService);
+  sessionsService.startWatching(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(IPC_CHANNELS.SESSIONS_CHANGED);
+    }
+  });
+
   setKanbanSettingsApplier(() => {
     kanbanDispatcher?.reconfigure(
       buildDispatcherConfig(),
@@ -1061,6 +1073,7 @@ function shutdownAll(): void {
     })
   );
   imageService.shutdown();
+  sessionsService?.dispose();
   annotateService.destroy();
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
