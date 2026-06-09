@@ -8,8 +8,8 @@ Fleet gives you a single window to manage all your terminal sessions with vertic
 
 Download the latest release for your platform:
 
-- [macOS (Apple Silicon)](https://github.com/khang859/fleet/releases/latest) — `.dmg`
-- [macOS (Intel)](https://github.com/khang859/fleet/releases/latest) — `.dmg`
+- [macOS — Apple Silicon (M1/M2/M3/M4)](https://github.com/khang859/fleet/releases/latest) — download `fleet-<version>-arm64.dmg`
+- [macOS — Intel](https://github.com/khang859/fleet/releases/latest) — download `fleet-<version>-x64.dmg`
 - [Windows](https://github.com/khang859/fleet/releases/latest) — `.exe`
 - [Linux](https://github.com/khang859/fleet/releases/latest) — `.deb` (Debian/Ubuntu), `.rpm` (Fedora/RHEL), `.AppImage` (universal)
 
