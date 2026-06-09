@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.62.1
+
+- **Fix: Sessions tab showed "No sessions" despite sessions on disk** — both session sources were silently dropping every entry. Rune sessions failed because nodes can store `content: null`, which the parser rejected instead of treating as empty. Claude sessions failed because the working directory was only read from the first transcript line, which recent Claude Code versions fill with metadata that carries no path. Both sources now load correctly under the All / Rune / Claude Code filters.
+
 ## v2.62.0
 
 - **Sessions tool — browse and resume past agent conversations** — a new pinned **Sessions** tab in the Tools section gathers every past **Rune** and **Claude Code** session in one place, grouped by project and searchable. Click a session to read its full transcript in-app, then hit **Resume ▸** to continue it in a new terminal tab opened in the session's original folder. Filter the list by agent (All / Rune / Claude Code) and set a preferred default in Settings → Rune — it defaults to Rune and remembers your choice. The library refreshes live as sessions change on disk.
