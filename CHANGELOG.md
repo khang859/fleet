@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.61.0
+
+- **Default shell profile picker** — Settings → General now has a **Default Profile** dropdown listing your detected shell profiles (system shells and WSL distros), with an **(auto-detect)** option. New tabs use the chosen profile right away, no restart needed. This wires up the setting whose backend shipped in 2.60.0.
+
 ## v2.60.0
 
 - **Rune installs where your shell can find it** — the Settings → Rune install/update button now installs Rune into `~/.fleet/bin` (a directory Fleet keeps on your PATH) instead of letting the install script pick `/usr/local/bin`, which isn't on PATH for Homebrew-on-Apple-Silicon setups and left `rune` as "command not found".
