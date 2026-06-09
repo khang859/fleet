@@ -211,6 +211,7 @@ export function PaneGrid({
                 onSplitVertical={() => splitPane(leaf.id, 'vertical')}
                 onClose={() => closePane(leaf.id)}
                 shellProfileId={leaf.node.shellProfileId}
+                cmd={leaf.node.cmd}
               />
             </div>
           </div>

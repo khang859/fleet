@@ -25,6 +25,7 @@ type TerminalPaneProps = {
   onSplitVertical?: () => void;
   onClose?: () => void;
   shellProfileId?: string;
+  cmd?: string;
 };
 
 const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
@@ -67,7 +68,8 @@ export function TerminalPane({
   onSplitHorizontal,
   onSplitVertical,
   onClose,
-  shellProfileId
+  shellProfileId,
+  cmd
 }: TerminalPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
@@ -84,6 +86,7 @@ export function TerminalPane({
     backgroundImageActive: hasBackgroundImage,
     workspaceId,
     shellProfileId,
+    ...(cmd !== undefined ? { cmd, exitOnComplete: false } : {}),
     onScrollStateChange: setIsScrolledUp
   });
   const [searchOpen, setSearchOpen] = useState(false);

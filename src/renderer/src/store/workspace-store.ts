@@ -160,6 +160,7 @@ type WorkspaceStore = {
 
   // Tab actions
   addTab: (label: string | undefined, cwd: string) => string;
+  openResumeTab: (cwd: string, cmd: string, label: string) => void;
   duplicateTab: (tabId: string) => string | null;
   addPiTab: (cwd: string) => string;
   closeTab: (tabId: string, serializedPanes?: Map<string, string>) => void;
@@ -348,6 +349,31 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       isDirty: true
     }));
     return leaf.id;
+  },
+
+  openResumeTab: (cwd, cmd, label) => {
+    const { id: profileId, pathContext } = resolveDefaultProfile();
+    const leaf = createLeafWithProfile(cwd, profileId, pathContext);
+    const leafWithCmd: PaneLeaf = { ...leaf, cmd };
+    const tab: Tab = {
+      id: generateId(),
+      label,
+      labelIsCustom: true,
+      cwd,
+      splitRoot: leafWithCmd,
+      shellProfileId: profileId,
+      pathContext
+    };
+    logTabs.debug('openResumeTab', { tabId: tab.id, label, cwd, cmd, paneId: leafWithCmd.id });
+    set((state) => ({
+      workspace: {
+        ...state.workspace,
+        tabs: [...state.workspace.tabs, tab]
+      },
+      activeTabId: tab.id,
+      activePaneId: leafWithCmd.id,
+      isDirty: true
+    }));
   },
 
   duplicateTab: (tabId) => {
