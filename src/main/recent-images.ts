@@ -4,11 +4,13 @@ import { basename, dirname, extname, join } from 'path';
 import { homedir } from 'os';
 import { nativeImage } from 'electron';
 import type { RecentImageResult, RecentImagesResponse } from '../shared/ipc-api';
+import { captureBoundedStdout } from './bounded-stdout';
 
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB — skip large files for thumbnail safety
 const RESULT_LIMIT = 5;
 const STAT_LIMIT = 200; // stat at most this many candidates before sorting
+const SCAN_RESULT_LIMIT = 1000; // recursive readdir over Pictures/Downloads can return enormous trees
 
 type FileCandidate = {
   path: string;
@@ -50,18 +52,15 @@ async function spawnMdfind(home: string): Promise<string[]> {
   return new Promise((resolve) => {
     const proc = spawn('mdfind', ['-onlyin', home, 'kMDItemContentTypeTree == "public.image"']);
 
-    let stdout = '';
     const timer = setTimeout(() => {
       proc.kill('SIGTERM');
     }, 3000);
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
+    const out = captureBoundedStdout(proc);
 
     proc.on('close', () => {
       clearTimeout(timer);
-      resolve(stdout.split('\n').filter(Boolean));
+      resolve(out.text.split('\n').filter(Boolean));
     });
 
     proc.on('error', () => {
@@ -104,6 +103,7 @@ async function scanKnownDirs(): Promise<string[]> {
     try {
       const entries = await readdir(dir, { withFileTypes: true, recursive: true });
       for (const entry of entries) {
+        if (results.length >= SCAN_RESULT_LIMIT) return results;
         if (entry.isFile() && IMAGE_EXTS.has(extname(entry.name).toLowerCase())) {
           const fullPath = entry.parentPath
             ? join(entry.parentPath, entry.name)
