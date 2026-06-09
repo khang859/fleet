@@ -3,7 +3,15 @@ import { applyAgentFilter, groupByProject } from '../aggregate';
 import type { SessionSummary } from '../../../shared/sessions';
 
 const make = (over: Partial<SessionSummary>): SessionSummary => ({
-  agent: 'rune', id: 'x', title: 't', project: 'p', cwd: '/p', updatedAt: 0, messageCount: 1, preview: '', ...over
+  agent: 'rune',
+  id: 'x',
+  title: 't',
+  project: 'p',
+  cwd: '/p',
+  updatedAt: 0,
+  messageCount: 1,
+  preview: '',
+  ...over
 });
 
 const SESSIONS = [

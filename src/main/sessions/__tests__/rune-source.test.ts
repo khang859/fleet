@@ -11,13 +11,22 @@ const RAW = {
   root_id: 'root',
   active_id: 'n2',
   nodes: [
-    { id: 'root', parent_id: '', children: ['n1'], has_message: false, created: '2026-04-30T09:08:07Z' },
+    {
+      id: 'root',
+      parent_id: '',
+      children: ['n1'],
+      has_message: false,
+      created: '2026-04-30T09:08:07Z'
+    },
     {
       id: 'n1',
       parent_id: 'root',
       children: ['n2'],
       has_message: true,
-      message: { role: 'user', content: [{ type: 'text', text: 'fix the login issue in auth.go' }] },
+      message: {
+        role: 'user',
+        content: [{ type: 'text', text: 'fix the login issue in auth.go' }]
+      },
       created: '2026-04-30T09:08:08Z'
     },
     {
@@ -69,7 +78,9 @@ describe('readRuneTranscript', () => {
   it('flattens the root->active path into messages', () => {
     const t = readRuneTranscript(RAW, 1)!;
     expect(t.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
-    expect(t.messages[0].blocks).toEqual([{ type: 'text', text: 'fix the login issue in auth.go' }]);
+    expect(t.messages[0].blocks).toEqual([
+      { type: 'text', text: 'fix the login issue in auth.go' }
+    ]);
     expect(t.messages[1].blocks).toEqual([
       { type: 'text', text: 'I found it in auth.go' },
       { type: 'tool_use', id: 't1', name: 'read', argsPreview: '{"path":"auth.go"}' }

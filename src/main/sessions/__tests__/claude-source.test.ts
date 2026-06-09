@@ -3,7 +3,12 @@ import { claudeMessagesToTranscriptMessages, claudePreview } from '../claude-sou
 import type { CopilotChatMessage } from '../../../shared/types';
 
 const MESSAGES: CopilotChatMessage[] = [
-  { id: 'm1', role: 'user', timestamp: '2026-05-01T10:00:00Z', blocks: [{ type: 'text', text: 'refactor the api' }] },
+  {
+    id: 'm1',
+    role: 'user',
+    timestamp: '2026-05-01T10:00:00Z',
+    blocks: [{ type: 'text', text: 'refactor the api' }]
+  },
   {
     id: 'm2',
     role: 'assistant',
@@ -11,7 +16,13 @@ const MESSAGES: CopilotChatMessage[] = [
     blocks: [
       { type: 'thinking', text: 'considering...' },
       { type: 'text', text: 'done' },
-      { type: 'tool_use', id: 't1', name: 'Edit', inputPreview: 'api.ts', input: { path: 'api.ts' } }
+      {
+        type: 'tool_use',
+        id: 't1',
+        name: 'Edit',
+        inputPreview: 'api.ts',
+        input: { path: 'api.ts' }
+      }
     ]
   }
 ];

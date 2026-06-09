@@ -1,7 +1,10 @@
 // src/main/sessions/aggregate.ts
 import type { SessionAgentFilter, SessionGroup, SessionSummary } from '../../shared/sessions';
 
-export function applyAgentFilter(sessions: SessionSummary[], filter: SessionAgentFilter): SessionSummary[] {
+export function applyAgentFilter(
+  sessions: SessionSummary[],
+  filter: SessionAgentFilter
+): SessionSummary[] {
   if (filter === 'all') return sessions;
   return sessions.filter((s) => s.agent === filter);
 }
