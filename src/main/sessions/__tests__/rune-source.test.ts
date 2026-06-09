@@ -72,6 +72,22 @@ describe('summarizeRune', () => {
   it('returns null for malformed input', () => {
     expect(summarizeRune({ nope: true }, 1)).toBeNull();
   });
+
+  // Rune writes `message: { role: '', content: null }` on nodes without content
+  // (e.g. the root/system node). `content: null` must not fail the whole session.
+  it('parses sessions whose nodes have null message content', () => {
+    const withNullContent = {
+      ...RAW,
+      nodes: [
+        { id: 'root', parent_id: '', children: ['n1'], has_message: false, message: { role: '', content: null } },
+        ...RAW.nodes.slice(1)
+      ]
+    };
+    const s = summarizeRune(withNullContent, 1);
+    expect(s).not.toBeNull();
+    expect(s!.messageCount).toBe(2);
+    expect(s!.preview).toBe('fix the login issue in auth.go');
+  });
 });
 
 describe('readRuneTranscript', () => {
