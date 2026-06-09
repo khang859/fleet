@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.62.2
+
+- **Fix: Session transcript could not scroll** — long sessions ran off the bottom with no scrollbar because the scroll container lacked `min-h-0`. Vertical scrolling now works, and long content (tool output, paths, code) wraps to the panel width instead of clipping off-screen.
+
 ## v2.62.1
 
 - **Fix: Sessions tab showed "No sessions" despite sessions on disk** — both session sources were silently dropping every entry. Rune sessions failed because nodes can store `content: null`, which the parser rejected instead of treating as empty. Claude sessions failed because the working directory was only read from the first transcript line, which recent Claude Code versions fill with metadata that carries no path. Both sources now load correctly under the All / Rune / Claude Code filters.

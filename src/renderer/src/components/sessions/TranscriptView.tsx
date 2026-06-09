@@ -14,17 +14,19 @@ function resumeCommand(s: SessionSummary): string {
 function Block({ block }: { block: TranscriptBlock }): React.JSX.Element {
   switch (block.type) {
     case 'text':
-      return <div className="whitespace-pre-wrap text-sm text-fleet-text">{block.text}</div>;
+      return (
+        <div className="whitespace-pre-wrap break-words text-sm text-fleet-text">{block.text}</div>
+      );
     case 'tool_use':
       return (
-        <div className="text-xs text-fleet-text-subtle font-mono">
+        <div className="whitespace-pre-wrap break-words text-xs text-fleet-text-subtle font-mono">
           ⚙ {block.name} <span className="opacity-60">{block.argsPreview}</span>
         </div>
       );
     case 'tool_result':
       return (
         <div
-          className={`text-xs font-mono ${block.isError ? 'text-red-400' : 'text-fleet-text-subtle'}`}
+          className={`whitespace-pre-wrap break-words text-xs font-mono ${block.isError ? 'text-red-400' : 'text-fleet-text-subtle'}`}
         >
           ↳ {block.output.slice(0, 2000)}
         </div>
@@ -42,7 +44,7 @@ function Message({ message }: { message: TranscriptMessage }): React.JSX.Element
         {message.role}
       </span>
       <div
-        className={`max-w-[85%] rounded-md px-3 py-2 ${
+        className={`min-w-0 max-w-[85%] rounded-md px-3 py-2 ${
           isUser ? 'bg-blue-600/20' : 'bg-fleet-surface-2/60'
         } flex flex-col gap-1`}
       >
@@ -82,7 +84,7 @@ export function TranscriptView(): React.JSX.Element {
 
   const s = transcript.summary;
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-w-0 flex-col">
       <div className="flex items-center justify-between border-b border-fleet-border px-4 py-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-fleet-text">{s.title}</div>
@@ -98,7 +100,7 @@ export function TranscriptView(): React.JSX.Element {
           Resume ▸
         </button>
       </div>
-      <div className="flex-1 overflow-y-auto px-4 py-3 flex flex-col gap-3">
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 flex flex-col gap-3">
         {transcript.messages.map((m, i) => (
           <Message key={i} message={m} />
         ))}
