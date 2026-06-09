@@ -112,7 +112,7 @@ Liveness uses `fs.watch` on each source's `watchPaths()` with a 500ms debounce; 
 
 `sessions:resume` opens a **new terminal tab** `cd`'d to the session's `cwd` and runs:
 
-- Rune: `rune --resume <id>` — **depends on [rune#17](https://github.com/khang859/rune/issues/17)** (no such flag today; resume is an interactive `/resume` modal). Until that ships, the Rune resume button is disabled with a tooltip, or falls back to launching plain `rune` in the cwd.
+- Rune: `rune --resume <id>` — the flag is being added in parallel under [rune#17](https://github.com/khang859/rune/issues/17), so v1 assumes it exists; no fallback path.
 - Claude Code: `claude --resume <id>`.
 
 Each resumed session gets its own tab (no clobbering of the focused pane in v1).
