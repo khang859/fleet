@@ -13,6 +13,14 @@ export type ToolDefinition = {
   experimental?: boolean;
 };
 
+/** Default tool visibility: Annotate on, everything else opt-in. */
+export const DEFAULT_TOOL_VISIBILITY: ToolVisibility = {
+  annotate: true,
+  kanban: false,
+  images: false,
+  sessions: false
+};
+
 /** Render order in the Tools picker modal. */
 export const TOGGLEABLE_TOOLS: readonly ToolDefinition[] = [
   { type: 'annotate', label: 'Annotate', description: 'Capture and mark up web pages.' },

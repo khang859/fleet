@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Workspace, Tab, PaneNode, PaneLeaf } from '../../../shared/types';
 import type { ToolType, ToolVisibility } from '../../../shared/tools';
-import { DEFAULT_SETTINGS } from '../../../shared/constants';
+import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
@@ -156,7 +156,7 @@ function ensureKanbanTab(workspace: Workspace): Workspace {
 
 /** Current global tool visibility, falling back to defaults before settings load. */
 function currentToolVisibility(): ToolVisibility {
-  return useSettingsStore.getState().settings?.tools ?? DEFAULT_SETTINGS.tools;
+  return useSettingsStore.getState().settings?.tools ?? DEFAULT_TOOL_VISIBILITY;
 }
 
 /**

@@ -7,6 +7,7 @@ import {
   DEFAULT_APP_THEME,
   DEFAULT_TERMINAL_THEME_ID
 } from './theme-presets';
+import { DEFAULT_TOOL_VISIBILITY } from './tools';
 export { IPC_CHANNELS } from './ipc-channels';
 
 const DEFAULT_SCROLLBACK = 10_000;
@@ -99,12 +100,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   sessions: {
     preferredAgent: 'rune'
   },
-  tools: {
-    annotate: true,
-    kanban: false,
-    images: false,
-    sessions: false
-  },
+  tools: DEFAULT_TOOL_VISIBILITY,
   kanban: {
     dispatcher: {
       intervalMs: 5000,
