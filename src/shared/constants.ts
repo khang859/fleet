@@ -96,6 +96,9 @@ export const DEFAULT_SETTINGS: FleetSettings = {
   annotate: {
     retentionDays: 3
   },
+  sessions: {
+    preferredAgent: 'rune'
+  },
   kanban: {
     dispatcher: {
       intervalMs: 5000,

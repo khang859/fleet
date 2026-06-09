@@ -2,6 +2,7 @@ import type { PathContext } from './shell-profiles';
 import type { WorkspaceKind } from './kanban-types';
 import type { KanbanNotifySettings } from './kanban-notifications';
 import type { AccentColorId, AppThemeSelection, TerminalThemeId } from './theme-presets';
+import type { SessionAgentFilter } from './sessions';
 
 export type DeepPartial<T> = {
   [K in keyof T]?: T[K] extends Array<infer U>
@@ -38,7 +39,8 @@ export type Tab = {
     | 'markdown'
     | 'kanban'
     | 'artifacts'
-    | 'pdf';
+    | 'pdf'
+    | 'sessions';
   avatarVariant?: string;
   splitRoot: PaneNode;
   // Worktree group fields
@@ -72,6 +74,8 @@ export type PaneLeaf = {
   filePath?: string;
   isDirty?: boolean;
   serializedContent?: string;
+  /** One-shot startup command for this pane (e.g. resuming a session). Runs on first PTY create. */
+  cmd?: string;
   label?: string;
   labelIsCustom?: boolean;
   /** ShellProfile id used to spawn this pane's PTY. Optional for legacy persisted leaves. */
@@ -248,6 +252,10 @@ export type FleetSettings = {
   copilot: CopilotSettings;
   annotate: {
     retentionDays: number;
+  };
+  sessions: {
+    /** Default + persisted agent filter for the Sessions tool. */
+    preferredAgent: SessionAgentFilter;
   };
   kanban: KanbanSettings;
 };

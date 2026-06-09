@@ -204,6 +204,10 @@ export const IPC_CHANNELS = {
   KANBAN_LIST_WORKTREES: 'kanban:list-worktrees',
   KANBAN_PRUNE_WORKTREE: 'kanban:prune-worktree',
   KANBAN_PRUNE_MERGED_WORKTREES: 'kanban:prune-merged-worktrees',
+  // Sessions
+  SESSIONS_LIST: 'sessions:list',
+  SESSIONS_READ: 'sessions:read',
+  SESSIONS_CHANGED: 'sessions:changed',
   // Env Editor
   ENV_EDITOR_LIST: 'env-editor:list',
   ENV_EDITOR_READ: 'env-editor:read',
