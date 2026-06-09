@@ -3,6 +3,7 @@ import { stat, realpath } from 'fs/promises';
 import { basename, dirname } from 'path';
 import { homedir } from 'os';
 import type { FileSearchRequest, FileSearchResponse, FileSearchResult } from '../shared/ipc-api';
+import { captureBoundedStdout } from './bounded-stdout';
 
 let activeProcess: ChildProcess | null = null;
 
@@ -75,7 +76,6 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
     const isNonIndexed = cmd === 'powershell' || cmd === 'find';
     const timeout = isNonIndexed ? 5000 : 15000;
 
-    let stdout = '';
     let timedOut = false;
 
     const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -86,9 +86,7 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
       proc.kill('SIGTERM');
     }, timeout);
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
+    const out = captureBoundedStdout(proc);
 
     proc.on('error', (err) => {
       clearTimeout(timer);
@@ -111,20 +109,17 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
           stdio: ['ignore', 'pipe', 'pipe']
         });
         activeProcess = findProc;
-        let findStdout = '';
 
         const findTimer = setTimeout(() => {
           findProc.kill('SIGTERM');
         }, 5000);
 
-        findProc.stdout.on('data', (chunk: Buffer) => {
-          findStdout += chunk.toString();
-        });
+        const findOut = captureBoundedStdout(findProc);
 
         findProc.on('close', () => {
           clearTimeout(findTimer);
           activeProcess = null;
-          void processResults(findStdout, limit, requestId).then(resolve);
+          void processResults(findOut.text, limit, requestId).then(resolve);
         });
 
         findProc.on('error', () => {
@@ -142,12 +137,12 @@ export async function searchFiles(req: FileSearchRequest): Promise<FileSearchRes
       clearTimeout(timer);
       activeProcess = null;
 
-      if (timedOut && !stdout.trim()) {
+      if (timedOut && !out.text.trim()) {
         resolve({ success: false, requestId, error: 'Search timed out' });
         return;
       }
 
-      void processResults(stdout, limit, requestId).then(resolve);
+      void processResults(out.text, limit, requestId).then(resolve);
     });
   });
 }

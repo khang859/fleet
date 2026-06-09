@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { relative } from 'path';
 import type { FileGrepRequest, FileGrepResponse, FileGrepResult } from '../shared/ipc-api';
+import { captureBoundedStdout } from './bounded-stdout';
 
 let activeProcess: ChildProcess | null = null;
 
@@ -200,7 +201,6 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
   const { cmd, args } = buildRgCommand(query, cwd, limit);
 
   return new Promise((resolve) => {
-    let stdout = '';
     let timedOut = false;
 
     const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -211,9 +211,7 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
       proc.kill('SIGTERM');
     }, 10000);
 
-    proc.stdout.on('data', (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
+    const out = captureBoundedStdout(proc);
 
     proc.on('error', (err) => {
       clearTimeout(timer);
@@ -225,20 +223,17 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
         const { cmd: fbCmd, args: fbArgs } = buildFallbackCommand(query, cwd, limit);
         const fbProc = spawn(fbCmd, fbArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
         activeProcess = fbProc;
-        let fbStdout = '';
 
         const fbTimer = setTimeout(() => {
           fbProc.kill('SIGTERM');
         }, 10000);
 
-        fbProc.stdout.on('data', (chunk: Buffer) => {
-          fbStdout += chunk.toString();
-        });
+        const fbOut = captureBoundedStdout(fbProc);
 
         fbProc.on('close', () => {
           clearTimeout(fbTimer);
           activeProcess = null;
-          const results = parseFallbackOutput(fbStdout, cwd, limit);
+          const results = parseFallbackOutput(fbOut.text, cwd, limit);
           resolve({ success: true, requestId, results });
         });
 
@@ -257,12 +252,12 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
       clearTimeout(timer);
       activeProcess = null;
 
-      if (timedOut && !stdout.trim()) {
+      if (timedOut && !out.text.trim()) {
         resolve({ success: false, requestId, error: 'Grep timed out' });
         return;
       }
 
-      const results = parseRgOutput(stdout, cwd, limit);
+      const results = parseRgOutput(out.text, cwd, limit);
       resolve({ success: true, requestId, results });
     });
   });
