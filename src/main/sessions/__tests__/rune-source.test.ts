@@ -79,7 +79,13 @@ describe('summarizeRune', () => {
     const withNullContent = {
       ...RAW,
       nodes: [
-        { id: 'root', parent_id: '', children: ['n1'], has_message: false, message: { role: '', content: null } },
+        {
+          id: 'root',
+          parent_id: '',
+          children: ['n1'],
+          has_message: false,
+          message: { role: '', content: null }
+        },
         ...RAW.nodes.slice(1)
       ]
     };
@@ -199,5 +205,81 @@ describe('compacted sessions', () => {
     const s = summarizeRune(compacted, 1)!;
     expect(s.messageCount).toBe(2);
     expect(s.preview).toBe('do the thing');
+  });
+});
+
+describe('session tree (branch DAG)', () => {
+  it('omits the tree for a single-branch (linear) session', () => {
+    const t = readRuneTranscript(RAW, 1)!;
+    expect(t.tree).toBeUndefined();
+  });
+
+  it('builds a tree for a branching session, dropping the empty root', () => {
+    const t = readRuneTranscript(BRANCHING, 1)!;
+    expect(t.tree).toBeDefined();
+    const tree = t.tree!;
+    expect(tree.activeId).toBe('a1');
+    // Root has no message and must not appear as a node.
+    expect(tree.nodes.map((n) => n.id).sort()).toEqual(['a1', 'b1', 'n1']);
+    // n1 hangs off the (omitted) root -> parentId null; a1/b1 are its children.
+    const n1 = tree.nodes.find((n) => n.id === 'n1')!;
+    expect(n1.parentId).toBeNull();
+    expect(n1.childIds.sort()).toEqual(['a1', 'b1']);
+    const a1 = tree.nodes.find((n) => n.id === 'a1')!;
+    expect(a1.parentId).toBe('n1');
+    expect(a1.role).toBe('assistant');
+    expect(a1.preview).toBe('active branch');
+  });
+
+  it('resolves a message-less active_id so the tree never points outside its nodes', () => {
+    // active_id points at the empty root; the resolved activeId must be a real node.
+    const tree = readRuneTranscript({ ...BRANCHING, active_id: 'root' }, 1)!.tree!;
+    expect(tree.nodes.some((n) => n.id === tree.activeId)).toBe(true);
+  });
+
+  it('maps usage (capitalized rune keys) and compacted_count onto tree nodes', () => {
+    const withMeta = {
+      ...BRANCHING,
+      nodes: BRANCHING.nodes.map((n) =>
+        n.id === 'a1'
+          ? {
+              ...n,
+              usage: { Input: 100, Output: 20, CacheRead: 5 },
+              compacted_count: 3,
+              created: '2026-04-30T09:08:12Z'
+            }
+          : n
+      )
+    };
+    const tree = readRuneTranscript(withMeta, 1)!.tree!;
+    const a1 = tree.nodes.find((n) => n.id === 'a1')!;
+    expect(a1.usage).toEqual({ input: 100, output: 20, cacheRead: 5 });
+    expect(a1.compactedCount).toBe(3);
+    expect(a1.createdAt).toBe(Date.parse('2026-04-30T09:08:12Z'));
+  });
+
+  it('parses session-level subagents', () => {
+    const withSubagents = {
+      ...BRANCHING,
+      subagents: [
+        {
+          task_id: 's1',
+          name: 'explorer',
+          agent_type: 'code-explorer',
+          status: 'completed',
+          summary: 'mapped the data layer'
+        }
+      ]
+    };
+    const t = readRuneTranscript(withSubagents, 1)!;
+    expect(t.subagents).toEqual([
+      {
+        id: 's1',
+        name: 'explorer',
+        agentType: 'code-explorer',
+        status: 'completed',
+        summary: 'mapped the data layer'
+      }
+    ]);
   });
 });

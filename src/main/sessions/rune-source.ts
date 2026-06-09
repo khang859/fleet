@@ -6,6 +6,10 @@ import { z } from 'zod';
 import type {
   SessionSummary,
   SessionTranscript,
+  SessionTree,
+  SessionTreeNode,
+  SubagentSummary,
+  TokenUsage,
   TranscriptBlock,
   TranscriptMessage
 } from '../../shared/sessions';
@@ -22,6 +26,15 @@ const contentBlockSchema = z
     is_error: z.boolean().optional()
   })
   .passthrough();
+
+// Rune's ai.Usage struct has no JSON tags, so Go serializes the keys capitalized.
+const usageSchema = z
+  .object({
+    Input: z.number().optional(),
+    Output: z.number().optional(),
+    CacheRead: z.number().optional()
+  })
+  .partial();
 
 const nodeSchema = z
   .object({
@@ -40,7 +53,19 @@ const nodeSchema = z
           .transform((v) => v ?? [])
       })
       .optional(),
-    created: z.string().optional()
+    created: z.string().optional(),
+    usage: usageSchema.optional(),
+    compacted_count: z.number().optional()
+  })
+  .passthrough();
+
+const subagentSchema = z
+  .object({
+    task_id: z.string(),
+    name: z.string().optional().default(''),
+    agent_type: z.string().optional(),
+    status: z.string().optional().default(''),
+    summary: z.string().optional()
   })
   .passthrough();
 
@@ -54,7 +79,8 @@ export const runeSessionSchema = z
     cwd: z.string().optional().default(''),
     root_id: z.string().optional().default(''),
     active_id: z.string().optional().default(''),
-    nodes: z.array(nodeSchema).optional().default([])
+    nodes: z.array(nodeSchema).optional().default([]),
+    subagents: z.array(subagentSchema).optional().default([])
   })
   .passthrough();
 
@@ -115,6 +141,101 @@ function toBlocks(content: Array<z.infer<typeof contentBlockSchema>>): Transcrip
   });
 }
 
+function parseCreated(value?: string): number | undefined {
+  if (!value) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) ? undefined : ms;
+}
+
+function mapUsage(usage?: z.infer<typeof usageSchema>): TokenUsage | undefined {
+  if (!usage) return undefined;
+  const input = usage.Input ?? 0;
+  const output = usage.Output ?? 0;
+  const cacheRead = usage.CacheRead ?? 0;
+  if (input === 0 && output === 0 && cacheRead === 0) return undefined;
+  return { input, output, cacheRead };
+}
+
+function nodePreview(content: Array<z.infer<typeof contentBlockSchema>>): string {
+  const text = content.find((b) => b.type === 'text')?.text ?? '';
+  return text.trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
+/** Nearest ancestor that carries a message, skipping the empty root and any message-less nodes. */
+function nearestMessageAncestor(
+  node: RuneSession['nodes'][number],
+  byId: Map<string, RuneSession['nodes'][number]>
+): string | null {
+  const seen = new Set<string>();
+  let parent = node.parent_id ? byId.get(node.parent_id) : undefined;
+  while (parent && !seen.has(parent.id)) {
+    seen.add(parent.id);
+    if (parent.has_message && parent.message) return parent.id;
+    parent = parent.parent_id ? byId.get(parent.parent_id) : undefined;
+  }
+  return null;
+}
+
+/**
+ * Reconstruct the message-bearing graph. The empty root node is dropped; its children
+ * become top-level nodes (parentId null). Returns undefined for linear sessions so the
+ * renderer falls back to the plain transcript view.
+ */
+function buildTree(session: RuneSession): SessionTree | undefined {
+  const byId = new Map(session.nodes.map((n) => [n.id, n]));
+  const msgNodes = session.nodes.filter((n) => n.has_message && n.message);
+
+  const parentOf = new Map<string, string | null>();
+  for (const n of msgNodes) parentOf.set(n.id, nearestMessageAncestor(n, byId));
+
+  const childrenOf = new Map<string, string[]>();
+  for (const n of msgNodes) {
+    const parent = parentOf.get(n.id);
+    if (!parent) continue;
+    const siblings = childrenOf.get(parent);
+    if (siblings) siblings.push(n.id);
+    else childrenOf.set(parent, [n.id]);
+  }
+
+  const topLevelCount = msgNodes.filter((n) => parentOf.get(n.id) === null).length;
+  const hasBranches =
+    topLevelCount > 1 || msgNodes.some((n) => (childrenOf.get(n.id)?.length ?? 0) > 1);
+  if (!hasBranches) return undefined;
+
+  const nodes: SessionTreeNode[] = msgNodes.map((n) => ({
+    id: n.id,
+    parentId: parentOf.get(n.id) ?? null,
+    childIds: childrenOf.get(n.id) ?? [],
+    role: toRole(n.message!.role),
+    blocks: toBlocks(n.message!.content),
+    createdAt: parseCreated(n.created),
+    usage: mapUsage(n.usage),
+    compactedCount: n.compacted_count && n.compacted_count > 0 ? n.compacted_count : undefined,
+    preview: nodePreview(n.message!.content)
+  }));
+
+  // active_id is usually a leaf message node, but guard against it pointing at the
+  // message-less root (or a stray id) so the renderer never defaults to a blank path.
+  const msgIds = new Set(msgNodes.map((n) => n.id));
+  const rawActive = byId.get(session.active_id);
+  const activeId = msgIds.has(session.active_id)
+    ? session.active_id
+    : ((rawActive ? nearestMessageAncestor(rawActive, byId) : null) ?? nodes[nodes.length - 1].id);
+
+  return { activeId, nodes };
+}
+
+function mapSubagents(subagents: RuneSession['subagents']): SubagentSummary[] | undefined {
+  if (subagents.length === 0) return undefined;
+  return subagents.map((s) => ({
+    id: s.task_id,
+    name: s.name,
+    agentType: s.agent_type,
+    status: s.status,
+    summary: s.summary || undefined
+  }));
+}
+
 export function summarizeRune(raw: unknown, updatedAt: number): SessionSummary | null {
   const parsed = runeSessionSchema.safeParse(raw);
   if (!parsed.success) return null;
@@ -145,7 +266,12 @@ export function readRuneTranscript(raw: unknown, updatedAt: number): SessionTran
       blocks: toBlocks(node.message!.content)
     })
   );
-  return { summary, messages };
+  const result: SessionTranscript = { summary, messages };
+  const tree = buildTree(session);
+  if (tree) result.tree = tree;
+  const subagents = mapSubagents(session.subagents);
+  if (subagents) result.subagents = subagents;
+  return result;
 }
 
 export function runeSessionsDir(): string {

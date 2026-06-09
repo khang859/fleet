@@ -31,9 +31,44 @@ export type SessionSummary = {
   preview: string;
 };
 
+export type TokenUsage = { input: number; output: number; cacheRead: number };
+
+/** A single node in a Rune session's branching DAG. The empty root node is not included. */
+export type SessionTreeNode = {
+  id: string;
+  /** Nearest message-bearing ancestor; null when the node hangs directly off the root. */
+  parentId: string | null;
+  childIds: string[];
+  role: TranscriptMessage['role'];
+  blocks: TranscriptBlock[];
+  createdAt?: number; // epoch ms
+  usage?: TokenUsage;
+  compactedCount?: number; // >0 marks a compaction summary node
+  preview: string; // short text label for the graph row
+};
+
+export type SubagentSummary = {
+  id: string;
+  name: string;
+  agentType?: string;
+  status: string;
+  summary?: string;
+};
+
+/** The full branching graph of a Rune session. Present only when the session has branches. */
+export type SessionTree = {
+  /** Leaf of the live branch; always present in `nodes`. Graph roots are nodes with parentId null. */
+  activeId: string;
+  nodes: SessionTreeNode[];
+};
+
 export type SessionTranscript = {
   summary: SessionSummary;
   messages: TranscriptMessage[];
+  /** Branch graph; only set for Rune sessions that actually fork. */
+  tree?: SessionTree;
+  /** Session-level subagents; Rune only. Not linked to individual nodes. */
+  subagents?: SubagentSummary[];
 };
 
 export type SessionGroup = {
