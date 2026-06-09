@@ -143,8 +143,8 @@ New `'sessions'` value in the `Tab` `type` union (`src/shared/types.ts`) and a `
 ### Agent filter + preferred agent (new requirement)
 
 - The list has an **agent filter** with three options: **All**, **Rune**, **Claude Code**. It controls which sessions are shown.
-- A **Preferred agent** setting (`sessions.preferredAgent`: `'all' | 'rune' | 'claude'`, default `'all'`) lives in the existing settings store (`settings-store.ts`) and the settings page. It seeds the filter's initial value each time the tab opens. Rune-first users set it to `Rune` and never see Claude sessions unless they switch the dropdown.
-- The in-tab dropdown is a transient override for the current view; the setting is the persistent default. Changing the dropdown does **not** rewrite the setting (keeps "default vs. this-session view" distinct).
+- The selection is **persisted**: it's backed by `sessions.preferredAgent` (`'all' | 'rune' | 'claude'`, default `'rune'`) in the existing settings store (`settings-store.ts`). The tab opens to the saved value, and switching the dropdown **writes back to the setting immediately** — so the choice sticks across tab reopens and app restarts.
+- Default is **`'rune'`** (Rune is the priority harness): out of the box the library shows only Rune sessions until the user switches to `All` or `Claude Code`.
 
 ## Forward-compat (for fleet#222)
 
@@ -156,7 +156,7 @@ The branch/DAG tree is deferred, but the v1 read path must not foreclose it:
 ## Testing / verification
 
 - **Adapter unit tests** (vitest): zod parsing of representative Rune `.json` (incl. branching, compaction, tool blocks) and Claude `.jsonl` fixtures → expected `SessionSummary` / `SessionTranscript`; malformed-file handling (skipped in `list`, errors in `read`).
-- **Aggregator tests:** merge + sort + group-by-project; agent filter; preferred-agent default seeding.
+- **Aggregator tests:** merge + sort + group-by-project; agent filter; `preferredAgent` persistence (switching writes back, reopen restores, default is `'rune'`).
 - **Manual:** real `~/.rune/sessions` and `~/.claude/projects` render correctly; live refresh fires on a new turn; Resume opens a new tab in the right cwd and runs the right command (Rune behind rune#17).
 - `npm run typecheck` and `npm run lint` clean.
 
@@ -168,5 +168,5 @@ The branch/DAG tree is deferred, but the v1 read path must not foreclose it:
 4. Aggregator + IPC handlers + `fs.watch` liveness. → verify: manual IPC smoke.
 5. `'sessions'` tab type + `SessionsTabCard` in Sidebar. → verify: tab opens, pinned.
 6. SessionsTab two-pane UI: list (search + group), transcript (reuse copilot rendering), Resume button. → verify: real data renders, resume opens tab.
-7. Agent filter dropdown + `sessions.preferredAgent` setting + settings-page control. → verify: filter works, default seeds from setting.
+7. Agent filter dropdown + `sessions.preferredAgent` setting (default `'rune'`, persists on change) + settings-page control. → verify: filter works, switching persists across reopen/restart.
 8. Final typecheck + lint pass.
