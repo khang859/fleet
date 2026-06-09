@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.63.0
+
+- **Branch/DAG tree visualization for Rune sessions** — Rune persists each session as a branching graph (forks, clones, compaction), but the Sessions tool only ever showed the active path. A new collapsible tree rail in the transcript pane renders the full graph in `git log --graph` style: the active branch is marked, compaction nodes are badged, and per-node role/time/token-usage show on hover. Clicking a branch shows that path's transcript. Session-level subagents are surfaced in the rail. Single-branch Rune sessions and all Claude Code sessions keep the existing linear view.
+
 ## v2.62.3
 
 - **Fix: Session transcript still could not scroll (completes the v2.62.2 fix)** — the real cause was the Sessions grid using an implicit `auto` row, which grew to the full transcript height and was clipped by the parent's `overflow-hidden`. Constraining the grid row to `minmax(0, 1fr)` caps it at the viewport so the transcript scrolls. Verified with a headless layout test.
