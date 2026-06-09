@@ -14,7 +14,10 @@ export function SessionsTab(): React.JSX.Element {
   }, [load]);
 
   return (
-    <div className="grid h-full" style={{ gridTemplateColumns: '320px 1fr' }}>
+    <div
+      className="grid h-full"
+      style={{ gridTemplateColumns: '320px 1fr', gridTemplateRows: 'minmax(0, 1fr)' }}
+    >
       <SessionList />
       <TranscriptView />
     </div>

@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.62.3
+
+- **Fix: Session transcript still could not scroll (completes the v2.62.2 fix)** — the real cause was the Sessions grid using an implicit `auto` row, which grew to the full transcript height and was clipped by the parent's `overflow-hidden`. Constraining the grid row to `minmax(0, 1fr)` caps it at the viewport so the transcript scrolls. Verified with a headless layout test.
+
 ## v2.62.2
 
 - **Fix: Session transcript could not scroll** — long sessions ran off the bottom with no scrollbar because the scroll container lacked `min-h-0`. Vertical scrolling now works, and long content (tool output, paths, code) wraps to the panel width instead of clipping off-screen.
