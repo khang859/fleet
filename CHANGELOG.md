@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.61.1
+
+- **Fix: WSL tabs failed to open with "zsh: permission denied"** — when WSL was your default shell, new tabs launched `wsl.exe -d <distro> ~`, where wsl.exe treats the trailing `~` as a command and the login shell tried to execute your home directory. Fleet now uses the documented `--cd ~` flag, so WSL tabs open in your home directory as expected. (This only surfaced after WSL distro detection was fixed in 2.60.0.)
+
 ## v2.61.0
 
 - **Default shell profile picker** — Settings → General now has a **Default Profile** dropdown listing your detected shell profiles (system shells and WSL distros), with an **(auto-detect)** option. New tabs use the chosen profile right away, no restart needed. This wires up the setting whose backend shipped in 2.60.0.
