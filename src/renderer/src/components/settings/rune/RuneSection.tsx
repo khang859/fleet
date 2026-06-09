@@ -1,6 +1,7 @@
 import { CheckCircle2, AlertTriangle, RefreshCw, Download } from 'lucide-react';
 import { useRuneStatus } from '../../../hooks/use-rune-status';
 import { useRuneInstall } from '../../../hooks/use-rune-install';
+import { useSettingsStore } from '../../../store/settings-store';
 import { RuneInstallCommand } from '../../rune/RuneInstallCommand';
 import { RUNE_REPO_URL, type RuneInstallResult } from '../../../../../shared/rune';
 import { RuneSettingsEditor } from './RuneSettingsEditor';
@@ -19,6 +20,7 @@ function installMessage(result: RuneInstallResult): string {
 export function RuneSection(): React.JSX.Element {
   const { status, loading, recheck } = useRuneStatus();
   const { install, running, result, error } = useRuneInstall(recheck);
+  const { settings, updateSettings } = useSettingsStore();
 
   return (
     <div className="space-y-6">
@@ -39,6 +41,24 @@ export function RuneSection(): React.JSX.Element {
           Re-check
         </button>
       </header>
+
+      <div className="flex items-center justify-between">
+        <span className="text-sm text-neutral-400">Sessions: preferred agent</span>
+        <select
+          value={settings?.sessions.preferredAgent ?? 'rune'}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'rune' || v === 'claude' || v === 'all') {
+              void updateSettings({ sessions: { preferredAgent: v } });
+            }
+          }}
+          className="bg-neutral-800 text-neutral-100 text-sm rounded px-2 py-1 border border-neutral-700"
+        >
+          <option value="rune">Rune</option>
+          <option value="claude">Claude Code</option>
+          <option value="all">All</option>
+        </select>
+      </div>
 
       {loading && status === null ? (
         <div className="text-sm text-neutral-400">Checking for Rune…</div>
