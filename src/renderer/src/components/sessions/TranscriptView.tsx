@@ -55,13 +55,20 @@ function Message({ message }: { message: TranscriptMessage }): React.JSX.Element
 }
 
 export function TranscriptView(): React.JSX.Element {
-  const { selected, transcript, isLoadingTranscript } = useSessionsStore();
+  const { selected, transcript, isLoadingTranscript, transcriptError } = useSessionsStore();
   const openResumeTab = useWorkspaceStore((s) => s.openResumeTab);
 
   if (!selected) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-fleet-text-subtle">
         Select a session to view its transcript.
+      </div>
+    );
+  }
+  if (transcriptError) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-400">
+        {transcriptError}
       </div>
     );
   }

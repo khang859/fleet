@@ -306,7 +306,7 @@ export function collectPaneIds(node: PaneNode): string[] {
 }
 
 /** Special/pinned tabs that should not be auto-selected when normal tabs are closed */
-const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban']);
+const SPECIAL_TAB_TYPES = new Set(['images', 'annotate', 'settings', 'kanban', 'sessions']);
 
 function isNormalTab(tab: Tab): boolean {
   return !SPECIAL_TAB_TYPES.has(tab.type ?? '');

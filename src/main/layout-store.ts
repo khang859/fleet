@@ -14,6 +14,24 @@ function containsPane(node: PaneNode, paneId: string): boolean {
   return containsPane(node.children[0], paneId) || containsPane(node.children[1], paneId);
 }
 
+/**
+ * Strip one-shot startup commands (e.g. session-resume `cmd`) from pane leaves before
+ * persisting. Otherwise a resumed tab would re-run `rune/claude --resume <id>` on every
+ * app restart.
+ */
+function stripPaneCmds(node: PaneNode): PaneNode {
+  if (node.type === 'leaf') {
+    if (node.cmd === undefined) return node;
+    const copy = { ...node };
+    delete copy.cmd;
+    return copy;
+  }
+  return {
+    ...node,
+    children: [stripPaneCmds(node.children[0]), stripPaneCmds(node.children[1])]
+  };
+}
+
 export class LayoutStore {
   private store: Store<StoreSchema>;
 
@@ -33,7 +51,10 @@ export class LayoutStore {
       tabCount: workspace.tabs.length
     });
     const workspaces = this.store.get('workspaces', {});
-    workspaces[workspace.id] = workspace;
+    workspaces[workspace.id] = {
+      ...workspace,
+      tabs: workspace.tabs.map((t) => ({ ...t, splitRoot: stripPaneCmds(t.splitRoot) }))
+    };
     this.store.set('workspaces', workspaces);
   }
 

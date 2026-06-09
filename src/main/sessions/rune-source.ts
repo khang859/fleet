@@ -172,6 +172,10 @@ export async function listRuneSessions(): Promise<SessionSummary[]> {
 
 export async function readRuneSession(id: string): Promise<SessionTranscript | null> {
   const full = join(runeSessionsDir(), `${id}.json`);
-  const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
-  return readRuneTranscript(JSON.parse(raw), st.mtimeMs);
+  try {
+    const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+    return readRuneTranscript(JSON.parse(raw), st.mtimeMs);
+  } catch {
+    return null; // file missing, unreadable, or malformed
+  }
 }

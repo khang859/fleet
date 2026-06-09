@@ -3,21 +3,14 @@ import { useEffect } from 'react';
 import { SessionList } from './SessionList';
 import { TranscriptView } from './TranscriptView';
 import { useSessionsStore } from '../../store/sessions-store';
-import { useSettingsStore } from '../../store/settings-store';
 
 export function SessionsTab(): React.JSX.Element {
   const load = useSessionsStore((s) => s.load);
-  const settingsLoaded = useSettingsStore((s) => s.isLoaded);
-  const loadSettings = useSettingsStore((s) => s.loadSettings);
 
-  useEffect(() => {
-    if (!settingsLoaded) void loadSettings();
-  }, [settingsLoaded, loadSettings]);
-
+  // Settings are loaded at app startup; the list refresh on `sessions:changed`
+  // is owned by the always-mounted SessionsTabCard, so we only need an initial load here.
   useEffect(() => {
     void load();
-    const cleanup = window.fleet.sessions.onChanged(() => void load());
-    return cleanup;
   }, [load]);
 
   return (

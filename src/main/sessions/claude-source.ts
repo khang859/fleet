@@ -3,7 +3,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { z } from 'zod';
-import { ConversationReader, cwdToProjectDir } from '../copilot/conversation-reader';
+import { cwdToProjectDir, parseClaudeTranscript } from '../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
   SessionSummary,
@@ -12,17 +12,14 @@ import type {
   TranscriptMessage
 } from '../../shared/sessions';
 
-const reader = new ConversationReader();
-
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
 
 export function claudeProjectsDir(): string {
   return join(homedir(), '.claude', 'projects');
 }
 
-/** Read the cwd recorded in the first JSON line of a transcript file. */
-async function readCwdFromJsonl(filePath: string): Promise<string> {
-  const content = await readFile(filePath, 'utf8');
+/** Read the cwd recorded in the first JSON line of an already-loaded transcript. */
+function cwdFromTranscript(content: string): string {
   const firstLine = content.split('\n').find((l) => l.trim().length > 0);
   if (!firstLine) return '';
   try {
@@ -54,9 +51,12 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
       try {
         const full = join(dirPath, file);
         const id = basename(file, '.jsonl');
-        const [cwd, st] = await Promise.all([readCwdFromJsonl(full), stat(full)]);
+        // Read each transcript once, asynchronously; parse without caching so a large
+        // history doesn't accumulate state or block the main thread on every refresh.
+        const [content, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+        const cwd = cwdFromTranscript(content);
         if (!cwd) continue;
-        const messages = reader.getMessages(id, cwd);
+        const messages = parseClaudeTranscript(content);
         if (messages.length === 0) continue;
         const preview = claudePreview(messages);
         out.push({
@@ -81,15 +81,18 @@ export async function readClaudeSession(
   id: string,
   cwd: string
 ): Promise<SessionTranscript | null> {
-  const messages = reader.getMessages(id, cwd);
-  if (messages.length === 0) return null;
   const full = join(claudeProjectsDir(), cwdToProjectDir(cwd), `${id}.jsonl`);
+  let content: string;
   let updatedAt = 0;
   try {
-    updatedAt = (await stat(full)).mtimeMs;
+    const [raw, st] = await Promise.all([readFile(full, 'utf8'), stat(full)]);
+    content = raw;
+    updatedAt = st.mtimeMs;
   } catch {
-    // best-effort mtime
+    return null; // file missing or unreadable
   }
+  const messages = parseClaudeTranscript(content);
+  if (messages.length === 0) return null;
   const preview = claudePreview(messages);
   return {
     summary: {

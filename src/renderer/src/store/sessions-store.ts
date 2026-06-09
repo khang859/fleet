@@ -10,9 +10,12 @@ type SessionsStoreState = {
   selected: SelectedKey | null;
   transcript: SessionTranscript | null;
   isLoadingTranscript: boolean;
+  transcriptError: string | null;
   load: () => Promise<void>;
   select: (s: SessionSummary) => Promise<void>;
 };
+
+const READ_FAILED = 'This session could not be loaded. The file may have been moved or deleted.';
 
 export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   sessions: [],
@@ -20,6 +23,7 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
   selected: null,
   transcript: null,
   isLoadingTranscript: false,
+  transcriptError: null,
 
   load: async () => {
     const sessions = await window.fleet.sessions.list();
@@ -30,7 +34,7 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
       try {
         const transcript = await window.fleet.sessions.read(sel);
         const cur = get().selected;
-        if (cur?.id === sel.id && cur?.agent === sel.agent) set({ transcript });
+        if (cur?.id === sel.id && cur?.agent === sel.agent && transcript) set({ transcript });
       } catch {
         // ignore refresh failure; keep existing transcript
       }
@@ -39,16 +43,18 @@ export const useSessionsStore = create<SessionsStoreState>((set, get) => ({
 
   select: async (s) => {
     const selected = { agent: s.agent, id: s.id, cwd: s.cwd };
-    set({ selected, isLoadingTranscript: true, transcript: null });
+    set({ selected, isLoadingTranscript: true, transcript: null, transcriptError: null });
+    const isCurrent = (): boolean => {
+      const cur = get().selected;
+      return cur?.id === s.id && cur?.agent === s.agent;
+    };
     try {
       const transcript = await window.fleet.sessions.read(selected);
-      const cur = get().selected;
-      if (cur?.id === s.id && cur?.agent === s.agent) {
-        set({ transcript, isLoadingTranscript: false });
-      }
+      if (!isCurrent()) return;
+      if (transcript) set({ transcript, isLoadingTranscript: false });
+      else set({ isLoadingTranscript: false, transcriptError: READ_FAILED });
     } catch {
-      const cur = get().selected;
-      if (cur?.id === s.id && cur?.agent === s.agent) set({ isLoadingTranscript: false });
+      if (isCurrent()) set({ isLoadingTranscript: false, transcriptError: READ_FAILED });
     }
   }
 }));

@@ -214,6 +214,57 @@ function parseMessageLine(
   };
 }
 
+/**
+ * Apply a single JSONL line to an accumulating message list, mirroring the live
+ * watcher's parsing rules (skip non-message lines, reset on `/clear`, dedupe tool ids).
+ * Shared by the incremental reader and the full-file {@link parseClaudeTranscript}.
+ */
+function applyTranscriptLine(
+  line: string,
+  messages: CopilotChatMessage[],
+  seenToolIds: Set<string>
+): void {
+  if (!line.trim()) return;
+
+  if (line.includes('<command-name>/clear</command-name>')) {
+    messages.length = 0;
+    seenToolIds.clear();
+    return;
+  }
+
+  if (
+    !line.includes('"type":"user"') &&
+    !line.includes('"type": "user"') &&
+    !line.includes('"type":"assistant"') &&
+    !line.includes('"type": "assistant"')
+  ) {
+    return;
+  }
+
+  try {
+    const json = JSON.parse(line) as Record<string, unknown>;
+    const msg = parseMessageLine(json, seenToolIds);
+    if (msg) messages.push(msg);
+  } catch {
+    // Skip malformed lines
+  }
+}
+
+/**
+ * Parse a full `.jsonl` transcript string into messages. Pure and allocation-only —
+ * no caching, no file handles — so callers can scan many sessions without the
+ * unbounded state growth of {@link ConversationReader}. Produces the same messages
+ * (and therefore the same count) as the incremental reader.
+ */
+export function parseClaudeTranscript(content: string): CopilotChatMessage[] {
+  const messages: CopilotChatMessage[] = [];
+  const seenToolIds = new Set<string>();
+  for (const line of content.split('\n')) {
+    applyTranscriptLine(line, messages, seenToolIds);
+  }
+  return messages;
+}
+
 export class ConversationReader {
   private states = new Map<string, SessionParseState>();
   private watchers = new Map<string, FSWatcher>();
@@ -322,35 +373,8 @@ export class ConversationReader {
     }
 
     const newContent = buf.toString('utf-8');
-    const lines = newContent.split('\n');
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      if (line.includes('<command-name>/clear</command-name>')) {
-        state.messages = [];
-        state.seenToolIds = new Set();
-        continue;
-      }
-
-      if (
-        !line.includes('"type":"user"') &&
-        !line.includes('"type": "user"') &&
-        !line.includes('"type":"assistant"') &&
-        !line.includes('"type": "assistant"')
-      ) {
-        continue;
-      }
-
-      try {
-        const json = JSON.parse(line) as Record<string, unknown>;
-        const msg = parseMessageLine(json, state.seenToolIds);
-        if (msg) {
-          state.messages.push(msg);
-        }
-      } catch {
-        // Skip malformed lines
-      }
+    for (const line of newContent.split('\n')) {
+      applyTranscriptLine(line, state.messages, state.seenToolIds);
     }
 
     state.lastOffset = fileSize;
