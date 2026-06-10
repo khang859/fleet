@@ -91,6 +91,29 @@ describe('KanbanStore', () => {
     s.close();
   });
 
+  it('upgrades a v9 db to v10 (adds docs column and projects table)', () => {
+    const v9Path = join(TEST_DIR, 'v9.db');
+    // Simulate a v9 DB: full current schema minus the v10 additions.
+    const raw = new Database(v9Path);
+    raw.exec(SCHEMA_SQL);
+    raw.exec('ALTER TABLE tasks DROP COLUMN docs');
+    raw.exec('DROP TABLE projects');
+    raw.exec(
+      "INSERT INTO tasks (id,title,status,created_at,updated_at) VALUES ('pre10','old task','todo',1,1)"
+    );
+    raw.pragma('user_version = 9');
+    raw.close();
+
+    // Opening the store must run the ALTER-based upgrade path (+ idempotent SCHEMA_SQL).
+    const s = new KanbanStore(v9Path);
+    expect(s.schemaVersion()).toBe(10);
+    expect(s.getTask('pre10')?.docs).toEqual([]); // pre-migration row gets the default
+    const t = s.createTask({ title: 'x', docs: ['guide.md'] });
+    expect(s.getTask(t.id)?.docs).toEqual(['guide.md']);
+    expect(s.listProjects('default')).toEqual([]);
+    s.close();
+  });
+
   it('upgrades a v1 db to v2 (adds missing columns)', () => {
     const v1Path = join(TEST_DIR, 'v1.db');
     // Simulate a v1 DB: full current schema minus the two v2 columns.
@@ -626,6 +649,7 @@ describe('KanbanStore scheduling', () => {
       tenant: 'acme',
       boardId: board.slug,
       skills: ['a'],
+      docs: ['guide.md'],
       maxRetries: 2
     });
     store.setSchedule(tmpl.id, { kind: 'interval', everyMs: 5000 });
@@ -639,6 +663,7 @@ describe('KanbanStore scheduling', () => {
     expect(inst.tenant).toBe('acme');
     expect(inst.boardId).toBe(board.slug);
     expect(inst.skills).toEqual(['a']);
+    expect(inst.docs).toEqual(['guide.md']);
     expect(inst.maxRetries).toBe(2);
     expect(inst.scheduledFrom).toBe(tmpl.id);
     expect(inst.scheduleKind).toBeNull();

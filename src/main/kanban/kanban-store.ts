@@ -1567,6 +1567,7 @@ export class KanbanStore {
       branchName: template.branchName,
       modelOverride: template.modelOverride,
       skills: template.skills,
+      docs: template.docs,
       boardId: template.boardId,
       maxRuntimeSeconds: template.maxRuntimeSeconds,
       maxRetries: template.maxRetries,
