@@ -54,6 +54,7 @@ import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
 import { prepareWorkspace, ensureFeatureBranch } from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
+import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
   spawnRuneWorker,
   resolveWorkProfile,
@@ -981,7 +982,8 @@ void app.whenReady().then(async () => {
           attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
             filename: a.filename,
             storedPath: a.storedPath
-          }))
+          })),
+          docs: loadTaskDocs(pmDocsDir(KANBAN_HOME, task.boardId), task.docs)
         },
         // ENOENT here means rune vanished from PATH after our cached check. Mark it missing so
         // the next claim is guarded up-front with the clear reason above.

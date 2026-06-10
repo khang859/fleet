@@ -5,6 +5,7 @@ import { createLogger } from '../logger';
 import { renderProfileMarkdown } from './profile-file';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 import type { RunMode } from '../../shared/kanban-types';
+import type { InlinedDoc } from './pm-paths';
 
 const log = createLogger('kanban-spawn');
 
@@ -26,6 +27,8 @@ export interface BuildWorkerInput {
   profile?: WorkerProfile | null;
   roster?: Array<{ name: string; description: string }>;
   attachments?: Array<{ filename: string; storedPath: string }>;
+  /** Board docs referenced by the task, pre-loaded for prompt inlining. */
+  docs?: InlinedDoc[];
 }
 
 export interface WorkerInvocation {
@@ -34,6 +37,17 @@ export interface WorkerInvocation {
   env: Record<string, string>;
   cwd: string;
   logPath: string;
+}
+
+function docsSection(input: BuildWorkerInput): string {
+  const docs = input.docs ?? [];
+  if (docs.length === 0) return '';
+  return docs
+    .map(
+      (d) =>
+        `\n\n## Reference doc: ${d.filename}${d.truncated ? ' (truncated)' : ''}\n\n${d.content}`
+    )
+    .join('');
 }
 
 function attachmentsSection(input: BuildWorkerInput): string {
@@ -71,6 +85,7 @@ function buildPrompt(input: BuildWorkerInput): string {
   return (
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
+    docsSection(input) +
     `\n\nIf you produce any durable output files (docs, research, data), register each with the ` +
     `kanban_artifact tool (path relative to your working directory) so the user can find them.`
   );

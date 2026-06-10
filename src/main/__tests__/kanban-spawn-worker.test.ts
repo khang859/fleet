@@ -357,6 +357,50 @@ describe('buildWorkerInvocation', () => {
   });
 });
 
+describe('worker prompt doc inlining', () => {
+  const WS = join(ROOT, 'wsdocs');
+  beforeEach(() => mkdirSync(WS, { recursive: true }));
+
+  it('appends referenced docs to the work prompt', () => {
+    const inv = buildWorkerInvocation({
+      task: { id: 't1', title: 'T', body: 'B', assignee: null, modelOverride: null },
+      workspace: WS,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'log'),
+      mode: 'work',
+      docs: [{ filename: 'prd.md', content: '# PRD\ngoals', truncated: false }]
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toContain('## Reference doc: prd.md');
+    expect(prompt).toContain('# PRD\ngoals');
+  });
+
+  it('marks truncated docs and omits the section when there are none', () => {
+    const inv = buildWorkerInvocation({
+      task: { id: 't2', title: 'T', body: 'B', assignee: null, modelOverride: null },
+      workspace: WS,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'log'),
+      mode: 'work',
+      docs: [{ filename: 'big.md', content: 'x', truncated: true }]
+    });
+    expect(inv.args[inv.args.indexOf('--prompt') + 1]).toContain(
+      '## Reference doc: big.md (truncated)'
+    );
+    const none = buildWorkerInvocation({
+      task: { id: 't3', title: 'T', body: 'B', assignee: null, modelOverride: null },
+      workspace: WS,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'log'),
+      mode: 'work'
+    });
+    expect(none.args[none.args.indexOf('--prompt') + 1]).not.toContain('## Reference doc');
+  });
+});
+
 describe('worker-log classification', () => {
   beforeEach(() => mkdirSync(ROOT, { recursive: true }));
   afterEach(() => rmSync(ROOT, { recursive: true, force: true }));
