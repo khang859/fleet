@@ -713,6 +713,26 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     writeFileSync(join(home, 'pm', 'default', 'docs', 'spec.md'), '# spec');
     server.setKanbanHome(home);
     const t = store.createTask({ title: 'x' });
+
+    const missing = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: t.id, docs: ['missing.md'] }
+    });
+    expect(String(missing.error.message)).toMatch(/doc not found/i);
+
+    const traversal = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: t.id, docs: ['../AGENTS.md'] }
+    });
+    expect(String(traversal.error.message)).toMatch(/invalid doc name/i);
+
+    // Identity is validated before docs: a nonexistent task wins even with valid docs.
+    const ghost = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: 'nope', docs: ['spec.md'] }
+    });
+    expect(String(ghost.error.message)).toMatch(/not found on this board/i);
+
     await rpc(`${base}?run=pmtok`, 'tools/call', {
       name: 'kanban_update',
       arguments: { task_id: t.id, docs: ['spec.md'] }

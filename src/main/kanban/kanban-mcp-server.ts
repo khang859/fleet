@@ -729,10 +729,6 @@ export class KanbanMcpServer {
               docs: z.array(z.string()).optional()
             })
             .parse(args);
-          if (a.docs && a.docs.length > 0) {
-            const docErr = this.validateDocs(scope.boardId, a.docs);
-            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
-          }
           const existing = this.pmTask(scope, a.task_id);
           if (!existing) {
             return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
@@ -741,6 +737,10 @@ export class KanbanMcpServer {
           // out from under the worker is dispatcher territory, same as status.
           if (existing.status === 'running') {
             return this.rpcError(res, rpcReq.id, 'cannot update a running task');
+          }
+          if (a.docs && a.docs.length > 0) {
+            const docErr = this.validateDocs(scope.boardId, a.docs);
+            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
           }
           commands.update(a.task_id, {
             title: a.title,
