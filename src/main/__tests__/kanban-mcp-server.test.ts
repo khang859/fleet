@@ -455,6 +455,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
   let store: KanbanStore;
   let server: KanbanMcpServer;
   let base: string;
+  let commands: KanbanCommands;
 
   beforeEach(async () => {
     mkdirSync(TEST_DIR, { recursive: true });
@@ -473,7 +474,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
         artifactRetentionDays: 0
       }
     });
-    const commands = new KanbanCommands(store, dispatcher, () => ({
+    commands = new KanbanCommands(store, dispatcher, () => ({
       workspaceKind: 'scratch',
       maxRuntimeSeconds: null
     }));
@@ -601,5 +602,83 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     expect(r.error).toBeTruthy();
     expect(String(r.error.message)).toMatch(/running/i);
     expect(store.getTask(t.id)?.title).toBe('busy');
+  });
+
+  it('kanban_project_add / list / remove manage the board registry', async () => {
+    const add = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_project_add',
+      arguments: { name: 'fleet', path: TEST_DIR, description: 'the app' }
+    });
+    expect(add.result.content[0].text).toMatch(/registered/i);
+    const list = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_project_list',
+      arguments: {}
+    });
+    expect(list.result.content[0].text).toContain('fleet');
+    expect(list.result.content[0].text).toContain('(default)');
+    const rm = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_project_remove',
+      arguments: { name: 'fleet' }
+    });
+    expect(rm.result.content[0].text).toMatch(/removed/i);
+    expect(store.listProjects('default')).toHaveLength(0);
+  });
+
+  it('kanban_create routes to the default project when project is omitted', async () => {
+    store.addProject({ boardId: 'default', name: 'fleet', path: TEST_DIR });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'routed' }
+    });
+    const t = store.getTask(r.result.content[0].text)!;
+    expect(t.repoPath).toBe(TEST_DIR);
+    expect(t.workspaceKind).toBe('worktree');
+  });
+
+  it('kanban_create with an explicit project name and rejects unknown names', async () => {
+    store.addProject({ boardId: 'default', name: 'fleet', path: TEST_DIR });
+    const bad = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'x', project: 'ghost' }
+    });
+    expect(String(bad.error.message)).toMatch(/unknown project/i);
+    expect(String(bad.error.message)).toContain('fleet');
+    const ok = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'x', project: 'fleet' }
+    });
+    expect(store.getTask(ok.result.content[0].text)!.repoPath).toBe(TEST_DIR);
+  });
+
+  it('kanban_create leaves zero-project boards scratch (no registry, no routing)', async () => {
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'plain' }
+    });
+    expect(store.getTask(r.result.content[0].text)!.workspaceKind).toBe('scratch');
+  });
+
+  it('feature repo wins over the default project and conflicting project is rejected', async () => {
+    store.addProject({ boardId: 'default', name: 'fleet', path: TEST_DIR });
+    const f = store.createFeature({ boardId: 'default', name: 'F', repoPath: '/elsewhere' });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'member', feature_id: f.id }
+    });
+    expect(store.getTask(r.result.content[0].text)!.repoPath).toBe('/elsewhere');
+    const bad = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'member2', feature_id: f.id, project: 'fleet' }
+    });
+    expect(String(bad.error.message)).toMatch(/conflicts/i);
+  });
+
+  it('kanban_feature_create accepts a project name for its repo', async () => {
+    store.addProject({ boardId: 'default', name: 'fleet', path: TEST_DIR });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_feature_create',
+      arguments: { name: 'F2', project: 'fleet' }
+    });
+    expect(store.getFeature(r.result.content[0].text)!.repoPath).toBe(TEST_DIR);
   });
 });

@@ -264,7 +264,8 @@ const PM_TOOLS: McpTool[] = [
     name: 'kanban_create',
     description:
       'Create a task on the board. Status defaults to todo (use triage for ideas needing ' +
-      'refinement). Pass feature_id to group it under a feature, parents for dependencies.',
+      'refinement). Pass feature_id to group it under a feature, parents for dependencies.' +
+      ' Pass project (a registered project name) to route the ticket to that repo; omitted, the board default project applies.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -274,7 +275,8 @@ const PM_TOOLS: McpTool[] = [
         priority: { type: 'number' },
         status: { type: 'string', enum: ['triage', 'todo', 'ready', 'blocked'] },
         parents: { type: 'array', items: { type: 'string' } },
-        feature_id: { type: 'string' }
+        feature_id: { type: 'string' },
+        project: { type: 'string' }
       },
       required: ['title']
     }
@@ -336,7 +338,8 @@ const PM_TOOLS: McpTool[] = [
       properties: {
         name: { type: 'string' },
         repo_path: { type: 'string' },
-        base_branch: { type: 'string' }
+        base_branch: { type: 'string' },
+        project: { type: 'string' }
       },
       required: ['name']
     }
@@ -351,6 +354,35 @@ const PM_TOOLS: McpTool[] = [
         feature_id: { type: ['string', 'null'] }
       },
       required: ['task_id', 'feature_id']
+    }
+  },
+  {
+    name: 'kanban_project_list',
+    description: 'List this board registered project folders (name, path, description, default).',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'kanban_project_add',
+    description:
+      'Register a project folder on this board. The first project becomes the default; ' +
+      'tickets route to the default unless another project is named.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        path: { type: 'string' }, // absolute folder path
+        description: { type: 'string' }
+      },
+      required: ['name', 'path']
+    }
+  },
+  {
+    name: 'kanban_project_remove',
+    description: 'Remove a registered project by name. Existing tickets keep their repo path.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      required: ['name']
     }
   }
 ];
@@ -576,7 +608,8 @@ export class KanbanMcpServer {
               priority: z.number().optional(),
               status: z.enum(['triage', 'todo', 'ready', 'blocked']).optional(),
               parents: z.array(z.string()).optional(),
-              feature_id: z.string().optional()
+              feature_id: z.string().optional(),
+              project: z.string().optional()
             })
             .parse(args);
           // Same phantom-assignee guard as the orchestrator's kanban_create.
@@ -591,11 +624,12 @@ export class KanbanMcpServer {
               `unknown worker profile "${assignee}". Valid profiles: ${workerNames.join(', ')}`
             );
           }
-          // A feature carries the repo its member tasks work in; inherit it so the
-          // PM never needs folder config. Featureless PM tasks start as scratch.
+          // Workspace routing precedence: feature repo (keeps the group integrable) >
+          // explicit project > board default project > scratch.
           let workspace: Partial<
             Pick<CreateTaskInput, 'workspaceKind' | 'repoPath' | 'baseBranch'>
           > = { workspaceKind: 'scratch' };
+          let featureRepo: string | null = null;
           if (a.feature_id) {
             const feature = this.store.getFeature(a.feature_id);
             if (!feature || feature.boardId !== scope.boardId) {
@@ -606,12 +640,35 @@ export class KanbanMcpServer {
               );
             }
             if (feature.repoPath) {
+              featureRepo = feature.repoPath;
               workspace = {
                 workspaceKind: 'worktree',
                 repoPath: feature.repoPath,
                 baseBranch: feature.baseBranch
               };
             }
+          }
+          const projects = this.store.listProjects(scope.boardId);
+          let proj =
+            a.project !== undefined ? (projects.find((p) => p.name === a.project) ?? null) : null;
+          if (a.project !== undefined && !proj) {
+            const names = projects.map((p) => p.name).join(', ') || '(none registered)';
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `unknown project "${a.project}". Registered: ${names}`
+            );
+          }
+          if (proj && featureRepo && proj.path !== featureRepo) {
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `project "${proj.name}" conflicts with the feature repo (${featureRepo}); omit project or match it`
+            );
+          }
+          if (!proj && !featureRepo) proj = projects.find((p) => p.isDefault) ?? null;
+          if (proj && !featureRepo) {
+            workspace = { workspaceKind: 'worktree', repoPath: proj.path };
           }
           for (const p of a.parents ?? []) {
             if (!this.pmTask(scope, p)) {
@@ -690,13 +747,21 @@ export class KanbanMcpServer {
             .object({
               name: z.string(),
               repo_path: z.string().optional(),
-              base_branch: z.string().optional()
+              base_branch: z.string().optional(),
+              project: z.string().optional()
             })
             .parse(args);
+          let repoPath = a.repo_path ?? null;
+          if (a.project !== undefined) {
+            if (repoPath) return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
+            const p = this.store.getProjectByName(scope.boardId, a.project);
+            if (!p) return this.rpcError(res, rpcReq.id, `unknown project: ${a.project}`);
+            repoPath = p.path;
+          }
           const feature = commands.createFeature({
             boardId: scope.boardId,
             name: a.name,
-            repoPath: a.repo_path ?? null,
+            repoPath,
             baseBranch: a.base_branch ?? null
           });
           return this.text(res, rpcReq.id, feature.id);
@@ -710,6 +775,37 @@ export class KanbanMcpServer {
           }
           commands.assignTaskToFeature(a.task_id, a.feature_id);
           return this.text(res, rpcReq.id, 'Feature membership updated.');
+        }
+        case 'kanban_project_list': {
+          const projects = this.store.listProjects(scope.boardId);
+          const lines = projects.map((p) => {
+            const desc = p.description ? ` — ${p.description}` : '';
+            return `- ${p.name} → ${p.path}${desc}${p.isDefault ? ' (default)' : ''}`;
+          });
+          return this.text(res, rpcReq.id, lines.join('\n') || '(no projects registered)');
+        }
+        case 'kanban_project_add': {
+          const a = z
+            .object({ name: z.string(), path: z.string(), description: z.string().optional() })
+            .parse(args);
+          const p = commands.addProject({
+            boardId: scope.boardId,
+            name: a.name,
+            path: a.path,
+            description: a.description ?? null
+          });
+          return this.text(
+            res,
+            rpcReq.id,
+            `Project "${p.name}" registered${p.isDefault ? ' as the default' : ''}.`
+          );
+        }
+        case 'kanban_project_remove': {
+          const a = z.object({ name: z.string() }).parse(args);
+          const p = this.store.getProjectByName(scope.boardId, a.name);
+          if (!p) return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
+          commands.removeProject(p.id);
+          return this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
         }
         default:
           return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
