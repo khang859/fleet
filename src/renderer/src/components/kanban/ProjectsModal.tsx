@@ -50,8 +50,12 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
 
   async function handleSetDefault(id: string): Promise<void> {
     setError(null);
-    await window.fleet.kanban.setDefaultProject(id);
-    await refresh();
+    try {
+      await window.fleet.kanban.setDefaultProject(id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not set default project');
+    }
   }
 
   return (
