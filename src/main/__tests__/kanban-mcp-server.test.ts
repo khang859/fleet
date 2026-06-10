@@ -739,4 +739,52 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     });
     expect(store.getTask(t.id)!.docs).toEqual(['spec.md']);
   });
+
+  it('kanban_show lists kept artifacts and kanban_artifact_read returns text content', async () => {
+    const t = store.createTask({ title: 'with art' });
+    const ws = join(TEST_DIR, 'ws-art');
+    mkdirSync(ws, { recursive: true });
+    writeFileSync(join(ws, 'report.md'), '# findings\nstuff');
+    const art = store.addArtifact({
+      taskId: t.id,
+      runId: null,
+      boardId: 'default',
+      workspaceRoot: ws,
+      relPath: 'report.md',
+      kind: 'document'
+    });
+
+    const show = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_show',
+      arguments: { task_id: t.id }
+    });
+    expect(show.result.content[0].text).toContain('## Artifacts');
+    expect(show.result.content[0].text).toContain(art.id);
+
+    const read = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_artifact_read',
+      arguments: { artifact_id: art.id }
+    });
+    expect(read.result.content[0].text).toContain('# findings');
+  });
+
+  it('kanban_artifact_read rejects artifacts from other boards', async () => {
+    const b = store.createBoard('Other');
+    const t = store.createTask({ title: 'foreign', boardId: b.slug });
+    const ws = join(TEST_DIR, 'ws-art2');
+    mkdirSync(ws, { recursive: true });
+    writeFileSync(join(ws, 'x.md'), 'x');
+    const art = store.addArtifact({
+      taskId: t.id,
+      runId: null,
+      boardId: b.slug,
+      workspaceRoot: ws,
+      relPath: 'x.md'
+    });
+    const r = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_artifact_read',
+      arguments: { artifact_id: art.id }
+    });
+    expect(String(r.error.message)).toMatch(/not found on this board/i);
+  });
 });

@@ -17,6 +17,7 @@ import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 import { finalizeWorktree, reviewStat, checkMergeConflicts } from './workspace';
 import { pmDocsDir } from './pm-paths';
+import { readArtifactPreview } from './artifact-files';
 
 const log = createLogger('kanban-mcp');
 
@@ -390,6 +391,17 @@ const PM_TOOLS: McpTool[] = [
       properties: { name: { type: 'string' } },
       required: ['name']
     }
+  },
+  {
+    name: 'kanban_artifact_read',
+    description:
+      'Read the text content of a task artifact on this board (ids come from kanban_show). ' +
+      'Use it to review finished work and distill durable knowledge into MEMORY.md or docs/.',
+    inputSchema: {
+      type: 'object',
+      properties: { artifact_id: { type: 'string' } },
+      required: ['artifact_id']
+    }
   }
 ];
 
@@ -608,8 +620,9 @@ export class KanbanMcpServer {
           if (!detail || detail.task.boardId !== scope.boardId) {
             return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
           }
-          const { task, comments, runs } = detail;
+          const { task, comments, runs, artifacts } = detail;
           const summaries = runs.filter((r) => r.summary);
+          const kept = artifacts.filter((x) => x.state === 'kept');
           const lines = [
             `# ${task.title} (${task.id})`,
             `status: ${task.status}  priority: ${task.priority}  assignee: ${task.assignee ?? '-'}`,
@@ -619,7 +632,12 @@ export class KanbanMcpServer {
             comments.length ? '## Comments' : '',
             ...comments.map((c) => `- ${c.author}: ${c.body}`),
             summaries.length ? '## Prior runs' : '',
-            ...summaries.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`)
+            ...summaries.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`),
+            kept.length ? '## Artifacts' : '',
+            ...kept.map(
+              (x) =>
+                `- ${x.id}: ${x.filename}${x.title ? ` — ${x.title}` : ''} (${x.kind}, ${x.size} bytes)`
+            )
           ].filter(Boolean);
           return this.text(res, rpcReq.id, lines.join('\n'));
         }
@@ -842,6 +860,19 @@ export class KanbanMcpServer {
           if (!p) return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
           commands.removeProject(p.id);
           return this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
+        }
+        case 'kanban_artifact_read': {
+          const a = z.object({ artifact_id: z.string() }).parse(args);
+          const art = this.store.getArtifact(a.artifact_id);
+          if (!art || art.boardId !== scope.boardId) {
+            return this.rpcError(res, rpcReq.id, `artifact not found on this board: ${a.artifact_id}`);
+          }
+          const preview = readArtifactPreview(art.storedPath, 64 * 1024);
+          if (!preview.previewable) {
+            return this.rpcError(res, rpcReq.id, preview.reason ?? 'artifact is not readable as text');
+          }
+          const suffix = preview.truncated ? '\n\n…(truncated)' : '';
+          return this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
         }
         default:
           return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
