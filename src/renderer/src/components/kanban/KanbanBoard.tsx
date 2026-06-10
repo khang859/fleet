@@ -13,9 +13,11 @@ import {
   Package,
   Layers,
   GitBranch,
-  Bot
+  Bot,
+  FolderGit2
 } from 'lucide-react';
 import { SwarmModal } from './SwarmModal';
+import { ProjectsModal } from './ProjectsModal';
 import { PmChatPanel } from './PmChatPanel';
 import { usePmChatStore } from '../../store/pm-chat-store';
 import { ArtifactsView } from './ArtifactsView';
@@ -58,6 +60,7 @@ export function KanbanBoard(): React.JSX.Element {
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
   const [swarming, setSwarming] = useState(false);
+  const [projectsOpen, setProjectsOpen] = useState(false);
   const [boardEditor, setBoardEditor] = useState<{ mode: 'new' | 'rename' } | null>(null);
   const [boardName, setBoardName] = useState('');
   const [newTitle, setNewTitle] = useState('');
@@ -360,6 +363,13 @@ export function KanbanBoard(): React.JSX.Element {
                 <Zap size={12} /> Nudge
               </button>
               <button
+                onClick={() => setProjectsOpen(true)}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-neutral-400 transition active:scale-[0.97] hover:bg-neutral-800"
+                title="Manage the board's project folders (PM code context + ticket routing)"
+              >
+                <FolderGit2 size={12} /> Projects
+              </button>
+              <button
                 onClick={togglePm}
                 className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs transition active:scale-[0.97] ${
                   pmOpen
@@ -597,6 +607,11 @@ export function KanbanBoard(): React.JSX.Element {
               setSwarming(false);
               clearSeed();
             }}
+          />
+          <ProjectsModal
+            open={projectsOpen}
+            boardSlug={activeBoardSlug}
+            onClose={() => setProjectsOpen(false)}
           />
         </>
       )}
