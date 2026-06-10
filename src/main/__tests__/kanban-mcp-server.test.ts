@@ -766,6 +766,13 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
       arguments: { artifact_id: art.id }
     });
     expect(read.result.content[0].text).toContain('# findings');
+
+    store.discardArtifact(art.id);
+    const after = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_show',
+      arguments: { task_id: t.id }
+    });
+    expect(after.result.content[0].text).not.toContain('## Artifacts');
   });
 
   it('kanban_artifact_read rejects artifacts from other boards', async () => {
