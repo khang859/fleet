@@ -148,6 +148,8 @@ export interface Task {
   baseBranch: string | null;
   modelOverride: string | null;
   skills: string[];
+  /** Board docs (filenames under the board's PM docs/ dir) inlined into worker prompts. */
+  docs: string[];
   boardId: string;
   /** Membership in a feature (grouping), distinct from task_links (execution order). */
   featureId: string | null;
@@ -184,6 +186,18 @@ export interface Task {
 export interface Board {
   slug: string;
   name: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A project folder registered on a board. The PM reads code here; tickets route to it. */
+export interface Project {
+  id: string;
+  boardId: string;
+  name: string;
+  path: string;
+  description: string | null;
+  isDefault: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -280,6 +294,7 @@ export interface CreateTaskInput {
   baseBranch?: string | null;
   modelOverride?: string | null;
   skills?: string[];
+  docs?: string[];
   boardId?: string;
   featureId?: string | null;
   idempotencyKey?: string | null;
@@ -294,6 +309,7 @@ export interface UpdateTaskFields {
   assignee?: string | null;
   priority?: number;
   tenant?: string | null;
+  docs?: string[];
 }
 
 export interface BoardCard extends Task {

@@ -20,6 +20,7 @@ import type {
   UpdateTaskFields,
   BoardCard,
   Board,
+  Project,
   RunMode,
   PendingMode,
   ScheduleInput,
@@ -168,6 +169,12 @@ export class KanbanStore {
       // which runs before this block against a pre-v9 tasks table).
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_feature ON tasks(feature_id)');
     }
+    if (current < 10) {
+      // Additive: DBs created before v10 lack the projects table + per-task docs column.
+      // The projects table is in SCHEMA_SQL for fresh installs; CREATE IF NOT EXISTS is
+      // idempotent so existing DBs gain it here.
+      this.addColumnIfMissing('tasks', 'docs', "TEXT NOT NULL DEFAULT '[]'");
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -213,6 +220,7 @@ export class KanbanStore {
       baseBranch: (r.base_branch as string | null) ?? null,
       modelOverride: (r.model_override as string | null) ?? null,
       skills: JSON.parse(String(r.skills ?? '[]')) as string[],
+      docs: JSON.parse(String(r.docs ?? '[]')) as string[],
       boardId: String(r.board_id ?? 'default'),
       featureId: (r.feature_id as string | null) ?? null,
       idempotencyKey: (r.idempotency_key as string | null) ?? null,
@@ -248,10 +256,10 @@ export class KanbanStore {
     this.db
       .prepare(
         `INSERT INTO tasks (id, title, body, assignee, status, priority, tenant,
-          workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, board_id, feature_id, idempotency_key,
+          workspace_kind, workspace_path, repo_path, branch_name, base_branch, model_override, skills, docs, board_id, feature_id, idempotency_key,
           scheduled_from, max_runtime_seconds, max_retries, created_at, updated_at)
          VALUES (@id, @title, @body, @assignee, @status, @priority, @tenant,
-          @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @board_id, @feature_id, @idempotency_key,
+          @workspace_kind, @workspace_path, @repo_path, @branch_name, @base_branch, @model_override, @skills, @docs, @board_id, @feature_id, @idempotency_key,
           @scheduled_from, @max_runtime_seconds, @max_retries, @created_at, @updated_at)`
       )
       .run({
@@ -269,6 +277,7 @@ export class KanbanStore {
         base_branch: input.baseBranch ?? null,
         model_override: input.modelOverride ?? null,
         skills: JSON.stringify(input.skills ?? []),
+        docs: JSON.stringify(input.docs ?? []),
         board_id: input.boardId ?? 'default',
         feature_id: input.featureId ?? null,
         idempotency_key: input.idempotencyKey ?? null,
@@ -1069,6 +1078,26 @@ export class KanbanStore {
     return rows.map((r) => this.rowToBoard(r));
   }
 
+  private rowToProject(r: Record<string, unknown>): Project {
+    return {
+      id: String(r.id),
+      boardId: String(r.board_id),
+      name: String(r.name),
+      path: String(r.path),
+      description: (r.description as string | null) ?? null,
+      isDefault: Number(r.is_default) === 1,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    };
+  }
+
+  listProjects(boardId: string): Project[] {
+    const rows = this.db
+      .prepare('SELECT * FROM projects WHERE board_id=? ORDER BY created_at ASC, id ASC')
+      .all(boardId) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToProject(r));
+  }
+
   private uniqueBoardSlug(base: string): string {
     const exists = (s: string): boolean =>
       this.db.prepare('SELECT 1 FROM boards WHERE slug=?').get(s) !== undefined;
@@ -1311,7 +1340,7 @@ export class KanbanStore {
     this.db
       .prepare(
         `UPDATE tasks SET title=@title, body=@body, assignee=@assignee,
-          priority=@priority, tenant=@tenant, updated_at=@ts WHERE id=@id`
+          priority=@priority, tenant=@tenant, docs=@docs, updated_at=@ts WHERE id=@id`
       )
       .run({
         id,
@@ -1320,6 +1349,7 @@ export class KanbanStore {
         assignee: fields.assignee !== undefined ? fields.assignee : current.assignee,
         priority: fields.priority ?? current.priority,
         tenant: fields.tenant !== undefined ? fields.tenant : current.tenant,
+        docs: fields.docs !== undefined ? JSON.stringify(fields.docs) : JSON.stringify(current.docs),
         ts
       });
   }
