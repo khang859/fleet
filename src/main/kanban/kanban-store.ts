@@ -1098,6 +1098,79 @@ export class KanbanStore {
     return rows.map((r) => this.rowToProject(r));
   }
 
+  getProject(id: string): Project | null {
+    const row = this.db.prepare('SELECT * FROM projects WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToProject(row) : null;
+  }
+
+  getProjectByName(boardId: string, name: string): Project | null {
+    const row = this.db
+      .prepare('SELECT * FROM projects WHERE board_id=? AND name=?')
+      .get(boardId, name) as Record<string, unknown> | undefined;
+    return row ? this.rowToProject(row) : null;
+  }
+
+  addProject(input: {
+    boardId: string;
+    name: string;
+    path: string;
+    description?: string | null;
+  }): Project {
+    const id = randomUUID().slice(0, 8);
+    const ts = this.now();
+    return this.db.transaction(() => {
+      const isFirst = this.listProjects(input.boardId).length === 0;
+      this.db
+        .prepare(
+          `INSERT INTO projects (id, board_id, name, path, description, is_default, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .run(
+          id,
+          input.boardId,
+          input.name,
+          input.path,
+          input.description ?? null,
+          isFirst ? 1 : 0,
+          ts,
+          ts
+        );
+      const p = this.getProject(id);
+      if (!p) throw new Error('addProject: failed to read back project');
+      return p;
+    })();
+  }
+
+  /** Remove a project; if it was the default, the oldest remaining project is promoted. */
+  removeProject(id: string): void {
+    this.db.transaction(() => {
+      const p = this.getProject(id);
+      if (!p) return;
+      this.db.prepare('DELETE FROM projects WHERE id=?').run(id);
+      if (p.isDefault) {
+        const next = this.listProjects(p.boardId)[0];
+        if (next) {
+          this.db
+            .prepare('UPDATE projects SET is_default=1, updated_at=? WHERE id=?')
+            .run(this.now(), next.id);
+        }
+      }
+    })();
+  }
+
+  setDefaultProject(id: string): void {
+    this.db.transaction(() => {
+      const p = this.getProject(id);
+      if (!p) return;
+      this.db.prepare('UPDATE projects SET is_default=0 WHERE board_id=?').run(p.boardId);
+      this.db
+        .prepare('UPDATE projects SET is_default=1, updated_at=? WHERE id=?')
+        .run(this.now(), id);
+    })();
+  }
+
   private uniqueBoardSlug(base: string): string {
     const exists = (s: string): boolean =>
       this.db.prepare('SELECT 1 FROM boards WHERE slug=?').get(s) !== undefined;
@@ -1178,6 +1251,7 @@ export class KanbanStore {
         .run(s, s);
       this.db.prepare('DELETE FROM tasks WHERE board_id=?').run(s);
       this.db.prepare('DELETE FROM features WHERE board_id=?').run(s);
+      this.db.prepare('DELETE FROM projects WHERE board_id=?').run(s);
       this.db.prepare('DELETE FROM boards WHERE slug=?').run(s);
     });
     tx(slug);

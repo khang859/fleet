@@ -956,4 +956,44 @@ describe('projects schema (v10)', () => {
     expect(t.docs).toEqual([]);
     expect(store.listProjects('default')).toEqual([]);
   });
+
+  it('first project added becomes the default', () => {
+    const p = store.addProject({ boardId: 'default', name: 'fleet', path: '/tmp/a' });
+    expect(p.isDefault).toBe(true);
+    const q = store.addProject({ boardId: 'default', name: 'site', path: '/tmp/b' });
+    expect(q.isDefault).toBe(false);
+  });
+
+  it('setDefaultProject moves the default within a board', () => {
+    const p = store.addProject({ boardId: 'default', name: 'fleet', path: '/tmp/a' });
+    const q = store.addProject({ boardId: 'default', name: 'site', path: '/tmp/b' });
+    store.setDefaultProject(q.id);
+    const byName = Object.fromEntries(store.listProjects('default').map((x) => [x.name, x]));
+    expect(byName.fleet.isDefault).toBe(false);
+    expect(byName.site.isDefault).toBe(true);
+    void p;
+  });
+
+  it('removing the default promotes the oldest remaining project', () => {
+    const p = store.addProject({ boardId: 'default', name: 'fleet', path: '/tmp/a' });
+    store.addProject({ boardId: 'default', name: 'site', path: '/tmp/b' });
+    store.removeProject(p.id);
+    const rest = store.listProjects('default');
+    expect(rest).toHaveLength(1);
+    expect(rest[0].name).toBe('site');
+    expect(rest[0].isDefault).toBe(true);
+  });
+
+  it('getProjectByName resolves within the board only', () => {
+    store.addProject({ boardId: 'default', name: 'fleet', path: '/tmp/a' });
+    expect(store.getProjectByName('default', 'fleet')?.path).toBe('/tmp/a');
+    expect(store.getProjectByName('other', 'fleet')).toBeNull();
+  });
+
+  it('deleteBoard removes the board projects', () => {
+    const b = store.createBoard('Temp');
+    store.addProject({ boardId: b.slug, name: 'x', path: '/tmp/x' });
+    store.deleteBoard(b.slug);
+    expect(store.listProjects(b.slug)).toEqual([]);
+  });
 });
