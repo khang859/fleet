@@ -8,6 +8,8 @@ import { CodedError } from '../errors';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../../shared/rune';
 import { isAuthFailureText } from './spawn-worker';
 import { readRuneSession } from '../sessions/rune-source';
+import { buildPmAgentsMd } from './pm-agents';
+import { pmBoardDir, pmDocsDir } from './pm-paths';
 import type { KanbanMcpServer } from './kanban-mcp-server';
 import type { TranscriptMessage } from '../../shared/sessions';
 import type {
@@ -15,6 +17,7 @@ import type {
   PmChatStatusPayload,
   PmChatTranscriptPayload
 } from '../../shared/ipc-api';
+import type { Project } from '../../shared/kanban-types';
 
 const log = createLogger('kanban-pm');
 
@@ -22,31 +25,8 @@ const log = createLogger('kanban-pm');
 const PM_TURN_TIMEOUT_MS = 5 * 60 * 1000;
 /** Keep only this much of the child's output in memory (see docs/learnings on stdout OOM). */
 const OUTPUT_CAP = 64 * 1024;
-
-/**
- * Rune appends the cwd's AGENTS.md to its system prompt, so the PM persona lives
- * in the PM workspace dir instead of polluting the first user message.
- */
-const PM_AGENTS_MD = `# Fleet board PM
-
-You are the product manager for this Fleet kanban board. The user chats with you
-to shape work: turning ideas into well-scoped tickets, splitting features,
-prioritizing, and keeping the board tidy.
-
-- Use the kanban MCP tools for every board change (kanban_create, kanban_update,
-  kanban_set_status, kanban_link, kanban_feature_create, kanban_assign_feature,
-  kanban_comment). Never just describe a change — make it.
-- Check the board first (kanban_list, kanban_show) so you don't create duplicates.
-- Write tickets like a good PM: an outcome-focused title and a body with context,
-  acceptance criteria, and any constraints the user mentioned.
-- Ask at most one or two brief clarifying questions when the request is genuinely
-  ambiguous; otherwise make a sensible call and say what you assumed.
-- Group related tickets under a feature (kanban_feature_create) when the user
-  describes a multi-ticket effort, and link dependencies with kanban_link.
-- New tickets default to todo; use triage for raw ideas that need refinement.
-- Keep replies short and conversational; end with the task ids you touched.
-- Your job is the board — do not write code or edit files.
-`;
+/** Defensive cap on MEMORY.md injection (persona asks for ~200 lines). */
+const MEMORY_INJECT_CAP = 16 * 1024;
 
 const sessionsFileSchema = z.record(z.string(), z.string());
 
@@ -63,6 +43,8 @@ export interface PmChatServiceOptions {
   kanbanHome: string;
   emitStatus: (payload: PmChatStatusPayload) => void;
   emitTranscript: (payload: PmChatTranscriptPayload) => void;
+  /** Board project registry, injected into the PM persona each turn. */
+  getProjects: (boardId: string) => Project[];
 }
 
 /**
@@ -161,10 +143,23 @@ export class PmChatService {
     const token = randomUUID();
     this.opts.mcp.registerRun(token, { kind: 'board', boardId });
 
-    const dir = join(this.opts.kanbanHome, 'pm', boardId);
+    const dir = pmBoardDir(this.opts.kanbanHome, boardId);
     const runeDir = join(dir, '.rune');
     mkdirSync(runeDir, { recursive: true });
-    writeFileSync(join(dir, 'AGENTS.md'), PM_AGENTS_MD);
+    mkdirSync(pmDocsDir(this.opts.kanbanHome, boardId), { recursive: true });
+    let memory: string | null = null;
+    try {
+      memory = readFileSync(join(dir, 'MEMORY.md'), 'utf-8').slice(0, MEMORY_INJECT_CAP);
+    } catch {
+      // no memory yet — first turn or never written
+    }
+    let projects: Project[] = [];
+    try {
+      projects = this.opts.getProjects(boardId);
+    } catch {
+      // registry unavailable must never block the chat turn
+    }
+    writeFileSync(join(dir, 'AGENTS.md'), buildPmAgentsMd({ projects, memory }));
     const mcpConfigPath = join(runeDir, 'mcp.json');
     const url = `http://127.0.0.1:${this.opts.mcpPort}/mcp?run=${token}`;
     writeFileSync(

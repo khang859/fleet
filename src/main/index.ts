@@ -1046,6 +1046,7 @@ void app.whenReady().then(async () => {
     mcp: kanbanMcp,
     mcpPort: kanbanMcpPort,
     kanbanHome: KANBAN_HOME,
+    getProjects: (boardId) => kanbanCommands!.listProjects(boardId),
     emitStatus: (payload) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);
