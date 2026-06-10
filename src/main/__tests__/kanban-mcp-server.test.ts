@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
@@ -680,5 +680,43 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
       arguments: { name: 'F2', project: 'fleet' }
     });
     expect(store.getFeature(r.result.content[0].text)!.repoPath).toBe(TEST_DIR);
+  });
+
+  it('kanban_create accepts docs that exist in the board docs dir and rejects others', async () => {
+    const home = join(TEST_DIR, 'home');
+    mkdirSync(join(home, 'pm', 'default', 'docs'), { recursive: true });
+    writeFileSync(join(home, 'pm', 'default', 'docs', 'prd.md'), '# PRD');
+    server.setKanbanHome(home);
+
+    const bad = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'x', docs: ['missing.md'] }
+    });
+    expect(String(bad.error.message)).toMatch(/doc not found/i);
+
+    const traversal = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'x', docs: ['../AGENTS.md'] }
+    });
+    expect(String(traversal.error.message)).toMatch(/invalid doc name/i);
+
+    const ok = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_create',
+      arguments: { title: 'x', docs: ['prd.md'] }
+    });
+    expect(store.getTask(ok.result.content[0].text)!.docs).toEqual(['prd.md']);
+  });
+
+  it('kanban_update can set docs', async () => {
+    const home = join(TEST_DIR, 'home2');
+    mkdirSync(join(home, 'pm', 'default', 'docs'), { recursive: true });
+    writeFileSync(join(home, 'pm', 'default', 'docs', 'spec.md'), '# spec');
+    server.setKanbanHome(home);
+    const t = store.createTask({ title: 'x' });
+    await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_update',
+      arguments: { task_id: t.id, docs: ['spec.md'] }
+    });
+    expect(store.getTask(t.id)!.docs).toEqual(['spec.md']);
   });
 });

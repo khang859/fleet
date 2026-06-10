@@ -1042,6 +1042,7 @@ void app.whenReady().then(async () => {
   );
   kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
   kanbanMcp.setCommands(kanbanCommands);
+  kanbanMcp.setKanbanHome(KANBAN_HOME);
   pmChat = new PmChatService({
     mcp: kanbanMcp,
     mcpPort: kanbanMcpPort,

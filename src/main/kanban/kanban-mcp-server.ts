@@ -1,5 +1,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'http';
 import { URL } from 'url';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
@@ -14,6 +16,7 @@ import type {
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
 import { finalizeWorktree, reviewStat, checkMergeConflicts } from './workspace';
+import { pmDocsDir } from './pm-paths';
 
 const log = createLogger('kanban-mcp');
 
@@ -265,7 +268,8 @@ const PM_TOOLS: McpTool[] = [
     description:
       'Create a task on the board. Status defaults to todo (use triage for ideas needing ' +
       'refinement). Pass feature_id to group it under a feature, parents for dependencies.' +
-      ' Pass project (a registered project name) to route the ticket to that repo; omitted, the board default project applies.',
+      ' Pass project (a registered project name) to route the ticket to that repo; omitted, the board default project applies.' +
+      ' Pass docs (filenames in your docs/ folder) to show those documents to the executing worker.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -276,7 +280,8 @@ const PM_TOOLS: McpTool[] = [
         status: { type: 'string', enum: ['triage', 'todo', 'ready', 'blocked'] },
         parents: { type: 'array', items: { type: 'string' } },
         feature_id: { type: 'string' },
-        project: { type: 'string' }
+        project: { type: 'string' },
+        docs: { type: 'array', items: { type: 'string' } }
       },
       required: ['title']
     }
@@ -291,7 +296,8 @@ const PM_TOOLS: McpTool[] = [
         title: { type: 'string' },
         body: { type: 'string' },
         priority: { type: 'number' },
-        assignee: { type: 'string' }
+        assignee: { type: 'string' },
+        docs: { type: 'array', items: { type: 'string' } }
       },
       required: ['task_id']
     }
@@ -401,6 +407,7 @@ export class KanbanMcpServer {
   private store: KanbanStore;
   private swarmHandler: ((input: SwarmInput) => SwarmCreated) | null = null;
   private commands: KanbanCommands | null = null;
+  private kanbanHome: string | null = null;
   private getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>>;
   constructor(
     store: KanbanStore,
@@ -418,6 +425,23 @@ export class KanbanMcpServer {
   /** Inject the command layer; PM (board-scoped) tools route through it for validation. */
   setCommands(commands: KanbanCommands): void {
     this.commands = commands;
+  }
+
+  /** Inject the kanban home so PM doc references can be validated against pm/<board>/docs. */
+  setKanbanHome(home: string): void {
+    this.kanbanHome = home;
+  }
+
+  /** Returns an error message, or null when every doc name is safe and present. */
+  private validateDocs(boardId: string, docs: string[]): string | null {
+    if (!this.kanbanHome) return 'board docs are unavailable';
+    for (const name of docs) {
+      if (name.startsWith('/') || name.includes('..')) return `invalid doc name: ${name}`;
+      if (!existsSync(join(pmDocsDir(this.kanbanHome, boardId), name))) {
+        return `doc not found in the board docs folder: ${name}`;
+      }
+    }
+    return null;
   }
 
   /** Register a per-run token; returns the token to embed in the worker's MCP url. */
@@ -609,9 +633,14 @@ export class KanbanMcpServer {
               status: z.enum(['triage', 'todo', 'ready', 'blocked']).optional(),
               parents: z.array(z.string()).optional(),
               feature_id: z.string().optional(),
-              project: z.string().optional()
+              project: z.string().optional(),
+              docs: z.array(z.string()).optional()
             })
             .parse(args);
+          if (a.docs && a.docs.length > 0) {
+            const docErr = this.validateDocs(scope.boardId, a.docs);
+            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
+          }
           // Same phantom-assignee guard as the orchestrator's kanban_create.
           const assignee = a.assignee?.trim() || null;
           const workerNames = this.getProfiles()
@@ -683,6 +712,7 @@ export class KanbanMcpServer {
             status: a.status ?? 'todo',
             boardId: scope.boardId,
             featureId: a.feature_id ?? null,
+            docs: a.docs ?? [],
             ...workspace
           });
           for (const p of a.parents ?? []) commands.link(p, task.id);
@@ -695,9 +725,14 @@ export class KanbanMcpServer {
               title: z.string().optional(),
               body: z.string().optional(),
               priority: z.number().optional(),
-              assignee: z.string().optional()
+              assignee: z.string().optional(),
+              docs: z.array(z.string()).optional()
             })
             .parse(args);
+          if (a.docs && a.docs.length > 0) {
+            const docErr = this.validateDocs(scope.boardId, a.docs);
+            if (docErr) return this.rpcError(res, rpcReq.id, docErr);
+          }
           const existing = this.pmTask(scope, a.task_id);
           if (!existing) {
             return this.rpcError(res, rpcReq.id, `task not found on this board: ${a.task_id}`);
@@ -711,7 +746,8 @@ export class KanbanMcpServer {
             title: a.title,
             body: a.body,
             priority: a.priority,
-            ...(a.assignee !== undefined ? { assignee: a.assignee.trim() || null } : {})
+            ...(a.assignee !== undefined ? { assignee: a.assignee.trim() || null } : {}),
+            ...(a.docs !== undefined ? { docs: a.docs } : {})
           });
           return this.text(res, rpcReq.id, 'Task updated.');
         }
