@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.66.0
+
+- **Kanban projects registry** — register project folders per board to ground the PM agent in real code. A new **Projects** dialog in the board toolbar lets you add projects (first becomes the default), and the board-scoped PM reads these to route new tickets to the right repo, distinguish feature repos from implementation projects, and understand project structure. (Requires Rune ≥ v0.6.0.)
+- **Board knowledge home** — the PM maintains `MEMORY.md` (injected into every chat turn) and authors PRDs/specs in a `docs/` folder; tickets and tasks can reference these docs, which are inlined into worker prompts at dispatch so agents have full context.
+- **PM artifact review** — the PM can now review finished work: `kanban_show` lists kept artifacts on the board, and a new `kanban_artifact_read` tool reads artifact contents, so the PM can verify completeness and decide next steps.
+
 ## v2.65.0
 
 - **PM chat for the Kanban board** — a new "Board PM" panel (green PM button in the board toolbar) lets you manage the board by conversation: describe features, bugs, or a pile of ideas and the PM shapes them into well-scoped tickets, refines specs, sets priorities, links dependencies, groups work into features, and moves cards — live on the board as you chat. Powered by headless Rune (one session per board, persisted across restarts; requires Rune ≥ v0.6.0 for `--resume` with `--prompt`). The PM gets a board-scoped kanban toolset and obeys the same rules as the UI: it can't touch running tasks or other boards. Errors (Rune missing, provider auth, crashes) surface in the panel, and turns time out after 5 minutes.
