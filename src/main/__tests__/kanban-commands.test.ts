@@ -856,3 +856,38 @@ describe('KanbanCommands scratch archive safety net', () => {
     expect(store.scratchLeftovers(task.id)).not.toContain('reports');
   });
 });
+
+describe('project commands', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('addProject validates name, path existence, and duplicates', () => {
+    const { commands } = makeCommands();
+    const dir = TEST_DIR; // exists
+    expect(() => commands.addProject({ boardId: 'default', name: '  ', path: dir })).toThrow(/name/i);
+    expect(() =>
+      commands.addProject({ boardId: 'default', name: 'x', path: join(TEST_DIR, 'nope') })
+    ).toThrow(/does not exist|not a directory/i);
+    const file = join(TEST_DIR, 'afile.txt');
+    writeFileSync(file, 'x');
+    expect(() => commands.addProject({ boardId: 'default', name: 'x', path: file })).toThrow(
+      /not a directory/i
+    );
+    commands.addProject({ boardId: 'default', name: 'fleet', path: dir });
+    expect(() => commands.addProject({ boardId: 'default', name: 'fleet', path: dir })).toThrow(
+      /already/i
+    );
+  });
+
+  it('addProject rejects an unknown board', () => {
+    expect(() =>
+      makeCommands().commands.addProject({ boardId: 'ghost', name: 'x', path: TEST_DIR })
+    ).toThrow(/board not found/i);
+  });
+
+  it('removeProject / setDefaultProject require an existing project', () => {
+    const { commands } = makeCommands();
+    expect(() => commands.removeProject('nope')).toThrow(/not found/i);
+    expect(() => commands.setDefaultProject('nope')).toThrow(/not found/i);
+  });
+});

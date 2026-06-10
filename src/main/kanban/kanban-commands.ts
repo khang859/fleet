@@ -27,7 +27,8 @@ import type {
   FeatureDetail,
   ConflictState,
   WorktreeInfo,
-  PruneResult
+  PruneResult,
+  Project
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -43,6 +44,7 @@ import {
   isBranchMerged
 } from './workspace';
 import { dirname } from 'path';
+import { statSync } from 'fs';
 import type { KanbanReviewActionResult, KanbanPruneWorktreeResult } from '../../shared/ipc-api';
 import { removeAttachmentFile } from './attachments';
 import { deriveBoardSlug } from './board-slug';
@@ -1054,5 +1056,51 @@ export class KanbanCommands {
 
   dispatch(): void {
     this.dispatcher.tick();
+  }
+
+  // ---- Projects (board folder registry) ----
+
+  listProjects(boardId: string): Project[] {
+    this.requireBoard(boardId);
+    return this.store.listProjects(boardId);
+  }
+
+  addProject(input: {
+    boardId: string;
+    name: string;
+    path: string;
+    description?: string | null;
+  }): Project {
+    this.requireBoard(input.boardId);
+    const name = (input.name ?? '').trim();
+    if (name === '') throw new CodedError('project requires a name', 'BAD_REQUEST');
+    let stat;
+    try {
+      stat = statSync(input.path);
+    } catch {
+      throw new CodedError(`project path does not exist: ${input.path}`, 'BAD_REQUEST');
+    }
+    if (!stat.isDirectory()) {
+      throw new CodedError(`project path is not a directory: ${input.path}`, 'BAD_REQUEST');
+    }
+    const existing = this.store.listProjects(input.boardId);
+    if (existing.some((p) => p.name === name)) {
+      throw new CodedError(`a project named "${name}" already exists on this board`, 'BAD_REQUEST');
+    }
+    if (existing.some((p) => p.path === input.path)) {
+      throw new CodedError(`this folder is already registered on this board`, 'BAD_REQUEST');
+    }
+    const description = input.description?.trim() || null;
+    return this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+  }
+
+  removeProject(id: string): void {
+    if (!this.store.getProject(id)) throw new CodedError(`project not found: ${id}`, 'NOT_FOUND');
+    this.store.removeProject(id);
+  }
+
+  setDefaultProject(id: string): void {
+    if (!this.store.getProject(id)) throw new CodedError(`project not found: ${id}`, 'NOT_FOUND');
+    this.store.setDefaultProject(id);
   }
 }
