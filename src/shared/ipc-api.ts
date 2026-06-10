@@ -395,12 +395,12 @@ export type KanbanAssignTaskToFeatureRequest = {
   featureId: string | null;
 };
 
-export interface KanbanAddProjectRequest {
+export type KanbanAddProjectRequest = {
   boardId: string;
   name: string;
   path: string;
   description?: string | null;
-}
+};
 
 export type PmChatSendRequest = {
   boardId: string;
