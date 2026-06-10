@@ -738,6 +738,12 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
       arguments: { task_id: t.id, docs: ['spec.md'] }
     });
     expect(store.getTask(t.id)!.docs).toEqual(['spec.md']);
+
+    const show = await rpc(`${base}?run=pmtok`, 'tools/call', {
+      name: 'kanban_show',
+      arguments: { task_id: t.id }
+    });
+    expect(show.result.content[0].text).toContain('docs: spec.md');
   });
 
   it('kanban_show lists kept artifacts and kanban_artifact_read returns text content', async () => {

@@ -627,6 +627,7 @@ export class KanbanMcpServer {
             `# ${task.title} (${task.id})`,
             `status: ${task.status}  priority: ${task.priority}  assignee: ${task.assignee ?? '-'}`,
             task.featureId ? `feature: ${task.featureId}` : '',
+            task.docs.length ? `docs: ${task.docs.join(', ')}` : '',
             '',
             task.body || '(no body)',
             comments.length ? '## Comments' : '',
