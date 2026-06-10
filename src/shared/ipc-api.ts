@@ -395,6 +395,13 @@ export type KanbanAssignTaskToFeatureRequest = {
   featureId: string | null;
 };
 
+export interface KanbanAddProjectRequest {
+  boardId: string;
+  name: string;
+  path: string;
+  description?: string | null;
+}
+
 export type PmChatSendRequest = {
   boardId: string;
   text: string;

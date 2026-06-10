@@ -15,7 +15,8 @@ import type {
   ArtifactListItem,
   TaskAttachment,
   Feature,
-  FeatureDetail
+  FeatureDetail,
+  Project
 } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
@@ -36,7 +37,8 @@ import type {
   KanbanReuseArtifactRequest,
   KanbanCreateTaskFromArtifactRequest,
   KanbanCreateSwarmFromArtifactRequest,
-  PmChatSendRequest
+  PmChatSendRequest,
+  KanbanAddProjectRequest
 } from '../../shared/ipc-api';
 
 const log = createLogger('kanban-ipc');
@@ -321,6 +323,21 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
   ipcMain.handle(IPC_CHANNELS.KANBAN_PRUNE_MERGED_WORKTREES, (_e, boardId: string) =>
     commands.pruneMergedWorktrees(boardId)
   );
+
+  // ---- Projects ----
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_PROJECTS, (_e, boardId: string): Project[] =>
+    commands.listProjects(boardId)
+  );
+  ipcMain.handle(IPC_CHANNELS.KANBAN_ADD_PROJECT, (_e, req: KanbanAddProjectRequest): Project =>
+    commands.addProject(req)
+  );
+  ipcMain.handle(IPC_CHANNELS.KANBAN_REMOVE_PROJECT, (_e, id: string) => {
+    commands.removeProject(id);
+  });
+  ipcMain.handle(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, (_e, id: string) => {
+    commands.setDefaultProject(id);
+  });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_PM_SEND, (_e, req: PmChatSendRequest) => {
     pmChat.sendMessage(req.boardId, req.text);

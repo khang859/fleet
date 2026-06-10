@@ -63,7 +63,8 @@ import type {
   PmChatSendRequest,
   PmChatState,
   PmChatStatusPayload,
-  PmChatTranscriptPayload
+  PmChatTranscriptPayload,
+  KanbanAddProjectRequest
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -80,7 +81,8 @@ import type {
   Feature,
   FeatureDetail,
   WorktreeInfo,
-  PruneResult
+  PruneResult,
+  Project
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type { RuneStatus, RuneInstallResult } from '../shared/rune';
@@ -633,7 +635,15 @@ const fleetApi = {
     onPmStatus: (callback: (payload: PmChatStatusPayload) => void): Unsubscribe =>
       onChannel<PmChatStatusPayload>(IPC_CHANNELS.KANBAN_PM_STATUS, callback),
     onPmTranscript: (callback: (payload: PmChatTranscriptPayload) => void): Unsubscribe =>
-      onChannel<PmChatTranscriptPayload>(IPC_CHANNELS.KANBAN_PM_TRANSCRIPT, callback)
+      onChannel<PmChatTranscriptPayload>(IPC_CHANNELS.KANBAN_PM_TRANSCRIPT, callback),
+    listProjects: async (boardId: string): Promise<Project[]> =>
+      typedInvoke<Project[]>(IPC_CHANNELS.KANBAN_LIST_PROJECTS, boardId),
+    addProject: async (req: KanbanAddProjectRequest): Promise<Project> =>
+      typedInvoke<Project>(IPC_CHANNELS.KANBAN_ADD_PROJECT, req),
+    removeProject: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_PROJECT, id),
+    setDefaultProject: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>

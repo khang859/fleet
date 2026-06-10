@@ -209,6 +209,10 @@ export const IPC_CHANNELS = {
   KANBAN_PM_RESET: 'kanban:pm-reset',
   KANBAN_PM_STATUS: 'kanban:pm-status',
   KANBAN_PM_TRANSCRIPT: 'kanban:pm-transcript',
+  KANBAN_LIST_PROJECTS: 'kanban:list-projects',
+  KANBAN_ADD_PROJECT: 'kanban:add-project',
+  KANBAN_REMOVE_PROJECT: 'kanban:remove-project',
+  KANBAN_SET_DEFAULT_PROJECT: 'kanban:set-default-project',
   // Sessions
   SESSIONS_LIST: 'sessions:list',
   SESSIONS_READ: 'sessions:read',
