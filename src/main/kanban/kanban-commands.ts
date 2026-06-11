@@ -39,6 +39,7 @@ import {
   pushAndCreatePr,
   checkMergeConflicts,
   createFeaturePr,
+  markPrReady,
   updateIntegrationBranchFromMain,
   worktreeStatus,
   isBranchMerged
@@ -1036,6 +1037,25 @@ export class KanbanCommands {
         : (sync.error ?? 'sync failed');
       this.store.appendEvent(featureId, null, 'feature_sync_failed', { conflict: !!sync.conflict });
       return { ok: false, conflict: sync.conflict, error: reason };
+    }
+    // Override: a draft already exists (autopilot opened it) -> just mark it ready.
+    if (feature.prNumber != null && feature.prState === 'draft') {
+      const ready = markPrReady({ repoPath, prNumber: feature.prNumber });
+      if (!ready.ok) {
+        this.store.appendEvent(featureId, null, 'feature_pr_ready_failed', {
+          number: feature.prNumber,
+          error: ready.error
+        });
+        return { ok: false, error: ready.error };
+      }
+      this.store.setFeaturePrState(featureId, 'open');
+      this.store.updateFeature(featureId, { mergeState: 'in_progress' });
+      this.store.appendEvent(featureId, null, 'feature_pr_ready', { number: feature.prNumber });
+      return {
+        ok: true,
+        prUrl: feature.prUrl ?? undefined,
+        message: 'feature PR marked ready'
+      };
     }
     const res = createFeaturePr({
       repoPath,
