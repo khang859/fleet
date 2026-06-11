@@ -124,6 +124,34 @@ export function prepareWorkspace(input: PrepareWorkspaceInput): PreparedWorkspac
   return { path: dir, branchName: branch, baseBranch: base };
 }
 
+/**
+ * Create a worktree that checks out an EXISTING branch by name (no new -b branch).
+ * Used by feature_sync system tasks whose worktree must BE the integration branch itself.
+ */
+export function checkoutBranchWorktree(input: {
+  repoPath: string;
+  branchName: string;
+  worktreesRoot: string;
+  taskId: string;
+}): { path: string; branchName: string } {
+  const dir = join(input.worktreesRoot, input.taskId);
+  mkdirSync(input.worktreesRoot, { recursive: true });
+  try {
+    execFileSync('git', ['-C', input.repoPath, 'worktree', 'add', dir, input.branchName], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+  } catch (err) {
+    rmSync(dir, { recursive: true, force: true });
+    try {
+      execFileSync('git', ['-C', input.repoPath, 'worktree', 'prune'], { stdio: 'ignore' });
+    } catch {
+      /* best-effort */
+    }
+    throw new Error(`checkoutBranchWorktree: git worktree add failed: ${gitStderr(err)}`);
+  }
+  return { path: dir, branchName: input.branchName };
+}
+
 export function cleanupWorkspace(input: { kind: WorkspaceKind; path: string }): void {
   // Only scratch is ephemeral; dir/worktree are preserved.
   if (input.kind === 'scratch') {

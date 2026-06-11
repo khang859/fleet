@@ -1051,6 +1051,59 @@ describe('KanbanDispatcher.integrate', () => {
     store.close();
   });
 
+  it('integrate: conflict prediction errors -> task stays in review, no spawn, no merge', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    let merges = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'error', files: [] }),
+        mergeWorktreeToBase: () => {
+          merges++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(spawned).toHaveLength(0);
+    expect(merges).toBe(0);
+    expect(store.getTask(t.id)!.status).toBe('review');
+    store.close();
+  });
+
+  it('integrate: clean prediction but merge races dirty -> resolve run spawned', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 8;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+        mergeWorktreeToBase: () => ({ ok: false, conflict: true })
+      })
+    });
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    store.close();
+  });
+
   function doneFeature(store: KanbanStore) {
     const f = store.createFeature({ boardId: 'default', name: 'F' });
     store.updateFeature(f.id, {
@@ -1107,7 +1160,9 @@ describe('KanbanDispatcher.integrate', () => {
       },
       config: { ...baseConfig, autoIntegrate: true },
       integration: fakeIntegration({
-        isBranchMerged: () => false,
+        // ahead-check on the integration branch → false (something merged);
+        // synced-check would be on 'main' but no review task exists yet.
+        isBranchMerged: ({ branchName }) => branchName === 'main',
         updateIntegrationBranchFromMain: () => ({ ok: false, conflict: true })
       })
     });
@@ -1116,6 +1171,7 @@ describe('KanbanDispatcher.integrate', () => {
     expect(sys).not.toBeNull();
     expect(sys!.systemKind).toBe('feature_sync');
     expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getFeature(f.id)!.mergeState).toBe('conflict');
     expect(store.featureRollup(f.id).total).toBe(1); // system task excluded
     store.close();
   });
@@ -1140,6 +1196,114 @@ describe('KanbanDispatcher.integrate', () => {
     });
     disp.integrate();
     expect(syncCalls).toBe(0);
+    store.close();
+  });
+
+  it('integrateFeatures: sync error (no conflict) -> no system task, mergeState unchanged', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    expect(store.getFeature(f.id)!.mergeState).toBeNull(); // baseline
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check on the integration branch → false (something merged).
+        isBranchMerged: ({ branchName }) => branchName === 'main',
+        updateIntegrationBranchFromMain: () => ({ ok: false }) // e.g. base branch not found
+      })
+    });
+    disp.integrate();
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull();
+    expect(store.getFeature(f.id)!.mergeState).toBeNull(); // not 'conflict', not 'in_progress'
+    expect(spawned).toHaveLength(0);
+    store.close();
+  });
+
+  // A feature in 'conflict' whose feature_sync resolve worker has finished (status 'review').
+  function conflictedFeatureWithReviewSync(store: KanbanStore) {
+    const { f, a } = doneFeature(store);
+    store.updateFeature(f.id, { mergeState: 'conflict' });
+    const integrationBranch = `fleet/feature-${f.id}`;
+    const sys = store.createTask({
+      title: `Sync F with main`,
+      featureId: f.id,
+      systemKind: 'feature_sync',
+      workspaceKind: 'worktree',
+      status: 'review',
+      repoPath: '/repo',
+      branchName: integrationBranch,
+      baseBranch: 'main'
+    });
+    store.setWorkspace(sys.id, '/tmp/sync', integrationBranch, 'main');
+    return { f, a, sys, integrationBranch };
+  }
+
+  it('integrateFeatures: review feature_sync that synced -> completed + worktree pruned + in_progress', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f, sys } = conflictedFeatureWithReviewSync(store);
+    let removeCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check on the integration branch → false (it's ahead of base);
+        // synced-check on 'main' (base) → true (base now an ancestor of integration).
+        isBranchMerged: ({ branchName }) => branchName === 'main',
+        removeWorktree: () => {
+          removeCalls++;
+          return { branchKept: true };
+        }
+      })
+    });
+    disp.integrate();
+    const got = store.getTask(sys.id)!;
+    expect(got.status).toBe('done');
+    expect(got.worktreePruned).toBe(true);
+    expect(removeCalls).toBe(1);
+    expect(store.getFeature(f.id)!.mergeState).toBe('in_progress');
+    store.close();
+  });
+
+  it('integrateFeatures: review feature_sync that did NOT sync -> respawns resolve, then blocks at cap', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { sys } = conflictedFeatureWithReviewSync(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push(args);
+        return 5;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check false; synced-check on 'main' → false (worker did NOT merge).
+        isBranchMerged: () => false
+      })
+    });
+    // First tick: a resolve run is spawned and attempts increment.
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(sys.id)!.resolveAttempts).toBe(1);
+
+    // Drive to the cap: each tick the worker hands the task back to review unresolved.
+    store.setStatusCleared(sys.id, 'review');
+    disp.integrate(); // second resolve (attempts → 2, at cap)
+    expect(store.getTask(sys.id)!.resolveAttempts).toBe(2);
+    store.setStatusCleared(sys.id, 'review');
+    disp.integrate(); // at cap → blocked instead of spawning
+    expect(store.getTask(sys.id)!.status).toBe('blocked');
     store.close();
   });
 });

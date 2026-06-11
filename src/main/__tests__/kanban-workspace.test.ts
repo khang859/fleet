@@ -7,7 +7,8 @@ import {
   prepareWorkspace,
   cleanupWorkspace,
   removeWorktree,
-  mergeWorktreeToBase
+  mergeWorktreeToBase,
+  checkoutBranchWorktree
 } from '../kanban/workspace';
 
 const ROOT = join(tmpdir(), `fleet-kanban-ws-test-${process.pid}`);
@@ -123,6 +124,33 @@ describe('kanban workspace', () => {
     });
     expect(existsSync(path)).toBe(true);
     expect(branchName).toBe('kanban/t3');
+  });
+
+  it('checkoutBranchWorktree checks out an existing branch (not a new kanban/ branch)', () => {
+    const repo = makeRepo('repo-cobw');
+    // Create the integration branch with a distinct commit so it differs from main.
+    execFileSync('git', ['-C', repo, 'branch', 'fleet/feature-x']);
+    execFileSync('git', ['-C', repo, 'checkout', '-q', 'fleet/feature-x']);
+    writeFileSync(join(repo, 'feat.txt'), 'feature work');
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'feature commit']);
+    execFileSync('git', ['-C', repo, 'checkout', '-q', 'main']);
+
+    const { path, branchName } = checkoutBranchWorktree({
+      repoPath: repo,
+      branchName: 'fleet/feature-x',
+      worktreesRoot: WT_ROOT,
+      taskId: 'sync-1'
+    });
+    expect(path).toBe(join(WT_ROOT, 'sync-1'));
+    expect(existsSync(path)).toBe(true);
+    expect(branchName).toBe('fleet/feature-x');
+    const head = execFileSync('git', ['-C', path, 'rev-parse', '--abbrev-ref', 'HEAD'], {
+      encoding: 'utf8'
+    }).trim();
+    expect(head).toBe('fleet/feature-x');
+    // The integration branch's own commit must be present in the worktree.
+    expect(existsSync(join(path, 'feat.txt'))).toBe(true);
   });
 
   it('recovers on a later attempt after a failed worktree add left a dir behind', () => {

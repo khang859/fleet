@@ -450,7 +450,7 @@ export class KanbanDispatcher {
   integrate(): void {
     if (!this.deps.config.autoIntegrate) return;
     const budget = this.integrateTasks(MAX_INTEGRATE_PER_TICK);
-    this.integrateFeatures(budget); // implemented in Task 8
+    this.integrateFeatures(budget);
   }
 
   /** Merge each review feature task into its integration branch; spawn a resolve run on conflict. Returns remaining budget. */
@@ -550,35 +550,53 @@ export class KanbanDispatcher {
       const open = this.store.openSystemTask(feature.id, 'feature_sync');
       if (open?.status === 'running') continue; // a resolve is already in flight
 
-      // Fire-once guard for the clean path: 'in_progress' means "integration synced, awaiting #229 ship".
-      if (!open && (feature.mergeState === 'in_progress' || feature.mergeState === 'merged'))
+      if (open?.status === 'review') {
+        // The resolve worker finished. Did it actually merge base into the integration branch?
+        // (synced check: base is now an ancestor of the integration branch).
+        const synced = this.ops.isBranchMerged({
+          repoPath: feature.repoPath,
+          branchName: feature.baseBranch,
+          baseBranch: integrationBranch
+        });
+        if (synced) {
+          // Free the integration branch (prune the worktree; the branch is ahead of base so it's kept), close the task.
+          if (open.workspacePath && open.branchName) {
+            this.ops.removeWorktree({
+              repoPath: feature.repoPath,
+              workspacePath: open.workspacePath,
+              branchName: open.branchName,
+              baseBranch: feature.baseBranch
+            });
+          }
+          this.store.setWorktreePruned(open.id);
+          this.store.completeTask(open.id, 'synced with main');
+          this.store.appendEvent(open.id, null, 'merged', {
+            base: feature.baseBranch,
+            by: 'feature_sync'
+          });
+          this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+        } else {
+          // completed without resolving — retry (cap enforced in spawnResolve, then it blocks)
+          if (this.spawnResolve(open, feature.baseBranch)) budget -= 1;
+        }
         continue;
+      }
+
+      // No open system task:
+      if (feature.mergeState === 'in_progress' || feature.mergeState === 'merged') continue; // fire-once
 
       const sync = this.ops.updateIntegrationBranchFromMain({
         repoPath: feature.repoPath,
         integrationBranch,
         baseBranch: feature.baseBranch
       });
-
       if (sync.ok) {
-        if (open) {
-          // a prior conflict was resolved by the system task → close it out
-          this.store.completeTask(open.id, 'synced with main');
-          this.store.appendEvent(open.id, null, 'merged', {
-            base: feature.baseBranch,
-            by: 'feature_sync'
-          });
-        }
         this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+        budget -= 1; // a sync is a real git op — count it against the tick budget
       } else if (sync.conflict) {
         this.store.updateFeature(feature.id, { mergeState: 'conflict' });
-        const target = feature.baseBranch;
-        if (open?.status === 'review') {
-          if (this.spawnResolve(open, target)) budget -= 1;
-        } else if (!open) {
-          const sys = this.createFeatureSyncTask(feature, integrationBranch);
-          if (sys && this.spawnResolve(sys, target)) budget -= 1;
-        }
+        const sys = this.createFeatureSyncTask(feature, integrationBranch);
+        if (sys && this.spawnResolve(sys, feature.baseBranch)) budget -= 1;
       }
       // sync error (e.g. base not found): leave for next tick
     }

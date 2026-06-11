@@ -52,7 +52,7 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
-import { prepareWorkspace, ensureFeatureBranch } from './kanban/workspace';
+import { prepareWorkspace, ensureFeatureBranch, checkoutBranchWorktree } from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
@@ -876,6 +876,24 @@ void app.whenReady().then(async () => {
       }
     },
     prepareWorkspaceFn: (task) => {
+      // A feature_sync system task must check out the integration branch ITSELF (no new
+      // -b branch), so its resolve run merges main into the real integration branch.
+      if (
+        task.systemKind === 'feature_sync' &&
+        task.workspaceKind === 'worktree' &&
+        task.repoPath &&
+        task.branchName &&
+        task.workspacePath == null
+      ) {
+        const wt = checkoutBranchWorktree({
+          repoPath: task.repoPath,
+          branchName: task.branchName,
+          worktreesRoot: join(KANBAN_HOME, 'worktrees'),
+          taskId: task.id
+        });
+        kanbanStore!.setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
+        return wt.path;
+      }
       // A worktree task in a feature branches off the feature's integration branch
       // (`fleet/feature-<id>`), created on first use. The captured base then cascades:
       // the task merges back into integration, and decompose children inherit it.
