@@ -59,8 +59,8 @@ describe('PrPoller feature sweep', () => {
     store.close();
   });
 
-  it('clears prState and emits one null feature_pr_synced when the PR is notFound', () => {
-    const clock = 300_000;
+  it('clears prState and emits exactly one null feature_pr_synced when the PR is notFound (no re-poll spin)', () => {
+    let clock = 300_000;
     const store = new KanbanStore(join(TEST_DIR, `feat-gone-${Math.random()}.db`), {
       now: () => clock
     });
@@ -78,6 +78,11 @@ describe('PrPoller feature sweep', () => {
     const synced = store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_synced');
     expect(synced).toHaveLength(1);
     expect(synced[0].payload).toEqual({ state: null });
+    // Advance well past the sync gap so the feature would be time-due again; the
+    // null pr_state must now exclude it from featuresDuePrSync -> no second event.
+    clock += 100_000;
+    poller.sweep();
+    expect(store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_synced')).toHaveLength(1);
     store.close();
   });
 });

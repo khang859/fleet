@@ -1413,7 +1413,7 @@ export class KanbanStore {
     const rows = this.db
       .prepare(
         `SELECT * FROM features
-         WHERE status='active' AND pr_number IS NOT NULL
+         WHERE status='active' AND pr_number IS NOT NULL AND pr_state IN ('open','draft')
            AND (pr_synced_at IS NULL OR pr_synced_at <= @cutoff)
          ORDER BY pr_synced_at ASC
          LIMIT @limit`
