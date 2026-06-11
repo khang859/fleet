@@ -395,7 +395,7 @@ export class KanbanDispatcher {
    * The worker merges `target` into the task's worktree, resolves, commits, and completes (-> review).
    */
   private spawnResolve(task: Task, target: string): boolean {
-    const attempts = task.resolveAttempts ?? 0;
+    const attempts = task.resolveAttempts;
     if (attempts >= RESOLVE_ATTEMPT_CAP) {
       const note = `merge conflicts unresolved after ${RESOLVE_ATTEMPT_CAP} resolve attempt(s)`;
       this.store.blockTask(task.id, note);

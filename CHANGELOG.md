@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.67.0
+
+- **Kanban integration autopilot (phase 2)** — completed feature tasks now integrate themselves. When a worktree task in a feature reaches review, the dispatcher auto-merges its branch into the feature's integration branch and marks it done (no review click needed). On a merge conflict it spawns a bounded **resolve run**: a worker merges the target branch into the worktree, resolves conflicts, verifies, commits, and returns the task to review for a retry — capped at 2 attempts, after which the task blocks with a notification. Once every task in a feature is done, its integration branch is auto-synced with main (conflicts handed to a resolve run on a system task). Clicking **Merge to base** on a conflicting standalone task now also spawns a resolve run instead of only commenting. Gated by a new **Auto-integrate** setting (default on). All git work is local — pushing the feature branch and opening the PR remain manual for now.
+
 ## v2.66.0
 
 - **Kanban projects registry** — register project folders per board to ground the PM agent in real code. A new **Projects** dialog in the board toolbar lets you add projects (first becomes the default), and the board-scoped PM reads these to route new tickets to the right repo, distinguish feature repos from implementation projects, and understand project structure. (Requires Rune ≥ v0.6.0.)
