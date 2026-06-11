@@ -1,8 +1,17 @@
+import { dirname } from 'path';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { Task, RunMode } from '../../shared/kanban-types';
+import type { Task, RunMode, Feature } from '../../shared/kanban-types';
 import { computeNextRun, taskToScheduleInput } from './schedule';
-import { finalizeWorktree, isBranchMerged, removeWorktree } from './workspace';
+import {
+  ensureFeatureBranch,
+  checkMergeConflicts,
+  finalizeWorktree,
+  isBranchMerged,
+  mergeWorktreeToBase,
+  removeWorktree,
+  updateIntegrationBranchFromMain
+} from './workspace';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -25,6 +34,30 @@ const REVIEW_REQUIRED_EXIT_CODE = 3;
  * a task is ever given up/blocked. At cap=2, failureLimit=3 this holds.
  */
 const ASSIGN_ATTEMPT_CAP = 2;
+
+/** Resolve runs attempted per task before it is blocked. Tracked in tasks.resolve_attempts (independent of failureLimit). */
+const RESOLVE_ATTEMPT_CAP = 2;
+/** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
+const MAX_INTEGRATE_PER_TICK = 3;
+
+/** Git ops used by integrate(); injectable so the stage is unit-testable. Defaults to the real workspace.ts fns. */
+export interface IntegrationOps {
+  ensureFeatureBranch: typeof ensureFeatureBranch;
+  checkMergeConflicts: typeof checkMergeConflicts;
+  mergeWorktreeToBase: typeof mergeWorktreeToBase;
+  updateIntegrationBranchFromMain: typeof updateIntegrationBranchFromMain;
+  removeWorktree: typeof removeWorktree;
+  isBranchMerged: typeof isBranchMerged;
+}
+
+const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
+  ensureFeatureBranch,
+  checkMergeConflicts,
+  mergeWorktreeToBase,
+  updateIntegrationBranchFromMain,
+  removeWorktree,
+  isBranchMerged
+};
 
 export interface SpawnWorkerArgs {
   task: Task;
@@ -72,6 +105,8 @@ export interface DispatcherDeps {
   clearWorkerExit?: (runId: number) => void;
   /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
   workerProfileNames?: () => string[];
+  /** Git ops for integrate(); injected in tests, defaults to real workspace.ts fns. */
+  integration?: IntegrationOps;
 }
 
 export class KanbanDispatcher {
@@ -83,6 +118,10 @@ export class KanbanDispatcher {
     private store: KanbanStore,
     private deps: DispatcherDeps
   ) {}
+
+  private get ops(): IntegrationOps {
+    return this.deps.integration ?? DEFAULT_INTEGRATION_OPS;
+  }
 
   /** Return expired/dead running tasks to ready, or give up past the failure limit. */
   reclaim(): void {
@@ -341,6 +380,70 @@ export class KanbanDispatcher {
         log.error('assign spawn failed', { taskId: task.id, error: msg });
       }
     }
+  }
+
+  /** The feature integration branch a task merges into (or null for a standalone task / missing feature). */
+  private integrationBranchFor(featureId: string | null): string | null {
+    if (!featureId) return null;
+    const f = this.store.getFeature(featureId);
+    if (!f) return null;
+    return f.integrationBranch ?? `fleet/feature-${f.id}`;
+  }
+
+  /**
+   * Spawn a resolve run for a review task (or block it past the cap). Returns true if a run was spawned.
+   * The worker merges `target` into the task's worktree, resolves, commits, and completes (-> review).
+   */
+  private spawnResolve(task: Task, target: string): boolean {
+    const attempts = task.resolveAttempts ?? 0;
+    if (attempts >= RESOLVE_ATTEMPT_CAP) {
+      const note = `merge conflicts unresolved after ${RESOLVE_ATTEMPT_CAP} resolve attempt(s)`;
+      this.store.blockTask(task.id, note);
+      this.store.appendEvent(task.id, null, 'blocked', { reason: note });
+      log.warn('resolve gave up', { taskId: task.id, attempts });
+      return false;
+    }
+    const lock = this.nextLock();
+    if (!this.store.claimForResolve(task.id, lock, this.deps.config.claimTtlMs)) return false; // lost race
+    let runId: number | null = null;
+    try {
+      let workspace = task.workspacePath ?? '';
+      if (!workspace && this.deps.prepareWorkspaceFn) {
+        workspace = this.deps.prepareWorkspaceFn(task); // creates the worktree (e.g. for a system task)
+      }
+      const run = this.store.startRun(task.id, task.assignee ?? 'worker', null, 'resolve');
+      runId = run.id;
+      this.store.incrementResolveAttempts(task.id);
+      const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'resolve' });
+      if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+      this.store.appendEvent(task.id, run.id, 'spawned', {
+        pid: pid ?? null,
+        mode: 'resolve',
+        target,
+        attempt: attempts + 1
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.recordFailure(task.id, msg);
+      if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+      this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'resolve' });
+      this.store.setStatusCleared(task.id, 'review'); // hand back to review so a later tick retries
+      log.error('resolve spawn failed', { taskId: task.id, error: msg });
+      return false;
+    }
+  }
+
+  /**
+   * Public entry for the standalone manual-merge-conflict path (KanbanCommands.mergeReviewTask).
+   * Resolves against the task's merge target (its integration branch for a feature task, else its base).
+   */
+  requestResolve(taskId: string): boolean {
+    const task = this.store.getTask(taskId);
+    if (task?.status !== 'review') return false;
+    const target = this.integrationBranchFor(task.featureId) ?? task.baseBranch;
+    if (!target) return false;
+    return this.spawnResolve(task, target);
   }
 
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */

@@ -3,7 +3,11 @@ import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
-import { KanbanDispatcher } from '../kanban/kanban-dispatcher';
+import {
+  KanbanDispatcher,
+  type SpawnWorkerArgs,
+  type IntegrationOps
+} from '../kanban/kanban-dispatcher';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-disp-test-${Date.now()}`);
 
@@ -394,6 +398,18 @@ const baseConfig = {
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
+
+function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
+  return {
+    ensureFeatureBranch: () => ({ ok: true }),
+    checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+    mergeWorktreeToBase: () => ({ ok: true }),
+    updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
+    removeWorktree: () => ({ branchKept: false }),
+    isBranchMerged: () => false,
+    ...over
+  };
+}
 
 describe('KanbanDispatcher.decompose', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
@@ -874,5 +890,59 @@ describe('KanbanDispatcher.reconfigure', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('KanbanDispatcher.requestResolve', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('requestResolve spawns a resolve run and increments attempts', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 4242;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration()
+    });
+    disp.requestResolve(t.id);
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    expect(store.getTask(t.id)!.resolveAttempts).toBe(1);
+    store.close();
+  });
+
+  it('requestResolve blocks past the attempt cap instead of spawning', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    store.incrementResolveAttempts(t.id);
+    store.incrementResolveAttempts(t.id); // at cap (2)
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration()
+    });
+    disp.requestResolve(t.id);
+    expect(spawned).toHaveLength(0);
+    expect(store.getTask(t.id)!.status).toBe('blocked');
+    store.close();
   });
 });

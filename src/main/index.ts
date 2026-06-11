@@ -941,7 +941,7 @@ void app.whenReady().then(async () => {
       const profiles = settingsStore.get().kanban.profiles;
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
-      if (mode === 'work') {
+      if (mode === 'work' || mode === 'resolve') {
         const resolved = resolveWorkProfile(profiles, task.assignee);
         profile = resolved.profile;
         if (resolved.fellBack) {
@@ -972,6 +972,17 @@ void app.whenReady().then(async () => {
           kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
         }
       }
+      let resolveTarget: string | undefined;
+      if (mode === 'resolve') {
+        if (task.systemKind === 'feature_sync') {
+          resolveTarget = task.baseBranch ?? undefined; // system task's branch IS the integration branch; merge base in
+        } else if (task.featureId) {
+          const f = kanbanStore!.getFeature(task.featureId);
+          resolveTarget = f ? (f.integrationBranch ?? `fleet/feature-${f.id}`) : undefined;
+        } else {
+          resolveTarget = task.baseBranch ?? undefined;
+        }
+      }
       const logPath = join(KANBAN_HOME, 'logs', `${runToken}.log`);
       const spawnedAt = Date.now();
       return spawnRuneWorker(
@@ -984,6 +995,7 @@ void app.whenReady().then(async () => {
             modelOverride: task.modelOverride
           },
           workspace,
+          resolveTarget,
           mcpPort: kanbanMcpPort,
           runToken,
           logPath,
