@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.67.0
+
+- **Terminal background slideshows** — the terminal background can now cycle through multiple images with a smooth crossfade. Pick a folder (new images are picked up automatically) or a hand-selected list of files, choose shuffle or sequential order, and set the interval (10s–30min) and transition duration (0.2–5s). All panes — including hidden background workspaces — stay in sync on a single clock, the fade swaps instantly under reduced-motion preferences, and the existing single-image background plus its opacity/blur/edge-fade/fit adjustments work unchanged.
+- **Kanban auto-assign (autopilot phase 1)** — unassigned ready tasks are automatically assigned via a new `assign` run mode and `autoAssign` setting, the first step toward board autopilot.
+
 ## v2.66.0
 
 - **Kanban projects registry** — register project folders per board to ground the PM agent in real code. A new **Projects** dialog in the board toolbar lets you add projects (first becomes the default), and the board-scoped PM reads these to route new tickets to the right repo, distinguish feature repos from implementation projects, and understand project structure. (Requires Rune ≥ v0.6.0.)
