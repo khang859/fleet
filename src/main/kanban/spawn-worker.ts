@@ -82,6 +82,15 @@ function buildPrompt(input: BuildWorkerInput): string {
       `call kanban_update with the improved title and body.`
     );
   }
+  if (mode === 'assign') {
+    const roster = (input.roster ?? []).map((r) => `- ${r.name}: ${r.description}`).join('\n');
+    return (
+      `assign kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `Choose the single best-matching worker profile to implement this task, based on each ` +
+      `profile's described strengths. Call kanban_assign with that profile's name. Do not do the ` +
+      `work yourself.\n\nAvailable worker profiles:\n${roster || '- default: general worker'}`
+    );
+  }
   return (
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
@@ -124,6 +133,8 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_complete,kanban_block';
     case 'specify':
       return 'kanban_update';
+    case 'assign':
+      return 'kanban_assign';
     default:
       return null;
   }

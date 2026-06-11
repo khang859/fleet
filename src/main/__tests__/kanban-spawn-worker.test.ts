@@ -338,6 +338,26 @@ describe('buildWorkerInvocation', () => {
     expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_update');
   });
 
+  it('builds an assign prompt with the worker roster and passes --require-tool kanban_assign', () => {
+    const workspace = join(ROOT, 'wsassign');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'ta', title: 'pick worker', body: 'needs routing', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'a.log'),
+      mode: 'assign',
+      roster: [{ name: 'coder', description: 'writes code' }]
+    });
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toMatch(/^assign kanban task ta/);
+    expect(prompt).toContain('coder: writes code');
+    expect(prompt).toContain('kanban_assign');
+    expect(prompt).toMatch(/do not do the work yourself/i);
+    expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_assign');
+  });
+
   it('does not include attachments in decompose mode', () => {
     const workspace = join(ROOT, 'wsc');
     mkdirSync(workspace, { recursive: true });
