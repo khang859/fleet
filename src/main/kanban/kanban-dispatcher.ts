@@ -580,6 +580,25 @@ export class KanbanDispatcher {
     // transient error: no flag, no event -> retried on the next merge
   }
 
+  /**
+   * Flip a feature's draft PR to ready once the feature is fully done and its
+   * integration branch is cleanly synced with main. Best-effort: a failure
+   * appends an event and leaves the draft for the manual Ship override.
+   */
+  private markFeaturePrReady(feature: Feature): void {
+    if (feature.prState !== 'draft' || feature.prNumber == null || !feature.repoPath) return;
+    const r = this.ops.markPrReady({ repoPath: feature.repoPath, prNumber: feature.prNumber });
+    if (r.ok) {
+      this.store.setFeaturePrState(feature.id, 'open');
+      this.store.appendEvent(feature.id, null, 'feature_pr_ready', { number: feature.prNumber });
+    } else {
+      this.store.appendEvent(feature.id, null, 'feature_pr_ready_failed', {
+        number: feature.prNumber,
+        error: r.error
+      });
+    }
+  }
+
   /** Sync each fully-done feature's integration branch with main; spawn a feature_sync resolve task on conflict. */
   private integrateFeatures(budget: number): void {
     for (const feature of this.store.listFeatures({ status: 'active' })) {
@@ -630,6 +649,7 @@ export class KanbanDispatcher {
             by: 'feature_sync'
           });
           this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+          this.markFeaturePrReady(feature);
         } else {
           // completed without resolving — retry (cap enforced in spawnResolve, then it blocks)
           if (this.spawnResolve(open, feature.baseBranch)) budget -= 1;
@@ -647,6 +667,7 @@ export class KanbanDispatcher {
       });
       if (sync.ok) {
         this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+        this.markFeaturePrReady(feature);
         budget -= 1; // a sync is a real git op — count it against the tick budget
       } else if (sync.conflict) {
         this.store.updateFeature(feature.id, { mergeState: 'conflict' });
