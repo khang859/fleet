@@ -546,6 +546,28 @@ describe('KanbanDispatcher.autoAssign', () => {
     disp.autoAssign();
     expect(spawned).toEqual([{ id: t.id, mode: 'assign' }]);
     expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.assignee).toBeNull();
+    store.close();
+  });
+
+  it('LLM path: stays below the cap (failures = cap - 1) so it spawns an assign run', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.recordFailure(t.id, 'a1'); // consecutiveFailures = 1 < cap (2)
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => { spawned.push({ id: args.task.id, mode: args.mode }); return 4242; },
+      config: { ...baseConfig, autoAssign: true },
+      prepareWorkspaceFn: () => '/tmp/ws',
+      workerProfileNames: () => ['alpha', 'beta']
+    });
+    disp.autoAssign();
+    expect(spawned).toEqual([{ id: t.id, mode: 'assign' }]);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.assignee).toBeNull();
     store.close();
   });
 

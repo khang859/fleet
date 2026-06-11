@@ -151,6 +151,8 @@ export class KanbanDispatcher {
         log.warn('task gave up', { taskId: task.id, failures });
       } else {
         const mode = task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
+        // assign is also a non-work orchestrator mode — this branch MUST stay before the
+        // generic non-work branch below, or a dead assign run would wrongly route to triage.
         if (mode === 'assign') this.store.returnToReady(task.id);
         else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
@@ -307,7 +309,9 @@ export class KanbanDispatcher {
         }
         continue;
       }
-      if (slots <= 0) break;
+      // Only the LLM-spawn path is bounded by orchestrator slots; skip (don't break)
+      // so later deterministic tasks still get assigned in code this tick.
+      if (slots <= 0) continue;
       const lock = this.nextLock();
       if (!this.store.claimForAssign(task.id, lock, ttl)) continue;
       let runId: number | null = null;
