@@ -34,6 +34,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -62,6 +63,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -202,6 +204,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -232,6 +235,7 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -257,6 +261,7 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -289,6 +294,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -325,6 +331,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 2,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -351,6 +358,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -373,6 +381,7 @@ const baseConfig = {
   maxInProgress: 3,
   claimTtlMs: 1000,
   autoDecompose: false,
+  autoAssign: false,
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
@@ -516,6 +525,7 @@ describe('KanbanDispatcher.fireSchedules', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -606,6 +616,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -620,6 +631,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -641,6 +653,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       };
@@ -688,6 +701,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 1,
           claimTtlMs: 1000,
           autoDecompose: false,
+          autoAssign: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -700,6 +714,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 2,
           claimTtlMs: 1000,
           autoDecompose: false,
+          autoAssign: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },

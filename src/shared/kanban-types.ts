@@ -11,8 +11,8 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify'. */
-export type RunMode = 'work' | 'decompose' | 'specify';
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign'. */
+export type RunMode = 'work' | 'decompose' | 'specify' | 'assign';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';

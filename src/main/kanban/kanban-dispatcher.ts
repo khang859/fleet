@@ -33,6 +33,7 @@ export interface DispatcherConfig {
   maxInProgress: number; // concurrency cap
   claimTtlMs: number; // claim lease length
   autoDecompose: boolean; // automatically arm triage tasks for decompose
+  autoAssign: boolean; // automatically assign unassigned ready tasks to a worker profile
   maxDecompose: number; // max concurrent orchestrator runs
   artifactRetentionDays: number; // auto-purge discarded artifacts older than this; 0 disables
 }
