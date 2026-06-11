@@ -991,23 +991,29 @@ export class KanbanMcpServer {
         }
         case 'kanban_assign': {
           const a = z.object({ profile: z.string() }).parse(args);
-          const name = a.profile.trim();
+          const profile = a.profile.trim();
+          if (!profile) {
+            return this.rpcError(res, rpcReq.id, 'profile is required');
+          }
           const workerNames = this.getProfiles()
             .filter((p) => p.role === 'worker')
             .map((p) => p.name);
-          if (workerNames.length > 0 && !workerNames.includes(name)) {
+          if (workerNames.length > 0 && !workerNames.includes(profile)) {
             return this.rpcError(
               res,
               rpcReq.id,
-              `unknown worker profile "${name}". Valid profiles: ${workerNames.join(', ')}`
+              `unknown worker profile "${profile}". Valid profiles: ${workerNames.join(', ')}`
             );
           }
-          this.store.updateTask(task.id, { assignee: name });
+          this.store.updateTask(task.id, { assignee: profile });
           this.store.returnToReady(task.id);
-          this.store.finishRun(scope.runId, 'completed', { summary: `assigned ${name}` });
-          this.store.appendEvent(task.id, scope.runId, 'assigned', { assignee: name, by: 'orchestrator' });
+          this.store.finishRun(scope.runId, 'completed', { summary: `assigned ${profile}` });
+          this.store.appendEvent(task.id, scope.runId, 'assigned', {
+            assignee: profile,
+            by: 'orchestrator'
+          });
           this.unregisterRun(token);
-          return this.text(res, rpcReq.id, `Assigned ${name}.`);
+          return this.text(res, rpcReq.id, `Assigned ${profile}.`);
         }
         case 'kanban_comment': {
           const a = z.object({ body: z.string() }).parse(args);

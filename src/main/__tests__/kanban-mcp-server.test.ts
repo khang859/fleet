@@ -480,6 +480,14 @@ describe('KanbanMcpServer', () => {
       expect(got?.assignee).toBe('alpha');
       expect(got?.status).toBe('ready');
       expect(store.listRuns(t.id)[0].outcome).toBe('completed');
+
+      // Terminal: the run token must be unregistered after a successful assign.
+      const after = await rpc(`${base2}?run=atok`, 'tools/call', {
+        name: 'kanban_assign',
+        arguments: { profile: 'alpha' }
+      });
+      expect(after.error).toBeTruthy();
+      expect(String(after.error.message)).toMatch(/run token/i);
     } finally {
       await s2.stop();
     }
