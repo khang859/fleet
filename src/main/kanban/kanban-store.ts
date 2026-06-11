@@ -1408,6 +1408,30 @@ export class KanbanStore {
       .run(prState, this.now(), featureId);
   }
 
+  /** Active features with a PR number not polled since `cutoff` (oldest first), for the PrPoller. */
+  featuresDuePrSync(cutoff: number, limit: number): Feature[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM features
+         WHERE status='active' AND pr_number IS NOT NULL
+           AND (pr_synced_at IS NULL OR pr_synced_at <= @cutoff)
+         ORDER BY pr_synced_at ASC
+         LIMIT @limit`
+      )
+      .all({ cutoff, limit }) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToFeature(r));
+  }
+
+  /** Write polled feature-PR state and bump pr_synced_at so the next sweep skips it (no updated_at bump). */
+  setFeaturePrStatus(
+    featureId: string,
+    fields: { prState: PrState | null; checksState: ChecksState | null }
+  ): void {
+    this.db
+      .prepare(`UPDATE features SET pr_state=?, checks_state=?, pr_synced_at=? WHERE id=?`)
+      .run(fields.prState, fields.checksState, this.now(), featureId);
+  }
+
   /** Mark that the "PR skipped: no remote/gh" event has been posted for this feature (fire-once). */
   setFeaturePrSkipNotified(featureId: string): void {
     this.db

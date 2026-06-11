@@ -1161,4 +1161,19 @@ describe('KanbanStore schema v12 (draft PR lifecycle)', () => {
     store.setFeaturePrSkipNotified(f.id);
     expect(store.getFeature(f.id)!.prSkipNotified).toBe(true);
   });
+
+  it('featuresDuePrSync returns features with a PR number past the cutoff; setFeaturePrStatus updates + stamps', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, `feat-due-${Math.random()}.db`), { now: () => clock });
+    const f = s.createFeature({ boardId: 'default', name: 'F' });
+    s.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
+    expect(s.featuresDuePrSync(clock, 10).map((x) => x.id)).toContain(f.id);
+    s.setFeaturePrStatus(f.id, { prState: 'open', checksState: 'passing' });
+    const got = s.getFeature(f.id)!;
+    expect(got.prState).toBe('open');
+    expect(got.checksState).toBe('passing');
+    expect(got.syncedAt).toBe(clock);
+    expect(s.featuresDuePrSync(clock - 1, 10).map((x) => x.id)).not.toContain(f.id);
+    s.close();
+  });
 });
