@@ -655,13 +655,16 @@ export class KanbanCommands {
     });
     if (!result.ok) {
       const reason = result.conflict
-        ? `merge conflict against ${task.baseBranch}; resolve manually or unblock to retry`
+        ? `merge conflict against ${task.baseBranch}; spawning a resolve run`
         : (result.error ?? 'merge failed');
       this.store.addComment(id, 'human', `merge to ${task.baseBranch} failed: ${reason}`);
       this.store.appendEvent(id, null, 'merge_failed', {
         base: task.baseBranch,
         conflict: !!result.conflict
       });
+      // A conflicting manual merge hands off to a resolve run (the task is still in
+      // 'review' here, so requestResolve's guard + claimForResolve CAS both hold).
+      if (result.conflict) this.dispatcher.requestResolve(id);
       return { ok: false, conflict: result.conflict, error: reason };
     }
     this.store.completeTask(id, task.result);

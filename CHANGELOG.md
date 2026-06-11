@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.68.0
+
+- **Kanban integration autopilot (phase 2)** — completed feature tasks now integrate themselves. When a worktree task in a feature reaches review, the dispatcher auto-merges its branch into the feature's integration branch and marks it done (no review click needed). On a merge conflict it spawns a bounded **resolve run**: a worker merges the target branch into the worktree, resolves conflicts, verifies, commits, and returns the task to review for a retry — capped at 2 attempts, after which the task blocks with a notification. Once every task in a feature is done, its integration branch is auto-synced with main (conflicts handed to a resolve run on a system task). Clicking **Merge to base** on a conflicting standalone task now also spawns a resolve run instead of only commenting. Gated by a new **Auto-integrate** setting (default on). All git work is local — pushing the feature branch and opening the PR remain manual for now.
+
 ## v2.67.0
 
 - **Terminal background slideshows** — the terminal background can now cycle through multiple images with a smooth crossfade. Pick a folder (new images are picked up automatically) or a hand-selected list of files, choose shuffle or sequential order, and set the interval (10s–30min) and transition duration (0.2–5s). All panes — including hidden background workspaces — stay in sync on a single clock, the fade swaps instantly under reduced-motion preferences, and the existing single-image background plus its opacity/blur/edge-fade/fit adjustments work unchanged.

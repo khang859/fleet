@@ -1,8 +1,17 @@
+import { dirname } from 'path';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
-import type { Task, RunMode } from '../../shared/kanban-types';
+import type { Task, RunMode, Feature } from '../../shared/kanban-types';
 import { computeNextRun, taskToScheduleInput } from './schedule';
-import { finalizeWorktree, isBranchMerged, removeWorktree } from './workspace';
+import {
+  ensureFeatureBranch,
+  checkMergeConflicts,
+  finalizeWorktree,
+  isBranchMerged,
+  mergeWorktreeToBase,
+  removeWorktree,
+  updateIntegrationBranchFromMain
+} from './workspace';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -26,6 +35,30 @@ const REVIEW_REQUIRED_EXIT_CODE = 3;
  */
 const ASSIGN_ATTEMPT_CAP = 2;
 
+/** Resolve runs attempted per task before it is blocked. Tracked in tasks.resolve_attempts (independent of failureLimit). */
+const RESOLVE_ATTEMPT_CAP = 2;
+/** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
+const MAX_INTEGRATE_PER_TICK = 3;
+
+/** Git ops used by integrate(); injectable so the stage is unit-testable. Defaults to the real workspace.ts fns. */
+export interface IntegrationOps {
+  ensureFeatureBranch: typeof ensureFeatureBranch;
+  checkMergeConflicts: typeof checkMergeConflicts;
+  mergeWorktreeToBase: typeof mergeWorktreeToBase;
+  updateIntegrationBranchFromMain: typeof updateIntegrationBranchFromMain;
+  removeWorktree: typeof removeWorktree;
+  isBranchMerged: typeof isBranchMerged;
+}
+
+const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
+  ensureFeatureBranch,
+  checkMergeConflicts,
+  mergeWorktreeToBase,
+  updateIntegrationBranchFromMain,
+  removeWorktree,
+  isBranchMerged
+};
+
 export interface SpawnWorkerArgs {
   task: Task;
   runId: number;
@@ -41,6 +74,7 @@ export interface DispatcherConfig {
   claimTtlMs: number; // claim lease length
   autoDecompose: boolean; // automatically arm triage tasks for decompose
   autoAssign: boolean; // automatically assign unassigned ready tasks to a worker profile
+  autoIntegrate: boolean; // auto-merge feature review tasks into the integration branch + resolve runs
   maxDecompose: number; // max concurrent orchestrator runs
   artifactRetentionDays: number; // auto-purge discarded artifacts older than this; 0 disables
 }
@@ -71,6 +105,8 @@ export interface DispatcherDeps {
   clearWorkerExit?: (runId: number) => void;
   /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
   workerProfileNames?: () => string[];
+  /** Git ops for integrate(); injected in tests, defaults to real workspace.ts fns. */
+  integration?: IntegrationOps;
 }
 
 export class KanbanDispatcher {
@@ -82,6 +118,10 @@ export class KanbanDispatcher {
     private store: KanbanStore,
     private deps: DispatcherDeps
   ) {}
+
+  private get ops(): IntegrationOps {
+    return this.deps.integration ?? DEFAULT_INTEGRATION_OPS;
+  }
 
   /** Return expired/dead running tasks to ready, or give up past the failure limit. */
   reclaim(): void {
@@ -155,9 +195,12 @@ export class KanbanDispatcher {
         log.warn('task gave up', { taskId: task.id, failures });
       } else {
         const mode = task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
-        // assign is also a non-work orchestrator mode — this branch MUST stay before the
-        // generic non-work branch below, or a dead assign run would wrongly route to triage.
+        // assign and resolve are non-work modes that run on a real task (ready/review), not a
+        // triage card — they MUST be routed before the generic non-work branch below, or a dead
+        // run would wrongly land in triage. A resolve run returns to review so the next
+        // integrate() pass re-evaluates it (retry within the cap, or block).
         if (mode === 'assign') this.store.returnToReady(task.id);
+        else if (mode === 'resolve') this.store.setStatusCleared(task.id, 'review');
         else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
       }
@@ -342,6 +385,251 @@ export class KanbanDispatcher {
     }
   }
 
+  /** The feature integration branch a task merges into (or null for a standalone task / missing feature). */
+  private integrationBranchFor(featureId: string | null): string | null {
+    if (!featureId) return null;
+    const f = this.store.getFeature(featureId);
+    if (!f) return null;
+    return f.integrationBranch ?? `fleet/feature-${f.id}`;
+  }
+
+  /**
+   * Spawn a resolve run for a review task (or block it past the cap). Returns true if a run was spawned.
+   * The worker merges `target` into the task's worktree, resolves, commits, and completes (-> review).
+   */
+  private spawnResolve(task: Task, target: string): boolean {
+    const attempts = task.resolveAttempts;
+    if (attempts >= RESOLVE_ATTEMPT_CAP) {
+      const note = `merge conflicts unresolved after ${RESOLVE_ATTEMPT_CAP} resolve attempt(s)`;
+      this.store.blockTask(task.id, note);
+      this.store.appendEvent(task.id, null, 'blocked', { reason: note });
+      log.warn('resolve gave up', { taskId: task.id, attempts });
+      return false;
+    }
+    const lock = this.nextLock();
+    if (!this.store.claimForResolve(task.id, lock, this.deps.config.claimTtlMs)) return false; // lost race
+    let runId: number | null = null;
+    try {
+      let workspace = task.workspacePath ?? '';
+      if (!workspace && this.deps.prepareWorkspaceFn) {
+        workspace = this.deps.prepareWorkspaceFn(task); // creates the worktree (e.g. for a system task)
+      }
+      const run = this.store.startRun(task.id, task.assignee ?? 'worker', null, 'resolve');
+      runId = run.id;
+      this.store.incrementResolveAttempts(task.id);
+      const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'resolve' });
+      if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+      this.store.appendEvent(task.id, run.id, 'spawned', {
+        pid: pid ?? null,
+        mode: 'resolve',
+        target,
+        attempt: attempts + 1
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.recordFailure(task.id, msg);
+      if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+      this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'resolve' });
+      this.store.setStatusCleared(task.id, 'review'); // hand back to review so a later tick retries
+      log.error('resolve spawn failed', { taskId: task.id, error: msg });
+      return false;
+    }
+  }
+
+  /**
+   * Public entry for the standalone manual-merge-conflict path (KanbanCommands.mergeReviewTask).
+   * Resolves against the task's merge target (its integration branch for a feature task, else its base).
+   */
+  requestResolve(taskId: string): boolean {
+    const task = this.store.getTask(taskId);
+    if (task?.status !== 'review') return false;
+    const target = this.integrationBranchFor(task.featureId) ?? task.baseBranch;
+    if (!target) return false;
+    return this.spawnResolve(task, target);
+  }
+
+  /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
+  integrate(): void {
+    if (!this.deps.config.autoIntegrate) return;
+    const budget = this.integrateTasks(MAX_INTEGRATE_PER_TICK);
+    this.integrateFeatures(budget);
+  }
+
+  /** Merge each review feature task into its integration branch; spawn a resolve run on conflict. Returns remaining budget. */
+  private integrateTasks(budget: number): number {
+    for (const task of this.store.reviewWorktreeFeatureTasks()) {
+      if (budget <= 0) break;
+      if (!task.repoPath || !task.branchName || !task.baseBranch || !task.workspacePath) continue;
+      const integrationBranch = this.integrationBranchFor(task.featureId);
+      if (!integrationBranch) continue;
+
+      const ensured = this.ops.ensureFeatureBranch({
+        repoPath: task.repoPath,
+        integrationBranch,
+        baseBranch: task.baseBranch
+      });
+      if (!ensured.ok) {
+        this.store.appendEvent(task.id, null, 'merge_failed', {
+          base: integrationBranch,
+          error: ensured.error
+        });
+        continue;
+      }
+
+      const pred = this.ops.checkMergeConflicts({
+        repoPath: task.repoPath,
+        baseBranch: integrationBranch,
+        branchName: task.branchName
+      });
+      if (pred.state === 'error') continue; // can't predict — leave in review for a human
+      if (pred.state === 'conflicts') {
+        if (this.spawnResolve(task, integrationBranch)) budget -= 1;
+        continue;
+      }
+      // clean prediction → real merge into the (local) integration branch
+      const res = this.ops.mergeWorktreeToBase({
+        repoPath: task.repoPath,
+        branchName: task.branchName,
+        baseBranch: integrationBranch,
+        worktreeParentDir: dirname(task.workspacePath),
+        taskId: task.id,
+        title: task.title
+      });
+      if (res.ok) {
+        this.store.completeTask(task.id, task.result);
+        this.store.appendEvent(task.id, null, 'merged', {
+          base: integrationBranch,
+          branch: task.branchName,
+          by: 'integrate'
+        });
+        this.ops.removeWorktree({
+          repoPath: task.repoPath,
+          workspacePath: task.workspacePath,
+          branchName: task.branchName,
+          baseBranch: integrationBranch
+        });
+        this.store.setWorktreePruned(task.id);
+        this.store.appendEvent(task.id, null, 'worktree_pruned', {
+          branch: task.branchName,
+          by: 'integrate'
+        });
+        this.store.resetResolveAttempts(task.id);
+        budget -= 1;
+      } else if (res.conflict) {
+        if (this.spawnResolve(task, integrationBranch)) budget -= 1; // prediction raced (clean→dirty)
+      } else {
+        this.store.appendEvent(task.id, null, 'merge_failed', {
+          base: integrationBranch,
+          error: res.error
+        });
+      }
+    }
+    return budget;
+  }
+
+  /** Sync each fully-done feature's integration branch with main; spawn a feature_sync resolve task on conflict. */
+  private integrateFeatures(budget: number): void {
+    for (const feature of this.store.listFeatures({ status: 'active' })) {
+      if (budget <= 0) break;
+      if (!feature.repoPath || !feature.baseBranch) continue;
+      const integrationBranch = feature.integrationBranch ?? `fleet/feature-${feature.id}`;
+
+      const rollup = this.store.featureRollup(feature.id); // system tasks already excluded
+      const allDone = rollup.total > 0 && rollup.done + rollup.archived === rollup.total;
+      if (!allDone) continue;
+
+      // Only act once integration actually contains merged work (branch ahead of base).
+      if (
+        this.ops.isBranchMerged({
+          repoPath: feature.repoPath,
+          branchName: integrationBranch,
+          baseBranch: feature.baseBranch
+        })
+      ) {
+        continue;
+      }
+
+      const open = this.store.openSystemTask(feature.id, 'feature_sync');
+      if (open?.status === 'running') continue; // a resolve is already in flight
+
+      if (open?.status === 'review') {
+        // The resolve worker finished. Did it actually merge base into the integration branch?
+        // (synced check: base is now an ancestor of the integration branch).
+        const synced = this.ops.isBranchMerged({
+          repoPath: feature.repoPath,
+          branchName: feature.baseBranch,
+          baseBranch: integrationBranch
+        });
+        if (synced) {
+          // Free the integration branch (prune the worktree; the branch is ahead of base so it's kept), close the task.
+          if (open.workspacePath && open.branchName) {
+            this.ops.removeWorktree({
+              repoPath: feature.repoPath,
+              workspacePath: open.workspacePath,
+              branchName: open.branchName,
+              baseBranch: feature.baseBranch
+            });
+          }
+          this.store.setWorktreePruned(open.id);
+          this.store.completeTask(open.id, 'synced with main');
+          this.store.appendEvent(open.id, null, 'merged', {
+            base: feature.baseBranch,
+            by: 'feature_sync'
+          });
+          this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+        } else {
+          // completed without resolving — retry (cap enforced in spawnResolve, then it blocks)
+          if (this.spawnResolve(open, feature.baseBranch)) budget -= 1;
+        }
+        continue;
+      }
+
+      // No open system task:
+      if (feature.mergeState === 'in_progress' || feature.mergeState === 'merged') continue; // fire-once
+
+      const sync = this.ops.updateIntegrationBranchFromMain({
+        repoPath: feature.repoPath,
+        integrationBranch,
+        baseBranch: feature.baseBranch
+      });
+      if (sync.ok) {
+        this.store.updateFeature(feature.id, { mergeState: 'in_progress' });
+        budget -= 1; // a sync is a real git op — count it against the tick budget
+      } else if (sync.conflict) {
+        this.store.updateFeature(feature.id, { mergeState: 'conflict' });
+        const sys = this.createFeatureSyncTask(feature, integrationBranch);
+        if (sys && this.spawnResolve(sys, feature.baseBranch)) budget -= 1;
+      }
+      // sync error (e.g. base not found): leave for next tick
+    }
+  }
+
+  /**
+   * Create the synthetic system task whose worktree checks out the integration branch itself,
+   * so a resolve run can merge main into it. Excluded from feature roll-ups via system_kind.
+   */
+  private createFeatureSyncTask(feature: Feature, integrationBranch: string): Task | null {
+    if (!feature.repoPath || !feature.baseBranch) return null;
+    const task = this.store.createTask({
+      title: `Sync ${feature.name} with main`,
+      body: `Merge ${feature.baseBranch} into ${integrationBranch} and resolve any conflicts so the feature can ship.`,
+      status: 'review', // spawnResolve claims from review
+      boardId: feature.boardId,
+      featureId: feature.id,
+      systemKind: 'feature_sync',
+      workspaceKind: 'worktree',
+      repoPath: feature.repoPath,
+      branchName: integrationBranch, // the worktree checks out the integration branch
+      baseBranch: feature.baseBranch
+    });
+    this.store.appendEvent(task.id, null, 'task_created', {
+      by: 'dispatcher',
+      system: 'feature_sync'
+    });
+    return task;
+  }
+
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
   sweepArtifacts(): void {
     const days = this.deps.config.artifactRetentionDays;
@@ -400,6 +688,7 @@ export class KanbanDispatcher {
     this.autoAssign();
     this.promote();
     this.claimAndSpawn();
+    this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
   }

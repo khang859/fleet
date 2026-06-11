@@ -29,6 +29,8 @@ export interface BuildWorkerInput {
   attachments?: Array<{ filename: string; storedPath: string }>;
   /** Board docs referenced by the task, pre-loaded for prompt inlining. */
   docs?: InlinedDoc[];
+  /** Branch to merge into the worktree for a resolve run (integration branch, or base for a feature_sync task). */
+  resolveTarget?: string;
 }
 
 export interface WorkerInvocation {
@@ -91,6 +93,16 @@ function buildPrompt(input: BuildWorkerInput): string {
       `work yourself.\n\nAvailable worker profiles:\n${roster || '- default: general worker'}`
     );
   }
+  if (mode === 'resolve') {
+    const target = input.resolveTarget ?? 'the base branch';
+    return (
+      `resolve merge conflicts for kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `Merge \`${target}\` into your current branch. Resolve every conflict, preserving the intent of ` +
+      `both sides. Verify your resolution (run the project's typecheck/build per the board docs if present). ` +
+      `Commit the merge. Then call kanban_complete with a one-line summary. If the conflicts cannot be ` +
+      `resolved safely, call kanban_block with the reason instead.`
+    );
+  }
   return (
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
@@ -130,6 +142,7 @@ function requireToolsForMode(mode: RunMode): string | null {
   switch (mode) {
     case 'work':
     case 'decompose':
+    case 'resolve':
       return 'kanban_complete,kanban_block';
     case 'specify':
       return 'kanban_update';

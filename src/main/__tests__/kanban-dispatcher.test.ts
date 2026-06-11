@@ -3,7 +3,11 @@ import { mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
-import { KanbanDispatcher } from '../kanban/kanban-dispatcher';
+import {
+  KanbanDispatcher,
+  type SpawnWorkerArgs,
+  type IntegrationOps
+} from '../kanban/kanban-dispatcher';
 
 const TEST_DIR = join(tmpdir(), `fleet-kanban-disp-test-${Date.now()}`);
 
@@ -35,6 +39,7 @@ describe('KanbanDispatcher.reclaim', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -64,6 +69,7 @@ describe('KanbanDispatcher.reclaim', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -205,6 +211,7 @@ describe('KanbanDispatcher.reclaim', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -236,6 +243,7 @@ describe('KanbanDispatcher.promote', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -262,6 +270,7 @@ describe('KanbanDispatcher.promote', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -295,6 +304,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -332,6 +342,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -359,6 +370,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -382,9 +394,22 @@ const baseConfig = {
   claimTtlMs: 1000,
   autoDecompose: false,
   autoAssign: false,
+  autoIntegrate: false,
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
+
+function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
+  return {
+    ensureFeatureBranch: () => ({ ok: true }),
+    checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+    mergeWorktreeToBase: () => ({ ok: true }),
+    updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
+    removeWorktree: () => ({ branchKept: false }),
+    isBranchMerged: () => false,
+    ...over
+  };
+}
 
 describe('KanbanDispatcher.decompose', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
@@ -503,6 +528,26 @@ describe('KanbanDispatcher.decompose', () => {
     });
     disp.reclaim();
     expect(store.getTask(t.id)?.status).toBe('triage');
+    store.close();
+  });
+
+  it('reclaim returns a dead resolve run to review (not triage) so integrate retries it', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    store.claimForResolve(t.id, 'L', 100); // expires 1100, moves to running
+    store.startRun(t.id, 'worker', 9999, 'resolve');
+    clock.t = 2000; // claim expired
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig }
+    });
+    disp.reclaim();
+    expect(store.getTask(t.id)?.status).toBe('review');
     store.close();
   });
 });
@@ -660,6 +705,7 @@ describe('KanbanDispatcher.fireSchedules', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -751,6 +797,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -766,6 +813,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -788,6 +836,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       };
@@ -836,6 +885,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           claimTtlMs: 1000,
           autoDecompose: false,
           autoAssign: false,
+          autoIntegrate: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -849,6 +899,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           claimTtlMs: 1000,
           autoDecompose: false,
           autoAssign: false,
+          autoIntegrate: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -859,5 +910,420 @@ describe('KanbanDispatcher.reconfigure', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('KanbanDispatcher.requestResolve', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('requestResolve spawns a resolve run and increments attempts', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 4242;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration()
+    });
+    disp.requestResolve(t.id);
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    expect(store.getTask(t.id)!.resolveAttempts).toBe(1);
+    store.close();
+  });
+
+  it('requestResolve blocks past the attempt cap instead of spawning', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    store.incrementResolveAttempts(t.id);
+    store.incrementResolveAttempts(t.id); // at cap (2)
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration()
+    });
+    disp.requestResolve(t.id);
+    expect(spawned).toHaveLength(0);
+    expect(store.getTask(t.id)!.status).toBe('blocked');
+    store.close();
+  });
+});
+
+describe('KanbanDispatcher.integrate', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function reviewFeatureTask(store: KanbanStore) {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const t = store.createTask({
+      title: 't',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setWorkspace(t.id, '/tmp/t', 'br-t', 'main');
+    store.reviewTask(t.id, null);
+    return { f, t };
+  }
+
+  it('integrate: clean feature task -> merged, done, pruned, attempts reset', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+        mergeWorktreeToBase: () => ({ ok: true })
+      })
+    });
+    disp.integrate();
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('done');
+    expect(got.worktreePruned).toBe(true);
+    expect(got.resolveAttempts).toBe(0);
+    store.close();
+  });
+
+  it('integrate: conflicting feature task -> resolve run spawned (not merged)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 7;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'conflicts', files: ['a.ts'] })
+      })
+    });
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    store.close();
+  });
+
+  it('integrate: autoIntegrate off -> no-op', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: false },
+      integration: fakeIntegration()
+    });
+    disp.integrate();
+    expect(store.getTask(t.id)!.status).toBe('review');
+    store.close();
+  });
+
+  it('integrate: conflicting task at the resolve cap -> blocked', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    store.incrementResolveAttempts(t.id);
+    store.incrementResolveAttempts(t.id); // at cap
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'conflicts', files: ['a.ts'] })
+      })
+    });
+    disp.integrate();
+    expect(store.getTask(t.id)!.status).toBe('blocked');
+    store.close();
+  });
+
+  it('integrate: conflict prediction errors -> task stays in review, no spawn, no merge', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    let merges = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'error', files: [] }),
+        mergeWorktreeToBase: () => {
+          merges++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(spawned).toHaveLength(0);
+    expect(merges).toBe(0);
+    expect(store.getTask(t.id)!.status).toBe('review');
+    store.close();
+  });
+
+  it('integrate: clean prediction but merge races dirty -> resolve run spawned', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 8;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+        mergeWorktreeToBase: () => ({ ok: false, conflict: true })
+      })
+    });
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    store.close();
+  });
+
+  function doneFeature(store: KanbanStore) {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const a = store.createTask({
+      title: 'a',
+      featureId: f.id,
+      status: 'done',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    return { f, a };
+  }
+
+  it('integrateFeatures: all done + clean sync -> no system task, fires once', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    let syncCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => false, // integration ahead of base → something merged
+        updateIntegrationBranchFromMain: () => {
+          syncCalls++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    disp.integrate(); // second tick must NOT re-sync
+    expect(syncCalls).toBe(1);
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull();
+    store.close();
+  });
+
+  it('integrateFeatures: sync conflict -> feature_sync system task spawned in resolve mode', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 9;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check on the integration branch → false (something merged);
+        // synced-check would be on 'main' but no review task exists yet.
+        isBranchMerged: ({ branchName }) => branchName === 'main',
+        updateIntegrationBranchFromMain: () => ({ ok: false, conflict: true })
+      })
+    });
+    disp.integrate();
+    const sys = store.openSystemTask(f.id, 'feature_sync');
+    expect(sys).not.toBeNull();
+    expect(sys!.systemKind).toBe('feature_sync');
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getFeature(f.id)!.mergeState).toBe('conflict');
+    expect(store.featureRollup(f.id).total).toBe(1); // system task excluded
+    store.close();
+  });
+
+  it('integrateFeatures: nothing merged (integration == base) -> skip', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    doneFeature(store);
+    let syncCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => true,
+        updateIntegrationBranchFromMain: () => {
+          syncCalls++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(syncCalls).toBe(0);
+    store.close();
+  });
+
+  it('integrateFeatures: sync error (no conflict) -> no system task, mergeState unchanged', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    expect(store.getFeature(f.id)!.mergeState).toBeNull(); // baseline
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 1;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check on the integration branch → false (something merged).
+        isBranchMerged: ({ branchName }) => branchName === 'main',
+        updateIntegrationBranchFromMain: () => ({ ok: false }) // e.g. base branch not found
+      })
+    });
+    disp.integrate();
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull();
+    expect(store.getFeature(f.id)!.mergeState).toBeNull(); // not 'conflict', not 'in_progress'
+    expect(spawned).toHaveLength(0);
+    store.close();
+  });
+
+  // A feature in 'conflict' whose feature_sync resolve worker has finished (status 'review').
+  function conflictedFeatureWithReviewSync(store: KanbanStore) {
+    const { f, a } = doneFeature(store);
+    store.updateFeature(f.id, { mergeState: 'conflict' });
+    const integrationBranch = `fleet/feature-${f.id}`;
+    const sys = store.createTask({
+      title: `Sync F with main`,
+      featureId: f.id,
+      systemKind: 'feature_sync',
+      workspaceKind: 'worktree',
+      status: 'review',
+      repoPath: '/repo',
+      branchName: integrationBranch,
+      baseBranch: 'main'
+    });
+    store.setWorkspace(sys.id, '/tmp/sync', integrationBranch, 'main');
+    return { f, a, sys, integrationBranch };
+  }
+
+  it('integrateFeatures: review feature_sync that synced -> completed + worktree pruned + in_progress', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f, sys } = conflictedFeatureWithReviewSync(store);
+    let removeCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check on the integration branch → false (it's ahead of base);
+        // synced-check on 'main' (base) → true (base now an ancestor of integration).
+        isBranchMerged: ({ branchName }) => branchName === 'main',
+        removeWorktree: () => {
+          removeCalls++;
+          return { branchKept: true };
+        }
+      })
+    });
+    disp.integrate();
+    const got = store.getTask(sys.id)!;
+    expect(got.status).toBe('done');
+    expect(got.worktreePruned).toBe(true);
+    expect(removeCalls).toBe(1);
+    expect(store.getFeature(f.id)!.mergeState).toBe('in_progress');
+    store.close();
+  });
+
+  it('integrateFeatures: review feature_sync that did NOT sync -> respawns resolve, then blocks at cap', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { sys } = conflictedFeatureWithReviewSync(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => {
+        spawned.push(args);
+        return 5;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        // ahead-check false; synced-check on 'main' → false (worker did NOT merge).
+        isBranchMerged: () => false
+      })
+    });
+    // First tick: a resolve run is spawned and attempts increment.
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(sys.id)!.resolveAttempts).toBe(1);
+
+    // Drive to the cap: each tick the worker hands the task back to review unresolved.
+    store.setStatusCleared(sys.id, 'review');
+    disp.integrate(); // second resolve (attempts → 2, at cap)
+    expect(store.getTask(sys.id)!.resolveAttempts).toBe(2);
+    store.setStatusCleared(sys.id, 'review');
+    disp.integrate(); // at cap → blocked instead of spawning
+    expect(store.getTask(sys.id)!.status).toBe('blocked');
+    store.close();
   });
 });

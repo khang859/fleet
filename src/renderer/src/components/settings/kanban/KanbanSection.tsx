@@ -119,6 +119,16 @@ export function KanbanSection(): React.JSX.Element | null {
             className="h-4 w-4"
           />
         </SettingRow>
+        <SettingRow label="Auto-integrate completed feature tasks">
+          <input
+            type="checkbox"
+            checked={k.dispatcher.autoIntegrate}
+            onChange={(e) =>
+              patch({ dispatcher: { ...k.dispatcher, autoIntegrate: e.target.checked } })
+            }
+            className="h-4 w-4"
+          />
+        </SettingRow>
         <SettingRow label="Max concurrent orchestrator runs">
           <input
             type="number"

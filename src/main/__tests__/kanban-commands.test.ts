@@ -24,6 +24,7 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
       claimTtlMs: 1000,
       autoDecompose: false,
       autoAssign: false,
+      autoIntegrate: false,
       maxDecompose: 1,
       artifactRetentionDays: 0
     }
@@ -274,6 +275,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -309,6 +311,7 @@ describe('KanbanCommands replyAndResume', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 0,
         artifactRetentionDays: 0
       }
@@ -467,6 +470,83 @@ describe('KanbanCommands archive worktree teardown', () => {
   });
 });
 
+describe('KanbanCommands mergeReviewTask conflict', () => {
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+  });
+  afterEach(() => {
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('mergeReviewTask on conflict requests a resolve run', () => {
+    const store = new KanbanStore(
+      join(TEST_DIR, `merge-conflict-${Math.random().toString(36).slice(2)}.db`)
+    );
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 0,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        autoAssign: false,
+        autoIntegrate: false,
+        maxDecompose: 1,
+        artifactRetentionDays: 0
+      }
+    });
+    // Record requestResolve calls; return false so no real resolve run spawns.
+    const calls: string[] = [];
+    dispatcher.requestResolve = (taskId: string): boolean => {
+      calls.push(taskId);
+      return false;
+    };
+    const commands = new KanbanCommands(store, dispatcher, () => ({
+      workspaceKind: 'scratch',
+      maxRuntimeSeconds: null
+    }));
+
+    // A repo whose main branch already has a tracked file.
+    const repo = makeRepo('cmd-merge-conflict');
+    writeFileSync(join(repo, 'shared.txt'), 'base\n');
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'add shared']);
+
+    const task = store.createTask({
+      title: 'conflicting task',
+      status: 'todo',
+      workspaceKind: 'worktree',
+      repoPath: repo
+    });
+    const wt = prepareWorkspace({
+      kind: 'worktree',
+      taskId: task.id,
+      workspacesRoot: TEST_DIR,
+      worktreesRoot: join(TEST_DIR, 'worktrees'),
+      repoPath: repo
+    });
+    store.setWorkspace(task.id, wt.path, wt.branchName, wt.baseBranch);
+
+    // Diverge: the branch and main both edit shared.txt differently → merge conflicts.
+    writeFileSync(join(wt.path, 'shared.txt'), 'branch change\n');
+    execFileSync('git', ['-C', wt.path, 'add', '-A']);
+    execFileSync('git', ['-C', wt.path, 'commit', '-q', '-m', 'branch edit']);
+    writeFileSync(join(repo, 'shared.txt'), 'main change\n');
+    execFileSync('git', ['-C', repo, 'add', '-A']);
+    execFileSync('git', ['-C', repo, 'commit', '-q', '-m', 'main edit']);
+
+    commands.setManualStatus(task.id, 'review');
+
+    const res = commands.mergeReviewTask(task.id);
+    expect(res.ok).toBe(false);
+    expect(res.conflict).toBe(true);
+    expect(calls).toEqual([task.id]);
+  });
+});
+
 describe('KanbanCommands attachments', () => {
   beforeEach(() => {
     mkdirSync(TEST_DIR, { recursive: true });
@@ -617,6 +697,7 @@ describe('KanbanCommands.createSwarm', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }

@@ -52,7 +52,7 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
-import { prepareWorkspace, ensureFeatureBranch } from './kanban/workspace';
+import { prepareWorkspace, ensureFeatureBranch, checkoutBranchWorktree } from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
@@ -855,6 +855,7 @@ void app.whenReady().then(async () => {
       claimTtlMs: d.claimTtlMs,
       autoDecompose: d.autoDecompose,
       autoAssign: d.autoAssign,
+      autoIntegrate: d.autoIntegrate,
       maxDecompose: d.maxDecompose,
       artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
     };
@@ -875,6 +876,24 @@ void app.whenReady().then(async () => {
       }
     },
     prepareWorkspaceFn: (task) => {
+      // A feature_sync system task must check out the integration branch ITSELF (no new
+      // -b branch), so its resolve run merges main into the real integration branch.
+      if (
+        task.systemKind === 'feature_sync' &&
+        task.workspaceKind === 'worktree' &&
+        task.repoPath &&
+        task.branchName &&
+        task.workspacePath == null
+      ) {
+        const wt = checkoutBranchWorktree({
+          repoPath: task.repoPath,
+          branchName: task.branchName,
+          worktreesRoot: join(KANBAN_HOME, 'worktrees'),
+          taskId: task.id
+        });
+        kanbanStore!.setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
+        return wt.path;
+      }
       // A worktree task in a feature branches off the feature's integration branch
       // (`fleet/feature-<id>`), created on first use. The captured base then cascades:
       // the task merges back into integration, and decompose children inherit it.
@@ -940,7 +959,7 @@ void app.whenReady().then(async () => {
       const profiles = settingsStore.get().kanban.profiles;
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
-      if (mode === 'work') {
+      if (mode === 'work' || mode === 'resolve') {
         const resolved = resolveWorkProfile(profiles, task.assignee);
         profile = resolved.profile;
         if (resolved.fellBack) {
@@ -971,6 +990,17 @@ void app.whenReady().then(async () => {
           kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
         }
       }
+      let resolveTarget: string | undefined;
+      if (mode === 'resolve') {
+        if (task.systemKind === 'feature_sync') {
+          resolveTarget = task.baseBranch ?? undefined; // system task's branch IS the integration branch; merge base in
+        } else if (task.featureId) {
+          const f = kanbanStore!.getFeature(task.featureId);
+          resolveTarget = f ? (f.integrationBranch ?? `fleet/feature-${f.id}`) : undefined;
+        } else {
+          resolveTarget = task.baseBranch ?? undefined;
+        }
+      }
       const logPath = join(KANBAN_HOME, 'logs', `${runToken}.log`);
       const spawnedAt = Date.now();
       return spawnRuneWorker(
@@ -983,6 +1013,7 @@ void app.whenReady().then(async () => {
             modelOverride: task.modelOverride
           },
           workspace,
+          resolveTarget,
           mcpPort: kanbanMcpPort,
           runToken,
           logPath,
