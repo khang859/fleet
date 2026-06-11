@@ -1127,6 +1127,81 @@ describe('KanbanDispatcher.integrate', () => {
     store.close();
   });
 
+  it('integrate: first clean merge opens a draft feature PR', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f, t } = reviewFeatureTask(store);
+    let drafted: { draft?: boolean } | null = null;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: (i) => {
+          drafted = { draft: i.draft };
+          return { ok: true, url: 'https://x/pull/9', number: 9 };
+        }
+      })
+    });
+    disp.integrate();
+    expect(drafted).toEqual({ draft: true });
+    const got = store.getFeature(f.id)!;
+    expect(got.prNumber).toBe(9);
+    expect(got.prState).toBe('draft');
+    expect(store.getTask(t.id)!.status).toBe('done');
+    store.close();
+  });
+
+  it('integrate: second merge pushes only (no second PR create)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = reviewFeatureTask(store);
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft'); // PR already exists
+    let created = 0;
+    let pushed = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: () => {
+          created++;
+          return { ok: true, url: 'https://x/pull/9', number: 9 };
+        },
+        pushIntegrationBranch: () => {
+          pushed++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(created).toBe(0);
+    expect(pushed).toBe(1);
+    store.close();
+  });
+
+  it('integrate: no remote -> one feature_pr_skipped event, fire-once', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: () => ({ ok: false, noRemote: true, error: 'no origin' })
+      })
+    });
+    disp.integrate();
+    expect(store.getFeature(f.id)!.prSkipNotified).toBe(true);
+    const skips = store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_skipped');
+    expect(skips).toHaveLength(1);
+    store.close();
+  });
+
   function doneFeature(store: KanbanStore) {
     const f = store.createFeature({ boardId: 'default', name: 'F' });
     store.updateFeature(f.id, {

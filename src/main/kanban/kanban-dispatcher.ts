@@ -524,6 +524,7 @@ export class KanbanDispatcher {
           by: 'integrate'
         });
         this.store.resetResolveAttempts(task.id);
+        this.ensureFeaturePr(task.featureId);
         budget -= 1;
       } else if (res.conflict) {
         if (this.spawnResolve(task, integrationBranch)) budget -= 1; // prediction raced (clean→dirty)
@@ -535,6 +536,48 @@ export class KanbanDispatcher {
       }
     }
     return budget;
+  }
+
+  /**
+   * Publish a feature as one PR after a member task merges: first merge opens a
+   * draft PR (push + `gh pr create --draft`); later merges push only (the PR
+   * self-updates). No remote / no gh -> one deduped `feature_pr_skipped` event,
+   * never retried. All best-effort: failures append an event, never throw.
+   */
+  private ensureFeaturePr(featureId: string | null): void {
+    if (!featureId) return;
+    const f = this.store.getFeature(featureId);
+    if (!f || !f.repoPath || !f.baseBranch) return;
+    const integrationBranch = this.integrationBranchFor(featureId);
+    if (!integrationBranch) return;
+
+    if (f.prNumber != null) {
+      const r = this.ops.pushIntegrationBranch({ repoPath: f.repoPath, integrationBranch });
+      if (!r.ok) this.store.appendEvent(featureId, null, 'feature_push_failed', { error: r.error });
+      return;
+    }
+    if (f.prSkipNotified) return; // already gave up on remote for this feature
+
+    const r = this.ops.createFeaturePr({
+      repoPath: f.repoPath,
+      integrationBranch,
+      baseBranch: f.baseBranch,
+      title: f.name,
+      body: `Auto-opened draft PR for feature "${f.name}".`,
+      draft: true
+    });
+    if (r.ok && r.url) {
+      this.store.setFeaturePr(featureId, r.url, r.number ?? null, 'draft');
+      this.store.appendEvent(featureId, null, 'feature_pr_created', {
+        url: r.url,
+        number: r.number,
+        draft: true
+      });
+    } else if (r.noRemote || r.noGh) {
+      this.store.setFeaturePrSkipNotified(featureId);
+      this.store.appendEvent(featureId, null, 'feature_pr_skipped', { reason: r.error });
+    }
+    // transient error: no flag, no event -> retried on the next merge
   }
 
   /** Sync each fully-done feature's integration branch with main; spawn a feature_sync resolve task on conflict. */
