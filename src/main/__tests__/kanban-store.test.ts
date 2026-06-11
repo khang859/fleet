@@ -371,6 +371,22 @@ describe('KanbanStore', () => {
     expect(store.claimForDecompose(t.id, 'L2', 1000)).toBe(false);
   });
 
+  it('unassignedReadyTasks returns only ready tasks with no assignee', () => {
+    const a = store.createTask({ title: 'unassigned', status: 'ready' });
+    store.createTask({ title: 'assigned', status: 'ready', assignee: 'w' });
+    store.createTask({ title: 'todo', status: 'todo' });
+    const got = store.unassignedReadyTasks().map((t) => t.id);
+    expect(got).toEqual([a.id]);
+  });
+
+  it('claimForAssign atomically moves ready+unassigned to running', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    expect(store.claimForAssign(t.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    // a second claim loses (no longer ready+unassigned)
+    expect(store.claimForAssign(t.id, 'L2', 1000)).toBe(false);
+  });
+
   it('startRun records the run mode', () => {
     const t = store.createTask({ title: 'x', status: 'triage' });
     const run = store.startRun(t.id, 'orchestrator', null, 'decompose');

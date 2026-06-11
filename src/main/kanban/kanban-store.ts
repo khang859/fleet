@@ -1025,6 +1025,16 @@ export class KanbanStore {
     return rows.map((r) => this.rowToTask(r));
   }
 
+  /** Ready tasks with no assignee — the auto-assign stage's input (claimAndSpawn ignores these). */
+  unassignedReadyTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        "SELECT * FROM tasks WHERE status='ready' AND assignee IS NULL ORDER BY priority DESC, created_at ASC"
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
   listBoard(boardSlug?: string): BoardCard[] {
     const tasks = boardSlug
       ? this.listTasks().filter((t) => t.boardId === boardSlug)
@@ -1478,6 +1488,21 @@ export class KanbanStore {
          SET status='running', claim_lock=@lock, claim_expires=@expires,
              last_heartbeat_at=@ts, pending_mode=NULL, updated_at=@ts
          WHERE id=@id AND status='triage' AND pending_mode IS NOT NULL
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Atomic CAS claim of an unassigned ready task for an assign run; moves ready→running. */
+  claimForAssign(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks
+         SET status='running', claim_lock=@lock, claim_expires=@expires,
+             last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='ready' AND assignee IS NULL
            AND (claim_lock IS NULL OR claim_expires <= @ts)`
       )
       .run({ id: taskId, lock, expires: ts + ttlMs, ts });
