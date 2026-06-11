@@ -243,6 +243,12 @@ const ASSIGN_TOOLS: McpTool[] = [
   ...WORKER_TOOLS.filter((t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat')
 ];
 
+const RESOLVE_TOOLS: McpTool[] = WORKER_TOOLS.filter((t) =>
+  ['kanban_show', 'kanban_comment', 'kanban_heartbeat', 'kanban_complete', 'kanban_block'].includes(
+    t.name
+  )
+);
+
 /** Statuses the PM may set — mirrors MANUAL_STATUSES (dispatcher owns `running`). */
 const PM_SETTABLE_STATUSES = [
   'triage',
@@ -423,6 +429,7 @@ function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'decompose') return DECOMPOSE_TOOLS;
   if (mode === 'specify') return SPECIFY_TOOLS;
   if (mode === 'assign') return ASSIGN_TOOLS;
+  if (mode === 'resolve') return RESOLVE_TOOLS;
   return WORKER_TOOLS;
 }
 

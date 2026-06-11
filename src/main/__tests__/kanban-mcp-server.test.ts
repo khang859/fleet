@@ -169,6 +169,49 @@ describe('KanbanMcpServer', () => {
     expect(names).not.toContain('kanban_update');
   });
 
+  it('resolve mode exposes show/comment/heartbeat/complete/block and not create/assign', async () => {
+    const t = store.createTask({ title: 'fix conflicts', status: 'running' });
+    const run = store.startRun(t.id, 'r', 1, 'resolve');
+    server.registerRun('rstok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'resolve' }, 'L');
+    const r = await rpc(`${base}?run=rstok`, 'tools/list');
+    const names = r.result.tools.map((x: { name: string }) => x.name);
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'kanban_show',
+        'kanban_comment',
+        'kanban_heartbeat',
+        'kanban_complete',
+        'kanban_block'
+      ])
+    );
+    expect(names).not.toContain('kanban_create');
+    expect(names).not.toContain('kanban_assign');
+    // resolve is a tightly scoped retry — no swarm/artifact tooling.
+    expect(names).not.toContain('kanban_artifact');
+    expect(names).not.toContain('kanban_swarm_read');
+  });
+
+  it('kanban_complete on a resolve run returns the task to review', async () => {
+    const t = store.createTask({
+      title: 'retry merge',
+      status: 'running',
+      workspaceKind: 'worktree',
+      workspacePath: join(TEST_DIR, 'no-such-worktree')
+    });
+    store.claimTask(t.id, 'LOCK', 100000);
+    const run = store.startRun(t.id, 'r', 1, 'resolve');
+    server.registerRun(
+      'rctok',
+      { kind: 'task', taskId: t.id, runId: run.id, mode: 'resolve' },
+      'LOCK'
+    );
+    await rpc(`${base}?run=rctok`, 'tools/call', {
+      name: 'kanban_complete',
+      arguments: { summary: 'resolved' }
+    });
+    expect(store.getTask(t.id)?.status).toBe('review');
+  });
+
   it('a worker-mode token cannot call kanban_create', async () => {
     const t = store.createTask({ title: 'x', status: 'running', assignee: 'r' });
     const run = store.startRun(t.id, 'r', 1, 'work');
