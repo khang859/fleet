@@ -244,6 +244,26 @@ export type TerminalBackground = {
   slideshow: TerminalBackgroundSlideshow;
 };
 
+/** Default terminal background. Lives here (not constants.ts) so the renderer can
+ * import it without dragging node built-ins into the browser bundle. */
+export const DEFAULT_TERMINAL_BACKGROUND: TerminalBackground = {
+  imagePath: null,
+  opacity: 0.15,
+  blur: 0,
+  edgeFadeX: 0,
+  edgeFadeY: 0,
+  fit: 'cover',
+  slideshow: {
+    enabled: false,
+    source: 'folder',
+    folderPath: '',
+    filePaths: [],
+    intervalSeconds: 60,
+    shuffle: true,
+    transitionMs: 1000
+  }
+};
+
 export type FleetSettings = {
   general: {
     defaultShell: string;

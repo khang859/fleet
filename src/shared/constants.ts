@@ -1,7 +1,11 @@
 import { join } from 'path';
 import { homedir } from 'os';
 import type { FleetSettings } from './types';
-import { DEFAULT_ORCHESTRATOR_INSTRUCTIONS, ORCHESTRATOR_PROFILE_NAME } from './types';
+import {
+  DEFAULT_ORCHESTRATOR_INSTRUCTIONS,
+  DEFAULT_TERMINAL_BACKGROUND,
+  ORCHESTRATOR_PROFILE_NAME
+} from './types';
 import {
   DEFAULT_ACCENT_COLOR_ID,
   DEFAULT_APP_THEME,
@@ -39,23 +43,7 @@ export const DEFAULT_SETTINGS: FleetSettings = {
     theme: DEFAULT_APP_THEME,
     terminalTheme: DEFAULT_TERMINAL_THEME_ID,
     accentColor: DEFAULT_ACCENT_COLOR_ID,
-    terminalBackground: {
-      imagePath: null,
-      opacity: 0.15,
-      blur: 0,
-      edgeFadeX: 0,
-      edgeFadeY: 0,
-      fit: 'cover',
-      slideshow: {
-        enabled: false,
-        source: 'folder',
-        folderPath: '',
-        filePaths: [],
-        intervalSeconds: 60,
-        shuffle: true,
-        transitionMs: 1000
-      }
-    }
+    terminalBackground: DEFAULT_TERMINAL_BACKGROUND
   },
   notifications: {
     taskComplete: { badge: true, sound: false, os: false },
