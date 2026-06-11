@@ -195,9 +195,12 @@ export class KanbanDispatcher {
         log.warn('task gave up', { taskId: task.id, failures });
       } else {
         const mode = task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
-        // assign is also a non-work orchestrator mode — this branch MUST stay before the
-        // generic non-work branch below, or a dead assign run would wrongly route to triage.
+        // assign and resolve are non-work modes that run on a real task (ready/review), not a
+        // triage card — they MUST be routed before the generic non-work branch below, or a dead
+        // run would wrongly land in triage. A resolve run returns to review so the next
+        // integrate() pass re-evaluates it (retry within the cap, or block).
         if (mode === 'assign') this.store.returnToReady(task.id);
+        else if (mode === 'resolve') this.store.setStatusCleared(task.id, 'review');
         else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
       }

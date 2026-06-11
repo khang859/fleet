@@ -530,6 +530,26 @@ describe('KanbanDispatcher.decompose', () => {
     expect(store.getTask(t.id)?.status).toBe('triage');
     store.close();
   });
+
+  it('reclaim returns a dead resolve run to review (not triage) so integrate retries it', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.setWorkspace(t.id, '/tmp/x', 'br-x', 'main');
+    store.reviewTask(t.id, null);
+    store.claimForResolve(t.id, 'L', 100); // expires 1100, moves to running
+    store.startRun(t.id, 'worker', 9999, 'resolve');
+    clock.t = 2000; // claim expired
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig }
+    });
+    disp.reclaim();
+    expect(store.getTask(t.id)?.status).toBe('review');
+    store.close();
+  });
 });
 
 describe('KanbanDispatcher.autoAssign', () => {
