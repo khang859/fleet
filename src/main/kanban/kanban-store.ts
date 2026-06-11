@@ -150,6 +150,9 @@ export class KanbanStore {
         pr_url TEXT,
         pr_number INTEGER,
         pr_state TEXT,
+        checks_state TEXT,
+        pr_synced_at INTEGER,
+        pr_skip_notified INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`);
@@ -179,6 +182,13 @@ export class KanbanStore {
       // Phase-2 autopilot: bounded resolve-run budget + synthetic system-task marker.
       this.addColumnIfMissing('tasks', 'resolve_attempts', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'system_kind', 'TEXT');
+    }
+    if (current < 12) {
+      // Phase-3 autopilot (draft PR lifecycle): feature-level PR freshness + a
+      // fire-once flag for the "no remote/gh, PR skipped" event.
+      this.addColumnIfMissing('features', 'checks_state', 'TEXT');
+      this.addColumnIfMissing('features', 'pr_synced_at', 'INTEGER');
+      this.addColumnIfMissing('features', 'pr_skip_notified', 'INTEGER NOT NULL DEFAULT 0');
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -1305,6 +1315,9 @@ export class KanbanStore {
       prUrl: (r.pr_url as string | null) ?? null,
       prNumber: (r.pr_number as number | null) ?? null,
       prState: (r.pr_state as Feature['prState']) ?? null,
+      checksState: (r.checks_state as ChecksState | null) ?? null,
+      syncedAt: (r.pr_synced_at as number | null) ?? null,
+      prSkipNotified: Number(r.pr_skip_notified ?? 0) === 1,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
