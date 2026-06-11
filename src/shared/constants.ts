@@ -45,7 +45,16 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       blur: 0,
       edgeFadeX: 0,
       edgeFadeY: 0,
-      fit: 'cover'
+      fit: 'cover',
+      slideshow: {
+        enabled: false,
+        source: 'folder',
+        folderPath: '',
+        filePaths: [],
+        intervalSeconds: 60,
+        shuffle: true,
+        transitionMs: 1000
+      }
     }
   },
   notifications: {

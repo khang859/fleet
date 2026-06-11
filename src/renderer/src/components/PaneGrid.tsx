@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react';
 import type { PaneNode, PaneLeaf, TerminalBackground } from '../../../shared/types';
 import type { TerminalThemeId } from '../../../shared/theme-presets';
+import type { SlideshowFrame } from '../hooks/use-slideshow';
 import { TerminalPane } from './TerminalPane';
 import { PaneHeader } from './PaneHeader';
 import { ImageViewerPane } from './ImageViewerPane';
@@ -126,6 +127,7 @@ type PaneGridProps = {
   fontSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
+  slideshowFrame?: SlideshowFrame;
 };
 
 export function PaneGrid({
@@ -136,7 +138,8 @@ export function PaneGrid({
   fontFamily,
   fontSize,
   terminalTheme,
-  terminalBackground
+  terminalBackground,
+  slideshowFrame
 }: PaneGridProps): React.JSX.Element {
   const { splitPane, closePane } = useWorkspaceStore();
   const gridRef = useRef<HTMLDivElement>(null);
@@ -207,6 +210,7 @@ export function PaneGrid({
                 fontSize={fontSize}
                 terminalTheme={terminalTheme}
                 terminalBackground={terminalBackground}
+                slideshowFrame={slideshowFrame}
                 onSplitHorizontal={() => splitPane(leaf.id, 'horizontal')}
                 onSplitVertical={() => splitPane(leaf.id, 'vertical')}
                 onClose={() => closePane(leaf.id)}

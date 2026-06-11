@@ -1,7 +1,7 @@
 {
   "name": "fleet",
   "productName": "Fleet",
-  "version": "2.66.0",
+  "version": "2.67.0",
   "description": "A cross-platform terminal multiplexer for AI coding agents",
   "main": "./out/main/index.mjs",
   "author": {
@@ -129,5 +129,8 @@
     "vite": "^7.2.6",
     "vitest": "^4.1.0",
     "yaml": "^2.8.3"
+  },
+  "overrides": {
+    "node-gyp": "^12.1.0"
   }
 }
