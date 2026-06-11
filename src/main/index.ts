@@ -861,6 +861,11 @@ void app.whenReady().then(async () => {
   };
   kanbanDispatcher = new KanbanDispatcher(kanbanStore, {
     now: Date.now,
+    workerProfileNames: () =>
+      settingsStore
+        .get()
+        .kanban.profiles.filter((p) => p.role === 'worker')
+        .map((p) => p.name),
     isAlive: (pid) => {
       try {
         process.kill(pid, 0);
@@ -960,7 +965,11 @@ void app.whenReady().then(async () => {
         // Record the orchestrator as the task's assignee so the triage card reflects who is
         // running it. The dispatcher never sets this for decompose/specify runs (it only writes
         // task_runs.profile), leaving the card unassigned otherwise.
-        kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
+        // decompose/specify record the orchestrator as the card's assignee; an assign run
+        // must not — it exists precisely to choose and set the real assignee itself.
+        if (mode !== 'assign') {
+          kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
+        }
       }
       const logPath = join(KANBAN_HOME, 'logs', `${runToken}.log`);
       const spawnedAt = Date.now();
