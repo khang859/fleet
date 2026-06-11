@@ -519,6 +519,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }

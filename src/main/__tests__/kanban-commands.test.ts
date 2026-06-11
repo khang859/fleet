@@ -24,6 +24,7 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
       claimTtlMs: 1000,
       autoDecompose: false,
       autoAssign: false,
+      autoIntegrate: false,
       maxDecompose: 1,
       artifactRetentionDays: 0
     }
@@ -274,6 +275,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -309,6 +311,7 @@ describe('KanbanCommands replyAndResume', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 0,
         artifactRetentionDays: 0
       }
@@ -617,6 +620,7 @@ describe('KanbanCommands.createSwarm', () => {
         claimTtlMs: 1000,
         autoDecompose: false,
         autoAssign: false,
+        autoIntegrate: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }

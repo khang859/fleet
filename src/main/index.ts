@@ -855,6 +855,7 @@ void app.whenReady().then(async () => {
       claimTtlMs: d.claimTtlMs,
       autoDecompose: d.autoDecompose,
       autoAssign: d.autoAssign,
+      autoIntegrate: d.autoIntegrate,
       maxDecompose: d.maxDecompose,
       artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
     };
