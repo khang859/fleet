@@ -1389,13 +1389,30 @@ export class KanbanStore {
       });
   }
 
-  /** Record the single feature→main PR on a feature (set when it ships). */
-  setFeaturePr(featureId: string, prUrl: string, prNumber: number | null): void {
+  /** Record the single feature→main PR on a feature (set when it ships or auto-drafts). */
+  setFeaturePr(
+    featureId: string,
+    prUrl: string,
+    prNumber: number | null,
+    prState: PrState = 'open'
+  ): void {
     this.db
-      .prepare(
-        `UPDATE features SET pr_url=?, pr_number=?, pr_state='open', updated_at=? WHERE id=?`
-      )
-      .run(prUrl, prNumber, this.now(), featureId);
+      .prepare(`UPDATE features SET pr_url=?, pr_number=?, pr_state=?, updated_at=? WHERE id=?`)
+      .run(prUrl, prNumber, prState, this.now(), featureId);
+  }
+
+  /** Flip a feature PR's state in place (e.g. draft -> open when marked ready). */
+  setFeaturePrState(featureId: string, prState: PrState): void {
+    this.db
+      .prepare(`UPDATE features SET pr_state=?, updated_at=? WHERE id=?`)
+      .run(prState, this.now(), featureId);
+  }
+
+  /** Mark that the "PR skipped: no remote/gh" event has been posted for this feature (fire-once). */
+  setFeaturePrSkipNotified(featureId: string): void {
+    this.db
+      .prepare(`UPDATE features SET pr_skip_notified=1, updated_at=? WHERE id=?`)
+      .run(this.now(), featureId);
   }
 
   /** Soft close: flip status to archived; member tasks keep their feature_id. */

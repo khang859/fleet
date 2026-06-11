@@ -1151,4 +1151,14 @@ describe('KanbanStore schema v12 (draft PR lifecycle)', () => {
     expect(got.syncedAt).toBeNull();
     expect(got.prSkipNotified).toBe(false);
   });
+
+  it('setFeaturePr stores prState; setFeaturePrState + skip flag mutate it', () => {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.setFeaturePr(f.id, 'https://x/pull/7', 7, 'draft');
+    expect(store.getFeature(f.id)!.prState).toBe('draft');
+    store.setFeaturePrState(f.id, 'open');
+    expect(store.getFeature(f.id)!.prState).toBe('open');
+    store.setFeaturePrSkipNotified(f.id);
+    expect(store.getFeature(f.id)!.prSkipNotified).toBe(true);
+  });
 });

@@ -6,9 +6,12 @@ import { computeNextRun, taskToScheduleInput } from './schedule';
 import {
   ensureFeatureBranch,
   checkMergeConflicts,
+  createFeaturePr,
   finalizeWorktree,
   isBranchMerged,
+  markPrReady,
   mergeWorktreeToBase,
+  pushIntegrationBranch,
   removeWorktree,
   updateIntegrationBranchFromMain
 } from './workspace';
@@ -48,6 +51,9 @@ export interface IntegrationOps {
   updateIntegrationBranchFromMain: typeof updateIntegrationBranchFromMain;
   removeWorktree: typeof removeWorktree;
   isBranchMerged: typeof isBranchMerged;
+  createFeaturePr: typeof createFeaturePr;
+  pushIntegrationBranch: typeof pushIntegrationBranch;
+  markPrReady: typeof markPrReady;
 }
 
 const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
@@ -56,7 +62,10 @@ const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
   mergeWorktreeToBase,
   updateIntegrationBranchFromMain,
   removeWorktree,
-  isBranchMerged
+  isBranchMerged,
+  createFeaturePr,
+  pushIntegrationBranch,
+  markPrReady
 };
 
 export interface SpawnWorkerArgs {

@@ -407,6 +407,9 @@ function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
     updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
     removeWorktree: () => ({ branchKept: false }),
     isBranchMerged: () => false,
+    createFeaturePr: () => ({ ok: true, url: 'https://x/pull/1', number: 1 }),
+    pushIntegrationBranch: () => ({ ok: true }),
+    markPrReady: () => ({ ok: true }),
     ...over
   };
 }
