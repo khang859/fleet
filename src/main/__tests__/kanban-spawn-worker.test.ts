@@ -358,6 +358,42 @@ describe('buildWorkerInvocation', () => {
     expect(inv.args[inv.args.indexOf('--require-tool') + 1]).toBe('kanban_assign');
   });
 
+  it('resolve mode prompt instructs merging the target branch and completing', () => {
+    const workspace = join(ROOT, 'wsresolve');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'T1', title: 'Fix X', body: '', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'resolve.log'),
+      mode: 'resolve',
+      resolveTarget: 'fleet/feature-abc'
+    });
+    expect(inv.args.join(' ')).toContain('fleet/feature-abc');
+    expect(inv.args.join(' ')).toMatch(/resolve/i);
+    const prompt = inv.args[inv.args.indexOf('--prompt') + 1];
+    expect(prompt).toContain('kanban_complete');
+    expect(prompt).toContain('kanban_block');
+  });
+
+  it('resolve mode requires kanban_complete', () => {
+    const workspace = join(ROOT, 'wsresolve2');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 'T2', title: 't', body: '', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1,
+      runToken: 'x',
+      logPath: join(ROOT, 'resolve2.log'),
+      mode: 'resolve',
+      resolveTarget: 'main'
+    });
+    const i = inv.args.indexOf('--require-tool');
+    expect(i).toBeGreaterThan(-1);
+    expect(inv.args[i + 1]).toContain('kanban_complete');
+  });
+
   it('does not include attachments in decompose mode', () => {
     const workspace = join(ROOT, 'wsc');
     mkdirSync(workspace, { recursive: true });
