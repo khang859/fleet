@@ -506,7 +506,8 @@ function ghPrCreate(input: {
   head: string;
   title: string;
   body: string;
-}): { ok: boolean; url?: string; number?: number; error?: string } {
+  draft?: boolean;
+}): { ok: boolean; url?: string; number?: number; noGh?: boolean; error?: string } {
   try {
     const out = execFileSync(
       'gh',
@@ -520,7 +521,8 @@ function ghPrCreate(input: {
         '--title',
         input.title,
         '--body',
-        input.body || input.title
+        input.body || input.title,
+        ...(input.draft ? ['--draft'] : [])
       ],
       { cwd: input.cwd, encoding: 'utf8' }
     );
@@ -529,7 +531,7 @@ function ghPrCreate(input: {
   } catch (err) {
     const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
     if (e.code === 'ENOENT') {
-      return { ok: false, error: 'gh CLI not found. Install GitHub CLI to create PRs.' };
+      return { ok: false, noGh: true, error: 'gh CLI not found. Install GitHub CLI to create PRs.' };
     }
     const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
     const existing = msg.match(/https?:\/\/\S+/)?.[0];
@@ -700,16 +702,57 @@ export function createFeaturePr(input: {
   baseBranch: string;
   title: string;
   body: string;
-}): { ok: boolean; url?: string; number?: number; error?: string } {
-  const { repoPath, integrationBranch, baseBranch, title, body } = input;
+  draft?: boolean;
+}): { ok: boolean; url?: string; number?: number; noRemote?: boolean; noGh?: boolean; error?: string } {
+  const { repoPath, integrationBranch, baseBranch, title, body, draft } = input;
   try {
     execFileSync('git', ['-C', repoPath, 'push', '-u', 'origin', integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
-    return { ok: false, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
+    return { ok: false, noRemote: true, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
   }
-  return ghPrCreate({ cwd: repoPath, base: baseBranch, head: integrationBranch, title, body });
+  return ghPrCreate({ cwd: repoPath, base: baseBranch, head: integrationBranch, title, body, draft });
+}
+
+/**
+ * Push a feature's integration branch to origin without touching its PR (the PR
+ * updates itself from the pushed commits). Used for the 2nd+ task merge once the
+ * draft PR already exists.
+ */
+export function pushIntegrationBranch(input: {
+  repoPath: string;
+  integrationBranch: string;
+}): { ok: boolean; noRemote?: boolean; error?: string } {
+  try {
+    execFileSync('git', ['-C', input.repoPath, 'push', 'origin', input.integrationBranch], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, noRemote: true, error: `git push failed (no 'origin' remote?): ${gitStderr(err)}` };
+  }
+}
+
+/** Flip a draft PR to "ready for review" via `gh pr ready <number>`, run in repoPath. */
+export function markPrReady(input: {
+  repoPath: string;
+  prNumber: number;
+}): { ok: boolean; noGh?: boolean; error?: string } {
+  try {
+    execFileSync('gh', ['pr', 'ready', String(input.prNumber)], {
+      cwd: input.repoPath,
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
+    return { ok: true };
+  } catch (err) {
+    const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
+    if (e.code === 'ENOENT') return { ok: false, noGh: true, error: 'gh CLI not found' };
+    const msg = (e.stderr?.toString() || e.stdout?.toString() || (err as Error).message).trim();
+    // `gh` errors when the PR is already non-draft; treat that as success (idempotent).
+    if (/not a draft|already/i.test(msg)) return { ok: true };
+    return { ok: false, error: `gh pr ready failed: ${msg}` };
+  }
 }
 
 /** Normalize a single gh statusCheckRollup entry into pass/fail/pending. */

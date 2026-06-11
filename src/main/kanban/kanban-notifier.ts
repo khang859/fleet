@@ -12,6 +12,8 @@ export interface KanbanNotifierDeps {
   isOsEnabled: (category: KanbanNotifyCategory) => boolean;
   /** Resolve a task's title + board, or null if it no longer exists. */
   getTask: (taskId: string) => { title: string; boardId: string } | null;
+  /** Resolve a feature's name + board (fallback for feature-keyed events), or null. */
+  getFeature: (featureId: string) => { name: string; boardId: string } | null;
   /** Present one (possibly coalesced) notification. */
   present: (payload: KanbanNotificationPayload) => void;
   /** Coalescing window in ms (default 500). */
@@ -60,13 +62,13 @@ export class KanbanNotifier {
     const category = classifyKanbanEvent(event.kind);
     if (!category) return;
     if (!this.deps.isOsEnabled(category)) return;
-    const task = this.deps.getTask(event.taskId);
-    if (!task) return;
+    const subject = this.deps.getTask(event.taskId) ?? this.deps.getFeature(event.taskId);
+    if (!subject) return;
     this.buffer.push({
       category,
       taskId: event.taskId,
-      boardSlug: task.boardId,
-      title: task.title
+      boardSlug: subject.boardId,
+      title: 'title' in subject ? subject.title : subject.name
     });
     this.timer ??= setTimeout(() => this.flush(), this.batchMs);
   }

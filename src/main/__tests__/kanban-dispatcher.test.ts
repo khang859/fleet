@@ -407,6 +407,9 @@ function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
     updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
     removeWorktree: () => ({ branchKept: false }),
     isBranchMerged: () => false,
+    createFeaturePr: () => ({ ok: true, url: 'https://x/pull/1', number: 1 }),
+    pushIntegrationBranch: () => ({ ok: true }),
+    markPrReady: () => ({ ok: true }),
     ...over
   };
 }
@@ -1124,6 +1127,83 @@ describe('KanbanDispatcher.integrate', () => {
     store.close();
   });
 
+  it('integrate: first clean merge opens a draft feature PR', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f, t } = reviewFeatureTask(store);
+    let drafted: { draft?: boolean } | null = null;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: (i) => {
+          drafted = { draft: i.draft };
+          return { ok: true, url: 'https://x/pull/9', number: 9 };
+        }
+      })
+    });
+    disp.integrate();
+    expect(drafted).toEqual({ draft: true });
+    const got = store.getFeature(f.id)!;
+    expect(got.prNumber).toBe(9);
+    // Single-task feature: the same tick merges the task (→ all-done) and cleanly
+    // syncs the integration branch, so the just-created draft is flipped to ready.
+    expect(got.prState).toBe('open');
+    expect(store.getTask(t.id)!.status).toBe('done');
+    store.close();
+  });
+
+  it('integrate: second merge pushes only (no second PR create)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = reviewFeatureTask(store);
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft'); // PR already exists
+    let created = 0;
+    let pushed = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: () => {
+          created++;
+          return { ok: true, url: 'https://x/pull/9', number: 9 };
+        },
+        pushIntegrationBranch: () => {
+          pushed++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(created).toBe(0);
+    expect(pushed).toBe(1);
+    store.close();
+  });
+
+  it('integrate: no remote -> one feature_pr_skipped event, fire-once', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        createFeaturePr: () => ({ ok: false, noRemote: true, error: 'no origin' })
+      })
+    });
+    disp.integrate();
+    expect(store.getFeature(f.id)!.prSkipNotified).toBe(true);
+    const skips = store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_skipped');
+    expect(skips).toHaveLength(1);
+    store.close();
+  });
+
   function doneFeature(store: KanbanStore) {
     const f = store.createFeature({ boardId: 'default', name: 'F' });
     store.updateFeature(f.id, {
@@ -1324,6 +1404,89 @@ describe('KanbanDispatcher.integrate', () => {
     store.setStatusCleared(sys.id, 'review');
     disp.integrate(); // at cap → blocked instead of spawning
     expect(store.getTask(sys.id)!.status).toBe('blocked');
+    store.close();
+  });
+
+  it('integrate: all-done + clean sync flips draft PR to ready', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'draft');
+    const t = store.createTask({
+      title: 't',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setWorkspace(t.id, '/tmp/t', 'br-t', 'main');
+    store.reviewTask(t.id, null);
+    store.completeTask(t.id, null); // feature now all-done
+    let readied = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => false, // integration branch ahead of base -> clean-sync branch runs
+        updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
+        markPrReady: (i) => {
+          readied = i.prNumber;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(readied).toBe(9);
+    expect(store.getFeature(f.id)!.prState).toBe('open');
+    const ev = store.listEvents(f.id).filter((e) => e.kind === 'feature_pr_ready');
+    expect(ev).toHaveLength(1);
+    store.close();
+  });
+
+  it('integrate: non-draft feature PR is not re-readied', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setFeaturePr(f.id, 'https://x/pull/9', 9, 'open'); // already ready
+    const t = store.createTask({
+      title: 't',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setWorkspace(t.id, '/tmp/t', 'br-t', 'main');
+    store.reviewTask(t.id, null);
+    store.completeTask(t.id, null);
+    let readied = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => false,
+        updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
+        markPrReady: (i) => {
+          readied = i.prNumber;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(readied).toBe(0);
     store.close();
   });
 });

@@ -71,9 +71,11 @@ export function FeaturePrRollup(): React.JSX.Element | null {
           href={feature.prUrl}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex items-center gap-1 text-violet-300 underline"
+          className={`inline-flex items-center gap-1 underline ${
+            feature.prState === 'draft' ? 'text-neutral-400' : 'text-violet-300'
+          }`}
         >
-          <Rocket size={11} /> feature PR
+          <Rocket size={11} /> {feature.prState === 'draft' ? 'draft PR' : 'feature PR'}
         </a>
       )}
 

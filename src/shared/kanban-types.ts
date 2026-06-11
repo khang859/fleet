@@ -71,6 +71,9 @@ export interface Feature {
   prUrl: string | null;
   prNumber: number | null;
   prState: PrState | null;
+  checksState: ChecksState | null;
+  syncedAt: number | null;
+  prSkipNotified: boolean;
   createdAt: number;
   updatedAt: number;
 }

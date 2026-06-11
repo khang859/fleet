@@ -150,6 +150,9 @@ export class KanbanStore {
         pr_url TEXT,
         pr_number INTEGER,
         pr_state TEXT,
+        checks_state TEXT,
+        pr_synced_at INTEGER,
+        pr_skip_notified INTEGER NOT NULL DEFAULT 0,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`);
@@ -179,6 +182,13 @@ export class KanbanStore {
       // Phase-2 autopilot: bounded resolve-run budget + synthetic system-task marker.
       this.addColumnIfMissing('tasks', 'resolve_attempts', 'INTEGER NOT NULL DEFAULT 0');
       this.addColumnIfMissing('tasks', 'system_kind', 'TEXT');
+    }
+    if (current < 12) {
+      // Phase-3 autopilot (draft PR lifecycle): feature-level PR freshness + a
+      // fire-once flag for the "no remote/gh, PR skipped" event.
+      this.addColumnIfMissing('features', 'checks_state', 'TEXT');
+      this.addColumnIfMissing('features', 'pr_synced_at', 'INTEGER');
+      this.addColumnIfMissing('features', 'pr_skip_notified', 'INTEGER NOT NULL DEFAULT 0');
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -1305,6 +1315,9 @@ export class KanbanStore {
       prUrl: (r.pr_url as string | null) ?? null,
       prNumber: (r.pr_number as number | null) ?? null,
       prState: (r.pr_state as Feature['prState']) ?? null,
+      checksState: (r.checks_state as ChecksState | null) ?? null,
+      syncedAt: (r.pr_synced_at as number | null) ?? null,
+      prSkipNotified: Number(r.pr_skip_notified ?? 0) === 1,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
     };
@@ -1376,13 +1389,54 @@ export class KanbanStore {
       });
   }
 
-  /** Record the single feature→main PR on a feature (set when it ships). */
-  setFeaturePr(featureId: string, prUrl: string, prNumber: number | null): void {
+  /** Record the single feature→main PR on a feature (set when it ships or auto-drafts). */
+  setFeaturePr(
+    featureId: string,
+    prUrl: string,
+    prNumber: number | null,
+    prState: PrState = 'open'
+  ): void {
     this.db
+      .prepare(`UPDATE features SET pr_url=?, pr_number=?, pr_state=?, updated_at=? WHERE id=?`)
+      .run(prUrl, prNumber, prState, this.now(), featureId);
+  }
+
+  /** Flip a feature PR's state in place (e.g. draft -> open when marked ready). */
+  setFeaturePrState(featureId: string, prState: PrState): void {
+    this.db
+      .prepare(`UPDATE features SET pr_state=?, updated_at=? WHERE id=?`)
+      .run(prState, this.now(), featureId);
+  }
+
+  /** Active features with a PR number not polled since `cutoff` (oldest first), for the PrPoller. */
+  featuresDuePrSync(cutoff: number, limit: number): Feature[] {
+    const rows = this.db
       .prepare(
-        `UPDATE features SET pr_url=?, pr_number=?, pr_state='open', updated_at=? WHERE id=?`
+        `SELECT * FROM features
+         WHERE status='active' AND pr_number IS NOT NULL AND pr_state IN ('open','draft')
+           AND (pr_synced_at IS NULL OR pr_synced_at <= @cutoff)
+         ORDER BY pr_synced_at ASC
+         LIMIT @limit`
       )
-      .run(prUrl, prNumber, this.now(), featureId);
+      .all({ cutoff, limit }) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToFeature(r));
+  }
+
+  /** Write polled feature-PR state and bump pr_synced_at so the next sweep skips it (no updated_at bump). */
+  setFeaturePrStatus(
+    featureId: string,
+    fields: { prState: PrState | null; checksState: ChecksState | null }
+  ): void {
+    this.db
+      .prepare(`UPDATE features SET pr_state=?, checks_state=?, pr_synced_at=? WHERE id=?`)
+      .run(fields.prState, fields.checksState, this.now(), featureId);
+  }
+
+  /** Mark that the "PR skipped: no remote/gh" event has been posted for this feature (fire-once). */
+  setFeaturePrSkipNotified(featureId: string): void {
+    this.db
+      .prepare(`UPDATE features SET pr_skip_notified=1, updated_at=? WHERE id=?`)
+      .run(this.now(), featureId);
   }
 
   /** Soft close: flip status to archived; member tasks keep their feature_id. */
