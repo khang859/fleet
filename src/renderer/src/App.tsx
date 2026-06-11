@@ -53,6 +53,7 @@ import { useKanbanAttention } from './hooks/useKanbanAttention';
 import { getAccentCssVars } from './lib/theme';
 import { tooltipAnim, popperAnim } from './lib/motion';
 import { useAppThemeVars } from './hooks/use-app-theme';
+import { useSlideshow } from './hooks/use-slideshow';
 
 type PiPlanModalEntry = PiPlanOpenPayload & { modalId: string };
 
@@ -625,6 +626,10 @@ export function App(): React.JSX.Element {
   const appThemeVars = useAppThemeVars(settings?.general.theme, settings?.general.terminalTheme);
   const themeVars = { ...accentVars, ...appThemeVars };
 
+  // One global slideshow clock so every pane (including hidden background
+  // workspaces) shows the same image and crossfades in sync.
+  const slideshowFrame = useSlideshow(settings?.general.terminalBackground);
+
   return (
     <div
       className="flex flex-col h-screen w-screen bg-fleet-bg text-fleet-text overflow-hidden"
@@ -954,6 +959,7 @@ export function App(): React.JSX.Element {
                         fontSize={settings?.general.fontSize}
                         terminalTheme={settings?.general.terminalTheme}
                         terminalBackground={settings?.general.terminalBackground}
+                        slideshowFrame={slideshowFrame}
                       />
                     )}
                   </div>
@@ -981,6 +987,7 @@ export function App(): React.JSX.Element {
                     fontSize={settings?.general.fontSize}
                     terminalTheme={settings?.general.terminalTheme}
                     terminalBackground={settings?.general.terminalBackground}
+                    slideshowFrame={slideshowFrame}
                   />
                 </div>
               ))

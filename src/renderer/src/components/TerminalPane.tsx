@@ -1,6 +1,8 @@
-import { useRef, useState, useEffect, type CSSProperties } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useTerminal } from '../hooks/use-terminal';
 import { useTerminalDrop } from '../hooks/use-terminal-drop';
+import type { SlideshowFrame } from '../hooks/use-slideshow';
+import { BackgroundLayer } from './BackgroundLayer';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
@@ -21,39 +23,13 @@ type TerminalPaneProps = {
   fontSize?: number;
   terminalTheme?: TerminalThemeId;
   terminalBackground?: TerminalBackground;
+  slideshowFrame?: SlideshowFrame;
   onSplitHorizontal?: () => void;
   onSplitVertical?: () => void;
   onClose?: () => void;
   shellProfileId?: string;
   cmd?: string;
 };
-
-const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
-  cover: { size: 'cover', repeat: 'no-repeat' },
-  contain: { size: 'contain', repeat: 'no-repeat' },
-  center: { size: 'auto', repeat: 'no-repeat' },
-  tile: { size: 'auto', repeat: 'repeat' }
-};
-
-// Feather the pane edges to transparent so an image smaller than the pane blends
-// into the terminal background instead of ending at a hard border. `fadeX` fades
-// the left/right edges, `fadeY` the top/bottom (each a fraction of the pane). When
-// both are active the gradients are intersected so the corners fade too.
-function edgeFadeStyle(fadeX: number, fadeY: number): CSSProperties {
-  if (!fadeX && !fadeY) return {};
-  const ramp = (dir: string, fade: number): string => {
-    const start = `${(fade * 100).toFixed(1)}%`;
-    const end = `${(100 - fade * 100).toFixed(1)}%`;
-    return `linear-gradient(to ${dir}, transparent, #000 ${start}, #000 ${end}, transparent)`;
-  };
-  const layers: string[] = [];
-  if (fadeX) layers.push(ramp('right', fadeX));
-  if (fadeY) layers.push(ramp('bottom', fadeY));
-  return {
-    maskImage: layers.join(', '),
-    ...(layers.length > 1 ? { maskComposite: 'intersect' } : {})
-  };
-}
 
 export function TerminalPane({
   paneId,
@@ -65,6 +41,7 @@ export function TerminalPane({
   fontSize,
   terminalTheme,
   terminalBackground,
+  slideshowFrame,
   onSplitHorizontal,
   onSplitVertical,
   onClose,
@@ -74,7 +51,10 @@ export function TerminalPane({
   const containerRef = useRef<HTMLDivElement>(null);
   const [isScrolledUp, setIsScrolledUp] = useState(false);
   const workspaceId = useWorkspaceStore((s) => s.workspace.id);
-  const hasBackgroundImage = !!terminalBackground?.imagePath;
+  // Mirrors BackgroundLayer's source resolution: slideshow image when active,
+  // else the static image. Keeps xterm transparent whenever a layer is visible.
+  const slideshowActive = !!terminalBackground?.slideshow.enabled && !!slideshowFrame?.currentPath;
+  const hasBackgroundImage = slideshowActive || !!terminalBackground?.imagePath;
   const { focus, scrollToBottom, search, searchPrevious, clearSearch } = useTerminal(containerRef, {
     paneId,
     cwd,
@@ -168,23 +148,8 @@ export function TerminalPane({
       }}
       {...dragHandlers}
     >
-      {terminalBackground?.imagePath && (
-        <div
-          aria-hidden
-          className="absolute z-0 pointer-events-none"
-          style={{
-            // Over-extend when blurred so the blur's soft edge doesn't reveal the pane border.
-            inset: terminalBackground.blur > 0 ? -terminalBackground.blur * 2 : 0,
-            // encodeURI so paths with spaces/special chars survive the CSS url() parser.
-            backgroundImage: `url("${encodeURI(`fleet-image://${terminalBackground.imagePath}`)}")`,
-            backgroundSize: FIT_STYLES[terminalBackground.fit].size,
-            backgroundRepeat: FIT_STYLES[terminalBackground.fit].repeat,
-            backgroundPosition: 'center',
-            opacity: terminalBackground.opacity,
-            filter: terminalBackground.blur > 0 ? `blur(${terminalBackground.blur}px)` : undefined,
-            ...edgeFadeStyle(terminalBackground.edgeFadeX, terminalBackground.edgeFadeY)
-          }}
-        />
+      {terminalBackground && (
+        <BackgroundLayer background={terminalBackground} frame={slideshowFrame} />
       )}
       <PaneToolbar
         visible={hovered}

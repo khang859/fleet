@@ -309,6 +309,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.FILE_GREP, req),
     searchRecentImages: async (): Promise<RecentImagesResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES),
+    scanImageFolder: async (folderPath: string): Promise<string[]> =>
+      typedInvoke(IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER, { folderPath }),
     checkIgnored: async (dirPath: string): Promise<string[]> =>
       typedInvoke(IPC_CHANNELS.FILE_CHECK_IGNORED, { dirPath })
   },

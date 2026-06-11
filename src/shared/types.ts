@@ -207,6 +207,25 @@ export const DEFAULT_ORCHESTRATOR_INSTRUCTIONS =
 
 export type TerminalBackgroundFit = 'cover' | 'contain' | 'center' | 'tile';
 
+export type SlideshowSourceKind = 'folder' | 'files';
+
+export type TerminalBackgroundSlideshow = {
+  enabled: boolean;
+  /** Which source list is active. Both folderPath and filePaths are kept so
+   * switching kinds doesn't discard the other's value. */
+  source: SlideshowSourceKind;
+  /** Folder scanned (non-recursively) for image files. */
+  folderPath: string;
+  /** Explicit list of image file paths. */
+  filePaths: string[];
+  /** Seconds each image is shown before advancing. */
+  intervalSeconds: number;
+  /** Random order (no repeats until all images shown) vs filename order. */
+  shuffle: boolean;
+  /** Crossfade duration in milliseconds. */
+  transitionMs: number;
+};
+
 export type TerminalBackground = {
   /** Absolute path to the image on disk, served via the fleet-image:// protocol. */
   imagePath: string | null;
@@ -221,6 +240,7 @@ export type TerminalBackground = {
    * top/bottom edges to transparent so a too-short image blends into the background. */
   edgeFadeY: number;
   fit: TerminalBackgroundFit;
+  slideshow: TerminalBackgroundSlideshow;
 };
 
 export type FleetSettings = {

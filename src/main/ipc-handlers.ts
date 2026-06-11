@@ -46,6 +46,7 @@ import type { SettingsStore } from './settings-store';
 import type { CwdPoller } from './cwd-poller';
 import type { ActivityTracker } from './activity-tracker';
 import { toError } from './errors';
+import { scanImageFolder } from './slideshow-scanner';
 import type { GitService } from './git-service';
 import type { WorktreeService } from './worktree-service';
 import type { AnnotationStore } from './annotation-store';
@@ -523,6 +524,13 @@ export function registerIpcHandlers(
       return { success: false, error: toError(err).message, entries: [] };
     }
   });
+
+  // List image files in a folder for the terminal background slideshow
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER,
+    async (_event, { folderPath }: { folderPath: string }): Promise<string[]> =>
+      scanImageFolder(folderPath)
+  );
 
   // Check which entries in a directory are gitignored (returns ignored names)
   ipcMain.handle(
