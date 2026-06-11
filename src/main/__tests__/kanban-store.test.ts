@@ -371,6 +371,36 @@ describe('KanbanStore', () => {
     expect(store.claimForDecompose(t.id, 'L2', 1000)).toBe(false);
   });
 
+  it('unassignedReadyTasks returns only ready tasks with no assignee', () => {
+    const a = store.createTask({ title: 'unassigned', status: 'ready' });
+    store.createTask({ title: 'assigned', status: 'ready', assignee: 'w' });
+    store.createTask({ title: 'todo', status: 'todo' });
+    const got = store.unassignedReadyTasks().map((t) => t.id);
+    expect(got).toEqual([a.id]);
+  });
+
+  it('claimForAssign atomically moves ready+unassigned to running', () => {
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    expect(store.claimForAssign(t.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    // a second claim loses (no longer ready+unassigned)
+    expect(store.claimForAssign(t.id, 'L2', 1000)).toBe(false);
+  });
+
+  it('claimForAssign re-claims an unassigned ready task whose claim has expired', () => {
+    let clock = 1000;
+    const s = new KanbanStore(join(TEST_DIR, 'assign-claim.db'), { now: () => clock });
+    const t = s.createTask({ title: 'x', status: 'ready' });
+    expect(s.claimForAssign(t.id, 'lock-A', 100)).toBe(true); // expires at 1100
+    // Put the row back to ready+unassigned but KEEP the live lease, so the ONLY thing
+    // blocking a second claim is the unexpired lock.
+    s.setStatus(t.id, 'ready');
+    expect(s.claimForAssign(t.id, 'lock-B', 100)).toBe(false); // still leased
+    clock = 1200; // past expiry
+    expect(s.claimForAssign(t.id, 'lock-B', 100)).toBe(true); // lease expired → re-claimable
+    s.close();
+  });
+
   it('startRun records the run mode', () => {
     const t = store.createTask({ title: 'x', status: 'triage' });
     const run = store.startRun(t.id, 'orchestrator', null, 'decompose');

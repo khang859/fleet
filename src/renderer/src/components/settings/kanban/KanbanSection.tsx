@@ -109,6 +109,16 @@ export function KanbanSection(): React.JSX.Element | null {
             className="h-4 w-4"
           />
         </SettingRow>
+        <SettingRow label="Auto-assign unassigned tasks">
+          <input
+            type="checkbox"
+            checked={k.dispatcher.autoAssign}
+            onChange={(e) =>
+              patch({ dispatcher: { ...k.dispatcher, autoAssign: e.target.checked } })
+            }
+            className="h-4 w-4"
+          />
+        </SettingRow>
         <SettingRow label="Max concurrent orchestrator runs">
           <input
             type="number"

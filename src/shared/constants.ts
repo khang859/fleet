@@ -108,7 +108,8 @@ export const DEFAULT_SETTINGS: FleetSettings = {
       failureLimit: 3,
       claimTtlMs: 900_000,
       autoDecompose: false,
-      maxDecompose: 1
+      maxDecompose: 1,
+      autoAssign: true
     },
     defaults: { workspaceKind: 'scratch', maxRuntimeSeconds: null },
     artifactRetentionDays: 14,

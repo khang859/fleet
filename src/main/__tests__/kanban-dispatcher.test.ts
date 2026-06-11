@@ -34,6 +34,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -62,6 +63,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -202,6 +204,7 @@ describe('KanbanDispatcher.reclaim', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -232,6 +235,7 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -257,6 +261,7 @@ describe('KanbanDispatcher.promote', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -289,6 +294,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -325,6 +331,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 2,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -351,6 +358,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -373,6 +381,7 @@ const baseConfig = {
   maxInProgress: 3,
   claimTtlMs: 1000,
   autoDecompose: false,
+  autoAssign: false,
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
@@ -498,6 +507,140 @@ describe('KanbanDispatcher.decompose', () => {
   });
 });
 
+describe('KanbanDispatcher.autoAssign', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('fast-path: a single worker profile is assigned in code, no run spawned', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    let spawned = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => (spawned++, 1),
+      config: { ...baseConfig, autoAssign: true },
+      workerProfileNames: () => ['solo']
+    });
+    disp.autoAssign();
+    expect(spawned).toBe(0);
+    expect(store.getTask(t.id)?.assignee).toBe('solo');
+    expect(store.getTask(t.id)?.status).toBe('ready');
+    store.close();
+  });
+
+  it('LLM path: with multiple profiles it spawns an assign run', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => { spawned.push({ id: args.task.id, mode: args.mode }); return 4242; },
+      config: { ...baseConfig, autoAssign: true },
+      prepareWorkspaceFn: () => '/tmp/ws',
+      workerProfileNames: () => ['alpha', 'beta']
+    });
+    disp.autoAssign();
+    expect(spawned).toEqual([{ id: t.id, mode: 'assign' }]);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.assignee).toBeNull();
+    store.close();
+  });
+
+  it('LLM path: stays below the cap (failures = cap - 1) so it spawns an assign run', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.recordFailure(t.id, 'a1'); // consecutiveFailures = 1 < cap (2)
+    const spawned: Array<{ id: string; mode: string }> = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (args) => { spawned.push({ id: args.task.id, mode: args.mode }); return 4242; },
+      config: { ...baseConfig, autoAssign: true },
+      prepareWorkspaceFn: () => '/tmp/ws',
+      workerProfileNames: () => ['alpha', 'beta']
+    });
+    disp.autoAssign();
+    expect(spawned).toEqual([{ id: t.id, mode: 'assign' }]);
+    expect(store.getTask(t.id)?.status).toBe('running');
+    expect(store.getTask(t.id)?.assignee).toBeNull();
+    store.close();
+  });
+
+  it('fallback: after the attempt cap, assigns the first worker profile in code', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.recordFailure(t.id, 'a1');
+    store.recordFailure(t.id, 'a2'); // consecutiveFailures = 2 == cap
+    let spawned = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t, isAlive: () => true,
+      spawnWorker: () => (spawned++, 1),
+      config: { ...baseConfig, autoAssign: true },
+      prepareWorkspaceFn: () => '/tmp/ws',
+      workerProfileNames: () => ['alpha', 'beta']
+    });
+    disp.autoAssign();
+    expect(spawned).toBe(0);
+    expect(store.getTask(t.id)?.assignee).toBe('alpha');
+    // Assign-phase failures must be cleared so the work phase starts with a clean slate.
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(0);
+    store.close();
+  });
+
+  it('is a no-op when autoAssign is off', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      config: { ...baseConfig, autoAssign: false },
+      workerProfileNames: () => ['alpha', 'beta']
+    });
+    disp.autoAssign();
+    expect(store.getTask(t.id)?.assignee).toBeNull();
+    expect(store.getTask(t.id)?.status).toBe('ready');
+    store.close();
+  });
+
+  it('is a no-op when no worker profiles exist', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      config: { ...baseConfig, autoAssign: true },
+      workerProfileNames: () => []
+    });
+    disp.autoAssign();
+    expect(store.getTask(t.id)?.assignee).toBeNull();
+    store.close();
+  });
+
+  it('reclaim returns a dead assign run to the unassigned ready pool', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const t = store.createTask({ title: 'x', status: 'ready' });
+    store.claimForAssign(t.id, 'L', 100); // expires 1100
+    store.startRun(t.id, 'orchestrator', 9999, 'assign');
+    clock.t = 2000; // claim expired
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t, isAlive: () => true, spawnWorker: () => 1,
+      config: { ...baseConfig }
+    });
+    disp.reclaim();
+    const got = store.getTask(t.id);
+    expect(got?.status).toBe('ready');
+    expect(got?.assignee).toBeNull();
+    store.close();
+  });
+});
+
 describe('KanbanDispatcher.fireSchedules', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
@@ -516,6 +659,7 @@ describe('KanbanDispatcher.fireSchedules', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -606,6 +750,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -620,6 +765,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -641,6 +787,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         maxInProgress: 1,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       };
@@ -688,6 +835,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 1,
           claimTtlMs: 1000,
           autoDecompose: false,
+          autoAssign: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -700,6 +848,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           maxInProgress: 2,
           claimTtlMs: 1000,
           autoDecompose: false,
+          autoAssign: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },

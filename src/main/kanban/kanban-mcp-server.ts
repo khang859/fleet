@@ -229,6 +229,20 @@ const SPECIFY_TOOLS: McpTool[] = [
   ...WORKER_TOOLS.filter((t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat')
 ];
 
+const ASSIGN_TOOLS: McpTool[] = [
+  ...WORKER_TOOLS.filter((t) => t.name === 'kanban_show'),
+  {
+    name: 'kanban_assign',
+    description: 'Assign this task to a worker profile by name. Terminal — ends the assign run.',
+    inputSchema: {
+      type: 'object',
+      properties: { profile: { type: 'string' } },
+      required: ['profile']
+    }
+  },
+  ...WORKER_TOOLS.filter((t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat')
+];
+
 /** Statuses the PM may set — mirrors MANUAL_STATUSES (dispatcher owns `running`). */
 const PM_SETTABLE_STATUSES = [
   'triage',
@@ -408,6 +422,7 @@ const PM_TOOLS: McpTool[] = [
 function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'decompose') return DECOMPOSE_TOOLS;
   if (mode === 'specify') return SPECIFY_TOOLS;
+  if (mode === 'assign') return ASSIGN_TOOLS;
   return WORKER_TOOLS;
 }
 
@@ -973,6 +988,34 @@ export class KanbanMcpServer {
           this.store.appendEvent(task.id, scope.runId, 'blocked', { reason: a.reason });
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} blocked.`);
+        }
+        case 'kanban_assign': {
+          const a = z.object({ profile: z.string() }).parse(args);
+          const profile = a.profile.trim();
+          if (!profile) {
+            return this.rpcError(res, rpcReq.id, 'profile is required');
+          }
+          const workerNames = this.getProfiles()
+            .filter((p) => p.role === 'worker')
+            .map((p) => p.name);
+          if (workerNames.length > 0 && !workerNames.includes(profile)) {
+            return this.rpcError(
+              res,
+              rpcReq.id,
+              `unknown worker profile "${profile}". Valid profiles: ${workerNames.join(', ')}`
+            );
+          }
+          this.store.updateTask(task.id, { assignee: profile });
+          // assign phase done — reset failures so they don't eat the work phase's retry budget
+          this.store.clearFailures(task.id);
+          this.store.returnToReady(task.id);
+          this.store.finishRun(scope.runId, 'completed', { summary: `assigned ${profile}` });
+          this.store.appendEvent(task.id, scope.runId, 'assigned', {
+            assignee: profile,
+            by: 'orchestrator'
+          });
+          this.unregisterRun(token);
+          return this.text(res, rpcReq.id, `Assigned ${profile}.`);
         }
         case 'kanban_comment': {
           const a = z.object({ body: z.string() }).parse(args);

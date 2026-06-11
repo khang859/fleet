@@ -161,6 +161,7 @@ export type KanbanSettings = {
     claimTtlMs: number;
     autoDecompose: boolean; // when true, the dispatcher auto-flags triage tasks for decompose
     maxDecompose: number; // concurrency cap for orchestrator runs (separate from maxInProgress)
+    autoAssign: boolean; // when true, the dispatcher auto-assigns unassigned ready tasks to a worker profile
   };
   defaults: {
     workspaceKind: WorkspaceKind;

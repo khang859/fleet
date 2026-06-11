@@ -449,6 +449,54 @@ describe('KanbanMcpServer', () => {
     expect(r.error).toBeTruthy();
     expect(String(r.error.message)).toMatch(/not a swarm root/i);
   });
+
+  it('kanban_assign sets the assignee, returns to ready, and rejects unknown profiles', async () => {
+    const profiles = () => [
+      { name: 'alpha', role: 'worker' as const },
+      { name: 'beta', role: 'worker' as const }
+    ];
+    const s2 = new KanbanMcpServer(store, profiles);
+    const port2 = await s2.start(0);
+    const base2 = `http://127.0.0.1:${port2}/mcp`;
+    try {
+      const t = store.createTask({ title: 'needs owner', status: 'ready' });
+      store.claimForAssign(t.id, 'LOCK', 100000);
+      const run = store.startRun(t.id, 'orchestrator', 1, 'assign');
+      s2.registerRun('atok', { kind: 'task', taskId: t.id, runId: run.id, mode: 'assign' }, 'LOCK');
+
+      const bad = await rpc(`${base2}?run=atok`, 'tools/call', {
+        name: 'kanban_assign',
+        arguments: { profile: 'ghost' }
+      });
+      expect(String(bad.error?.message ?? bad.result?.content?.[0]?.text)).toMatch(/unknown worker profile/i);
+      expect(store.getTask(t.id)?.assignee).toBeNull();
+
+      // Simulate a prior assign-phase failure so we can verify it's cleared on success.
+      store.recordFailure(t.id, 'prior assign failure');
+
+      const ok = await rpc(`${base2}?run=atok`, 'tools/call', {
+        name: 'kanban_assign',
+        arguments: { profile: 'alpha' }
+      });
+      expect(ok.result.content[0].text).toMatch(/alpha/i);
+      const got = store.getTask(t.id);
+      expect(got?.assignee).toBe('alpha');
+      expect(got?.status).toBe('ready');
+      expect(store.listRuns(t.id)[0].outcome).toBe('completed');
+      // Assign-phase failures must not carry into the work phase's retry budget.
+      expect(got?.consecutiveFailures).toBe(0);
+
+      // Terminal: the run token must be unregistered after a successful assign.
+      const after = await rpc(`${base2}?run=atok`, 'tools/call', {
+        name: 'kanban_assign',
+        arguments: { profile: 'alpha' }
+      });
+      expect(after.error).toBeTruthy();
+      expect(String(after.error.message)).toMatch(/run token/i);
+    } finally {
+      await s2.stop();
+    }
+  });
 });
 
 describe('KanbanMcpServer board scope (PM chat)', () => {
@@ -470,6 +518,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
         maxInProgress: 3,
         claimTtlMs: 1000,
         autoDecompose: false,
+        autoAssign: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
