@@ -446,6 +446,89 @@ export class KanbanDispatcher {
     return this.spawnResolve(task, target);
   }
 
+  /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
+  integrate(): void {
+    if (!this.deps.config.autoIntegrate) return;
+    const budget = this.integrateTasks(MAX_INTEGRATE_PER_TICK);
+    this.integrateFeatures(budget); // implemented in Task 8
+  }
+
+  /** Merge each review feature task into its integration branch; spawn a resolve run on conflict. Returns remaining budget. */
+  private integrateTasks(budget: number): number {
+    for (const task of this.store.reviewWorktreeFeatureTasks()) {
+      if (budget <= 0) break;
+      if (!task.repoPath || !task.branchName || !task.baseBranch || !task.workspacePath) continue;
+      const integrationBranch = this.integrationBranchFor(task.featureId);
+      if (!integrationBranch) continue;
+
+      const ensured = this.ops.ensureFeatureBranch({
+        repoPath: task.repoPath,
+        integrationBranch,
+        baseBranch: task.baseBranch
+      });
+      if (!ensured.ok) {
+        this.store.appendEvent(task.id, null, 'merge_failed', {
+          base: integrationBranch,
+          error: ensured.error
+        });
+        continue;
+      }
+
+      const pred = this.ops.checkMergeConflicts({
+        repoPath: task.repoPath,
+        baseBranch: integrationBranch,
+        branchName: task.branchName
+      });
+      if (pred.state === 'error') continue; // can't predict — leave in review for a human
+      if (pred.state === 'conflicts') {
+        if (this.spawnResolve(task, integrationBranch)) budget -= 1;
+        continue;
+      }
+      // clean prediction → real merge into the (local) integration branch
+      const res = this.ops.mergeWorktreeToBase({
+        repoPath: task.repoPath,
+        branchName: task.branchName,
+        baseBranch: integrationBranch,
+        worktreeParentDir: dirname(task.workspacePath),
+        taskId: task.id,
+        title: task.title
+      });
+      if (res.ok) {
+        this.store.completeTask(task.id, task.result);
+        this.store.appendEvent(task.id, null, 'merged', {
+          base: integrationBranch,
+          branch: task.branchName,
+          by: 'integrate'
+        });
+        this.ops.removeWorktree({
+          repoPath: task.repoPath,
+          workspacePath: task.workspacePath,
+          branchName: task.branchName,
+          baseBranch: integrationBranch
+        });
+        this.store.setWorktreePruned(task.id);
+        this.store.appendEvent(task.id, null, 'worktree_pruned', {
+          branch: task.branchName,
+          by: 'integrate'
+        });
+        this.store.resetResolveAttempts(task.id);
+        budget -= 1;
+      } else if (res.conflict) {
+        if (this.spawnResolve(task, integrationBranch)) budget -= 1; // prediction raced (clean→dirty)
+      } else {
+        this.store.appendEvent(task.id, null, 'merge_failed', {
+          base: integrationBranch,
+          error: res.error
+        });
+      }
+    }
+    return budget;
+  }
+
+  private integrateFeatures(_budget: number): void {
+    /* implemented in Task 8 */
+  }
+
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
   sweepArtifacts(): void {
     const days = this.deps.config.artifactRetentionDays;
@@ -504,6 +587,7 @@ export class KanbanDispatcher {
     this.autoAssign();
     this.promote();
     this.claimAndSpawn();
+    this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
   }

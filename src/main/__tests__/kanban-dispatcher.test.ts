@@ -946,3 +946,108 @@ describe('KanbanDispatcher.requestResolve', () => {
     store.close();
   });
 });
+
+describe('KanbanDispatcher.integrate', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function reviewFeatureTask(store: KanbanStore) {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const t = store.createTask({
+      title: 't',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setWorkspace(t.id, '/tmp/t', 'br-t', 'main');
+    store.reviewTask(t.id, null);
+    return { f, t };
+  }
+
+  it('integrate: clean feature task -> merged, done, pruned, attempts reset', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+        mergeWorktreeToBase: () => ({ ok: true })
+      })
+    });
+    disp.integrate();
+    const got = store.getTask(t.id)!;
+    expect(got.status).toBe('done');
+    expect(got.worktreePruned).toBe(true);
+    expect(got.resolveAttempts).toBe(0);
+    store.close();
+  });
+
+  it('integrate: conflicting feature task -> resolve run spawned (not merged)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 7;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'conflicts', files: ['a.ts'] })
+      })
+    });
+    disp.integrate();
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.getTask(t.id)!.status).toBe('running');
+    store.close();
+  });
+
+  it('integrate: autoIntegrate off -> no-op', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: false },
+      integration: fakeIntegration()
+    });
+    disp.integrate();
+    expect(store.getTask(t.id)!.status).toBe('review');
+    store.close();
+  });
+
+  it('integrate: conflicting task at the resolve cap -> blocked', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { t } = reviewFeatureTask(store);
+    store.incrementResolveAttempts(t.id);
+    store.incrementResolveAttempts(t.id); // at cap
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        checkMergeConflicts: () => ({ state: 'conflicts', files: ['a.ts'] })
+      })
+    });
+    disp.integrate();
+    expect(store.getTask(t.id)!.status).toBe('blocked');
+    store.close();
+  });
+});
