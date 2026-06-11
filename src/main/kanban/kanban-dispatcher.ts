@@ -19,6 +19,9 @@ const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
  */
 const REVIEW_REQUIRED_EXIT_CODE = 3;
 
+/** Assign runs attempted before the dispatcher falls back to the default worker profile. */
+const ASSIGN_ATTEMPT_CAP = 2;
+
 export interface SpawnWorkerArgs {
   task: Task;
   runId: number;
@@ -62,6 +65,8 @@ export interface DispatcherDeps {
   // from a crash. clearWorkerExit drops the entry once consumed.
   workerExit?: (runId: number) => WorkerExit | undefined;
   clearWorkerExit?: (runId: number) => void;
+  /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
+  workerProfileNames?: () => string[];
 }
 
 export class KanbanDispatcher {
@@ -146,7 +151,8 @@ export class KanbanDispatcher {
         log.warn('task gave up', { taskId: task.id, failures });
       } else {
         const mode = task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
-        if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
+        if (mode === 'assign') this.store.returnToReady(task.id);
+        else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
       }
     }
@@ -277,6 +283,55 @@ export class KanbanDispatcher {
     }
   }
 
+  /** Assign unassigned ready tasks to a worker profile, either in code (fast path / fallback)
+   *  or by spawning an orchestrator assign run (multi-profile LLM path). */
+  autoAssign(): void {
+    if (!this.deps.config.autoAssign) return;
+    const workerNames = this.deps.workerProfileNames?.() ?? [];
+    if (workerNames.length === 0) return;
+    let slots = this.deps.config.maxDecompose - this.store.orchestratorRunningCount();
+    const ttl = this.deps.config.claimTtlMs;
+
+    for (const task of this.store.unassignedReadyTasks()) {
+      if (workerNames.length === 1 || task.consecutiveFailures >= ASSIGN_ATTEMPT_CAP) {
+        const name = workerNames[0];
+        const by = workerNames.length === 1 ? 'single-profile' : 'fallback';
+        this.store.updateTask(task.id, { assignee: name });
+        this.store.appendEvent(task.id, null, 'assigned', { assignee: name, by });
+        if (by === 'fallback') {
+          this.store.addComment(
+            task.id,
+            'dispatcher',
+            `Auto-assigned ${name} after ${task.consecutiveFailures} failed assignment attempt(s).`
+          );
+        }
+        continue;
+      }
+      if (slots <= 0) break;
+      const lock = this.nextLock();
+      if (!this.store.claimForAssign(task.id, lock, ttl)) continue;
+      let runId: number | null = null;
+      try {
+        const workspace = this.deps.prepareWorkspaceFn
+          ? this.deps.prepareWorkspaceFn(task)
+          : (task.workspacePath ?? '');
+        const run = this.store.startRun(task.id, 'orchestrator', null, 'assign');
+        runId = run.id;
+        const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'assign' });
+        if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+        this.store.appendEvent(task.id, run.id, 'spawned', { pid: pid ?? null, mode: 'assign' });
+        slots -= 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.store.recordFailure(task.id, msg);
+        if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+        this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg });
+        this.store.returnToReady(task.id);
+        log.error('assign spawn failed', { taskId: task.id, error: msg });
+      }
+    }
+  }
+
   /** Purge discarded artifacts past the retention window; surface each deletion as an event. */
   sweepArtifacts(): void {
     const days = this.deps.config.artifactRetentionDays;
@@ -332,6 +387,7 @@ export class KanbanDispatcher {
     this.reclaim();
     this.fireSchedules();
     this.decompose();
+    this.autoAssign();
     this.promote();
     this.claimAndSpawn();
     this.sweepArtifacts();
