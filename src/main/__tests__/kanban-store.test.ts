@@ -1060,3 +1060,75 @@ describe('projects schema (v10)', () => {
     expect(store.listProjects(b.slug)).toEqual([]);
   });
 });
+
+describe('KanbanStore integrate/resolve (autopilot phase 2)', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('reviewWorktreeFeatureTasks returns only review + worktree + featured + non-system tasks', () => {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    const a = store.createTask({ title: 'a', featureId: f.id, workspaceKind: 'worktree' });
+    store.setWorkspace(a.id, '/tmp/a', 'br-a', 'main');
+    store.reviewTask(a.id, null);
+    const b = store.createTask({ title: 'b', workspaceKind: 'worktree' }); // excluded: no feature
+    store.setWorkspace(b.id, '/tmp/b', 'br-b', 'main');
+    store.reviewTask(b.id, null);
+    const sys = store.createTask({
+      title: 's',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      systemKind: 'feature_sync'
+    }); // excluded: system
+    store.setWorkspace(sys.id, '/tmp/s', 'br-s', 'main');
+    store.reviewTask(sys.id, null);
+    const ids = store.reviewWorktreeFeatureTasks().map((t) => t.id);
+    expect(ids).toEqual([a.id]);
+  });
+
+  it('claimForResolve atomically moves a review task to running', () => {
+    const t = store.createTask({ title: 'x', workspaceKind: 'worktree' });
+    store.reviewTask(t.id, null);
+    expect(store.claimForResolve(t.id, 'L1', 1000)).toBe(true);
+    expect(store.getTask(t.id)!.status).toBe('running');
+    expect(store.claimForResolve(t.id, 'L2', 1000)).toBe(false); // already running
+  });
+
+  it('increment/reset resolve attempts', () => {
+    const t = store.createTask({ title: 'x' });
+    store.incrementResolveAttempts(t.id);
+    store.incrementResolveAttempts(t.id);
+    expect(store.getTask(t.id)!.resolveAttempts).toBe(2);
+    store.resetResolveAttempts(t.id);
+    expect(store.getTask(t.id)!.resolveAttempts).toBe(0);
+  });
+
+  it('openSystemTask finds a non-terminal feature_sync task for a feature', () => {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull();
+    const sys = store.createTask({
+      title: 's',
+      featureId: f.id,
+      systemKind: 'feature_sync',
+      status: 'review'
+    });
+    expect(store.openSystemTask(f.id, 'feature_sync')?.id).toBe(sys.id);
+    store.completeTask(sys.id, null);
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull(); // done = terminal
+  });
+
+  it('featureRollup and listFeatureTasks exclude system tasks', () => {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    const a = store.createTask({ title: 'a', featureId: f.id, status: 'done' });
+    store.createTask({ title: 's', featureId: f.id, systemKind: 'feature_sync', status: 'running' });
+    expect(store.featureRollup(f.id).total).toBe(1);
+    expect(store.featureRollup(f.id).done).toBe(1);
+    expect(store.listFeatureTasks(f.id).map((t) => t.id)).toEqual([a.id]);
+  });
+});

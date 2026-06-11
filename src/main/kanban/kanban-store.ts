@@ -1043,6 +1043,20 @@ export class KanbanStore {
     return rows.map((r) => this.rowToTask(r));
   }
 
+  /** Review-column feature tasks with a live worktree, eligible for auto-integration. Excludes system tasks. */
+  reviewWorktreeFeatureTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status='review' AND feature_id IS NOT NULL AND system_kind IS NULL
+           AND workspace_kind='worktree' AND workspace_path IS NOT NULL
+           AND branch_name IS NOT NULL AND base_branch IS NOT NULL
+         ORDER BY priority DESC, created_at ASC`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
   listBoard(boardSlug?: string): BoardCard[] {
     const tasks = boardSlug
       ? this.listTasks().filter((t) => t.boardId === boardSlug)
@@ -1395,9 +1409,22 @@ export class KanbanStore {
 
   listFeatureTasks(featureId: string): Task[] {
     const rows = this.db
-      .prepare('SELECT * FROM tasks WHERE feature_id=? ORDER BY priority DESC, created_at ASC')
+      .prepare(
+        'SELECT * FROM tasks WHERE feature_id=? AND system_kind IS NULL ORDER BY priority DESC, created_at ASC'
+      )
       .all(featureId) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** A non-terminal (not done/archived) system task of the given kind for a feature, or null. */
+  openSystemTask(featureId: string, kind: string): Task | null {
+    const row = this.db
+      .prepare(
+        `SELECT * FROM tasks WHERE feature_id=? AND system_kind=?
+           AND status NOT IN ('done','archived') ORDER BY created_at ASC LIMIT 1`
+      )
+      .get(featureId, kind) as Record<string, unknown> | undefined;
+    return row ? this.rowToTask(row) : null;
   }
 
   /** Single-query status rollup for a feature (focus banner + Features dashboard). */
@@ -1411,7 +1438,7 @@ export class KanbanStore {
            SUM(CASE WHEN status IN ('blocked','review') THEN 1 ELSE 0 END) AS review,
            SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) AS done,
            SUM(CASE WHEN status='archived' THEN 1 ELSE 0 END) AS archived
-         FROM tasks WHERE feature_id=?`
+         FROM tasks WHERE feature_id=? AND system_kind IS NULL`
       )
       .get(featureId) as Record<string, number | null>;
     return {
@@ -1517,6 +1544,20 @@ export class KanbanStore {
     return res.changes === 1;
   }
 
+  /** Atomically claim a review task for a resolve run (review -> running). Returns false if it lost the race. */
+  claimForResolve(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status='running', claim_lock=@lock, claim_expires=@expires,
+           last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='review'
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
   /** Flag up to `limit` un-flagged triage tasks for decompose; returns how many were flagged. */
   armTriageForDecompose(limit: number): number {
     if (limit <= 0) return 0;
@@ -1567,6 +1608,18 @@ export class KanbanStore {
       .prepare(
         'UPDATE tasks SET consecutive_failures=0, last_failure_error=NULL, updated_at=? WHERE id=?'
       )
+      .run(this.now(), taskId);
+  }
+
+  incrementResolveAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET resolve_attempts = resolve_attempts + 1, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  resetResolveAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET resolve_attempts = 0, updated_at=? WHERE id=?')
       .run(this.now(), taskId);
   }
 
