@@ -1050,4 +1050,96 @@ describe('KanbanDispatcher.integrate', () => {
     expect(store.getTask(t.id)!.status).toBe('blocked');
     store.close();
   });
+
+  function doneFeature(store: KanbanStore) {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const a = store.createTask({
+      title: 'a',
+      featureId: f.id,
+      status: 'done',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    return { f, a };
+  }
+
+  it('integrateFeatures: all done + clean sync -> no system task, fires once', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    let syncCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => false, // integration ahead of base → something merged
+        updateIntegrationBranchFromMain: () => {
+          syncCalls++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    disp.integrate(); // second tick must NOT re-sync
+    expect(syncCalls).toBe(1);
+    expect(store.openSystemTask(f.id, 'feature_sync')).toBeNull();
+    store.close();
+  });
+
+  it('integrateFeatures: sync conflict -> feature_sync system task spawned in resolve mode', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const { f } = doneFeature(store);
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: (a) => {
+        spawned.push(a);
+        return 9;
+      },
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => false,
+        updateIntegrationBranchFromMain: () => ({ ok: false, conflict: true })
+      })
+    });
+    disp.integrate();
+    const sys = store.openSystemTask(f.id, 'feature_sync');
+    expect(sys).not.toBeNull();
+    expect(sys!.systemKind).toBe('feature_sync');
+    expect(spawned[0]?.mode).toBe('resolve');
+    expect(store.featureRollup(f.id).total).toBe(1); // system task excluded
+    store.close();
+  });
+
+  it('integrateFeatures: nothing merged (integration == base) -> skip', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    doneFeature(store);
+    let syncCalls = 0;
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => 1,
+      config: { ...baseConfig, autoIntegrate: true },
+      integration: fakeIntegration({
+        isBranchMerged: () => true,
+        updateIntegrationBranchFromMain: () => {
+          syncCalls++;
+          return { ok: true };
+        }
+      })
+    });
+    disp.integrate();
+    expect(syncCalls).toBe(0);
+    store.close();
+  });
 });
