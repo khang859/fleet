@@ -11,8 +11,8 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign'. */
-export type RunMode = 'work' | 'decompose' | 'specify' | 'assign';
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve'. */
+export type RunMode = 'work' | 'decompose' | 'specify' | 'assign' | 'resolve';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
@@ -162,6 +162,7 @@ export interface Task {
   currentRunId: number | null;
   lastHeartbeatAt: number | null;
   consecutiveFailures: number;
+  resolveAttempts: number;
   lastFailureError: string | null;
   maxRuntimeSeconds: number | null;
   maxRetries: number;
@@ -179,6 +180,8 @@ export interface Task {
   conflictFiles: string[];
   /** True once the worktree has been pruned from disk (Phase 4); the dir no longer exists. */
   worktreePruned: boolean;
+  /** Non-null marks a dispatcher-created system task (e.g. 'feature_sync'); excluded from feature roll-ups. */
+  systemKind: string | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -301,6 +304,7 @@ export interface CreateTaskInput {
   maxRuntimeSeconds?: number | null;
   maxRetries?: number;
   scheduledFrom?: string | null;
+  systemKind?: string | null;
 }
 
 export interface UpdateTaskFields {

@@ -25,28 +25,40 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(10);
+    expect(store.schemaVersion()).toBe(11);
   });
 
-  it('fresh db is created at v10 with the new columns', () => {
-    // Fresh store is already v10; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v11 with the new columns', () => {
+    // Fresh store is already v11; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(10);
+    expect(store.schemaVersion()).toBe(11);
   });
 
-  it('fresh db is created at v10 and persists repoPath', () => {
+  it('fresh db is created at v11 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(10);
+    expect(store.schemaVersion()).toBe(11);
   });
 
   it('repoPath defaults to null when omitted', () => {
     const t = store.createTask({ title: 'plain' });
     expect(store.getTask(t.id)?.repoPath).toBeNull();
+  });
+
+  it('defaults resolve_attempts to 0 and system_kind to null on new tasks', () => {
+    const t = store.createTask({ title: 'x' });
+    const got = store.getTask(t.id)!;
+    expect(got.resolveAttempts).toBe(0);
+    expect(got.systemKind).toBeNull();
+  });
+
+  it('persists system_kind when provided to createTask', () => {
+    const t = store.createTask({ title: 'sync', systemKind: 'feature_sync' });
+    expect(store.getTask(t.id)!.systemKind).toBe('feature_sync');
   });
 
   it('upgrades a v2 db to v3 (adds repo_path)', () => {
@@ -60,7 +72,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(10);
+    expect(s.schemaVersion()).toBe(11);
     s.close();
   });
 
@@ -85,7 +97,7 @@ describe('KanbanStore', () => {
     raw.close();
 
     const s = new KanbanStore(preV5Path);
-    expect(s.schemaVersion()).toBe(10);
+    expect(s.schemaVersion()).toBe(11);
     expect(s.getTask('abc')?.boardId).toBe('default');
     expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
@@ -106,11 +118,32 @@ describe('KanbanStore', () => {
 
     // Opening the store must run the ALTER-based upgrade path (+ idempotent SCHEMA_SQL).
     const s = new KanbanStore(v9Path);
-    expect(s.schemaVersion()).toBe(10);
+    expect(s.schemaVersion()).toBe(11);
     expect(s.getTask('pre10')?.docs).toEqual([]); // pre-migration row gets the default
     const t = s.createTask({ title: 'x', docs: ['guide.md'] });
     expect(s.getTask(t.id)?.docs).toEqual(['guide.md']);
     expect(s.listProjects('default')).toEqual([]);
+    s.close();
+  });
+
+  it('upgrades a v10 db to v11 (adds resolve_attempts and system_kind)', () => {
+    const v10Path = join(TEST_DIR, 'v10.db');
+    // Simulate a v10 DB: full current schema minus the v11 additions.
+    const raw = new Database(v10Path);
+    raw.exec(SCHEMA_SQL);
+    raw.exec('ALTER TABLE tasks DROP COLUMN resolve_attempts');
+    raw.exec('ALTER TABLE tasks DROP COLUMN system_kind');
+    raw.exec(
+      "INSERT INTO tasks (id,title,status,created_at,updated_at) VALUES ('pre11','old task','todo',1,1)"
+    );
+    raw.pragma('user_version = 10');
+    raw.close();
+
+    // Opening the store must run the ALTER-based upgrade path.
+    const s = new KanbanStore(v10Path);
+    expect(s.schemaVersion()).toBe(11);
+    expect(s.getTask('pre11')?.resolveAttempts).toBe(0); // pre-migration row gets the default
+    expect(s.getTask('pre11')?.systemKind).toBeNull();
     s.close();
   });
 
@@ -130,7 +163,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(10);
+    expect(s.schemaVersion()).toBe(11);
     s.close();
   });
 
@@ -557,7 +590,7 @@ describe('KanbanStore schema v6 migration', () => {
     raw.close();
 
     const store = new KanbanStore(dbPath, { now: () => 1000 });
-    expect(store.schemaVersion()).toBe(10);
+    expect(store.schemaVersion()).toBe(11);
     const t = store.getTask('legacy1');
     expect(t?.title).toBe('old task');
     expect(t?.scheduleKind).toBeNull();
@@ -981,7 +1014,7 @@ describe('projects schema (v10)', () => {
   });
 
   it('migrates to v10 with a projects table and tasks.docs column', () => {
-    expect(store.schemaVersion()).toBe(10);
+    expect(store.schemaVersion()).toBe(11);
     const t = store.createTask({ title: 'x' });
     expect(t.docs).toEqual([]);
     expect(store.listProjects('default')).toEqual([]);
