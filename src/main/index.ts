@@ -823,6 +823,10 @@ void app.whenReady().then(async () => {
       const t = kanbanStore?.getTask(taskId);
       return t ? { title: t.title, boardId: t.boardId } : null;
     },
+    getFeature: (featureId) => {
+      const f = kanbanStore?.getFeature(featureId);
+      return f ? { name: f.name, boardId: f.boardId } : null;
+    },
     present: ({ body, boardSlug, taskId }) => {
       if (!Notification.isSupported()) return;
       const notif = new Notification({ title: 'Fleet — Kanban', body });

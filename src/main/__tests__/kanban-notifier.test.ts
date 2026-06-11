@@ -10,6 +10,7 @@ function evt(kind: string, taskId = 't1'): TaskEvent {
 describe('KanbanNotifier', () => {
   let present: ReturnType<typeof vi.fn<(payload: KanbanNotificationPayload) => void>>;
   let tasks: Record<string, { title: string; boardId: string }>;
+  let features: Record<string, { name: string; boardId: string }>;
   let enabled: Record<KanbanNotifyCategory, boolean>;
   let notifier: KanbanNotifier;
 
@@ -20,10 +21,14 @@ describe('KanbanNotifier', () => {
       t1: { title: 'Fix login', boardId: 'default' },
       t2: { title: 'Write docs', boardId: 'default' }
     };
+    features = {
+      feat1: { name: 'My Feature', boardId: 'default' }
+    };
     enabled = { blocked: true, failed: true, completed: true, scheduleFired: true };
     notifier = new KanbanNotifier({
       isOsEnabled: (c) => enabled[c],
       getTask: (id) => tasks[id] ?? null,
+      getFeature: (id) => features[id] ?? null,
       present,
       batchMs: 500
     });
@@ -73,5 +78,15 @@ describe('KanbanNotifier', () => {
     notifier.enqueue(evt('completed', 'gone'));
     vi.advanceTimersByTime(500);
     expect(present).not.toHaveBeenCalled();
+  });
+
+  it('feature_pr_ready notifies as completed using the feature name', () => {
+    notifier.enqueue(evt('feature_pr_ready', 'feat1'));
+    vi.advanceTimersByTime(500);
+    expect(present).toHaveBeenCalledTimes(1);
+    const arg = present.mock.calls[0][0];
+    expect(arg.body).toContain('My Feature');
+    expect(arg.boardSlug).toBe('default');
+    expect(arg.taskId).toBe('feat1');
   });
 });
