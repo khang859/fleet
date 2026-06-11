@@ -37,6 +37,18 @@ describe('SettingsStore settings merge', () => {
     expect(s.general.accentColor).toBe('teal');
   });
 
+  it('merges a partial terminalBackground change without dropping slideshow settings', () => {
+    store.set({
+      general: { terminalBackground: { slideshow: { enabled: true, folderPath: '/pics' } } }
+    });
+    store.set({ general: { terminalBackground: { opacity: 0.5 } } });
+    const s = store.get();
+    expect(s.general.terminalBackground.opacity).toBe(0.5);
+    expect(s.general.terminalBackground.slideshow.enabled).toBe(true);
+    expect(s.general.terminalBackground.slideshow.folderPath).toBe('/pics');
+    expect(s.general.terminalBackground.slideshow.intervalSeconds).toBe(60); // default preserved
+  });
+
   it('returns kanban defaults for a fresh store', () => {
     const s = store.get();
     expect(s.kanban.dispatcher.intervalMs).toBe(5000);

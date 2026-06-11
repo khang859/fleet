@@ -133,6 +133,25 @@ body,
   background: #2dd4bf66;
 }
 
+/* Terminal background slideshow crossfade. The layers' max opacity is the
+   user's background opacity setting, passed in via --fleet-bg-opacity. */
+@keyframes fleet-bg-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: var(--fleet-bg-opacity, 1);
+  }
+}
+@keyframes fleet-bg-fade-out {
+  from {
+    opacity: var(--fleet-bg-opacity, 1);
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse {
     animation: none !important;

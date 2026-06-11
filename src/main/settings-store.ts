@@ -25,7 +25,11 @@ export class SettingsStore {
         ...saved.general,
         terminalBackground: {
           ...DEFAULT_SETTINGS.general.terminalBackground,
-          ...saved.general?.terminalBackground
+          ...saved.general?.terminalBackground,
+          slideshow: {
+            ...DEFAULT_SETTINGS.general.terminalBackground.slideshow,
+            ...saved.general?.terminalBackground?.slideshow
+          }
         }
       },
       notifications: { ...DEFAULT_SETTINGS.notifications, ...saved.notifications },
@@ -61,7 +65,18 @@ export class SettingsStore {
     const merged = {
       ...current,
       ...partial,
-      general: { ...current.general, ...(partial.general ?? {}) },
+      general: {
+        ...current.general,
+        ...(partial.general ?? {}),
+        terminalBackground: {
+          ...current.general.terminalBackground,
+          ...(partial.general?.terminalBackground ?? {}),
+          slideshow: {
+            ...current.general.terminalBackground.slideshow,
+            ...(partial.general?.terminalBackground?.slideshow ?? {})
+          }
+        }
+      },
       notifications: { ...current.notifications, ...(partial.notifications ?? {}) },
       socketApi: { ...current.socketApi, ...(partial.socketApi ?? {}) },
       visualizer: {
