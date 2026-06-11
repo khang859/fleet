@@ -588,6 +588,8 @@ describe('KanbanDispatcher.autoAssign', () => {
     disp.autoAssign();
     expect(spawned).toBe(0);
     expect(store.getTask(t.id)?.assignee).toBe('alpha');
+    // Assign-phase failures must be cleared so the work phase starts with a clean slate.
+    expect(store.getTask(t.id)?.consecutiveFailures).toBe(0);
     store.close();
   });
 

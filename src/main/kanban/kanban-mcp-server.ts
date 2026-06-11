@@ -1006,6 +1006,8 @@ export class KanbanMcpServer {
             );
           }
           this.store.updateTask(task.id, { assignee: profile });
+          // assign phase done — reset failures so they don't eat the work phase's retry budget
+          this.store.clearFailures(task.id);
           this.store.returnToReady(task.id);
           this.store.finishRun(scope.runId, 'completed', { summary: `assigned ${profile}` });
           this.store.appendEvent(task.id, scope.runId, 'assigned', {

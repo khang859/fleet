@@ -19,7 +19,11 @@ const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
  */
 const REVIEW_REQUIRED_EXIT_CODE = 3;
 
-/** Assign runs attempted before the dispatcher falls back to the default worker profile. */
+/**
+ * Assign runs attempted before the dispatcher falls back to the default worker profile.
+ * MUST stay below the default failureLimit (3) so the deterministic fallback fires before
+ * a task is ever given up/blocked. At cap=2, failureLimit=3 this holds.
+ */
 const ASSIGN_ATTEMPT_CAP = 2;
 
 export interface SpawnWorkerArgs {
@@ -299,6 +303,8 @@ export class KanbanDispatcher {
         const name = workerNames[0];
         const by = workerNames.length === 1 ? 'single-profile' : 'fallback';
         this.store.updateTask(task.id, { assignee: name });
+        // assign phase done — reset failures so they don't eat the work phase's retry budget
+        this.store.clearFailures(task.id);
         this.store.appendEvent(task.id, null, 'assigned', { assignee: name, by });
         if (by === 'fallback') {
           this.store.addComment(

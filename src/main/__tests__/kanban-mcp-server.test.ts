@@ -471,6 +471,9 @@ describe('KanbanMcpServer', () => {
       expect(String(bad.error?.message ?? bad.result?.content?.[0]?.text)).toMatch(/unknown worker profile/i);
       expect(store.getTask(t.id)?.assignee).toBeNull();
 
+      // Simulate a prior assign-phase failure so we can verify it's cleared on success.
+      store.recordFailure(t.id, 'prior assign failure');
+
       const ok = await rpc(`${base2}?run=atok`, 'tools/call', {
         name: 'kanban_assign',
         arguments: { profile: 'alpha' }
@@ -480,6 +483,8 @@ describe('KanbanMcpServer', () => {
       expect(got?.assignee).toBe('alpha');
       expect(got?.status).toBe('ready');
       expect(store.listRuns(t.id)[0].outcome).toBe('completed');
+      // Assign-phase failures must not carry into the work phase's retry budget.
+      expect(got?.consecutiveFailures).toBe(0);
 
       // Terminal: the run token must be unregistered after a successful assign.
       const after = await rpc(`${base2}?run=atok`, 'tools/call', {
