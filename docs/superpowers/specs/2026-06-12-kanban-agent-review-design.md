@@ -40,7 +40,6 @@ loop converges or soft-escalates to a human.
 - Multiple reviewer profiles or per-task reviewer selection.
 - Severity taxonomies, line numbers, or suggested-patch fields in findings.
 - Inline file/line review annotations in the UI.
-- Re-reviewing `resolve`-mode (merge-conflict) output (known v1 gap; section 9).
 - Reviewing swarm-internal tasks (they already carry their own verifier card).
 
 ## Architecture
@@ -78,6 +77,16 @@ branch mirroring the verify branch). The task transiently re-enters `running`
 while under review, exactly as `resolve`/`suggest` reclaim a `review`-status
 task.
 
+**The verify run — not `assign`/`suggest` — is the precedent for this design.**
+Verify is a run that *records its outcome* and lets `reclaim()` route the task;
+the agent terminal tools (`kanban_assign` → `returnToReady`,
+`kanban_suggest_feature` → `deleteTask`, `kanban_complete` → `reviewTask`)
+instead transition the task status *inside the MCP handler*, and their
+`reclaim()` branches handle only the failure path (run died without the tool
+firing). `kanban_review_verdict` deliberately follows the verify model: it
+records the verdict and leaves the task in `running`, and the dispatcher routes.
+This rests on three invariants the implementation MUST honor (section 5).
+
 ### Tick placement
 
 ```
@@ -104,8 +113,13 @@ review-status feature task it does see.
 Gated on the new global `autoReview` setting (default **on**).
 
 For each task that is `status='review'`, `workspaceKind='worktree'`,
-`review_verdict IS NULL`, `systemKind IS NULL` (not a system/sync task), not a
-member of a swarm graph (section 9), and has no review run already in flight:
+`workspacePath IS NOT NULL` (the worktree still exists — mirrors
+`reviewWorktreeFeatureTasks`), `review_verdict IS NULL`, `systemKind IS NULL`
+(not a system/sync task), and not a member of a swarm graph (section 9). The
+candidate query (`reviewPendingTasks()`) selects only `review`-status tasks, so
+claiming one flips it to `running` and removes it from the next pass — there is
+no "review run already in flight" case to filter (a running task is not a
+candidate).
 
 1. `claimForReview(taskId, lock, ttl)` — CAS on `status='review'`; sets the
    claim lock, flips status to `running`. Skip on lost race.
@@ -113,12 +127,17 @@ member of a swarm graph (section 9), and has no review run already in flight:
 3. `spawnWorker({ task, runId, lock, workspace: task.workspacePath, mode: 'review' })`.
 4. `setWorkerPid`, append `spawned` event with `mode: 'review'`.
 5. On spawn failure: `recordFailure`, `finishRun('spawn_failed')`, append
-   `spawn_failed`, `setStatusCleared(taskId, 'review')` (hand back so a later
-   tick retries), log. Never throws out of the tick.
+   `spawn_failed`, log; then **bound the retry loop** — if the task's
+   `consecutiveFailures >= config.failureLimit`, soft-escalate (section 5's
+   escalate path: `setStatusCleared(taskId, 'review')` with a `review_escalated`
+   event + notification) so a persistent spawn failure doesn't bounce
+   review→running→review every tick forever; otherwise `setStatusCleared(taskId,
+   'review')` to retry next tick. Never throws out of the tick.
 
 Bounded per tick by `MAX_REVIEW_PER_TICK = 3` (matches `MAX_INTEGRATE_PER_TICK`).
-`orchestratorRunningCount()` must **exclude** `'review'` runs (they are not
-triage orchestrator runs), exactly as it already excludes `'verify'`.
+`orchestratorRunningCount()` is `mode NOT IN ('work','verify')` today; it must
+**also exclude** `'review'` (review runs are not triage orchestrator runs and
+must not eat decompose/assign/suggest slots).
 
 ## 2. `review` run mode
 
@@ -127,21 +146,27 @@ New `RunMode` value `'review'`, spawned via the existing worker machinery.
 - **Workspace:** the task's existing worktree (read-only intent; the reviewer
   does not modify the tree).
 - **Tools:** `kanban_show`, `kanban_comment`, `kanban_heartbeat`, and the
-  terminal `kanban_review_verdict` (section 3). `requireToolsForMode` gains a
-  `'review'` case returning this set.
-- **Prompt** (`buildWorkerInput`, new `review` block): the reviewer persona
-  (section 4) + the task title/body/acceptance criteria + the worktree diff vs
-  its base branch. The diff is byte-capped (reuse the verify-tail cap); on
-  overflow, truncate and append a reference to the full diff written to a log
-  path (mirrors the verify failure tail + log-ref pattern).
+  terminal `kanban_review_verdict` (section 3). `requireToolsForMode`
+  (module-private in `spawn-worker.ts`) gains a `'review'` case returning this
+  set.
+- **Prompt** (the `BuildWorkerInput` interface + private `buildPrompt()` in
+  `spawn-worker.ts`, new `review` block): the reviewer persona (section 4) + the
+  task title/body/acceptance criteria + the worktree diff vs its base branch.
+  The diff is **generated** by a new helper (a `git diff <baseBranch>...HEAD` in
+  the worktree — `readLogTail` is a tail *consumer*, not a producer, so it is not
+  reusable here), byte-capped at the same size as the verify tail; on overflow,
+  truncate and append a reference to the full diff written to a deterministic log
+  path (a `verifyLogPath`-style `reviewDiffPath(runId)` injected dep). `findings`
+  from a prior `request_changes` bounce reach the *work* run via its own prompt
+  field (section 5 / §4.1 `index.ts` wiring), not this review prompt.
 - **No** `kanban_complete`/`kanban_block`: the reviewer is not completing the
   work, only judging it.
 
 ## 3. `kanban_review_verdict` terminal tool
 
-New terminal MCP tool, available only in `review` mode. Mirrors how
-`kanban_assign` / `kanban_suggest_feature` are terminal tools for orchestrator
-runs.
+New terminal MCP tool, available only in `review` mode. It follows the **verify**
+pattern (record-only), NOT the `kanban_assign`/`kanban_suggest_feature` pattern
+(those transition status in the handler).
 
 ```ts
 kanban_review_verdict(
@@ -155,14 +180,31 @@ Behavior:
 
 - Validate `decision` (zod enum; reject other values), `summary` (non-empty
   string), `findings` (optional array; each `note` required, `file` optional).
-- Record the verdict on the task: set `review_verdict = decision`. On `approve`,
-  also capture `review_head_sha` = the worktree's current HEAD SHA.
-- Persist the findings as a task comment (author `reviewer`) and append a
-  `review_passed` (approve) or `review_changes_requested` (request_changes)
+- **CAS guard (S1):** record only if `scope.runId === task.currentRunId &&
+  task.status === 'running'`. A reviewer process reclaimed-but-still-alive must
+  not write a verdict onto a task that has since escalated or begun a new cycle
+  (this write gates auto-merge, so the looseness `kanban_complete` tolerates is
+  unacceptable here). If the guard fails, no-op and end.
+- Record the verdict on the task: `setReviewVerdict(taskId, decision, headSha?)`
+  — set `review_verdict = decision`; on `approve`, also capture
+  `review_head_sha` = the worktree's current HEAD SHA.
+- Persist the findings as a task comment authored `reviewer` (the handler's
+  default `author = task.assignee ?? 'worker'` must be made mode-aware so a
+  review-mode scope authors as `reviewer` — see §4.1) and append
+  a `review_passed` (approve) or `review_changes_requested` (request_changes)
   event carrying `{ summary, findings }`.
 - `finishRun(runId, 'completed', { summary })`; unregister the run; end the
   process.
-- The task stays in `running` until `reclaim()` routes it next tick (section 5).
+
+**Invariant (B1):** `setReviewVerdict` and `finishRun` must NOT clear
+`tasks.current_run_id` (none of the `set*`/`finishRun` paths do; only
+`completeTask`/`reviewTask`/`blockTask`/`returnToReady`/`setStatusCleared` do).
+The verdict tool must therefore call **none** of those status-clearing methods —
+the task must stay `status='running'` with `current_run_id` intact so that next
+tick `reclaim()` can compute `runMode(currentRunId) === 'review'` and route it
+(section 5). If the task were cleared here, `reclaim()` would read a NULL
+`currentRunId`, default the mode to `'work'`, and misroute the task through the
+generic failure path.
 
 The tool only *records*; the dispatcher's `reclaim()` performs the status
 transition and any bounce spawn (spawning lives in the dispatcher, consistent
@@ -173,9 +215,20 @@ with verify).
 - `WorkerProfile.role` gains `'reviewer'`: `'worker' | 'orchestrator' | 'reviewer'`.
 - Exactly one reviewer profile, reserved name `reviewer`
   (`REVIEWER_PROFILE_NAME`), mirroring the orchestrator singleton
-  (`ORCHESTRATOR_PROFILE_NAME`). Seeded with a default critic persona
-  (`DEFAULT_REVIEWER_INSTRUCTIONS`) in `src/shared/types.ts` where both main
-  (seed) and renderer (Settings "Reset to default") reach it.
+  (`ORCHESTRATOR_PROFILE_NAME`). Its default critic persona
+  (`DEFAULT_REVIEWER_INSTRUCTIONS`) lives in `src/shared/types.ts` where both
+  main and renderer reach it.
+- **Missing-profile reality (B3):** existing users have a saved
+  `profiles` array that is *not* re-merged with `DEFAULT_SETTINGS.kanban.profiles`
+  (`settings-store.ts` only deep-merges `dispatcher`/`defaults`, not the profile
+  list), and the orchestrator singleton is created lazily by the renderer
+  Settings UI — main never seeds it. So the reviewer profile **will be absent**
+  for every existing user until they open Settings. The `index.ts` spawn wiring
+  (next section) MUST therefore resolve the reviewer as: the saved `reviewer`
+  profile if present, else an in-memory profile built from
+  `DEFAULT_REVIEWER_INSTRUCTIONS` (name `reviewer`, role `reviewer`, empty model
+  → rune's normal provider resolution). Never fall back to the worker/orchestrator
+  persona.
 - Surfaced in Settings alongside the orchestrator: editable persona/model,
   "Reset to default" button. No assignment UI — the reviewer is never assigned
   to a task; the stage always uses the singleton.
@@ -184,13 +237,45 @@ with verify).
   the spec; request changes with specific, actionable findings otherwise; do not
   nitpick style the verify commands already enforce.
 
+### 4.1 `index.ts` spawnWorker wiring (`deps.spawnWorker` closure)
+
+`reviewTasks()` and `spawnReviewFix()` both flow through the `deps.spawnWorker`
+closure in `index.ts`, which does mode-dependent profile selection and prompt
+assembly. Mode `'review'` must NOT fall into the existing orchestrator
+else-branch, which has two traps:
+
+1. **Assignee clobber (B3):** the orchestrator else-branch runs
+   `updateTask(task.id, { assignee: 'orchestrator' })` for every mode that is not
+   `'assign'`. For a review run that would overwrite the task's real worker
+   assignee, poisoning the later `spawnReviewFix` (`startRun(task.assignee)`) and
+   the card display. The review case must select the reviewer singleton (§4) and
+   **never write `assignee`**.
+2. **Persona fallback (B3):** `buildWorkerInvocation` falls back to `--profile
+   <task.assignee>` for non-work modes when the named profile is absent — so a
+   missing reviewer profile would run the review under the *worker's* persona.
+   The review case must use the in-memory `DEFAULT_REVIEWER_INSTRUCTIONS`
+   fallback (§4) instead.
+
+Add a dedicated `'review'` branch to the closure: select the reviewer profile
+(saved-or-default), build the prompt with the generated diff (§2), and (for the
+`work`-mode bounce fix) thread the prior `findings` through. `SpawnWorkerArgs`
+and `BuildWorkerInput` gain a `reviewFindings`/diff field pair mirroring how
+#231 added `verifyFailure`.
+
 ## 5. `reclaim()` review branch
 
 Placed alongside the existing `suggest` / `verify` reclaim branches (before the
-generic exit-3 / blockNow branches). Applies when the reclaimed run's mode is
-`'review'`:
+generic exit-3 / blockNow branches — otherwise an exit-3 inconclusive run gets
+`blockTask`'d). Applies when `runMode(task.currentRunId) === 'review'`.
 
-Read the verdict the terminal tool recorded on the task:
+**Alive-wait guard (B1), first:** replicate the verify branch's guard — if the
+run has no recorded exit yet (`exit == null`) but the claim expired and the
+worker pid is still alive, `extendClaim` and `continue`. A slow reviewer that
+didn't heartbeat must not be escalated as "inconclusive" while still running
+(that also orphans a process that could later try to write a verdict — the CAS
+guard in §3 is the backstop, but don't create the race).
+
+Otherwise, read the verdict the terminal tool recorded on the task:
 
 - **`approve`** → `setStatusCleared(task.id, 'review')` keeping
   `review_verdict='approve'` and `review_head_sha` (the work summary is already
@@ -209,13 +294,19 @@ Read the verdict the terminal tool recorded on the task:
     the review-ready notification. `integrate()` skips it (verdict ≠ approve);
     the human merge click is the override.
 - **inconclusive** (run ended terminally — exit, dead pid, or expired claim —
-  with no verdict recorded): soft-escalate exactly as the cap case, append
-  `review_escalated` (`{ reason: 'reviewer returned no verdict' }`). Never
-  auto-approve.
+  with no verdict recorded): `finishRun(runId, 'reclaimed')` then soft-escalate
+  exactly as the cap case, append `review_escalated`
+  (`{ reason: 'reviewer returned no verdict' }`). Never auto-approve.
 
-A fresh `work` run starting on the task (claimAndSpawn, verify-fix, or
-review-fix) clears `review_verdict` and `review_head_sha` to NULL — the diff has
-changed, so any prior approval is stale and the task must be re-reviewed.
+**Verdict/attempt lifecycle.** A fresh `work` run starting on the task
+(claimAndSpawn, verify-fix, or review-fix) calls `clearReviewVerdict(taskId)`,
+which sets `review_verdict` and `review_head_sha` to NULL **and zeroes
+`review_attempts`** — the diff has changed, so any prior approval is stale and
+the next review episode starts with the full cap (S2; otherwise a re-worked task
+that escalated at the cap would instantly re-escalate on its first new
+`request_changes` with zero fix attempts). `incrementReviewAttempts` fires per
+`spawnReviewFix`; `resetReviewAttempts` on `approve` is then redundant but
+harmless and kept for symmetry with `resetVerifyAttempts`.
 
 ## 6. `integrate()` change
 
@@ -234,9 +325,20 @@ is off, the guard is inert and `integrate()` behaves exactly as today
 
 **Stale-diff assertion:** before merging an approved task, assert the worktree
 HEAD equals `review_head_sha`. On mismatch (some later run touched the tree),
-clear `review_verdict`/`review_head_sha` to NULL and skip — `reviewTasks()`
-re-reviews it next tick. Cheap insurance that `integrate()` merges exactly what
-was approved.
+`clearReviewVerdict` and skip — `reviewTasks()` re-reviews it next tick. Cheap
+insurance that `integrate()` merges exactly what was approved. The HEAD read goes
+through a new injectable `IntegrationOps` op (e.g. `headSha({ workspacePath })`)
+— `IntegrationOps` is the dispatcher's testability seam and has no HEAD-read op
+today; the §3 verdict tool needs the same git-HEAD helper in `workspace.ts`. A
+small TOCTOU window between assert and merge is accepted (a mid-tick mutation is
+not a real scenario — the tick is synchronous).
+
+**Resolve interaction (S3):** a `resolve` run (merge-conflict resolution)
+modifies the tree *after* approval. `spawnResolve` therefore also calls
+`clearReviewVerdict` so the resolved result is re-reviewed. (Even without that,
+the HEAD-SHA assertion would catch it via the slower path — resolve completes →
+lands review with a now-stale verdict → SHA mismatch → cleared → re-review — but
+clearing on spawn is the direct route.)
 
 ## 7. Notifications
 
@@ -244,26 +346,40 @@ The human "ready for review" notification must fire **once**, on the agent
 verdict, not when the task first enters `review` — otherwise `autoReview`
 double-notifies (gate-pass *and* verdict).
 
-- When `autoReview` is **on**: suppress the review-ready notification on the
-  gate-pass events (`verify_passed` / the ungated completion). Fire it instead
-  on `review_passed` and `review_escalated`.
-- When `autoReview` is **off**: gate-pass events notify exactly as today; no
-  review events are produced.
+**The `'completed'` kind is overloaded and cannot be the suppression key (B2).**
+Today `appendEvent(..., 'completed', ...)` is emitted by both (a) the ungated
+worktree review-landing (`kanban_complete`, the gate-pass we want to suppress)
+*and* (b) scratch/dir/decompose task completion, which never enters the review
+stage. Keying suppression on kind `'completed'` would silence (b) forever.
 
-`classifyKanbanEvent` mappings:
+Fix:
+
+- Change the **ungated worktree review-landing** to emit a distinct kind
+  `review_ready` (instead of `'completed'`); scratch/dir/decompose keep
+  `'completed'`. The verify-gated paths already emit distinct kinds
+  (`verify_passed` / `verify_skipped`).
+- The suppressible **gate-pass set** is therefore
+  `{ review_ready, verify_passed, verify_skipped }` — all three land a worktree
+  task in `review` with a NULL verdict (note `verify_skipped` is included: it
+  fires on the verify fail-open paths and those tasks still get reviewed).
+- When `autoReview` is **on**: suppress the gate-pass set on **both** channels —
+  OS (in `KanbanNotifier.enqueue`) and badge (in the renderer
+  `useKanbanAttention` hook, which calls `kanbanNotifyChannel(event.kind, …)`
+  directly). Both call sites already have the settings in scope. Fire the
+  review-ready notification instead on `review_passed` / `review_escalated`.
+- When `autoReview` is **off**: nothing is suppressed and no `review_*` events
+  are produced, so behavior is byte-for-byte today's.
+
+`classifyKanbanEvent` mappings (static — suppression is a separate
+`autoReview`-conditioned filter, not a classify change):
 
 | Event kind | Category | Notes |
 |---|---|---|
+| `review_ready` | `completed` | ungated worktree landing (replaces `'completed'` for worktree tasks) |
 | `review_passed` | `completed` | approve → task ready for merge/review |
 | `review_escalated` | `completed` | cap/inconclusive → human attention needed |
 | `review_changes_requested` | `null` | in-flight bounce; silent (like `verify_failed`) |
 | `review_started` | `null` | informational; silent |
-
-Implementation note: gate-pass suppression is conditioned on `autoReview` so the
-classify table stays static; the notifier consults the setting to decide whether
-the gate-pass `completed` event reaches a channel. (Alternatively, the
-dispatcher emits the gate-pass event with a payload flag the notifier honors —
-the plan picks the simpler of the two.)
 
 ## 8. Settings & guardrails
 
@@ -293,19 +409,35 @@ Hard guardrails, not configurable:
   `kanban-store.test.ts` suite** (see
   `docs/learnings/2026-06-12-schema-bump-breaks-store-suite.md`).
 
-**Swarm exemption.** `reviewTasks()` skips tasks that belong to a swarm graph
-(they already get a dedicated agent verifier card via `verifierAssignee`). There
-is no single swarm-membership column: members are connected through `task_links`
-up to a swarm **root**, identifiable by its blackboard metadata
-`kind === 'kanban_swarm_v1'` (`SWARM_ROOT_KIND`, `kanban-swarm.ts`). The
-candidate query excludes any task whose `task_links` ancestry reaches such a
-root — add a store predicate `isSwarmMember(taskId)` (walk `task_links` parents
-to a `kanban_swarm_v1` root) and exclude it in `reviewPendingTasks()`.
+**Swarm exemption (S6).** `reviewTasks()` skips tasks that belong to a swarm
+graph (they already get a dedicated agent verifier card via `verifierAssignee`).
+This is harder than a single column: members are connected through `task_links`
+up to a swarm **root**, and a root is identifiable only by parsing its blackboard
+*comments* for the topology metadata `kind === 'kanban_swarm_v1'`
+(`SWARM_ROOT_KIND`, currently **module-private** in `kanban-swarm.ts` — must be
+exported). So `isSwarmMember(taskId)` is a transitive `task_links`-parent walk
+(with a cycle guard) that checks each ancestor's blackboard for the swarm-root
+marker. This runs only at review-candidate cardinality (a handful per tick), so
+the cost is fine; the plan states the mechanism rather than implying a SQL
+column.
+
+**Role `'reviewer'` ripple (S8).** Adding `role: 'reviewer'` changes the
+worker-roster filter the orchestrator sees. `index.ts` builds the assignable
+roster as `profiles.filter(p => p.role !== 'orchestrator')` — a reviewer-role
+profile would leak into the roster offered to decompose/assign runs (the MCP-side
+`role === 'worker'` guards would then reject it, causing model retry churn). Flip
+that filter to `role === 'worker'`, and audit the other `role` switch/branch
+sites for the same assumption.
 
 **Store methods to add** (mirroring resolve/verify equivalents):
-`claimForReview`, `setReviewVerdict(taskId, decision, headSha?)`,
-`incrementReviewAttempts`, `resetReviewAttempts`, `clearReviewVerdict`, and a
-candidate query `reviewPendingTasks()`.
+`claimForReview` (CAS on `status='review'`; can reuse the generic
+`claimForVerifyFix` re-claim mechanism — C3), `setReviewVerdict(taskId, decision,
+headSha?)`, `incrementReviewAttempts`, `resetReviewAttempts`,
+`clearReviewVerdict` (nulls verdict + head_sha **and** zeroes
+`review_attempts`), `isSwarmMember(taskId)`, and the candidate query
+`reviewPendingTasks()`. Plus a `headSha` git helper in `workspace.ts` and an
+`IntegrationOps.headSha` op for the integrate assertion (§6). `rowToTask` /
+`Task` gain `reviewVerdict`, `reviewAttempts`, `reviewHeadSha`.
 
 ## 10. UI
 
@@ -324,24 +456,36 @@ Vitest unit tests, mirroring the verify-gate suite style (mocked store deps /
 spawn fns):
 
 - `reviewTasks()`: claims a review-status worktree task with NULL verdict →
-  spawns a `review` run; skips swarm tasks, system tasks, non-worktree tasks,
-  tasks already verdicted, and tasks with a review run in flight; per-tick cap
-  honored; `autoReview` off → no-op; spawn failure → back to `review`, no throw.
-- `reclaim()` review branch: `approve` → status `review` + verdict + HEAD SHA +
-  `resetReviewAttempts` + `review_passed`; `request_changes` under cap →
+  spawns a `review` run; skips swarm members, system tasks, non-worktree tasks,
+  pruned-worktree tasks, and already-verdicted tasks; per-tick cap honored;
+  `autoReview` off → no-op; spawn failure under `failureLimit` → back to
+  `review`; spawn failure at `failureLimit` → soft-escalate; no throw.
+- `reclaim()` review branch: alive-wait guard (`exit==null` + pid alive +
+  expired claim → `extendClaim` + continue, not escalate); `approve` → status
+  `review` + verdict + HEAD SHA + `review_passed`; `request_changes` under cap →
   `spawnReviewFix` (fresh `work` run, findings injected) + increment; at cap →
   soft-escalate (`review` + verdict retained + `review_escalated` + notify);
-  inconclusive (no verdict) → soft-escalate.
+  inconclusive (no verdict) → `finishRun('reclaimed')` + soft-escalate; review
+  branch precedes exit-3/blockNow (an exit-3 review run escalates, not blocks).
+- `kanban_review_verdict`: approve records verdict + HEAD SHA + `reviewer`
+  comment + event; request_changes records findings + event; rejects an invalid
+  `decision`; rejects empty `summary`; CAS guard — a verdict for a non-current
+  run / non-running task is a no-op; does NOT clear `current_run_id`.
 - `integrate()` guard: `autoReview` on + verdict ≠ approve → skipped; verdict =
-  approve → merges; HEAD-SHA drift → verdict cleared + re-review; `autoReview`
-  off → behaves as #228/#231.
-- `kanban_review_verdict`: approve records verdict + HEAD SHA + comment + event;
-  request_changes records findings + event; rejects an invalid `decision`;
-  rejects empty `summary`.
-- Fresh `work` run clears `review_verdict`/`review_head_sha`.
-- Notifications: `review_passed` / `review_escalated` → `completed`;
-  `review_changes_requested` / `review_started` → null; gate-pass review-ready
-  notification suppressed when `autoReview` on, present when off.
+  approve + matching HEAD → merges; HEAD-SHA drift → `clearReviewVerdict` +
+  re-review; `autoReview` off → behaves as #228/#231.
+- `clearReviewVerdict` nulls verdict + head_sha **and** zeroes `review_attempts`;
+  a fresh `work` run (claim/verify-fix/review-fix) and `spawnResolve` both call
+  it.
+- Notifications: classify maps `review_ready`/`review_passed`/`review_escalated`
+  → `completed`, `review_changes_requested`/`review_started` → null; the gate-pass
+  set `{review_ready, verify_passed, verify_skipped}` is suppressed on **both**
+  OS and badge channels when `autoReview` on, and delivered when off; scratch/dir
+  `'completed'` is never suppressed.
+- `isSwarmMember`: a task linked under a `kanban_swarm_v1` root → true (with a
+  cycle in `task_links` not hanging); an ordinary feature task → false.
+- Roster filter: a `reviewer`-role profile is excluded from the orchestrator's
+  assignable worker roster.
 
 ## 12. Implementation phasing
 
@@ -349,14 +493,23 @@ One plan, TDD task order:
 
 1. Types + schema migration 15 (`review_verdict`, `review_attempts`,
    `review_head_sha`, `RunMode 'review'`, `role 'reviewer'`, `autoReview`
-   setting) + full store suite.
-2. Store methods (`claimForReview`, verdict/attempt mutators, candidate query,
-   `orchestratorRunningCount` excludes `review`).
-3. Reviewer profile singleton + default persona + `requireToolsForMode` case +
-   `buildWorkerInput` review prompt block.
-4. `kanban_review_verdict` terminal tool (MCP server).
-5. `reviewTasks()` dispatcher stage.
-6. `reclaim()` review branch + `spawnReviewFix` + fresh-work-clears-verdict.
-7. `integrate()` approve-guard + HEAD-SHA assertion.
-8. Notifications (classify table + gate-pass suppression).
-9. UI badges + Settings reviewer editor.
+   setting, `rowToTask`/`Task` fields) + full store suite.
+2. Store methods (`claimForReview`, `setReviewVerdict`, `increment/reset/
+   clearReviewVerdict`, `reviewPendingTasks`, `isSwarmMember`,
+   `orchestratorRunningCount` excludes `review`) + `SWARM_ROOT_KIND` export +
+   `workspace.ts` `headSha` helper + `IntegrationOps.headSha` op.
+3. Reviewer profile singleton + `DEFAULT_REVIEWER_INSTRUCTIONS` +
+   `requireToolsForMode` case + `buildPrompt` review block + diff generator +
+   `reviewDiffPath` dep.
+4. `index.ts` `deps.spawnWorker` `'review'` branch (profile resolve-or-default,
+   no assignee write, diff/findings fields) + roster filter flip to
+   `role === 'worker'` + mode-aware comment author.
+5. `kanban_review_verdict` terminal tool (record-only + CAS guard + no
+   status-clear).
+6. `reviewTasks()` dispatcher stage (claim + spawn + spawn-failure bound).
+7. `reclaim()` review branch (alive-wait guard + approve/bounce/escalate) +
+   `spawnReviewFix` + `clearReviewVerdict` on every fresh-work / resolve spawn.
+8. `integrate()` approve-guard + HEAD-SHA assertion.
+9. Notifications (`review_ready` kind, classify table, dual-channel gate-pass
+   suppression).
+10. UI badges + Settings reviewer editor.
