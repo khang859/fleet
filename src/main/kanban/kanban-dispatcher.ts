@@ -15,6 +15,7 @@ import {
   removeWorktree,
   updateIntegrationBranchFromMain
 } from './workspace';
+import { readLogTail } from './spawn-worker';
 
 const log = createLogger('kanban-dispatcher');
 
@@ -43,6 +44,8 @@ const ASSIGN_ATTEMPT_CAP = 2;
 
 /** Resolve runs attempted per task before it is blocked. Tracked in tasks.resolve_attempts (independent of failureLimit). */
 const RESOLVE_ATTEMPT_CAP = 2;
+/** Verify-fix work runs attempted per task before it is blocked. Tracked in tasks.verify_attempts. */
+const VERIFY_ATTEMPT_CAP = 2;
 /** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
 const MAX_INTEGRATE_PER_TICK = 3;
 
@@ -77,6 +80,8 @@ export interface SpawnWorkerArgs {
   lock: string;
   workspace: string;
   mode: RunMode;
+  /** Prior verify failure output, injected into the work prompt for a verify-fix run. */
+  verifyFailure?: string;
 }
 
 export interface DispatcherConfig {
@@ -115,6 +120,8 @@ export interface DispatcherDeps {
   // from a crash. clearWorkerExit drops the entry once consumed.
   workerExit?: (runId: number) => WorkerExit | undefined;
   clearWorkerExit?: (runId: number) => void;
+  /** runId-deterministic verify log path; the dispatcher reads the tail for the failure comment. */
+  verifyLogPath?: (runId: number) => string;
   /** Worker-role profile names (in profile order), for the auto-assign fast path and fallback. */
   workerProfileNames?: () => string[];
   /** Git ops for integrate(); injected in tests, defaults to real workspace.ts fns. */
@@ -164,6 +171,48 @@ export class KanbanDispatcher {
           this.deps.clearWorkerExit?.(task.currentRunId);
         }
         this.store.deleteTask(task.id);
+        continue;
+      }
+
+      // A terminal verify run: read the shell exit code as pass/fail BEFORE the
+      // agent-oriented exit-3 / blockNow branches below (test runners routinely
+      // exit 3, which REVIEW_REQUIRED would otherwise misread as review-required).
+      if (reclaimMode === 'verify') {
+        const runId = task.currentRunId;
+        if (exit == null) {
+          if (runId != null)
+            this.store.finishRun(runId, 'reclaimed', { error: 'verify outcome unknown' });
+          this.reviewFromVerify(task, 'verify outcome unknown');
+        } else if (exit.code === 0) {
+          if (runId != null) this.store.finishRun(runId, 'completed');
+          this.reviewFromVerify(task, null);
+        } else {
+          const label = this.lastVerifyLabel(runId);
+          if (runId != null) {
+            this.store.finishRun(runId, 'failed', {
+              error: `verify failed: ${label} (exit ${exit.code})`
+            });
+          }
+          if (task.verifyAttempts >= VERIFY_ATTEMPT_CAP) {
+            const note = `verify failed after ${VERIFY_ATTEMPT_CAP} attempt(s): ${label}`;
+            this.store.blockTask(task.id, note);
+            this.store.appendEvent(task.id, runId, 'blocked', { reason: note });
+            log.warn('verify gave up', { taskId: task.id, label });
+          } else {
+            const tail =
+              runId != null && this.deps.verifyLogPath
+                ? readLogTail(this.deps.verifyLogPath(runId))
+                : '';
+            const logRef =
+              runId != null && this.deps.verifyLogPath
+                ? `\n(full log: ${this.deps.verifyLogPath(runId)})`
+                : '';
+            this.store.addComment(task.id, 'verify', `verify failed: ${label}\n${tail}${logRef}`);
+            this.store.appendEvent(task.id, runId, 'verify_failed', { label });
+            this.spawnVerifyFix(task, tail);
+          }
+        }
+        if (runId != null) this.deps.clearWorkerExit?.(runId);
         continue;
       }
 
@@ -546,6 +595,81 @@ export class KanbanDispatcher {
       this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'resolve' });
       this.store.setStatusCleared(task.id, 'review'); // hand back to review so a later tick retries
       log.error('resolve spawn failed', { taskId: task.id, error: msg });
+      return false;
+    }
+  }
+
+  /** Move a task from a finished verify run into review, recovering the work run's summary. */
+  private reviewFromVerify(task: Task, skipReason: string | null): void {
+    const work = this.store
+      .listRuns(task.id)
+      .find((r) => r.mode === 'work' && r.outcome === 'completed');
+    const summary = work?.summary ?? null;
+    this.store.reviewTask(task.id, summary);
+    if (task.repoPath && task.branchName && task.baseBranch) {
+      const c = this.ops.checkMergeConflicts({
+        repoPath: task.repoPath,
+        baseBranch: task.baseBranch,
+        branchName: task.branchName
+      });
+      this.store.setTaskConflict(task.id, c.state, c.files);
+    }
+    if (skipReason) {
+      this.store.appendEvent(task.id, null, 'verify_skipped', { reason: skipReason });
+    } else {
+      const labels = this.verifyLabelsFor(task);
+      this.store.appendEvent(task.id, null, 'verify_passed', { labels });
+    }
+  }
+
+  /** The verify command labels configured for a task's project (for the verify_passed event). */
+  private verifyLabelsFor(task: Task): string[] {
+    if (!task.repoPath) return [];
+    const project = this.store.getProjectByPath(task.boardId, task.repoPath);
+    return (project?.verifyCommands ?? []).map((c) => c.label);
+  }
+
+  /** The label of the last verify command that started (= the one that failed), parsed from the log. */
+  private lastVerifyLabel(runId: number | null): string {
+    if (runId == null || !this.deps.verifyLogPath) return 'verify';
+    const tail = readLogTail(this.deps.verifyLogPath(runId));
+    const matches = [...tail.matchAll(/=== verify: (.+?) ===/g)];
+    return matches.length ? matches[matches.length - 1][1] : 'verify';
+  }
+
+  /** Spawn a fresh `work` run on the same worktree to fix a verify failure. */
+  private spawnVerifyFix(task: Task, failureTail: string): boolean {
+    const lock = this.nextLock();
+    if (!this.store.claimForVerifyFix(task.id, lock, this.deps.config.claimTtlMs)) return false;
+    let runId: number | null = null;
+    try {
+      const workspace = task.workspacePath ?? '';
+      const run = this.store.startRun(task.id, task.assignee ?? 'worker', null, 'work');
+      runId = run.id;
+      this.store.incrementVerifyAttempts(task.id);
+      const pid = this.deps.spawnWorker({
+        task,
+        runId: run.id,
+        lock,
+        workspace,
+        mode: 'work',
+        verifyFailure: failureTail
+      });
+      if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+      this.store.appendEvent(task.id, run.id, 'spawned', {
+        pid: pid ?? null,
+        mode: 'work',
+        reason: 'verify-fix',
+        attempt: task.verifyAttempts + 1
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.recordFailure(task.id, msg);
+      if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+      this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'work' });
+      this.store.setStatusCleared(task.id, 'ready');
+      log.error('verify-fix spawn failed', { taskId: task.id, error: msg });
       return false;
     }
   }
