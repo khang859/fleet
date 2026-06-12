@@ -931,6 +931,36 @@ export class KanbanCommands {
   }
 
   /**
+   * Deterministic decompose enforcement (spec §4): after a decompose run produces
+   * ≥2 worktree children with no feature, create a feature named after the parent
+   * and group parent + children. Idempotent — re-running it once anything is grouped
+   * is a no-op. Called from the MCP kanban_complete handler when a decompose run ends.
+   */
+  enforceDecomposeGrouping(parentTaskId: string): void {
+    const parent = this.store.getTask(parentTaskId);
+    if (!parent || parent.featureId) return; // already grouped, or gone
+    const children = this.store
+      .childrenOf(parentTaskId)
+      .map((id) => this.store.getTask(id))
+      .filter((t): t is Task => t != null && t.workspaceKind === 'worktree');
+    if (children.length < 2) return;
+    // bail if ANY child is already grouped — never clobber an existing grouping
+    if (children.some((c) => c.featureId)) return;
+
+    const repoPath = parent.repoPath ?? children[0].repoPath ?? null;
+    const baseBranch = parent.baseBranch ?? children[0].baseBranch ?? null;
+    const feature = this.createFeature({
+      boardId: parent.boardId,
+      name: parent.title,
+      repoPath,
+      baseBranch
+    });
+    for (const t of [parent, ...children]) {
+      this.assignTaskToFeature(t.id, feature.id);
+    }
+  }
+
+  /**
    * Re-run decompose for a feature whose triage orchestrator only created some tasks.
    * Reuses an existing triage task in the feature when present; otherwise creates a fresh
    * triage task seeded with the feature's existing tasks so the orchestrator has context

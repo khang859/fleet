@@ -942,6 +942,75 @@ describe('KanbanCommands scratch archive safety net', () => {
   });
 });
 
+describe('KanbanCommands.enforceDecomposeGrouping', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('groups a decompose parent + its ≥2 worktree children into a new feature', () => {
+    const { store, commands } = makeCommands();
+    const parent = store.createTask({
+      title: 'Build auth',
+      status: 'done',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+
+    commands.enforceDecomposeGrouping(parent.id);
+
+    const features = store.listFeatures({});
+    expect(features).toHaveLength(1);
+    expect(features[0].name).toBe('Build auth');
+    expect(features[0].repoPath).toBe('/repo');
+    expect(store.getTask(parent.id)?.featureId).toBe(features[0].id);
+    expect(store.getTask(c1.id)?.featureId).toBe(features[0].id);
+    expect(store.getTask(c2.id)?.featureId).toBe(features[0].id);
+    store.close();
+  });
+
+  it('is a no-op when fewer than 2 worktree children exist', () => {
+    const { store, commands } = makeCommands();
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const scratch = store.createTask({ title: 's' }); // scratch child does not count
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, scratch.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(0);
+    store.close();
+  });
+
+  it('is a no-op when the children are already grouped (orchestrator grouped them)', () => {
+    const { store, commands } = makeCommands();
+    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(1); // no new feature
+    store.close();
+  });
+
+  it('is a no-op when the parent is already in a feature', () => {
+    const { store, commands } = makeCommands();
+    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(1);
+    store.close();
+  });
+});
+
 describe('project commands', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
