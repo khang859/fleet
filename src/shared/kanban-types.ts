@@ -11,8 +11,8 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve'. */
-export type RunMode = 'work' | 'decompose' | 'specify' | 'assign' | 'resolve';
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'. */
+export type RunMode = 'work' | 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
@@ -83,6 +83,29 @@ export interface CreateFeatureInput {
   name: string;
   repoPath?: string | null;
   baseBranch?: string | null;
+}
+
+export type SuggestionStatus = 'pending' | 'accepted' | 'dismissed';
+
+/** A PM-proposed grouping of loose tickets into a feature, awaiting a human Accept/Dismiss (spec §4). */
+export interface FeatureSuggestion {
+  id: string;
+  boardId: string;
+  repoPath: string | null;
+  name: string;
+  taskIds: string[];
+  reason: string | null;
+  status: SuggestionStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CreateSuggestionInput {
+  boardId: string;
+  repoPath: string | null;
+  name: string;
+  taskIds: string[];
+  reason?: string | null;
 }
 
 export interface UpdateFeatureInput {
