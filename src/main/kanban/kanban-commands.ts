@@ -29,7 +29,8 @@ import type {
   WorktreeInfo,
   PruneResult,
   Project,
-  FeatureSuggestion
+  FeatureSuggestion,
+  VerifyCommand
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -1160,6 +1161,7 @@ export class KanbanCommands {
     name: string;
     path: string;
     description?: string | null;
+    verifyCommands?: VerifyCommand[];
   }): Project {
     this.requireBoard(input.boardId);
     const name = (input.name ?? '').trim();
@@ -1181,7 +1183,19 @@ export class KanbanCommands {
       throw new CodedError(`this folder is already registered on this board`, 'BAD_REQUEST');
     }
     const description = input.description?.trim() || null;
-    return this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+    const project = this.store.addProject({ boardId: input.boardId, name, path: input.path, description });
+    if (input.verifyCommands && input.verifyCommands.length > 0) {
+      this.store.setProjectVerifyCommands(project.id, input.verifyCommands);
+      return this.store.getProject(project.id) ?? project;
+    }
+    return project;
+  }
+
+  setProjectVerifyCommands(projectId: string, commands: VerifyCommand[]): void {
+    if (!this.store.getProject(projectId)) {
+      throw new CodedError(`project not found: ${projectId}`, 'NOT_FOUND');
+    }
+    this.store.setProjectVerifyCommands(projectId, commands);
   }
 
   removeProject(id: string): void {

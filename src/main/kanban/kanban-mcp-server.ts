@@ -432,7 +432,15 @@ const PM_TOOLS: McpTool[] = [
       properties: {
         name: { type: 'string' },
         path: { type: 'string' }, // absolute folder path
-        description: { type: 'string' }
+        description: { type: 'string' },
+        verify_commands: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { label: { type: 'string' }, command: { type: 'string' } },
+            required: ['label', 'command']
+          }
+        }
       },
       required: ['name', 'path']
     }
@@ -904,13 +912,21 @@ export class KanbanMcpServer {
         }
         case 'kanban_project_add': {
           const a = z
-            .object({ name: z.string(), path: z.string(), description: z.string().optional() })
+            .object({
+              name: z.string(),
+              path: z.string(),
+              description: z.string().optional(),
+              verify_commands: z
+                .array(z.object({ label: z.string().min(1), command: z.string().min(1) }))
+                .optional()
+            })
             .parse(args);
           const p = commands.addProject({
             boardId: scope.boardId,
             name: a.name,
             path: a.path,
-            description: a.description ?? null
+            description: a.description ?? null,
+            verifyCommands: a.verify_commands
           });
           return this.text(
             res,
