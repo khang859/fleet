@@ -48,6 +48,7 @@ describe('reclaim() verify branch', () => {
     const clock = { t: 5000 };
     const store = new KanbanStore(join(TEST_DIR, `a-${Math.random()}.db`), { now: () => clock.t });
     const { task, verifyRunId } = makeVerifyingTask(store);
+    store.incrementVerifyAttempts(task.id); // a prior fix attempt; passing must clear the budget
     const exits = new Map<number, WorkerExit>([[verifyRunId, { code: 0, signal: null }]]);
     const disp = new KanbanDispatcher(store, {
       now: () => clock.t,
@@ -64,6 +65,7 @@ describe('reclaim() verify branch', () => {
     const after = store.getTask(task.id)!;
     expect(after.status).toBe('review');
     expect(after.result).toBe('did the work');
+    expect(after.verifyAttempts).toBe(0); // reset on a clean trip to review
     expect(store.listEvents(task.id).some((e) => e.kind === 'verify_passed')).toBe(true);
     store.close();
   });

@@ -58,6 +58,17 @@ describe('verify-gate store', () => {
     store.close();
   });
 
+  it('resetVerifyAttempts clears the counter', () => {
+    const store = makeStore();
+    const t = store.createTask({ title: 'x', status: 'running' });
+    store.incrementVerifyAttempts(t.id);
+    store.incrementVerifyAttempts(t.id);
+    expect(store.getTask(t.id)?.verifyAttempts).toBe(2);
+    store.resetVerifyAttempts(t.id);
+    expect(store.getTask(t.id)?.verifyAttempts).toBe(0);
+    store.close();
+  });
+
   it('orchestratorRunningCount excludes verify runs', () => {
     const store = makeStore();
     const t = store.createTask({ title: 'x', status: 'running' });

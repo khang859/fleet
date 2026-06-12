@@ -615,6 +615,9 @@ export class KanbanDispatcher {
       .find((r) => r.mode === 'work' && r.outcome === 'completed');
     const summary = work?.summary ?? null;
     this.store.reviewTask(task.id, summary);
+    // A clean trip through the gate to review clears the fix budget so a later
+    // verify cycle (e.g. after an integrate resolve) starts with the full cap.
+    this.store.resetVerifyAttempts(task.id);
     if (task.repoPath && task.branchName && task.baseBranch) {
       const c = this.ops.checkMergeConflicts({
         repoPath: task.repoPath,

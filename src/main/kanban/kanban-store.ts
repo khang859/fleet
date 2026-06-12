@@ -1832,6 +1832,12 @@ export class KanbanStore {
       .run(this.now(), taskId);
   }
 
+  resetVerifyAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET verify_attempts = 0, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
   /** Attach (or replace) a schedule on a task; moves it to the scheduled lane. */
   setSchedule(taskId: string, input: ScheduleInput): void {
     const v = validateSchedule(input);
