@@ -41,18 +41,30 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
 
     onSearch: async (query: string): Promise<TelescopeItem[]> => {
       if (!query) {
-        // Return recent files (first 15)
+        // Return recent files (first 15), skipping any that no longer exist on disk
         const recentFiles = useWorkspaceStore.getState().recentFiles.slice(0, 15);
-        return recentFiles.map((filePath) => {
-          const name = filePath.split('/').pop() ?? filePath;
-          return {
-            id: filePath,
-            icon: getFileIcon(name),
-            title: name,
-            subtitle: filePath,
-            data: { filePath }
-          };
-        });
+        const checks = await Promise.all(
+          recentFiles.map(async (filePath) => ({
+            filePath,
+            exists: (await window.fleet.file.stat(filePath)).success
+          }))
+        );
+        const missing = checks.filter((c) => !c.exists).map((c) => c.filePath);
+        if (missing.length > 0) {
+          useWorkspaceStore.getState().removeRecentFiles(missing);
+        }
+        return checks
+          .filter((c) => c.exists)
+          .map(({ filePath }) => {
+            const name = filePath.split('/').pop() ?? filePath;
+            return {
+              id: filePath,
+              icon: getFileIcon(name),
+              title: name,
+              subtitle: filePath,
+              data: { filePath }
+            };
+          });
       }
 
       // Ensure cache is populated (may have been set by pre-load)
