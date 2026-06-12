@@ -1,7 +1,8 @@
 import Database from 'better-sqlite3';
 import { mkdirSync, rmSync, existsSync, realpathSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, join, resolve } from 'path';
 import { randomUUID } from 'crypto';
+import { z } from 'zod';
 import { createLogger } from '../logger';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema';
 import type {
@@ -35,7 +36,8 @@ import type {
   ConflictState,
   FeatureSuggestion,
   SuggestionStatus,
-  CreateSuggestionInput
+  CreateSuggestionInput,
+  VerifyCommand
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -48,6 +50,20 @@ import { deriveBoardSlug } from './board-slug';
 import { removeWorktree, cleanupWorkspace } from './workspace';
 
 const log = createLogger('kanban-store');
+
+const VERIFY_COMMANDS_SCHEMA = z.array(
+  z.object({ label: z.string().min(1), command: z.string().min(1) })
+);
+
+/** Parse a project's verify_commands JSON; malformed/empty → []. */
+function parseVerifyCommands(raw: unknown): VerifyCommand[] {
+  if (typeof raw !== 'string' || raw.trim() === '') return [];
+  try {
+    return VERIFY_COMMANDS_SCHEMA.parse(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
 
 /** Append a plain reference line pointing at a seeded artifact (reuse provenance). */
 function appendArtifactReference(body: string, art: { filename: string }): string {
@@ -213,6 +229,12 @@ export class KanbanStore {
         'CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status)'
       );
     }
+    if (current < 14) {
+      // Deterministic verify gates (#231): per-project verify commands +
+      // a bounded verify-fix budget on tasks. Additive, idempotent.
+      this.addColumnIfMissing('projects', 'verify_commands', 'TEXT');
+      this.addColumnIfMissing('tasks', 'verify_attempts', 'INTEGER NOT NULL DEFAULT 0');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -271,6 +293,7 @@ export class KanbanStore {
       lastHeartbeatAt: (r.last_heartbeat_at as number | null) ?? null,
       consecutiveFailures: Number(r.consecutive_failures),
       resolveAttempts: Number(r.resolve_attempts ?? 0),
+      verifyAttempts: Number(r.verify_attempts ?? 0),
       lastFailureError: (r.last_failure_error as string | null) ?? null,
       maxRuntimeSeconds: (r.max_runtime_seconds as number | null) ?? null,
       maxRetries: Number(r.max_retries),
@@ -1150,6 +1173,7 @@ export class KanbanStore {
       name: String(r.name),
       path: String(r.path),
       description: (r.description as string | null) ?? null,
+      verifyCommands: parseVerifyCommands(r.verify_commands),
       isDefault: Number(r.is_default) === 1,
       createdAt: Number(r.created_at),
       updatedAt: Number(r.updated_at)
@@ -1175,6 +1199,22 @@ export class KanbanStore {
       .prepare('SELECT * FROM projects WHERE board_id=? AND name=?')
       .get(boardId, name) as Record<string, unknown> | undefined;
     return row ? this.rowToProject(row) : null;
+  }
+
+  /** Find a registered project by its on-disk path (normalized), for the verify gate. */
+  getProjectByPath(boardId: string, path: string): Project | null {
+    const target = resolve(path);
+    for (const p of this.listProjects(boardId)) {
+      if (resolve(p.path) === target) return p;
+    }
+    return null;
+  }
+
+  setProjectVerifyCommands(projectId: string, commands: VerifyCommand[]): void {
+    const json = JSON.stringify(VERIFY_COMMANDS_SCHEMA.parse(commands));
+    this.db
+      .prepare('UPDATE projects SET verify_commands=?, updated_at=? WHERE id=?')
+      .run(json, this.now(), projectId);
   }
 
   addProject(input: {
@@ -1709,6 +1749,18 @@ export class KanbanStore {
     return res.changes === 1;
   }
 
+  /** Re-claim a running task (whose verify run just ended) with a fresh lock for a verify-fix run. */
+  claimForVerifyFix(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET claim_lock=@lock, claim_expires=@expires, last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='running'`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
   /** Flag up to `limit` un-flagged triage tasks for decompose; returns how many were flagged. */
   armTriageForDecompose(limit: number): number {
     if (limit <= 0) return 0;
@@ -1729,7 +1781,7 @@ export class KanbanStore {
       .prepare(
         `SELECT COUNT(*) AS c FROM tasks t
          JOIN task_runs r ON r.id = t.current_run_id
-         WHERE t.status='running' AND r.mode != 'work'`
+         WHERE t.status='running' AND r.mode NOT IN ('work','verify')`
       )
       .get() as { c: number };
     return Number(row.c);
@@ -1768,9 +1820,21 @@ export class KanbanStore {
       .run(this.now(), taskId);
   }
 
+  incrementVerifyAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET verify_attempts = verify_attempts + 1, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
   resetResolveAttempts(taskId: string): void {
     this.db
       .prepare('UPDATE tasks SET resolve_attempts = 0, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  resetVerifyAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET verify_attempts = 0, updated_at=? WHERE id=?')
       .run(this.now(), taskId);
   }
 
@@ -1923,6 +1987,11 @@ export class KanbanStore {
       )
       .run({ id: taskId, lock, expires: ts + ttlMs, ts });
     return res.changes === 1;
+  }
+
+  /** Test-only raw handle for simulating corruption; do not use in production code. */
+  rawDbForTest(): Database.Database {
+    return this.db;
   }
 
   /** Hard-delete a task row and its links (used to drop a transient suggest system task on terminal). */

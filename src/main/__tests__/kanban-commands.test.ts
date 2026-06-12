@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, existsSync, writeFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -1124,5 +1124,24 @@ describe('KanbanCommands suggestions', () => {
       code = (err as { code?: string }).code;
     }
     expect(code).toBe('NOT_FOUND');
+  });
+});
+
+describe('KanbanCommands verify commands', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('addProject persists verify_commands and setProjectVerifyCommands updates them', () => {
+    const { store, commands } = makeCommands();
+    const dir = mkdtempSync(join(tmpdir(), 'verify-proj-'));
+    const p = commands.addProject({
+      boardId: 'default',
+      name: 'app',
+      path: dir,
+      verifyCommands: [{ label: 'typecheck', command: 'npm run typecheck' }]
+    });
+    expect(p.verifyCommands).toEqual([{ label: 'typecheck', command: 'npm run typecheck' }]);
+    commands.setProjectVerifyCommands(p.id, [{ label: 'tests', command: 'npm test' }]);
+    expect(store.getProject(p.id)?.verifyCommands).toEqual([{ label: 'tests', command: 'npm test' }]);
   });
 });

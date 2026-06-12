@@ -14,6 +14,19 @@ describe('classifyKanbanEvent', () => {
     expect(classifyKanbanEvent('schedule_fired')).toBe('scheduleFired');
   });
 
+  it('treats a gated task reaching review (verify pass/skip) like a completion', () => {
+    // Parity with the ungated 'completed' event: a verify-gated task that lands
+    // in review must still fire the review-ready notification.
+    expect(classifyKanbanEvent('verify_passed')).toBe('completed');
+    expect(classifyKanbanEvent('verify_skipped')).toBe('completed');
+  });
+
+  it('does not notify on an in-flight verify retry', () => {
+    // verify_failed under cap auto-retries; no user-facing notification yet.
+    expect(classifyKanbanEvent('verify_failed')).toBeNull();
+    expect(classifyKanbanEvent('verify_started')).toBeNull();
+  });
+
   it('returns null for non-attention kinds', () => {
     for (const kind of [
       'comment',

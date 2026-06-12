@@ -217,6 +217,7 @@ export const IPC_CHANNELS = {
   KANBAN_ADD_PROJECT: 'kanban:add-project',
   KANBAN_REMOVE_PROJECT: 'kanban:remove-project',
   KANBAN_SET_DEFAULT_PROJECT: 'kanban:set-default-project',
+  KANBAN_SET_PROJECT_VERIFY: 'kanban:set-project-verify',
   // Sessions
   SESSIONS_LIST: 'sessions:list',
   SESSIONS_READ: 'sessions:read',

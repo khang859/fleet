@@ -57,6 +57,7 @@ import { PrPoller } from './kanban/pr-poller';
 import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
   spawnRuneWorker,
+  spawnVerify,
   resolveWorkProfile,
   detectAuthFailure,
   extractRuneError,
@@ -802,6 +803,7 @@ void app.whenReady().then(async () => {
 
   // Bootstrap kanban subsystem
   const KANBAN_HOME = join(homedir(), '.fleet', 'kanban');
+  const verifyLogPath = (runId: number): string => join(KANBAN_HOME, 'logs', `verify-${runId}.log`);
   kanbanStore = new KanbanStore(join(KANBAN_HOME, 'kanban.db'), {
     onEvent: (event) => {
       const w = mainWindow;
@@ -951,7 +953,7 @@ void app.whenReady().then(async () => {
       }
       return prepared.path;
     },
-    spawnWorker: ({ task, runId, lock, workspace, mode }) => {
+    spawnWorker: ({ task, runId, lock, workspace, mode, verifyFailure }) => {
       // Pre-flight gate: if we already know rune is missing, fail fast with a clear, actionable
       // reason. This routes through the dispatcher's catch → spawn_failed (shown in the drawer)
       // instead of letting the worker die and surface as a cryptic "pid not alive" reclaim.
@@ -1018,6 +1020,7 @@ void app.whenReady().then(async () => {
           },
           workspace,
           resolveTarget,
+          verifyFailure,
           mcpPort: kanbanMcpPort,
           runToken,
           logPath,
@@ -1071,7 +1074,8 @@ void app.whenReady().then(async () => {
     config: buildDispatcherConfig(),
     intervalMs: settingsStore.get().kanban.dispatcher.intervalMs,
     workerExit: (id) => workerExits.get(id),
-    clearWorkerExit: (id) => workerExits.delete(id)
+    clearWorkerExit: (id) => workerExits.delete(id),
+    verifyLogPath
   });
   kanbanDispatcher.start();
   // Poll GitHub PR status out-of-band (a gh network call inside the 5s dispatch
@@ -1090,6 +1094,18 @@ void app.whenReady().then(async () => {
   kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
   kanbanMcp.setCommands(kanbanCommands);
   kanbanMcp.setKanbanHome(KANBAN_HOME);
+  kanbanMcp.setVerifyRunner(({ runId, taskId, workspace, commands }) => {
+    const logPath = verifyLogPath(runId);
+    return spawnVerify({ workspace, commands, logPath }, (exit) => {
+      // Raw recorder: NO rune auth/crash classification (a test exit-3 or a "401" in
+      // output must not be misread as a fatal block). Same running/currentRunId guard as
+      // the rune recorder so a late exit (after reclaim already fail-opened) can't leave a
+      // stale entry.
+      const t = kanbanStore!.getTask(taskId);
+      if (t?.status !== 'running' || t.currentRunId !== runId) return;
+      workerExits.set(runId, { code: exit.code, signal: exit.signal });
+    });
+  });
   pmChat = new PmChatService({
     mcp: kanbanMcp,
     mcpPort: kanbanMcpPort,
