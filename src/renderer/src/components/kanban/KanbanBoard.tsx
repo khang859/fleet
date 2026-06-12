@@ -25,6 +25,7 @@ import { RuneMissingBanner } from './RuneMissingBanner';
 import { FeatureSelector } from './FeatureSelector';
 import { FeaturesView } from './FeaturesView';
 import { FeaturePrRollup } from './FeaturePrRollup';
+import { FeatureSuggestionsPrompt } from './FeatureSuggestionsPrompt';
 import { WorktreeManager } from './WorktreeManager';
 
 export function KanbanBoard(): React.JSX.Element {
@@ -557,6 +558,7 @@ export function KanbanBoard(): React.JSX.Element {
           )}
 
           <FeaturePrRollup />
+          <FeatureSuggestionsPrompt />
 
           {focusedFeature && visible.length === 0 && (
             <div className="flex items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-2 text-xs text-neutral-400">
