@@ -4,7 +4,7 @@ import { join, dirname } from 'path';
 import { createLogger } from '../logger';
 import { renderProfileMarkdown } from './profile-file';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
-import type { RunMode } from '../../shared/kanban-types';
+import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
 import type { InlinedDoc } from './pm-paths';
 
 const log = createLogger('kanban-spawn');
@@ -31,6 +31,8 @@ export interface BuildWorkerInput {
   docs?: InlinedDoc[];
   /** Branch to merge into the worktree for a resolve run (integration branch, or base for a feature_sync task). */
   resolveTarget?: string;
+  /** Failure output from a prior verify run; injected into the work prompt so the fix worker sees it. */
+  verifyFailure?: string;
 }
 
 export interface WorkerInvocation {
@@ -112,7 +114,12 @@ function buildPrompt(input: BuildWorkerInput): string {
       `no subset is clearly related, call kanban_block with a short reason.`
     );
   }
+  const verifyBlock = input.verifyFailure
+    ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
+      `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
+    : '';
   return (
+    verifyBlock +
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
     docsSection(input) +
@@ -244,7 +251,7 @@ const AUTH_FAILURE_RE =
   /auth(?:entication)?\s+(?:refresh\s+)?failed|refresh_token|sign(?:ing)?\s+in\s+again|invalid_grant|invalid[_\s]?api[_\s]?key|missing\s+api\s+key|\bunauthorized\b|\b401\b/i;
 
 /** Reads up to the last `maxBytes` of a (possibly missing) log file; '' on any error. */
-function readLogTail(logPath: string, maxBytes = 8192): string {
+export function readLogTail(logPath: string, maxBytes = 8192): string {
   try {
     const buf = readFileSync(logPath);
     return buf.subarray(Math.max(0, buf.length - maxBytes)).toString('utf-8');
@@ -289,6 +296,56 @@ export function lastLogLine(logPath: string, maxLen = 200): string | undefined {
     .filter(Boolean);
   const last = lines[lines.length - 1];
   return last ? last.slice(0, maxLen) : undefined;
+}
+
+/**
+ * Builds a single POSIX-sh script that runs each verify command in order, printing a
+ * `=== verify: <label> ===` marker before each. `&&` chaining gives stop-on-first-failure
+ * with the failing command's exit code propagated (echo always returns 0). The last marker
+ * in the log identifies which command failed.
+ */
+export function buildVerifyScript(commands: VerifyCommand[]): string {
+  return commands
+    .map((c) => {
+      const marker = `=== verify: ${c.label} ===`;
+      // single-quote the marker for echo; escape any single quotes in the label
+      const safeMarker = marker.replace(/'/g, `'\\''`);
+      return `echo '${safeMarker}' && ${c.command}`;
+    })
+    .join(' && ');
+}
+
+/**
+ * Spawns the verify commands as one detached `sh -c` shell in the task's worktree,
+ * combined stdout+stderr → logPath. Returns the pid (or undefined on spawn failure).
+ * Deterministic: no agent, no MCP.
+ */
+export function spawnVerify(
+  input: { workspace: string; commands: VerifyCommand[]; logPath: string },
+  onExit?: (exit: WorkerExit) => void
+): number | undefined {
+  mkdirSync(dirname(input.logPath), { recursive: true });
+  const out = openSync(input.logPath, 'a');
+  const child = spawn('sh', ['-c', buildVerifyScript(input.commands)], {
+    cwd: input.workspace,
+    env: { ...process.env },
+    detached: true,
+    stdio: ['ignore', out, out]
+  });
+  let settled = false;
+  const settle = (exit: WorkerExit): void => {
+    if (settled) return;
+    settled = true;
+    onExit?.(exit);
+  };
+  child.on('error', (err: NodeJS.ErrnoException) => {
+    log.error('verify run failed to spawn', { error: err.message });
+    settle({ code: null, signal: null });
+  });
+  child.on('exit', (code, signal) => settle({ code, signal }));
+  closeSync(out);
+  child.unref();
+  return child.pid;
 }
 
 export function spawnRuneWorker(
