@@ -28,7 +28,8 @@ import type {
   ConflictState,
   WorktreeInfo,
   PruneResult,
-  Project
+  Project,
+  FeatureSuggestion
 } from '../../shared/kanban-types';
 import { createSwarm as buildSwarm } from './kanban-swarm';
 import { validateSchedule, computeNextRun } from './schedule';
@@ -1006,6 +1007,38 @@ export class KanbanCommands {
     this.requestDecompose(triage.id);
     this.dispatcher.tick();
     return triage;
+  }
+
+  // ---- Feature suggestions ----
+
+  listSuggestions(boardId: string): FeatureSuggestion[] {
+    return this.store.listSuggestions(boardId, { status: 'pending' });
+  }
+
+  acceptSuggestion(id: string): Feature {
+    const s = this.store.getSuggestion(id);
+    if (!s) throw new CodedError(`suggestion not found: ${id}`, 'NOT_FOUND');
+    const tasks = s.taskIds
+      .map((tid) => this.store.getTask(tid))
+      .filter((t): t is Task => t !== null);
+    const baseBranch = tasks.find((t) => t.baseBranch != null)?.baseBranch ?? null;
+    const feature = this.createFeature({
+      boardId: s.boardId,
+      name: s.name,
+      repoPath: s.repoPath,
+      baseBranch
+    });
+    for (const t of tasks) {
+      this.assignTaskToFeature(t.id, feature.id);
+    }
+    this.store.updateSuggestionStatus(id, 'accepted');
+    return feature;
+  }
+
+  dismissSuggestion(id: string): void {
+    const s = this.store.getSuggestion(id);
+    if (!s) throw new CodedError(`suggestion not found: ${id}`, 'NOT_FOUND');
+    this.store.updateSuggestionStatus(id, 'dismissed');
   }
 
   /** Shared guard: a feature with the repo + integration branch needed for git ops. */

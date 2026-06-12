@@ -1045,3 +1045,69 @@ describe('project commands', () => {
     expect(() => commands.setDefaultProject('nope')).toThrow(/not found/i);
   });
 });
+
+describe('KanbanCommands suggestions', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('accept creates a feature + assigns tasks + marks accepted', () => {
+    const { store, commands } = makeCommands();
+    const t1 = store.createTask({ title: 'task 1', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const t2 = store.createTask({ title: 'task 2', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const s = store.createSuggestion({ boardId: 'default', name: 'My Feature', repoPath: '/repo', taskIds: [t1.id, t2.id] });
+
+    const feature = commands.acceptSuggestion(s.id);
+
+    expect(feature.name).toBe('My Feature');
+    expect(feature.repoPath).toBe('/repo');
+    expect(feature.baseBranch).toBe('main');
+    expect(store.getTask(t1.id)?.featureId).toBe(feature.id);
+    expect(store.getTask(t2.id)?.featureId).toBe(feature.id);
+    expect(store.getSuggestion(s.id)?.status).toBe('accepted');
+  });
+
+  it('accept skips tasks that no longer exist', () => {
+    const { store, commands } = makeCommands();
+    const t1 = store.createTask({ title: 'existing', workspaceKind: 'scratch' });
+    const s = store.createSuggestion({ boardId: 'default', name: 'Partial', repoPath: null, taskIds: [t1.id, 'ghost-id'] });
+
+    const feature = commands.acceptSuggestion(s.id);
+
+    const members = store.listFeatureTasks(feature.id);
+    expect(members.map((t) => t.id)).toContain(t1.id);
+    expect(members.map((t) => t.id)).not.toContain('ghost-id');
+    expect(store.getSuggestion(s.id)?.status).toBe('accepted');
+  });
+
+  it('dismiss marks dismissed without creating a feature', () => {
+    const { store, commands } = makeCommands();
+    const s = store.createSuggestion({ boardId: 'default', name: 'Ignore Me', repoPath: null, taskIds: [] });
+
+    commands.dismissSuggestion(s.id);
+
+    expect(store.getSuggestion(s.id)?.status).toBe('dismissed');
+    expect(store.listFeatures({})).toHaveLength(0);
+  });
+
+  it('acceptSuggestion throws NOT_FOUND for an unknown suggestion id', () => {
+    const { commands } = makeCommands();
+    let code: string | undefined;
+    try {
+      commands.acceptSuggestion('nope');
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('NOT_FOUND');
+  });
+
+  it('dismissSuggestion throws NOT_FOUND for an unknown suggestion id', () => {
+    const { commands } = makeCommands();
+    let code: string | undefined;
+    try {
+      commands.dismissSuggestion('nope');
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('NOT_FOUND');
+  });
+});
