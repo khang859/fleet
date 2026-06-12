@@ -28,14 +28,32 @@ const OSC133D_RE = /\x1b\]133;D(?:;(\d+))?\x1b\\/;
 
 const CARRY_BUFFER_SIZE = 200;
 
+// After the user types into a pane, wait this long before deciding the
+// permission prompt was answered. If the trigger text reappears within the
+// window, it's just a redraw of the still-pending prompt (e.g. arrow-key
+// navigation), so the latch stays engaged and we don't re-notify.
+const PERMISSION_RESET_GRACE_MS = 400;
+
+type PermissionLatch = {
+  // True once we've emitted for the current prompt; suppresses redraw re-emits.
+  suppressed: boolean;
+  // True if the trigger text reappeared since the last user input.
+  matchedSinceInput: boolean;
+  resetTimer: ReturnType<typeof setTimeout> | null;
+};
+
 export class NotificationDetector {
   private eventBus: EventBus;
   private carryBuffers = new Map<string, string>();
+  private permissionLatches = new Map<string, PermissionLatch>();
 
   constructor(eventBus: EventBus) {
     this.eventBus = eventBus;
     eventBus.on('pane-closed', (event) => {
       this.carryBuffers.delete(event.paneId);
+      const latch = this.permissionLatches.get(event.paneId);
+      if (latch?.resetTimer) clearTimeout(latch.resetTimer);
+      this.permissionLatches.delete(event.paneId);
     });
   }
 
@@ -110,9 +128,38 @@ export class NotificationDetector {
   private checkPermissionPrompt(paneId: string, data: string): void {
     for (const pattern of PERMISSION_PATTERNS) {
       if (pattern.test(data)) {
+        const latch = this.permissionLatches.get(paneId);
+        if (latch) {
+          // Mark that the prompt is still on screen (used to decide whether a
+          // pending input actually answered it — see onUserInput).
+          latch.matchedSinceInput = true;
+          if (latch.suppressed) return;
+          latch.suppressed = true;
+        } else {
+          this.permissionLatches.set(paneId, {
+            suppressed: true,
+            matchedSinceInput: true,
+            resetTimer: null
+          });
+        }
         this.emitNotification(paneId, 'permission');
         return;
       }
     }
+  }
+
+  // Called when the user types into a pane. If the permission prompt text stops
+  // reappearing shortly after, the prompt was answered — re-arm the latch so the
+  // next distinct permission request notifies exactly once.
+  onUserInput(paneId: string): void {
+    const latch = this.permissionLatches.get(paneId);
+    if (!latch?.suppressed) return;
+
+    latch.matchedSinceInput = false;
+    if (latch.resetTimer) clearTimeout(latch.resetTimer);
+    latch.resetTimer = setTimeout(() => {
+      latch.resetTimer = null;
+      if (!latch.matchedSinceInput) latch.suppressed = false;
+    }, PERMISSION_RESET_GRACE_MS);
   }
 }

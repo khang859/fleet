@@ -129,6 +129,49 @@ describe('NotificationDetector', () => {
     expect(callback).toHaveBeenCalledWith(expect.objectContaining({ paneId: 'pane-1' }));
   });
 
+  it('emits permission only once when the prompt redraws across many chunks', () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    // Claude's TUI repaints the same prompt repeatedly while waiting.
+    for (let i = 0; i < 10; i++) {
+      detector.scan('pane-1', 'Do you want to allow this action? (y/n)');
+    }
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-arms after the user answers, so a new prompt notifies again', async () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', 'Do you want to allow this action? (y/n)');
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    // User answers the prompt; no further matching output arrives.
+    detector.onUserInput('pane-1');
+    await new Promise((r) => setTimeout(r, 450));
+
+    // A genuinely new permission request fires once more.
+    detector.scan('pane-1', 'Do you want to allow this action? (y/n)');
+    expect(callback).toHaveBeenCalledTimes(2);
+  });
+
+  it('stays latched when input is followed by a redraw of the same prompt (nav)', async () => {
+    const callback = vi.fn();
+    eventBus.on('notification', callback);
+
+    detector.scan('pane-1', 'Do you want to allow this action? (y/n)');
+    expect(callback).toHaveBeenCalledTimes(1);
+
+    // Arrow-key navigation: input, then the still-pending prompt repaints.
+    detector.onUserInput('pane-1');
+    detector.scan('pane-1', 'Do you want to allow this action? (y/n)');
+    await new Promise((r) => setTimeout(r, 450));
+
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
+
   it('does not emit notification for tmux DCS sequences', () => {
     const callback = vi.fn();
     eventBus.on('notification', callback);

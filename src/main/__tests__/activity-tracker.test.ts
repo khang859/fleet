@@ -137,6 +137,37 @@ describe('ActivityTracker', () => {
     );
   });
 
+  it('keeps needs_me when a blocked agent keeps emitting output', () => {
+    const callback = vi.fn();
+    eventBus.on('activity-state-change', callback);
+
+    tracker.trackPane('pane-1');
+    tracker.onNeedsMe('pane-1');
+    callback.mockClear();
+
+    // Permission prompt repaints arrive as PTY output — must not clear needs_me.
+    tracker.onData('pane-1');
+    tracker.onData('pane-1');
+
+    expect(callback).not.toHaveBeenCalled();
+    expect(tracker.getState('pane-1')).toBe('needs_me');
+  });
+
+  it('clears needs_me back to working on user input', () => {
+    const callback = vi.fn();
+    eventBus.on('activity-state-change', callback);
+
+    tracker.trackPane('pane-1');
+    tracker.onNeedsMe('pane-1');
+    callback.mockClear();
+
+    tracker.onUserInput('pane-1');
+
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({ paneId: 'pane-1', state: 'working' })
+    );
+  });
+
   it('does not emit duplicate states', () => {
     const callback = vi.fn();
     eventBus.on('activity-state-change', callback);

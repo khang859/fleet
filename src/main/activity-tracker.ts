@@ -79,6 +79,10 @@ export class ActivityTracker {
     if (pane.silenceTimer) clearTimeout(pane.silenceTimer);
     pane.silenceTimer = setTimeout(() => this.onSilence(paneId), this.opts.silenceThresholdMs);
 
+    // A blocked agent keeps redrawing its permission prompt; that output must
+    // not clear needs_me. Only user input (onUserInput) or exit resolves it.
+    if (pane.state === 'needs_me') return;
+
     this.setState(paneId, 'working');
   }
 
@@ -87,6 +91,14 @@ export class ActivityTracker {
     if (!pane) return;
 
     this.setState(paneId, 'needs_me');
+  }
+
+  // The user typed into the pane — the resolution edge for a permission prompt.
+  // Clears needs_me so the pane reflects that the agent is no longer blocked.
+  onUserInput(paneId: string): void {
+    const pane = this.panes.get(paneId);
+    if (!pane || pane.exited) return;
+    if (pane.state === 'needs_me') this.setState(paneId, 'working');
   }
 
   onExit(paneId: string, exitCode: number): void {
