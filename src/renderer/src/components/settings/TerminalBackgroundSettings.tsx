@@ -145,9 +145,18 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     if (folder) saveSlideshow({ source: 'folder', folderPath: folder });
   };
 
-  const pickSlideshowFiles = async (): Promise<void> => {
+  const addSlideshowFiles = async (): Promise<void> => {
     const paths = await window.fleet.file.openDialog({ multi: true, filters: IMAGE_FILTERS });
-    if (paths.length > 0) saveSlideshow({ source: 'files', filePaths: paths });
+    if (paths.length === 0) return;
+    const current = useSettingsStore.getState().settings;
+    if (!current) return;
+    const merged = [...current.general.terminalBackground.slideshow.filePaths];
+    for (const p of paths) if (!merged.includes(p)) merged.push(p);
+    saveSlideshow({ source: 'files', filePaths: merged });
+  };
+
+  const clearSlideshowFiles = (): void => {
+    saveSlideshow({ filePaths: [] });
   };
 
   const removeSlideshowFile = (path: string): void => {
@@ -155,6 +164,16 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
     if (!current) return;
     const next = current.general.terminalBackground.slideshow.filePaths.filter((p) => p !== path);
     saveSlideshow({ filePaths: next });
+  };
+
+  const reorderSlideshowFile = (from: number, to: number): void => {
+    const current = useSettingsStore.getState().settings;
+    if (!current) return;
+    const arr = [...current.general.terminalBackground.slideshow.filePaths];
+    if (from < 0 || from >= arr.length || to < 0 || to >= arr.length || from === to) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(to, 0, moved);
+    saveSlideshow({ filePaths: arr });
   };
 
   if (!bg) return null;
@@ -294,17 +313,27 @@ export function TerminalBackgroundSettings(): React.JSX.Element | null {
                 </span>
                 <button
                   type="button"
-                  onClick={() => void pickSlideshowFiles()}
+                  onClick={() => void addSlideshowFiles()}
                   className={BUTTON_CLASS}
                 >
-                  {ss.filePaths.length > 0 ? 'Change…' : 'Select Files…'}
+                  {ss.filePaths.length > 0 ? 'Add…' : 'Select Files…'}
                 </button>
+                {ss.filePaths.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearSlideshowFiles}
+                    className={SUBTLE_BUTTON_CLASS}
+                  >
+                    Clear All
+                  </button>
+                )}
               </div>
             </SettingRow>
           )}
           <BackgroundThumbnails
             slideshow={ss}
             onRemoveFile={ss.source === 'files' ? removeSlideshowFile : undefined}
+            onReorderFile={ss.source === 'files' ? reorderSlideshowFile : undefined}
           />
           <SettingRow label="Order">
             <SegmentedControl
