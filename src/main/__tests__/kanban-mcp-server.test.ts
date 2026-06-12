@@ -921,4 +921,55 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     expect(features).toHaveLength(1);
     expect(store.getTask(c1.id)?.featureId).toBe(features[0].id);
   });
+
+  it('suggest run records a pending suggestion and removes the system task', async () => {
+    const sys = store.createTask({ title: 'detect', status: 'running', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const t1 = store.createTask({ title: 'a', boardId: 'default', workspaceKind: 'worktree', repoPath: '/r' });
+    const t2 = store.createTask({ title: 'b', boardId: 'default', workspaceKind: 'worktree', repoPath: '/r' });
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    server.registerRun('tok-sug', { kind: 'task', taskId: sys.id, runId: run.id, mode: 'suggest' });
+
+    await rpc(`${base}?run=tok-sug`, 'tools/call', {
+      name: 'kanban_suggest_feature',
+      arguments: { name: 'Grouped', task_ids: [t1.id, t2.id], reason: 'same area' }
+    });
+
+    const suggestions = store.listSuggestions('default');
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].status).toBe('pending');
+    expect(suggestions[0].taskIds).toEqual([t1.id, t2.id]);
+    expect(suggestions[0].repoPath).toBe('/r');
+    expect(store.getTask(sys.id)).toBeNull(); // system task gone
+  });
+
+  it('suggest run with no valid task_ids records no suggestion but still removes the system task', async () => {
+    const sys = store.createTask({ title: 'detect', status: 'running', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    server.registerRun('tok-empty', { kind: 'task', taskId: sys.id, runId: run.id, mode: 'suggest' });
+
+    await rpc(`${base}?run=tok-empty`, 'tools/call', {
+      name: 'kanban_suggest_feature',
+      arguments: { name: 'Grouped', task_ids: ['gone', 'also-gone'], reason: 'stale' }
+    });
+
+    expect(store.listSuggestions('default')).toHaveLength(0);
+    expect(store.getTask(sys.id)).toBeNull();
+  });
+
+  it('suggest tools include kanban_suggest_feature', async () => {
+    const sys = store.createTask({ title: 'd', status: 'running', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    server.registerRun('tok-list', { kind: 'task', taskId: sys.id, runId: run.id, mode: 'suggest' });
+    const r = await rpc(`${base}?run=tok-list`, 'tools/list');
+    const names = r.result.tools.map((t: { name: string }) => t.name);
+    expect(names).toContain('kanban_suggest_feature');
+  });
+
+  it('kanban_block on a suggest run deletes the system task instead of blocking it', async () => {
+    const sys = store.createTask({ title: 'd', status: 'running', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    server.registerRun('tok-blk', { kind: 'task', taskId: sys.id, runId: run.id, mode: 'suggest' });
+    await rpc(`${base}?run=tok-blk`, 'tools/call', { name: 'kanban_block', arguments: { reason: 'nothing related' } });
+    expect(store.getTask(sys.id)).toBeNull();
+  });
 });
