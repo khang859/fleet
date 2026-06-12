@@ -283,6 +283,7 @@ type WorkspaceStore = {
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
   addRecentFile: (filePath: string) => void;
+  removeRecentFiles: (filePaths: string[]) => void;
   addRecentFolder: (folderPath: string) => void;
   setFileDirty: (paneId: string, isDirty: boolean) => void;
   setPaneDirty: (paneId: string, dirty: boolean) => void;
@@ -1246,6 +1247,17 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     set((state) => {
       const filtered = state.recentFiles.filter((f) => f !== filePath);
       const updated = [filePath, ...filtered].slice(0, MAX_RECENT_FILES);
+      saveRecentFiles(updated);
+      return { recentFiles: updated };
+    });
+  },
+
+  removeRecentFiles: (filePaths) => {
+    if (filePaths.length === 0) return;
+    const toRemove = new Set(filePaths);
+    set((state) => {
+      const updated = state.recentFiles.filter((f) => !toRemove.has(f));
+      if (updated.length === state.recentFiles.length) return {};
       saveRecentFiles(updated);
       return { recentFiles: updated };
     });
