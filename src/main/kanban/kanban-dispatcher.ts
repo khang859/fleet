@@ -23,6 +23,9 @@ const DEFAULT_INTERVAL_MS = 5000;
 /** Minimum gap between merged-worktree prune sweeps (a periodic safety net, not the fast path). */
 const WORKTREE_SWEEP_INTERVAL_MS = 300_000;
 
+/** Min gap between grouping-detection runs for the same repo (debounce; spec §4). */
+const SUGGEST_COOLDOWN_MS = 30 * 60_000;
+
 /**
  * Exit code rune returns from a `--require-tool` run that ended without the
  * model calling a completion tool (it was nudged to the cap and gave up). Kept
@@ -122,6 +125,7 @@ export class KanbanDispatcher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private genLock = 0;
   private lastWorktreeSweepAt = 0;
+  private lastSuggestAtByRepo = new Map<string, number>();
 
   constructor(
     private store: KanbanStore,
@@ -210,6 +214,7 @@ export class KanbanDispatcher {
         // integrate() pass re-evaluates it (retry within the cap, or block).
         if (mode === 'assign') this.store.returnToReady(task.id);
         else if (mode === 'resolve') this.store.setStatusCleared(task.id, 'review');
+        else if (mode === 'suggest') this.store.deleteTask(task.id);
         else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
       }
@@ -390,6 +395,84 @@ export class KanbanDispatcher {
         this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg });
         this.store.returnToReady(task.id);
         log.error('assign spawn failed', { taskId: task.id, error: msg });
+      }
+    }
+  }
+
+  /**
+   * Detect loose tickets worth grouping (spec §4): for each repo with ≥2 ungrouped worktree
+   * tasks in todo/ready, spawn one PM `suggest` run (on a transient system task) that may record
+   * a pending grouping suggestion. Debounced per repo; gated by the orchestrator-slot budget.
+   * Nothing is regrouped here — the suggestion only surfaces a banner for a human to Accept.
+   */
+  detectFeatureGroups(): void {
+    let slots = this.deps.config.maxDecompose - this.store.orchestratorRunningCount();
+    if (slots <= 0) return;
+    const now = this.deps.now();
+
+    // group candidates by board+repo
+    const byRepo = new Map<string, Task[]>();
+    for (const t of this.store.ungroupedWorktreeReadyTodoTasks()) {
+      if (!t.repoPath) continue;
+      const key = `${t.boardId} ${t.repoPath}`;
+      const list = byRepo.get(key) ?? [];
+      list.push(t);
+      byRepo.set(key, list);
+    }
+
+    for (const [key, tasks] of byRepo) {
+      if (slots <= 0) break;
+      if (tasks.length < 2) continue;
+      // boardId/repoPath are shared across the group by construction; read them from the
+      // first task rather than splitting the key (a repoPath may contain spaces on macOS).
+      const boardId = tasks[0].boardId;
+      const repoPath = tasks[0].repoPath;
+      if (!repoPath) continue; // defensive; the candidate query already guarantees non-null
+      const last = this.lastSuggestAtByRepo.get(key);
+      if (last != null && now - last < SUGGEST_COOLDOWN_MS) continue;
+      if (this.store.hasOpenSuggestTask(boardId, repoPath)) continue;
+      if (this.store.listSuggestions(boardId, { status: 'pending', repoPath }).length > 0) continue;
+
+      const body =
+        `These ungrouped tasks share the repo ${repoPath}:\n` +
+        tasks.map((t) => `- ${t.id}: ${t.title}`).join('\n') +
+        `\n\nIf a coherent subset should ship together as one feature, call kanban_suggest_feature ` +
+        `with a feature name, those task ids, and a one-line reason. If nothing is clearly related, ` +
+        `call kanban_block.`;
+
+      const sys = this.store.createTask({
+        title: `Suggest a feature grouping for ${repoPath}`,
+        body,
+        status: 'review', // claimForSuggest claims from review
+        boardId,
+        systemKind: 'suggest',
+        workspaceKind: 'dir',
+        workspacePath: repoPath,
+        repoPath
+      });
+
+      const lock = this.nextLock();
+      if (!this.store.claimForSuggest(sys.id, lock, this.deps.config.claimTtlMs)) {
+        this.store.deleteTask(sys.id);
+        continue;
+      }
+      let runId: number | null = null;
+      try {
+        const workspace = this.deps.prepareWorkspaceFn
+          ? this.deps.prepareWorkspaceFn(sys)
+          : (sys.workspacePath ?? '');
+        const run = this.store.startRun(sys.id, 'orchestrator', null, 'suggest');
+        runId = run.id;
+        const pid = this.deps.spawnWorker({ task: sys, runId: run.id, lock, workspace, mode: 'suggest' });
+        if (pid != null) this.store.setWorkerPid(sys.id, run.id, pid);
+        this.store.appendEvent(sys.id, run.id, 'spawned', { pid: pid ?? null, mode: 'suggest' });
+        this.lastSuggestAtByRepo.set(key, now);
+        slots -= 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+        this.store.deleteTask(sys.id); // never park a detection task on the board
+        log.error('suggest spawn failed', { repoPath, error: msg });
       }
     }
   }
@@ -759,6 +842,7 @@ export class KanbanDispatcher {
     this.fireSchedules();
     this.decompose();
     this.autoAssign();
+    this.detectFeatureGroups();
     this.promote();
     this.claimAndSpawn();
     this.integrate();
