@@ -463,7 +463,13 @@ export class KanbanDispatcher {
           : (sys.workspacePath ?? '');
         const run = this.store.startRun(sys.id, 'orchestrator', null, 'suggest');
         runId = run.id;
-        const pid = this.deps.spawnWorker({ task: sys, runId: run.id, lock, workspace, mode: 'suggest' });
+        const pid = this.deps.spawnWorker({
+          task: sys,
+          runId: run.id,
+          lock,
+          workspace,
+          mode: 'suggest'
+        });
         if (pid != null) this.store.setWorkerPid(sys.id, run.id, pid);
         this.store.appendEvent(sys.id, run.id, 'spawned', { pid: pid ?? null, mode: 'suggest' });
         this.lastSuggestAtByRepo.set(key, now);

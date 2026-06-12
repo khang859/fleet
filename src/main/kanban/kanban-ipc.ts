@@ -297,9 +297,8 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
     }
   );
 
-  ipcMain.handle(
-    IPC_CHANNELS.KANBAN_LIST_SUGGESTIONS,
-    (_e, boardId: string): FeatureSuggestion[] => commands.listSuggestions(boardId)
+  ipcMain.handle(IPC_CHANNELS.KANBAN_LIST_SUGGESTIONS, (_e, boardId: string): FeatureSuggestion[] =>
+    commands.listSuggestions(boardId)
   );
 
   ipcMain.handle(

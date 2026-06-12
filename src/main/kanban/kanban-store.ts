@@ -206,8 +206,12 @@ export class KanbanStore {
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
       )`);
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_suggestions_board ON feature_suggestions(board_id)');
-      this.db.exec('CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status)');
+      this.db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_suggestions_board ON feature_suggestions(board_id)'
+      );
+      this.db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status)'
+      );
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -1549,7 +1553,16 @@ export class KanbanStore {
         `INSERT INTO feature_suggestions (id, board_id, repo_path, name, task_ids, reason, status, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
       )
-      .run(id, input.boardId, input.repoPath ?? null, input.name, JSON.stringify(input.taskIds), input.reason ?? null, ts, ts);
+      .run(
+        id,
+        input.boardId,
+        input.repoPath ?? null,
+        input.name,
+        JSON.stringify(input.taskIds),
+        input.reason ?? null,
+        ts,
+        ts
+      );
     const s = this.getSuggestion(id);
     if (!s) throw new Error('createSuggestion: failed to read back suggestion');
     return s;
@@ -1577,7 +1590,9 @@ export class KanbanStore {
       params.repoPath = filter.repoPath;
     }
     const rows = this.db
-      .prepare(`SELECT * FROM feature_suggestions WHERE ${where.join(' AND ')} ORDER BY created_at DESC`)
+      .prepare(
+        `SELECT * FROM feature_suggestions WHERE ${where.join(' AND ')} ORDER BY created_at DESC`
+      )
       .all(params) as Array<Record<string, unknown>>;
     return rows.map((r) => this.rowToSuggestion(r));
   }
