@@ -249,6 +249,31 @@ const RESOLVE_TOOLS: McpTool[] = WORKER_TOOLS.filter((t) =>
   )
 );
 
+const SUGGEST_TOOLS: McpTool[] = [
+  ...WORKER_TOOLS.filter((t) => t.name === 'kanban_show'),
+  // kanban_list lets the run inspect related tasks before grouping.
+  ...ORCHESTRATOR_EXTRA_TOOLS.filter((t) => t.name === 'kanban_list'),
+  {
+    name: 'kanban_suggest_feature',
+    description:
+      'Record a pending grouping suggestion for a human to accept. Names a candidate feature ' +
+      'and the task ids that should ship together. Terminal — ends the suggest run. Never ' +
+      'creates a feature itself.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        task_ids: { type: 'array', items: { type: 'string' } },
+        reason: { type: 'string' }
+      },
+      required: ['name', 'task_ids']
+    }
+  },
+  ...WORKER_TOOLS.filter(
+    (t) => t.name === 'kanban_comment' || t.name === 'kanban_heartbeat' || t.name === 'kanban_block'
+  )
+];
+
 /** Statuses the PM may set — mirrors MANUAL_STATUSES (dispatcher owns `running`). */
 const PM_SETTABLE_STATUSES = [
   'triage',
@@ -430,6 +455,7 @@ function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'specify') return SPECIFY_TOOLS;
   if (mode === 'assign') return ASSIGN_TOOLS;
   if (mode === 'resolve') return RESOLVE_TOOLS;
+  if (mode === 'suggest') return SUGGEST_TOOLS;
   return WORKER_TOOLS;
 }
 
@@ -985,11 +1011,19 @@ export class KanbanMcpServer {
             metadata: a.metadata
           });
           this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+          if (scope.mode === 'decompose') this.commands?.enforceDecomposeGrouping(task.id);
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
         }
         case 'kanban_block': {
           const a = z.object({ reason: z.string() }).parse(args);
+          if (scope.mode === 'suggest') {
+            // The transient detection task is never parked on the board — drop it.
+            this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
+            this.store.deleteTask(task.id);
+            this.unregisterRun(token);
+            return this.text(res, rpcReq.id, 'No grouping suggested.');
+          }
           this.store.blockTask(task.id, a.reason);
           this.store.finishRun(scope.runId, 'blocked', { summary: a.reason });
           this.store.appendEvent(task.id, scope.runId, 'blocked', { reason: a.reason });
@@ -1023,6 +1057,42 @@ export class KanbanMcpServer {
           });
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Assigned ${profile}.`);
+        }
+        case 'kanban_suggest_feature': {
+          const a = z
+            .object({
+              name: z.string(),
+              task_ids: z.array(z.string()),
+              reason: z.string().optional()
+            })
+            .parse(args);
+          // Only keep ids that still exist and belong to this detection task's board.
+          const validIds = a.task_ids.filter((tid) => {
+            const t = this.store.getTask(tid);
+            return t != null && t.boardId === task.boardId;
+          });
+          if (validIds.length === 0) {
+            // Nothing real to group — don't write an empty pending row that would
+            // wedge the per-repo detection gate. Treat it like "no grouping".
+            this.store.finishRun(scope.runId, 'completed', { summary: 'no valid tasks to group' });
+            this.store.deleteTask(task.id);
+            this.unregisterRun(token);
+            return this.text(res, rpcReq.id, 'No grouping suggested.');
+          }
+          this.store.createSuggestion({
+            boardId: task.boardId,
+            repoPath: task.repoPath ?? null,
+            name: a.name,
+            taskIds: validIds,
+            reason: a.reason ?? null
+          });
+          this.store.finishRun(scope.runId, 'completed', {
+            summary: `suggested feature "${a.name}" (${validIds.length} tasks)`
+          });
+          // Drop the transient detection task — the suggestion lives in its own table now.
+          this.store.deleteTask(task.id);
+          this.unregisterRun(token);
+          return this.text(res, rpcReq.id, `Suggested feature "${a.name}".`);
         }
         case 'kanban_comment': {
           const a = z.object({ body: z.string() }).parse(args);

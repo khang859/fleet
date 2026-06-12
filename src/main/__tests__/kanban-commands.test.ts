@@ -942,6 +942,75 @@ describe('KanbanCommands scratch archive safety net', () => {
   });
 });
 
+describe('KanbanCommands.enforceDecomposeGrouping', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('groups a decompose parent + its ≥2 worktree children into a new feature', () => {
+    const { store, commands } = makeCommands();
+    const parent = store.createTask({
+      title: 'Build auth',
+      status: 'done',
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+
+    commands.enforceDecomposeGrouping(parent.id);
+
+    const features = store.listFeatures({});
+    expect(features).toHaveLength(1);
+    expect(features[0].name).toBe('Build auth');
+    expect(features[0].repoPath).toBe('/repo');
+    expect(store.getTask(parent.id)?.featureId).toBe(features[0].id);
+    expect(store.getTask(c1.id)?.featureId).toBe(features[0].id);
+    expect(store.getTask(c2.id)?.featureId).toBe(features[0].id);
+    store.close();
+  });
+
+  it('is a no-op when fewer than 2 worktree children exist', () => {
+    const { store, commands } = makeCommands();
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const scratch = store.createTask({ title: 's' }); // scratch child does not count
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, scratch.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(0);
+    store.close();
+  });
+
+  it('is a no-op when the children are already grouped (orchestrator grouped them)', () => {
+    const { store, commands } = makeCommands();
+    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(1); // no new feature
+    store.close();
+  });
+
+  it('is a no-op when the parent is already in a feature', () => {
+    const { store, commands } = makeCommands();
+    const f = store.createFeature({ boardId: 'default', name: 'pre', repoPath: '/repo', baseBranch: 'main' });
+    const parent = store.createTask({ title: 'p', status: 'done', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main', featureId: f.id });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+    commands.enforceDecomposeGrouping(parent.id);
+    expect(store.listFeatures({})).toHaveLength(1);
+    store.close();
+  });
+});
+
 describe('project commands', () => {
   beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
   afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
@@ -974,5 +1043,86 @@ describe('project commands', () => {
     const { commands } = makeCommands();
     expect(() => commands.removeProject('nope')).toThrow(/not found/i);
     expect(() => commands.setDefaultProject('nope')).toThrow(/not found/i);
+  });
+});
+
+describe('KanbanCommands suggestions', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  it('accept creates a feature + assigns tasks + marks accepted', () => {
+    const { store, commands } = makeCommands();
+    const t1 = store.createTask({ title: 'task 1', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const t2 = store.createTask({ title: 'task 2', workspaceKind: 'worktree', repoPath: '/repo', baseBranch: 'main' });
+    const s = store.createSuggestion({ boardId: 'default', name: 'My Feature', repoPath: '/repo', taskIds: [t1.id, t2.id] });
+
+    const feature = commands.acceptSuggestion(s.id);
+
+    expect(feature.name).toBe('My Feature');
+    expect(feature.repoPath).toBe('/repo');
+    expect(feature.baseBranch).toBe('main');
+    expect(store.getTask(t1.id)?.featureId).toBe(feature.id);
+    expect(store.getTask(t2.id)?.featureId).toBe(feature.id);
+    expect(store.getSuggestion(s.id)?.status).toBe('accepted');
+  });
+
+  it('accept skips tasks that no longer exist', () => {
+    const { store, commands } = makeCommands();
+    const t1 = store.createTask({ title: 'existing', workspaceKind: 'scratch' });
+    const s = store.createSuggestion({ boardId: 'default', name: 'Partial', repoPath: null, taskIds: [t1.id, 'ghost-id'] });
+
+    const feature = commands.acceptSuggestion(s.id);
+
+    const members = store.listFeatureTasks(feature.id);
+    expect(members.map((t) => t.id)).toContain(t1.id);
+    expect(members.map((t) => t.id)).not.toContain('ghost-id');
+    expect(store.getSuggestion(s.id)?.status).toBe('accepted');
+  });
+
+  it('accept throws + dismisses (no feature) when all suggested tasks are gone', () => {
+    const { store, commands } = makeCommands();
+    const s = store.createSuggestion({ boardId: 'default', name: 'All Gone', repoPath: '/repo', taskIds: ['ghost-1', 'ghost-2'] });
+
+    let code: string | undefined;
+    try {
+      commands.acceptSuggestion(s.id);
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+    expect(store.listFeatures({})).toHaveLength(0);
+    expect(store.getSuggestion(s.id)?.status).toBe('dismissed');
+  });
+
+  it('dismiss marks dismissed without creating a feature', () => {
+    const { store, commands } = makeCommands();
+    const s = store.createSuggestion({ boardId: 'default', name: 'Ignore Me', repoPath: null, taskIds: [] });
+
+    commands.dismissSuggestion(s.id);
+
+    expect(store.getSuggestion(s.id)?.status).toBe('dismissed');
+    expect(store.listFeatures({})).toHaveLength(0);
+  });
+
+  it('acceptSuggestion throws NOT_FOUND for an unknown suggestion id', () => {
+    const { commands } = makeCommands();
+    let code: string | undefined;
+    try {
+      commands.acceptSuggestion('nope');
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('NOT_FOUND');
+  });
+
+  it('dismissSuggestion throws NOT_FOUND for an unknown suggestion id', () => {
+    const { commands } = makeCommands();
+    let code: string | undefined;
+    try {
+      commands.dismissSuggestion('nope');
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('NOT_FOUND');
   });
 });

@@ -25,23 +25,23 @@ describe('KanbanStore', () => {
 
   it('creates the db file and runs migrations', () => {
     expect(existsSync(DB_PATH)).toBe(true);
-    expect(store.schemaVersion()).toBe(12);
+    expect(store.schemaVersion()).toBe(13);
   });
 
-  it('fresh db is created at v12 with the new columns', () => {
-    // Fresh store is already v12; assert the new columns exist and are nullable/defaulted.
+  it('fresh db is created at v13 with the new columns', () => {
+    // Fresh store is already v13; assert the new columns exist and are nullable/defaulted.
     const t = store.createTask({ title: 'x' });
     expect(store.getTask(t.id)?.pendingMode).toBeNull();
     const run = store.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(store.schemaVersion()).toBe(12);
+    expect(store.schemaVersion()).toBe(13);
   });
 
-  it('fresh db is created at v12 and persists repoPath', () => {
+  it('fresh db is created at v13 and persists repoPath', () => {
     const t = store.createTask({ title: 'wt', workspaceKind: 'worktree', repoPath: '/src/repo' });
     expect(store.getTask(t.id)?.repoPath).toBe('/src/repo');
     expect(store.getTask(t.id)?.workspaceKind).toBe('worktree');
-    expect(store.schemaVersion()).toBe(12);
+    expect(store.schemaVersion()).toBe(13);
   });
 
   it('repoPath defaults to null when omitted', () => {
@@ -72,7 +72,7 @@ describe('KanbanStore', () => {
     const s = new KanbanStore(v2Path);
     const t = s.createTask({ title: 'x', workspaceKind: 'worktree', repoPath: '/r' });
     expect(s.getTask(t.id)?.repoPath).toBe('/r');
-    expect(s.schemaVersion()).toBe(12);
+    expect(s.schemaVersion()).toBe(13);
     s.close();
   });
 
@@ -97,7 +97,7 @@ describe('KanbanStore', () => {
     raw.close();
 
     const s = new KanbanStore(preV5Path);
-    expect(s.schemaVersion()).toBe(12);
+    expect(s.schemaVersion()).toBe(13);
     expect(s.getTask('abc')?.boardId).toBe('default');
     expect(s.listBoards().map((b) => b.slug)).toEqual(['default']);
     s.close();
@@ -118,7 +118,7 @@ describe('KanbanStore', () => {
 
     // Opening the store must run the ALTER-based upgrade path (+ idempotent SCHEMA_SQL).
     const s = new KanbanStore(v9Path);
-    expect(s.schemaVersion()).toBe(12);
+    expect(s.schemaVersion()).toBe(13);
     expect(s.getTask('pre10')?.docs).toEqual([]); // pre-migration row gets the default
     const t = s.createTask({ title: 'x', docs: ['guide.md'] });
     expect(s.getTask(t.id)?.docs).toEqual(['guide.md']);
@@ -141,7 +141,7 @@ describe('KanbanStore', () => {
 
     // Opening the store must run the ALTER-based upgrade path.
     const s = new KanbanStore(v10Path);
-    expect(s.schemaVersion()).toBe(12);
+    expect(s.schemaVersion()).toBe(13);
     expect(s.getTask('pre11')?.resolveAttempts).toBe(0); // pre-migration row gets the default
     expect(s.getTask('pre11')?.systemKind).toBeNull();
     s.close();
@@ -163,7 +163,7 @@ describe('KanbanStore', () => {
     expect(s.getTask(t.id)?.pendingMode).toBeNull();
     const run = s.startRun(t.id, 'p', null);
     expect(run.mode).toBe('work');
-    expect(s.schemaVersion()).toBe(12);
+    expect(s.schemaVersion()).toBe(13);
     s.close();
   });
 
@@ -590,7 +590,7 @@ describe('KanbanStore schema v6 migration', () => {
     raw.close();
 
     const store = new KanbanStore(dbPath, { now: () => 1000 });
-    expect(store.schemaVersion()).toBe(12);
+    expect(store.schemaVersion()).toBe(13);
     const t = store.getTask('legacy1');
     expect(t?.title).toBe('old task');
     expect(t?.scheduleKind).toBeNull();
@@ -1014,7 +1014,7 @@ describe('projects schema (v10)', () => {
   });
 
   it('migrates to v10 with a projects table and tasks.docs column', () => {
-    expect(store.schemaVersion()).toBe(12);
+    expect(store.schemaVersion()).toBe(13);
     const t = store.createTask({ title: 'x' });
     expect(t.docs).toEqual([]);
     expect(store.listProjects('default')).toEqual([]);
@@ -1175,5 +1175,77 @@ describe('KanbanStore schema v12 (draft PR lifecycle)', () => {
     expect(got.syncedAt).toBe(clock);
     expect(s.featuresDuePrSync(clock - 1, 10).map((x) => x.id)).not.toContain(f.id);
     s.close();
+  });
+});
+
+describe('KanbanStore feature suggestions (schema v13)', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('creates and lists feature suggestions, filtering by status and repo', () => {
+    const s1 = store.createSuggestion({ boardId: 'default', repoPath: '/r', name: 'Auth', taskIds: ['a', 'b'], reason: 'related' });
+    expect(s1.status).toBe('pending');
+    expect(s1.taskIds).toEqual(['a', 'b']);
+    store.createSuggestion({ boardId: 'default', repoPath: '/other', name: 'Other', taskIds: ['c', 'd'] });
+    expect(store.listSuggestions('default')).toHaveLength(2);
+    expect(store.listSuggestions('default', { repoPath: '/r' })).toHaveLength(1);
+    store.updateSuggestionStatus(s1.id, 'accepted');
+    expect(store.getSuggestion(s1.id)?.status).toBe('accepted');
+    expect(store.listSuggestions('default', { status: 'pending', repoPath: '/r' })).toHaveLength(0);
+  });
+});
+
+describe('KanbanStore grouping detection primitives (Task 5)', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('ungroupedWorktreeReadyTodoTasks returns only ungrouped worktree todo/ready tasks with a repo', () => {
+    const a = store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r' });
+    const b = store.createTask({ title: 'b', status: 'todo', workspaceKind: 'worktree', repoPath: '/r' });
+    store.createTask({ title: 'grouped', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', featureId: 'f1' });
+    store.createTask({ title: 'scratch', status: 'ready' }); // not worktree
+    store.createTask({ title: 'norepo', status: 'ready', workspaceKind: 'worktree' }); // no repo
+    store.createTask({ title: 'running', status: 'running', workspaceKind: 'worktree', repoPath: '/r' }); // wrong status
+    const ids = store.ungroupedWorktreeReadyTodoTasks().map((t) => t.id).sort();
+    expect(ids).toEqual([a.id, b.id].sort());
+  });
+
+  it('hasOpenSuggestTask detects a non-terminal suggest system task for a repo', () => {
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(false);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(true);
+    expect(store.hasOpenSuggestTask('default', '/other')).toBe(false);
+    store.completeTask(sys.id, 'done');
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(false);
+  });
+
+  it('claimForSuggest moves a review task to running once', () => {
+    const sys = store.createTask({ title: 'd', status: 'review', systemKind: 'suggest', repoPath: '/r' });
+    expect(store.claimForSuggest(sys.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(sys.id)?.status).toBe('running');
+    expect(store.claimForSuggest(sys.id, 'L2', 1000)).toBe(false);
+  });
+
+  it('deleteTask removes the task row and its links', () => {
+    const p = store.createTask({ title: 'p' });
+    const c = store.createTask({ title: 'c' });
+    store.addLink(p.id, c.id);
+    store.deleteTask(c.id);
+    expect(store.getTask(c.id)).toBeNull();
+    expect(store.childrenOf(p.id)).toEqual([]);
   });
 });

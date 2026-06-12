@@ -32,7 +32,10 @@ import type {
   TaskPrInfo,
   PrState,
   ChecksState,
-  ConflictState
+  ConflictState,
+  FeatureSuggestion,
+  SuggestionStatus,
+  CreateSuggestionInput
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -189,6 +192,26 @@ export class KanbanStore {
       this.addColumnIfMissing('features', 'checks_state', 'TEXT');
       this.addColumnIfMissing('features', 'pr_synced_at', 'INTEGER');
       this.addColumnIfMissing('features', 'pr_skip_notified', 'INTEGER NOT NULL DEFAULT 0');
+    }
+    if (current < 13) {
+      // Auto-grouping (spec §4): PM feature-grouping suggestions, awaiting human Accept/Dismiss.
+      this.db.exec(`CREATE TABLE IF NOT EXISTS feature_suggestions (
+        id TEXT PRIMARY KEY,
+        board_id TEXT NOT NULL,
+        repo_path TEXT,
+        name TEXT NOT NULL,
+        task_ids TEXT NOT NULL DEFAULT '[]',
+        reason TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )`);
+      this.db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_suggestions_board ON feature_suggestions(board_id)'
+      );
+      this.db.exec(
+        'CREATE INDEX IF NOT EXISTS idx_suggestions_status ON feature_suggestions(status)'
+      );
     }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
@@ -1506,6 +1529,80 @@ export class KanbanStore {
     };
   }
 
+  // ---- Feature suggestions (spec §4 auto-grouping) ----
+
+  private rowToSuggestion(r: Record<string, unknown>): FeatureSuggestion {
+    return {
+      id: String(r.id),
+      boardId: String(r.board_id),
+      repoPath: (r.repo_path as string | null) ?? null,
+      name: String(r.name),
+      taskIds: JSON.parse(String(r.task_ids ?? '[]')) as string[],
+      reason: (r.reason as string | null) ?? null,
+      status: r.status as SuggestionStatus,
+      createdAt: Number(r.created_at),
+      updatedAt: Number(r.updated_at)
+    };
+  }
+
+  createSuggestion(input: CreateSuggestionInput): FeatureSuggestion {
+    const id = randomUUID().slice(0, 8);
+    const ts = this.now();
+    this.db
+      .prepare(
+        `INSERT INTO feature_suggestions (id, board_id, repo_path, name, task_ids, reason, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)`
+      )
+      .run(
+        id,
+        input.boardId,
+        input.repoPath ?? null,
+        input.name,
+        JSON.stringify(input.taskIds),
+        input.reason ?? null,
+        ts,
+        ts
+      );
+    const s = this.getSuggestion(id);
+    if (!s) throw new Error('createSuggestion: failed to read back suggestion');
+    return s;
+  }
+
+  getSuggestion(id: string): FeatureSuggestion | null {
+    const row = this.db.prepare('SELECT * FROM feature_suggestions WHERE id=?').get(id) as
+      | Record<string, unknown>
+      | undefined;
+    return row ? this.rowToSuggestion(row) : null;
+  }
+
+  listSuggestions(
+    boardId: string,
+    filter: { status?: SuggestionStatus; repoPath?: string } = {}
+  ): FeatureSuggestion[] {
+    const where = ['board_id=@boardId'];
+    const params: Record<string, unknown> = { boardId };
+    if (filter.status) {
+      where.push('status=@status');
+      params.status = filter.status;
+    }
+    if (filter.repoPath) {
+      where.push('repo_path=@repoPath');
+      params.repoPath = filter.repoPath;
+    }
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM feature_suggestions WHERE ${where.join(' AND ')} ORDER BY created_at DESC`
+      )
+      .all(params) as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToSuggestion(r));
+  }
+
+  updateSuggestionStatus(id: string, status: SuggestionStatus): void {
+    this.db
+      .prepare('UPDATE feature_suggestions SET status=?, updated_at=? WHERE id=?')
+      .run(status, this.now(), id);
+  }
+
   updateTask(id: string, fields: UpdateTaskFields): void {
     const current = this.getTask(id);
     if (!current) return;
@@ -1788,5 +1885,52 @@ export class KanbanStore {
       status: 'todo',
       scheduledFrom: template.id
     });
+  }
+
+  /** Ungrouped worktree tasks in todo/ready that belong to a repo — candidates for a grouping suggestion (spec §4). */
+  ungroupedWorktreeReadyTodoTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status IN ('todo','ready') AND feature_id IS NULL
+           AND workspace_kind='worktree' AND repo_path IS NOT NULL AND system_kind IS NULL
+         ORDER BY priority DESC, created_at ASC`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** True when a non-terminal suggest system task already exists for this board+repo (debounce guard). */
+  hasOpenSuggestTask(boardId: string, repoPath: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM tasks WHERE board_id=? AND repo_path=? AND system_kind='suggest'
+           AND status NOT IN ('done','archived') LIMIT 1`
+      )
+      .get(boardId, repoPath);
+    return row != null;
+  }
+
+  /** Atomic CAS claim of a suggest system task (review -> running). */
+  claimForSuggest(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status='running', claim_lock=@lock, claim_expires=@expires,
+           last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='review'
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Hard-delete a task row and its links (used to drop a transient suggest system task on terminal). */
+  deleteTask(id: string): void {
+    const tx = this.db.transaction((taskId: string) => {
+      this.db.prepare('DELETE FROM task_links WHERE parent_id=? OR child_id=?').run(taskId, taskId);
+      this.db.prepare('DELETE FROM tasks WHERE id=?').run(taskId);
+    });
+    tx(id);
   }
 }

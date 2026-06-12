@@ -14,7 +14,8 @@ import type {
   CreateFeatureInput,
   UpdateFeatureInput,
   WorktreeInfo,
-  PruneResult
+  PruneResult,
+  FeatureSuggestion
 } from '../../../shared/kanban-types';
 import type {
   KanbanArtifactPreviewResponse,
@@ -37,10 +38,14 @@ type KanbanState = {
   boards: Board[];
   activeBoardSlug: string;
   features: Feature[];
+  suggestions: FeatureSuggestion[];
   selectedFeatureId: string | null;
   loadBoard: () => Promise<void>;
   loadBoards: () => Promise<void>;
   loadFeatures: () => Promise<void>;
+  loadSuggestions: () => Promise<void>;
+  acceptSuggestion: (id: string) => Promise<void>;
+  dismissSuggestion: (id: string) => Promise<void>;
   createFeature: (input: CreateFeatureInput) => Promise<Feature>;
   updateFeature: (id: string, fields: UpdateFeatureInput) => Promise<void>;
   archiveFeature: (id: string) => Promise<void>;
@@ -109,6 +114,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
   boards: [],
   activeBoardSlug: localStorage.getItem('fleet.kanban.activeBoard') ?? 'default',
   features: [],
+  suggestions: [],
   selectedFeatureId: localStorage.getItem('fleet.kanban.focusedFeature') || null,
   worktrees: [],
   seed: null,
@@ -118,6 +124,7 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     const cards = await window.fleet.kanban.listBoard(get().activeBoardSlug);
     set({ cards, loaded: true });
     await get().loadFeatures();
+    await get().loadSuggestions();
   },
   loadFeatures: async () => {
     const features = await window.fleet.kanban.listFeatures({ boardId: get().activeBoardSlug });
@@ -129,6 +136,19 @@ export const useKanbanStore = create<KanbanState>((set, get) => ({
     } else {
       set({ features });
     }
+  },
+  loadSuggestions: async () => {
+    const suggestions = await window.fleet.kanban.listSuggestions(get().activeBoardSlug);
+    set({ suggestions });
+  },
+  acceptSuggestion: async (id) => {
+    await window.fleet.kanban.acceptSuggestion(id);
+    // loadBoard refreshes the cards, features, and suggestions in one pass.
+    await get().loadBoard();
+  },
+  dismissSuggestion: async (id) => {
+    await window.fleet.kanban.dismissSuggestion(id);
+    await get().loadSuggestions();
   },
   createFeature: async (input) => {
     const feature = await window.fleet.kanban.createFeature(input);

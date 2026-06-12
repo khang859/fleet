@@ -1490,3 +1490,155 @@ describe('KanbanDispatcher.integrate', () => {
     store.close();
   });
 });
+
+describe('KanbanDispatcher.detectFeatureGroups', () => {
+  beforeEach(() => mkdirSync(TEST_DIR, { recursive: true }));
+  afterEach(() => rmSync(TEST_DIR, { recursive: true, force: true }));
+
+  function makeDisp(
+    store: KanbanStore,
+    clock: { t: number },
+    spawn: (a: SpawnWorkerArgs) => number | undefined,
+    alive: () => boolean = () => true
+  ) {
+    return new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: alive,
+      spawnWorker: spawn,
+      prepareWorkspaceFn: (t) => t.workspacePath ?? '',
+      config: {
+        failureLimit: 2,
+        claimGraceMs: 0,
+        maxInProgress: 3,
+        claimTtlMs: 1000,
+        autoDecompose: false,
+        autoAssign: false,
+        autoIntegrate: false,
+        maxDecompose: 2,
+        artifactRetentionDays: 0
+      }
+    });
+  }
+
+  it('spawns a suggest run for a repo with ≥2 ungrouped worktree tasks', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({ title: 'b', status: 'todo', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = makeDisp(store, clock, (a) => { spawned.push(a); return 4321; });
+    disp.detectFeatureGroups();
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].mode).toBe('suggest');
+    // a transient suggest system task was created for the repo and is now running
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(true);
+    store.close();
+  });
+
+  it('does not spawn twice for the same repo within the cooldown', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    let n = 0;
+    const disp = makeDisp(store, clock, () => { n++; return 1; });
+    disp.detectFeatureGroups();
+    // even after the first run's system task is gone, the cooldown blocks a re-spawn
+    store.listTasks().filter((t) => t.systemKind === 'suggest').forEach((t) => store.deleteTask(t.id));
+    clock.t = 1000 + 60_000;
+    disp.detectFeatureGroups();
+    expect(n).toBe(1);
+    store.close();
+  });
+
+  it('preserves a repo path containing a space (no key-split truncation)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/repo with space', baseBranch: 'main', boardId: 'default' });
+    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/repo with space', baseBranch: 'main', boardId: 'default' });
+    const spawned: SpawnWorkerArgs[] = [];
+    const disp = makeDisp(store, clock, (a) => { spawned.push(a); return 1; });
+    disp.detectFeatureGroups();
+    expect(spawned).toHaveLength(1);
+    // the un-truncated path reached the store
+    expect(store.hasOpenSuggestTask('default', '/repo with space')).toBe(true);
+    store.close();
+  });
+
+  it('does not spawn when a pending suggestion already exists for the repo', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createTask({ title: 'b', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main', boardId: 'default' });
+    store.createSuggestion({ boardId: 'default', repoPath: '/r', name: 'x', taskIds: [] });
+    let n = 0;
+    const disp = makeDisp(store, clock, () => { n++; return 1; });
+    disp.detectFeatureGroups();
+    expect(n).toBe(0);
+    store.close();
+  });
+
+  it('reclaim drops a dead suggest run (deletes the system task, no triage)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    store.claimForSuggest(sys.id, 'L', 100); // expires 1100
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    store.setWorkerPid(sys.id, run.id, 999);
+    clock.t = 5000;
+    let alive = true;
+    const disp = makeDisp(store, clock, () => undefined, () => alive);
+    // simulate a dead pid
+    alive = false;
+    disp.reclaim();
+    expect(store.getTask(sys.id)).toBeNull();
+    store.close();
+  });
+
+  it('reclaim drops a suggest run that exited 3 (deleted, never parked as blocked)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    store.setWorkerPid(sys.id, run.id, 999);
+    const cleared: number[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true, // pid liveness irrelevant — a definitive exit was observed
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) => (id === run.id ? { code: 3, signal: null } : undefined),
+      clearWorkerExit: (id) => cleared.push(id)
+    });
+    disp.reclaim();
+    expect(store.getTask(sys.id)).toBeNull();
+    expect(cleared).toContain(run.id);
+    store.close();
+  });
+
+  it('reclaim drops a suggest run on the fatal blockNow path (deleted, never blocked)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    store.setWorkerPid(sys.id, run.id, 999);
+    const cleared: number[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) =>
+        id === run.id
+          ? { code: 1, signal: null, fatalReason: 'auth failed', blockNow: true }
+          : undefined,
+      clearWorkerExit: (id) => cleared.push(id)
+    });
+    disp.reclaim();
+    expect(store.getTask(sys.id)).toBeNull();
+    expect(cleared).toContain(run.id);
+    store.close();
+  });
+});

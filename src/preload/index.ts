@@ -80,6 +80,7 @@ import type {
   SwarmCreated,
   Feature,
   FeatureDetail,
+  FeatureSuggestion,
   WorktreeInfo,
   PruneResult,
   Project
@@ -614,6 +615,12 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_DELETE_FEATURE, id),
     assignTaskToFeature: async (req: KanbanAssignTaskToFeatureRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_ASSIGN_TASK_TO_FEATURE, req),
+    listSuggestions: async (boardId: string): Promise<FeatureSuggestion[]> =>
+      typedInvoke<FeatureSuggestion[]>(IPC_CHANNELS.KANBAN_LIST_SUGGESTIONS, boardId),
+    acceptSuggestion: async (id: string): Promise<Feature> =>
+      typedInvoke<Feature>(IPC_CHANNELS.KANBAN_ACCEPT_SUGGESTION, id),
+    dismissSuggestion: async (id: string): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_DISMISS_SUGGESTION, id),
     redecompose: async (featureId: string): Promise<Task> =>
       typedInvoke<Task>(IPC_CHANNELS.KANBAN_REDECOMPOSE, featureId),
     shipFeature: async (featureId: string): Promise<KanbanReviewActionResult> =>
