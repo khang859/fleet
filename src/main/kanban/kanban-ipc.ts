@@ -16,6 +16,7 @@ import type {
   TaskAttachment,
   Feature,
   FeatureDetail,
+  FeatureSuggestion,
   Project
 } from '../../shared/kanban-types';
 import type {
@@ -295,6 +296,20 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
       commands.assignTaskToFeature(req.taskId, req.featureId);
     }
   );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_LIST_SUGGESTIONS,
+    (_e, boardId: string): FeatureSuggestion[] => commands.listSuggestions(boardId)
+  );
+
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_ACCEPT_SUGGESTION,
+    (_e, id: string): Feature => commands.acceptSuggestion(id)
+  );
+
+  ipcMain.handle(IPC_CHANNELS.KANBAN_DISMISS_SUGGESTION, (_e, id: string): void => {
+    commands.dismissSuggestion(id);
+  });
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_REDECOMPOSE, (_e, featureId: string): Task =>
     commands.redecompose(featureId)
