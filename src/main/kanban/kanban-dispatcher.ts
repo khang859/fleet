@@ -46,6 +46,8 @@ const ASSIGN_ATTEMPT_CAP = 2;
 const RESOLVE_ATTEMPT_CAP = 2;
 /** Verify-fix work runs attempted per task before it is blocked. Tracked in tasks.verify_attempts. */
 const VERIFY_ATTEMPT_CAP = 2;
+/** Claim lease re-granted each tick while a verify shell is still running (mirrors kanban_complete). */
+const VERIFY_CLAIM_TTL_MS = 15 * 60 * 1000;
 /** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
 const MAX_INTEGRATE_PER_TICK = 3;
 
@@ -180,6 +182,13 @@ export class KanbanDispatcher {
       if (reclaimMode === 'verify') {
         const runId = task.currentRunId;
         if (exit == null) {
+          // A long-running verify (large test/build) can outlive the claim window.
+          // While the verify shell is still alive, keep waiting — re-extend the claim
+          // rather than failing the gate open and orphaning the shell.
+          if (task.workerPid != null && this.deps.isAlive(task.workerPid)) {
+            if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+            continue;
+          }
           if (runId != null)
             this.store.finishRun(runId, 'reclaimed', { error: 'verify outcome unknown' });
           this.reviewFromVerify(task, 'verify outcome unknown');

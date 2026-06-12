@@ -123,6 +123,31 @@ describe('reclaim() verify branch', () => {
     store.close();
   });
 
+  it('exit==null but verify pid alive (long verify) -> stays running, claim re-extended', () => {
+    const clock = { t: 5000 };
+    const store = new KanbanStore(join(TEST_DIR, `g-${Math.random()}.db`), { now: () => clock.t });
+    const { task } = makeVerifyingTask(store);
+    store.claimForVerifyFix(task.id, 'L', 100000); // sets claim_lock='L' on the running task
+    store.extendClaim(task.id, 'L', -1); // force-expire the claim, lock retained
+    const spawn = vi.fn(() => 999);
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true, // verify shell (pid 200) still running
+      spawnWorker: spawn,
+      config: baseConfig(),
+      workerExit: () => undefined,
+      clearWorkerExit: () => undefined,
+      verifyLogPath: () => join(TEST_DIR, 'v.log')
+    });
+    disp.reclaim();
+    const after = store.getTask(task.id)!;
+    expect(after.status).toBe('running');
+    expect(spawn).not.toHaveBeenCalled();
+    expect(store.listEvents(task.id).some((e) => e.kind === 'verify_skipped')).toBe(false);
+    expect(after.claimExpires!).toBeGreaterThan(clock.t);
+    store.close();
+  });
+
   it('exit==null (unknown) -> fail-open to review with verify_skipped', () => {
     const clock = { t: 5000 };
     const store = new KanbanStore(join(TEST_DIR, `d-${Math.random()}.db`), { now: () => clock.t });
