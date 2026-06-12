@@ -1201,3 +1201,51 @@ describe('KanbanStore feature suggestions (schema v13)', () => {
     expect(store.listSuggestions('default', { status: 'pending', repoPath: '/r' })).toHaveLength(0);
   });
 });
+
+describe('KanbanStore grouping detection primitives (Task 5)', () => {
+  let store: KanbanStore;
+  beforeEach(() => {
+    mkdirSync(TEST_DIR, { recursive: true });
+    store = new KanbanStore(DB_PATH);
+  });
+  afterEach(() => {
+    store.close();
+    rmSync(TEST_DIR, { recursive: true, force: true });
+  });
+
+  it('ungroupedWorktreeReadyTodoTasks returns only ungrouped worktree todo/ready tasks with a repo', () => {
+    const a = store.createTask({ title: 'a', status: 'ready', workspaceKind: 'worktree', repoPath: '/r' });
+    const b = store.createTask({ title: 'b', status: 'todo', workspaceKind: 'worktree', repoPath: '/r' });
+    store.createTask({ title: 'grouped', status: 'ready', workspaceKind: 'worktree', repoPath: '/r', featureId: 'f1' });
+    store.createTask({ title: 'scratch', status: 'ready' }); // not worktree
+    store.createTask({ title: 'norepo', status: 'ready', workspaceKind: 'worktree' }); // no repo
+    store.createTask({ title: 'running', status: 'running', workspaceKind: 'worktree', repoPath: '/r' }); // wrong status
+    const ids = store.ungroupedWorktreeReadyTodoTasks().map((t) => t.id).sort();
+    expect(ids).toEqual([a.id, b.id].sort());
+  });
+
+  it('hasOpenSuggestTask detects a non-terminal suggest system task for a repo', () => {
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(false);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(true);
+    expect(store.hasOpenSuggestTask('default', '/other')).toBe(false);
+    store.completeTask(sys.id, 'done');
+    expect(store.hasOpenSuggestTask('default', '/r')).toBe(false);
+  });
+
+  it('claimForSuggest moves a review task to running once', () => {
+    const sys = store.createTask({ title: 'd', status: 'review', systemKind: 'suggest', repoPath: '/r' });
+    expect(store.claimForSuggest(sys.id, 'L', 1000)).toBe(true);
+    expect(store.getTask(sys.id)?.status).toBe('running');
+    expect(store.claimForSuggest(sys.id, 'L2', 1000)).toBe(false);
+  });
+
+  it('deleteTask removes the task row and its links', () => {
+    const p = store.createTask({ title: 'p' });
+    const c = store.createTask({ title: 'c' });
+    store.addLink(p.id, c.id);
+    store.deleteTask(c.id);
+    expect(store.getTask(c.id)).toBeNull();
+    expect(store.childrenOf(p.id)).toEqual([]);
+  });
+});

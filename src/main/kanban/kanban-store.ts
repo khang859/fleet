@@ -1871,4 +1871,51 @@ export class KanbanStore {
       scheduledFrom: template.id
     });
   }
+
+  /** Ungrouped worktree tasks in todo/ready that belong to a repo — candidates for a grouping suggestion (spec §4). */
+  ungroupedWorktreeReadyTodoTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status IN ('todo','ready') AND feature_id IS NULL
+           AND workspace_kind='worktree' AND repo_path IS NOT NULL AND system_kind IS NULL
+         ORDER BY priority DESC, created_at ASC`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** True when a non-terminal suggest system task already exists for this board+repo (debounce guard). */
+  hasOpenSuggestTask(boardId: string, repoPath: string): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 FROM tasks WHERE board_id=? AND repo_path=? AND system_kind='suggest'
+           AND status NOT IN ('done','archived') LIMIT 1`
+      )
+      .get(boardId, repoPath);
+    return row != null;
+  }
+
+  /** Atomic CAS claim of a suggest system task (review -> running). */
+  claimForSuggest(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status='running', claim_lock=@lock, claim_expires=@expires,
+           last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='review'
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Hard-delete a task row and its links (used to drop a transient suggest system task on terminal). */
+  deleteTask(id: string): void {
+    const tx = this.db.transaction((taskId: string) => {
+      this.db.prepare('DELETE FROM task_links WHERE parent_id=? OR child_id=?').run(taskId, taskId);
+      this.db.prepare('DELETE FROM tasks WHERE id=?').run(taskId);
+    });
+    tx(id);
+  }
 }
