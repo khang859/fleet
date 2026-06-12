@@ -103,6 +103,15 @@ function buildPrompt(input: BuildWorkerInput): string {
       `resolved safely, call kanban_block with the reason instead.`
     );
   }
+  if (mode === 'suggest') {
+    return (
+      `suggest a feature grouping for kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are grouping related loose tickets so they can ship as one feature. Use kanban_list / ` +
+      `kanban_show if you need more detail. Do not implement anything and do not create tasks. When ` +
+      `you have identified a coherent group, call kanban_suggest_feature(name, task_ids, reason). If ` +
+      `no subset is clearly related, call kanban_block with a short reason.`
+    );
+  }
   return (
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
@@ -148,6 +157,8 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_update';
     case 'assign':
       return 'kanban_assign';
+    case 'suggest':
+      return 'kanban_suggest_feature,kanban_block';
     default:
       return null;
   }

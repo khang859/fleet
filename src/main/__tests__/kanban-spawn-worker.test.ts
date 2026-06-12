@@ -394,6 +394,23 @@ describe('buildWorkerInvocation', () => {
     expect(inv.args[i + 1]).toContain('kanban_complete');
   });
 
+  it('builds a suggest prompt and requires the kanban_suggest_feature terminal', () => {
+    const workspace = join(ROOT, 'wssuggest');
+    mkdirSync(workspace, { recursive: true });
+    const inv = buildWorkerInvocation({
+      task: { id: 't1', title: 'Suggest a feature grouping for /r', body: '- a: x\n- b: y', assignee: null, modelOverride: null },
+      workspace,
+      mcpPort: 1234,
+      runToken: 'tok',
+      logPath: join(ROOT, 'suggest.log'),
+      mode: 'suggest'
+    });
+    const i = inv.args.indexOf('--prompt');
+    expect(inv.args[i + 1]).toContain('grouping');
+    const r = inv.args.indexOf('--require-tool');
+    expect(inv.args[r + 1]).toBe('kanban_suggest_feature,kanban_block');
+  });
+
   it('does not include attachments in decompose mode', () => {
     const workspace = join(ROOT, 'wsc');
     mkdirSync(workspace, { recursive: true });
