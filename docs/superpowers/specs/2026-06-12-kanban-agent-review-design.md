@@ -298,15 +298,21 @@ Otherwise, read the verdict the terminal tool recorded on the task:
   exactly as the cap case, append `review_escalated`
   (`{ reason: 'reviewer returned no verdict' }`). Never auto-approve.
 
-**Verdict/attempt lifecycle.** A fresh `work` run starting on the task
-(claimAndSpawn, verify-fix, or review-fix) calls `clearReviewVerdict(taskId)`,
-which sets `review_verdict` and `review_head_sha` to NULL **and zeroes
-`review_attempts`** — the diff has changed, so any prior approval is stale and
-the next review episode starts with the full cap (S2; otherwise a re-worked task
-that escalated at the cap would instantly re-escalate on its first new
-`request_changes` with zero fix attempts). `incrementReviewAttempts` fires per
-`spawnReviewFix`; `resetReviewAttempts` on `approve` is then redundant but
-harmless and kept for symmetry with `resetVerifyAttempts`.
+**Verdict/attempt lifecycle.** `clearReviewVerdict(taskId)` nulls
+`review_verdict` and `review_head_sha` only (it does NOT touch
+`review_attempts`). Attempt resets are explicit so the per-episode counter stays
+correct:
+- **New episode** — a fresh human-initiated `work` run (claimAndSpawn from
+  ready) and a `resolve` spawn call `clearReviewVerdict` **and**
+  `resetReviewAttempts`, so a re-worked task that escalated at the cap starts the
+  next review episode with the full cap (S2).
+- **Bounce within an episode** — `spawnReviewFix` calls `clearReviewVerdict`
+  (the diff will change) **and** `incrementReviewAttempts` (this bounce counts
+  toward the cap).
+- **Approve** — `resetReviewAttempts` (the episode ended cleanly).
+
+`setStatusCleared` clears only claim/run fields, so a recorded verdict and its
+head sha persist through the reclaim status transition (no re-assert needed).
 
 ## 6. `integrate()` change
 
@@ -430,11 +436,11 @@ that filter to `role === 'worker'`, and audit the other `role` switch/branch
 sites for the same assumption.
 
 **Store methods to add** (mirroring resolve/verify equivalents):
-`claimForReview` (CAS on `status='review'`; can reuse the generic
-`claimForVerifyFix` re-claim mechanism — C3), `setReviewVerdict(taskId, decision,
+`claimForReview` (CAS on `status='review'`; the bounce re-claim reuses the
+generic `claimForVerifyFix` mechanism — C3), `setReviewVerdict(taskId, decision,
 headSha?)`, `incrementReviewAttempts`, `resetReviewAttempts`,
-`clearReviewVerdict` (nulls verdict + head_sha **and** zeroes
-`review_attempts`), `isSwarmMember(taskId)`, and the candidate query
+`clearReviewVerdict` (nulls verdict + head_sha only; attempts reset explicitly —
+see §5 lifecycle), `isSwarmMember(taskId)`, and the candidate query
 `reviewPendingTasks()`. Plus a `headSha` git helper in `workspace.ts` and an
 `IntegrationOps.headSha` op for the integrate assertion (§6). `rowToTask` /
 `Task` gain `reviewVerdict`, `reviewAttempts`, `reviewHeadSha`.
