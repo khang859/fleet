@@ -985,6 +985,7 @@ export class KanbanMcpServer {
             metadata: a.metadata
           });
           this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+          if (scope.mode === 'decompose') this.commands?.enforceDecomposeGrouping(task.id);
           this.unregisterRun(token);
           return this.text(res, rpcReq.id, `Task ${task.id} marked done.`);
         }

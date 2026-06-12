@@ -893,4 +893,32 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
     });
     expect(String(r.error.message)).toMatch(/not found on this board/i);
   });
+
+  it('auto-groups decompose children into a feature on kanban_complete', async () => {
+    const dispatcher = new KanbanDispatcher(store, {
+      now: () => 0,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: {
+        failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000,
+        autoDecompose: false, autoAssign: false, autoIntegrate: false, maxDecompose: 1, artifactRetentionDays: 0
+      }
+    });
+    const commands = new KanbanCommands(store, dispatcher, () => ({ workspaceKind: 'scratch', maxRuntimeSeconds: null }));
+    server.setCommands(commands);
+
+    const parent = store.createTask({ title: 'Group me', status: 'running', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main' });
+    const c1 = store.createTask({ title: 'a', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main' });
+    const c2 = store.createTask({ title: 'b', workspaceKind: 'worktree', repoPath: '/r', baseBranch: 'main' });
+    store.addLink(parent.id, c1.id);
+    store.addLink(parent.id, c2.id);
+    const run = store.startRun(parent.id, 'orchestrator', null, 'decompose');
+    server.registerRun('tok-dec', { kind: 'task', taskId: parent.id, runId: run.id, mode: 'decompose' });
+
+    await rpc(`${base}?run=tok-dec`, 'tools/call', { name: 'kanban_complete', arguments: { summary: 'done' } });
+
+    const features = store.listFeatures({});
+    expect(features).toHaveLength(1);
+    expect(store.getTask(c1.id)?.featureId).toBe(features[0].id);
+  });
 });
