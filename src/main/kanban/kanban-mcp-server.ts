@@ -11,7 +11,8 @@ import type {
   RunMode,
   SwarmInput,
   SwarmCreated,
-  Task
+  Task,
+  VerifyCommand
 } from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
@@ -36,6 +37,14 @@ interface BoardScope {
 }
 
 export type RunScope = TaskScope | BoardScope;
+
+/** Spawns a deterministic verify run for a worktree completion; returns its pid (undefined on spawn failure). */
+export type VerifyRunner = (args: {
+  runId: number;
+  taskId: string;
+  workspace: string;
+  commands: VerifyCommand[];
+}) => number | undefined;
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -467,6 +476,7 @@ export class KanbanMcpServer {
   private store: KanbanStore;
   private swarmHandler: ((input: SwarmInput) => SwarmCreated) | null = null;
   private commands: KanbanCommands | null = null;
+  private verifyRunner: VerifyRunner | null = null;
   private kanbanHome: string | null = null;
   private getProfiles: () => Array<Pick<WorkerProfile, 'name' | 'role'>>;
   constructor(
@@ -485,6 +495,11 @@ export class KanbanMcpServer {
   /** Inject the command layer; PM (board-scoped) tools route through it for validation. */
   setCommands(commands: KanbanCommands): void {
     this.commands = commands;
+  }
+
+  /** Inject the deterministic verify runner (spawns the verify shell; wired in index.ts over workerExits). */
+  setVerifyRunner(runner: VerifyRunner): void {
+    this.verifyRunner = runner;
   }
 
   /** Inject the kanban home so PM doc references can be validated against pm/<board>/docs. */
@@ -981,6 +996,63 @@ export class KanbanMcpServer {
               workspacePath: task.workspacePath,
               baseBranch: task.baseBranch
             });
+            const where = task.branchName ?? `kanban/${task.id}`;
+            const statText = stat
+              ? `${stat.files} file${stat.files === 1 ? '' : 's'} (+${stat.insertions}/−${stat.deletions})`
+              : 'changes committed';
+
+            // Deterministic verify gate (#231): only for genuine worktree diffs
+            // (work/resolve), and only when the task's project has verify commands.
+            const project = task.repoPath
+              ? this.store.getProjectByPath(task.boardId, task.repoPath)
+              : null;
+            const commands = project?.verifyCommands ?? [];
+            const gated =
+              (scope.mode === 'work' || scope.mode === 'resolve') && commands.length > 0;
+
+            if (gated && this.verifyRunner) {
+              // Persist the work summary and free the work run row, but do NOT emit a
+              // 'completed' event (it would fire a premature "Completed" notification).
+              this.store.finishRun(scope.runId, 'completed', {
+                summary: a.summary,
+                metadata: { ...a.metadata, review: stat ?? undefined }
+              });
+              this.store.appendEvent(task.id, scope.runId, 'verify_started', {});
+              const verify = this.store.startRun(task.id, null, null, 'verify');
+              const pid = this.verifyRunner({
+                runId: verify.id,
+                taskId: task.id,
+                workspace: task.workspacePath,
+                commands
+              });
+              if (pid != null) {
+                this.store.setWorkerPid(task.id, verify.id, pid);
+                const lock = this.claimLocks.get(token);
+                if (lock) this.store.extendClaim(task.id, lock, 15 * 60 * 1000);
+                this.store.addComment(task.id, author, `verifying: ${statText} on ${where}`);
+                this.unregisterRun(token);
+                return this.text(res, rpcReq.id, `Task ${task.id} committed; verifying.`);
+              }
+              // Spawn failed → close the orphaned verify run and fail open to review.
+              this.store.finishRun(verify.id, 'spawn_failed');
+              this.store.reviewTask(task.id, a.summary);
+              if (task.repoPath && task.branchName && task.baseBranch) {
+                const c = checkMergeConflicts({
+                  repoPath: task.repoPath,
+                  baseBranch: task.baseBranch,
+                  branchName: task.branchName
+                });
+                this.store.setTaskConflict(task.id, c.state, c.files);
+              }
+              this.store.appendEvent(task.id, verify.id, 'verify_skipped', {
+                reason: 'verify spawn failed'
+              });
+              this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
+              this.unregisterRun(token);
+              return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
+            }
+
+            // Ungated path (UNCHANGED behavior — must match the original exactly).
             this.store.reviewTask(task.id, a.summary);
             // Pre-compute whether this will merge cleanly into its base (the feature
             // integration branch, for feature tasks) so the board can warn up-front.
@@ -997,10 +1069,6 @@ export class KanbanMcpServer {
               metadata: { ...a.metadata, review: stat ?? undefined }
             });
             this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
-            const where = task.branchName ?? `kanban/${task.id}`;
-            const statText = stat
-              ? `${stat.files} file${stat.files === 1 ? '' : 's'} (+${stat.insertions}/−${stat.deletions})`
-              : 'changes committed';
             this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
             this.unregisterRun(token);
             return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);
