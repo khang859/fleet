@@ -1594,4 +1594,51 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
     expect(store.getTask(sys.id)).toBeNull();
     store.close();
   });
+
+  it('reclaim drops a suggest run that exited 3 (deleted, never parked as blocked)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    store.setWorkerPid(sys.id, run.id, 999);
+    const cleared: number[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true, // pid liveness irrelevant — a definitive exit was observed
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) => (id === run.id ? { code: 3, signal: null } : undefined),
+      clearWorkerExit: (id) => cleared.push(id)
+    });
+    disp.reclaim();
+    expect(store.getTask(sys.id)).toBeNull();
+    expect(cleared).toContain(run.id);
+    store.close();
+  });
+
+  it('reclaim drops a suggest run on the fatal blockNow path (deleted, never blocked)', () => {
+    const clock = { t: 1000 };
+    const store = makeStore(clock);
+    const sys = store.createTask({ title: 'detect', status: 'review', boardId: 'default', systemKind: 'suggest', repoPath: '/r' });
+    store.claimForSuggest(sys.id, 'L', 100000); // long ttl, not expired
+    const run = store.startRun(sys.id, 'orchestrator', null, 'suggest');
+    store.setWorkerPid(sys.id, run.id, 999);
+    const cleared: number[] = [];
+    const disp = new KanbanDispatcher(store, {
+      now: () => clock.t,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig, claimGraceMs: 120_000, claimTtlMs: 100000 },
+      workerExit: (id) =>
+        id === run.id
+          ? { code: 1, signal: null, fatalReason: 'auth failed', blockNow: true }
+          : undefined,
+      clearWorkerExit: (id) => cleared.push(id)
+    });
+    disp.reclaim();
+    expect(store.getTask(sys.id)).toBeNull();
+    expect(cleared).toContain(run.id);
+    store.close();
+  });
 });

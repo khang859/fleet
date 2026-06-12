@@ -1079,6 +1079,21 @@ describe('KanbanCommands suggestions', () => {
     expect(store.getSuggestion(s.id)?.status).toBe('accepted');
   });
 
+  it('accept throws + dismisses (no feature) when all suggested tasks are gone', () => {
+    const { store, commands } = makeCommands();
+    const s = store.createSuggestion({ boardId: 'default', name: 'All Gone', repoPath: '/repo', taskIds: ['ghost-1', 'ghost-2'] });
+
+    let code: string | undefined;
+    try {
+      commands.acceptSuggestion(s.id);
+    } catch (err) {
+      code = (err as { code?: string }).code;
+    }
+    expect(code).toBe('BAD_REQUEST');
+    expect(store.listFeatures({})).toHaveLength(0);
+    expect(store.getSuggestion(s.id)?.status).toBe('dismissed');
+  });
+
   it('dismiss marks dismissed without creating a feature', () => {
     const { store, commands } = makeCommands();
     const s = store.createSuggestion({ boardId: 'default', name: 'Ignore Me', repoPath: null, taskIds: [] });

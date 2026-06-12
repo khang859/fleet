@@ -1021,6 +1021,10 @@ export class KanbanCommands {
     const tasks = s.taskIds
       .map((tid) => this.store.getTask(tid))
       .filter((t): t is Task => t !== null);
+    if (tasks.length === 0) {
+      this.store.updateSuggestionStatus(id, 'dismissed');
+      throw new CodedError('all suggested tasks no longer exist', 'BAD_REQUEST');
+    }
     const baseBranch = tasks.find((t) => t.baseBranch != null)?.baseBranch ?? null;
     const feature = this.createFeature({
       boardId: s.boardId,

@@ -151,6 +151,22 @@ export class KanbanDispatcher {
       // of a still-live worker.
       if (!expired && !dead && exit == null) continue;
 
+      // A terminal suggest run: its system task is transient and must never be parked on the
+      // board (blocked/triage) — that would also wedge the per-repo detection gate forever.
+      // Drop it on every terminal path (exit 3, fatal blockNow, dead pid, expired claim).
+      const reclaimMode =
+        task.currentRunId != null ? this.store.runMode(task.currentRunId) : 'work';
+      if (reclaimMode === 'suggest') {
+        if (task.currentRunId != null) {
+          this.store.finishRun(task.currentRunId, 'reclaimed', {
+            error: exit?.fatalReason ?? 'suggest run ended without a suggestion'
+          });
+          this.deps.clearWorkerExit?.(task.currentRunId);
+        }
+        this.store.deleteTask(task.id);
+        continue;
+      }
+
       // Clean exit without a terminal tool: rune nudged to its cap and gave up
       // (exit 3). This is deterministic — retrying re-rolls the same wall — so
       // route to a deliberate review-required block, and do NOT count it as a
@@ -214,7 +230,6 @@ export class KanbanDispatcher {
         // integrate() pass re-evaluates it (retry within the cap, or block).
         if (mode === 'assign') this.store.returnToReady(task.id);
         else if (mode === 'resolve') this.store.setStatusCleared(task.id, 'review');
-        else if (mode === 'suggest') this.store.deleteTask(task.id);
         else if (mode && mode !== 'work') this.store.setStatusCleared(task.id, 'triage');
         else this.store.returnToReady(task.id);
       }
