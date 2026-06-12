@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.69.0
+
+- **Kanban feature PR lifecycle (autopilot phase 3)** — features now manage their own draft→ready GitHub PR. When the first task in a feature merges into its integration branch, Fleet auto-opens a **draft PR** for the feature and pushes the branch; subsequent task merges keep it updated. Once every task in the feature is done, the draft PR is automatically **flipped to ready for review** (using **Ship** also marks an existing draft ready), with a notification when it happens. The PR poller now tracks feature-PR state and the board rollup shows whether a feature's PR is draft or ready. (Schema v12.)
+- **Fix: permission notification no longer spams** — the "An agent needs your permission" OS notification (and chime) fired repeatedly while a Claude prompt was on screen because detection ran on every terminal redraw. It now fires **once per request**, re-arming only after you respond.
+- **Fix: Telescope hides stale recent files** — recently-opened files that no longer exist on disk are filtered out of the Telescope picker.
+
 ## v2.68.0
 
 - **Kanban integration autopilot (phase 2)** — completed feature tasks now integrate themselves. When a worktree task in a feature reaches review, the dispatcher auto-merges its branch into the feature's integration branch and marks it done (no review click needed). On a merge conflict it spawns a bounded **resolve run**: a worker merges the target branch into the worktree, resolves conflicts, verifies, commits, and returns the task to review for a retry — capped at 2 attempts, after which the task blocks with a notification. Once every task in a feature is done, its integration branch is auto-synced with main (conflicts handed to a resolve run on a system task). Clicking **Merge to base** on a conflicting standalone task now also spawns a resolve run instead of only commenting. Gated by a new **Auto-integrate** setting (default on). All git work is local — pushing the feature branch and opening the PR remain manual for now.
