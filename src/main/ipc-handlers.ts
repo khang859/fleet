@@ -213,6 +213,10 @@ export function registerIpcHandlers(
   });
 
   ipcMain.on(IPC_CHANNELS.PTY_INPUT, (_event, payload: PtyInputPayload) => {
+    // User input is the resolution edge for a pending permission prompt — re-arm
+    // notifications and clear needs_me so the next prompt notifies exactly once.
+    notificationDetector.onUserInput(payload.paneId);
+    activityTracker.onUserInput(payload.paneId);
     ptyManager.write(payload.paneId, payload.data);
   });
 
