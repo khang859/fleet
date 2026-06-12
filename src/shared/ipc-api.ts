@@ -11,7 +11,8 @@ import type {
   CreateFeatureInput,
   UpdateFeatureInput,
   FeatureStatus,
-  ConflictState
+  ConflictState,
+  VerifyCommand
 } from './kanban-types';
 
 export type PtyCreateRequest = {
@@ -400,6 +401,7 @@ export type KanbanAddProjectRequest = {
   name: string;
   path: string;
   description?: string | null;
+  verifyCommands?: VerifyCommand[];
 };
 
 export type PmChatSendRequest = {

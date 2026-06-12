@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FolderGit2, Plus, Star, Trash2, X } from 'lucide-react';
-import type { Project } from '../../../../shared/kanban-types';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { FolderGit2, Plus, Settings2, Star, Trash2, X } from 'lucide-react';
+import type { Project, VerifyCommand } from '../../../../shared/kanban-types';
 import { useWorkspaceStore } from '../../store/workspace-store';
 import { Overlay } from '../Overlay';
 
@@ -14,6 +14,9 @@ interface ProjectsModalProps {
 export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps): React.JSX.Element {
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [editingVerifyId, setEditingVerifyId] = useState<string | null>(null);
+  const [verifyRows, setVerifyRows] = useState<(VerifyCommand & { _key: number })[]>([]);
+  const verifyKeyRef = useRef(0);
   const addRecentFolder = useWorkspaceStore((s) => s.addRecentFolder);
 
   const refresh = useCallback(async () => {
@@ -58,6 +61,31 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
     }
   }
 
+  function handleEditVerify(project: Project): void {
+    if (editingVerifyId === project.id) {
+      setEditingVerifyId(null);
+    } else {
+      setEditingVerifyId(project.id);
+      setVerifyRows(
+        project.verifyCommands.map((c) => ({ ...c, _key: verifyKeyRef.current++ }))
+      );
+    }
+  }
+
+  async function handleSaveVerify(id: string): Promise<void> {
+    setError(null);
+    try {
+      const filtered = verifyRows
+        .filter((r) => r.label.trim() && r.command.trim())
+        .map(({ label, command }) => ({ label, command }));
+      await window.fleet.kanban.setProjectVerifyCommands(id, filtered);
+      setEditingVerifyId(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save verify commands');
+    }
+  }
+
   return (
     <Overlay
       open={open}
@@ -83,39 +111,118 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
           </div>
         )}
         {projects.map((p) => (
-          <div
-            key={p.id}
-            className="flex items-center gap-2 rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5"
-          >
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-xs">
-                <span className="font-medium">{p.name}</span>
-                {p.isDefault && (
-                  <span className="rounded bg-emerald-900/60 px-1 text-[10px] text-emerald-300">
-                    default
-                  </span>
-                )}
+          <div key={p.id} className="rounded border border-neutral-800 bg-neutral-900">
+            <div className="flex items-center gap-2 px-2 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="font-medium">{p.name}</span>
+                  {p.isDefault && (
+                    <span className="rounded bg-emerald-900/60 px-1 text-[10px] text-emerald-300">
+                      default
+                    </span>
+                  )}
+                  {p.verifyCommands.length > 0 && (
+                    <span className="rounded bg-neutral-800 px-1 text-[10px] text-neutral-400">
+                      {p.verifyCommands.length} verify
+                    </span>
+                  )}
+                </div>
+                <div className="truncate text-[10px] text-neutral-500" title={p.path}>
+                  {p.path}
+                </div>
               </div>
-              <div className="truncate text-[10px] text-neutral-500" title={p.path}>
-                {p.path}
-              </div>
-            </div>
-            {!p.isDefault && (
               <button
-                onClick={() => void handleSetDefault(p.id)}
-                title="Make default"
-                className="rounded p-1 text-neutral-400 transition hover:bg-neutral-800"
+                onClick={() => handleEditVerify(p)}
+                title="Edit verify commands"
+                className={`rounded p-1 transition hover:bg-neutral-800 ${editingVerifyId === p.id ? 'text-blue-400' : 'text-neutral-400'}`}
               >
-                <Star size={12} />
+                <Settings2 size={12} />
               </button>
+              {!p.isDefault && (
+                <button
+                  onClick={() => void handleSetDefault(p.id)}
+                  title="Make default"
+                  className="rounded p-1 text-neutral-400 transition hover:bg-neutral-800"
+                >
+                  <Star size={12} />
+                </button>
+              )}
+              <button
+                onClick={() => void handleRemove(p.id)}
+                title="Remove project"
+                className="rounded p-1 text-neutral-400 transition hover:bg-neutral-800 hover:text-red-400"
+              >
+                <Trash2 size={12} />
+              </button>
+            </div>
+            {editingVerifyId === p.id && (
+              <div className="border-t border-neutral-800 px-2 pb-2 pt-1.5">
+                <p className="mb-1.5 text-[10px] text-neutral-500">
+                  Run in the task&apos;s worktree after completion, in order, stopping at the first
+                  failure. Prepend an install step (e.g. <code className="text-neutral-400">npm ci</code>) if dependencies aren&apos;t already present.
+                </p>
+                <div className="mb-1.5 flex flex-col gap-1">
+                  {verifyRows.map((row, i) => (
+                    <div key={row._key} className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        placeholder="Label"
+                        value={row.label}
+                        onChange={(e) => {
+                          const updated = [...verifyRows];
+                          updated[i] = { ...updated[i], label: e.target.value };
+                          setVerifyRows(updated);
+                        }}
+                        className="w-24 shrink-0 rounded border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 text-[11px] text-neutral-200 placeholder-neutral-600 focus:border-neutral-500 focus:outline-none"
+                      />
+                      <input
+                        type="text"
+                        placeholder="Command"
+                        value={row.command}
+                        onChange={(e) => {
+                          const updated = [...verifyRows];
+                          updated[i] = { ...updated[i], command: e.target.value };
+                          setVerifyRows(updated);
+                        }}
+                        className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-950 px-1.5 py-0.5 font-mono text-[11px] text-neutral-200 placeholder-neutral-600 focus:border-neutral-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={() => setVerifyRows(verifyRows.filter((_, j) => j !== i))}
+                        className="rounded p-0.5 text-neutral-500 hover:text-red-400"
+                        title="Remove"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() =>
+                      setVerifyRows([
+                        ...verifyRows,
+                        { label: '', command: '', _key: verifyKeyRef.current++ }
+                      ])
+                    }
+                    className="inline-flex items-center gap-0.5 rounded border border-neutral-700 px-1.5 py-0.5 text-[11px] text-neutral-400 hover:border-neutral-500 hover:text-neutral-200"
+                  >
+                    <Plus size={10} /> Add command
+                  </button>
+                  <button
+                    onClick={() => void handleSaveVerify(p.id)}
+                    className="rounded bg-blue-600 px-1.5 py-0.5 text-[11px] text-white hover:bg-blue-500"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={() => setEditingVerifyId(null)}
+                    className="rounded px-1.5 py-0.5 text-[11px] text-neutral-400 hover:text-neutral-200"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
             )}
-            <button
-              onClick={() => void handleRemove(p.id)}
-              title="Remove project"
-              className="rounded p-1 text-neutral-400 transition hover:bg-neutral-800 hover:text-red-400"
-            >
-              <Trash2 size={12} />
-            </button>
           </div>
         ))}
       </div>

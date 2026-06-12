@@ -17,7 +17,8 @@ import type {
   Feature,
   FeatureDetail,
   FeatureSuggestion,
-  Project
+  Project,
+  VerifyCommand
 } from '../../shared/kanban-types';
 import type {
   KanbanUpdateTaskRequest,
@@ -352,6 +353,12 @@ export function registerKanbanIpc(commands: KanbanCommands, pmChat: PmChatServic
   ipcMain.handle(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, (_e, id: string) => {
     commands.setDefaultProject(id);
   });
+  ipcMain.handle(
+    IPC_CHANNELS.KANBAN_SET_PROJECT_VERIFY,
+    (_e, id: string, verifyCommands: VerifyCommand[]) => {
+      commands.setProjectVerifyCommands(id, verifyCommands ?? []);
+    }
+  );
 
   ipcMain.handle(IPC_CHANNELS.KANBAN_PM_SEND, (_e, req: PmChatSendRequest) => {
     pmChat.sendMessage(req.boardId, req.text);

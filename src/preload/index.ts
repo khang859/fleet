@@ -83,7 +83,8 @@ import type {
   FeatureSuggestion,
   WorktreeInfo,
   PruneResult,
-  Project
+  Project,
+  VerifyCommand
 } from '../shared/kanban-types';
 import type { WslDistroState } from '../shared/shell-profiles';
 import type { RuneStatus, RuneInstallResult } from '../shared/rune';
@@ -652,7 +653,9 @@ const fleetApi = {
     removeProject: async (id: string): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_REMOVE_PROJECT, id),
     setDefaultProject: async (id: string): Promise<void> =>
-      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id)
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id),
+    setProjectVerifyCommands: async (id: string, cmds: VerifyCommand[]): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_PROJECT_VERIFY, id, cmds)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
