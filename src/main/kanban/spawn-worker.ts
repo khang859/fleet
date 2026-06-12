@@ -166,6 +166,9 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_assign';
     case 'suggest':
       return 'kanban_suggest_feature,kanban_block';
+    case 'verify':
+      // A deterministic verify run has no agent and no terminal MCP tool.
+      return null;
     default:
       return null;
   }

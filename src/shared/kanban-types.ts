@@ -12,7 +12,14 @@ export type TaskStatus =
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
 /** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run. */
-export type RunMode = 'work' | 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest' | 'verify';
+export type RunMode =
+  | 'work'
+  | 'decompose'
+  | 'specify'
+  | 'assign'
+  | 'resolve'
+  | 'suggest'
+  | 'verify';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';

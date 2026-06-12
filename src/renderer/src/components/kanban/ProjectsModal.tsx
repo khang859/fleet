@@ -15,7 +15,7 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
   const [projects, setProjects] = useState<Project[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editingVerifyId, setEditingVerifyId] = useState<string | null>(null);
-  const [verifyRows, setVerifyRows] = useState<(VerifyCommand & { _key: number })[]>([]);
+  const [verifyRows, setVerifyRows] = useState<Array<VerifyCommand & { _key: number }>>([]);
   const verifyKeyRef = useRef(0);
   const addRecentFolder = useWorkspaceStore((s) => s.addRecentFolder);
 
@@ -66,9 +66,7 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
       setEditingVerifyId(null);
     } else {
       setEditingVerifyId(project.id);
-      setVerifyRows(
-        project.verifyCommands.map((c) => ({ ...c, _key: verifyKeyRef.current++ }))
-      );
+      setVerifyRows(project.verifyCommands.map((c) => ({ ...c, _key: verifyKeyRef.current++ })));
     }
   }
 
@@ -159,7 +157,9 @@ export function ProjectsModal({ open, boardSlug, onClose }: ProjectsModalProps):
               <div className="border-t border-neutral-800 px-2 pb-2 pt-1.5">
                 <p className="mb-1.5 text-[10px] text-neutral-500">
                   Run in the task&apos;s worktree after completion, in order, stopping at the first
-                  failure. Prepend an install step (e.g. <code className="text-neutral-400">npm ci</code>) if dependencies aren&apos;t already present.
+                  failure. Prepend an install step (e.g.{' '}
+                  <code className="text-neutral-400">npm ci</code>) if dependencies aren&apos;t
+                  already present.
                 </p>
                 <div className="mb-1.5 flex flex-col gap-1">
                   {verifyRows.map((row, i) => (
