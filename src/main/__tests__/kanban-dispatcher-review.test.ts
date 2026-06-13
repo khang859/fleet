@@ -4,6 +4,7 @@ import { tmpdir } from 'os';
 import { KanbanStore } from '../kanban/kanban-store';
 import {
   KanbanDispatcher,
+  type IntegrationOps,
   type SpawnWorkerArgs,
   type WorkerExit
 } from '../kanban/kanban-dispatcher';
@@ -222,6 +223,97 @@ describe('reclaim() review branch', () => {
     disp.reclaim();
     expect(store.getTask(task.id)!.status).toBe('running');
     expect(spawn).not.toHaveBeenCalled();
+    store.close();
+  });
+});
+
+describe('integrate() review guard', () => {
+  // Mirrors the real reviewFeatureTask helper in kanban-dispatcher.test.ts (a review-pending
+  // feature worktree task that integrateTasks() will pick up), then layers a review verdict on top.
+  function featureReviewTask(
+    store: KanbanStore,
+    verdict: 'approve' | 'request_changes' | null,
+    sha: string | null
+  ) {
+    const f = store.createFeature({ boardId: 'default', name: 'F' });
+    store.updateFeature(f.id, {
+      integrationBranch: `fleet/feature-${f.id}`,
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    const t = store.createTask({
+      title: 'x',
+      featureId: f.id,
+      workspaceKind: 'worktree',
+      repoPath: '/repo',
+      baseBranch: 'main'
+    });
+    store.setWorkspace(t.id, '/repo/wt', 'feat', 'main');
+    store.reviewTask(t.id, null);
+    if (verdict) store.setReviewVerdict(t.id, verdict, sha);
+    return store.getTask(t.id)!;
+  }
+
+  const ops = (over: Partial<IntegrationOps> = {}): IntegrationOps => ({
+    ensureFeatureBranch: () => ({ ok: true }),
+    checkMergeConflicts: () => ({ state: 'clean', files: [] }),
+    mergeWorktreeToBase: vi.fn(() => ({ ok: true })),
+    updateIntegrationBranchFromMain: () => ({ ok: true, alreadyUpToDate: true }),
+    removeWorktree: () => ({ branchKept: false }),
+    isBranchMerged: () => true,
+    createFeaturePr: () => ({ ok: true, url: 'https://x/pull/1', number: 1 }),
+    pushIntegrationBranch: () => ({ ok: true }),
+    markPrReady: () => ({ ok: true }),
+    headSha: () => 'sha1',
+    ...over
+  });
+
+  it('autoReview on + verdict != approve -> NOT merged', () => {
+    const store = new KanbanStore(db(), { now: () => 1000 });
+    featureReviewTask(store, 'request_changes', null);
+    const merge = vi.fn(() => ({ ok: true }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => 1000,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig(), autoIntegrate: true },
+      integration: ops({ mergeWorktreeToBase: merge })
+    });
+    disp.integrate();
+    expect(merge).not.toHaveBeenCalled();
+    store.close();
+  });
+
+  it('approve + matching HEAD -> merged', () => {
+    const store = new KanbanStore(db(), { now: () => 1000 });
+    featureReviewTask(store, 'approve', 'sha1');
+    const merge = vi.fn(() => ({ ok: true }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => 1000,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig(), autoIntegrate: true },
+      integration: ops({ mergeWorktreeToBase: merge })
+    });
+    disp.integrate();
+    expect(merge).toHaveBeenCalledTimes(1);
+    store.close();
+  });
+
+  it('approve but HEAD drifted -> verdict cleared, NOT merged', () => {
+    const store = new KanbanStore(db(), { now: () => 1000 });
+    const t = featureReviewTask(store, 'approve', 'OLDsha');
+    const merge = vi.fn(() => ({ ok: true }));
+    const disp = new KanbanDispatcher(store, {
+      now: () => 1000,
+      isAlive: () => true,
+      spawnWorker: () => undefined,
+      config: { ...baseConfig(), autoIntegrate: true },
+      integration: ops({ headSha: () => 'NEWsha', mergeWorktreeToBase: merge })
+    });
+    disp.integrate();
+    expect(merge).not.toHaveBeenCalled();
+    expect(store.getTask(t.id)!.reviewVerdict).toBeNull();
     store.close();
   });
 });

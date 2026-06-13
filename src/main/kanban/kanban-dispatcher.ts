@@ -856,6 +856,22 @@ export class KanbanDispatcher {
     for (const task of this.store.reviewWorktreeFeatureTasks()) {
       if (budget <= 0) break;
       if (!task.repoPath || !task.branchName || !task.baseBranch || !task.workspacePath) continue;
+
+      // Agent review gate (#232): a reviewed task merges only on an 'approve' verdict,
+      // and only at the exact HEAD that was approved (a later run may have changed the tree).
+      if (this.deps.config.autoReview) {
+        if (task.reviewVerdict !== 'approve') continue;
+        const head = task.workspacePath ? this.ops.headSha(task.workspacePath) : null;
+        if (head != null && task.reviewHeadSha != null && head !== task.reviewHeadSha) {
+          this.store.clearReviewVerdict(task.id); // drifted → re-review next tick
+          this.store.appendEvent(task.id, null, 'review_stale', {
+            approved: task.reviewHeadSha,
+            head
+          });
+          continue;
+        }
+      }
+
       const integrationBranch = this.integrationBranchFor(task.featureId);
       if (!integrationBranch) continue;
 
