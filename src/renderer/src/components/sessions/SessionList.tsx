@@ -31,6 +31,11 @@ function relativeTime(ms: number): string {
   return `${Math.floor(hr / 24)}d`;
 }
 
+function formatCost(usd: number): string {
+  if (usd > 0 && usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
 export function SessionList(): React.JSX.Element {
   const { sessions, selected, select } = useSessionsStore();
   const { settings, updateSettings } = useSettingsStore();
@@ -104,6 +109,11 @@ export function SessionList(): React.JSX.Element {
                       <span className="rounded bg-fleet-surface-2 px-1">{s.agent}</span>
                       {s.model && <span className="truncate">{s.model}</span>}
                       <span>· {s.messageCount} msgs</span>
+                      {s.agent === 'claude' && (
+                        <span className="ml-auto flex-shrink-0 font-mono text-fleet-text">
+                          {s.costUsd === undefined ? '—' : formatCost(s.costUsd)}
+                        </span>
+                      )}
                     </div>
                   </div>
                 );
