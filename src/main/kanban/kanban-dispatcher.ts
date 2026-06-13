@@ -87,6 +87,8 @@ export interface SpawnWorkerArgs {
   mode: RunMode;
   /** Prior verify failure output, injected into the work prompt for a verify-fix run. */
   verifyFailure?: string;
+  /** Prior review findings, injected into a bounce work prompt for a review-fix run. */
+  reviewFindings?: string;
 }
 
 export interface DispatcherConfig {
