@@ -39,6 +39,16 @@ function hostContext(): PathContext {
   return process.platform === 'win32' ? 'win32' : 'posix';
 }
 
+/**
+ * Make a path from a WSL pane's coordinate system readable by the win32 process
+ * (Strategy 1, UNC bridge — see docs/wsl-path-handling-plan.md §3). Idempotent:
+ * already-Windows/UNC paths and every non-WSL context pass through unchanged, so
+ * native behaviour is byte-for-byte identical.
+ */
+function resolveCtxPath(ctx: PathContext | undefined, p: string): string {
+  return isWslContext(ctx) ? toWindowsAccessiblePath(p, ctx) : p;
+}
+
 type FileListEntry = { path: string; relativePath: string; name: string };
 
 /**
@@ -237,22 +247,25 @@ export function registerIpcHandlers(
       extraEnv.CLAUDE_CONFIG_DIR = claudeConfigDir;
     }
 
+    // Resolve the ShellProfile (defaulting to the registry's default if not provided).
+    const profileId = req.shellProfileId ?? (await shellProfileRegistry.getDefaultProfileId());
+    const profiles = await shellProfileRegistry.enumerate();
+    const profile = profiles.find((p) => p.id === profileId);
+
     // Env Sync: inject decrypted vars for any inject-delivery target whose dir
     // is an ancestor of this terminal's cwd. Resolves to {} when nothing applies.
+    // Translate the cwd through the profile's context so a WSL pane's posix cwd
+    // resolves to a Windows-accessible path before findNearestConfig walks it.
     if (req.cwd) {
       try {
-        Object.assign(extraEnv, await envSyncManager.getEnvForCwd(req.cwd));
+        const cwd = resolveCtxPath(profile?.pathContext, req.cwd);
+        Object.assign(extraEnv, await envSyncManager.getEnvForCwd(cwd));
       } catch (err) {
         log.warn('env-sync inject failed; continuing without injected vars', {
           error: err instanceof Error ? err.message : String(err)
         });
       }
     }
-
-    // Resolve the ShellProfile (defaulting to the registry's default if not provided).
-    const profileId = req.shellProfileId ?? (await shellProfileRegistry.getDefaultProfileId());
-    const profiles = await shellProfileRegistry.enumerate();
-    const profile = profiles.find((p) => p.id === profileId);
 
     const alreadyExisted = ptyManager.has(req.paneId);
     const result = ptyManager.create({
@@ -723,11 +736,11 @@ export function registerIpcHandlers(
 
   // Worktree handlers
   ipcMain.handle(IPC_CHANNELS.WORKTREE_CREATE, async (_event, req: WorktreeCreateRequest) => {
-    return worktreeService.create(req.repoPath);
+    return worktreeService.create(req.repoPath, req.pathContext);
   });
 
   ipcMain.handle(IPC_CHANNELS.WORKTREE_REMOVE, async (_event, req: WorktreeRemoveRequest) => {
-    return worktreeService.remove(req.worktreePath);
+    return worktreeService.remove(req.worktreePath, req.pathContext);
   });
 
   // ── Annotate ────────────────────────────────────────────────────────────
@@ -997,7 +1010,12 @@ export function registerIpcHandlers(
   // ── Env Sync ────────────────────────────────────────────────────────────
   ipcMain.handle(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, (_e, repoDir: string) => readConfig(repoDir));
 
-  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DISCOVER, (_e, cwd: string) => findNearestConfig(cwd));
+  // Translate the pane cwd here so the discovered repoDir comes back already
+  // Windows-accessible; every downstream repoDir-keyed call (status/pull/push/
+  // writeConfig/…) then works as-is on win32 without threading context further.
+  ipcMain.handle(IPC_CHANNELS.ENV_SYNC_DISCOVER, (_e, cwd: string, pathContext?: PathContext) =>
+    findNearestConfig(resolveCtxPath(pathContext, cwd))
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG,
@@ -1074,7 +1092,12 @@ export function registerIpcHandlers(
   }));
 
   // ── Env Editor ──────────────────────────────────────────────────────────
-  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_LIST, (_e, root: string) => listEnvFiles(root));
+  // LIST/CREATE receive a pane cwd/dir (posix for a WSL pane) so they translate;
+  // READ/WRITE/RENAME/DELETE/RESTORE only ever get an absPath that LIST/CREATE
+  // already returned in Windows-accessible form, so they need no context.
+  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_LIST, (_e, root: string, pathContext?: PathContext) =>
+    listEnvFiles(resolveCtxPath(pathContext, root))
+  );
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_READ, (_e, absPath: string) => readEnvFile(absPath));
 
@@ -1084,8 +1107,10 @@ export function registerIpcHandlers(
       writeEnvFile(absPath, text, expectedMtimeMs)
   );
 
-  ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_CREATE, (_e, dir: string, name: string) =>
-    createEnvFile(dir, name)
+  ipcMain.handle(
+    IPC_CHANNELS.ENV_EDITOR_CREATE,
+    (_e, dir: string, name: string, pathContext?: PathContext) =>
+      createEnvFile(resolveCtxPath(pathContext, dir), name)
   );
 
   ipcMain.handle(IPC_CHANNELS.ENV_EDITOR_RENAME, (_e, absPath: string, newName: string) =>

@@ -664,8 +664,8 @@ const fleetApi = {
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
       typedInvoke<EnvSyncConfig | null>(IPC_CHANNELS.ENV_SYNC_GET_CONFIG, repoDir),
-    discover: async (cwd: string): Promise<DiscoveredRepo | null> =>
-      typedInvoke<DiscoveredRepo | null>(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd),
+    discover: async (cwd: string, pathContext?: PathContext): Promise<DiscoveredRepo | null> =>
+      typedInvoke<DiscoveredRepo | null>(IPC_CHANNELS.ENV_SYNC_DISCOVER, cwd, pathContext),
     writeConfig: async (repoDir: string, config: EnvSyncConfig): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.ENV_SYNC_WRITE_CONFIG, repoDir, config),
     scan: async (repoDir: string): Promise<string[]> =>
@@ -702,8 +702,8 @@ const fleetApi = {
       )
   },
   envEditor: {
-    list: async (root: string): Promise<EnvFileEntry[]> =>
-      typedInvoke<EnvFileEntry[]>(IPC_CHANNELS.ENV_EDITOR_LIST, root),
+    list: async (root: string, pathContext?: PathContext): Promise<EnvFileEntry[]> =>
+      typedInvoke<EnvFileEntry[]>(IPC_CHANNELS.ENV_EDITOR_LIST, root, pathContext),
     read: async (absPath: string): Promise<EnvReadResult> =>
       typedInvoke<EnvReadResult>(IPC_CHANNELS.ENV_EDITOR_READ, absPath),
     write: async (
@@ -712,8 +712,8 @@ const fleetApi = {
       expectedMtimeMs?: number
     ): Promise<EnvWriteResult> =>
       typedInvoke<EnvWriteResult>(IPC_CHANNELS.ENV_EDITOR_WRITE, absPath, text, expectedMtimeMs),
-    create: async (dir: string, name: string): Promise<EnvPathResult> =>
-      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_CREATE, dir, name),
+    create: async (dir: string, name: string, pathContext?: PathContext): Promise<EnvPathResult> =>
+      typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_CREATE, dir, name, pathContext),
     rename: async (absPath: string, newName: string): Promise<EnvPathResult> =>
       typedInvoke<EnvPathResult>(IPC_CHANNELS.ENV_EDITOR_RENAME, absPath, newName),
     delete: async (absPath: string): Promise<EnvTrashResult> =>
