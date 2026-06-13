@@ -81,6 +81,7 @@ export function estimateSessionCostUsd(
   perModel: Map<string, ClaudeUsageInput>,
   table: PriceTable
 ): number | undefined {
+  if (perModel.size === 0) return undefined; // no usage data
   let total = 0;
   for (const [model, usage] of perModel) {
     const c = estimateCostUsd(usage, model, table);

@@ -7,7 +7,8 @@ import {
   resolvePrice,
   estimateCostUsd,
   estimateSessionCostUsd,
-  type ClaudeUsageInput
+  type ClaudeUsageInput,
+  type PriceTable
 } from '../claude-pricing';
 
 const zeroUsage: ClaudeUsageInput = {
@@ -38,6 +39,19 @@ describe('resolvePrice', () => {
   it('returns undefined for an unknown model', () => {
     expect(resolvePrice('gpt-4o', BUNDLED_PRICES)).toBeUndefined();
     expect(resolvePrice('claude-opus-3', BUNDLED_PRICES)).toBeUndefined();
+  });
+
+  it('uses the longer prefix when two prefixes both match', () => {
+    const table: PriceTable = {
+      schemaVersion: 1,
+      updated: '2026-06-12',
+      models: [
+        { prefix: 'claude-opus-4-', input: 5, output: 25, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
+        { prefix: 'claude-opus-4-fast-', input: 10, output: 50, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 }
+      ]
+    };
+    expect(resolvePrice('claude-opus-4-fast-1', table)?.input).toBe(10);
+    expect(resolvePrice('claude-opus-4-8', table)?.input).toBe(5);
   });
 });
 
@@ -79,6 +93,10 @@ describe('estimateSessionCostUsd', () => {
       ['mystery-model', { ...zeroUsage, output: 1_000_000 }]
     ]);
     expect(estimateSessionCostUsd(perModel, BUNDLED_PRICES)).toBeUndefined();
+  });
+
+  it('returns undefined for an empty usage map', () => {
+    expect(estimateSessionCostUsd(new Map(), BUNDLED_PRICES)).toBeUndefined();
   });
 });
 
