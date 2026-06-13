@@ -15,7 +15,12 @@ import { getFileIcon } from './lib/file-icons';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './components/Dashboard';
 import { PaneGrid } from './components/PaneGrid';
-import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from './store/workspace-store';
+import {
+  useWorkspaceStore,
+  collectPaneIds,
+  collectPaneLeafs,
+  getPaneContextById
+} from './store/workspace-store';
 import { usePaneNavigation } from './hooks/use-pane-navigation';
 import { useNotifications } from './hooks/use-notifications';
 import { useNotificationStore } from './store/notification-store';
@@ -1054,6 +1059,7 @@ export function App(): React.JSX.Element {
         isOpen={gitChangesOpen}
         onClose={() => setGitChangesOpen(false)}
         cwd={focusedPaneCwd}
+        pathContext={getPaneContextById(activePaneId)}
       />
       <QuickOpenOverlay
         isOpen={quickOpenOpen}

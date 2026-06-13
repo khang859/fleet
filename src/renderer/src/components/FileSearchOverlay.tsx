@@ -361,7 +361,8 @@ export function FileSearchOverlay({
           requestId: id,
           query: query.trim(),
           scope: undefined,
-          limit: 20
+          limit: 20,
+          pathContext: getActivePaneContext().pathContext
         })
         .then((res) => {
           // Discard stale responses

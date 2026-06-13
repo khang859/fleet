@@ -16,7 +16,12 @@ import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
-import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
+import {
+  useWorkspaceStore,
+  collectPaneIds,
+  collectPaneLeafs,
+  getPaneContextById
+} from '../store/workspace-store';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useKanbanStore } from '../store/kanban-store';
@@ -711,7 +716,7 @@ export function Sidebar({
         const firstPaneId = collectPaneIds(tab.splitRoot)[0];
         const cwd = (firstPaneId ? liveCwds.get(firstPaneId) : undefined) ?? tab.cwd;
         try {
-          const result = await window.fleet.git.isRepo(cwd);
+          const result = await window.fleet.git.isRepo(cwd, getPaneContextById(firstPaneId));
           if (result.isRepo) newSet.add(tab.id);
         } catch {
           // ignore

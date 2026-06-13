@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from 'react';
 import { z } from 'zod';
 import { useTerminal } from '../hooks/use-terminal';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../store/workspace-store';
 import { PaneToolbar } from './PaneToolbar';
 import { SearchBar } from './SearchBar';
 import { openAnnotateModal } from '../lib/annotate-modal-bridge';
@@ -139,14 +139,14 @@ function PiTerminal({
     }
     if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     gitCheckTimerRef.current = setTimeout(() => {
-      void window.fleet.git.isRepo(cwd).then((result) => {
+      void window.fleet.git.isRepo(cwd, getPaneContextById(paneId)).then((result) => {
         setIsGitRepo(result.isRepo);
       });
     }, 500);
     return () => {
       if (gitCheckTimerRef.current) clearTimeout(gitCheckTimerRef.current);
     };
-  }, [cwd]);
+  }, [cwd, paneId]);
 
   useEffect(() => {
     const handler = (e: Event): void => {

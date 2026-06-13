@@ -1,9 +1,16 @@
-import { spawn, type ChildProcess } from 'child_process';
-import { relative } from 'path';
+import type { ChildProcess } from 'child_process';
+import { relative, posix as posixPath } from 'path';
 import type { FileGrepRequest, FileGrepResponse, FileGrepResult } from '../shared/ipc-api';
+import type { PathContext } from '../shared/shell-profiles';
 import { captureBoundedStdout } from './bounded-stdout';
+import { spawnInContext } from './run-in-context';
 
 let activeProcess: ChildProcess | null = null;
+
+// The only object variant of PathContext is the WSL one.
+function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
+  return typeof ctx === 'object';
+}
 
 function killActive(): void {
   if (activeProcess && !activeProcess.killed) {
@@ -40,9 +47,11 @@ function buildRgCommand(
 function buildFallbackCommand(
   query: string,
   cwd: string,
-  limit: number
+  limit: number,
+  ctx?: PathContext
 ): { cmd: string; args: string[] } {
-  if (process.platform === 'win32') {
+  // A WSL pane always falls back to the distro's grep, never Windows findstr.
+  if (!isWslContext(ctx) && process.platform === 'win32') {
     return {
       cmd: 'findstr',
       args: ['/s', '/n', '/i', `/c:${query}`, `${cwd}\\*`]
@@ -61,7 +70,12 @@ function buildFallbackCommand(
  * Context lines: file-line-text
  * Block separators: --
  */
-function parseRgOutput(stdout: string, cwd: string, limit: number): FileGrepResult[] {
+function parseRgOutput(
+  stdout: string,
+  cwd: string,
+  limit: number,
+  rel: (from: string, to: string) => string
+): FileGrepResult[] {
   const results: FileGrepResult[] = [];
   const lines = stdout.split('\n');
 
@@ -149,7 +163,7 @@ function parseRgOutput(stdout: string, cwd: string, limit: number): FileGrepResu
     if (results.length >= limit) break;
     results.push({
       file: block.file,
-      relativePath: relative(cwd, block.file),
+      relativePath: rel(cwd, block.file),
       line: block.matchLine,
       text: block.matchText,
       contextBefore: block.before.length > 0 ? block.before : undefined,
@@ -164,7 +178,12 @@ function parseRgOutput(stdout: string, cwd: string, limit: number): FileGrepResu
  * Parse fallback grep/findstr output.
  * Format: file:line:text (no context lines)
  */
-function parseFallbackOutput(stdout: string, cwd: string, limit: number): FileGrepResult[] {
+function parseFallbackOutput(
+  stdout: string,
+  cwd: string,
+  limit: number,
+  rel: (from: string, to: string) => string
+): FileGrepResult[] {
   const results: FileGrepResult[] = [];
   const lines = stdout.split('\n');
 
@@ -179,7 +198,7 @@ function parseFallbackOutput(stdout: string, cwd: string, limit: number): FileGr
     const [, file, lineNumStr, text] = match;
     results.push({
       file,
-      relativePath: relative(cwd, file),
+      relativePath: rel(cwd, file),
       line: parseInt(lineNumStr, 10),
       text
     });
@@ -191,19 +210,24 @@ function parseFallbackOutput(stdout: string, cwd: string, limit: number): FileGr
 export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse> {
   killActive();
 
-  const { requestId, query, cwd } = req;
+  const { requestId, query, cwd, pathContext } = req;
   const limit = req.limit ?? 50;
 
   if (!query.trim()) {
     return { success: true, requestId, results: [] };
   }
 
+  // For a WSL pane the file paths returned by rg/grep are posix; relativize
+  // them with posix semantics (win32 `relative` would mangle them).
+  const rel = isWslContext(pathContext)
+    ? (from: string, to: string): string => posixPath.relative(from, to)
+    : (from: string, to: string): string => relative(from, to);
   const { cmd, args } = buildRgCommand(query, cwd, limit);
 
   return new Promise((resolve) => {
     let timedOut = false;
 
-    const proc = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const proc = spawnInContext(pathContext ?? 'posix', cmd, args, { cwd });
     activeProcess = proc;
 
     const timer = setTimeout(() => {
@@ -220,8 +244,8 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
       const errCode = (err as NodeJS.ErrnoException).code;
       if (errCode === 'ENOENT') {
         // rg not found — fall back to grep/findstr
-        const { cmd: fbCmd, args: fbArgs } = buildFallbackCommand(query, cwd, limit);
-        const fbProc = spawn(fbCmd, fbArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
+        const { cmd: fbCmd, args: fbArgs } = buildFallbackCommand(query, cwd, limit, pathContext);
+        const fbProc = spawnInContext(pathContext ?? 'posix', fbCmd, fbArgs, { cwd });
         activeProcess = fbProc;
 
         const fbTimer = setTimeout(() => {
@@ -233,7 +257,7 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
         fbProc.on('close', () => {
           clearTimeout(fbTimer);
           activeProcess = null;
-          const results = parseFallbackOutput(fbOut.text, cwd, limit);
+          const results = parseFallbackOutput(fbOut.text, cwd, limit, rel);
           resolve({ success: true, requestId, results });
         });
 
@@ -257,7 +281,7 @@ export async function grepFiles(req: FileGrepRequest): Promise<FileGrepResponse>
         return;
       }
 
-      const results = parseRgOutput(out.text, cwd, limit);
+      const results = parseRgOutput(out.text, cwd, limit, rel);
       resolve({ success: true, requestId, results });
     });
   });

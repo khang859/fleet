@@ -24,6 +24,7 @@ export function createBrowseMode(
   activePaneId: string | null,
   onStateChange: () => void
 ): TelescopeMode & { getState: () => BrowseState } {
+  const ctx = getPaneContextById(activePaneId);
   const state: BrowseState = {
     currentDir: cwd,
     entries: [],
@@ -36,7 +37,7 @@ export function createBrowseMode(
     state.loading = true;
     onStateChange();
 
-    const result = await window.fleet.file.readdir(dir);
+    const result = await window.fleet.file.readdir(dir, ctx);
     if (result.success) {
       // Sort: directories first, then alphabetical within each group
       state.entries = [...result.entries].sort((a, b) => {
@@ -48,7 +49,7 @@ export function createBrowseMode(
 
       // Fetch gitignore status (use cache if available)
       if (!ignoreCache.has(dir)) {
-        const ignored = await window.fleet.file.checkIgnored(dir);
+        const ignored = await window.fleet.file.checkIgnored(dir, ctx);
         ignoreCache.set(dir, new Set(ignored));
       }
       state.ignoredNames = ignoreCache.get(dir) ?? new Set();
@@ -125,7 +126,6 @@ export function createBrowseMode(
     onAltSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string' || !activePaneId) return;
-      const ctx = getPaneContextById(activePaneId);
       const quoted = quotePathForShell(pathForPaneContext(filePath, ctx), ctx);
       window.fleet.pty.input({
         paneId: activePaneId,

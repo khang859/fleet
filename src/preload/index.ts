@@ -244,12 +244,15 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.SETTINGS_SET, settings)
   },
   git: {
-    isRepo: async (cwd: string): Promise<GitIsRepoPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd),
-    repoRoot: async (cwd: string): Promise<GitRepoRootPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_REPO_ROOT, cwd),
-    getStatus: async (cwd: string, baseRef?: string): Promise<GitStatusPayload> =>
-      typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef)
+    isRepo: async (cwd: string, pathContext?: PathContext): Promise<GitIsRepoPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_IS_REPO, cwd, pathContext),
+    repoRoot: async (cwd: string, pathContext?: PathContext): Promise<GitRepoRootPayload> =>
+      typedInvoke(IPC_CHANNELS.GIT_REPO_ROOT, cwd, pathContext),
+    getStatus: async (
+      cwd: string,
+      baseRef?: string,
+      pathContext?: PathContext
+    ): Promise<GitStatusPayload> => typedInvoke(IPC_CHANNELS.GIT_STATUS, cwd, baseRef, pathContext)
   },
   worktree: {
     create: async (req: WorktreeCreateRequest): Promise<WorktreeCreateResponse> =>
@@ -285,13 +288,14 @@ const fleetApi = {
       } = {}
     ): Promise<string[]> => typedInvoke(IPC_CHANNELS.FILE_OPEN_DIALOG, opts),
     list: async (
-      dirPath: string
+      dirPath: string,
+      pathContext?: PathContext
     ): Promise<{
       success: true;
       files: Array<{ path: string; relativePath: string; name: string }>;
-    }> => typedInvoke(IPC_CHANNELS.FILE_LIST, { dirPath }),
-    readdir: async (dirPath: string): Promise<ReaddirResponse> =>
-      typedInvoke(IPC_CHANNELS.FILE_READDIR, { dirPath }),
+    }> => typedInvoke(IPC_CHANNELS.FILE_LIST, { dirPath, pathContext }),
+    readdir: async (dirPath: string, pathContext?: PathContext): Promise<ReaddirResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_READDIR, { dirPath, pathContext }),
     onOpenInTab: (callback: (payload: FileOpenInTabPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.FILE_OPEN_IN_TAB, callback),
     readBinary: async (
@@ -313,8 +317,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES, { pathContext }),
     scanImageFolder: async (folderPath: string): Promise<string[]> =>
       typedInvoke(IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER, { folderPath }),
-    checkIgnored: async (dirPath: string): Promise<string[]> =>
-      typedInvoke(IPC_CHANNELS.FILE_CHECK_IGNORED, { dirPath })
+    checkIgnored: async (dirPath: string, pathContext?: PathContext): Promise<string[]> =>
+      typedInvoke(IPC_CHANNELS.FILE_CHECK_IGNORED, { dirPath, pathContext })
   },
   clipboard: {
     getHistory: async (): Promise<ClipboardHistoryResponse> =>

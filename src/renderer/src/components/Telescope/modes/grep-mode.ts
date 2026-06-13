@@ -2,11 +2,12 @@
 import { createElement } from 'react';
 import { TextSearch } from 'lucide-react';
 import { bracketedPaste } from '../../../lib/shell-utils';
-import { useWorkspaceStore } from '../../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
 export function createGrepMode(cwd: string, activePaneId: string | null): TelescopeMode {
   let requestCounter = 0;
+  const pathContext = getPaneContextById(activePaneId);
 
   return {
     id: 'grep',
@@ -20,7 +21,13 @@ export function createGrepMode(cwd: string, activePaneId: string | null): Telesc
       const myRequest = ++requestCounter;
       const requestId = myRequest;
 
-      const response = await window.fleet.file.grep({ requestId, query, cwd, limit: 50 });
+      const response = await window.fleet.file.grep({
+        requestId,
+        query,
+        cwd,
+        limit: 50,
+        pathContext
+      });
 
       // Discard stale responses
       if (myRequest !== requestCounter) return [];
