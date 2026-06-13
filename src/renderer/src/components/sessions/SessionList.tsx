@@ -110,7 +110,14 @@ export function SessionList(): React.JSX.Element {
                       {s.model && <span className="truncate">{s.model}</span>}
                       <span>· {s.messageCount} msgs</span>
                       {s.agent === 'claude' && (
-                        <span className="ml-auto flex-shrink-0 font-mono text-fleet-text">
+                        <span
+                          className="ml-auto flex-shrink-0 font-mono text-fleet-text"
+                          title={
+                            s.costUsd === undefined
+                              ? 'Cost unavailable — a model in this session is not in the pricing table'
+                              : 'Estimated session cost'
+                          }
+                        >
                           {s.costUsd === undefined ? '—' : formatCost(s.costUsd)}
                         </span>
                       )}

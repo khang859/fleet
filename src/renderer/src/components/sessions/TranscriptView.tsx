@@ -44,43 +44,75 @@ function formatClock(ms: number): string {
   });
 }
 
-function ClaudeMetaStrip({ s }: { s: SessionSummary }): React.JSX.Element | null {
-  if (s.agent !== 'claude') return null;
+function MetaRow({
+  label,
+  value,
+  title
+}: {
+  label: string;
+  value: string;
+  title?: string;
+}): React.JSX.Element {
+  return (
+    <>
+      <dt className="text-fleet-text-subtle">{label}</dt>
+      <dd className="min-w-0 break-words font-mono text-fleet-text" title={title}>
+        {value}
+      </dd>
+    </>
+  );
+}
+
+/**
+ * Labeled key→value metadata for a Claude session. Every value carries a visible
+ * label (NN/G: idiosyncratic icons need text); breakdowns live in tooltips so the
+ * panel stays scannable (Baymard spec-sheet guidance: single column, aligned pairs).
+ */
+function ClaudeMetaPanel({
+  s,
+  messageCount
+}: {
+  s: SessionSummary;
+  messageCount: number;
+}): React.JSX.Element {
   const u = s.claudeUsage;
-  const hasMeta =
-    u !== undefined ||
-    s.gitBranch !== undefined ||
-    s.startedAt !== undefined ||
-    (s.models !== undefined && s.models.length > 0);
-  if (!hasMeta) return null;
   const cacheWrite = u ? u.cacheWrite5m + u.cacheWrite1h : 0;
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fleet-text-subtle">
-      {s.models?.map((m) => (
-        <span key={m} className="rounded bg-fleet-surface-2 px-1 font-mono text-fleet-text">
-          {m}
-        </span>
-      ))}
+    <dl className="mt-3 grid grid-cols-[max-content_1fr] items-baseline gap-x-4 gap-y-1.5 text-xs">
+      <MetaRow
+        label="Cost"
+        value={s.costUsd === undefined ? 'Unavailable' : formatCost(s.costUsd)}
+        title={
+          s.costUsd === undefined
+            ? 'A model in this session is not in the pricing table'
+            : 'Estimated from token counts × public per-model pricing'
+        }
+      />
+      {s.models && s.models.length > 0 && <MetaRow label="Model" value={s.models.join(', ')} />}
+      <MetaRow label="Messages" value={String(messageCount)} />
       {u && (
-        <span className="font-mono" title="input / output / cache-read / cache-write tokens">
-          ↑{formatTokens(u.input)} ↓{formatTokens(u.output)} ⚡{formatTokens(u.cacheRead)} ✎
-          {formatTokens(cacheWrite)}
-        </span>
+        <MetaRow
+          label="Tokens"
+          value={formatTokens(u.input + u.output)}
+          title={`${formatTokens(u.input)} input · ${formatTokens(u.output)} output`}
+        />
       )}
-      <span
-        className="font-mono text-fleet-text"
-        title="estimated from token counts × public per-model pricing"
-      >
-        {s.costUsd === undefined ? 'cost unavailable' : formatCost(s.costUsd)}
-      </span>
-      {s.gitBranch && <span className="truncate">⎇ {s.gitBranch}</span>}
+      {u && (u.cacheRead > 0 || cacheWrite > 0) && (
+        <MetaRow
+          label="Cache"
+          value={formatTokens(u.cacheRead + cacheWrite)}
+          title={`${formatTokens(u.cacheRead)} read · ${formatTokens(cacheWrite)} write`}
+        />
+      )}
+      {s.gitBranch && <MetaRow label="Branch" value={s.gitBranch} />}
       {s.startedAt && s.endedAt && (
-        <span title="session start → end">
-          {formatClock(s.startedAt)} → {formatClock(s.endedAt)} ·{' '}
-          {formatDuration(s.endedAt - s.startedAt)}
-        </span>
+        <MetaRow
+          label="Duration"
+          value={`${formatDuration(s.endedAt - s.startedAt)} · ${formatClock(s.startedAt)} – ${formatClock(s.endedAt)}`}
+          title="Session start – end"
+        />
       )}
-    </div>
+    </dl>
   );
 }
 
@@ -199,14 +231,17 @@ export function TranscriptView(): React.JSX.Element {
   const s = transcript.summary;
   return (
     <div className="flex h-full min-w-0 flex-col">
-      <div className="flex items-center justify-between border-b border-fleet-border px-4 py-3">
+      <div className="flex items-start justify-between gap-3 border-b border-fleet-border px-4 py-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-fleet-text">{s.title}</div>
-          <div className="text-xs text-fleet-text-subtle">
-            {s.agent} {s.provider ? `· ${s.provider}` : ''} {s.model ? `· ${s.model}` : ''} ·{' '}
-            {messages.length} msgs
-          </div>
-          <ClaudeMetaStrip s={s} />
+          {s.agent === 'claude' ? (
+            <ClaudeMetaPanel s={s} messageCount={messages.length} />
+          ) : (
+            <div className="text-xs text-fleet-text-subtle">
+              {s.agent} {s.provider ? `· ${s.provider}` : ''} {s.model ? `· ${s.model}` : ''} ·{' '}
+              {messages.length} msgs
+            </div>
+          )}
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {hasRail ? (
