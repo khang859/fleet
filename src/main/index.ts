@@ -1,7 +1,5 @@
 import { app, BrowserWindow, ipcMain, Notification, nativeImage, net, protocol } from 'electron';
 import { safeOpenExternal } from './safe-external';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { existsSync, statSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -95,6 +93,17 @@ let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
+
+function requireKanbanStore(): KanbanStore {
+  if (!kanbanStore) throw new Error('kanban store not initialized');
+  return kanbanStore;
+}
+
+function requireKanbanCommands(): KanbanCommands {
+  if (!kanbanCommands) throw new Error('kanban commands not initialized');
+  return kanbanCommands;
+}
+
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -146,27 +155,6 @@ imageService.on('changed', (id: string) => {
   }
 });
 log.info('startup marker', { runtime: 'spawn-ipc', preload: 'out/preload/index.js' });
-
-const execAsync = promisify(exec);
-
-/**
- * On first launch on macOS, check if Claude Code is installed.
- * If so, auto-enable the copilot and mark it as done so we never touch it again.
- */
-async function autoEnableCopilot(settings: SettingsStore): Promise<void> {
-  const current = settings.get();
-  if (current.copilot.autoEnabled) return; // already ran once
-  if (process.platform !== 'darwin') return;
-
-  try {
-    await execAsync('claude --version', { timeout: 3000 });
-    log.info('claude-code detected, auto-enabling copilot');
-    settings.set({ copilot: { ...current.copilot, enabled: true, autoEnabled: true } });
-  } catch {
-    // Claude Code not installed — just mark as checked so we don't retry
-    settings.set({ copilot: { ...current.copilot, autoEnabled: true } });
-  }
-}
 
 function getHostPlatform(): HostContextPayload['platform'] {
   const p = process.platform;
@@ -463,7 +451,7 @@ void app.whenReady().then(async () => {
   imageService.resumeInterrupted();
 
   // Clean up old annotations based on retention settings
-  const retentionDays = settingsStore.get().annotate?.retentionDays ?? 3;
+  const retentionDays = settingsStore.get().annotate.retentionDays;
   annotationStore.cleanup(retentionDays);
 
   // Forward annotation changes to renderer
@@ -555,14 +543,6 @@ void app.whenReady().then(async () => {
   });
   fleetBridge.start().catch((err: unknown) => {
     log.error('Fleet bridge failed to start', {
-      error: err instanceof Error ? err.message : String(err)
-    });
-  });
-
-  // Auto-enable copilot on first launch if macOS + Claude Code installed.
-  // Awaited so initCopilot sees the updated setting; exec has a 3s timeout.
-  await autoEnableCopilot(settingsStore).catch((err: unknown) => {
-    log.error('copilot auto-enable check failed', {
       error: err instanceof Error ? err.message : String(err)
     });
   });
@@ -962,7 +942,7 @@ void app.whenReady().then(async () => {
           worktreesRoot: join(KANBAN_HOME, 'worktrees'),
           taskId: task.id
         });
-        kanbanStore!.setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
+        requireKanbanStore().setWorkspace(task.id, wt.path, wt.branchName, task.baseBranch ?? null);
         return wt.path;
       }
       // A worktree task in a feature branches off the feature's integration branch
@@ -975,7 +955,7 @@ void app.whenReady().then(async () => {
         task.repoPath &&
         task.workspacePath == null
       ) {
-        const feature = kanbanStore!.getFeature(task.featureId);
+        const feature = requireKanbanStore().getFeature(task.featureId);
         if (feature) {
           const integrationBranch = feature.integrationBranch ?? `fleet/feature-${feature.id}`;
           const ensured = ensureFeatureBranch({
@@ -991,7 +971,10 @@ void app.whenReady().then(async () => {
           }
           featureStartPoint = integrationBranch;
           if (!feature.integrationBranch) {
-            kanbanStore!.updateFeature(feature.id, { integrationBranch, mergeState: 'pending' });
+            requireKanbanStore().updateFeature(feature.id, {
+              integrationBranch,
+              mergeState: 'pending'
+            });
           }
         }
       }
@@ -1014,7 +997,12 @@ void app.whenReady().then(async () => {
         (task.workspaceKind === 'worktree' || task.workspaceKind === 'scratch') &&
         task.workspacePath == null
       ) {
-        kanbanStore!.setWorkspace(task.id, prepared.path, prepared.branchName, prepared.baseBranch);
+        requireKanbanStore().setWorkspace(
+          task.id,
+          prepared.path,
+          prepared.branchName,
+          prepared.baseBranch
+        );
       }
       return prepared.path;
     },
@@ -1072,7 +1060,9 @@ void app.whenReady().then(async () => {
         // decompose/specify record the orchestrator as the card's assignee; an assign run
         // must not — it exists precisely to choose and set the real assignee itself.
         if (mode !== 'assign') {
-          kanbanStore!.updateTask(task.id, { assignee: profile?.name ?? 'orchestrator' });
+          requireKanbanStore().updateTask(task.id, {
+            assignee: profile?.name ?? 'orchestrator'
+          });
         }
       }
       let resolveTarget: string | undefined;
@@ -1080,7 +1070,7 @@ void app.whenReady().then(async () => {
         if (task.systemKind === 'feature_sync') {
           resolveTarget = task.baseBranch ?? undefined; // system task's branch IS the integration branch; merge base in
         } else if (task.featureId) {
-          const f = kanbanStore!.getFeature(task.featureId);
+          const f = requireKanbanStore().getFeature(task.featureId);
           resolveTarget = f ? (f.integrationBranch ?? `fleet/feature-${f.id}`) : undefined;
         } else {
           resolveTarget = task.baseBranch ?? undefined;
@@ -1108,10 +1098,12 @@ void app.whenReady().then(async () => {
           mode,
           profile,
           roster,
-          attachments: kanbanStore!.listAttachments(task.id).map((a) => ({
-            filename: a.filename,
-            storedPath: a.storedPath
-          })),
+          attachments: requireKanbanStore()
+            .listAttachments(task.id)
+            .map((a) => ({
+              filename: a.filename,
+              storedPath: a.storedPath
+            })),
           docs: loadTaskDocs(pmDocsDir(KANBAN_HOME, task.boardId), task.docs)
         },
         // ENOENT here means rune vanished from PATH after our cached check. Mark it missing so
@@ -1124,7 +1116,7 @@ void app.whenReady().then(async () => {
         // That keeps the map to in-flight-but-exited runs and lets reclaim()
         // classify rune's exit-3 "incomplete" without false-flagging successes.
         (exit) => {
-          const t = kanbanStore!.getTask(task.id);
+          const t = requireKanbanStore().getTask(task.id);
           if (t?.status !== 'running' || t.currentRunId !== runId) return;
           // Classify the cause of death while the log path is in scope, so the
           // dispatcher can surface the real error and block retry-proof failures
@@ -1172,7 +1164,7 @@ void app.whenReady().then(async () => {
     },
     () => settingsStore.get().kanban.profiles
   );
-  kanbanMcp.setSwarmHandler((input) => kanbanCommands!.createSwarm(input));
+  kanbanMcp.setSwarmHandler((input) => requireKanbanCommands().createSwarm(input));
   kanbanMcp.setCommands(kanbanCommands);
   kanbanMcp.setKanbanHome(KANBAN_HOME);
   kanbanMcp.setVerifyRunner(({ runId, taskId, workspace, commands }) => {
@@ -1191,7 +1183,7 @@ void app.whenReady().then(async () => {
     mcp: kanbanMcp,
     mcpPort: kanbanMcpPort,
     kanbanHome: KANBAN_HOME,
-    getProjects: (boardId) => kanbanCommands!.listProjects(boardId),
+    getProjects: (boardId) => requireKanbanCommands().listProjects(boardId),
     emitStatus: (payload) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(IPC_CHANNELS.KANBAN_PM_STATUS, payload);

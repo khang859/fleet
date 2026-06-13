@@ -119,10 +119,14 @@ async function startCopilotServices(): Promise<void> {
   });
 
   sessionStore.setOnChange(() => {
-    copilotWindow?.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore!.getSessions());
+    if (!sessionStore || !copilotWindow) {
+      return;
+    }
+
+    copilotWindow.send(IPC_CHANNELS.COPILOT_SESSIONS, sessionStore.getSessions());
 
     if (conversationReader) {
-      const activeSessions = sessionStore!.getSessions();
+      const activeSessions = sessionStore.getSessions();
       const activeIds = new Set(activeSessions.map((s) => s.sessionId));
 
       for (const watchedId of conversationReader.getWatchedSessionIds()) {
