@@ -112,8 +112,9 @@ export function aggregateClaudeUsage(content: string): ClaudeAggregate {
     if (id && seenIds.has(id)) continue; // dedup repeated content-block lines
     if (id) seenIds.add(id);
 
-    const model = message.model ?? '';
-    if (model && !models.includes(model)) models.push(model);
+    const model = message.model;
+    if (!model) continue; // no model string → can't price these tokens; skip rather than poison the session cost
+    if (!models.includes(model)) models.push(model);
 
     const input = u.input_tokens ?? 0;
     const output = u.output_tokens ?? 0;

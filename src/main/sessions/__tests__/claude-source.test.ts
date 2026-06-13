@@ -203,6 +203,7 @@ describe('aggregateClaudeUsage', () => {
     expect(agg.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
     expect(agg.total.output).toBe(14); // sidechain counted
     expect(agg.perModel.get('claude-haiku-4-5')?.output).toBe(4);
+    expect(agg.perModel.get('claude-opus-4-8')?.output).toBe(10);
   });
 
   it('reports hasUsage=false when no assistant usage exists', () => {
