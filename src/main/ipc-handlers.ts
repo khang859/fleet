@@ -6,11 +6,96 @@ import { createLogger, logger } from './logger';
 const log = createLogger('ipc');
 import { readFile, writeFile, stat, readdir } from 'fs/promises';
 import type { Dirent } from 'fs';
-import { extname, join, relative } from 'path';
+import { extname, join, relative, posix as posixPath } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { execInContext } from './run-in-context';
 
 const execAsync = promisify(exec);
+
+/** Common directories pruned when walking a non-git tree for FILE_LIST. */
+const FILE_LIST_IGNORE_DIRS = [
+  'node_modules',
+  '.git',
+  'dist',
+  'build',
+  '.next',
+  '.nuxt',
+  'coverage',
+  '__pycache__',
+  '.cache',
+  '.parcel-cache',
+  'out',
+  '.svelte-kit'
+];
+
+// The only object variant of PathContext is the WSL one.
+function isWslContext(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
+  return typeof ctx === 'object';
+}
+
+/** Native (non-WSL) host coordinate system for the running process. */
+function hostContext(): PathContext {
+  return process.platform === 'win32' ? 'win32' : 'posix';
+}
+
+type FileListEntry = { path: string; relativePath: string; name: string };
+
+/**
+ * FILE_LIST for a WSL pane — run git/find *inside* the distro so we get clean
+ * POSIX paths (the win32 `path.join` over a posix dir would mangle separators).
+ */
+async function listFilesWsl(
+  ctx: { kind: 'wsl'; distro: string },
+  dirPath: string
+): Promise<{ success: true; files: FileListEntry[] }> {
+  try {
+    const { stdout, code } = await execInContext(
+      ctx,
+      'git',
+      ['ls-files', '--cached', '--others', '--exclude-standard'],
+      { cwd: dirPath, maxBuffer: 10 * 1024 * 1024 }
+    );
+    if (code === 0) {
+      const files = stdout
+        .split('\n')
+        .filter(Boolean)
+        .map((f) => ({
+          path: posixPath.join(dirPath, f),
+          relativePath: f,
+          name: f.split('/').pop() ?? f
+        }));
+      return { success: true, files };
+    }
+  } catch {
+    // fall through to find
+  }
+
+  // Not a git repo (or git unavailable) — prune common dirs and list files.
+  try {
+    const findArgs: string[] = [dirPath, '('];
+    FILE_LIST_IGNORE_DIRS.forEach((n, i) => {
+      if (i > 0) findArgs.push('-o');
+      findArgs.push('-name', n);
+    });
+    findArgs.push(')', '-prune', '-o', '-type', 'f', '-print');
+    const { stdout } = await execInContext(ctx, 'find', findArgs, {
+      cwd: dirPath,
+      maxBuffer: 10 * 1024 * 1024
+    });
+    const files = stdout
+      .split('\n')
+      .filter(Boolean)
+      .map((abs) => ({
+        path: abs,
+        relativePath: posixPath.relative(dirPath, abs),
+        name: abs.split('/').pop() ?? abs
+      }));
+    return { success: true, files };
+  } catch {
+    return { success: true, files: [] };
+  }
+}
 import { IPC_CHANNELS } from '../shared/constants';
 import type {
   PtyCreateRequest,
@@ -64,6 +149,7 @@ import type { PiEnvInjectionManager } from './pi-env-injection-manager';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
 import type { PathContext } from '../shared/shell-profiles';
+import { toWslUncPath, toWindowsAccessiblePath } from '../shared/path-platform';
 import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettingsPatch } from '../shared/types';
@@ -324,17 +410,20 @@ export function registerIpcHandlers(
   });
 
   // Git handlers
-  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, async (_event, cwd: string) => {
-    return gitService.checkIsRepo(cwd);
+  ipcMain.handle(IPC_CHANNELS.GIT_IS_REPO, async (_event, cwd: string, ctx?: PathContext) => {
+    return gitService.checkIsRepo(cwd, ctx);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GIT_REPO_ROOT, async (_event, cwd: string) => {
-    return gitService.repoRoot(cwd);
+  ipcMain.handle(IPC_CHANNELS.GIT_REPO_ROOT, async (_event, cwd: string, ctx?: PathContext) => {
+    return gitService.repoRoot(cwd, ctx);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GIT_STATUS, async (_event, cwd: string, baseRef?: string) => {
-    return gitService.getFullStatus(cwd, baseRef);
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.GIT_STATUS,
+    async (_event, cwd: string, baseRef?: string, ctx?: PathContext) => {
+      return gitService.getFullStatus(cwd, baseRef, ctx);
+    }
+  );
 
   // System-level dependency check (app-wide pre-checks screen)
   ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK, async () => {
@@ -417,64 +506,68 @@ export function registerIpcHandlers(
   );
 
   // List files recursively in a directory, respecting .gitignore when in a git repo
-  ipcMain.handle(IPC_CHANNELS.FILE_LIST, async (_event, { dirPath }: { dirPath: string }) => {
-    try {
-      // Try git ls-files first (respects .gitignore)
-      const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', {
-        cwd: dirPath,
-        maxBuffer: 10 * 1024 * 1024
-      });
-      const files = stdout
-        .split('\n')
-        .filter(Boolean)
-        .map((f) => ({
-          path: join(dirPath, f),
-          relativePath: f,
-          name: f.split('/').pop() ?? f
-        }));
-      return { success: true, files };
-    } catch {
-      // Fallback: manual recursive walk with common ignore patterns
-      const IGNORE_DIRS = new Set([
-        'node_modules',
-        '.git',
-        'dist',
-        'build',
-        '.next',
-        '.nuxt',
-        'coverage',
-        '__pycache__',
-        '.cache',
-        '.parcel-cache',
-        'out',
-        '.svelte-kit'
-      ]);
-      const files: Array<{ path: string; relativePath: string; name: string }> = [];
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_LIST,
+    async (_event, { dirPath, pathContext }: { dirPath: string; pathContext?: PathContext }) => {
+      if (isWslContext(pathContext)) return listFilesWsl(pathContext, dirPath);
+      try {
+        // Try git ls-files first (respects .gitignore)
+        const { stdout } = await execAsync('git ls-files --cached --others --exclude-standard', {
+          cwd: dirPath,
+          maxBuffer: 10 * 1024 * 1024
+        });
+        const files = stdout
+          .split('\n')
+          .filter(Boolean)
+          .map((f) => ({
+            path: join(dirPath, f),
+            relativePath: f,
+            name: f.split('/').pop() ?? f
+          }));
+        return { success: true, files };
+      } catch {
+        // Fallback: manual recursive walk with common ignore patterns
+        const IGNORE_DIRS = new Set([
+          'node_modules',
+          '.git',
+          'dist',
+          'build',
+          '.next',
+          '.nuxt',
+          'coverage',
+          '__pycache__',
+          '.cache',
+          '.parcel-cache',
+          'out',
+          '.svelte-kit'
+        ]);
+        const files: Array<{ path: string; relativePath: string; name: string }> = [];
 
-      async function walk(dir: string, base: string): Promise<void> {
-        let entries: Dirent[];
-        try {
-          entries = await readdir(dir, { withFileTypes: true });
-        } catch {
-          return;
-        }
-        for (const entry of entries) {
-          if (entry.isDirectory()) {
-            if (!IGNORE_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
-              await walk(join(dir, entry.name), base);
+        async function walk(dir: string, base: string): Promise<void> {
+          let entries: Dirent[];
+          try {
+            entries = await readdir(dir, { withFileTypes: true });
+          } catch {
+            return;
+          }
+          for (const entry of entries) {
+            if (entry.isDirectory()) {
+              if (!IGNORE_DIRS.has(entry.name) && !entry.name.startsWith('.')) {
+                await walk(join(dir, entry.name), base);
+              }
+            } else if (entry.isFile()) {
+              const abs = join(dir, entry.name);
+              const rel = relative(base, abs);
+              files.push({ path: abs, relativePath: rel, name: entry.name });
             }
-          } else if (entry.isFile()) {
-            const abs = join(dir, entry.name);
-            const rel = relative(base, abs);
-            files.push({ path: abs, relativePath: rel, name: entry.name });
           }
         }
-      }
 
-      await walk(dirPath, dirPath);
-      return { success: true, files };
+        await walk(dirPath, dirPath);
+        return { success: true, files };
+      }
     }
-  });
+  );
 
   // File operations
   ipcMain.handle(IPC_CHANNELS.FILE_READ, async (_event, filePath: string) => {
@@ -521,14 +614,20 @@ export function registerIpcHandlers(
   });
 
   // List immediate children of a directory (single level, no recursion)
-  ipcMain.handle(IPC_CHANNELS.FILE_READDIR, async (_event, { dirPath }: { dirPath: string }) => {
-    try {
-      const entries = await readdir(dirPath, { withFileTypes: true });
-      return { success: true, entries: sortAndMapDirEntries(entries, dirPath) };
-    } catch (err) {
-      return { success: false, error: toError(err).message, entries: [] };
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_READDIR,
+    async (_event, { dirPath, pathContext }: { dirPath: string; pathContext?: PathContext }) => {
+      try {
+        // For a WSL pane the dir is posix; read it over the UNC bridge but keep
+        // the returned entry paths in the pane's (posix) coordinate system.
+        const readDir = pathContext ? toWindowsAccessiblePath(dirPath, pathContext) : dirPath;
+        const entries = await readdir(readDir, { withFileTypes: true });
+        return { success: true, entries: sortAndMapDirEntries(entries, dirPath, pathContext) };
+      } catch (err) {
+        return { success: false, error: toError(err).message, entries: [] };
+      }
     }
-  });
+  );
 
   // List image files in a folder for the terminal background slideshow
   ipcMain.handle(
@@ -540,20 +639,32 @@ export function registerIpcHandlers(
   // Check which entries in a directory are gitignored (returns ignored names)
   ipcMain.handle(
     IPC_CHANNELS.FILE_CHECK_IGNORED,
-    async (_event, { dirPath }: { dirPath: string }): Promise<string[]> => {
+    async (
+      _event,
+      { dirPath, pathContext }: { dirPath: string; pathContext?: PathContext }
+    ): Promise<string[]> => {
       try {
-        const entries = await readdir(dirPath, { withFileTypes: true });
+        // For a WSL pane the dir is a posix path; read its entries over the UNC
+        // bridge, then run git check-ignore inside the distro.
+        const wsl = isWslContext(pathContext);
+        const listDir = wsl ? toWslUncPath(pathContext.distro, dirPath) : dirPath;
+        const entries = await readdir(listDir, { withFileTypes: true });
         const names = entries.filter((e) => e.isFile() || e.isDirectory()).map((e) => e.name);
         if (names.length === 0) return [];
 
-        const { stdout } = await execAsync(
-          `git check-ignore -- ${names.map((n) => `'${n.replace(/'/g, "'\\''")}'`).join(' ')}`,
+        // argv form (no shell) — removes the quoting/injection-prone glob string
+        // and works identically inside WSL via --exec.
+        const { stdout } = await execInContext(
+          pathContext ?? hostContext(),
+          'git',
+          ['check-ignore', '--', ...names],
           { cwd: dirPath, maxBuffer: 1024 * 1024 }
         );
         return stdout.split('\n').filter(Boolean);
       } catch {
-        // git check-ignore exits with code 1 when no files are ignored,
-        // or fails if not a git repo — both cases mean "nothing ignored"
+        // git check-ignore exits 1 when no files are ignored, or fails if not a
+        // git repo — both mean "nothing ignored". (execInContext only rejects on
+        // spawn failure, which also lands here.)
         return [];
       }
     }
@@ -581,9 +692,19 @@ export function registerIpcHandlers(
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) =>
-    searchFiles(req)
-  );
+  ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) => {
+    // For a WSL pane with no explicit scope, root the `find` fallback at the
+    // distro's posix home (homedir() would be the Windows home — unreachable).
+    if (isWslContext(req.pathContext) && !req.scope) {
+      try {
+        const home = await wslService.homeDir(req.pathContext.distro);
+        return await searchFiles({ ...req, scope: home });
+      } catch {
+        // distro stopped/cold — fall through; locate may still answer
+      }
+    }
+    return searchFiles(req);
+  });
 
   ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) => grepFiles(req));
 
@@ -981,7 +1102,16 @@ export function registerIpcHandlers(
 }
 
 // Exported for testing
-export function sortAndMapDirEntries(entries: Dirent[], dirPath: string): DirEntry[] {
+export function sortAndMapDirEntries(
+  entries: Dirent[],
+  dirPath: string,
+  ctx?: PathContext
+): DirEntry[] {
+  // A WSL pane's dirPath is posix; join children with posix separators so the
+  // entry paths stay in the pane's coordinate system (win32 join would mangle).
+  const joinPath = isWslContext(ctx)
+    ? (...parts: string[]): string => posixPath.join(...parts)
+    : (...parts: string[]): string => join(...parts);
   return entries
     .filter((e) => e.isFile() || e.isDirectory())
     .sort((a, b) => {
@@ -992,7 +1122,7 @@ export function sortAndMapDirEntries(entries: Dirent[], dirPath: string): DirEnt
     })
     .map((e) => ({
       name: e.name,
-      path: join(dirPath, e.name),
+      path: joinPath(dirPath, e.name),
       isDirectory: e.isDirectory()
     }));
 }

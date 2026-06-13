@@ -1,6 +1,6 @@
 # WSL ↔ Windows Path Handling — Implementation Plan
 
-> Status: **Phase 0 + 1 + the Phase 2 paste/quote slice are implemented** (this PR). Phases 2 (remainder), 3 and 4 remain. Covers all three tiers; pick the next cut line from here.
+> Status: **Phase 0 + 1 + the Phase 2 paste/quote slice + Phase 3a (read-only query tools)** are implemented. Phase 3a = `runInPathContext` foundation + git (Git Changes), file-list/check-ignore, file-grep, file-search, plus the FILE_READDIR UNC bridge that browse-mode needs — all run *inside* the distro for WSL panes and return POSIX paths. Remaining: Phase 2 (remainder), **Phase 3b** (env-editor/env-sync, worktrees/kanban — the write/workflow tools, which depend on the `GIT_REPO_ROOT`-stays-POSIX semantics change §13.4) and Phase 4. Known follow-up: opening a WSL grep/files/search *result* in the in-app editor still needs FILE_READ/STAT/READ_BINARY routed through the UNC bridge + the editor pane carrying the file's `pathContext` (a separate viewing slice); the Telescope **paste** action already works via Phase 2.
 
 ## 1. Runtime model (confirmed)
 
