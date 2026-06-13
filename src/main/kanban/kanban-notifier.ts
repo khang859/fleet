@@ -7,9 +7,14 @@ export interface KanbanNotificationPayload {
   taskId?: string;
 }
 
+/** Gate-pass events whose review-ready notification is deferred to the agent verdict when autoReview is on. */
+const REVIEW_GATE_PASS_KINDS = new Set(['review_ready', 'verify_passed', 'verify_skipped']);
+
 export interface KanbanNotifierDeps {
   /** Whether the category's OS notification toggle is on (read fresh each call). */
   isOsEnabled: (category: KanbanNotifyCategory) => boolean;
+  /** Whether autoReview is on (read fresh each call); defers gate-pass alerts to the review verdict. */
+  isAutoReviewOn: () => boolean;
   /** Resolve a task's title + board, or null if it no longer exists. */
   getTask: (taskId: string) => { title: string; boardId: string } | null;
   /** Resolve a feature's name + board (fallback for feature-keyed events), or null. */
@@ -59,6 +64,7 @@ export class KanbanNotifier {
   }
 
   enqueue(event: TaskEvent): void {
+    if (this.deps.isAutoReviewOn() && REVIEW_GATE_PASS_KINDS.has(event.kind)) return; // deferred to the review verdict
     const category = classifyKanbanEvent(event.kind);
     if (!category) return;
     if (!this.deps.isOsEnabled(category)) return;

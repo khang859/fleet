@@ -827,6 +827,7 @@ void app.whenReady().then(async () => {
   });
   kanbanNotifier = new KanbanNotifier({
     isOsEnabled: (category) => settingsStore.get().kanban.notifications[category].os,
+    isAutoReviewOn: () => settingsStore.get().kanban.dispatcher.autoReview,
     getTask: (taskId) => {
       const t = kanbanStore?.getTask(taskId);
       return t ? { title: t.title, boardId: t.boardId } : null;
