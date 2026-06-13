@@ -1,9 +1,21 @@
 import { simpleGit } from 'simple-git';
-import { join } from 'path';
-import { mkdir } from 'fs/promises';
+import { join, posix as posixPath } from 'path';
+import { mkdir, rm } from 'fs/promises';
 import { createLogger } from './logger';
+import { execInContext } from './run-in-context';
+import { toWindowsAccessiblePath } from '../shared/path-platform';
+import type { PathContext } from '../shared/shell-profiles';
+import { WslService } from './wsl-service';
 
 const log = createLogger('worktree');
+
+// A WSL distro can be cold-booting; give worktree git operations a wide timeout.
+const WSL_GIT_TIMEOUT_MS = 30_000;
+
+// The only object variant of PathContext is the WSL one.
+function isWslCtx(ctx: PathContext | undefined): ctx is { kind: 'wsl'; distro: string } {
+  return typeof ctx === 'object';
+}
 
 function getHomeDir(): string {
   return process.env.HOME ?? process.env.USERPROFILE ?? '/tmp';
@@ -116,22 +128,67 @@ function generateWorktreeName(): string {
 }
 
 export class WorktreeService {
-  private getWorktreeBase(repoName: string): string {
+  // Resolves the distro home for WSL worktree placement; lightweight (per-distro
+  // cached). Defaults to a fresh instance so `new WorktreeService()` stays valid;
+  // injectable for tests.
+  constructor(private readonly wslService: WslService = new WslService()) {}
+
+  /**
+   * Run a git subcommand in `cwd`. For a WSL pane git runs *inside* the distro
+   * (so it sees the distro's git config and the repo's true posix path); for a
+   * native pane it stays on the byte-for-byte original simple-git path.
+   */
+  private async git(ctx: PathContext | undefined, cwd: string, args: string[]): Promise<string> {
+    if (isWslCtx(ctx)) {
+      const res = await execInContext(ctx, 'git', args, { cwd, timeoutMs: WSL_GIT_TIMEOUT_MS });
+      if (res.code !== 0) {
+        throw new Error(res.stderr.trim() || `git ${args.join(' ')} failed (exit ${res.code})`);
+      }
+      return res.stdout;
+    }
+    return simpleGit({ baseDir: cwd }).raw(args);
+  }
+
+  /** Remove a directory, bridging to the UNC share for a WSL posix path. */
+  private async rmDir(ctx: PathContext | undefined, dir: string): Promise<void> {
+    await rm(isWslCtx(ctx) ? toWindowsAccessiblePath(dir, ctx) : dir, {
+      recursive: true,
+      force: true
+    });
+  }
+
+  /**
+   * Where worktrees for `repoName` live. Mirrors the native `~/.fleet/worktrees`
+   * layout, but for a WSL repo it must sit on the distro's own filesystem (a
+   * `git worktree` cannot span filesystems), so it goes under the distro's home.
+   */
+  private async worktreeBase(ctx: PathContext | undefined, repoName: string): Promise<string> {
+    if (isWslCtx(ctx)) {
+      const home = await this.wslService.homeDir(ctx.distro);
+      return posixPath.join(home, '.fleet', 'worktrees', repoName);
+    }
     return join(getHomeDir(), '.fleet', 'worktrees', repoName);
   }
 
-  async create(repoPath: string): Promise<{ worktreePath: string; branchName: string }> {
-    const git = simpleGit({ baseDir: repoPath });
+  async create(
+    repoPath: string,
+    ctx?: PathContext
+  ): Promise<{ worktreePath: string; branchName: string }> {
     const repoName = getRepoName(repoPath);
-    const base = this.getWorktreeBase(repoName);
-    await mkdir(base, { recursive: true });
+    const base = await this.worktreeBase(ctx, repoName);
+    // Create the base on the repo's filesystem (UNC bridge for a WSL home).
+    await mkdir(isWslCtx(ctx) ? toWindowsAccessiblePath(base, ctx) : base, { recursive: true });
 
     // Check both existing worktree names AND branch names to avoid conflicts
-    const existing = await this.list(repoPath);
+    const existing = await this.list(repoPath, ctx);
     const existingWorktreeNames = new Set(existing.map((w) => w.branch));
     log.info('existing worktrees', { names: [...existingWorktreeNames] });
 
-    const branchListRaw = await git.raw(['branch', '--list', '--format=%(refname:short)']);
+    const branchListRaw = await this.git(ctx, repoPath, [
+      'branch',
+      '--list',
+      '--format=%(refname:short)'
+    ]);
     const existingBranches = new Set(branchListRaw.split('\n').filter(Boolean));
     log.info('existing branches', { branches: [...existingBranches] });
 
@@ -145,29 +202,30 @@ export class WorktreeService {
       attempts < 100
     );
 
-    const worktreePath = join(base, branchName);
+    // posix join for WSL so the path git sees inside the distro stays posix.
+    const worktreePath = isWslCtx(ctx) ? posixPath.join(base, branchName) : join(base, branchName);
     log.info('creating worktree', { repoPath, worktreePath, branchName });
 
-    await git.raw(['worktree', 'add', worktreePath, '-b', branchName]);
+    await this.git(ctx, repoPath, ['worktree', 'add', worktreePath, '-b', branchName]);
 
     return { worktreePath, branchName };
   }
 
-  async remove(worktreePath: string): Promise<void> {
+  async remove(worktreePath: string, ctx?: PathContext): Promise<void> {
     let mainRepoPath: string;
     try {
       // --git-common-dir returns the main repo's .git dir (not the worktree's)
-      const git = simpleGit({ baseDir: worktreePath });
-      const gitCommonDir = (await git.raw(['rev-parse', '--git-common-dir'])).trim();
+      const gitCommonDir = (
+        await this.git(ctx, worktreePath, ['rev-parse', '--git-common-dir'])
+      ).trim();
       // gitCommonDir is like "/path/to/repo/.git" — parent is the repo root
-      mainRepoPath = join(gitCommonDir, '..');
+      mainRepoPath = isWslCtx(ctx) ? posixPath.join(gitCommonDir, '..') : join(gitCommonDir, '..');
       log.info('resolved main repo', { worktreePath, mainRepoPath });
     } catch {
       log.warn('worktree dir not accessible, cleaning up directory', { worktreePath });
       // Try to remove the directory directly if git can't resolve
       try {
-        const { rm } = await import('fs/promises');
-        await rm(worktreePath, { recursive: true, force: true });
+        await this.rmDir(ctx, worktreePath);
         log.info('removed worktree directory', { worktreePath });
       } catch {
         log.warn('failed to remove worktree directory', { worktreePath });
@@ -175,25 +233,22 @@ export class WorktreeService {
       return;
     }
 
-    const mainGit = simpleGit({ baseDir: mainRepoPath });
-
     try {
       log.info('removing worktree', { worktreePath });
-      await mainGit.raw(['worktree', 'remove', worktreePath]);
+      await this.git(ctx, mainRepoPath, ['worktree', 'remove', worktreePath]);
     } catch (err) {
       log.warn('worktree remove failed, trying --force', {
         worktreePath,
         error: err instanceof Error ? err.message : String(err)
       });
       try {
-        await mainGit.raw(['worktree', 'remove', '--force', worktreePath]);
+        await this.git(ctx, mainRepoPath, ['worktree', 'remove', '--force', worktreePath]);
       } catch {
         log.warn('force remove failed, pruning and cleaning up manually', { worktreePath });
-        await mainGit.raw(['worktree', 'prune']);
+        await this.git(ctx, mainRepoPath, ['worktree', 'prune']);
         // Remove the directory manually
         try {
-          const { rm } = await import('fs/promises');
-          await rm(worktreePath, { recursive: true, force: true });
+          await this.rmDir(ctx, worktreePath);
         } catch {
           // ignore
         }
@@ -205,16 +260,18 @@ export class WorktreeService {
       const branchName = worktreePath.split('/').pop();
       if (branchName) {
         log.info('deleting branch', { branchName });
-        await mainGit.raw(['branch', '-D', branchName]);
+        await this.git(ctx, mainRepoPath, ['branch', '-D', branchName]);
       }
     } catch {
       // Branch may already be deleted or not exist
     }
   }
 
-  async list(repoPath: string): Promise<Array<{ path: string; branch: string }>> {
-    const git = simpleGit({ baseDir: repoPath });
-    const raw = await git.raw(['worktree', 'list', '--porcelain']);
+  async list(
+    repoPath: string,
+    ctx?: PathContext
+  ): Promise<Array<{ path: string; branch: string }>> {
+    const raw = await this.git(ctx, repoPath, ['worktree', 'list', '--porcelain']);
     const worktrees: Array<{ path: string; branch: string }> = [];
     let currentPath = '';
 

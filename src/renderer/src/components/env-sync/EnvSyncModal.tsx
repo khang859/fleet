@@ -14,6 +14,8 @@ import type {
   EnvSyncAuthMode,
   EnvSyncAuthInput
 } from '../../../../shared/env-sync-types';
+import type { PathContext } from '../../../../shared/shell-profiles';
+import { toWindowsAccessiblePath } from '../../../../shared/path-platform';
 
 const STATUS_LABEL: Record<TargetSyncState, string> = {
   'in-sync': 'In sync',
@@ -829,11 +831,13 @@ function RepoManager({
 export function EnvSyncModal({
   isOpen,
   onClose,
-  cwd
+  cwd,
+  pathContext
 }: {
   isOpen: boolean;
   onClose: () => void;
   cwd: string | undefined;
+  pathContext?: PathContext;
 }): React.JSX.Element | null {
   const showToast = useToastStore((s) => s.show);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -894,7 +898,7 @@ export function EnvSyncModal({
         return;
       }
 
-      const discovered = await window.fleet.envSync.discover(cwd);
+      const discovered = await window.fleet.envSync.discover(cwd, pathContext);
       if (discovered) {
         const status = await window.fleet.envSync.status(discovered.repoDir);
         if (!active) return;
@@ -902,9 +906,17 @@ export function EnvSyncModal({
         setConfig(discovered.config);
         setStatuses(status);
       } else {
-        const { root } = await window.fleet.git.repoRoot(cwd);
+        // repoRoot stays posix for a WSL pane (Tier-3 contract); translate it so
+        // the repoDir we hand to writeConfig/status is Windows-accessible, matching
+        // the form discover() returns. Idempotent / passthrough for native panes.
+        const { root } = await window.fleet.git.repoRoot(cwd, pathContext);
         if (!active) return;
-        setRepoDir(root ?? cwd);
+        const resolved = root ?? cwd;
+        setRepoDir(
+          typeof pathContext === 'object'
+            ? toWindowsAccessiblePath(resolved, pathContext)
+            : resolved
+        );
         setConfig(null);
         setStatuses([]);
       }
@@ -913,7 +925,7 @@ export function EnvSyncModal({
     return () => {
       active = false;
     };
-  }, [isOpen, cwd, reloadSecrets]);
+  }, [isOpen, cwd, pathContext, reloadSecrets]);
 
   // Focus the panel on open so the onKeyDown Escape handler receives keys.
   useEffect(() => {

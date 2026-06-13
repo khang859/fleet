@@ -1,6 +1,7 @@
 // src/renderer/src/components/env-sync/EnvSyncBadge.tsx
 import { useEffect, useState } from 'react';
 import type { TargetStatus, TargetSyncState } from '../../../../shared/env-sync-types';
+import type { PathContext } from '../../../../shared/shell-profiles';
 
 // 'error' ranks highest so an auth/config failure is never masked by a benign state.
 const SYNC_STATE_ORDER: TargetSyncState[] = [
@@ -14,15 +15,24 @@ const SYNC_STATE_ORDER: TargetSyncState[] = [
   'no-remote-no-local'
 ];
 
-async function fetchAggState(cwd: string): Promise<TargetSyncState | null> {
-  const repo = await window.fleet.envSync.discover(cwd);
+async function fetchAggState(
+  cwd: string,
+  pathContext?: PathContext
+): Promise<TargetSyncState | null> {
+  const repo = await window.fleet.envSync.discover(cwd, pathContext);
   if (!repo) return null;
   const statuses = await window.fleet.envSync.status(repo.repoDir);
   return SYNC_STATE_ORDER.find((s) => statuses.some((t: TargetStatus) => t.state === s)) ?? null;
 }
 
 /** Aggregate badge for the active tab's resolved repo. Pass the active tab cwd. */
-export function EnvSyncBadge({ cwd }: { cwd: string | undefined }): React.JSX.Element | null {
+export function EnvSyncBadge({
+  cwd,
+  pathContext
+}: {
+  cwd: string | undefined;
+  pathContext?: PathContext;
+}): React.JSX.Element | null {
   const [agg, setAgg] = useState<TargetSyncState | null>(null);
 
   useEffect(() => {
@@ -32,7 +42,7 @@ export function EnvSyncBadge({ cwd }: { cwd: string | undefined }): React.JSX.El
     }
     let active = true;
     const load = (): void => {
-      fetchAggState(cwd)
+      fetchAggState(cwd, pathContext)
         .then((state) => {
           if (active) setAgg(state);
         })
@@ -48,7 +58,7 @@ export function EnvSyncBadge({ cwd }: { cwd: string | undefined }): React.JSX.El
       active = false;
       window.removeEventListener('env-sync:changed', load);
     };
-  }, [cwd]);
+  }, [cwd, pathContext]);
 
   if (!agg || agg === 'no-remote-no-local') return null;
 
