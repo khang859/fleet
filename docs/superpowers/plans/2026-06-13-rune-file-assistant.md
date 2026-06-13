@@ -1,389 +1,450 @@
-# Rune File Assistant Implementation Plan
+# Rune Quick-Assist Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A right-docked panel that runs Rune on-demand against the file open in Fleet, answering questions (Ask mode) and editing the file (Agent mode), with auto-reload + diff highlight + revert.
+**Goal:** A transient, summoned-at-cursor overlay that runs Rune on-demand against a `fleet open` file — auto-detecting Ask (read-only answer in a popover) vs Edit (writes to disk, then auto-reload + changed-line flash + one-click Revert), with a non-blocking "working" pill while Rune runs.
 
-**Architecture:** Mirror the existing PM chat stack end-to-end. A main-process `RuneFileChatService` (clone of `PmChatService`, no kanban MCP) spawns `rune --prompt` / `--resume` in the workspace root, parses the session id from stdout, and reads the transcript back via `readRuneSession`. IPC (channels → handlers → preload) carries send/state/reset/stop calls and status/transcript events. A zustand store drives a `RuneAssistPanel` React component; the active file + selection come from `workspace-store` and a new `editor-context-registry` (clone of `file-save-registry`). After Agent turns, open file panes reload from disk and flash the changed lines.
+**Architecture:** The main-process / IPC / preload layers mirror the proven PM-chat stack: a `RuneFileChatService` (clone of `src/main/kanban/pm-chat-service.ts`, no kanban MCP) spawns `rune --prompt` / `--resume` in the workspace root, parses the session id from stdout, reads the transcript back via `readRuneSession`, and emits `status` + `result` events. The renderer is **not** a panel: an overlay/pill/popover layer is mounted **inside each file pane** (`FileEditorPane`), driven by a small zustand store keyed by pane id, and reconciles edits through a new `editor-context-registry` (sibling of `file-save-registry`). All pure logic lives in one tested shared module, `src/shared/rune-assist.ts`.
 
-**Tech Stack:** Electron (main/preload/renderer), electron-vite, React + TypeScript, zustand, CodeMirror 6, vitest. Rune CLI (`rune` binary on PATH). Zod for IPC payload validation (project rule: no unsafe `as` casts).
+**Tech Stack:** Electron (main/preload/renderer), electron-vite, React + TypeScript, zustand, CodeMirror 6, vitest. Rune CLI (`rune` on PATH). Zod is used by existing IPC validation; new payload types are plain TS types matching the PM-chat convention (see Task 2). Project rule: **no unsafe `as` casts** in `src/` (tests may cast).
 
 **Reference spec:** `docs/superpowers/specs/2026-06-13-rune-file-assistant-design.md`
 **Branch:** `feat/rune-file-assistant` (already created)
 
-**Key design simplification vs. spec:** mode (`ask`/`agent`) is carried on each `send` request and persisted renderer-side, so there is **no** separate `setMode` IPC channel. Ask mode is enforced via a prompt preamble (a verified-buildable mechanism; a future Rune flag/profile can harden it — tracked as a spec open question). Queue-while-running lives in the renderer store, so the service stays strictly one-in-flight-per-cwd.
+---
+
+## Concurrency model (read before starting)
+
+A single Rune session per workspace **cannot** be `--resume`d by two turns at once without corrupting the session file. Therefore:
+
+- The in-flight guard is **per workspace `cwd`** (exactly like PM chat's per-board guard), not literally per-pane.
+- Each request carries the originating **`paneId`** so the renderer can route the working pill / answer / reload to the right pane.
+- "Several files at once" means **across different workspace roots** (different `cwd`). Two file panes in the *same* workspace serialize: a second summon while that `cwd` is busy is **rejected** with a gentle inline note.
+
+This tightens the spec's "per pane" wording to the only correct interpretation given Rune's resumable-session model. The spec already flags this in its Architecture "Keying" note.
+
+## Intent detection (read before starting)
+
+The renderer classifies intent locally with `detectIntent(text)`; the resulting `mode` is sent with the request and **selects the prompt preamble**:
+
+- `'ask'` → a read-only preamble instructs Rune to answer without editing/writing.
+- `'edit'` → no read-only preamble; Rune may write to disk.
+
+A false **edit** (detected edit, user only wanted an answer) is recoverable via the changed-line flash + one-click Revert. A false **ask** (wanted an edit, classified ask) just requires rephrasing with a leading imperative. A future Rune-side read-only flag could harden Ask mode (spec open question) — not in v1.
+
+## File structure
+
+**Created:**
+- `src/shared/rune-assist.ts` — pure helpers + constants (intent, prompt, args, parse, changed-file extraction, line-diff). Renderer-safe (no Node imports).
+- `src/shared/__tests__/rune-assist.test.ts` — tests for the above.
+- `src/main/rune-assist/rune-file-chat-service.ts` — the spawn/resume/stop service.
+- `src/main/rune-assist/rune-assist-ipc.ts` — `registerRuneAssistIpc(service)`.
+- `src/renderer/src/lib/editor-context-registry.ts` — per-pane `EditorHandle` registry.
+- `src/renderer/src/lib/__tests__/editor-context-registry.test.ts` — tests for the registry.
+- `src/renderer/src/store/rune-assist-store.ts` — zustand store keyed by pane id.
+- `src/renderer/src/store/__tests__/rune-assist-store.test.ts` — store transition tests.
+- `src/renderer/src/components/rune-assist/RuneAssistLayer.tsx` — host that renders overlay/pill/popover/revert for one pane.
+- `src/renderer/src/components/rune-assist/RuneAssistOverlay.tsx` — the summoned input.
+- `src/renderer/src/components/rune-assist/RuneWorkingPill.tsx` — inline working indicator.
+- `src/renderer/src/components/rune-assist/RuneAnswerPopover.tsx` — one-shot Ask answer.
+
+**Modified:**
+- `src/shared/ipc-channels.ts` — add `RUNE_ASSIST_*` channels.
+- `src/shared/ipc-api.ts` — add payload types.
+- `src/main/index.ts` — construct service + emit callbacks + register IPC + dispose.
+- `src/preload/index.ts` — add `runeAssist` namespace.
+- `src/renderer/src/components/FileEditorPane.tsx` — register `EditorHandle`, add `Mod-i` keymap, mount `RuneAssistLayer`.
 
 ---
 
-## File Structure
-
-**Create:**
-- `src/main/rune-assist/rune-file-chat-service.ts` — service + exported pure helpers (`composeAssistPrompt`, `buildAssistArgs`, `parseRuneSessionId`, `buildContextLine`).
-- `src/main/rune-assist/__tests__/rune-file-chat-service.test.ts` — unit tests.
-- `src/renderer/src/lib/editor-context-registry.ts` — paneId → `{ getSelection, reloadFromDisk }` handle registry.
-- `src/renderer/src/lib/__tests__/editor-context-registry.test.ts` — unit tests.
-- `src/renderer/src/store/rune-assist-store.ts` — zustand store (state, actions, queue).
-- `src/renderer/src/components/rune-assist/RuneAssistPanel.tsx` — the panel UI.
-- `src/renderer/src/components/rune-assist/transcript-helpers.ts` — `messageText`, `toolCards`, `reasoningText` + tests.
-- `src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts`
-
-**Modify:**
-- `src/shared/ipc-channels.ts` — add `RUNE_ASSIST_*` channel constants.
-- `src/shared/ipc-api.ts` — add `RuneAssist*` types.
-- `src/main/index.ts` — construct `RuneFileChatService`, register handlers, wire emit callbacks.
-- `src/preload/index.ts` — expose `window.fleet.runeAssist`.
-- `src/renderer/src/components/FileEditorPane.tsx` — register an editor-context handle (selection getter + reload-from-disk + line-flash).
-- `src/renderer/src/App.tsx` — mount `RuneAssistPanel` + toggle button; derive active file/cwd.
-
----
-
-## Task 1: Shared IPC channels + types
+### Task 1: Shared pure helpers + tests
 
 **Files:**
-- Modify: `src/shared/ipc-channels.ts`
-- Modify: `src/shared/ipc-api.ts`
+- Create: `src/shared/rune-assist.ts`
+- Test: `src/shared/__tests__/rune-assist.test.ts`
 
-- [ ] **Step 1: Add channel constants**
+- [ ] **Step 1: Write the failing test**
 
-In `src/shared/ipc-channels.ts`, find the `KANBAN_PM_*` block (around line 211) and add a sibling block after it:
+Create `src/shared/__tests__/rune-assist.test.ts`:
 
-```typescript
-  // Rune file assistant (docked editor panel)
-  RUNE_ASSIST_SEND: 'rune-assist:send',
-  RUNE_ASSIST_STATE: 'rune-assist:state',
-  RUNE_ASSIST_RESET: 'rune-assist:reset',
-  RUNE_ASSIST_STOP: 'rune-assist:stop',
-  RUNE_ASSIST_STATUS: 'rune-assist:status',
-  RUNE_ASSIST_TRANSCRIPT: 'rune-assist:transcript',
+```ts
+import { describe, it, expect } from 'vitest';
+import {
+  detectIntent,
+  buildContextLine,
+  composeAssistPrompt,
+  buildAssistArgs,
+  parseRuneSessionId,
+  lastAssistantText,
+  extractChangedFiles,
+  changedLineRange,
+  ASK_PREAMBLE
+} from '../rune-assist';
+import type { TranscriptMessage } from '../sessions';
+
+describe('detectIntent', () => {
+  it('classifies leading imperatives as edit', () => {
+    expect(detectIntent('finish this function')).toBe('edit');
+    expect(detectIntent('Refactor the loop')).toBe('edit');
+    expect(detectIntent('  add a null guard')).toBe('edit');
+  });
+  it('classifies questions/everything else as ask', () => {
+    expect(detectIntent('what does this do?')).toBe('ask');
+    expect(detectIntent('where is validateToken used')).toBe('ask');
+    expect(detectIntent('')).toBe('ask');
+  });
+});
+
+describe('buildContextLine', () => {
+  it('renders a selection range', () => {
+    expect(buildContextLine('src/auth.ts', { fromLine: 11, toLine: 14 })).toBe(
+      '[context: file src/auth.ts, lines 11-14 selected]'
+    );
+  });
+  it('renders a single cursor line when from === to', () => {
+    expect(buildContextLine('src/auth.ts', { fromLine: 12, toLine: 12 })).toBe(
+      '[context: file src/auth.ts, line 12]'
+    );
+  });
+  it('renders file only when no selection', () => {
+    expect(buildContextLine('src/auth.ts', undefined)).toBe('[context: file src/auth.ts]');
+  });
+});
+
+describe('composeAssistPrompt', () => {
+  it('prepends the read-only preamble in ask mode', () => {
+    const out = composeAssistPrompt('ask', '[context: file a.ts]', 'what is this');
+    expect(out.startsWith(ASK_PREAMBLE)).toBe(true);
+    expect(out).toContain('[context: file a.ts]');
+    expect(out).toContain('what is this');
+  });
+  it('omits the preamble in edit mode', () => {
+    const out = composeAssistPrompt('edit', '[context: file a.ts]', 'finish it');
+    expect(out.startsWith(ASK_PREAMBLE)).toBe(false);
+    expect(out).toBe('[context: file a.ts]\n\nfinish it');
+  });
+});
+
+describe('buildAssistArgs', () => {
+  it('builds prompt-only args on the first turn', () => {
+    expect(buildAssistArgs('hello', null)).toEqual(['--prompt', 'hello']);
+  });
+  it('appends --resume when a session id exists', () => {
+    expect(buildAssistArgs('hello', 'sess-1')).toEqual(['--prompt', 'hello', '--resume', 'sess-1']);
+  });
+});
+
+describe('parseRuneSessionId', () => {
+  it('extracts the id from a session-id line', () => {
+    expect(parseRuneSessionId('blah\nsession-id: abc_DEF-123\nmore')).toBe('abc_DEF-123');
+  });
+  it('returns null when absent', () => {
+    expect(parseRuneSessionId('no id here')).toBeNull();
+  });
+});
+
+describe('lastAssistantText', () => {
+  it('returns the concatenated text of the last assistant message', () => {
+    const messages: TranscriptMessage[] = [
+      { role: 'user', blocks: [{ type: 'text', text: 'q' }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: 'first' }] },
+      { role: 'tool', blocks: [{ type: 'tool_result', output: 'x' }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: 'final ' }, { type: 'text', text: 'answer' }] }
+    ];
+    expect(lastAssistantText(messages)).toBe('final answer');
+  });
+  it('returns empty string when there is no assistant text', () => {
+    expect(lastAssistantText([{ role: 'user', blocks: [{ type: 'text', text: 'q' }] }])).toBe('');
+  });
+});
+
+describe('extractChangedFiles', () => {
+  it('collects file paths from write-like tool calls', () => {
+    const messages: TranscriptMessage[] = [
+      {
+        role: 'assistant',
+        blocks: [
+          { type: 'tool_use', name: 'write_file', argsPreview: JSON.stringify({ path: 'src/a.ts' }) },
+          { type: 'tool_use', name: 'edit_file', argsPreview: JSON.stringify({ file_path: 'src/b.ts' }) },
+          { type: 'tool_use', name: 'read_file', argsPreview: JSON.stringify({ path: 'src/c.ts' }) }
+        ]
+      }
+    ];
+    expect(extractChangedFiles(messages)).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+  it('dedupes and ignores unparseable args', () => {
+    const messages: TranscriptMessage[] = [
+      {
+        role: 'assistant',
+        blocks: [
+          { type: 'tool_use', name: 'write_file', argsPreview: JSON.stringify({ path: 'src/a.ts' }) },
+          { type: 'tool_use', name: 'write_file', argsPreview: JSON.stringify({ path: 'src/a.ts' }) },
+          { type: 'tool_use', name: 'write_file', argsPreview: 'not json' }
+        ]
+      }
+    ];
+    expect(extractChangedFiles(messages)).toEqual(['src/a.ts']);
+  });
+});
+
+describe('changedLineRange', () => {
+  it('returns the 1-based inclusive range of changed lines', () => {
+    const before = 'a\nb\nc\nd';
+    const after = 'a\nB\nC\nd';
+    expect(changedLineRange(before, after)).toEqual({ fromLine: 2, toLine: 3 });
+  });
+  it('handles added lines', () => {
+    expect(changedLineRange('a\nb', 'a\nx\nb')).toEqual({ fromLine: 2, toLine: 2 });
+  });
+  it('returns null when identical', () => {
+    expect(changedLineRange('a\nb', 'a\nb')).toBeNull();
+  });
+});
 ```
 
-- [ ] **Step 2: Add API types**
+- [ ] **Step 2: Run the test to verify it fails**
 
-In `src/shared/ipc-api.ts`, near the `PmChat*` types (around line 407), add:
+Run: `npx vitest run src/shared/__tests__/rune-assist.test.ts`
+Expected: FAIL — `Cannot find module '../rune-assist'`.
 
-```typescript
-export type RuneAssistMode = 'ask' | 'agent';
+- [ ] **Step 3: Write the implementation**
 
+Create `src/shared/rune-assist.ts`:
+
+```ts
+// Pure, renderer-safe helpers for the Rune Quick-Assist overlay. No Node imports.
+import type { TranscriptMessage } from './sessions';
+
+export type RuneAssistMode = 'ask' | 'edit';
 export type RuneAssistSelection = { fromLine: number; toLine: number };
 
+/** Read-only instruction prepended in Ask mode so Rune answers without writing to disk. */
+export const ASK_PREAMBLE =
+  'Answer the following question about the code. Do NOT edit, write, or create any ' +
+  'files — respond with an explanation only.';
+
+const IMPERATIVE_RE =
+  /^\s*(finish|implement|complete|refactor|add|rename|fix|write|create|remove|delete|replace|update|change|make|generate|extract|inline|convert|move|sort|format|optimi[sz]e|simplify|wrap|split|merge|document|comment|annotate)\b/i;
+
+/** Heuristic: a leading imperative verb => edit; otherwise ask. Authoritative mode is the caller's. */
+export function detectIntent(text: string): RuneAssistMode {
+  return IMPERATIVE_RE.test(text) ? 'edit' : 'ask';
+}
+
+/** Machine-readable context line prepended to every prompt. Rune reads the file itself. */
+export function buildContextLine(filePath: string, selection: RuneAssistSelection | undefined): string {
+  if (!selection) return `[context: file ${filePath}]`;
+  if (selection.fromLine === selection.toLine) {
+    return `[context: file ${filePath}, line ${selection.fromLine}]`;
+  }
+  return `[context: file ${filePath}, lines ${selection.fromLine}-${selection.toLine} selected]`;
+}
+
+/** Final prompt body: optional read-only preamble, the context line, then the user's text. */
+export function composeAssistPrompt(
+  mode: RuneAssistMode,
+  contextLine: string,
+  text: string
+): string {
+  const head = mode === 'ask' ? `${ASK_PREAMBLE}\n\n` : '';
+  return `${head}${contextLine}\n\n${text}`;
+}
+
+/** rune CLI args: `--prompt <body>` on the first turn, plus `--resume <id>` thereafter. */
+export function buildAssistArgs(prompt: string, sessionId: string | null): string[] {
+  const args = ['--prompt', prompt];
+  if (sessionId) args.push('--resume', sessionId);
+  return args;
+}
+
+/** Parse the `session-id: <id>` line rune prints on stdout. */
+export function parseRuneSessionId(output: string): string | null {
+  return /^session-id: ([A-Za-z0-9_-]+)$/m.exec(output)?.[1] ?? null;
+}
+
+/** Concatenated text of the last assistant message — the Ask answer. */
+export function lastAssistantText(messages: TranscriptMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m.role !== 'assistant') continue;
+    const text = m.blocks
+      .map((b) => (b.type === 'text' ? b.text : ''))
+      .join('')
+      .trim();
+    if (text) return text;
+  }
+  return '';
+}
+
+// Tool-call names that indicate a file write. NOTE: tune against a real rune session JSON
+// during the manual smoke (Task 10) — rune's exact write-tool names drive multi-file reload.
+const WRITE_TOOL_RE = /(write|edit|create|replace|patch|append)/i;
+const PATH_KEYS = ['path', 'file_path', 'filepath', 'filename', 'file'];
+
+/** Best-effort list of files rune wrote, from write-like tool calls. Active-pane reload does
+ * not depend on this (see store reconcile) — this only reloads *other* already-open panes. */
+export function extractChangedFiles(messages: TranscriptMessage[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of messages) {
+    for (const b of m.blocks) {
+      if (b.type !== 'tool_use' || !WRITE_TOOL_RE.test(b.name)) continue;
+      let args: unknown;
+      try {
+        args = JSON.parse(b.argsPreview);
+      } catch {
+        continue;
+      }
+      if (typeof args !== 'object' || args === null) continue;
+      const record = args as Record<string, unknown>;
+      for (const key of PATH_KEYS) {
+        const v = record[key];
+        if (typeof v === 'string' && v && !seen.has(v)) {
+          seen.add(v);
+          out.push(v);
+          break;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** 1-based inclusive range of lines that differ between two file contents, or null if identical. */
+export function changedLineRange(before: string, after: string): RuneAssistSelection | null {
+  if (before === after) return null;
+  const a = before.split('\n');
+  const b = after.split('\n');
+  let top = 0;
+  while (top < a.length && top < b.length && a[top] === b[top]) top++;
+  let bottom = 0;
+  while (
+    bottom < a.length - top &&
+    bottom < b.length - top &&
+    a[a.length - 1 - bottom] === b[b.length - 1 - bottom]
+  ) {
+    bottom++;
+  }
+  const fromLine = top + 1;
+  const toLine = Math.max(fromLine, b.length - bottom);
+  return { fromLine, toLine };
+}
+```
+
+- [ ] **Step 4: Run the test to verify it passes**
+
+Run: `npx vitest run src/shared/__tests__/rune-assist.test.ts`
+Expected: PASS (all cases green).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/shared/rune-assist.ts src/shared/__tests__/rune-assist.test.ts
+git commit -m "feat(rune-assist): pure helpers for prompt/intent/reconcile
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+---
+
+### Task 2: Shared IPC channels + payload types
+
+**Files:**
+- Modify: `src/shared/ipc-channels.ts:215` (after the `KANBAN_PM_TRANSCRIPT` line)
+- Modify: `src/shared/ipc-api.ts:429` (after the `PmChatTranscriptPayload` block)
+
+No test (type/constant declarations only; consumed and verified by later tasks + typecheck).
+
+- [ ] **Step 1: Add the channel constants**
+
+In `src/shared/ipc-channels.ts`, immediately after the line `KANBAN_PM_TRANSCRIPT: 'kanban:pm-transcript',` (line 215), add:
+
+```ts
+  // Rune Quick-Assist (cursor overlay)
+  RUNE_ASSIST_SEND: 'rune-assist:send',
+  RUNE_ASSIST_STOP: 'rune-assist:stop',
+  RUNE_ASSIST_RESET: 'rune-assist:reset',
+  RUNE_ASSIST_STATE: 'rune-assist:state',
+  RUNE_ASSIST_STATUS: 'rune-assist:status',
+  RUNE_ASSIST_RESULT: 'rune-assist:result',
+```
+
+- [ ] **Step 2: Add the payload types**
+
+In `src/shared/ipc-api.ts`, after the `PmChatTranscriptPayload` type (ends at line 429), add:
+
+```ts
+// --- Rune Quick-Assist ---
+import type { RuneAssistMode, RuneAssistSelection } from './rune-assist';
+
 export type RuneAssistSendRequest = {
-  /** Workspace root the rune turn runs in; also the conversation key. */
   cwd: string;
+  paneId: string;
   text: string;
   mode: RuneAssistMode;
-  /** Absolute path of the file shown in the active pane, if any. */
   contextFile?: string;
-  /** 1-based inclusive selected line range, if any. */
-  selection?: RuneAssistSelection | null;
-  /** Rune model override (e.g. a model id). */
-  model?: string;
+  selection?: RuneAssistSelection;
 };
+
+export type RuneAssistStopRequest = { cwd: string; paneId: string };
+export type RuneAssistResetRequest = { cwd: string };
 
 export type RuneAssistState = {
   cwd: string;
   inFlight: boolean;
   error: string | null;
-  messages: TranscriptMessage[];
+  sessionId: string | null;
 };
 
 export type RuneAssistStatusPayload = {
   cwd: string;
-  status: 'thinking' | 'idle' | 'error';
+  paneId: string;
+  phase: 'idle' | 'working' | 'error';
+  step?: string;
   error?: string;
 };
 
-export type RuneAssistTranscriptPayload = {
+export type RuneAssistResultPayload = {
   cwd: string;
-  messages: TranscriptMessage[];
+  paneId: string;
+  mode: RuneAssistMode;
+  /** Ask: the assistant's answer text. */
+  answer?: string;
+  /** Edit: files rune wrote (best-effort), for reloading other open panes. */
+  changedFiles?: string[];
 };
 ```
 
-`TranscriptMessage` is already imported at the top of this file (used by `PmChatState`). If not, add `TranscriptMessage` to the existing import from `'./sessions'`.
+> Note: `import type` statements are hoisted; placing this one mid-file is legal TypeScript and keeps the Rune-assist additions co-located. If the implementer prefers, move the `import type { RuneAssistMode, RuneAssistSelection }` line up to the import block at the top (lines 1-16) — either is fine.
 
-- [ ] **Step 3: Verify it compiles**
+- [ ] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS (no errors). These are type-only additions.
+Expected: PASS (no errors).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/shared/ipc-channels.ts src/shared/ipc-api.ts
-git commit -m "feat(rune-assist): IPC channels and shared types"
+git commit -m "feat(rune-assist): IPC channels + payload types
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 2: Service pure helpers (prompt, args, session-id)
-
-These are pure, side-effect-free functions extracted so the spawn logic is unit-testable (mirrors how `buildWorkerInvocation` is split out in `spawn-worker.ts`).
+### Task 3: `RuneFileChatService` (main process)
 
 **Files:**
 - Create: `src/main/rune-assist/rune-file-chat-service.ts`
-- Test: `src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+This is a near-clone of `src/main/kanban/pm-chat-service.ts` (read it first), keyed by `cwd`, with no MCP, plus a `stop(cwd)`. Verified by typecheck (the spawn-driven class has no unit test, matching `PmChatService`); its pure logic is already tested in Task 1.
 
-Create `src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`:
+- [ ] **Step 1: Write the service**
 
-```typescript
-import { describe, it, expect } from 'vitest';
-import {
-  buildContextLine,
-  composeAssistPrompt,
-  buildAssistArgs,
-  parseRuneSessionId,
-  ASK_MODE_PREAMBLE
-} from '../rune-file-chat-service';
+Create `src/main/rune-assist/rune-file-chat-service.ts`:
 
-describe('buildContextLine', () => {
-  it('returns empty string when no file', () => {
-    expect(buildContextLine(undefined, null)).toBe('');
-  });
-  it('names the file with no selection', () => {
-    expect(buildContextLine('/repo/src/auth.ts', null)).toBe(
-      '[context: file /repo/src/auth.ts]\n'
-    );
-  });
-  it('includes the selected line range', () => {
-    expect(buildContextLine('/repo/src/auth.ts', { fromLine: 11, toLine: 14 })).toBe(
-      '[context: file /repo/src/auth.ts, lines 11-14 selected]\n'
-    );
-  });
-});
-
-describe('composeAssistPrompt', () => {
-  it('agent mode: context line + text, no preamble', () => {
-    const out = composeAssistPrompt({
-      text: 'finish this',
-      mode: 'agent',
-      contextFile: '/repo/a.ts',
-      selection: null
-    });
-    expect(out).toBe('[context: file /repo/a.ts]\nfinish this');
-  });
-  it('ask mode: prepends the read-only preamble', () => {
-    const out = composeAssistPrompt({
-      text: 'what does this do?',
-      mode: 'ask',
-      contextFile: undefined,
-      selection: null
-    });
-    expect(out).toBe(`${ASK_MODE_PREAMBLE}\n\nwhat does this do?`);
-  });
-});
-
-describe('buildAssistArgs', () => {
-  it('first turn: only --prompt', () => {
-    expect(buildAssistArgs({ promptBody: 'hi', sessionId: null })).toEqual(['--prompt', 'hi']);
-  });
-  it('resume turn appends --resume', () => {
-    expect(buildAssistArgs({ promptBody: 'hi', sessionId: 'sess-1' })).toEqual([
-      '--prompt',
-      'hi',
-      '--resume',
-      'sess-1'
-    ]);
-  });
-  it('appends --model when set', () => {
-    expect(buildAssistArgs({ promptBody: 'hi', sessionId: null, model: 'opus' })).toEqual([
-      '--prompt',
-      'hi',
-      '--model',
-      'opus'
-    ]);
-  });
-});
-
-describe('parseRuneSessionId', () => {
-  it('extracts the session id line', () => {
-    expect(parseRuneSessionId('noise\nsession-id: abc_123-XYZ\nmore')).toBe('abc_123-XYZ');
-  });
-  it('returns null when absent', () => {
-    expect(parseRuneSessionId('no marker here')).toBeNull();
-  });
-});
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `npx vitest run src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
-Expected: FAIL — cannot find module `../rune-file-chat-service`.
-
-- [ ] **Step 3: Write the helpers (minimal)**
-
-Create `src/main/rune-assist/rune-file-chat-service.ts` with just the helpers for now:
-
-```typescript
-import type { RuneAssistMode, RuneAssistSelection } from '../../shared/ipc-api';
-
-/** Read-only guardrail injected ahead of the user's text in Ask mode. */
-export const ASK_MODE_PREAMBLE =
-  'Answer only. Do not edit files, write files, or run commands that modify the ' +
-  'workspace. Read and explain.';
-
-export function buildContextLine(
-  contextFile: string | undefined,
-  selection: RuneAssistSelection | null | undefined
-): string {
-  if (!contextFile) return '';
-  if (selection) {
-    return `[context: file ${contextFile}, lines ${selection.fromLine}-${selection.toLine} selected]\n`;
-  }
-  return `[context: file ${contextFile}]\n`;
-}
-
-export function composeAssistPrompt(input: {
-  text: string;
-  mode: RuneAssistMode;
-  contextFile?: string;
-  selection?: RuneAssistSelection | null;
-}): string {
-  const ctx = buildContextLine(input.contextFile, input.selection);
-  const preamble = input.mode === 'ask' ? `${ASK_MODE_PREAMBLE}\n\n` : '';
-  return `${ctx}${preamble}${input.text}`;
-}
-
-export function buildAssistArgs(input: {
-  promptBody: string;
-  sessionId: string | null;
-  model?: string;
-}): string[] {
-  const args = ['--prompt', input.promptBody];
-  if (input.sessionId) args.push('--resume', input.sessionId);
-  if (input.model) args.push('--model', input.model);
-  return args;
-}
-
-export function parseRuneSessionId(output: string): string | null {
-  return /^session-id: ([A-Za-z0-9_-]+)$/m.exec(output)?.[1] ?? null;
-}
-```
-
-- [ ] **Step 4: Run to verify it passes**
-
-Run: `npx vitest run src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
-Expected: PASS (all 10 assertions).
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/main/rune-assist/
-git commit -m "feat(rune-assist): prompt/args/session-id helpers"
-```
-
----
-
-## Task 3: `RuneFileChatService` class
-
-Clone the runtime behavior of `PmChatService` (`src/main/kanban/pm-chat-service.ts`): one in-flight turn per cwd, stdout/stderr tail capped at 64KB, turn timeout, auth-failure classification, ENOENT → not-installed message, persisted cwd→sessionId, transcript read back via `readRuneSession`. Add a `stop(cwd)`.
-
-**Files:**
-- Modify: `src/main/rune-assist/rune-file-chat-service.ts`
-- Test: `src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
-
-- [ ] **Step 1: Add the failing test (spawn mocked)**
-
-Append to the test file. Mock `child_process.spawn` the way `kanban-spawn-worker.test.ts` does. Add at the top of the file:
-
-```typescript
-import { EventEmitter } from 'events';
-import { vi } from 'vitest';
-
-const spawnMock = vi.fn();
-vi.mock('child_process', () => ({ spawn: (...a: unknown[]) => spawnMock(...a) }));
-vi.mock('../../sessions/rune-source', () => ({
-  readRuneSession: vi.fn(async () => ({ messages: [{ role: 'assistant', blocks: [] }] }))
-}));
-
-function fakeChild() {
-  const child = new EventEmitter() as EventEmitter & {
-    stdout: EventEmitter;
-    stderr: EventEmitter;
-    kill: ReturnType<typeof vi.fn>;
-    pid: number;
-  };
-  child.stdout = new EventEmitter();
-  child.stderr = new EventEmitter();
-  child.kill = vi.fn();
-  child.pid = 4242;
-  return child;
-}
-```
-
-Then add this describe block:
-
-```typescript
-describe('RuneFileChatService', () => {
-  it('first send spawns rune --prompt with cwd, captures session id, emits idle', async () => {
-    const { RuneFileChatService } = await import('../rune-file-chat-service');
-    const child = fakeChild();
-    spawnMock.mockReturnValue(child);
-
-    const statuses: string[] = [];
-    const svc = new RuneFileChatService({
-      sessionsDir: '/tmp/does-not-matter',
-      emitStatus: (p) => statuses.push(p.status),
-      emitTranscript: vi.fn()
-    });
-
-    svc.sendMessage({ cwd: '/repo', text: 'hi', mode: 'agent' });
-
-    expect(spawnMock).toHaveBeenCalledTimes(1);
-    const [cmd, args, opts] = spawnMock.mock.calls[0];
-    expect(cmd).toBe('rune');
-    expect(args).toEqual(['--prompt', '[context: file undefined]\nhi'.replace('[context: file undefined]\n', '')]);
-    expect(opts.cwd).toBe('/repo');
-
-    child.stdout.emit('data', Buffer.from('session-id: sess-9\n'));
-    child.emit('exit', 0, null);
-    await new Promise((r) => setTimeout(r, 0));
-
-    expect(statuses).toEqual(['thinking', 'idle']);
-    const state = await svc.getState('/repo');
-    expect(state.messages.length).toBe(1);
-  });
-
-  it('rejects a second send while one is in flight', () => {
-    const { RuneFileChatService } = require('../rune-file-chat-service');
-    spawnMock.mockReturnValue(fakeChild());
-    const svc = new RuneFileChatService({
-      sessionsDir: '/tmp/x',
-      emitStatus: vi.fn(),
-      emitTranscript: vi.fn()
-    });
-    svc.sendMessage({ cwd: '/repo', text: 'one', mode: 'agent' });
-    expect(() => svc.sendMessage({ cwd: '/repo', text: 'two', mode: 'agent' })).toThrow();
-  });
-
-  it('stop() kills the in-flight child', () => {
-    const { RuneFileChatService } = require('../rune-file-chat-service');
-    const child = fakeChild();
-    spawnMock.mockReturnValue(child);
-    const svc = new RuneFileChatService({
-      sessionsDir: '/tmp/x',
-      emitStatus: vi.fn(),
-      emitTranscript: vi.fn()
-    });
-    svc.sendMessage({ cwd: '/repo', text: 'go', mode: 'agent' });
-    svc.stop('/repo');
-    expect(child.kill).toHaveBeenCalledWith('SIGTERM');
-  });
-});
-```
-
-> Note: the first test's `args` assertion is awkward because `contextFile` is undefined. Simplify it to: `expect(args[0]).toBe('--prompt'); expect(args[1]).toBe('hi');` — when no `contextFile` is passed, `composeAssistPrompt` yields just `'hi'`. Use that simpler form.
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `npx vitest run src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
-Expected: FAIL — `RuneFileChatService` is not exported.
-
-- [ ] **Step 3: Implement the class**
-
-Append to `src/main/rune-assist/rune-file-chat-service.ts` (the helpers stay at the top of the file):
-
-```typescript
+```ts
 import { spawn, type ChildProcess } from 'child_process';
 import { mkdirSync, writeFileSync, readFileSync, renameSync } from 'fs';
 import { join } from 'path';
@@ -393,155 +454,219 @@ import { CodedError } from '../errors';
 import { RUNE_NOT_INSTALLED_MESSAGE } from '../../shared/rune';
 import { isAuthFailureText } from '../kanban/spawn-worker';
 import { readRuneSession } from '../sessions/rune-source';
+import {
+  buildAssistArgs,
+  buildContextLine,
+  composeAssistPrompt,
+  parseRuneSessionId,
+  lastAssistantText,
+  extractChangedFiles
+} from '../../shared/rune-assist';
 import type { TranscriptMessage } from '../../shared/sessions';
 import type {
   RuneAssistSendRequest,
   RuneAssistState,
   RuneAssistStatusPayload,
-  RuneAssistTranscriptPayload
+  RuneAssistResultPayload
 } from '../../shared/ipc-api';
 
 const log = createLogger('rune-assist');
+
+/** A turn that runs longer than this is assumed hung and killed. */
 const TURN_TIMEOUT_MS = 5 * 60 * 1000;
+/** Keep only this much child output in memory (see docs/learnings on stdout OOM). */
 const OUTPUT_CAP = 64 * 1024;
+
 const sessionsFileSchema = z.record(z.string(), z.string());
 
-interface Conversation {
+interface CwdChat {
   sessionId: string | null;
   inFlight: boolean;
   error: string | null;
-  child?: ChildProcess;
 }
 
 export interface RuneFileChatServiceOptions {
-  /** Directory holding the persisted cwd→sessionId map (e.g. app userData). */
-  sessionsDir: string;
+  /** Directory for persisted state (app.getPath('userData')). */
+  stateDir: string;
   emitStatus: (payload: RuneAssistStatusPayload) => void;
-  emitTranscript: (payload: RuneAssistTranscriptPayload) => void;
+  emitResult: (payload: RuneAssistResultPayload) => void;
 }
 
+/**
+ * Drives the Rune Quick-Assist overlay: one resumable rune session per workspace `cwd`,
+ * advanced one headless turn per request (`rune --prompt`, then `rune --resume <id> --prompt`).
+ * One turn in flight per cwd; the originating paneId is echoed back on every event so the
+ * renderer routes the pill / answer / reload to the right pane.
+ */
 export class RuneFileChatService {
-  private convos = new Map<string, Conversation>();
+  private chats = new Map<string, CwdChat>();
   private opts: RuneFileChatServiceOptions;
-  private loaded = false;
+  private sessionsLoaded = false;
+  private inFlightChildren = new Set<ChildProcess>();
+  /** Active child per cwd, so stop(cwd) can SIGTERM the right one. */
+  private childByCwd = new Map<string, ChildProcess>();
 
   constructor(opts: RuneFileChatServiceOptions) {
     this.opts = opts;
   }
 
+  /** Kill any in-flight turns (app shutdown). */
   dispose(): void {
-    for (const c of this.convos.values()) c.child?.kill('SIGTERM');
+    for (const child of this.inFlightChildren) child.kill('SIGTERM');
+    this.inFlightChildren.clear();
+    this.childByCwd.clear();
   }
 
   private sessionsPath(): string {
-    return join(this.opts.sessionsDir, 'rune-assist-sessions.json');
+    return join(this.opts.stateDir, 'rune-assist-sessions.json');
   }
 
-  private convo(cwd: string): Conversation {
-    if (!this.loaded) {
-      this.loaded = true;
+  /** Lazily hydrate persisted cwd→session ids so conversations survive restarts. */
+  private chat(cwd: string): CwdChat {
+    if (!this.sessionsLoaded) {
+      this.sessionsLoaded = true;
       try {
-        const raw = sessionsFileSchema.parse(JSON.parse(readFileSync(this.sessionsPath(), 'utf-8')));
-        for (const [k, v] of Object.entries(raw)) {
-          this.convos.set(k, { sessionId: v, inFlight: false, error: null });
+        const raw = sessionsFileSchema.parse(
+          JSON.parse(readFileSync(this.sessionsPath(), 'utf-8'))
+        );
+        for (const [key, sessionId] of Object.entries(raw)) {
+          this.chats.set(key, { sessionId, inFlight: false, error: null });
         }
       } catch {
-        // first run / unreadable
+        // first run or unreadable file — start fresh
       }
     }
-    let c = this.convos.get(cwd);
+    let c = this.chats.get(cwd);
     if (!c) {
       c = { sessionId: null, inFlight: false, error: null };
-      this.convos.set(cwd, c);
+      this.chats.set(cwd, c);
     }
     return c;
   }
 
-  private persist(): void {
+  private persistSessions(): void {
     const data: Record<string, string> = {};
-    for (const [k, c] of this.convos) if (c.sessionId) data[k] = c.sessionId;
-    mkdirSync(this.opts.sessionsDir, { recursive: true });
+    for (const [key, c] of this.chats) {
+      if (c.sessionId) data[key] = c.sessionId;
+    }
     const path = this.sessionsPath();
+    mkdirSync(this.opts.stateDir, { recursive: true });
     const tmp = `${path}.tmp`;
     writeFileSync(tmp, JSON.stringify(data, null, 2));
     renameSync(tmp, path);
   }
 
   async getState(cwd: string): Promise<RuneAssistState> {
-    const c = this.convo(cwd);
-    return { cwd, inFlight: c.inFlight, error: c.error, messages: await this.readMessages(c.sessionId) };
+    const c = this.chat(cwd);
+    return { cwd, inFlight: c.inFlight, error: c.error, sessionId: c.sessionId };
   }
 
+  /** Forget the conversation (the rune session file is left untouched). */
   reset(cwd: string): void {
-    const c = this.convo(cwd);
-    if (c.inFlight) throw new CodedError('wait for rune to finish first', 'BAD_REQUEST');
+    const c = this.chat(cwd);
+    if (c.inFlight) throw new CodedError('wait for the current turn to finish first', 'BAD_REQUEST');
     c.sessionId = null;
     c.error = null;
-    this.persist();
+    this.persistSessions();
   }
 
+  /** SIGTERM the in-flight child for this cwd, if any. */
   stop(cwd: string): void {
-    this.convo(cwd).child?.kill('SIGTERM');
+    this.childByCwd.get(cwd)?.kill('SIGTERM');
   }
 
   sendMessage(req: RuneAssistSendRequest): void {
-    const body = composeAssistPrompt(req).trim();
+    const { cwd, paneId, mode, contextFile, selection } = req;
+    const body = req.text.trim();
     if (body === '') throw new CodedError('message is empty', 'BAD_REQUEST');
-    const c = this.convo(req.cwd);
-    if (c.inFlight) throw new CodedError('rune is still responding', 'BAD_REQUEST');
+    const c = this.chat(cwd);
+    if (c.inFlight) {
+      // Routed to the originating pane so the overlay can show a gentle note.
+      this.opts.emitStatus({
+        cwd,
+        paneId,
+        phase: 'error',
+        error: 'Rune is still working in this workspace — cancel or wait.'
+      });
+      return;
+    }
     c.inFlight = true;
     c.error = null;
-    this.opts.emitStatus({ cwd: req.cwd, status: 'thinking' });
+    this.opts.emitStatus({ cwd, paneId, phase: 'working', step: 'starting…' });
 
-    const args = buildAssistArgs({ promptBody: body, sessionId: c.sessionId, model: req.model });
-    const child = spawn('rune', args, { cwd: req.cwd, stdio: ['ignore', 'pipe', 'pipe'] });
-    c.child = child;
+    const contextLine = contextFile ? buildContextLine(contextFile, selection) : '';
+    const prompt = contextLine ? composeAssistPrompt(mode, contextLine, body) : body;
+    const args = buildAssistArgs(prompt, c.sessionId);
+    const child = spawn('rune', args, {
+      cwd,
+      env: { ...process.env },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
 
-    let output = '';
-    let sessionId = c.sessionId;
+    this.inFlightChildren.add(child);
+    this.childByCwd.set(cwd, child);
+
+    let output = ''; // merged stdout+stderr tail, for error classification
+    let sessionId: string | null = c.sessionId;
     const collect = (chunk: Buffer): void => {
       output = (output + chunk.toString('utf-8')).slice(-OUTPUT_CAP);
       if (!sessionId) sessionId = parseRuneSessionId(output);
     };
-    child.stdout?.on('data', collect);
-    child.stderr?.on('data', collect);
+    child.stdout.on('data', collect);
+    child.stderr.on('data', collect);
 
     let finished = false;
     const finish = (error: string | null): void => {
       if (finished) return;
       finished = true;
+      this.inFlightChildren.delete(child);
+      this.childByCwd.delete(cwd);
       clearTimeout(timeout);
       c.inFlight = false;
-      c.child = undefined;
       c.error = error;
       if (sessionId && sessionId !== c.sessionId) {
         c.sessionId = sessionId;
-        this.persist();
+        this.persistSessions();
+      }
+      if (error) {
+        this.opts.emitStatus({ cwd, paneId, phase: 'error', error });
+        return;
       }
       void this.readMessages(c.sessionId).then((messages) => {
-        if (messages.length > 0) this.opts.emitTranscript({ cwd: req.cwd, messages });
-        this.opts.emitStatus(
-          error ? { cwd: req.cwd, status: 'error', error } : { cwd: req.cwd, status: 'idle' }
-        );
+        const result: RuneAssistResultPayload = { cwd, paneId, mode };
+        if (mode === 'ask') {
+          result.answer = lastAssistantText(messages);
+        } else {
+          result.changedFiles = extractChangedFiles(messages);
+        }
+        this.opts.emitResult(result);
+        this.opts.emitStatus({ cwd, paneId, phase: 'idle' });
       });
     };
 
     const timeout = setTimeout(() => {
-      log.warn('rune assist turn timed out; killing', { cwd: req.cwd, pid: child.pid });
+      log.warn('rune-assist turn timed out; killing rune', { cwd, pid: child.pid });
       child.kill('SIGTERM');
     }, TURN_TIMEOUT_MS);
 
     child.on('error', (err: NodeJS.ErrnoException) => {
+      log.error('rune-assist failed to spawn', { cwd, error: err.message });
       finish(err.code === 'ENOENT' ? RUNE_NOT_INSTALLED_MESSAGE : err.message);
     });
     child.on('exit', (code, signal) => {
       if (code === 0) return finish(null);
-      if (signal) return finish('the rune run was interrupted; try again');
+      if (signal) return finish('the run was interrupted; try again');
       if (isAuthFailureText(output)) {
-        return finish('rune authentication failed — fix the provider credentials (e.g. `rune login`) and retry');
+        return finish(
+          'rune authentication failed — fix the provider credentials (e.g. `rune login`) and retry'
+        );
       }
-      const lastLine = output.split('\n').map((l) => l.trim()).filter(Boolean).pop();
-      finish(lastLine ? lastLine.slice(0, 300) : `the rune run failed (exit ${code ?? '?'})`);
+      const lastLine = output
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .pop();
+      finish(lastLine ? lastLine.slice(0, 300) : `the run failed (exit ${code ?? '?'})`);
     });
   }
 
@@ -553,186 +678,258 @@ export class RuneFileChatService {
 }
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+> Note: confirm `isAuthFailureText` is exported from `src/main/kanban/spawn-worker.ts` (it is — `export function isAuthFailureText(text: string): boolean`). `CodedError` lives in `src/main/errors.ts` (same import the PM service uses).
 
-Run: `npx vitest run src/main/rune-assist/__tests__/rune-file-chat-service.test.ts`
-Expected: PASS. If `isAuthFailureText` import path differs, confirm it is exported from `src/main/kanban/spawn-worker.ts` (it is, per the PM chat service which imports it the same way).
-
-- [ ] **Step 5: Typecheck + commit**
+- [ ] **Step 2: Typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS
+Expected: PASS.
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add src/main/rune-assist/
-git commit -m "feat(rune-assist): RuneFileChatService (spawn, resume, stop, persist)"
+git add src/main/rune-assist/rune-file-chat-service.ts
+git commit -m "feat(rune-assist): RuneFileChatService (spawn/resume/stop per cwd)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 4: Wire service + IPC handlers into main
+### Task 4: Main process wiring + IPC handlers
 
 **Files:**
-- Modify: `src/main/index.ts`
+- Create: `src/main/rune-assist/rune-assist-ipc.ts`
+- Modify: `src/main/index.ts` (service construction near the PM chat construction ~line 1133; `registerRuneAssistIpc` call; `dispose()` on shutdown)
 
-- [ ] **Step 1: Import and construct the service**
+- [ ] **Step 1: Write the IPC registrar**
 
-Near the top imports of `src/main/index.ts` add:
+Create `src/main/rune-assist/rune-assist-ipc.ts`:
 
-```typescript
-import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
+```ts
+import { ipcMain } from 'electron';
+import { IPC_CHANNELS } from '../../shared/ipc-channels';
+import type { RuneFileChatService } from './rune-file-chat-service';
+import type {
+  RuneAssistSendRequest,
+  RuneAssistStopRequest,
+  RuneAssistResetRequest,
+  RuneAssistState
+} from '../../shared/ipc-api';
+
+export function registerRuneAssistIpc(service: RuneFileChatService): void {
+  ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_SEND, (_e, req: RuneAssistSendRequest) => {
+    service.sendMessage(req);
+  });
+  ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_STOP, (_e, req: RuneAssistStopRequest) => {
+    service.stop(req.cwd);
+  });
+  ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_RESET, (_e, req: RuneAssistResetRequest) => {
+    service.reset(req.cwd);
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.RUNE_ASSIST_STATE,
+    async (_e, cwd: string): Promise<RuneAssistState> => service.getState(cwd)
+  );
+}
 ```
 
-Find where `pmChat` is constructed (around line 1133). After that block, add (use the same `mainWindow` guard pattern and `app.getPath('userData')` for the sessions dir):
+- [ ] **Step 2: Construct the service in `src/main/index.ts`**
 
-```typescript
-const runeAssist = new RuneFileChatService({
-  sessionsDir: app.getPath('userData'),
+First add the imports near the top of `src/main/index.ts` (with the other main-process imports — search for `import { PmChatService }` and add beneath it):
+
+```ts
+import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
+import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
+```
+
+`app` is already imported in `index.ts` (it uses `app.getPath` / `app.whenReady` elsewhere). Find the PM chat construction block (`pmChat = new PmChatService({ ... });` ~line 1133, followed by `registerKanbanIpc(kanbanCommands, pmChat);` ~line 1149). Add a module-scope declaration next to the existing `pmChat` declaration (search for `let pmChat`), mirroring it:
+
+```ts
+let runeAssist: RuneFileChatService | null = null;
+```
+
+Then immediately after the `registerKanbanIpc(kanbanCommands, pmChat);` line, add:
+
+```ts
+runeAssist = new RuneFileChatService({
+  stateDir: app.getPath('userData'),
   emitStatus: (payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_STATUS, payload);
     }
   },
-  emitTranscript: (payload) => {
+  emitResult: (payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_TRANSCRIPT, payload);
+      mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_RESULT, payload);
     }
   }
 });
+registerRuneAssistIpc(runeAssist);
 ```
-
-Ensure `app` and `IPC_CHANNELS` are already imported in this file (they are).
-
-- [ ] **Step 2: Register IPC handlers**
-
-In the same file, where other `ipcMain.handle(...)` calls live (search for an existing `ipcMain.handle(IPC_CHANNELS.` block, e.g. near app-level handlers), add:
-
-```typescript
-ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_SEND, (_e, req: RuneAssistSendRequest) => {
-  runeAssist.sendMessage(req);
-});
-ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_STATE, async (_e, cwd: string) => runeAssist.getState(cwd));
-ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_RESET, (_e, cwd: string) => runeAssist.reset(cwd));
-ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_STOP, (_e, cwd: string) => runeAssist.stop(cwd));
-```
-
-Add `RuneAssistSendRequest` to the existing type import from `'../shared/ipc-api'` (or add an import if none exists).
 
 - [ ] **Step 3: Dispose on shutdown**
 
-Find where `pmChat.dispose()` or other cleanup runs on app quit / `before-quit`. Add alongside it:
+Find where `pmChat?.dispose()` is called (search `pmChat?.dispose` or `pmChat.dispose` in the `will-quit` / `before-quit` handler). Add directly after it:
 
-```typescript
-runeAssist.dispose();
+```ts
+runeAssist?.dispose();
+```
+
+If `pmChat.dispose()` is not called anywhere (grep finds nothing), add a `before-quit` handler near the other app lifecycle handlers:
+
+```ts
+app.on('before-quit', () => {
+  runeAssist?.dispose();
+});
 ```
 
 - [ ] **Step 4: Typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/main/index.ts
-git commit -m "feat(rune-assist): construct service + register IPC handlers"
+git add src/main/rune-assist/rune-assist-ipc.ts src/main/index.ts
+git commit -m "feat(rune-assist): wire service + IPC handlers into main
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 5: Preload exposure
+### Task 5: Preload `runeAssist` namespace
 
 **Files:**
-- Modify: `src/preload/index.ts`
+- Modify: `src/preload/index.ts` (add a `runeAssist` object as a peer of `kanban` in `fleetApi`; import the new types)
 
-- [ ] **Step 1: Add the `runeAssist` API**
+- [ ] **Step 1: Add the type imports**
 
-Find the PM chat preload block (`pmSend`, `pmState`, `onPmStatus`, around line 639). Mirror its `typedInvoke` / `onChannel` helpers. Add a new namespaced object on `window.fleet` (place it as a top-level key `runeAssist`, alongside `kanban`):
+In `src/preload/index.ts`, find the import block that brings in `PmChatSendRequest, PmChatState, PmChatStatusPayload, PmChatTranscriptPayload` (around lines 63-66) and add the Rune-assist types to the same `from '../shared/ipc-api'` import:
 
-```typescript
-runeAssist: {
-  send: async (req: RuneAssistSendRequest): Promise<void> =>
-    typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_SEND, req),
-  state: async (cwd: string): Promise<RuneAssistState> =>
-    typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, cwd),
-  reset: async (cwd: string): Promise<void> =>
-    typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, cwd),
-  stop: async (cwd: string): Promise<void> =>
-    typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, cwd),
-  onStatus: (cb: (p: RuneAssistStatusPayload) => void): Unsubscribe =>
-    onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, cb),
-  onTranscript: (cb: (p: RuneAssistTranscriptPayload) => void): Unsubscribe =>
-    onChannel<RuneAssistTranscriptPayload>(IPC_CHANNELS.RUNE_ASSIST_TRANSCRIPT, cb)
-},
+```ts
+  RuneAssistSendRequest,
+  RuneAssistStopRequest,
+  RuneAssistResetRequest,
+  RuneAssistState,
+  RuneAssistStatusPayload,
+  RuneAssistResultPayload,
 ```
 
-Add the four `RuneAssist*` types to the existing import from `'../shared/ipc-api'`. `Unsubscribe`, `typedInvoke`, `onChannel` are already defined in this file (used by PM chat).
+- [ ] **Step 2: Add the `runeAssist` namespace**
 
-- [ ] **Step 2: Update the renderer's window typing**
+In the `fleetApi` object, add a `runeAssist` object as a peer of the `kanban` object (place it right after the `kanban: { ... }` block's closing `},`). Uses the existing `typedInvoke` / `onChannel` helpers (lines 135-149):
 
-Find the `window.fleet` type declaration the renderer uses (search for `pmState` in `src/preload/index.ts` or a `.d.ts`; the PM API type lives in the same `FleetApi`-style interface in this file). Add the `runeAssist` member with the same method signatures so `window.fleet.runeAssist` is typed in the renderer.
+```ts
+  runeAssist: {
+    send: async (req: RuneAssistSendRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_SEND, req),
+    stop: async (req: RuneAssistStopRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, req),
+    reset: async (req: RuneAssistResetRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, req),
+    getState: async (cwd: string): Promise<RuneAssistState> =>
+      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, cwd),
+    onStatus: (callback: (payload: RuneAssistStatusPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, callback),
+    onResult: (callback: (payload: RuneAssistResultPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistResultPayload>(IPC_CHANNELS.RUNE_ASSIST_RESULT, callback)
+  },
+```
 
-- [ ] **Step 3: Typecheck (both projects)**
+`FleetApi` is `typeof fleetApi` (exported at the bottom of the file), so `window.fleet.runeAssist` is typed automatically — no `.d.ts` change needed.
+
+- [ ] **Step 3: Typecheck**
 
 Run: `npm run typecheck`
-Expected: PASS (`typecheck:node` covers preload, `typecheck:web` covers renderer usage).
+Expected: PASS.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add src/preload/index.ts
-git commit -m "feat(rune-assist): expose window.fleet.runeAssist"
+git commit -m "feat(rune-assist): preload window.fleet.runeAssist
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 6: Editor-context registry
-
-A module-level registry (clone of `file-save-registry.ts`) letting the panel read the active pane's selection and trigger a reload-from-disk at send-time only.
+### Task 6: `editor-context-registry` (+ test)
 
 **Files:**
 - Create: `src/renderer/src/lib/editor-context-registry.ts`
 - Test: `src/renderer/src/lib/__tests__/editor-context-registry.test.ts`
 
+Mirrors `src/renderer/src/lib/file-save-registry.ts` but stores a richer `EditorHandle` per pane.
+
 - [ ] **Step 1: Write the failing test**
 
-```typescript
+Create `src/renderer/src/lib/__tests__/editor-context-registry.test.ts`:
+
+```ts
 import { describe, it, expect } from 'vitest';
 import {
   registerEditorHandle,
   unregisterEditorHandle,
-  getEditorHandle
+  getEditorHandle,
+  type EditorHandle
 } from '../editor-context-registry';
 
+function fakeHandle(): EditorHandle {
+  return {
+    getSelection: () => ({ fromLine: 1, toLine: 1 }),
+    getContent: () => 'x',
+    reloadFromDisk: async () => 'x',
+    flashLines: () => {},
+    writeContent: async () => {}
+  };
+}
+
 describe('editor-context-registry', () => {
-  it('registers, reads, and unregisters a handle', () => {
-    const handle = { getSelection: () => ({ fromLine: 1, toLine: 2 }), reloadFromDisk: async () => true };
-    registerEditorHandle('pane-1', handle);
-    expect(getEditorHandle('pane-1')).toBe(handle);
-    unregisterEditorHandle('pane-1');
-    expect(getEditorHandle('pane-1')).toBeUndefined();
+  it('registers and retrieves a handle by pane id', () => {
+    const h = fakeHandle();
+    registerEditorHandle('pane-1', h);
+    expect(getEditorHandle('pane-1')).toBe(h);
+  });
+  it('returns undefined after unregister', () => {
+    registerEditorHandle('pane-2', fakeHandle());
+    unregisterEditorHandle('pane-2');
+    expect(getEditorHandle('pane-2')).toBeUndefined();
   });
 });
 ```
 
-- [ ] **Step 2: Run to verify it fails**
+- [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/renderer/src/lib/__tests__/editor-context-registry.test.ts`
-Expected: FAIL — module not found.
+Expected: FAIL — `Cannot find module '../editor-context-registry'`.
 
-- [ ] **Step 3: Implement**
+- [ ] **Step 3: Write the implementation**
 
 Create `src/renderer/src/lib/editor-context-registry.ts`:
 
-```typescript
-import type { RuneAssistSelection } from '../../../shared/ipc-api';
+```ts
+/**
+ * Registry of editor handles for open file panes, so the Rune Quick-Assist overlay can read
+ * the current selection and reconcile edits (reload / flash / revert) without per-keystroke
+ * store churn. Mirrors file-save-registry.ts.
+ */
+import type { RuneAssistSelection } from '../../../shared/rune-assist';
 
-/** What an open file editor pane exposes to the Rune assist panel. */
 export type EditorHandle = {
-  /** 1-based inclusive selected line range, or null when there's no selection. */
-  getSelection: () => RuneAssistSelection | null;
-  /** Re-read the file from disk; replace the doc and flash changed lines. Returns true if content changed. */
-  reloadFromDisk: () => Promise<boolean>;
+  /** Current selection as 1-based line numbers (from === to means just the cursor line). */
+  getSelection: () => RuneAssistSelection;
+  /** Current editor document text. */
+  getContent: () => string;
+  /** Reload the document from disk; returns the new content (or null on failure). */
+  reloadFromDisk: () => Promise<string | null>;
+  /** Briefly highlight the given 1-based inclusive line range. */
+  flashLines: (range: RuneAssistSelection) => void;
+  /** Overwrite the document + persist to disk (used by Revert). */
+  writeContent: (content: string) => Promise<void>;
 };
 
 const registry = new Map<string, EditorHandle>();
@@ -740,784 +937,804 @@ const registry = new Map<string, EditorHandle>();
 export function registerEditorHandle(paneId: string, handle: EditorHandle): void {
   registry.set(paneId, handle);
 }
+
 export function unregisterEditorHandle(paneId: string): void {
   registry.delete(paneId);
 }
+
 export function getEditorHandle(paneId: string): EditorHandle | undefined {
   return registry.get(paneId);
 }
-export function getAllEditorHandles(): Map<string, EditorHandle> {
-  return registry;
-}
 ```
 
-- [ ] **Step 4: Run to verify it passes**
+- [ ] **Step 4: Run the test to verify it passes**
 
 Run: `npx vitest run src/renderer/src/lib/__tests__/editor-context-registry.test.ts`
-Expected: PASS
+Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/renderer/src/lib/editor-context-registry.ts src/renderer/src/lib/__tests__/editor-context-registry.test.ts
-git commit -m "feat(rune-assist): editor-context registry"
+git commit -m "feat(rune-assist): editor-context registry
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 7: FileEditorPane — selection getter, reload, line flash
-
-Wire `FileEditorPane` into the registry: expose the current selection as 1-based line numbers, and a `reloadFromDisk` that re-reads the file, replaces the CodeMirror doc if it differs, and flashes the changed lines.
+### Task 7: `FileEditorPane` integration (handle, flash decoration, hotkey)
 
 **Files:**
 - Modify: `src/renderer/src/components/FileEditorPane.tsx`
-- Test: `src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts` (the diff helper lives there; see Step 1)
 
-- [ ] **Step 1: Write a failing test for the changed-line range helper**
+Register an `EditorHandle`, add a `Mod-i` keymap binding that opens the overlay anchored at the cursor, and add a CodeMirror flash decoration for changed lines. The `RuneAssistLayer` mount is added in Task 9.
 
-Create `src/renderer/src/components/rune-assist/transcript-helpers.ts` will hold transcript helpers (Task 8). The line-diff helper belongs with the editor; put it in a small pure module. Create `src/renderer/src/lib/__tests__/line-diff.test.ts`:
+- [ ] **Step 1: Add imports + flash extension**
 
-```typescript
-import { describe, it, expect } from 'vitest';
-import { changedLineRange } from '../line-diff';
+At the top of `src/renderer/src/components/FileEditorPane.tsx`, extend the `@codemirror/view` import to include `Decoration`, `ViewPlugin` is not needed — use `StateField` + `StateEffect` (already importing `StateEffect` from `@codemirror/state`). Add:
 
-describe('changedLineRange', () => {
-  it('returns null when identical', () => {
-    expect(changedLineRange('a\nb\nc', 'a\nb\nc')).toBeNull();
-  });
-  it('finds the first and last differing line (1-based)', () => {
-    // line 2 changed
-    expect(changedLineRange('a\nb\nc', 'a\nX\nc')).toEqual({ fromLine: 2, toLine: 2 });
-  });
-  it('spans an inserted block', () => {
-    expect(changedLineRange('a\nb', 'a\nNEW\nb')).toEqual({ fromLine: 2, toLine: 3 });
-  });
-});
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `npx vitest run src/renderer/src/lib/__tests__/line-diff.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement the helper**
-
-Create `src/renderer/src/lib/line-diff.ts`:
-
-```typescript
-import type { RuneAssistSelection } from '../../../shared/ipc-api';
-
-/**
- * Crude line-level diff: the first and last line indices that differ between
- * old and new text, as a 1-based inclusive range over the NEW text. Returns
- * null when the texts are identical. Good enough to flash "what rune changed".
- */
-export function changedLineRange(oldText: string, newText: string): RuneAssistSelection | null {
-  if (oldText === newText) return null;
-  const a = oldText.split('\n');
-  const b = newText.split('\n');
-  let start = 0;
-  while (start < a.length && start < b.length && a[start] === b[start]) start++;
-  let endA = a.length - 1;
-  let endB = b.length - 1;
-  while (endB > start - 1 && endA > start - 1 && a[endA] === b[endB]) {
-    endA--;
-    endB--;
-  }
-  const fromLine = start + 1;
-  const toLine = Math.max(start, endB) + 1;
-  return { fromLine, toLine };
-}
-```
-
-- [ ] **Step 4: Run to verify it passes**
-
-Run: `npx vitest run src/renderer/src/lib/__tests__/line-diff.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Add the CodeMirror flash extension + registry wiring to FileEditorPane**
-
-In `src/renderer/src/components/FileEditorPane.tsx`:
-
-Add imports at the top:
-
-```typescript
-import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
+```ts
 import { Decoration, type DecorationSet } from '@codemirror/view';
-import {
-  registerEditorHandle,
-  unregisterEditorHandle
-} from '../lib/editor-context-registry';
-import { changedLineRange } from '../lib/line-diff';
+import { StateField } from '@codemirror/state';
 ```
 
-> Note: `EditorView` and `keymap` etc. are already imported. `RangeSetBuilder` is from `@codemirror/state`.
+Then add these module-level definitions (above the component, below the imports):
 
-Above the component, add a flash decoration field:
-
-```typescript
-const setFlash = StateEffect.define<{ from: number; to: number } | null>();
-const flashLine = Decoration.line({ attributes: { class: 'cm-rune-flash' } });
+```ts
+// --- Rune flash: transient line highlight after an Agent edit ---
+const flashRangeEffect = StateEffect.define<{ fromLine: number; toLine: number } | null>();
 
 const flashField = StateField.define<DecorationSet>({
-  create: () => Decoration.none,
+  create() {
+    return Decoration.none;
+  },
   update(deco, tr) {
-    deco = deco.map(tr.changes);
+    let next = deco.map(tr.changes);
     for (const e of tr.effects) {
-      if (e.is(setFlash)) {
-        if (!e.value) return Decoration.none;
-        const builder = new RangeSetBuilder<Decoration>();
-        for (let ln = e.value.from; ln <= e.value.to; ln++) {
-          if (ln < 1 || ln > tr.state.doc.lines) continue;
-          builder.add(tr.state.doc.line(ln).from, tr.state.doc.line(ln).from, flashLine);
-        }
-        return builder.finish();
+      if (!e.is(flashRangeEffect)) continue;
+      if (e.value === null) {
+        next = Decoration.none;
+        continue;
       }
+      const ranges = [];
+      const { fromLine, toLine } = e.value;
+      for (let ln = fromLine; ln <= toLine && ln <= tr.state.doc.lines; ln++) {
+        const line = tr.state.doc.line(ln);
+        ranges.push(Decoration.line({ class: 'rune-flash-line' }).range(line.from));
+      }
+      next = Decoration.set(ranges, true);
     }
-    return deco;
+    return next;
   },
   provide: (f) => EditorView.decorations.from(f)
 });
 ```
 
-Add `flashField` to the editor's `extensions` array (anywhere in the list created in the `EditorState.create({ ... extensions: [...] })` call).
+Add the flash CSS once (in the existing global stylesheet — search for where `.cm-` or app-global styles live, e.g. `src/renderer/src/index.css` or `assets/main.css`; add):
 
-Add the `.cm-rune-flash` style to the `EditorView.theme({...})` block already present:
-
-```typescript
-'.cm-rune-flash': { backgroundColor: 'rgba(152, 195, 121, 0.18)', transition: 'background-color 1.5s ease-out' },
+```css
+.rune-flash-line {
+  background-color: rgba(152, 195, 121, 0.18);
+  transition: background-color 1.2s ease-out;
+}
 ```
 
-After the editor `view` is created (in the same `useEffect` where `viewRef.current = view`), register the handle:
+- [ ] **Step 2: Register the flash field in the editor extensions**
 
-```typescript
-registerEditorHandle(paneId, {
-  getSelection: () => {
-    const v = viewRef.current;
-    if (!v) return null;
-    const sel = v.state.selection.main;
-    if (sel.empty) return null;
-    return {
-      fromLine: v.state.doc.lineAt(sel.from).number,
-      toLine: v.state.doc.lineAt(sel.to).number
+In the `EditorState.create({ extensions: [...] })` array (around line 206), add `flashField,` near the other extensions (e.g. right after `search(),`).
+
+- [ ] **Step 3: Add the `Mod-i` keymap binding**
+
+In the `keymap.of([...])` array (starts line 215), add this entry before `indentWithTab`:
+
+```ts
+            {
+              key: 'Mod-i',
+              run: (view) => {
+                const sel = view.state.selection.main;
+                const coords = view.coordsAtPos(sel.head);
+                const host = containerRef.current?.getBoundingClientRect();
+                const anchor =
+                  coords && host
+                    ? { top: coords.bottom - host.top, left: coords.left - host.left }
+                    : { top: 8, left: 8 };
+                openRuneOverlayRef.current(anchor);
+                return true;
+              }
+            },
+```
+
+- [ ] **Step 4: Register the `EditorHandle` + an overlay-open callback ref**
+
+Add the imports at the top:
+
+```ts
+import {
+  registerEditorHandle,
+  unregisterEditorHandle,
+  type EditorHandle
+} from '../lib/editor-context-registry';
+import { useRuneAssistStore } from '../store/rune-assist-store';
+import { changedLineRange } from '../../../shared/rune-assist';
+```
+
+> Note: `useRuneAssistStore` is created in Task 8. Implement Task 8 before running this pane's typecheck, or stub the import temporarily. Subagent-driven execution runs tasks in order, so by the time you build, Task 8 exists.
+
+Inside the component, near the other refs (after `const initialContentRef = ...`), add a ref the keymap closure calls:
+
+```ts
+  const openRuneOverlayRef = useRef<(anchor: { top: number; left: number }) => void>(() => {});
+```
+
+Wire it to the store + the pane's cwd/file. Add after the `setPaneDirty` line:
+
+```ts
+  const openOverlay = useRuneAssistStore((s) => s.openOverlay);
+  // The workspace cwd that owns this pane (rune runs there). Derived from the workspace store.
+  const cwd = useWorkspaceStore((s) => {
+    const tab = s.workspace.tabs.find((t) =>
+      t.splitRoot ? collectPaneIdsContains(t.splitRoot, paneId) : false
+    );
+    return tab?.cwd ?? '/';
+  });
+  openRuneOverlayRef.current = (anchor) => openOverlay(paneId, { cwd, contextFile: filePath, anchor });
+```
+
+Add a tiny local helper near the top of the file (below imports) to avoid importing tree internals:
+
+```ts
+import type { PaneNode } from '../../../shared/types';
+function collectPaneIdsContains(node: PaneNode, paneId: string): boolean {
+  if (node.type === 'leaf') return node.id === paneId;
+  return collectPaneIdsContains(node.children[0], paneId) || collectPaneIdsContains(node.children[1], paneId);
+}
+```
+
+Add the handle registration effect (near the existing `registerFileSave` effect, ~line 281):
+
+```ts
+  useEffect(() => {
+    const handle: EditorHandle = {
+      getSelection: () => {
+        const view = viewRef.current;
+        if (!view) return { fromLine: 1, toLine: 1 };
+        const sel = view.state.selection.main;
+        return {
+          fromLine: view.state.doc.lineAt(sel.from).number,
+          toLine: view.state.doc.lineAt(sel.to).number
+        };
+      },
+      getContent: () => viewRef.current?.state.doc.toString() ?? '',
+      reloadFromDisk: async () => {
+        const res = await window.fleet.file.read(filePath);
+        if (!res.success || !res.data) return null;
+        const view = viewRef.current;
+        if (!view) return null;
+        const content = res.data.content;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+        savedContentRef.current = content;
+        return content;
+      },
+      flashLines: (range) => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({ effects: flashRangeEffect.of(range) });
+        setTimeout(() => {
+          viewRef.current?.dispatch({ effects: flashRangeEffect.of(null) });
+        }, 1500);
+      },
+      writeContent: async (content) => {
+        await window.fleet.file.write(filePath, content);
+        const view = viewRef.current;
+        if (view) {
+          view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+          savedContentRef.current = content;
+        }
+      }
     };
-  },
-  reloadFromDisk: async () => {
-    const v = viewRef.current;
-    if (!v) return false;
-    const result = await window.fleet.file.read(filePath);
-    if (!result.success || !result.data) return false;
-    const next = result.data.content;
-    const current = v.state.doc.toString();
-    if (next === current) return false;
-    const range = changedLineRange(current, next);
-    v.dispatch({ changes: { from: 0, to: v.state.doc.length, insert: next } });
-    savedContentRef.current = next;
-    if (range) {
-      v.dispatch({ effects: setFlash.of({ from: range.fromLine, to: range.toLine }) });
-      setTimeout(() => viewRef.current?.dispatch({ effects: setFlash.of(null) }), 1600);
-    }
-    return true;
-  }
-});
+    registerEditorHandle(paneId, handle);
+    return () => unregisterEditorHandle(paneId);
+  }, [paneId, filePath]);
 ```
 
-In the existing cleanup `return () => { ... view.destroy(); ... }` of that effect, add:
+> Note: `changedLineRange` is imported for use by the store (Task 8/9), not directly here — if lint flags it unused in this file, drop the import from this file and import it in the store instead. Keep imports honest.
 
-```typescript
-unregisterEditorHandle(paneId);
-```
-
-- [ ] **Step 6: Typecheck**
+- [ ] **Step 5: Typecheck (after Task 8 exists)**
 
 Run: `npm run typecheck`
-Expected: PASS
+Expected: PASS. (If you reach this before Task 8, the `useRuneAssistStore` import will error — that's expected; proceed to Task 8 then re-run.)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/renderer/src/lib/line-diff.ts src/renderer/src/lib/__tests__/line-diff.test.ts src/renderer/src/components/FileEditorPane.tsx
-git commit -m "feat(rune-assist): editor selection getter + reload-with-flash"
+git add src/renderer/src/components/FileEditorPane.tsx src/renderer/src/index.css
+git commit -m "feat(rune-assist): editor handle, flash decoration, Mod-i summon
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 8: Transcript helpers (text, tool cards, reasoning)
-
-Pure functions that turn `TranscriptMessage[]` into render-ready pieces: plain answer text, collapsible tool-call cards, and (conditionally) reasoning text.
-
-**Files:**
-- Create: `src/renderer/src/components/rune-assist/transcript-helpers.ts`
-- Test: `src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts`
-
-- [ ] **Step 1: Write the failing test**
-
-```typescript
-import { describe, it, expect } from 'vitest';
-import { messageText, toolCards } from '../transcript-helpers';
-import type { TranscriptMessage } from '../../../../../shared/sessions';
-
-const msg: TranscriptMessage = {
-  role: 'assistant',
-  blocks: [
-    { type: 'tool_use', name: 'read_file', argsPreview: 'auth.ts' },
-    { type: 'text', text: 'Done — added jwtVerify.' }
-  ]
-};
-
-describe('transcript-helpers', () => {
-  it('messageText concatenates text blocks', () => {
-    expect(messageText(msg)).toBe('Done — added jwtVerify.');
-  });
-  it('toolCards lists tool_use blocks with name + args', () => {
-    expect(toolCards(msg)).toEqual([{ name: 'read_file', args: 'auth.ts' }]);
-  });
-});
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-Run: `npx vitest run src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts`
-Expected: FAIL — module not found.
-
-- [ ] **Step 3: Implement**
-
-Create `src/renderer/src/components/rune-assist/transcript-helpers.ts`:
-
-```typescript
-import type { TranscriptMessage } from '../../../../shared/sessions';
-
-export type ToolCard = { name: string; args: string };
-
-export function messageText(m: TranscriptMessage): string {
-  return m.blocks
-    .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
-    .map((b) => b.text)
-    .join('')
-    .trim();
-}
-
-export function toolCards(m: TranscriptMessage): ToolCard[] {
-  return m.blocks
-    .filter((b): b is Extract<typeof b, { type: 'tool_use' }> => b.type === 'tool_use')
-    .map((b) => ({ name: b.name, args: b.argsPreview }));
-}
-```
-
-> Reasoning blocks: `TranscriptBlock` (in `src/shared/sessions.ts`) currently has no `thinking`/`reasoning` variant. Before building the reasoning UI in Task 9, grep the Rune session JSON via `readRuneSession` output for a reasoning/thinking block type. If present, add a `reasoningText(m)` helper here and a `{ type: 'thinking'; text: string }` variant to `TranscriptBlock` + its mapping in `src/main/sessions/rune-source.ts`. If absent, the collapsible reasoning block renders nothing — note this in the commit and move on (matches the spec's open question).
-
-- [ ] **Step 4: Run to verify it passes**
-
-Run: `npx vitest run src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/renderer/src/components/rune-assist/transcript-helpers.ts src/renderer/src/components/rune-assist/__tests__/transcript-helpers.test.ts
-git commit -m "feat(rune-assist): transcript render helpers"
-```
-
----
-
-## Task 9: Renderer store (state, events, queue)
-
-Zustand store mirroring `pm-chat-store.ts`, plus a renderer-side message queue (queue-while-running) and a post-turn reload trigger.
+### Task 8: `rune-assist-store` (+ tests)
 
 **Files:**
 - Create: `src/renderer/src/store/rune-assist-store.ts`
+- Test: `src/renderer/src/store/__tests__/rune-assist-store.test.ts`
 
-- [ ] **Step 1: Implement the store**
+zustand store keyed by pane id. UI state + send/stop/revert + applyStatus/applyResult. The pure reconcile math is `changedLineRange` (already tested); the store's edit reconciliation calls the `EditorHandle`, so tests cover the non-DOM transitions (open/close/draft, applyStatus, applyResult for Ask, the in-flight pre-check).
+
+- [ ] **Step 1: Write the failing test**
+
+Create `src/renderer/src/store/__tests__/rune-assist-store.test.ts`:
+
+```ts
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { useRuneAssistStore } from '../rune-assist-store';
+
+beforeEach(() => {
+  useRuneAssistStore.setState({ panes: {} });
+  // window.fleet.runeAssist is polyfilled per-test below.
+});
+
+describe('rune-assist-store', () => {
+  it('opens and closes the overlay for a pane', () => {
+    const { openOverlay, closeOverlay } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 10, left: 20 } });
+    expect(useRuneAssistStore.getState().panes['p1'].open).toBe(true);
+    expect(useRuneAssistStore.getState().panes['p1'].cwd).toBe('/repo');
+    closeOverlay('p1');
+    expect(useRuneAssistStore.getState().panes['p1'].open).toBe(false);
+  });
+
+  it('records the draft text', () => {
+    const { openOverlay, setDraft } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    setDraft('p1', 'hello');
+    expect(useRuneAssistStore.getState().panes['p1'].draft).toBe('hello');
+  });
+
+  it('applyStatus moves the pane through phases and keeps the prompt on error', () => {
+    const { openOverlay, setDraft, applyStatus } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    setDraft('p1', 'do it');
+    applyStatus('p1', { phase: 'working', step: 'reading…' });
+    expect(useRuneAssistStore.getState().panes['p1'].phase).toBe('working');
+    expect(useRuneAssistStore.getState().panes['p1'].step).toBe('reading…');
+    applyStatus('p1', { phase: 'error', error: 'boom' });
+    const p = useRuneAssistStore.getState().panes['p1'];
+    expect(p.phase).toBe('error');
+    expect(p.error).toBe('boom');
+    expect(p.draft).toBe('do it'); // prompt preserved for Retry
+  });
+
+  it('applyResult in ask mode stores the answer and goes idle', () => {
+    const { openOverlay, applyResult } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    applyResult('p1', { cwd: '/repo', paneId: 'p1', mode: 'ask', answer: '42' });
+    const p = useRuneAssistStore.getState().panes['p1'];
+    expect(p.answer).toBe('42');
+    expect(p.phase).toBe('idle');
+  });
+
+  it('send is rejected locally when the pane is already working', async () => {
+    const send = vi.fn().mockResolvedValue(undefined);
+    (globalThis as unknown as { window: { fleet: unknown } }).window = {
+      fleet: { runeAssist: { send } }
+    };
+    const store = useRuneAssistStore.getState();
+    store.openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    store.applyStatus('p1', { phase: 'working' });
+    await store.send('p1', 'finish it');
+    expect(send).not.toHaveBeenCalled();
+  });
+});
+```
+
+> Note: the `send` test stubs `window.fleet.runeAssist.send`; the `send` action reads the `EditorHandle` from the registry — when none is registered it falls back to no selection/empty content, which is fine for the "rejected while working" path (it returns before touching the handle). Keep the action's early-return-on-working ordered before any handle access.
+
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `npx vitest run src/renderer/src/store/__tests__/rune-assist-store.test.ts`
+Expected: FAIL — `Cannot find module '../rune-assist-store'`.
+
+- [ ] **Step 3: Write the store**
 
 Create `src/renderer/src/store/rune-assist-store.ts`:
 
-```typescript
+```ts
 import { create } from 'zustand';
-import type {
-  RuneAssistMode,
-  RuneAssistSelection,
-  RuneAssistState as IpcState
-} from '../../../shared/ipc-api';
-import type { TranscriptMessage } from '../../../shared/sessions';
-import { getAllEditorHandles } from '../lib/editor-context-registry';
+import { detectIntent, changedLineRange } from '../../../shared/rune-assist';
+import { getEditorHandle } from '../lib/editor-context-registry';
+import type { RuneAssistResultPayload, RuneAssistStatusPayload } from '../../../shared/ipc-api';
 
-type QueuedSend = {
-  text: string;
-  mode: RuneAssistMode;
-  contextFile?: string;
-  selection?: RuneAssistSelection | null;
-  model?: string;
-};
+type Phase = 'idle' | 'working' | 'error';
 
-type RuneAssistStore = {
-  panelOpen: boolean;
-  cwd: string | null;
-  mode: RuneAssistMode;
-  status: 'idle' | 'thinking' | 'error';
+type PaneAssist = {
+  open: boolean;
+  anchor: { top: number; left: number } | null;
+  draft: string;
+  phase: Phase;
+  step: string | null;
   error: string | null;
-  messages: TranscriptMessage[];
-  lastSend: QueuedSend | null; // for Retry
-  queue: QueuedSend[];
-
-  togglePanel: () => void;
-  setMode: (m: RuneAssistMode) => void;
-  setCwd: (cwd: string) => Promise<void>;
-  send: (s: QueuedSend) => Promise<void>;
-  retry: () => Promise<void>;
-  stop: () => Promise<void>;
-  reset: () => Promise<void>;
-  applyStatus: (status: 'idle' | 'thinking' | 'error', error?: string) => void;
-  applyTranscript: (messages: TranscriptMessage[]) => void;
+  /** Last Ask answer; when set and phase==='idle', the popover is shown. */
+  answer: string | null;
+  /** Pre-turn content snapshot for one-click Revert (Edit turns only). */
+  editSnapshot: string | null;
+  /** True after a successful Edit turn lands — drives the "⟳ Reloaded · Revert" affordance. */
+  lastEdited: boolean;
+  cwd: string;
+  contextFile: string;
 };
 
-export const useRuneAssistStore = create<RuneAssistStore>((set, get) => ({
-  panelOpen: false,
-  cwd: null,
-  mode: 'agent',
-  status: 'idle',
-  error: null,
-  messages: [],
-  lastSend: null,
-  queue: [],
+type OpenArgs = { cwd: string; contextFile: string; anchor: { top: number; left: number } };
 
-  togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
-  setMode: (mode) => set({ mode }),
+type StoreState = {
+  panes: Record<string, PaneAssist>;
+  openOverlay: (paneId: string, args: OpenArgs) => void;
+  closeOverlay: (paneId: string) => void;
+  setDraft: (paneId: string, draft: string) => void;
+  dismissAnswer: (paneId: string) => void;
+  send: (paneId: string, text: string) => Promise<void>;
+  stop: (paneId: string) => Promise<void>;
+  revert: (paneId: string) => Promise<void>;
+  applyStatus: (paneId: string, payload: Pick<RuneAssistStatusPayload, 'phase' | 'step' | 'error'>) => void;
+  applyResult: (paneId: string, payload: RuneAssistResultPayload) => void;
+};
 
-  setCwd: async (cwd) => {
-    if (get().cwd === cwd) return;
-    set({ cwd, messages: [], status: 'idle', error: null });
-    const state: IpcState = await window.fleet.runeAssist.state(cwd);
-    if (get().cwd === cwd) {
-      set({ messages: state.messages, status: state.inFlight ? 'thinking' : 'idle', error: state.error });
+function blank(cwd: string, contextFile: string, anchor: OpenArgs['anchor']): PaneAssist {
+  return {
+    open: true,
+    anchor,
+    draft: '',
+    phase: 'idle',
+    step: null,
+    error: null,
+    answer: null,
+    editSnapshot: null,
+    lastEdited: false,
+    cwd,
+    contextFile
+  };
+}
+
+function patch(
+  state: StoreState,
+  paneId: string,
+  fn: (p: PaneAssist) => PaneAssist
+): { panes: Record<string, PaneAssist> } {
+  const existing = state.panes[paneId];
+  if (!existing) return { panes: state.panes };
+  return { panes: { ...state.panes, [paneId]: fn(existing) } };
+}
+
+export const useRuneAssistStore = create<StoreState>((set, get) => ({
+  panes: {},
+
+  openOverlay: (paneId, { cwd, contextFile, anchor }) =>
+    set((s) => ({
+      panes: { ...s.panes, [paneId]: blank(cwd, contextFile, anchor) }
+    })),
+
+  closeOverlay: (paneId) => set((s) => patch(s, paneId, (p) => ({ ...p, open: false }))),
+
+  setDraft: (paneId, draft) => set((s) => patch(s, paneId, (p) => ({ ...p, draft }))),
+
+  dismissAnswer: (paneId) => set((s) => patch(s, paneId, (p) => ({ ...p, answer: null }))),
+
+  send: async (paneId, text) => {
+    const body = text.trim();
+    if (!body) return;
+    const p = get().panes[paneId];
+    if (!p || p.phase === 'working') return; // one in-flight per pane (main also guards per cwd)
+
+    const mode = detectIntent(body);
+    const handle = getEditorHandle(paneId);
+    const selection = handle?.getSelection();
+    const snapshot = mode === 'edit' ? (handle?.getContent() ?? null) : null;
+
+    set((s) =>
+      patch(s, paneId, (cur) => ({
+        ...cur,
+        draft: body,
+        phase: 'working',
+        step: 'starting…',
+        error: null,
+        answer: null,
+        lastEdited: false,
+        editSnapshot: snapshot
+      }))
+    );
+
+    try {
+      await window.fleet.runeAssist.send({
+        cwd: p.cwd,
+        paneId,
+        text: body,
+        mode,
+        contextFile: p.contextFile,
+        selection
+      });
+    } catch (err) {
+      set((s) =>
+        patch(s, paneId, (cur) => ({
+          ...cur,
+          phase: 'error',
+          error: err instanceof Error ? err.message : String(err)
+        }))
+      );
     }
   },
 
-  send: async (s) => {
-    const { cwd, status } = get();
-    if (!cwd) return;
-    if (status === 'thinking') {
-      set((st) => ({ queue: [...st.queue, s] }));
+  stop: async (paneId) => {
+    const p = get().panes[paneId];
+    if (!p) return;
+    await window.fleet.runeAssist.stop({ cwd: p.cwd, paneId });
+  },
+
+  revert: async (paneId) => {
+    const p = get().panes[paneId];
+    if (!p || p.editSnapshot === null) return;
+    const handle = getEditorHandle(paneId);
+    await handle?.writeContent(p.editSnapshot);
+    set((s) => patch(s, paneId, (cur) => ({ ...cur, lastEdited: false, editSnapshot: null })));
+  },
+
+  applyStatus: (paneId, payload) =>
+    set((s) =>
+      patch(s, paneId, (p) => ({
+        ...p,
+        phase: payload.phase,
+        step: payload.step ?? p.step,
+        error: payload.phase === 'error' ? (payload.error ?? 'something went wrong') : null
+      }))
+    ),
+
+  applyResult: (paneId, payload) => {
+    // Ask: show the answer popover. Edit: reconcile the editor (reload + flash) and arm Revert.
+    if (payload.mode === 'ask') {
+      set((s) =>
+        patch(s, paneId, (p) => ({ ...p, phase: 'idle', step: null, answer: payload.answer ?? '' }))
+      );
       return;
     }
-    set({ status: 'thinking', error: null, lastSend: s });
-    await window.fleet.runeAssist.send({ cwd, ...s });
-  },
-
-  retry: async () => {
-    const last = get().lastSend;
-    if (last) await get().send(last);
-  },
-
-  stop: async () => {
-    const { cwd } = get();
-    if (cwd) await window.fleet.runeAssist.stop(cwd);
-  },
-
-  reset: async () => {
-    const { cwd } = get();
-    if (!cwd) return;
-    await window.fleet.runeAssist.reset(cwd);
-    set({ messages: [], status: 'idle', error: null, queue: [] });
-  },
-
-  applyStatus: (status, error) => set({ status, error: error ?? null }),
-
-  applyTranscript: (messages) => {
-    set({ messages });
-    // After a turn lands, reload any open editor panes (auto-reload + flash).
-    for (const handle of getAllEditorHandles().values()) void handle.reloadFromDisk();
-    // Drain one queued message if idle.
-    const { queue } = get();
-    if (queue.length > 0) {
-      const [next, ...rest] = queue;
-      set({ queue: rest });
-      void get().send(next);
+    const p = get().panes[paneId];
+    const handle = getEditorHandle(paneId);
+    const before = p?.editSnapshot;
+    if (handle) {
+      void handle.reloadFromDisk().then((after) => {
+        if (after !== null && before != null) {
+          const range = changedLineRange(before, after);
+          if (range) handle.flashLines(range);
+        }
+        // Reload other open panes rune also changed (best-effort; no revert for those).
+        for (const file of payload.changedFiles ?? []) {
+          if (file === p?.contextFile) continue;
+          // other panes register their own handles keyed by paneId; we don't have a path→pane
+          // map here, so leave cross-pane reload to those panes' own focus/refresh. (v1 scope)
+          void file;
+        }
+      });
     }
+    set((s) => patch(s, paneId, (cur) => ({ ...cur, phase: 'idle', step: null, lastEdited: true })));
   }
 }));
 ```
 
-- [ ] **Step 2: Typecheck**
+> Note: the cross-pane reload loop is intentionally a no-op placeholder in v1 — there is no path→pane index, and the spec scopes Revert/reconcile to the active pane (others are "best-effort"). Keep the `changedFiles` plumbing (it arrives in the payload) but do not build a path→pane map now. If lint flags the empty loop, replace its body with a clarifying comment and drop the `void file;`.
 
-Run: `npm run typecheck`
-Expected: PASS
+- [ ] **Step 4: Run the test to verify it passes**
 
-- [ ] **Step 3: Commit**
+Run: `npx vitest run src/renderer/src/store/__tests__/rune-assist-store.test.ts`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src/renderer/src/store/rune-assist-store.ts
-git commit -m "feat(rune-assist): renderer store with queue + reload trigger"
+git add src/renderer/src/store/rune-assist-store.ts src/renderer/src/store/__tests__/rune-assist-store.test.ts
+git commit -m "feat(rune-assist): renderer store (overlay state, send/stop/revert)
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 10: `RuneAssistPanel` component
-
-The docked panel: header (label, reset), transcript (answer text + collapsible tool cards), composer (context chips, Ask/Agent toggle, slash commands, Send/Stop/Retry).
+### Task 9: Overlay / pill / popover UI + mount in `FileEditorPane`
 
 **Files:**
-- Create: `src/renderer/src/components/rune-assist/RuneAssistPanel.tsx`
+- Create: `src/renderer/src/components/rune-assist/RuneAssistOverlay.tsx`
+- Create: `src/renderer/src/components/rune-assist/RuneWorkingPill.tsx`
+- Create: `src/renderer/src/components/rune-assist/RuneAnswerPopover.tsx`
+- Create: `src/renderer/src/components/rune-assist/RuneAssistLayer.tsx`
+- Modify: `src/renderer/src/components/FileEditorPane.tsx` (mount `RuneAssistLayer`, subscribe to events)
 
-- [ ] **Step 1: Implement the component**
+- [ ] **Step 1: Write the input overlay**
 
-Create `src/renderer/src/components/rune-assist/RuneAssistPanel.tsx`. Follow `PmChatPanel.tsx` for styling/structure (fixed right-dock, dark theme classes). Key behaviors: subscribe to `onStatus`/`onTranscript` filtered by `cwd`; render messages with `messageText` + collapsible `toolCards`; composer with mode toggle, model input, Send (Enter), Stop (while thinking), Retry (on error), `/` slash-command expansion.
+Create `src/renderer/src/components/rune-assist/RuneAssistOverlay.tsx`:
 
 ```tsx
-import { useEffect, useRef, useState } from 'react';
-import { Bot, ChevronRight, X } from 'lucide-react';
-import { useRuneAssistStore } from '../../store/rune-assist-store';
-import { messageText, toolCards } from './transcript-helpers';
+import { useEffect, useRef } from 'react';
 
 type Props = {
-  cwd: string;
-  contextFile?: string;
-  /** Reads the active pane's current selection at send-time. */
-  getSelection: () => { fromLine: number; toLine: number } | null;
+  draft: string;
+  onChange: (v: string) => void;
+  onSubmit: () => void;
+  onClose: () => void;
 };
 
-const SLASH: Record<string, string> = {
-  '/explain': 'Explain what this code does.',
-  '/fix': 'Find and fix the bug in this code.',
-  '/tests': 'Write tests for this code.'
-};
-
-export function RuneAssistPanel({ cwd, contextFile, getSelection }: Props): React.JSX.Element {
-  const {
-    mode, status, error, messages, queue,
-    setCwd, setMode, send, retry, stop, reset, applyStatus, applyTranscript
-  } = useRuneAssistStore();
-  const [text, setText] = useState('');
-  const [selDropped, setSelDropped] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { void setCwd(cwd); }, [cwd, setCwd]);
-
+export function RuneAssistOverlay({ draft, onChange, onSubmit, onClose }: Props): React.JSX.Element {
+  const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    const offStatus = window.fleet.runeAssist.onStatus((p) => {
-      if (p.cwd === cwd) applyStatus(p.status, p.error);
-    });
-    const offTranscript = window.fleet.runeAssist.onTranscript((p) => {
-      if (p.cwd === cwd) applyTranscript(p.messages);
-    });
-    return () => { offStatus(); offTranscript(); };
-  }, [cwd, applyStatus, applyTranscript]);
-
-  const submit = (): void => {
-    const raw = text.trim();
-    if (!raw) return;
-    const body = SLASH[raw] ?? raw;
-    void send({
-      text: body,
-      mode,
-      contextFile,
-      selection: selDropped ? null : getSelection()
-    });
-    setText('');
-    setSelDropped(false);
-  };
-
-  const selection = selDropped ? null : getSelection();
-
+    ref.current?.focus();
+  }, []);
   return (
-    <div className="fixed bottom-0 top-9 right-0 z-30 flex w-[380px] flex-col border-l border-neutral-800 bg-neutral-950 text-sm text-neutral-200">
-      {/* header */}
-      <div className="flex items-center gap-2 border-b border-neutral-800 px-3 py-2">
-        <Bot size={14} className="text-amber-400" />
-        <span className="font-semibold">Rune</span>
-        <button onClick={() => void reset()} className="ml-auto text-xs text-neutral-500 hover:text-neutral-300">
-          New thread
-        </button>
-      </div>
-
-      {/* transcript */}
-      <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {messages.map((m, i) => {
-          const cards = toolCards(m);
-          const body = messageText(m);
-          return (
-            <div key={i} className={m.role === 'user' ? 'text-right' : ''}>
-              {cards.length > 0 && (
-                <details className="mb-1 rounded border border-neutral-800 bg-neutral-900 text-xs">
-                  <summary className="cursor-pointer px-2 py-1 text-emerald-400">
-                    {cards.length} step{cards.length > 1 ? 's' : ''}
-                  </summary>
-                  {cards.map((c, j) => (
-                    <div key={j} className="border-t border-neutral-800 px-2 py-1 text-neutral-400">
-                      {c.name} <span className="text-neutral-600">{c.args}</span>
-                    </div>
-                  ))}
-                </details>
-              )}
-              {body && (
-                <div className={`inline-block whitespace-pre-wrap rounded-lg px-3 py-2 ${
-                  m.role === 'user' ? 'bg-neutral-800' : 'bg-neutral-900'
-                }`}>
-                  {body}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {status === 'thinking' && <div className="text-xs text-neutral-500">Thinking…</div>}
-        {status === 'error' && error && (
-          <div className="rounded border border-red-900 bg-red-950/40 px-2 py-1 text-xs text-red-300">
-            {error}{' '}
-            <button onClick={() => void retry()} className="underline">Retry</button>
-          </div>
-        )}
-      </div>
-
-      {/* composer */}
-      <div className="border-t border-neutral-800 p-2">
-        {/* context chips */}
-        {contextFile && (
-          <div className="mb-2 flex flex-wrap gap-1 text-xs">
-            <span className="inline-flex items-center gap-1 rounded border border-neutral-700 bg-neutral-900 px-1.5 py-0.5">
-              {contextFile.split('/').pop()}
-              {selection && <span className="text-neutral-500">L{selection.fromLine}-{selection.toLine}</span>}
-              <button onClick={() => setSelDropped(true)}><X size={10} /></button>
-            </span>
-          </div>
-        )}
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); }
-          }}
-          placeholder="Ask or instruct…  (@ to add context, / for commands)"
-          className="h-16 w-full resize-none rounded bg-neutral-900 p-2 text-sm outline-none"
-        />
-        <div className="mt-1 flex items-center gap-2 text-xs">
-          <button
-            onClick={() => setMode(mode === 'agent' ? 'ask' : 'agent')}
-            className="rounded bg-neutral-800 px-2 py-0.5"
-          >
-            {mode === 'agent' ? 'Agent' : 'Ask'} ▾
-          </button>
-          {queue.length > 0 && <span className="text-neutral-500">{queue.length} queued</span>}
-          {status === 'thinking' ? (
-            <button onClick={() => void stop()} className="ml-auto rounded bg-neutral-800 px-3 py-0.5">
-              ◼ Stop
-            </button>
-          ) : (
-            <button onClick={submit} className="ml-auto rounded bg-neutral-700 px-3 py-0.5">
-              Send ⏎
-            </button>
-          )}
-        </div>
+    <div className="w-80 rounded-lg border border-fleet-border bg-fleet-surface-1 shadow-xl">
+      <textarea
+        ref={ref}
+        rows={1}
+        value={draft}
+        placeholder="Ask or instruct Rune…"
+        className="w-full resize-none bg-transparent px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            onSubmit();
+          } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onClose();
+          }
+        }}
+      />
+      <div className="flex items-center gap-2 border-t border-fleet-border px-3 py-1.5 text-[11px] text-neutral-500">
+        <span>⏎ send</span>
+        <span>· esc close</span>
+        <span className="ml-auto text-neutral-600">imperative → edit · else ask</span>
       </div>
     </div>
   );
 }
 ```
 
-> `applyTranscript` already handles draining the queue and reloading editors (Task 9). `ChevronRight` import can be dropped if unused — remove any unused import before committing to satisfy lint.
+- [ ] **Step 2: Write the working pill**
 
-- [ ] **Step 2: Typecheck + lint**
-
-Run: `npm run typecheck && npm run lint`
-Expected: PASS (remove unused imports if lint flags them).
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add src/renderer/src/components/rune-assist/RuneAssistPanel.tsx
-git commit -m "feat(rune-assist): RuneAssistPanel UI"
-```
-
----
-
-## Task 11: Mount the panel + toggle button in App
-
-Derive the active file path + workspace cwd from `workspace-store`, mount the panel, and add a toggle button.
-
-**Files:**
-- Modify: `src/renderer/src/App.tsx`
-
-- [ ] **Step 1: Add a selector for the active file + cwd**
-
-In `src/renderer/src/App.tsx`, import the store and registry helper:
-
-```typescript
-import { useRuneAssistStore } from './store/rune-assist-store';
-import { RuneAssistPanel } from './components/rune-assist/RuneAssistPanel';
-import { getEditorHandle } from './lib/editor-context-registry';
-import { findLeaf } from './store/workspace-store'; // export it if not already (see Step 2)
-```
-
-Derive the active tab, active pane, file path, and cwd from the workspace store. Use the existing `useWorkspaceStore`. Compute inside the component body:
-
-```typescript
-const runeOpen = useRuneAssistStore((s) => s.panelOpen);
-const toggleRune = useRuneAssistStore((s) => s.togglePanel);
-
-const activeFile = useWorkspaceStore((s) => {
-  const ws = s.workspaces.find((w) => w.id === s.activeWorkspaceId);
-  const tab = ws?.tabs.find((t) => t.id === ws.activeTabId);
-  if (!ws || !tab) return null;
-  // activePaneId lives on Workspace (not Tab) — see src/shared/types.ts.
-  const leaf = ws.activePaneId ? findLeaf(tab.splitRoot, ws.activePaneId) : null;
-  const filePath = leaf?.paneType === 'file' || leaf?.paneType === 'markdown' ? leaf.filePath : undefined;
-  return { cwd: tab.cwd, filePath, paneId: leaf?.id };
-});
-```
-
-> Confirm the exact store field names (`workspaces`, `activeWorkspaceId`, `activeTabId`, `activePaneId`) against `src/renderer/src/store/workspace-store.ts`. The store tracks active tab/pane (lines ~192–201, 220–221). Adjust accessors to match (e.g. it may expose a `getActiveTab()` helper — prefer it if present).
-
-- [ ] **Step 2: Export `findLeaf` from workspace-store**
-
-In `src/renderer/src/store/workspace-store.ts`, the `findLeaf(node, paneId)` function exists (~line 352) but may be module-private. Add `export` to its declaration if it isn't already exported.
-
-- [ ] **Step 3: Mount the panel + button**
-
-Near the existing `<PaneGrid ... />` mount inside `<main>` (App.tsx ~line 949), add the panel as a sibling (it is fixed-position so placement in the tree is not layout-critical, but keep it inside the main app container):
+Create `src/renderer/src/components/rune-assist/RuneWorkingPill.tsx`:
 
 ```tsx
-{runeOpen && activeFile && (
-  <RuneAssistPanel
-    cwd={activeFile.cwd}
-    contextFile={activeFile.filePath}
-    getSelection={() => (activeFile.paneId ? getEditorHandle(activeFile.paneId)?.getSelection() ?? null : null)}
-  />
-)}
-```
+type Props = {
+  step: string | null;
+  onStop: () => void;
+};
 
-Add a toggle button to the top chrome (near other top-bar buttons; search for an existing toolbar button cluster):
-
-```tsx
-<button
-  onClick={toggleRune}
-  className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${
-    runeOpen ? 'bg-amber-700 text-white' : 'bg-neutral-800 text-neutral-200 hover:bg-neutral-700'
-  }`}
-  title="Ask Rune about the open file"
->
-  <Bot size={12} /> Rune
-</button>
-```
-
-Import `Bot` from `lucide-react` if not already imported in App.tsx.
-
-- [ ] **Step 4: Typecheck + lint**
-
-Run: `npm run typecheck && npm run lint`
-Expected: PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add src/renderer/src/App.tsx src/renderer/src/store/workspace-store.ts
-git commit -m "feat(rune-assist): mount panel + toggle in App"
-```
-
----
-
-## Task 12: Revert affordance (per-turn snapshot)
-
-Snapshot the active file's on-disk content before an Agent-mode turn; expose a one-click Revert that writes the snapshot back (and reloads the pane).
-
-**Files:**
-- Modify: `src/renderer/src/store/rune-assist-store.ts`
-- Modify: `src/renderer/src/components/rune-assist/RuneAssistPanel.tsx`
-
-- [ ] **Step 1: Snapshot before an Agent send**
-
-In `rune-assist-store.ts`, extend the store with `revert` state + action. Add to the store type:
-
-```typescript
-  snapshot: { file: string; content: string } | null;
-  revert: () => Promise<void>;
-```
-
-In `send`, before calling `window.fleet.runeAssist.send`, when `s.mode === 'agent'` and `s.contextFile` is set, read and store the current content:
-
-```typescript
-let snapshot = null as RuneAssistStore['snapshot'];
-if (s.mode === 'agent' && s.contextFile) {
-  const r = await window.fleet.file.read(s.contextFile);
-  if (r.success && r.data) snapshot = { file: s.contextFile, content: r.data.content };
-}
-set({ status: 'thinking', error: null, lastSend: s, snapshot });
-```
-
-Implement `revert`:
-
-```typescript
-revert: async () => {
-  const snap = get().snapshot;
-  if (!snap) return;
-  await window.fleet.file.write(snap.file, snap.content);
-  for (const h of getAllEditorHandles().values()) void h.reloadFromDisk();
-  set({ snapshot: null });
+export function RuneWorkingPill({ step, onStop }: Props): React.JSX.Element {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-fleet-border bg-fleet-surface-1 px-3 py-1 text-xs text-neutral-200 shadow-lg">
+      <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+      <span className="text-neutral-300">Rune working…</span>
+      {step && <span className="max-w-[12rem] truncate text-neutral-500">{step}</span>}
+      <button
+        onClick={onStop}
+        className="ml-1 text-neutral-500 hover:text-neutral-200"
+        aria-label="Stop"
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
 ```
 
-Initialize `snapshot: null` in the store defaults.
+- [ ] **Step 3: Write the answer popover**
 
-- [ ] **Step 2: Add a Revert button after a turn**
-
-In `RuneAssistPanel.tsx`, read `snapshot` and `revert` from the store, and render a small control under the transcript when `status === 'idle' && snapshot`:
+Create `src/renderer/src/components/rune-assist/RuneAnswerPopover.tsx`:
 
 ```tsx
-{status === 'idle' && useRuneAssistStore.getState().snapshot && (
-  <button onClick={() => void revert()} className="text-xs text-amber-400 underline">
-    Revert last change to {snapshot?.file.split('/').pop()}
-  </button>
-)}
+import { useEffect, useRef } from 'react';
+
+type Props = {
+  answer: string;
+  onDismiss: () => void;
+};
+
+export function RuneAnswerPopover({ answer, onDismiss }: Props): React.JSX.Element {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') onDismiss();
+    };
+    const onClick = (e: MouseEvent): void => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onDismiss();
+    };
+    document.addEventListener('keydown', onKey);
+    document.addEventListener('mousedown', onClick);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('mousedown', onClick);
+    };
+  }, [onDismiss]);
+  return (
+    <div
+      ref={ref}
+      className="max-h-72 w-96 overflow-auto rounded-lg border border-fleet-border bg-fleet-surface-1 px-3 py-2 text-sm leading-relaxed text-neutral-100 shadow-xl"
+    >
+      <div className="whitespace-pre-wrap">{answer}</div>
+      <div className="mt-2 text-right text-[11px] text-neutral-500">click away · esc to dismiss</div>
+    </div>
+  );
+}
 ```
 
-> Prefer reading `snapshot`/`revert` via the destructured store hook (add them to the `useRuneAssistStore()` destructure at the top of the component) rather than `getState()` so the button re-renders correctly.
+> Note: the spec calls for markdown rendering. If the repo already has a markdown renderer component (search `MarkdownPane` / `react-markdown`), use it in place of the `whitespace-pre-wrap` div. Plain text is the acceptable v1 fallback if no lightweight renderer is readily reusable — do not add a new dependency for this.
 
-- [ ] **Step 3: Typecheck + lint**
+- [ ] **Step 4: Write the layer host**
+
+Create `src/renderer/src/components/rune-assist/RuneAssistLayer.tsx`:
+
+```tsx
+import { useRuneAssistStore } from '../../store/rune-assist-store';
+import { RuneAssistOverlay } from './RuneAssistOverlay';
+import { RuneWorkingPill } from './RuneWorkingPill';
+import { RuneAnswerPopover } from './RuneAnswerPopover';
+
+type Props = { paneId: string };
+
+/** Renders the right transient piece (overlay / pill / popover / revert) for one file pane. */
+export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
+  const pane = useRuneAssistStore((s) => s.panes[paneId]);
+  const { setDraft, send, stop, closeOverlay, dismissAnswer, revert } = useRuneAssistStore();
+
+  if (!pane) return null;
+
+  const anchorStyle: React.CSSProperties = {
+    position: 'absolute',
+    top: pane.anchor?.top ?? 8,
+    left: pane.anchor?.left ?? 8,
+    zIndex: 30
+  };
+
+  return (
+    <div className="pointer-events-none absolute inset-0">
+      <div className="pointer-events-auto" style={anchorStyle}>
+        {pane.phase === 'working' ? (
+          <RuneWorkingPill step={pane.step} onStop={() => void stop(paneId)} />
+        ) : pane.answer !== null ? (
+          <RuneAnswerPopover answer={pane.answer} onDismiss={() => dismissAnswer(paneId)} />
+        ) : pane.open ? (
+          <div className="flex flex-col gap-1.5">
+            <RuneAssistOverlay
+              draft={pane.draft}
+              onChange={(v) => setDraft(paneId, v)}
+              onSubmit={() => void send(paneId, pane.draft)}
+              onClose={() => closeOverlay(paneId)}
+            />
+            {pane.phase === 'error' && pane.error && (
+              <div className="w-80 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">
+                {pane.error} · edit your prompt and press ⏎ to retry
+              </div>
+            )}
+          </div>
+        ) : pane.lastEdited ? (
+          <button
+            onClick={() => void revert(paneId)}
+            className="rounded-full border border-fleet-border bg-fleet-surface-1 px-3 py-1 text-xs text-emerald-300 shadow-lg hover:text-emerald-200"
+          >
+            ⟳ Reloaded · Revert
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+```
+
+- [ ] **Step 5: Mount the layer + subscribe to events in `FileEditorPane`**
+
+In `src/renderer/src/components/FileEditorPane.tsx`, add the import:
+
+```ts
+import { RuneAssistLayer } from './rune-assist/RuneAssistLayer';
+```
+
+Subscribe to status/result events (add an effect near the handle effect from Task 7), routing only this pane's events into the store:
+
+```ts
+  const applyStatus = useRuneAssistStore((s) => s.applyStatus);
+  const applyResult = useRuneAssistStore((s) => s.applyResult);
+  useEffect(() => {
+    const offStatus = window.fleet.runeAssist.onStatus((p) => {
+      if (p.paneId === paneId) applyStatus(paneId, { phase: p.phase, step: p.step, error: p.error });
+    });
+    const offResult = window.fleet.runeAssist.onResult((p) => {
+      if (p.paneId === paneId) applyResult(paneId, p);
+    });
+    return () => {
+      offStatus();
+      offResult();
+    };
+  }, [paneId, applyStatus, applyResult]);
+```
+
+Change the outer return wrapper to be a positioning context and mount the layer. The current outer div is:
+
+```tsx
+    <div className="h-full w-full flex flex-col overflow-hidden">
+```
+
+Change it to add `relative`, and add `<RuneAssistLayer paneId={paneId} />` as the last child before the closing `</div>`:
+
+```tsx
+    <div className="relative h-full w-full flex flex-col overflow-hidden">
+      {showPathChrome && <PathChromeHeader filePath={filePath} />}
+      <div ref={containerRef} className="flex-1 min-h-0" />
+      {/* …existing status bar div… */}
+      <RuneAssistLayer paneId={paneId} />
+    </div>
+```
+
+- [ ] **Step 6: Typecheck + lint**
 
 Run: `npm run typecheck && npm run lint`
-Expected: PASS
+Expected: typecheck PASS. Lint: no **new** errors attributable to these files (the repo lint baseline may already be red per project notes — compare against baseline; fix anything your files introduced).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/renderer/src/store/rune-assist-store.ts src/renderer/src/components/rune-assist/RuneAssistPanel.tsx
-git commit -m "feat(rune-assist): per-turn snapshot + revert"
+git add src/renderer/src/components/rune-assist src/renderer/src/components/FileEditorPane.tsx
+git commit -m "feat(rune-assist): overlay/pill/popover UI + mount in file pane
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 13: Full verification + manual smoke
+### Task 10: Full verification + manual smoke
 
-**Files:** none (verification only)
+**Files:** none (verification only).
 
-- [ ] **Step 1: Run the full test suite**
+- [ ] **Step 1: Run the full unit suite**
 
-Run: `npx vitest run`
-Expected: PASS (all new tests + existing suite green).
+Run: `npx vitest run src/shared/__tests__/rune-assist.test.ts src/renderer/src/lib/__tests__/editor-context-registry.test.ts src/renderer/src/store/__tests__/rune-assist-store.test.ts`
+Expected: all PASS.
 
 - [ ] **Step 2: Typecheck + lint + build**
 
+Run: `npm run typecheck`
+Expected: PASS.
+
+Run: `npm run lint`
+Expected: no new errors from the new/modified files (compare to the pre-existing baseline).
+
 Run: `npm run build`
-Expected: PASS (build runs typecheck then electron-vite build).
+Expected: build succeeds (runs typecheck + electron-vite build).
 
-- [ ] **Step 3: Manual smoke (documented, run by a human)**
+- [ ] **Step 3: Manual smoke (requires `rune` on PATH)**
 
-In a dev run (`npm run dev`):
-1. `fleet open src/main/index.ts` (or open any file) → file shows in a `FileEditorPane`.
-2. Click the **Rune** toggle button → panel docks right.
-3. **Ask mode:** select a function, type "what does this do?", Send → answer streams in; file is NOT modified.
-4. **Agent mode:** type "add a doc comment to this function", Send → after the turn, the editor auto-reloads and the changed lines flash; a **Revert** control appears; clicking it restores the file.
-5. Send a second message while one is in flight → it shows as "1 queued" and runs after.
-6. With Rune not on PATH → the panel shows the not-installed message with a Settings hint.
+Run: `npm run dev`. Then:
+1. `fleet open` a code file (or open one via the UI) so a file pane is showing.
+2. Put the cursor in a function, press **⌘I** (Ctrl+I on non-mac). Confirm the overlay appears anchored near the cursor and is focused.
+3. Type a **question** ("what does this function do?") and press ⏎. Confirm: the pill shows "Rune working…" with a step; on completion an **answer popover** appears; clicking away / Esc dismisses it; nothing on disk changed.
+4. Summon again, type an **imperative** ("add a doc comment to this function") and press ⏎. Confirm: pill → on completion the file **reloads**, the changed lines **flash**, and a **"⟳ Reloaded · Revert"** affordance appears. Click **Revert**; confirm the file returns to its prior content.
+5. While a turn is in flight, summon again in the **same** pane and send — confirm the gentle "still working" error note (no second turn).
+6. Verify the read-only contract: an Ask turn must not modify the file on disk.
 
-- [ ] **Step 4: Final commit (if any cleanup)**
+- [ ] **Step 4: Verify changed-file tool-name patterns (open question from the spec)**
+
+During step 4 above, inspect the rune session JSON (`~/.rune/sessions/<id>.json`, or `$RUNE_DIR/sessions`) for the actual write/edit tool-call names. If they don't match `WRITE_TOOL_RE` in `src/shared/rune-assist.ts`, update the regex + the `extractChangedFiles` test fixture in `src/shared/__tests__/rune-assist.test.ts` to match, and re-run Task 1's test. (Active-pane reload does not depend on this; it only affects multi-file awareness, which is best-effort in v1.)
+
+- [ ] **Step 5: Final commit (if Step 4 required changes)**
 
 ```bash
-git add -A
-git commit -m "chore(rune-assist): verification cleanup"
+git add src/shared/rune-assist.ts src/shared/__tests__/rune-assist.test.ts
+git commit -m "fix(rune-assist): match real rune write-tool names
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Self-Review notes (for the implementer)
+## Notes for the implementer
 
-- **Spec coverage:** Ask/Agent (Tasks 2,9,10) · context chip + selection (Tasks 6,7,10,11) · `@`/slash (Task 10, slash done; `@`-mention picker is minimal in v1 — the chip + manual paths are covered, a full `@` picker can be a follow-up) · collapsible tool steps (Tasks 8,10) · collapsible reasoning (Task 8 note — conditional on Rune emitting reasoning) · streamed transcript + status (Tasks 3,9,10) · Stop/Retry (Tasks 3,9,10) · auto-reload + flash (Task 7) · Revert (Task 12) · humane errors (Task 3 classification + Task 10 display) · session persistence/resume (Task 3) · IPC surface (Tasks 1,4,5).
-- **Deferred from spec (intentional):** full `@`-mention fuzzy picker, token/context indicator, multi-file review, per-hunk gate — all listed non-goals or follow-ups.
-- **Open items to verify while building:** (a) `findLeaf` export + exact workspace-store active accessors (Task 11 Step 1–2); (b) Rune session JSON reasoning block presence (Task 8); (c) `isAuthFailureText` export from `spawn-worker.ts` (Task 3).
+- **Hotkey collision:** `Mod-i` is registered inside CodeMirror's keymap (scoped to the editor view), so it won't fight terminal bindings. If it shadows a CodeMirror default you rely on, pick another non-colliding chord and update Task 7 + the spec's open question.
+- **`as` casts:** none are needed in `src/` here. The store test uses one cast to polyfill `window.fleet` — tests are allowed to cast (project rule bans casts in `src/`, not in tests).
+- **No autoscroll:** the answer popover renders in place at the anchor; there is no transcript to scroll, so the NN/g "don't autoscroll" guidance is satisfied by construction.
+- **DRY:** all prompt/parse/intent/diff logic is in `src/shared/rune-assist.ts` and imported by both the main service and the renderer store — do not duplicate it.
