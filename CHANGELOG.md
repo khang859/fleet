@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.70.1
+
+- **Clearer Claude session metadata** — the transcript header's cramped metadata strip is replaced with a labeled key→value panel (Cost, Model, Messages, Tokens, Cache, Branch, Duration). Cryptic glyphs are gone; every value carries a visible label, with token/cache breakdowns in tooltips. Session list cost badges gain explanatory tooltips.
+
 ## v2.70.0
 
 - **Claude session cost estimator** — Claude session rows now show an estimated **cost badge**, and the transcript header gains a metadata strip aggregating token usage. Costs are computed from a bundled Claude pricing table that best-effort refreshes from a remote source (with cache fallback), and model-less entries are skipped so they don't void a session's estimate.
