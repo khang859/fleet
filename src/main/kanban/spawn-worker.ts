@@ -33,6 +33,10 @@ export interface BuildWorkerInput {
   resolveTarget?: string;
   /** Failure output from a prior verify run; injected into the work prompt so the fix worker sees it. */
   verifyFailure?: string;
+  /** Unified diff of the worktree vs its base, injected into the review prompt. */
+  reviewDiff?: string;
+  /** Prior review findings, injected into a bounce work prompt so the fix worker sees them. */
+  reviewFindings?: string;
 }
 
 export interface WorkerInvocation {
@@ -114,11 +118,26 @@ function buildPrompt(input: BuildWorkerInput): string {
       `no subset is clearly related, call kanban_block with a short reason.`
     );
   }
+  if (mode === 'review') {
+    const diff = input.reviewDiff?.trim() || '(no diff available)';
+    return (
+      `review kanban task ${task.id}: ${task.title}\n\n${task.body}\n\n` +
+      `You are reviewing the implementation below as a code reviewer. Judge it against the task ` +
+      `goal and any acceptance criteria. When done, call kanban_review_verdict with decision ` +
+      `'approve' or 'request_changes', a one-line summary, and (for request_changes) specific ` +
+      `findings. Do not modify the code.\n\n## Diff\n\n\`\`\`diff\n${diff}\n\`\`\``
+    );
+  }
   const verifyBlock = input.verifyFailure
     ? `Your previous completion failed the project's verify commands. Fix the cause and call ` +
       `kanban_complete again — it will re-run verification.\n\n\`\`\`\n${input.verifyFailure}\n\`\`\`\n\n`
     : '';
+  const reviewBlock = input.reviewFindings
+    ? `A code review requested changes on your previous completion. Address each finding and call ` +
+      `kanban_complete again — it will be re-reviewed.\n\n\`\`\`\n${input.reviewFindings}\n\`\`\`\n\n`
+    : '';
   return (
+    reviewBlock +
     verifyBlock +
     `work kanban task ${task.id}: ${task.title}\n\n${task.body}` +
     attachmentsSection(input) +
@@ -166,6 +185,8 @@ function requireToolsForMode(mode: RunMode): string | null {
       return 'kanban_assign';
     case 'suggest':
       return 'kanban_suggest_feature,kanban_block';
+    case 'review':
+      return 'kanban_review_verdict';
     case 'verify':
       // A deterministic verify run has no agent and no terminal MCP tool.
       return null;
