@@ -1,4 +1,5 @@
 import { dirname } from 'path';
+import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { Task, RunMode, Feature } from '../../shared/kanban-types';
@@ -8,6 +9,7 @@ import {
   checkMergeConflicts,
   createFeaturePr,
   finalizeWorktree,
+  headSha,
   isBranchMerged,
   markPrReady,
   mergeWorktreeToBase,
@@ -50,6 +52,10 @@ const VERIFY_ATTEMPT_CAP = 2;
 const VERIFY_CLAIM_TTL_MS = 15 * 60 * 1000;
 /** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
 const MAX_INTEGRATE_PER_TICK = 3;
+/** Max review runs spawned per tick. */
+const MAX_REVIEW_PER_TICK = 3;
+/** Review-fix work runs attempted per task before soft-escalation. Tracked in tasks.review_attempts. */
+const REVIEW_ATTEMPT_CAP = 2;
 
 /** Git ops used by integrate(); injectable so the stage is unit-testable. Defaults to the real workspace.ts fns. */
 export interface IntegrationOps {
@@ -62,6 +68,7 @@ export interface IntegrationOps {
   createFeaturePr: typeof createFeaturePr;
   pushIntegrationBranch: typeof pushIntegrationBranch;
   markPrReady: typeof markPrReady;
+  headSha: typeof headSha;
 }
 
 const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
@@ -73,7 +80,8 @@ const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
   isBranchMerged,
   createFeaturePr,
   pushIntegrationBranch,
-  markPrReady
+  markPrReady,
+  headSha
 };
 
 export interface SpawnWorkerArgs {
@@ -84,6 +92,8 @@ export interface SpawnWorkerArgs {
   mode: RunMode;
   /** Prior verify failure output, injected into the work prompt for a verify-fix run. */
   verifyFailure?: string;
+  /** Prior review findings, injected into a bounce work prompt for a review-fix run. */
+  reviewFindings?: string;
 }
 
 export interface DispatcherConfig {
@@ -94,6 +104,7 @@ export interface DispatcherConfig {
   autoDecompose: boolean; // automatically arm triage tasks for decompose
   autoAssign: boolean; // automatically assign unassigned ready tasks to a worker profile
   autoIntegrate: boolean; // auto-merge feature review tasks into the integration branch + resolve runs
+  autoReview: boolean; // gate completed worktree tasks through an agent review run
   maxDecompose: number; // max concurrent orchestrator runs
   artifactRetentionDays: number; // auto-purge discarded artifacts older than this; 0 disables
 }
@@ -220,6 +231,42 @@ export class KanbanDispatcher {
             this.store.appendEvent(task.id, runId, 'verify_failed', { label });
             this.spawnVerifyFix(task, tail);
           }
+        }
+        if (runId != null) this.deps.clearWorkerExit?.(runId);
+        continue;
+      }
+
+      // A terminal review run: kanban_review_verdict already recorded the verdict + finished the
+      // run + emitted review_passed/review_changes_requested (it leaves the task parked 'running'
+      // with current_run_id intact). This branch ONLY routes that parked task — it must not emit
+      // review_passed and must not double-finishRun when a verdict exists.
+      if (reclaimMode === 'review') {
+        const runId = task.currentRunId;
+        // A long review (large diff) can outlive its claim window. While the reviewer is still
+        // alive, keep waiting — re-extend the claim rather than orphaning the run.
+        if (exit == null && task.workerPid != null && this.deps.isAlive(task.workerPid)) {
+          if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+          continue;
+        }
+        const verdict = task.reviewVerdict;
+        if (verdict === 'approve') {
+          // The verdict tool already finished the run + emitted review_passed. The verdict
+          // and head_sha persist through setStatusCleared (it clears only claim/run fields).
+          this.store.setStatusCleared(task.id, 'review');
+          this.store.resetReviewAttempts(task.id);
+        } else if (verdict === 'request_changes' && task.reviewAttempts < REVIEW_ATTEMPT_CAP) {
+          this.spawnReviewFix(task, this.lastReviewFindings(task.id));
+        } else {
+          // At cap (verdict recorded by the tool), or inconclusive (no verdict — the agent ended
+          // without calling the tool, so the run was never finished). Soft-escalate to human review.
+          if (verdict == null && runId != null) this.store.finishRun(runId, 'reclaimed');
+          this.store.setStatusCleared(task.id, 'review'); // verdict (if any) persists → integrate skips it
+          const reason =
+            verdict === 'request_changes'
+              ? `review requested changes after ${REVIEW_ATTEMPT_CAP} attempt(s)`
+              : 'reviewer returned no verdict';
+          this.store.appendEvent(task.id, runId, 'review_escalated', { reason });
+          this.store.addComment(task.id, 'dispatcher', reason);
         }
         if (runId != null) this.deps.clearWorkerExit?.(runId);
         continue;
@@ -354,6 +401,9 @@ export class KanbanDispatcher {
       if (slots <= 0) break;
       const lock = this.nextLock();
       if (!this.store.claimTask(task.id, lock, ttl)) continue; // lost the race
+
+      this.store.clearReviewVerdict(task.id);
+      this.store.resetReviewAttempts(task.id); // a fresh human-initiated work cycle starts a new review episode
 
       let pid: number | undefined;
       let runId: number | null = null;
@@ -579,6 +629,7 @@ export class KanbanDispatcher {
     }
     const lock = this.nextLock();
     if (!this.store.claimForResolve(task.id, lock, this.deps.config.claimTtlMs)) return false; // lost race
+    this.store.clearReviewVerdict(task.id); // a resolve changes the tree → re-review the result
     let runId: number | null = null;
     try {
       let workspace = task.workspacePath ?? '';
@@ -686,6 +737,60 @@ export class KanbanDispatcher {
     }
   }
 
+  /** The findings from the most recent request_changes event, formatted for the bounce prompt. */
+  private lastReviewFindings(taskId: string): string {
+    const ev = [...this.store.listEvents(taskId)]
+      .reverse()
+      .find((e) => e.kind === 'review_changes_requested');
+    const parsed = z
+      .object({
+        summary: z.string().optional(),
+        findings: z.array(z.object({ file: z.string().optional(), note: z.string() })).optional()
+      })
+      .safeParse(ev?.payload);
+    const p = parsed.success ? parsed.data : {};
+    const lines = (p.findings ?? []).map((f) => `- ${f.file ? `${f.file}: ` : ''}${f.note}`);
+    return [p.summary, ...lines].filter(Boolean).join('\n');
+  }
+
+  /** Spawn a fresh `work` run to address review findings (mirrors spawnVerifyFix). */
+  private spawnReviewFix(task: Task, findings: string): boolean {
+    const lock = this.nextLock();
+    if (!this.store.claimForVerifyFix(task.id, lock, this.deps.config.claimTtlMs)) return false;
+    this.store.clearReviewVerdict(task.id); // diff will change → drop the prior verdict
+    this.store.incrementReviewAttempts(task.id);
+    let runId: number | null = null;
+    try {
+      const workspace = task.workspacePath ?? '';
+      const run = this.store.startRun(task.id, task.assignee ?? 'worker', null, 'work');
+      runId = run.id;
+      const pid = this.deps.spawnWorker({
+        task,
+        runId: run.id,
+        lock,
+        workspace,
+        mode: 'work',
+        reviewFindings: findings
+      });
+      if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+      this.store.appendEvent(task.id, run.id, 'spawned', {
+        pid: pid ?? null,
+        mode: 'work',
+        reason: 'review-fix',
+        attempt: task.reviewAttempts + 1
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.recordFailure(task.id, msg);
+      if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+      this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'work' });
+      this.store.setStatusCleared(task.id, 'ready');
+      log.error('review-fix spawn failed', { taskId: task.id, error: msg });
+      return false;
+    }
+  }
+
   /**
    * Public entry for the standalone manual-merge-conflict path (KanbanCommands.mergeReviewTask).
    * Resolves against the task's merge target (its integration branch for a feature task, else its base).
@@ -696,6 +801,47 @@ export class KanbanDispatcher {
     const target = this.integrationBranchFor(task.featureId) ?? task.baseBranch;
     if (!target) return false;
     return this.spawnResolve(task, target);
+  }
+
+  /** Spawn an agent review run for each review-pending worktree task (gated on autoReview). */
+  reviewTasks(): void {
+    if (!this.deps.config.autoReview) return;
+    let budget = MAX_REVIEW_PER_TICK;
+    const ttl = this.deps.config.claimTtlMs;
+    for (const task of this.store.reviewPendingTasks()) {
+      if (budget <= 0) break;
+      if (this.store.isSwarmMember(task.id)) continue; // swarms carry their own verifier card
+      const lock = this.nextLock();
+      if (!this.store.claimForReview(task.id, lock, ttl)) continue; // lost race
+      let runId: number | null = null;
+      try {
+        const workspace = this.deps.prepareWorkspaceFn
+          ? this.deps.prepareWorkspaceFn(task)
+          : (task.workspacePath ?? '');
+        const run = this.store.startRun(task.id, 'reviewer', null, 'review');
+        runId = run.id;
+        const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'review' });
+        if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+        this.store.appendEvent(task.id, run.id, 'spawned', { pid: pid ?? null, mode: 'review' });
+        budget -= 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.store.recordFailure(task.id, msg);
+        if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+        this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'review' });
+        const failures = this.store.getTask(task.id)?.consecutiveFailures ?? 0;
+        if (failures >= this.deps.config.failureLimit) {
+          // Persistent spawn failure: stop bouncing forever — soft-escalate to a human.
+          this.store.setStatusCleared(task.id, 'review');
+          this.store.appendEvent(task.id, null, 'review_escalated', {
+            reason: `review could not be spawned after ${failures} attempt(s)`
+          });
+        } else {
+          this.store.setStatusCleared(task.id, 'review'); // retry next tick
+        }
+        log.error('review spawn failed', { taskId: task.id, error: msg });
+      }
+    }
   }
 
   /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
@@ -710,6 +856,22 @@ export class KanbanDispatcher {
     for (const task of this.store.reviewWorktreeFeatureTasks()) {
       if (budget <= 0) break;
       if (!task.repoPath || !task.branchName || !task.baseBranch || !task.workspacePath) continue;
+
+      // Agent review gate (#232): a reviewed task merges only on an 'approve' verdict,
+      // and only at the exact HEAD that was approved (a later run may have changed the tree).
+      if (this.deps.config.autoReview) {
+        if (task.reviewVerdict !== 'approve') continue;
+        const head = task.workspacePath ? this.ops.headSha(task.workspacePath) : null;
+        if (head != null && task.reviewHeadSha != null && head !== task.reviewHeadSha) {
+          this.store.clearReviewVerdict(task.id); // drifted → re-review next tick
+          this.store.appendEvent(task.id, null, 'review_stale', {
+            approved: task.reviewHeadSha,
+            head
+          });
+          continue;
+        }
+      }
+
       const integrationBranch = this.integrationBranchFor(task.featureId);
       if (!integrationBranch) continue;
 
@@ -1002,6 +1164,7 @@ export class KanbanDispatcher {
     this.detectFeatureGroups();
     this.promote();
     this.claimAndSpawn();
+    this.reviewTasks();
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();

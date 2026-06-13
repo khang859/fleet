@@ -42,6 +42,7 @@ import type {
   ImageSettings,
   WorkerProfile
 } from '../shared/types';
+import { REVIEWER_PROFILE_NAME, DEFAULT_REVIEWER_INSTRUCTIONS } from '../shared/types';
 import { getPaneTypeForFilePath, isBinaryBlockedFilePath } from '../shared/file-open';
 import { randomUUID } from 'crypto';
 import { createLogger } from './logger';
@@ -52,7 +53,12 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
-import { prepareWorkspace, ensureFeatureBranch, checkoutBranchWorktree } from './kanban/workspace';
+import {
+  prepareWorkspace,
+  ensureFeatureBranch,
+  checkoutBranchWorktree,
+  worktreeDiff
+} from './kanban/workspace';
 import { PrPoller } from './kanban/pr-poller';
 import { loadTaskDocs, pmDocsDir } from './kanban/pm-paths';
 import {
@@ -821,6 +827,7 @@ void app.whenReady().then(async () => {
   });
   kanbanNotifier = new KanbanNotifier({
     isOsEnabled: (category) => settingsStore.get().kanban.notifications[category].os,
+    isAutoReviewOn: () => settingsStore.get().kanban.dispatcher.autoReview,
     getTask: (taskId) => {
       const t = kanbanStore?.getTask(taskId);
       return t ? { title: t.title, boardId: t.boardId } : null;
@@ -862,6 +869,7 @@ void app.whenReady().then(async () => {
       autoDecompose: d.autoDecompose,
       autoAssign: d.autoAssign,
       autoIntegrate: d.autoIntegrate,
+      autoReview: d.autoReview,
       maxDecompose: d.maxDecompose,
       artifactRetentionDays: settingsStore.get().kanban.artifactRetentionDays
     };
@@ -953,7 +961,7 @@ void app.whenReady().then(async () => {
       }
       return prepared.path;
     },
-    spawnWorker: ({ task, runId, lock, workspace, mode, verifyFailure }) => {
+    spawnWorker: ({ task, runId, lock, workspace, mode, verifyFailure, reviewFindings }) => {
       // Pre-flight gate: if we already know rune is missing, fail fast with a clear, actionable
       // reason. This routes through the dispatcher's catch → spawn_failed (shown in the drawer)
       // instead of letting the worker die and surface as a cryptic "pid not alive" reclaim.
@@ -965,6 +973,7 @@ void app.whenReady().then(async () => {
       const profiles = settingsStore.get().kanban.profiles;
       let profile: WorkerProfile | null;
       let roster: Array<{ name: string; description: string }> | undefined;
+      let reviewDiff: string | undefined;
       if (mode === 'work' || mode === 'resolve') {
         const resolved = resolveWorkProfile(profiles, task.assignee);
         profile = resolved.profile;
@@ -975,6 +984,19 @@ void app.whenReady().then(async () => {
             fallback: profile?.name ?? null
           });
         }
+      } else if (mode === 'review') {
+        // Singleton reviewer selected BY MODE; fall back to an in-memory default persona when
+        // no saved reviewer profile exists (existing users have none). NEVER write task.assignee.
+        profile = profiles.find(
+          (p) => p.name === REVIEWER_PROFILE_NAME && p.role === 'reviewer'
+        ) ?? {
+          name: REVIEWER_PROFILE_NAME,
+          role: 'reviewer',
+          model: '',
+          skills: [],
+          instructions: DEFAULT_REVIEWER_INSTRUCTIONS
+        };
+        reviewDiff = worktreeDiff({ workspacePath: workspace, baseBranch: task.baseBranch });
       } else {
         // decompose/specify: run as an orchestrator profile; offer the worker roster.
         profile =
@@ -982,7 +1004,7 @@ void app.whenReady().then(async () => {
           profiles.find((p) => p.name === 'orchestrator') ??
           null;
         roster = profiles
-          .filter((p) => p.role !== 'orchestrator')
+          .filter((p) => p.role === 'worker')
           .map((p) => ({
             name: p.name,
             description: (p.instructions.split('\n')[0] ?? '').slice(0, 120)
@@ -1021,6 +1043,8 @@ void app.whenReady().then(async () => {
           workspace,
           resolveTarget,
           verifyFailure,
+          reviewDiff,
+          reviewFindings,
           mcpPort: kanbanMcpPort,
           runToken,
           logPath,

@@ -16,7 +16,7 @@ import type {
 } from '../../shared/kanban-types';
 import type { WorkerProfile } from '../../shared/types';
 import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-swarm';
-import { finalizeWorktree, reviewStat, checkMergeConflicts } from './workspace';
+import { finalizeWorktree, reviewStat, checkMergeConflicts, headSha } from './workspace';
 import { pmDocsDir } from './pm-paths';
 import { readArtifactPreview } from './artifact-files';
 
@@ -467,12 +467,41 @@ const PM_TOOLS: McpTool[] = [
   }
 ];
 
+const REVIEW_TOOLS: McpTool[] = [
+  ...WORKER_TOOLS.filter((t) =>
+    ['kanban_show', 'kanban_comment', 'kanban_heartbeat'].includes(t.name)
+  ),
+  {
+    name: 'kanban_review_verdict',
+    description:
+      'Record the code-review verdict for this task. Terminal — ends the review run. ' +
+      "decision is 'approve' or 'request_changes'; include specific findings on request_changes.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        decision: { type: 'string', enum: ['approve', 'request_changes'] },
+        summary: { type: 'string' },
+        findings: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: { file: { type: 'string' }, note: { type: 'string' } },
+            required: ['note']
+          }
+        }
+      },
+      required: ['decision', 'summary']
+    }
+  }
+];
+
 function toolsForMode(mode: RunMode): McpTool[] {
   if (mode === 'decompose') return DECOMPOSE_TOOLS;
   if (mode === 'specify') return SPECIFY_TOOLS;
   if (mode === 'assign') return ASSIGN_TOOLS;
   if (mode === 'resolve') return RESOLVE_TOOLS;
   if (mode === 'suggest') return SUGGEST_TOOLS;
+  if (mode === 'review') return REVIEW_TOOLS;
   return WORKER_TOOLS;
 }
 
@@ -973,7 +1002,7 @@ export class KanbanMcpServer {
     if (scope.kind === 'board') return this.handlePmToolCall(res, rpcReq, scope, name, args);
     const task = this.store.getTask(scope.taskId);
     if (!task) return this.rpcError(res, rpcReq.id, `task ${scope.taskId} not found`);
-    const author = task.assignee ?? 'worker';
+    const author = scope.mode === 'review' ? 'reviewer' : (task.assignee ?? 'worker');
 
     const allowed = toolsForMode(scope.mode).some((t) => t.name === name);
     if (!allowed) return this.rpcError(res, rpcReq.id, `unknown tool: ${name}`);
@@ -994,6 +1023,42 @@ export class KanbanMcpServer {
             ...runs.map((r) => `- ${r.outcome}: ${r.summary ?? ''}`)
           ].filter(Boolean);
           return this.text(res, rpcReq.id, lines.join('\n'));
+        }
+        case 'kanban_review_verdict': {
+          const a = z
+            .object({
+              decision: z.enum(['approve', 'request_changes']),
+              summary: z.string().min(1),
+              findings: z
+                .array(z.object({ file: z.string().optional(), note: z.string().min(1) }))
+                .optional()
+            })
+            .parse(args);
+          // CAS guard: only the current review run on a still-running task may record.
+          if (scope.runId !== task.currentRunId || task.status !== 'running') {
+            this.unregisterRun(token);
+            return this.text(res, rpcReq.id, `Verdict ignored: task ${task.id} moved on.`);
+          }
+          const sha =
+            a.decision === 'approve' && task.workspacePath ? headSha(task.workspacePath) : null;
+          this.store.setReviewVerdict(task.id, a.decision, sha);
+          const findingsText = (a.findings ?? [])
+            .map((f) => `- ${f.file ? `${f.file}: ` : ''}${f.note}`)
+            .join('\n');
+          this.store.addComment(
+            task.id,
+            'reviewer',
+            `review ${a.decision}: ${a.summary}${findingsText ? `\n${findingsText}` : ''}`
+          );
+          this.store.appendEvent(
+            task.id,
+            scope.runId,
+            a.decision === 'approve' ? 'review_passed' : 'review_changes_requested',
+            { summary: a.summary, findings: a.findings ?? [] }
+          );
+          this.store.finishRun(scope.runId, 'completed', { summary: a.summary });
+          this.unregisterRun(token);
+          return this.text(res, rpcReq.id, `Verdict recorded for task ${task.id}.`);
         }
         case 'kanban_complete': {
           const a = z
@@ -1084,7 +1149,7 @@ export class KanbanMcpServer {
               summary: a.summary,
               metadata: { ...a.metadata, review: stat ?? undefined }
             });
-            this.store.appendEvent(task.id, scope.runId, 'completed', { summary: a.summary });
+            this.store.appendEvent(task.id, scope.runId, 'review_ready', { summary: a.summary });
             this.store.addComment(task.id, author, `review-required: ${statText} on ${where}`);
             this.unregisterRun(token);
             return this.text(res, rpcReq.id, `Task ${task.id} ready for review.`);

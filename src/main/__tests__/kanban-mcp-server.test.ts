@@ -563,6 +563,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -901,7 +902,7 @@ describe('KanbanMcpServer board scope (PM chat)', () => {
       spawnWorker: () => undefined,
       config: {
         failureLimit: 2, claimGraceMs: 0, maxInProgress: 3, claimTtlMs: 1000,
-        autoDecompose: false, autoAssign: false, autoIntegrate: false, maxDecompose: 1, artifactRetentionDays: 0
+        autoDecompose: false, autoAssign: false, autoIntegrate: false, autoReview: false, maxDecompose: 1, artifactRetentionDays: 0
       }
     });
     const commands = new KanbanCommands(store, dispatcher, () => ({ workspaceKind: 'scratch', maxRuntimeSeconds: null }));

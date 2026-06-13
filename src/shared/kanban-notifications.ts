@@ -20,6 +20,9 @@ export function classifyKanbanEvent(kind: string): KanbanNotifyCategory | null {
     case 'spawn_failed':
       return 'failed';
     case 'completed':
+    case 'review_ready':
+    case 'review_passed':
+    case 'review_escalated':
     case 'verify_passed':
     case 'verify_skipped':
     case 'feature_pr_ready':

@@ -27,6 +27,14 @@ describe('classifyKanbanEvent', () => {
     expect(classifyKanbanEvent('verify_started')).toBeNull();
   });
 
+  it('maps review verdict events to completed, in-flight ones to null', () => {
+    expect(classifyKanbanEvent('review_ready')).toBe('completed');
+    expect(classifyKanbanEvent('review_passed')).toBe('completed');
+    expect(classifyKanbanEvent('review_escalated')).toBe('completed');
+    expect(classifyKanbanEvent('review_changes_requested')).toBeNull();
+    expect(classifyKanbanEvent('review_started')).toBeNull();
+  });
+
   it('returns null for non-attention kinds', () => {
     for (const kind of [
       'comment',

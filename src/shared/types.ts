@@ -147,7 +147,7 @@ export type VisualizerEffects = {
 /** A named worker role materialized to `<workspace>/.rune/profiles/<name>.md`. */
 export type WorkerProfile = {
   name: string; // ^[a-z0-9][a-z0-9_-]*$ (rune's validName)
-  role: 'worker' | 'orchestrator'; // orchestrator profiles drive decompose/specify runs
+  role: 'worker' | 'orchestrator' | 'reviewer'; // orchestrator drives decompose/specify; reviewer drives code-review runs
   model: string; // '' → leave to rune's normal provider resolution
   skills: string[];
   instructions: string; // persona / system-prompt body
@@ -163,6 +163,7 @@ export type KanbanSettings = {
     maxDecompose: number; // concurrency cap for orchestrator runs (separate from maxInProgress)
     autoAssign: boolean; // when true, the dispatcher auto-assigns unassigned ready tasks to a worker profile
     autoIntegrate: boolean; // when true, auto-merges completed feature tasks into the integration branch; spawns resolve runs on conflict
+    autoReview: boolean; // when true, runs an agent code-review gate before review/auto-merge
   };
   defaults: {
     workspaceKind: WorkspaceKind;
@@ -205,6 +206,16 @@ export const DEFAULT_ORCHESTRATOR_INSTRUCTIONS =
   'Maximize parallelism — only add a dependency (parents) when a child genuinely needs ' +
   "another's output. Keep responsibilities non-overlapping. Assign each child to the worker " +
   'whose description best matches the work; if none fits well, pick the closest and note the gap.';
+
+/** The single reviewer profile's reserved name. There is exactly one reviewer. */
+export const REVIEWER_PROFILE_NAME = 'reviewer';
+
+/**
+ * Default persona for the singleton code reviewer. Complements the runtime review prompt
+ * (which supplies the diff + the kanban_review_verdict call). Surfaced in Settings with a
+ * "Reset to default" button, so it lives here where both main (seed) and renderer reach it.
+ */
+export const DEFAULT_REVIEWER_INSTRUCTIONS = `You are a senior code reviewer. Judge the diff strictly against the task's stated goal and acceptance criteria. Approve only when the change is correct, focused, and complete; otherwise request changes with specific, actionable findings (file + what to fix). Do not nitpick formatting or style that automated verify commands already enforce. Do not implement the work yourself.`;
 
 export type TerminalBackgroundFit = 'cover' | 'contain' | 'center' | 'tile';
 

@@ -37,7 +37,8 @@ import type {
   FeatureSuggestion,
   SuggestionStatus,
   CreateSuggestionInput,
-  VerifyCommand
+  VerifyCommand,
+  ReviewVerdict
 } from '../../shared/kanban-types';
 import { validateSchedule, computeNextRun } from './schedule';
 import { prepareAttachmentFile, removeAttachmentFile } from './attachments';
@@ -48,6 +49,7 @@ import {
 } from './artifact-files';
 import { deriveBoardSlug } from './board-slug';
 import { removeWorktree, cleanupWorkspace } from './workspace';
+import { isSwarmRoot } from './kanban-swarm';
 
 const log = createLogger('kanban-store');
 
@@ -235,6 +237,13 @@ export class KanbanStore {
       this.addColumnIfMissing('projects', 'verify_commands', 'TEXT');
       this.addColumnIfMissing('tasks', 'verify_attempts', 'INTEGER NOT NULL DEFAULT 0');
     }
+    if (current < 15) {
+      // Agent code review (#232): per-task verdict, bounded review-fix budget,
+      // and the approved HEAD sha that integrate merges. Additive, idempotent.
+      this.addColumnIfMissing('tasks', 'review_verdict', 'TEXT');
+      this.addColumnIfMissing('tasks', 'review_attempts', 'INTEGER NOT NULL DEFAULT 0');
+      this.addColumnIfMissing('tasks', 'review_head_sha', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -294,6 +303,9 @@ export class KanbanStore {
       consecutiveFailures: Number(r.consecutive_failures),
       resolveAttempts: Number(r.resolve_attempts ?? 0),
       verifyAttempts: Number(r.verify_attempts ?? 0),
+      reviewVerdict: (r.review_verdict as Task['reviewVerdict']) ?? null,
+      reviewAttempts: Number(r.review_attempts ?? 0),
+      reviewHeadSha: (r.review_head_sha as string | null) ?? null,
       lastFailureError: (r.last_failure_error as string | null) ?? null,
       maxRuntimeSeconds: (r.max_runtime_seconds as number | null) ?? null,
       maxRetries: Number(r.max_retries),
@@ -1761,6 +1773,80 @@ export class KanbanStore {
     return res.changes === 1;
   }
 
+  /** CAS-claim a review-status worktree task for an agent review run; flips it to running. */
+  claimForReview(taskId: string, lock: string, ttlMs: number): boolean {
+    const ts = this.now();
+    const res = this.db
+      .prepare(
+        `UPDATE tasks SET status='running', claim_lock=@lock, claim_expires=@expires,
+           last_heartbeat_at=@ts, updated_at=@ts
+         WHERE id=@id AND status='review'
+           AND (claim_lock IS NULL OR claim_expires <= @ts)`
+      )
+      .run({ id: taskId, lock, expires: ts + ttlMs, ts });
+    return res.changes === 1;
+  }
+
+  /** Record the agent review verdict; capture the approved HEAD sha on approve. */
+  setReviewVerdict(taskId: string, decision: ReviewVerdict, headSha?: string | null): void {
+    this.db
+      .prepare(
+        'UPDATE tasks SET review_verdict=@v, review_head_sha=@sha, updated_at=@ts WHERE id=@id'
+      )
+      .run({ id: taskId, v: decision, sha: headSha ?? null, ts: this.now() });
+  }
+
+  incrementReviewAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET review_attempts = review_attempts + 1, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  resetReviewAttempts(taskId: string): void {
+    this.db
+      .prepare('UPDATE tasks SET review_attempts = 0, updated_at=? WHERE id=?')
+      .run(this.now(), taskId);
+  }
+
+  /** Null the verdict + approved sha (a fresh diff invalidates a prior verdict). Leaves attempts untouched. */
+  clearReviewVerdict(taskId: string): void {
+    this.db
+      .prepare(
+        'UPDATE tasks SET review_verdict=NULL, review_head_sha=NULL, updated_at=? WHERE id=?'
+      )
+      .run(this.now(), taskId);
+  }
+
+  /** Review-status worktree tasks awaiting an agent verdict (candidates for reviewTasks()). */
+  reviewPendingTasks(): Task[] {
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM tasks
+         WHERE status='review' AND workspace_kind='worktree' AND workspace_path IS NOT NULL
+           AND review_verdict IS NULL AND system_kind IS NULL
+         ORDER BY priority DESC, created_at ASC`
+      )
+      .all() as Array<Record<string, unknown>>;
+    return rows.map((r) => this.rowToTask(r));
+  }
+
+  /** True when the task is part of a swarm graph (linked up to a swarm root). */
+  isSwarmMember(taskId: string): boolean {
+    const seen = new Set<string>();
+    let frontier = [taskId];
+    while (frontier.length) {
+      const next: string[] = [];
+      for (const id of frontier) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        if (isSwarmRoot(this, id)) return true;
+        for (const p of this.parentsOf(id)) next.push(p);
+      }
+      frontier = next;
+    }
+    return false;
+  }
+
   /** Flag up to `limit` un-flagged triage tasks for decompose; returns how many were flagged. */
   armTriageForDecompose(limit: number): number {
     if (limit <= 0) return 0;
@@ -1781,7 +1867,7 @@ export class KanbanStore {
       .prepare(
         `SELECT COUNT(*) AS c FROM tasks t
          JOIN task_runs r ON r.id = t.current_run_id
-         WHERE t.status='running' AND r.mode NOT IN ('work','verify')`
+         WHERE t.status='running' AND r.mode NOT IN ('work','verify','review')`
       )
       .get() as { c: number };
     return Number(row.c);

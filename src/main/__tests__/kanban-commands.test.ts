@@ -25,6 +25,7 @@ function makeCommands(): { store: KanbanStore; commands: KanbanCommands } {
       autoDecompose: false,
       autoAssign: false,
       autoIntegrate: false,
+      autoReview: false,
       maxDecompose: 1,
       artifactRetentionDays: 0
     }
@@ -276,6 +277,7 @@ describe('KanbanCommands comment/link/log/dispatch', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+      autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -312,6 +314,7 @@ describe('KanbanCommands replyAndResume', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+      autoReview: false,
         maxDecompose: 0,
         artifactRetentionDays: 0
       }
@@ -494,6 +497,7 @@ describe('KanbanCommands mergeReviewTask conflict', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+      autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -698,6 +702,7 @@ describe('KanbanCommands.createSwarm', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+      autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }

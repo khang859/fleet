@@ -11,7 +11,7 @@ export type TaskStatus =
 
 export type WorkspaceKind = 'scratch' | 'dir' | 'worktree';
 
-/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run. */
+/** What a run is doing. 'work' = normal worker; orchestrator runs are 'decompose' | 'specify' | 'assign' | 'resolve' | 'suggest'; 'verify' is a deterministic (non-agent) verify-command run; 'review' is an agent code-review run (spec §232). */
 export type RunMode =
   | 'work'
   | 'decompose'
@@ -19,7 +19,8 @@ export type RunMode =
   | 'assign'
   | 'resolve'
   | 'suggest'
-  | 'verify';
+  | 'verify'
+  | 'review';
 
 /** A triage task can be flagged for an orchestrator run. */
 export type PendingMode = 'decompose' | 'specify';
@@ -48,6 +49,9 @@ export type PrState = 'open' | 'merged' | 'closed' | 'draft';
 export type ChecksState = 'passing' | 'failing' | 'pending';
 /** Result of a local pre-merge conflict check (Phase 3). */
 export type ConflictState = 'clean' | 'conflicts' | 'error';
+
+/** Agent code-review outcome recorded on a task (spec §232). */
+export type ReviewVerdict = 'approve' | 'request_changes';
 
 /** One labeled verify command run in a task's worktree before it reaches review (spec §231). */
 export interface VerifyCommand {
@@ -205,6 +209,12 @@ export interface Task {
   resolveAttempts: number;
   /** Bounded verify-fix budget; mirrors resolveAttempts. */
   verifyAttempts: number;
+  /** Agent code-review verdict; null until the reviewer runs (spec §232). */
+  reviewVerdict: ReviewVerdict | null;
+  /** Bounded review-fix budget; mirrors verifyAttempts. */
+  reviewAttempts: number;
+  /** Worktree HEAD captured when the reviewer approved; integrate merges only at this SHA. */
+  reviewHeadSha: string | null;
   lastFailureError: string | null;
   maxRuntimeSeconds: number | null;
   maxRetries: number;

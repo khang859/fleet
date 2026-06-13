@@ -40,6 +40,7 @@ describe('KanbanDispatcher.reclaim', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -70,6 +71,7 @@ describe('KanbanDispatcher.reclaim', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -212,6 +214,7 @@ describe('KanbanDispatcher.reclaim', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -244,6 +247,7 @@ describe('KanbanDispatcher.promote', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -271,6 +275,7 @@ describe('KanbanDispatcher.promote', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -305,6 +310,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -343,6 +349,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -371,6 +378,7 @@ describe('KanbanDispatcher.claimAndSpawn', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -395,6 +403,7 @@ const baseConfig = {
   autoDecompose: false,
   autoAssign: false,
   autoIntegrate: false,
+        autoReview: false,
   maxDecompose: 1,
   artifactRetentionDays: 0
 };
@@ -410,6 +419,7 @@ function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
     createFeaturePr: () => ({ ok: true, url: 'https://x/pull/1', number: 1 }),
     pushIntegrationBranch: () => ({ ok: true }),
     markPrReady: () => ({ ok: true }),
+    headSha: () => 'sha',
     ...over
   };
 }
@@ -709,6 +719,7 @@ describe('KanbanDispatcher.fireSchedules', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -801,6 +812,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       }
@@ -817,6 +829,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       },
@@ -840,6 +853,7 @@ describe('KanbanDispatcher.reconfigure', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 1,
         artifactRetentionDays: 0
       };
@@ -889,6 +903,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           autoDecompose: false,
           autoAssign: false,
           autoIntegrate: false,
+        autoReview: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -903,6 +918,7 @@ describe('KanbanDispatcher.reconfigure', () => {
           autoDecompose: false,
           autoAssign: false,
           autoIntegrate: false,
+        autoReview: false,
           maxDecompose: 1,
           artifactRetentionDays: 0
         },
@@ -1514,6 +1530,7 @@ describe('KanbanDispatcher.detectFeatureGroups', () => {
         autoDecompose: false,
         autoAssign: false,
         autoIntegrate: false,
+        autoReview: false,
         maxDecompose: 2,
         artifactRetentionDays: 0
       }

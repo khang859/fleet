@@ -12,6 +12,7 @@ describe('KanbanNotifier', () => {
   let tasks: Record<string, { title: string; boardId: string }>;
   let features: Record<string, { name: string; boardId: string }>;
   let enabled: Record<KanbanNotifyCategory, boolean>;
+  let autoReview: boolean;
   let notifier: KanbanNotifier;
 
   beforeEach(() => {
@@ -25,8 +26,10 @@ describe('KanbanNotifier', () => {
       feat1: { name: 'My Feature', boardId: 'default' }
     };
     enabled = { blocked: true, failed: true, completed: true, scheduleFired: true };
+    autoReview = false;
     notifier = new KanbanNotifier({
       isOsEnabled: (c) => enabled[c],
+      isAutoReviewOn: () => autoReview,
       getTask: (id) => tasks[id] ?? null,
       getFeature: (id) => features[id] ?? null,
       present,
@@ -78,6 +81,29 @@ describe('KanbanNotifier', () => {
     notifier.enqueue(evt('completed', 'gone'));
     vi.advanceTimersByTime(500);
     expect(present).not.toHaveBeenCalled();
+  });
+
+  it('suppresses gate-pass events when autoReview is on', () => {
+    autoReview = true;
+    notifier.enqueue(evt('review_ready', 't1'));
+    notifier.enqueue(evt('verify_passed', 't1'));
+    notifier.enqueue(evt('verify_skipped', 't1'));
+    vi.advanceTimersByTime(500);
+    expect(present).not.toHaveBeenCalled();
+  });
+
+  it('still fires gate-pass events when autoReview is off', () => {
+    autoReview = false;
+    notifier.enqueue(evt('verify_passed', 't1'));
+    vi.advanceTimersByTime(500);
+    expect(present).toHaveBeenCalledTimes(1);
+  });
+
+  it('still fires review verdict events when autoReview is on', () => {
+    autoReview = true;
+    notifier.enqueue(evt('review_passed', 't1'));
+    vi.advanceTimersByTime(500);
+    expect(present).toHaveBeenCalledTimes(1);
   });
 
   it('feature_pr_ready notifies as completed using the feature name', () => {

@@ -5,7 +5,9 @@ import {
   Clock,
   PauseCircle,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react';
 import { scheduleSummary, formatNextRun } from './kanban-utils';
 import { PrStatusBadge } from './PrStatusBadge';
@@ -81,6 +83,26 @@ export function KanbanCard({
             }
           >
             <AlertTriangle size={10} /> conflicts
+          </span>
+        )}
+        {card.reviewVerdict === 'approve' && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded bg-emerald-500/20 px-1 text-emerald-300"
+            title="Agent code review approved this change"
+          >
+            <ShieldCheck size={10} /> approved
+          </span>
+        )}
+        {card.reviewVerdict === 'request_changes' && (
+          <span
+            className="inline-flex items-center gap-0.5 rounded bg-amber-500/20 px-1 text-amber-300"
+            title={
+              card.reviewAttempts > 0
+                ? `Agent code review requested changes (attempt ${card.reviewAttempts}/2)`
+                : 'Agent code review requested changes'
+            }
+          >
+            <ShieldAlert size={10} /> changes requested
           </span>
         )}
         {card.childTotal > 0 && (

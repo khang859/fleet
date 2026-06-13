@@ -20,6 +20,7 @@ function baseConfig() {
     autoDecompose: false,
     autoAssign: false,
     autoIntegrate: false,
+    autoReview: false,
     maxDecompose: 1,
     artifactRetentionDays: 0
   };

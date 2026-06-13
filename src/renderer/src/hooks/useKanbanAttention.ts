@@ -4,6 +4,9 @@ import { useKanbanStore } from '../store/kanban-store';
 import { useSettingsStore } from '../store/settings-store';
 import { useWorkspaceStore } from '../store/workspace-store';
 
+/** Gate-pass events whose review-ready badge is deferred to the agent verdict when autoReview is on. */
+const REVIEW_GATE_PASS_KINDS = new Set(['review_ready', 'verify_passed', 'verify_skipped']);
+
 function isKanbanTabActive(): boolean {
   const ws = useWorkspaceStore.getState();
   const active = ws.workspace.tabs.find((t) => t.id === ws.activeTabId);
@@ -17,6 +20,7 @@ export function useKanbanAttention(): void {
     const off = window.fleet.kanban.onEvent((event) => {
       const settings = useSettingsStore.getState().settings;
       if (!settings) return;
+      if (settings.kanban.dispatcher.autoReview && REVIEW_GATE_PASS_KINDS.has(event.kind)) return; // deferred to the review verdict
       if (!kanbanNotifyChannel(event.kind, settings.kanban.notifications, 'badge')) return;
       if (isKanbanTabActive()) return;
       useKanbanStore.getState().incrementUnread();
