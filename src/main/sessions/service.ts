@@ -3,12 +3,14 @@ import { watch, type FSWatcher } from 'node:fs';
 import type { SessionAgent, SessionSummary, SessionTranscript } from '../../shared/sessions';
 import { listRuneSessions, readRuneSession, runeSessionsDir } from './rune-source';
 import { claudeProjectsDir, listClaudeSessions, readClaudeSession } from './claude-source';
+import { ensurePricesFresh } from './pricing-source';
 
 export class SessionsService {
   private watchers: FSWatcher[] = [];
   private debounce: ReturnType<typeof setTimeout> | null = null;
 
   async list(): Promise<SessionSummary[]> {
+    void ensurePricesFresh(); // best-effort; next list reflects any update
     const [rune, claude] = await Promise.all([listRuneSessions(), listClaudeSessions()]);
     return [...rune, ...claude].sort((a, b) => b.updatedAt - a.updatedAt);
   }

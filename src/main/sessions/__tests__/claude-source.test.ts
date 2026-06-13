@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { claudeMessagesToTranscriptMessages, claudePreview, cwdFromTranscript } from '../claude-source';
+import {
+  claudeMessagesToTranscriptMessages,
+  claudePreview,
+  cwdFromTranscript
+} from '../claude-source';
 import { parseClaudeTranscript } from '../../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../../shared/types';
 
@@ -53,7 +57,12 @@ describe('cwdFromTranscript', () => {
     const jsonl = [
       JSON.stringify({ type: 'last-prompt', leafUuid: 'x', sessionId: 's' }),
       JSON.stringify({ type: 'mode', mode: 'default' }),
-      JSON.stringify({ type: 'user', uuid: 'u1', cwd: '/Users/me/proj', message: { role: 'user', content: 'hi' } })
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u1',
+        cwd: '/Users/me/proj',
+        message: { role: 'user', content: 'hi' }
+      })
     ].join('\n');
     expect(cwdFromTranscript(jsonl)).toBe('/Users/me/proj');
   });
@@ -115,5 +124,101 @@ describe('parseClaudeTranscript', () => {
     ].join('\n');
     const messages = parseClaudeTranscript(jsonl);
     expect(messages.map((m) => m.id)).toEqual(['u2']);
+  });
+});
+
+import { aggregateClaudeUsage } from '../claude-source';
+
+function assistantLine(opts: {
+  id: string;
+  model: string;
+  ts?: string;
+  branch?: string;
+  sidechain?: boolean;
+  usage: Record<string, unknown>;
+}): string {
+  return JSON.stringify({
+    type: 'assistant',
+    uuid: `${opts.id}-${Math.random()}`,
+    timestamp: opts.ts,
+    gitBranch: opts.branch,
+    isSidechain: opts.sidechain ?? false,
+    message: { id: opts.id, model: opts.model, role: 'assistant', usage: opts.usage }
+  });
+}
+
+describe('aggregateClaudeUsage', () => {
+  it('aggregates tokens, dedups by message.id, splits cache writes', () => {
+    const jsonl = [
+      assistantLine({
+        id: 'msg_1',
+        model: 'claude-opus-4-8',
+        ts: '2026-05-01T10:00:00Z',
+        branch: 'feature/x',
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          cache_read_input_tokens: 50,
+          cache_creation: { ephemeral_5m_input_tokens: 20, ephemeral_1h_input_tokens: 5 }
+        }
+      }),
+      // duplicate message.id (second content-block line) must NOT double-count
+      assistantLine({
+        id: 'msg_1',
+        model: 'claude-opus-4-8',
+        usage: {
+          input_tokens: 100,
+          output_tokens: 10,
+          cache_read_input_tokens: 50,
+          cache_creation: { ephemeral_5m_input_tokens: 20, ephemeral_1h_input_tokens: 5 }
+        }
+      }),
+      assistantLine({
+        id: 'msg_2',
+        model: 'claude-opus-4-8',
+        ts: '2026-05-01T10:05:00Z',
+        // no cache_creation object -> cache_creation_input_tokens counts as 5m
+        usage: { input_tokens: 200, output_tokens: 20, cache_creation_input_tokens: 8 }
+      })
+    ].join('\n');
+
+    const agg = aggregateClaudeUsage(jsonl);
+    expect(agg.total).toEqual({
+      input: 300,
+      output: 30,
+      cacheRead: 50,
+      cacheWrite5m: 28, // 20 + 8
+      cacheWrite1h: 5
+    });
+    expect(agg.models).toEqual(['claude-opus-4-8']);
+    expect(agg.gitBranch).toBe('feature/x');
+    expect(agg.startedAt).toBe(Date.parse('2026-05-01T10:00:00Z'));
+    expect(agg.endedAt).toBe(Date.parse('2026-05-01T10:05:00Z'));
+    expect(agg.hasUsage).toBe(true);
+    expect(agg.perModel.get('claude-opus-4-8')?.input).toBe(300);
+  });
+
+  it('tracks multiple models in first-appearance order and includes sidechains', () => {
+    const jsonl = [
+      assistantLine({ id: 'a', model: 'claude-opus-4-8', usage: { output_tokens: 10 } }),
+      assistantLine({
+        id: 'b',
+        model: 'claude-haiku-4-5',
+        sidechain: true,
+        usage: { output_tokens: 4 }
+      })
+    ].join('\n');
+    const agg = aggregateClaudeUsage(jsonl);
+    expect(agg.models).toEqual(['claude-opus-4-8', 'claude-haiku-4-5']);
+    expect(agg.total.output).toBe(14); // sidechain counted
+    expect(agg.perModel.get('claude-haiku-4-5')?.output).toBe(4);
+    expect(agg.perModel.get('claude-opus-4-8')?.output).toBe(10);
+  });
+
+  it('reports hasUsage=false when no assistant usage exists', () => {
+    const jsonl = JSON.stringify({ type: 'user', message: { role: 'user', content: 'hi' } });
+    const agg = aggregateClaudeUsage(jsonl);
+    expect(agg.hasUsage).toBe(false);
+    expect(agg.models).toEqual([]);
   });
 });

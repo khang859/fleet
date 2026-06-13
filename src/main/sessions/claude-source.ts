@@ -6,13 +6,167 @@ import { z } from 'zod';
 import { cwdToProjectDir, parseClaudeTranscript } from '../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../shared/types';
 import type {
+  ClaudeUsage,
   SessionSummary,
   SessionTranscript,
   TranscriptBlock,
   TranscriptMessage
 } from '../../shared/sessions';
+import type { ClaudeUsageInput } from '../../shared/claude-pricing';
+import { estimateSessionCostUsd } from '../../shared/claude-pricing';
+import { getPriceTable } from './pricing-source';
 
 const cwdLineSchema = z.object({ cwd: z.string() }).passthrough();
+
+const usageSchema = z
+  .object({
+    input_tokens: z.number().optional(),
+    output_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
+    cache_creation_input_tokens: z.number().optional(),
+    cache_creation: z
+      .object({
+        ephemeral_5m_input_tokens: z.number().optional(),
+        ephemeral_1h_input_tokens: z.number().optional()
+      })
+      .partial()
+      .optional()
+  })
+  .passthrough();
+
+const assistantLineSchema = z
+  .object({
+    type: z.literal('assistant'),
+    timestamp: z.string().optional(),
+    gitBranch: z.string().optional(),
+    message: z
+      .object({
+        id: z.string().optional(),
+        model: z.string().optional(),
+        usage: usageSchema.optional()
+      })
+      .passthrough()
+  })
+  .passthrough();
+
+const tsLineSchema = z
+  .object({ timestamp: z.string().optional(), gitBranch: z.string().optional() })
+  .passthrough();
+
+export type ClaudeAggregate = {
+  total: ClaudeUsage;
+  perModel: Map<string, ClaudeUsageInput>;
+  models: string[];
+  gitBranch?: string;
+  startedAt?: number;
+  endedAt?: number;
+  hasUsage: boolean;
+};
+
+function emptyUsage(): ClaudeUsage {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 };
+}
+
+/**
+ * Scan raw transcript JSONL and aggregate assistant token usage. Dedups by
+ * message.id (Claude Code writes one line per content block, all repeating the
+ * same usage object). Sidechain/subagent entries are included — they cost money.
+ */
+export function aggregateClaudeUsage(content: string): ClaudeAggregate {
+  const total = emptyUsage();
+  const perModel = new Map<string, ClaudeUsageInput>();
+  const models: string[] = [];
+  const seenIds = new Set<string>();
+  let gitBranch: string | undefined;
+  let startedAt: number | undefined;
+  let endedAt: number | undefined;
+  let hasUsage = false;
+
+  for (const line of content.split('\n')) {
+    if (!line) continue;
+    let json: unknown;
+    try {
+      json = JSON.parse(line);
+    } catch {
+      continue;
+    }
+
+    const tsParsed = tsLineSchema.safeParse(json);
+    if (tsParsed.success) {
+      if (gitBranch === undefined && tsParsed.data.gitBranch) gitBranch = tsParsed.data.gitBranch;
+      if (tsParsed.data.timestamp) {
+        const t = Date.parse(tsParsed.data.timestamp);
+        if (!Number.isNaN(t)) {
+          if (startedAt === undefined || t < startedAt) startedAt = t;
+          if (endedAt === undefined || t > endedAt) endedAt = t;
+        }
+      }
+    }
+
+    const parsed = assistantLineSchema.safeParse(json);
+    if (!parsed.success) continue;
+    const { message } = parsed.data;
+    const u = message.usage;
+    if (!u) continue;
+    const id = message.id;
+    if (id && seenIds.has(id)) continue; // dedup repeated content-block lines
+    if (id) seenIds.add(id);
+
+    const model = message.model;
+    if (!model) continue; // no model string → can't price these tokens; skip rather than poison the session cost
+    if (!models.includes(model)) models.push(model);
+
+    const input = u.input_tokens ?? 0;
+    const output = u.output_tokens ?? 0;
+    const cacheRead = u.cache_read_input_tokens ?? 0;
+    let write5m = 0;
+    let write1h = 0;
+    if (u.cache_creation) {
+      write5m = u.cache_creation.ephemeral_5m_input_tokens ?? 0;
+      write1h = u.cache_creation.ephemeral_1h_input_tokens ?? 0;
+    } else {
+      write5m = u.cache_creation_input_tokens ?? 0;
+    }
+
+    if (input || output || cacheRead || write5m || write1h) hasUsage = true;
+
+    total.input += input;
+    total.output += output;
+    total.cacheRead += cacheRead;
+    total.cacheWrite5m += write5m;
+    total.cacheWrite1h += write1h;
+
+    const bucket = perModel.get(model) ?? {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite5m: 0,
+      cacheWrite1h: 0
+    };
+    bucket.input += input;
+    bucket.output += output;
+    bucket.cacheRead += cacheRead;
+    bucket.cacheWrite5m += write5m;
+    bucket.cacheWrite1h += write1h;
+    perModel.set(model, bucket);
+  }
+
+  return { total, perModel, models, gitBranch, startedAt, endedAt, hasUsage };
+}
+
+/** Build the Claude-only cost/metadata fields for a SessionSummary. */
+function claudeCostFields(content: string): Partial<SessionSummary> {
+  const agg = aggregateClaudeUsage(content);
+  if (!agg.hasUsage) return {};
+  return {
+    claudeUsage: agg.total,
+    models: agg.models,
+    gitBranch: agg.gitBranch,
+    startedAt: agg.startedAt,
+    endedAt: agg.endedAt,
+    costUsd: estimateSessionCostUsd(agg.perModel, getPriceTable())
+  };
+}
 
 export function claudeProjectsDir(): string {
   return join(homedir(), '.claude', 'projects');
@@ -74,7 +228,8 @@ export async function listClaudeSessions(): Promise<SessionSummary[]> {
           cwd,
           updatedAt: st.mtimeMs,
           messageCount: messages.length,
-          preview: preview.slice(0, 140)
+          preview: preview.slice(0, 140),
+          ...claudeCostFields(content)
         });
       } catch {
         // skip malformed file
@@ -110,7 +265,8 @@ export async function readClaudeSession(
       cwd,
       updatedAt,
       messageCount: messages.length,
-      preview: preview.slice(0, 140)
+      preview: preview.slice(0, 140),
+      ...claudeCostFields(content)
     },
     messages: claudeMessagesToTranscriptMessages(messages)
   };

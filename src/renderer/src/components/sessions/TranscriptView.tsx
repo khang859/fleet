@@ -15,6 +15,75 @@ function resumeCommand(s: SessionSummary): string {
   return s.agent === 'rune' ? `rune --resume ${s.id}` : `claude --resume ${s.id}`;
 }
 
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return String(n);
+}
+
+function formatCost(usd: number): string {
+  if (usd > 0 && usd < 0.01) return '<$0.01';
+  return `$${usd.toFixed(2)}`;
+}
+
+function formatDuration(ms: number): string {
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  return `${hr}h ${min % 60}m`;
+}
+
+function formatClock(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+}
+
+function ClaudeMetaStrip({ s }: { s: SessionSummary }): React.JSX.Element | null {
+  if (s.agent !== 'claude') return null;
+  const u = s.claudeUsage;
+  const hasMeta =
+    u !== undefined ||
+    s.gitBranch !== undefined ||
+    s.startedAt !== undefined ||
+    (s.models !== undefined && s.models.length > 0);
+  if (!hasMeta) return null;
+  const cacheWrite = u ? u.cacheWrite5m + u.cacheWrite1h : 0;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-fleet-text-subtle">
+      {s.models?.map((m) => (
+        <span key={m} className="rounded bg-fleet-surface-2 px-1 font-mono text-fleet-text">
+          {m}
+        </span>
+      ))}
+      {u && (
+        <span className="font-mono" title="input / output / cache-read / cache-write tokens">
+          ↑{formatTokens(u.input)} ↓{formatTokens(u.output)} ⚡{formatTokens(u.cacheRead)} ✎
+          {formatTokens(cacheWrite)}
+        </span>
+      )}
+      <span
+        className="font-mono text-fleet-text"
+        title="estimated from token counts × public per-model pricing"
+      >
+        {s.costUsd === undefined ? 'cost unavailable' : formatCost(s.costUsd)}
+      </span>
+      {s.gitBranch && <span className="truncate">⎇ {s.gitBranch}</span>}
+      {s.startedAt && s.endedAt && (
+        <span title="session start → end">
+          {formatClock(s.startedAt)} → {formatClock(s.endedAt)} ·{' '}
+          {formatDuration(s.endedAt - s.startedAt)}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function Block({ block }: { block: TranscriptBlock }): React.JSX.Element {
   switch (block.type) {
     case 'text':
@@ -137,6 +206,7 @@ export function TranscriptView(): React.JSX.Element {
             {s.agent} {s.provider ? `· ${s.provider}` : ''} {s.model ? `· ${s.model}` : ''} ·{' '}
             {messages.length} msgs
           </div>
+          <ClaudeMetaStrip s={s} />
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           {hasRail ? (
