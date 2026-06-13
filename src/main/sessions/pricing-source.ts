@@ -89,6 +89,7 @@ export async function ensurePricesFresh(now: number = Date.now()): Promise<void>
     currentTable = table;
     if (cacheFile) writeCachedTable(cacheFile, table);
   } catch {
-    // offline / timeout / bad response -> keep current table
+    // offline / timeout / bad response -> keep current table; allow retry next list()
+    lastFetchAt = 0;
   }
 }
