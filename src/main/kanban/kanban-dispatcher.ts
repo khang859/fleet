@@ -1,4 +1,5 @@
 import { dirname } from 'path';
+import { z } from 'zod';
 import { createLogger } from '../logger';
 import type { KanbanStore } from './kanban-store';
 import type { Task, RunMode, Feature } from '../../shared/kanban-types';
@@ -53,6 +54,8 @@ const VERIFY_CLAIM_TTL_MS = 15 * 60 * 1000;
 const MAX_INTEGRATE_PER_TICK = 3;
 /** Max review runs spawned per tick. */
 const MAX_REVIEW_PER_TICK = 3;
+/** Review-fix work runs attempted per task before soft-escalation. Tracked in tasks.review_attempts. */
+const REVIEW_ATTEMPT_CAP = 2;
 
 /** Git ops used by integrate(); injectable so the stage is unit-testable. Defaults to the real workspace.ts fns. */
 export interface IntegrationOps {
@@ -233,6 +236,42 @@ export class KanbanDispatcher {
         continue;
       }
 
+      // A terminal review run: kanban_review_verdict already recorded the verdict + finished the
+      // run + emitted review_passed/review_changes_requested (it leaves the task parked 'running'
+      // with current_run_id intact). This branch ONLY routes that parked task — it must not emit
+      // review_passed and must not double-finishRun when a verdict exists.
+      if (reclaimMode === 'review') {
+        const runId = task.currentRunId;
+        // A long review (large diff) can outlive its claim window. While the reviewer is still
+        // alive, keep waiting — re-extend the claim rather than orphaning the run.
+        if (exit == null && task.workerPid != null && this.deps.isAlive(task.workerPid)) {
+          if (task.claimLock) this.store.extendClaim(task.id, task.claimLock, VERIFY_CLAIM_TTL_MS);
+          continue;
+        }
+        const verdict = task.reviewVerdict;
+        if (verdict === 'approve') {
+          // The verdict tool already finished the run + emitted review_passed. The verdict
+          // and head_sha persist through setStatusCleared (it clears only claim/run fields).
+          this.store.setStatusCleared(task.id, 'review');
+          this.store.resetReviewAttempts(task.id);
+        } else if (verdict === 'request_changes' && task.reviewAttempts < REVIEW_ATTEMPT_CAP) {
+          this.spawnReviewFix(task, this.lastReviewFindings(task.id));
+        } else {
+          // At cap (verdict recorded by the tool), or inconclusive (no verdict — the agent ended
+          // without calling the tool, so the run was never finished). Soft-escalate to human review.
+          if (verdict == null && runId != null) this.store.finishRun(runId, 'reclaimed');
+          this.store.setStatusCleared(task.id, 'review'); // verdict (if any) persists → integrate skips it
+          const reason =
+            verdict === 'request_changes'
+              ? `review requested changes after ${REVIEW_ATTEMPT_CAP} attempt(s)`
+              : 'reviewer returned no verdict';
+          this.store.appendEvent(task.id, runId, 'review_escalated', { reason });
+          this.store.addComment(task.id, 'dispatcher', reason);
+        }
+        if (runId != null) this.deps.clearWorkerExit?.(runId);
+        continue;
+      }
+
       // Clean exit without a terminal tool: rune nudged to its cap and gave up
       // (exit 3). This is deterministic — retrying re-rolls the same wall — so
       // route to a deliberate review-required block, and do NOT count it as a
@@ -362,6 +401,9 @@ export class KanbanDispatcher {
       if (slots <= 0) break;
       const lock = this.nextLock();
       if (!this.store.claimTask(task.id, lock, ttl)) continue; // lost the race
+
+      this.store.clearReviewVerdict(task.id);
+      this.store.resetReviewAttempts(task.id); // a fresh human-initiated work cycle starts a new review episode
 
       let pid: number | undefined;
       let runId: number | null = null;
@@ -587,6 +629,7 @@ export class KanbanDispatcher {
     }
     const lock = this.nextLock();
     if (!this.store.claimForResolve(task.id, lock, this.deps.config.claimTtlMs)) return false; // lost race
+    this.store.clearReviewVerdict(task.id); // a resolve changes the tree → re-review the result
     let runId: number | null = null;
     try {
       let workspace = task.workspacePath ?? '';
@@ -690,6 +733,60 @@ export class KanbanDispatcher {
       this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'work' });
       this.store.setStatusCleared(task.id, 'ready');
       log.error('verify-fix spawn failed', { taskId: task.id, error: msg });
+      return false;
+    }
+  }
+
+  /** The findings from the most recent request_changes event, formatted for the bounce prompt. */
+  private lastReviewFindings(taskId: string): string {
+    const ev = [...this.store.listEvents(taskId)]
+      .reverse()
+      .find((e) => e.kind === 'review_changes_requested');
+    const parsed = z
+      .object({
+        summary: z.string().optional(),
+        findings: z.array(z.object({ file: z.string().optional(), note: z.string() })).optional()
+      })
+      .safeParse(ev?.payload);
+    const p = parsed.success ? parsed.data : {};
+    const lines = (p.findings ?? []).map((f) => `- ${f.file ? `${f.file}: ` : ''}${f.note}`);
+    return [p.summary, ...lines].filter(Boolean).join('\n');
+  }
+
+  /** Spawn a fresh `work` run to address review findings (mirrors spawnVerifyFix). */
+  private spawnReviewFix(task: Task, findings: string): boolean {
+    const lock = this.nextLock();
+    if (!this.store.claimForVerifyFix(task.id, lock, this.deps.config.claimTtlMs)) return false;
+    this.store.clearReviewVerdict(task.id); // diff will change → drop the prior verdict
+    this.store.incrementReviewAttempts(task.id);
+    let runId: number | null = null;
+    try {
+      const workspace = task.workspacePath ?? '';
+      const run = this.store.startRun(task.id, task.assignee ?? 'worker', null, 'work');
+      runId = run.id;
+      const pid = this.deps.spawnWorker({
+        task,
+        runId: run.id,
+        lock,
+        workspace,
+        mode: 'work',
+        reviewFindings: findings
+      });
+      if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+      this.store.appendEvent(task.id, run.id, 'spawned', {
+        pid: pid ?? null,
+        mode: 'work',
+        reason: 'review-fix',
+        attempt: task.reviewAttempts + 1
+      });
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.store.recordFailure(task.id, msg);
+      if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+      this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'work' });
+      this.store.setStatusCleared(task.id, 'ready');
+      log.error('review-fix spawn failed', { taskId: task.id, error: msg });
       return false;
     }
   }
