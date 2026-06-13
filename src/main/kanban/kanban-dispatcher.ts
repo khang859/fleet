@@ -51,6 +51,8 @@ const VERIFY_ATTEMPT_CAP = 2;
 const VERIFY_CLAIM_TTL_MS = 15 * 60 * 1000;
 /** Max task merges + resolve spawns processed per integrate() tick, so the tick stays fast. */
 const MAX_INTEGRATE_PER_TICK = 3;
+/** Max review runs spawned per tick. */
+const MAX_REVIEW_PER_TICK = 3;
 
 /** Git ops used by integrate(); injectable so the stage is unit-testable. Defaults to the real workspace.ts fns. */
 export interface IntegrationOps {
@@ -704,6 +706,47 @@ export class KanbanDispatcher {
     return this.spawnResolve(task, target);
   }
 
+  /** Spawn an agent review run for each review-pending worktree task (gated on autoReview). */
+  reviewTasks(): void {
+    if (!this.deps.config.autoReview) return;
+    let budget = MAX_REVIEW_PER_TICK;
+    const ttl = this.deps.config.claimTtlMs;
+    for (const task of this.store.reviewPendingTasks()) {
+      if (budget <= 0) break;
+      if (this.store.isSwarmMember(task.id)) continue; // swarms carry their own verifier card
+      const lock = this.nextLock();
+      if (!this.store.claimForReview(task.id, lock, ttl)) continue; // lost race
+      let runId: number | null = null;
+      try {
+        const workspace = this.deps.prepareWorkspaceFn
+          ? this.deps.prepareWorkspaceFn(task)
+          : (task.workspacePath ?? '');
+        const run = this.store.startRun(task.id, 'reviewer', null, 'review');
+        runId = run.id;
+        const pid = this.deps.spawnWorker({ task, runId: run.id, lock, workspace, mode: 'review' });
+        if (pid != null) this.store.setWorkerPid(task.id, run.id, pid);
+        this.store.appendEvent(task.id, run.id, 'spawned', { pid: pid ?? null, mode: 'review' });
+        budget -= 1;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.store.recordFailure(task.id, msg);
+        if (runId != null) this.store.finishRun(runId, 'spawn_failed', { error: msg });
+        this.store.appendEvent(task.id, runId, 'spawn_failed', { error: msg, mode: 'review' });
+        const failures = this.store.getTask(task.id)?.consecutiveFailures ?? 0;
+        if (failures >= this.deps.config.failureLimit) {
+          // Persistent spawn failure: stop bouncing forever — soft-escalate to a human.
+          this.store.setStatusCleared(task.id, 'review');
+          this.store.appendEvent(task.id, null, 'review_escalated', {
+            reason: `review could not be spawned after ${failures} attempt(s)`
+          });
+        } else {
+          this.store.setStatusCleared(task.id, 'review'); // retry next tick
+        }
+        log.error('review spawn failed', { taskId: task.id, error: msg });
+      }
+    }
+  }
+
   /** Auto-integrate completed feature tasks and sync completed features. Local git only — no push/PR (that is #229). */
   integrate(): void {
     if (!this.deps.config.autoIntegrate) return;
@@ -1008,6 +1051,7 @@ export class KanbanDispatcher {
     this.detectFeatureGroups();
     this.promote();
     this.claimAndSpawn();
+    this.reviewTasks();
     this.integrate();
     this.sweepArtifacts();
     this.sweepMergedWorktrees();
