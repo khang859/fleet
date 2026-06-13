@@ -4,6 +4,8 @@ import { ProfileEditor } from './ProfileEditor';
 import {
   DEFAULT_ORCHESTRATOR_INSTRUCTIONS,
   ORCHESTRATOR_PROFILE_NAME,
+  DEFAULT_REVIEWER_INSTRUCTIONS,
+  REVIEWER_PROFILE_NAME,
   type KanbanSettings,
   type WorkerProfile
 } from '../../../../../shared/types';
@@ -125,6 +127,16 @@ export function KanbanSection(): React.JSX.Element | null {
             checked={k.dispatcher.autoIntegrate}
             onChange={(e) =>
               patch({ dispatcher: { ...k.dispatcher, autoIntegrate: e.target.checked } })
+            }
+            className="h-4 w-4"
+          />
+        </SettingRow>
+        <SettingRow label="Auto-review completed worktree tasks">
+          <input
+            type="checkbox"
+            checked={k.dispatcher.autoReview}
+            onChange={(e) =>
+              patch({ dispatcher: { ...k.dispatcher, autoReview: e.target.checked } })
             }
             className="h-4 w-4"
           />
@@ -280,6 +292,8 @@ export function KanbanSection(): React.JSX.Element | null {
       </section>
 
       <OrchestratorSection k={k} patch={patch} />
+
+      <ReviewerSection k={k} patch={patch} />
     </div>
   );
 }
@@ -343,6 +357,72 @@ function OrchestratorSection({
           onChange={(e) => update({ instructions: e.target.value })}
           rows={10}
           placeholder="Orchestrator system prompt / persona…"
+          className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+        />
+      </div>
+    </section>
+  );
+}
+
+/**
+ * The reviewer is a singleton — there is exactly one agent code-reviewer, it can't be deleted or
+ * assigned to a task, so it gets its own panel (model + persona only) like the orchestrator.
+ */
+function ReviewerSection({
+  k,
+  patch
+}: {
+  k: KanbanSettings;
+  patch: (next: Partial<KanbanSettings>) => void;
+}): React.JSX.Element {
+  const idx = k.profiles.findIndex((p) => p.role === 'reviewer');
+  const reviewer: WorkerProfile =
+    idx >= 0
+      ? k.profiles[idx]
+      : {
+          name: REVIEWER_PROFILE_NAME,
+          role: 'reviewer',
+          model: '',
+          skills: [],
+          instructions: DEFAULT_REVIEWER_INSTRUCTIONS
+        };
+  const update = (next: Partial<WorkerProfile>): void => {
+    const merged = { ...reviewer, ...next };
+    patch({
+      profiles:
+        idx >= 0 ? k.profiles.map((q, j) => (j === idx ? merged : q)) : [...k.profiles, merged]
+    });
+  };
+  const isDefault = reviewer.instructions === DEFAULT_REVIEWER_INSTRUCTIONS;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-neutral-300">Reviewer</h3>
+        <button
+          onClick={() => update({ model: '', instructions: DEFAULT_REVIEWER_INSTRUCTIONS })}
+          disabled={isDefault && reviewer.model === ''}
+          className="rounded border border-neutral-700 px-2 py-1 text-xs hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent transition active:scale-[0.97] disabled:active:scale-100"
+        >
+          Reset to default
+        </button>
+      </div>
+      <p className="text-xs text-neutral-500">
+        Runs an agent code review on completed worktree tasks before they merge. There is exactly
+        one — it can&apos;t be deleted or assigned to a task.
+      </p>
+      <div className="rounded-md border border-neutral-800 bg-neutral-900/50 p-3 space-y-2">
+        <input
+          value={reviewer.model}
+          onChange={(e) => update({ model: e.target.value })}
+          placeholder="model (optional, e.g. claude-opus-4-8)"
+          className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
+        />
+        <textarea
+          value={reviewer.instructions}
+          onChange={(e) => update({ instructions: e.target.value })}
+          rows={10}
+          placeholder="Reviewer system prompt / persona…"
           className="w-full rounded bg-neutral-800 px-2 py-1 text-sm border border-neutral-700"
         />
       </div>

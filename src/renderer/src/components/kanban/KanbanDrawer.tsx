@@ -11,7 +11,9 @@ import {
   GitMerge,
   GitPullRequest,
   Check,
-  AlertTriangle
+  AlertTriangle,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react';
 import { useKanbanStore } from '../../store/kanban-store';
 import { useSettingsStore } from '../../store/settings-store';
@@ -456,6 +458,17 @@ export function KanbanDrawer(): React.JSX.Element | null {
                 </span>
                 . Pick how to integrate it.
               </p>
+              {/* Agent code-review verdict (spec §232); null until the reviewer runs. */}
+              {t.reviewVerdict === 'approve' ? (
+                <div className="inline-flex items-center gap-1 text-[10px] text-emerald-400">
+                  <ShieldCheck size={11} /> Code review approved
+                </div>
+              ) : t.reviewVerdict === 'request_changes' ? (
+                <div className="inline-flex items-center gap-1 text-[10px] text-amber-400">
+                  <ShieldAlert size={11} /> Code review requested changes
+                  {t.reviewAttempts > 0 ? ` (attempt ${t.reviewAttempts}/2)` : ''}
+                </div>
+              ) : null}
               {/* Pre-merge conflict prediction against the base (integration) branch. */}
               {t.workspaceKind === 'worktree' && t.branchName && t.baseBranch && (
                 <div className="text-[10px]">
