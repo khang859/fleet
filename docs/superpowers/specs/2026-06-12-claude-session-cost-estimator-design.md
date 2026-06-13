@@ -101,7 +101,13 @@ Exports:
 - Persist the validated copy to `userData/claude-pricing.json`.
 - Resolution at read time: in-memory fresh copy → `userData` cached copy → `BUNDLED_PRICES`.
 
-Hosted artifact (GitHub Pages, JSON in repo):
+Hosted artifact — a JSON file committed in this repo, fetched via raw URL:
+
+```
+https://raw.githubusercontent.com/khang859/fleet/main/resources/claude-pricing.json
+```
+
+(Final in-repo path decided in the plan; `resources/` is the likely home.)
 
 ```json
 {
@@ -117,6 +123,13 @@ Hosted artifact (GitHub Pages, JSON in repo):
 `schemaVersion` lets the app reject a future incompatible shape and fall back. The
 bundled table and the hosted JSON share the same shape so the file is literally the
 serialized bundled table.
+
+**Why raw.githubusercontent over GitHub Pages:** the repo is public (`khang859/fleet`),
+so the raw URL needs no auth and no Pages setup. Pinning to `main` means a merge
+propagates to every client within the 24h TTL — no app release. raw URLs carry a ~5-min
+Fastly CDN cache, irrelevant given our daily fetch. **Dependency:** this requires the repo
+to stay public; if it ever goes private the raw URL 404s/401s and the app simply falls
+back to the cached/bundled table (safe — it just stops auto-updating).
 
 ### 2. Parsing — aggregate usage in `claude-source.ts`
 
