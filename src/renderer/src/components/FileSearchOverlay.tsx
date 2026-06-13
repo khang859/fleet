@@ -3,10 +3,15 @@ import { Search, ArrowDownAZ, Clock, HardDrive, Image, FolderOpen, Layers } from
 import { Overlay } from './Overlay';
 import { createLogger } from '../logger';
 const log = createLogger('overlay:file-search');
-import { useWorkspaceStore } from '../store/workspace-store';
+import {
+  useWorkspaceStore,
+  getActivePaneContext,
+  getPaneContextById
+} from '../store/workspace-store';
 import { useImageStore } from '../store/image-store';
 import { quotePathForShell, bracketedPaste } from '../lib/shell-utils';
 import { getFileIcon } from '../lib/file-icons';
+import { toFleetImageUrl, pathForPaneContext } from '../../../shared/path-platform';
 import { z } from 'zod';
 import type { FileSearchResult, RecentImageResult } from '../../../shared/ipc-api';
 import type { ImageGenerationMeta } from '../../../shared/types';
@@ -170,7 +175,7 @@ function GeneratedThumbnail({
   useEffect(() => {
     if (!firstImage?.filename) return;
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
-    setSrc(`fleet-image://${filePath}`);
+    setSrc(toFleetImageUrl(filePath));
   }, [generation.id, firstImage?.filename]);
 
   if (!firstImage?.filename) return null;
@@ -327,7 +332,7 @@ export function FileSearchOverlay({
       setSelectedIndex(0);
       setIsLoading(false);
       setError(null);
-      void window.fleet.file.searchRecentImages().then((res) => {
+      void window.fleet.file.searchRecentImages(getActivePaneContext().pathContext).then((res) => {
         if (res.success) setRecentImages(res.results);
       });
       void loadGenerations();
@@ -394,7 +399,8 @@ export function FileSearchOverlay({
     (file: FileSearchResult) => {
       log.debug('handleSelect', { targetPaneId, filePath: file.path });
       if (!targetPaneId) return;
-      const quoted = quotePathForShell(file.path, window.fleet.platform) + ' ';
+      const ctx = getPaneContextById(targetPaneId);
+      const quoted = quotePathForShell(pathForPaneContext(file.path, ctx), ctx) + ' ';
       window.fleet.pty.input({ paneId: targetPaneId, data: bracketedPaste(quoted) });
       addRecentFile(file);
       onClose();

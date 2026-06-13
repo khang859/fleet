@@ -1,5 +1,21 @@
 import { describe, it, expect } from 'vitest';
-import { isWindowsPath, isWslPath, basename, join, displayPath } from '../path-platform';
+import {
+  isWindowsPath,
+  isWslPath,
+  basename,
+  join,
+  displayPath,
+  winToWslMountPath,
+  wslMountToWinPath,
+  toWslUncPath,
+  parseWslUncPath,
+  toWindowsAccessiblePath,
+  pathForPaneContext,
+  toFleetImageUrl,
+  toFleetPdfUrl
+} from '../path-platform';
+
+const wsl = { kind: 'wsl', distro: 'Ubuntu-24.04' } as const;
 
 describe('isWindowsPath', () => {
   it('matches drive-letter paths with backslash', () => {
@@ -109,5 +125,144 @@ describe('displayPath', () => {
   it('handles exact home (no trailing path)', () => {
     expect(displayPath('C:\\Users\\khang', 'win32', homes)).toBe('~');
     expect(displayPath('/home/khang', { kind: 'wsl', distro: 'Ubuntu' }, homes)).toBe('~');
+  });
+});
+
+describe('wslMountToWinPath', () => {
+  it('maps a single-drive automount path to a drive path', () => {
+    expect(wslMountToWinPath('/mnt/c/Users/khang')).toBe('C:\\Users\\khang');
+    expect(wslMountToWinPath('/mnt/d/projects/foo bar')).toBe('D:\\projects\\foo bar');
+  });
+  it('maps a bare drive mount to the drive root', () => {
+    expect(wslMountToWinPath('/mnt/d')).toBe('D:\\');
+    expect(wslMountToWinPath('/mnt/c/')).toBe('C:\\');
+  });
+  it('rejects multi-char automount entries (wsl, wslg)', () => {
+    expect(wslMountToWinPath('/mnt/wsl/foo')).toBeNull();
+    expect(wslMountToWinPath('/mnt/wslg')).toBeNull();
+  });
+  it('rejects non-mount POSIX paths', () => {
+    expect(wslMountToWinPath('/home/khang')).toBeNull();
+  });
+  it('round-trips with winToWslMountPath', () => {
+    expect(winToWslMountPath('C:\\Users\\khang')).toBe('/mnt/c/Users/khang');
+    expect(wslMountToWinPath('/mnt/c/Users/khang')).toBe('C:\\Users\\khang');
+  });
+});
+
+describe('toWslUncPath', () => {
+  it('builds a modern UNC path', () => {
+    expect(toWslUncPath('Ubuntu-24.04', '/home/khang/pic.png')).toBe(
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\khang\\pic.png'
+    );
+  });
+  it('handles the distro root', () => {
+    expect(toWslUncPath('Ubuntu', '/')).toBe('\\\\wsl.localhost\\Ubuntu\\');
+  });
+});
+
+describe('parseWslUncPath', () => {
+  it('parses modern UNC with backslashes', () => {
+    expect(parseWslUncPath('\\\\wsl.localhost\\Ubuntu-24.04\\home\\khang')).toEqual({
+      distro: 'Ubuntu-24.04',
+      posixPath: '/home/khang'
+    });
+  });
+  it('parses legacy wsl$ form with forward slashes', () => {
+    expect(parseWslUncPath('//wsl$/Ubuntu/home/khang')).toEqual({
+      distro: 'Ubuntu',
+      posixPath: '/home/khang'
+    });
+  });
+  it('returns root for a bare distro path', () => {
+    expect(parseWslUncPath('\\\\wsl.localhost\\Ubuntu')).toEqual({
+      distro: 'Ubuntu',
+      posixPath: '/'
+    });
+  });
+  it('rejects non-WSL paths', () => {
+    expect(parseWslUncPath('C:\\Users')).toBeNull();
+    expect(parseWslUncPath('\\\\someserver\\share')).toBeNull();
+    expect(parseWslUncPath('/home/khang')).toBeNull();
+  });
+  it('round-trips with toWslUncPath', () => {
+    const unc = toWslUncPath('Ubuntu-24.04', '/home/khang/a b.png');
+    expect(parseWslUncPath(unc)).toEqual({
+      distro: 'Ubuntu-24.04',
+      posixPath: '/home/khang/a b.png'
+    });
+  });
+});
+
+describe('toWindowsAccessiblePath', () => {
+  it('passes through win32 and posix contexts untouched', () => {
+    expect(toWindowsAccessiblePath('/home/khang', 'posix')).toBe('/home/khang');
+    expect(toWindowsAccessiblePath('C:\\x', 'win32')).toBe('C:\\x');
+  });
+  it('maps WSL /mnt/<drive> to a drive path', () => {
+    expect(toWindowsAccessiblePath('/mnt/c/Users/khang/pic.png', wsl)).toBe(
+      'C:\\Users\\khang\\pic.png'
+    );
+  });
+  it('bridges other WSL POSIX paths to UNC', () => {
+    expect(toWindowsAccessiblePath('/home/khang/pic.png', wsl)).toBe(
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\khang\\pic.png'
+    );
+  });
+  it('falls through /mnt/wsl to UNC (not a drive)', () => {
+    expect(toWindowsAccessiblePath('/mnt/wslg/foo.png', wsl)).toBe(
+      '\\\\wsl.localhost\\Ubuntu-24.04\\mnt\\wslg\\foo.png'
+    );
+  });
+  it('passes through paths already in Windows/UNC form', () => {
+    expect(toWindowsAccessiblePath('D:\\img.png', wsl)).toBe('D:\\img.png');
+    expect(toWindowsAccessiblePath('\\\\wsl.localhost\\Ubuntu\\x', wsl)).toBe(
+      '\\\\wsl.localhost\\Ubuntu\\x'
+    );
+  });
+});
+
+describe('pathForPaneContext', () => {
+  it('passes through for win32 and posix panes', () => {
+    expect(pathForPaneContext('C:\\x', 'win32')).toBe('C:\\x');
+    expect(pathForPaneContext('/home/k', 'posix')).toBe('/home/k');
+  });
+  it('converts a Windows drive path to /mnt for a WSL pane', () => {
+    expect(pathForPaneContext('C:\\Users\\khang\\f.txt', wsl)).toBe('/mnt/c/Users/khang/f.txt');
+  });
+  it('converts a same-distro UNC path to POSIX for a WSL pane', () => {
+    expect(pathForPaneContext('\\\\wsl.localhost\\Ubuntu-24.04\\home\\khang', wsl)).toBe(
+      '/home/khang'
+    );
+  });
+  it('leaves an other-distro UNC path alone', () => {
+    expect(pathForPaneContext('\\\\wsl.localhost\\Debian\\home\\k', wsl)).toBe(
+      '\\\\wsl.localhost\\Debian\\home\\k'
+    );
+  });
+  it('leaves an already-POSIX path alone for a WSL pane', () => {
+    expect(pathForPaneContext('/home/khang/f.txt', wsl)).toBe('/home/khang/f.txt');
+  });
+});
+
+describe('toFleetImageUrl / toFleetPdfUrl', () => {
+  it('encodes a drive path with empty authority', () => {
+    expect(toFleetImageUrl('C:\\Users\\khang\\My Pic.png')).toBe(
+      'fleet-image:///C%3A/Users/khang/My%20Pic.png'
+    );
+  });
+  it('encodes a UNC path with the quad-slash form', () => {
+    expect(toFleetImageUrl('\\\\wsl.localhost\\Ubuntu-24.04\\home\\khang\\pic.png')).toBe(
+      'fleet-image:////wsl.localhost/Ubuntu-24.04/home/khang/pic.png'
+    );
+  });
+  it('encodes a POSIX path', () => {
+    expect(toFleetImageUrl('/home/khang/pic.png')).toBe('fleet-image:///home/khang/pic.png');
+  });
+  it('encodes Unicode, # and ? safely', () => {
+    expect(toFleetImageUrl('C:\\a\\rés#?.png')).toBe('fleet-image:///C%3A/a/r%C3%A9s%23%3F.png');
+  });
+  it('uses the fleet-pdf scheme for pdfs', () => {
+    expect(toFleetPdfUrl('C:\\docs\\a.pdf')).toBe('fleet-pdf:///C%3A/docs/a.pdf');
   });
 });

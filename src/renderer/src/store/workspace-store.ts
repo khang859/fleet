@@ -354,6 +354,48 @@ function findLeaf(node: PaneNode, paneId: string): PaneLeaf | null {
   return findLeaf(node.children[0], paneId) ?? findLeaf(node.children[1], paneId);
 }
 
+function hostDefaultContext(): PathContext {
+  return window.fleet.platform === 'win32' ? 'win32' : 'posix';
+}
+
+/**
+ * Resolve a specific pane's coordinate system, searching every tab. Falls back
+ * pane → owning tab → host default. Use this (not `window.fleet.platform`, which
+ * is always Windows under WSL panes) whenever building, reading, or pasting a
+ * path for a known pane.
+ */
+export function getPaneContextById(paneId: string | null | undefined): PathContext {
+  if (!paneId) return hostDefaultContext();
+  const { workspace } = useWorkspaceStore.getState();
+  for (const tab of workspace.tabs) {
+    const leaf = findLeaf(tab.splitRoot, paneId);
+    if (leaf) return leaf.pathContext ?? tab.pathContext ?? hostDefaultContext();
+  }
+  return hostDefaultContext();
+}
+
+/**
+ * Resolve the active pane's coordinate system + live cwd. Convenience wrapper
+ * over {@link getPaneContextById} for features that operate on the active pane.
+ */
+export function getActivePaneContext(): {
+  pathContext: PathContext;
+  cwd: string;
+  paneId: string | null;
+} {
+  const state = useWorkspaceStore.getState();
+  const tab = state.workspace.tabs.find((t) => t.id === state.activeTabId);
+  const leaf = tab && state.activePaneId ? findLeaf(tab.splitRoot, state.activePaneId) : null;
+  const liveCwd = state.activePaneId
+    ? useCwdStore.getState().cwds.get(state.activePaneId)
+    : undefined;
+  return {
+    pathContext: getPaneContextById(state.activePaneId),
+    cwd: liveCwd ?? leaf?.cwd ?? '',
+    paneId: state.activePaneId
+  };
+}
+
 export function collectPaneIds(node: PaneNode): string[] {
   if (node.type === 'leaf') return [node.id];
   return [...collectPaneIds(node.children[0]), ...collectPaneIds(node.children[1])];

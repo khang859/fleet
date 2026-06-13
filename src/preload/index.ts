@@ -86,7 +86,7 @@ import type {
   Project,
   VerifyCommand
 } from '../shared/kanban-types';
-import type { WslDistroState } from '../shared/shell-profiles';
+import type { WslDistroState, PathContext } from '../shared/shell-profiles';
 import type { RuneStatus, RuneInstallResult } from '../shared/rune';
 import type { RuneSettings, RuneSecrets } from '../shared/rune-config-types';
 import type {
@@ -309,8 +309,8 @@ const fleetApi = {
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
     grep: async (req: FileGrepRequest): Promise<FileGrepResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_GREP, req),
-    searchRecentImages: async (): Promise<RecentImagesResponse> =>
-      typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES),
+    searchRecentImages: async (pathContext?: PathContext): Promise<RecentImagesResponse> =>
+      typedInvoke(IPC_CHANNELS.FILE_RECENT_IMAGES, { pathContext }),
     scanImageFolder: async (folderPath: string): Promise<string[]> =>
       typedInvoke(IPC_CHANNELS.FILE_SCAN_IMAGE_FOLDER, { folderPath }),
     checkIgnored: async (dirPath: string): Promise<string[]> =>

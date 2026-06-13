@@ -35,6 +35,7 @@ import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -224,7 +225,7 @@ function ImagesTabCard({
       return;
     }
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${lastCompleted.id}/${thumbFile.filename}`;
-    setThumbSrc(`fleet-image://${filePath}`);
+    setThumbSrc(toFleetImageUrl(filePath));
   }, [lastCompleted?.id, thumbFile?.filename]);
 
   const inProgress = generations.filter(

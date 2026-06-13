@@ -4,6 +4,7 @@ import * as pdfjs from 'pdfjs-dist';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import './pdf-text-layer.css';
+import { toFleetPdfUrl } from '../../../shared/path-platform';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -74,7 +75,7 @@ export function PdfViewerPane({ filePath }: PdfViewerPaneProps): React.JSX.Eleme
       setFileSize(stat.data.size);
       try {
         loadingTask = pdfjs.getDocument({
-          url: `fleet-pdf://${encodeURI(filePath)}`,
+          url: toFleetPdfUrl(filePath),
           cMapUrl: CMAP_URL,
           cMapPacked: true,
           standardFontDataUrl: STANDARD_FONT_DATA_URL

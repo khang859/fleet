@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ImageGenerationMeta } from '../../../../shared/types';
 import { useImageStore } from '../../store/image-store';
+import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 type ImageDetailProps = {
   generation: ImageGenerationMeta;
@@ -16,7 +17,9 @@ function DetailImage({
   filename: string;
   alt: string;
 }): React.JSX.Element {
-  const src = `fleet-image://${window.fleet.homeDir}/.fleet/images/generations/${generationId}/${filename}`;
+  const src = toFleetImageUrl(
+    `${window.fleet.homeDir}/.fleet/images/generations/${generationId}/${filename}`
+  );
   return <img src={src} alt={alt} className="max-w-full max-h-[70vh] rounded-lg object-contain" />;
 }
 

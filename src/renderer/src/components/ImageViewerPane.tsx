@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useImageStore } from '../store/image-store';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 
 function getBasename(filePath: string): string {
   return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -59,7 +60,7 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
     setIsFit(true);
     setOffset({ x: 0, y: 0 });
 
-    setImageSrc(`fleet-image://${filePath}`);
+    setImageSrc(toFleetImageUrl(filePath));
 
     void window.fleet.file.stat(filePath).then((result) => {
       if (result.success && result.data) setFileSize(result.data.size);
