@@ -1,8 +1,113 @@
 import { mkdirSync, rmSync, existsSync } from 'fs';
-import { execFileSync } from 'child_process';
-import { join } from 'path';
+import { execFileSync, type ExecFileSyncOptions } from 'child_process';
+import { join, posix } from 'path';
 import { tmpdir } from 'os';
 import type { WorkspaceKind, PrState, ChecksState, ConflictState } from '../../shared/kanban-types';
+import { wslExePath } from '../wsl-service';
+import { parseWslUncPath, toWslUncPath } from '../../shared/path-platform';
+
+// --- WSL routing -----------------------------------------------------------
+// A kanban repo whose path is a `\\wsl.localhost\<distro>\…` UNC string (what the
+// Windows folder picker yields for a repo inside a distro) lives on the distro's
+// own filesystem. Its `git`/`gh` must run *inside* the distro — Windows git.exe
+// against a 9P UNC cwd is unreliable, and we want the distro's git config + the
+// repo's true POSIX path. Everything else runs natively, byte-for-byte unchanged.
+//
+// Paths cross the boundary in two coordinate systems: persisted/returned paths
+// and filesystem ops (mkdir/rm/existsSync) use the **UNC** form (Windows-
+// accessible); paths handed to in-distro git use the **POSIX** form. The two
+// helpers below translate between them; `parseWslUncPath` is the sole detector.
+
+type WslLoc = { distro: string; posixPath: string };
+
+function wslOf(p: string | undefined | null): WslLoc | null {
+  if (!p) return null;
+  const u = parseWslUncPath(p);
+  return u ? { distro: u.distro, posixPath: u.posixPath } : null;
+}
+
+/** A path as in-distro git must see it: POSIX for a WSL UNC path, else unchanged. */
+function toGitPath(p: string): string {
+  return wslOf(p)?.posixPath ?? p;
+}
+
+/** Resolve `git -C <target> <args>` to run natively or inside the target's distro. */
+function gitArgv(target: string, args: string[]): { file: string; argv: string[] } {
+  const w = wslOf(target);
+  if (w) {
+    return {
+      file: wslExePath(),
+      argv: ['-d', w.distro, '--exec', 'git', '-C', w.posixPath, ...args]
+    };
+  }
+  return { file: 'git', argv: ['-C', target, ...args] };
+}
+
+/** `git -C <target> <args>` returning stdout as a string (encoding utf8). */
+function gitStr(target: string, args: string[], extra: ExecFileSyncOptions = {}): string {
+  const { file, argv } = gitArgv(target, args);
+  return execFileSync(file, argv, { ...extra, encoding: 'utf8' });
+}
+
+/** `git -C <target> <args>` discarding stdout; throws (with stderr) on non-zero. */
+function gitVoid(
+  target: string,
+  args: string[],
+  extra: ExecFileSyncOptions = { stdio: 'ignore' }
+): void {
+  const { file, argv } = gitArgv(target, args);
+  execFileSync(file, argv, extra);
+}
+
+/** Resolve `gh <args>` (run in `cwd`) to run natively or inside the cwd's distro. */
+function ghArgv(cwd: string, args: string[]): { file: string; argv: string[]; spawnCwd?: string } {
+  const w = wslOf(cwd);
+  if (w) {
+    return {
+      file: wslExePath(),
+      argv: ['-d', w.distro, '--cd', w.posixPath, '--exec', 'gh', ...args]
+    };
+  }
+  return { file: 'gh', argv: args, spawnCwd: cwd };
+}
+
+function ghStr(cwd: string, args: string[], extra: ExecFileSyncOptions = {}): string {
+  const { file, argv, spawnCwd } = ghArgv(cwd, args);
+  return execFileSync(file, argv, { ...extra, cwd: spawnCwd, encoding: 'utf8' });
+}
+
+function ghVoid(cwd: string, args: string[], extra: ExecFileSyncOptions = {}): void {
+  const { file, argv, spawnCwd } = ghArgv(cwd, args);
+  execFileSync(file, argv, { ...extra, cwd: spawnCwd });
+}
+
+// Distro home is resolved once per distro (a cold distro boots on first call, so
+// this also guarantees the VM is up before the UNC mkdir below). Synchronous to
+// match the rest of this module (it runs inside the dispatcher tick).
+const wslHomeCache = new Map<string, string>();
+function wslHomeDir(distro: string): string {
+  const cached = wslHomeCache.get(distro);
+  if (cached) return cached;
+  const home =
+    execFileSync(wslExePath(), ['-d', distro, '--exec', 'sh', '-c', 'echo "$HOME"'], {
+      encoding: 'utf8',
+      timeout: 30_000
+    }).trim() || '/root';
+  wslHomeCache.set(distro, home);
+  return home;
+}
+
+/**
+ * Worktree root for a repo. A WSL repo's worktrees must sit on the distro's own
+ * filesystem (fast ext4, not the 9P-mounted Windows root), so they go under the
+ * distro home; returned as a UNC path so Windows fs ops + persistence work. A
+ * native repo keeps the caller-supplied root unchanged.
+ */
+function worktreeRootFor(repoPath: string, nativeRoot: string): string {
+  const w = wslOf(repoPath);
+  if (!w) return nativeRoot;
+  return toWslUncPath(w.distro, posix.join(wslHomeDir(w.distro), '.fleet', 'kanban', 'worktrees'));
+}
 
 export interface PrepareWorkspaceInput {
   kind: WorkspaceKind;
@@ -33,7 +138,7 @@ export interface PreparedWorkspace {
 
 function isGitRepo(repoPath: string): boolean {
   try {
-    execFileSync('git', ['-C', repoPath, 'rev-parse', '--git-dir'], { stdio: 'ignore' });
+    gitVoid(repoPath, ['rev-parse', '--git-dir'], { stdio: 'ignore' });
     return true;
   } catch {
     return false;
@@ -43,9 +148,7 @@ function isGitRepo(repoPath: string): boolean {
 /** The repo's current branch, or null if detached/unknown. */
 function currentBranch(repoPath: string): string | null {
   try {
-    const out = execFileSync('git', ['-C', repoPath, 'rev-parse', '--abbrev-ref', 'HEAD'], {
-      encoding: 'utf8'
-    }).trim();
+    const out = gitStr(repoPath, ['rev-parse', '--abbrev-ref', 'HEAD']).trim();
     return out && out !== 'HEAD' ? out : null;
   } catch {
     return null;
@@ -61,9 +164,7 @@ function gitStderr(err: unknown): string {
 // taskId is a generated id (no glob metacharacters), so `git branch --list <branch>`
 // is an exact match here.
 function branchExists(repoPath: string, branch: string): boolean {
-  const out = execFileSync('git', ['-C', repoPath, 'branch', '--list', branch], {
-    encoding: 'utf8'
-  });
+  const out = gitStr(repoPath, ['branch', '--list', branch]);
   return out.trim().length > 0;
 }
 
@@ -94,25 +195,32 @@ export function prepareWorkspace(input: PrepareWorkspaceInput): PreparedWorkspac
     throw new Error(`prepareWorkspace: not a git repo: ${repo}`);
   }
   const branch = `kanban/${input.taskId}`;
-  const dir = join(input.worktreesRoot, input.taskId);
-  mkdirSync(input.worktreesRoot, { recursive: true });
+  // For a WSL repo the worktree lives on the distro fs (UNC for fs/persistence);
+  // `dirArg` is the POSIX form in-distro git is handed.
+  const w = wslOf(repo);
+  const root = worktreeRootFor(repo, input.worktreesRoot);
+  const dir = w
+    ? toWslUncPath(w.distro, posix.join(toGitPath(root), input.taskId))
+    : join(root, input.taskId);
+  const dirArg = toGitPath(dir);
+  mkdirSync(root, { recursive: true });
   // Capture the repo's current branch up-front: it is the merge target and the
   // base a dependent child branches from. Fall back to the explicit start-point
   // when the child was told one (worktree create below honours the same).
   const base = input.startPoint ?? currentBranch(repo);
   const addArgs = branchExists(repo, branch)
-    ? ['-C', repo, 'worktree', 'add', dir, branch]
+    ? ['worktree', 'add', dirArg, branch]
     : input.startPoint
-      ? ['-C', repo, 'worktree', 'add', dir, '-b', branch, input.startPoint]
-      : ['-C', repo, 'worktree', 'add', dir, '-b', branch];
+      ? ['worktree', 'add', dirArg, '-b', branch, input.startPoint]
+      : ['worktree', 'add', dirArg, '-b', branch];
   try {
-    execFileSync('git', addArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
+    gitVoid(repo, addArgs, { stdio: ['ignore', 'ignore', 'pipe'] });
   } catch (err) {
     // A failed `worktree add` can leave a partial dir + a stale registration;
     // remove both so a later retry can recreate cleanly.
     rmSync(dir, { recursive: true, force: true });
     try {
-      execFileSync('git', ['-C', repo, 'worktree', 'prune'], { stdio: 'ignore' });
+      gitVoid(repo, ['worktree', 'prune'], { stdio: 'ignore' });
     } catch {
       // best-effort; ignore prune failures
     }
@@ -134,16 +242,20 @@ export function checkoutBranchWorktree(input: {
   worktreesRoot: string;
   taskId: string;
 }): { path: string; branchName: string } {
-  const dir = join(input.worktreesRoot, input.taskId);
-  mkdirSync(input.worktreesRoot, { recursive: true });
+  const w = wslOf(input.repoPath);
+  const root = worktreeRootFor(input.repoPath, input.worktreesRoot);
+  const dir = w
+    ? toWslUncPath(w.distro, posix.join(toGitPath(root), input.taskId))
+    : join(root, input.taskId);
+  mkdirSync(root, { recursive: true });
   try {
-    execFileSync('git', ['-C', input.repoPath, 'worktree', 'add', dir, input.branchName], {
+    gitVoid(input.repoPath, ['worktree', 'add', toGitPath(dir), input.branchName], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
     rmSync(dir, { recursive: true, force: true });
     try {
-      execFileSync('git', ['-C', input.repoPath, 'worktree', 'prune'], { stdio: 'ignore' });
+      gitVoid(input.repoPath, ['worktree', 'prune'], { stdio: 'ignore' });
     } catch {
       /* best-effort */
     }
@@ -166,11 +278,9 @@ export function isBranchMerged(input: {
   baseBranch: string;
 }): boolean {
   try {
-    execFileSync(
-      'git',
-      ['-C', input.repoPath, 'merge-base', '--is-ancestor', input.branchName, input.baseBranch],
-      { stdio: 'ignore' }
-    );
+    gitVoid(input.repoPath, ['merge-base', '--is-ancestor', input.branchName, input.baseBranch], {
+      stdio: 'ignore'
+    });
     return true;
   } catch {
     return false;
@@ -190,11 +300,9 @@ export function removeWorktree(input: {
   baseBranch?: string | null;
 }): { branchKept: boolean } {
   try {
-    execFileSync(
-      'git',
-      ['-C', input.repoPath, 'worktree', 'remove', '--force', input.workspacePath],
-      { stdio: 'ignore' }
-    );
+    gitVoid(input.repoPath, ['worktree', 'remove', '--force', toGitPath(input.workspacePath)], {
+      stdio: 'ignore'
+    });
   } catch {
     // git remove failed (dir gone, repo moved, locked, ...). Clean the dir
     // directly and prune the stale registration so nothing is leaked.
@@ -204,7 +312,7 @@ export function removeWorktree(input: {
       // best-effort
     }
     try {
-      execFileSync('git', ['-C', input.repoPath, 'worktree', 'prune'], { stdio: 'ignore' });
+      gitVoid(input.repoPath, ['worktree', 'prune'], { stdio: 'ignore' });
     } catch {
       // best-effort
     }
@@ -221,9 +329,7 @@ export function removeWorktree(input: {
     : false;
   if (!merged) return { branchKept: true };
   try {
-    execFileSync('git', ['-C', input.repoPath, 'branch', '-D', input.branchName], {
-      stdio: 'ignore'
-    });
+    gitVoid(input.repoPath, ['branch', '-D', input.branchName], { stdio: 'ignore' });
   } catch {
     // branch already gone or never created
   }
@@ -245,10 +351,10 @@ export function worktreeStatus(input: {
   let behind = 0;
   try {
     // `--left-right --count base...branch` → "<base-only>\t<branch-only>" = "<behind>\t<ahead>".
-    const out = execFileSync(
-      'git',
-      ['-C', repoPath, 'rev-list', '--left-right', '--count', `${baseBranch}...${branchName}`],
-      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    const out = gitStr(
+      repoPath,
+      ['rev-list', '--left-right', '--count', `${baseBranch}...${branchName}`],
+      { stdio: ['ignore', 'pipe', 'ignore'] }
     );
     const [b, a] = out.trim().split(/\s+/).map(Number);
     behind = Number.isFinite(b) ? b : 0;
@@ -273,25 +379,21 @@ export function finalizeWorktree(input: {
 }): boolean {
   const { workspacePath, taskId, title } = input;
   try {
-    execFileSync('git', ['-C', workspacePath, 'add', '-A'], { stdio: 'ignore' });
+    gitVoid(workspacePath, ['add', '-A'], { stdio: 'ignore' });
     // `git diff --cached --quiet` exits non-zero exactly when something is staged.
     let hasChanges = false;
     try {
-      execFileSync('git', ['-C', workspacePath, 'diff', '--cached', '--quiet'], {
-        stdio: 'ignore'
-      });
+      gitVoid(workspacePath, ['diff', '--cached', '--quiet'], { stdio: 'ignore' });
     } catch {
       hasChanges = true;
     }
     if (!hasChanges) return false;
     const msg = `kanban/${taskId}: ${title}`.slice(0, 200);
     try {
-      execFileSync('git', ['-C', workspacePath, 'commit', '-m', msg], { stdio: 'ignore' });
+      gitVoid(workspacePath, ['commit', '-m', msg], { stdio: 'ignore' });
     } catch {
       // No git identity configured: commit with a Fleet fallback so work is still preserved.
-      execFileSync('git', ['-C', workspacePath, ...COMMIT_IDENTITY, 'commit', '-m', msg], {
-        stdio: 'ignore'
-      });
+      gitVoid(workspacePath, [...COMMIT_IDENTITY, 'commit', '-m', msg], { stdio: 'ignore' });
     }
     return true;
   } catch {
@@ -323,11 +425,7 @@ export function reviewStat(input: {
 }): ReviewStat | null {
   if (!input.baseBranch) return null;
   try {
-    const out = execFileSync(
-      'git',
-      ['-C', input.workspacePath, 'diff', '--shortstat', `${input.baseBranch}...HEAD`],
-      { encoding: 'utf8' }
-    );
+    const out = gitStr(input.workspacePath, ['diff', '--shortstat', `${input.baseBranch}...HEAD`]);
     return parseShortstat(out);
   } catch {
     return null;
@@ -337,9 +435,7 @@ export function reviewStat(input: {
 /** Current HEAD sha of a worktree, or null on error. */
 export function headSha(workspacePath: string): string | null {
   try {
-    return execFileSync('git', ['-C', workspacePath, 'rev-parse', 'HEAD'], {
-      encoding: 'utf8'
-    }).trim();
+    return gitStr(workspacePath, ['rev-parse', 'HEAD']).trim();
   } catch {
     return null;
   }
@@ -354,11 +450,9 @@ export function worktreeDiff(input: {
   if (!input.baseBranch) return '';
   const cap = input.maxBytes ?? 60000;
   try {
-    const out = execFileSync(
-      'git',
-      ['-C', input.workspacePath, 'diff', `${input.baseBranch}...HEAD`],
-      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
-    );
+    const out = gitStr(input.workspacePath, ['diff', `${input.baseBranch}...HEAD`], {
+      maxBuffer: 64 * 1024 * 1024
+    });
     if (out.length <= cap) return out;
     return out.slice(0, cap) + '\n… (diff truncated)';
   } catch {
@@ -370,16 +464,18 @@ export function worktreeDiff(input: {
 function findBranchWorktree(repoPath: string, branch: string): string | null {
   let out: string;
   try {
-    out = execFileSync('git', ['-C', repoPath, 'worktree', 'list', '--porcelain'], {
-      encoding: 'utf8'
-    });
+    out = gitStr(repoPath, ['worktree', 'list', '--porcelain']);
   } catch {
     return null;
   }
+  // In-distro git reports POSIX paths; re-clothe them as UNC so downstream git
+  // calls on the returned path re-detect the distro (and Windows fs ops work).
+  const w = wslOf(repoPath);
+  const toCoord = (p: string): string => (w ? toWslUncPath(w.distro, p) : p);
   let current: string | null = null;
   for (const line of out.split('\n')) {
     if (line.startsWith('worktree ')) current = line.slice('worktree '.length).trim();
-    else if (line === `branch refs/heads/${branch}`) return current;
+    else if (line === `branch refs/heads/${branch}`) return current ? toCoord(current) : current;
   }
   return null;
 }
@@ -387,9 +483,7 @@ function findBranchWorktree(repoPath: string, branch: string): string | null {
 /** True when a worktree has no staged/unstaged/untracked changes. */
 function isClean(worktreePath: string): boolean {
   try {
-    const out = execFileSync('git', ['-C', worktreePath, 'status', '--porcelain'], {
-      encoding: 'utf8'
-    });
+    const out = gitStr(worktreePath, ['status', '--porcelain']);
     return out.trim().length === 0;
   } catch {
     return false;
@@ -398,9 +492,7 @@ function isClean(worktreePath: string): boolean {
 
 function cleanupTempWorktree(repoPath: string, tmp: string): void {
   try {
-    execFileSync('git', ['-C', repoPath, 'worktree', 'remove', '--force', tmp], {
-      stdio: 'ignore'
-    });
+    gitVoid(repoPath, ['worktree', 'remove', '--force', toGitPath(tmp)], { stdio: 'ignore' });
   } catch {
     try {
       rmSync(tmp, { recursive: true, force: true });
@@ -408,7 +500,7 @@ function cleanupTempWorktree(repoPath: string, tmp: string): void {
       // best-effort
     }
     try {
-      execFileSync('git', ['-C', repoPath, 'worktree', 'prune'], { stdio: 'ignore' });
+      gitVoid(repoPath, ['worktree', 'prune'], { stdio: 'ignore' });
     } catch {
       // best-effort
     }
@@ -448,14 +540,12 @@ export function mergeWorktreeToBase(input: {
       };
     }
     try {
-      execFileSync(
-        'git',
-        ['-C', baseCheckout, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName],
-        { stdio: ['ignore', 'ignore', 'pipe'] }
-      );
+      gitVoid(baseCheckout, [...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName], {
+        stdio: ['ignore', 'ignore', 'pipe']
+      });
     } catch {
       try {
-        execFileSync('git', ['-C', baseCheckout, 'merge', '--abort'], { stdio: 'ignore' });
+        gitVoid(baseCheckout, ['merge', '--abort'], { stdio: 'ignore' });
       } catch {
         // nothing to abort
       }
@@ -467,23 +557,19 @@ export function mergeWorktreeToBase(input: {
   const tmp = join(worktreeParentDir, `.merge-${taskId}`);
   cleanupTempWorktree(repoPath, tmp);
   try {
-    execFileSync('git', ['-C', repoPath, 'worktree', 'add', '--detach', tmp, baseBranch], {
+    gitVoid(repoPath, ['worktree', 'add', '--detach', toGitPath(tmp), baseBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
     return { ok: false, error: `could not create merge worktree: ${gitStderr(err)}` };
   }
   try {
-    execFileSync(
-      'git',
-      ['-C', tmp, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName],
-      {
-        stdio: ['ignore', 'ignore', 'pipe']
-      }
-    );
+    gitVoid(tmp, [...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', msg, branchName], {
+      stdio: ['ignore', 'ignore', 'pipe']
+    });
   } catch {
     try {
-      execFileSync('git', ['-C', tmp, 'merge', '--abort'], { stdio: 'ignore' });
+      gitVoid(tmp, ['merge', '--abort'], { stdio: 'ignore' });
     } catch {
       // nothing to abort
     }
@@ -491,7 +577,7 @@ export function mergeWorktreeToBase(input: {
     return { ok: false, conflict: true };
   }
   try {
-    execFileSync('git', ['-C', tmp, 'push', repoPath, `HEAD:refs/heads/${baseBranch}`], {
+    gitVoid(tmp, ['push', toGitPath(repoPath), `HEAD:refs/heads/${baseBranch}`], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
@@ -519,7 +605,7 @@ export function pushAndCreatePr(input: {
 }): { ok: boolean; url?: string; number?: number; error?: string } {
   const { workspacePath, branchName, baseBranch, title, body } = input;
   try {
-    execFileSync('git', ['-C', workspacePath, 'push', '-u', 'origin', branchName], {
+    gitVoid(workspacePath, ['push', '-u', 'origin', branchName], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
@@ -541,23 +627,19 @@ function ghPrCreate(input: {
   draft?: boolean;
 }): { ok: boolean; url?: string; number?: number; noGh?: boolean; error?: string } {
   try {
-    const out = execFileSync(
-      'gh',
-      [
-        'pr',
-        'create',
-        '--base',
-        input.base,
-        '--head',
-        input.head,
-        '--title',
-        input.title,
-        '--body',
-        input.body || input.title,
-        ...(input.draft ? ['--draft'] : [])
-      ],
-      { cwd: input.cwd, encoding: 'utf8' }
-    );
+    const out = ghStr(input.cwd, [
+      'pr',
+      'create',
+      '--base',
+      input.base,
+      '--head',
+      input.head,
+      '--title',
+      input.title,
+      '--body',
+      input.body || input.title,
+      ...(input.draft ? ['--draft'] : [])
+    ]);
     const url = out.match(/https?:\/\/\S+/)?.[0] ?? out.trim();
     return { ok: true, url, number: prNumberFromUrl(url) };
   } catch (err) {
@@ -583,9 +665,7 @@ function resolveStartRef(repoPath: string, base: string | undefined): string {
   if (base) {
     for (const ref of [`origin/${base}`, base]) {
       try {
-        execFileSync('git', ['-C', repoPath, 'rev-parse', '--verify', '--quiet', ref], {
-          stdio: 'ignore'
-        });
+        gitVoid(repoPath, ['rev-parse', '--verify', '--quiet', ref], { stdio: 'ignore' });
         return ref;
       } catch {
         // not present; try the next candidate
@@ -611,9 +691,9 @@ export function ensureFeatureBranch(input: {
   if (!isGitRepo(repoPath)) return { ok: false, error: `not a git repo: ${repoPath}` };
   if (branchExists(repoPath, integrationBranch)) return { ok: true };
   try {
-    execFileSync(
-      'git',
-      ['-C', repoPath, 'branch', integrationBranch, resolveStartRef(repoPath, input.baseBranch ?? undefined)],
+    gitVoid(
+      repoPath,
+      ['branch', integrationBranch, resolveStartRef(repoPath, input.baseBranch ?? undefined)],
       { stdio: ['ignore', 'ignore', 'pipe'] }
     );
     return { ok: true };
@@ -635,11 +715,9 @@ export function checkMergeConflicts(input: {
 }): { state: ConflictState; files: string[] } {
   const { repoPath, baseBranch, branchName } = input;
   try {
-    execFileSync(
-      'git',
-      ['-C', repoPath, 'merge-tree', '--write-tree', '--no-messages', baseBranch, branchName],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
-    );
+    gitVoid(repoPath, ['merge-tree', '--write-tree', '--no-messages', baseBranch, branchName], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
     return { state: 'clean', files: [] };
   } catch (err) {
     const e = err as { status?: number; stdout?: Buffer };
@@ -678,26 +756,34 @@ export function updateIntegrationBranchFromMain(input: {
 }): { ok: boolean; conflict?: boolean; alreadyUpToDate?: boolean; error?: string } {
   const { repoPath, integrationBranch, baseBranch } = input;
   try {
-    execFileSync('git', ['-C', repoPath, 'fetch', 'origin', baseBranch], { stdio: 'ignore' });
+    gitVoid(repoPath, ['fetch', 'origin', baseBranch], { stdio: 'ignore' });
   } catch {
     // best-effort; fall back to the local base ref
   }
   const baseRef = resolveStartRef(repoPath, baseBranch);
   if (baseRef === 'HEAD') return { ok: false, error: `base branch not found: ${baseBranch}` };
   try {
-    execFileSync(
-      'git',
-      ['-C', repoPath, 'merge-base', '--is-ancestor', baseRef, integrationBranch],
-      { stdio: 'ignore' }
-    );
+    gitVoid(repoPath, ['merge-base', '--is-ancestor', baseRef, integrationBranch], {
+      stdio: 'ignore'
+    });
     return { ok: true, alreadyUpToDate: true };
   } catch {
     // base is ahead of the integration branch; merge it in below
   }
-  const tmp = join(tmpdir(), `fleet-sync-${integrationBranch.replace(/[^\w.-]/g, '_')}`);
+  // The sync worktree must sit on the repo's own filesystem: a distro path for a
+  // WSL repo (the OS tmpdir is on the Windows side, a different filesystem), else
+  // the native tmpdir as before.
+  const safeBranch = integrationBranch.replace(/[^\w.-]/g, '_');
+  const w = wslOf(repoPath);
+  const tmp = w
+    ? toWslUncPath(
+        w.distro,
+        posix.join(wslHomeDir(w.distro), '.fleet', 'kanban', `.sync-${safeBranch}`)
+      )
+    : join(tmpdir(), `fleet-sync-${safeBranch}`);
   cleanupTempWorktree(repoPath, tmp);
   try {
-    execFileSync('git', ['-C', repoPath, 'worktree', 'add', tmp, integrationBranch], {
+    gitVoid(repoPath, ['worktree', 'add', toGitPath(tmp), integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
@@ -705,14 +791,21 @@ export function updateIntegrationBranchFromMain(input: {
   }
   try {
     // The worktree has the integration branch checked out, so this advances its ref directly.
-    execFileSync(
-      'git',
-      ['-C', tmp, ...COMMIT_IDENTITY, 'merge', '--no-ff', '-m', `merge ${baseBranch} into ${integrationBranch}`, baseRef],
+    gitVoid(
+      tmp,
+      [
+        ...COMMIT_IDENTITY,
+        'merge',
+        '--no-ff',
+        '-m',
+        `merge ${baseBranch} into ${integrationBranch}`,
+        baseRef
+      ],
       { stdio: ['ignore', 'ignore', 'pipe'] }
     );
   } catch {
     try {
-      execFileSync('git', ['-C', tmp, 'merge', '--abort'], { stdio: 'ignore' });
+      gitVoid(tmp, ['merge', '--abort'], { stdio: 'ignore' });
     } catch {
       // nothing to abort
     }
@@ -738,7 +831,7 @@ export function createFeaturePr(input: {
 }): { ok: boolean; url?: string; number?: number; noRemote?: boolean; noGh?: boolean; error?: string } {
   const { repoPath, integrationBranch, baseBranch, title, body, draft } = input;
   try {
-    execFileSync('git', ['-C', repoPath, 'push', '-u', 'origin', integrationBranch], {
+    gitVoid(repoPath, ['push', '-u', 'origin', integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
   } catch (err) {
@@ -757,7 +850,7 @@ export function pushIntegrationBranch(input: {
   integrationBranch: string;
 }): { ok: boolean; noRemote?: boolean; error?: string } {
   try {
-    execFileSync('git', ['-C', input.repoPath, 'push', 'origin', input.integrationBranch], {
+    gitVoid(input.repoPath, ['push', 'origin', input.integrationBranch], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
     return { ok: true };
@@ -772,8 +865,7 @@ export function markPrReady(input: {
   prNumber: number;
 }): { ok: boolean; noGh?: boolean; error?: string } {
   try {
-    execFileSync('gh', ['pr', 'ready', String(input.prNumber)], {
-      cwd: input.repoPath,
+    ghVoid(input.repoPath, ['pr', 'ready', String(input.prNumber)], {
       stdio: ['ignore', 'ignore', 'pipe']
     });
     return { ok: true };
@@ -843,17 +935,13 @@ export type PrFetchResult =
 export function fetchPrState(input: { workspacePath: string; prRef: string }): PrFetchResult {
   let out: string;
   try {
-    out = execFileSync(
-      'gh',
-      [
-        'pr',
-        'view',
-        input.prRef,
-        '--json',
-        'state,isDraft,mergeStateStatus,statusCheckRollup,url,number'
-      ],
-      { cwd: input.workspacePath, encoding: 'utf8' }
-    );
+    out = ghStr(input.workspacePath, [
+      'pr',
+      'view',
+      input.prRef,
+      '--json',
+      'state,isDraft,mergeStateStatus,statusCheckRollup,url,number'
+    ]);
   } catch (err) {
     const e = err as { code?: string; stderr?: Buffer; stdout?: Buffer };
     if (e.code === 'ENOENT') return { ok: false, noGh: true, error: 'gh CLI not found' };
