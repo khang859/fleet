@@ -235,6 +235,13 @@ export class KanbanStore {
       this.addColumnIfMissing('projects', 'verify_commands', 'TEXT');
       this.addColumnIfMissing('tasks', 'verify_attempts', 'INTEGER NOT NULL DEFAULT 0');
     }
+    if (current < 15) {
+      // Agent code review (#232): per-task verdict, bounded review-fix budget,
+      // and the approved HEAD sha that integrate merges. Additive, idempotent.
+      this.addColumnIfMissing('tasks', 'review_verdict', 'TEXT');
+      this.addColumnIfMissing('tasks', 'review_attempts', 'INTEGER NOT NULL DEFAULT 0');
+      this.addColumnIfMissing('tasks', 'review_head_sha', 'TEXT');
+    }
     // Seed the permanent default board (idempotent: fresh and existing DBs).
     const ts = this.now();
     this.db
@@ -294,6 +301,9 @@ export class KanbanStore {
       consecutiveFailures: Number(r.consecutive_failures),
       resolveAttempts: Number(r.resolve_attempts ?? 0),
       verifyAttempts: Number(r.verify_attempts ?? 0),
+      reviewVerdict: (r.review_verdict as Task['reviewVerdict']) ?? null,
+      reviewAttempts: Number(r.review_attempts ?? 0),
+      reviewHeadSha: (r.review_head_sha as string | null) ?? null,
       lastFailureError: (r.last_failure_error as string | null) ?? null,
       maxRuntimeSeconds: (r.max_runtime_seconds as number | null) ?? null,
       maxRetries: Number(r.max_retries),

@@ -163,6 +163,7 @@ export type KanbanSettings = {
     maxDecompose: number; // concurrency cap for orchestrator runs (separate from maxInProgress)
     autoAssign: boolean; // when true, the dispatcher auto-assigns unassigned ready tasks to a worker profile
     autoIntegrate: boolean; // when true, auto-merges completed feature tasks into the integration branch; spawns resolve runs on conflict
+    autoReview: boolean; // when true, runs an agent code-review gate before review/auto-merge
   };
   defaults: {
     workspaceKind: WorkspaceKind;

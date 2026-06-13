@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS tasks (
@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   worktree_pruned INTEGER NOT NULL DEFAULT 0,
   resolve_attempts INTEGER NOT NULL DEFAULT 0,
   verify_attempts INTEGER NOT NULL DEFAULT 0,
+  review_verdict TEXT,
+  review_attempts INTEGER NOT NULL DEFAULT 0,
+  review_head_sha TEXT,
   system_kind TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
