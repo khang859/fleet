@@ -46,8 +46,22 @@ describe('resolvePrice', () => {
       schemaVersion: 1,
       updated: '2026-06-12',
       models: [
-        { prefix: 'claude-opus-4-', input: 5, output: 25, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
-        { prefix: 'claude-opus-4-fast-', input: 10, output: 50, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 }
+        {
+          prefix: 'claude-opus-4-',
+          input: 5,
+          output: 25,
+          cacheReadMult: 0.1,
+          cacheWrite5mMult: 1.25,
+          cacheWrite1hMult: 2
+        },
+        {
+          prefix: 'claude-opus-4-fast-',
+          input: 10,
+          output: 50,
+          cacheReadMult: 0.1,
+          cacheWrite5mMult: 1.25,
+          cacheWrite1hMult: 2
+        }
       ]
     };
     expect(resolvePrice('claude-opus-4-fast-1', table)?.input).toBe(10);

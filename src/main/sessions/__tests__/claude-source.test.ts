@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { claudeMessagesToTranscriptMessages, claudePreview, cwdFromTranscript } from '../claude-source';
+import {
+  claudeMessagesToTranscriptMessages,
+  claudePreview,
+  cwdFromTranscript
+} from '../claude-source';
 import { parseClaudeTranscript } from '../../copilot/conversation-reader';
 import type { CopilotChatMessage } from '../../../shared/types';
 
@@ -53,7 +57,12 @@ describe('cwdFromTranscript', () => {
     const jsonl = [
       JSON.stringify({ type: 'last-prompt', leafUuid: 'x', sessionId: 's' }),
       JSON.stringify({ type: 'mode', mode: 'default' }),
-      JSON.stringify({ type: 'user', uuid: 'u1', cwd: '/Users/me/proj', message: { role: 'user', content: 'hi' } })
+      JSON.stringify({
+        type: 'user',
+        uuid: 'u1',
+        cwd: '/Users/me/proj',
+        message: { role: 'user', content: 'hi' }
+      })
     ].join('\n');
     expect(cwdFromTranscript(jsonl)).toBe('/Users/me/proj');
   });

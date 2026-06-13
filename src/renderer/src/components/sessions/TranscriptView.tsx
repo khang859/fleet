@@ -47,7 +47,11 @@ function formatClock(ms: number): string {
 function ClaudeMetaStrip({ s }: { s: SessionSummary }): React.JSX.Element | null {
   if (s.agent !== 'claude') return null;
   const u = s.claudeUsage;
-  const hasMeta = u || s.gitBranch || s.startedAt || (s.models && s.models.length > 0);
+  const hasMeta =
+    u !== undefined ||
+    s.gitBranch !== undefined ||
+    s.startedAt !== undefined ||
+    (s.models !== undefined && s.models.length > 0);
   if (!hasMeta) return null;
   const cacheWrite = u ? u.cacheWrite5m + u.cacheWrite1h : 0;
   return (

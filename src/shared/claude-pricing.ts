@@ -39,11 +39,46 @@ export const BUNDLED_PRICES: PriceTable = {
   schemaVersion: 1,
   updated: '2026-06-12',
   models: [
-    { prefix: 'claude-fable-', input: 10, output: 50, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
-    { prefix: 'claude-mythos-', input: 10, output: 50, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
-    { prefix: 'claude-opus-4-', input: 5, output: 25, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
-    { prefix: 'claude-sonnet-4-', input: 3, output: 15, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 },
-    { prefix: 'claude-haiku-4-', input: 1, output: 5, cacheReadMult: 0.1, cacheWrite5mMult: 1.25, cacheWrite1hMult: 2 }
+    {
+      prefix: 'claude-fable-',
+      input: 10,
+      output: 50,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-mythos-',
+      input: 10,
+      output: 50,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-opus-4-',
+      input: 5,
+      output: 25,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-sonnet-4-',
+      input: 3,
+      output: 15,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    },
+    {
+      prefix: 'claude-haiku-4-',
+      input: 1,
+      output: 5,
+      cacheReadMult: 0.1,
+      cacheWrite5mMult: 1.25,
+      cacheWrite1hMult: 2
+    }
   ]
 };
 
