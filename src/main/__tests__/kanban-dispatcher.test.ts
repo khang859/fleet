@@ -419,6 +419,7 @@ function fakeIntegration(over: Partial<IntegrationOps> = {}): IntegrationOps {
     createFeaturePr: () => ({ ok: true, url: 'https://x/pull/1', number: 1 }),
     pushIntegrationBranch: () => ({ ok: true }),
     markPrReady: () => ({ ok: true }),
+    headSha: () => 'sha',
     ...over
   };
 }

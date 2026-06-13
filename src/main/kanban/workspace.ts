@@ -334,6 +334,38 @@ export function reviewStat(input: {
   }
 }
 
+/** Current HEAD sha of a worktree, or null on error. */
+export function headSha(workspacePath: string): string | null {
+  try {
+    return execFileSync('git', ['-C', workspacePath, 'rev-parse', 'HEAD'], {
+      encoding: 'utf8'
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+/** Diff of a worktree branch vs its base, byte-capped with a truncation marker; '' on error. */
+export function worktreeDiff(input: {
+  workspacePath: string;
+  baseBranch: string | null;
+  maxBytes?: number;
+}): string {
+  if (!input.baseBranch) return '';
+  const cap = input.maxBytes ?? 60000;
+  try {
+    const out = execFileSync(
+      'git',
+      ['-C', input.workspacePath, 'diff', `${input.baseBranch}...HEAD`],
+      { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }
+    );
+    if (out.length <= cap) return out;
+    return out.slice(0, cap) + '\n… (diff truncated)';
+  } catch {
+    return '';
+  }
+}
+
 /** Path of the worktree that currently has `branch` checked out, or null. */
 function findBranchWorktree(repoPath: string, branch: string): string | null {
   let out: string;

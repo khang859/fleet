@@ -8,6 +8,7 @@ import {
   checkMergeConflicts,
   createFeaturePr,
   finalizeWorktree,
+  headSha,
   isBranchMerged,
   markPrReady,
   mergeWorktreeToBase,
@@ -62,6 +63,7 @@ export interface IntegrationOps {
   createFeaturePr: typeof createFeaturePr;
   pushIntegrationBranch: typeof pushIntegrationBranch;
   markPrReady: typeof markPrReady;
+  headSha: typeof headSha;
 }
 
 const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
@@ -73,7 +75,8 @@ const DEFAULT_INTEGRATION_OPS: IntegrationOps = {
   isBranchMerged,
   createFeaturePr,
   pushIntegrationBranch,
-  markPrReady
+  markPrReady,
+  headSha
 };
 
 export interface SpawnWorkerArgs {
