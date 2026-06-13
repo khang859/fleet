@@ -4,7 +4,8 @@ import { Folder, FolderOpen } from 'lucide-react';
 import { fuzzyMatch } from '../../../lib/commands';
 import { getFileIcon } from '../../../lib/file-icons';
 import { quotePathForShell, bracketedPaste } from '../../../lib/shell-utils';
-import { useWorkspaceStore } from '../../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
+import { pathForPaneContext } from '../../../../../shared/path-platform';
 import type { DirEntry } from '../../../../../shared/ipc-api';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
@@ -124,7 +125,8 @@ export function createBrowseMode(
     onAltSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string' || !activePaneId) return;
-      const quoted = quotePathForShell(filePath, window.fleet.platform);
+      const ctx = getPaneContextById(activePaneId);
+      const quoted = quotePathForShell(pathForPaneContext(filePath, ctx), ctx);
       window.fleet.pty.input({
         paneId: activePaneId,
         data: bracketedPaste(quoted + ' ')

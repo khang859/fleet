@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { TerminalBackground } from '../../../shared/types';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 import { buildQueue } from '../lib/slideshow-order';
 
 export type SlideshowFrame = {
@@ -19,7 +20,7 @@ async function preloadImage(path: string): Promise<void> {
     const img = new Image();
     img.onload = () => resolve();
     img.onerror = () => resolve();
-    img.src = encodeURI(`fleet-image://${path}`);
+    img.src = toFleetImageUrl(path);
   });
 }
 

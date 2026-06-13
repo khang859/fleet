@@ -33,6 +33,8 @@ import { FleetBridgeServer } from './fleet-bridge';
 import { WorktreeService } from './worktree-service';
 import { enrichProcessEnv } from './shell-env';
 import { WslService } from './wsl-service';
+import { parseFleetUrl } from './protocol-paths';
+import { toWslUncPath } from '../shared/path-platform';
 import { ShellProfileRegistry, defaultFileExists } from './shell-profiles';
 import { resolveBootstrapWorkspacePath } from './workspace-path';
 import type { HostContextPayload } from '../shared/ipc-api';
@@ -289,19 +291,74 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 void app.whenReady().then(async () => {
+  // Resolve a fleet-image/fleet-pdf request URL to a Windows-accessible absolute
+  // path. The renderer's canonical builder puts the path in the URL path position
+  // (empty authority); legacy call sites still emit backslash shapes that make
+  // `new URL` throw, so parseFleetUrl parses by hand. A bare POSIX path that
+  // arrives without a distro is bridged to UNC using the default distro.
+  const resolveFleetPath = async (rawUrl: string, scheme: string): Promise<string | null> => {
+    const parsed = parseFleetUrl(rawUrl, scheme);
+    if (!parsed) return null;
+    if (parsed.kind === 'win') return parsed.path;
+    const distros = await wslService.listDistros();
+    const distro = distros.find((d) => d.isDefault)?.name ?? distros[0]?.name;
+    return distro ? toWslUncPath(distro, parsed.posixPath) : null;
+  };
+
+  const isUncPath = (p: string): boolean => p.startsWith('\\\\') || p.startsWith('//');
+
+  const IMAGE_MIME: Record<string, string> = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    svg: 'image/svg+xml',
+    bmp: 'image/bmp',
+    avif: 'image/avif',
+    ico: 'image/x-icon'
+  };
+
   protocol.handle('fleet-image', async (request) => {
-    const filePath = decodeURIComponent(new URL(request.url).pathname);
-    return net.fetch(`file://${filePath}`);
+    const filePath = await resolveFleetPath(request.url, 'fleet-image');
+    if (!filePath) return new Response('Bad Request', { status: 400 });
+    // Node `fs` reads the WSL 9P UNC share natively; net.fetch is unreliable for
+    // UNC, so readFile+Response is the primary path there. Plain drive/POSIX
+    // paths keep the streaming net.fetch path.
+    if (isUncPath(filePath)) {
+      try {
+        const data = await readFile(filePath);
+        const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+        return new Response(new Uint8Array(data), {
+          headers: { 'Content-Type': IMAGE_MIME[ext] ?? 'application/octet-stream' }
+        });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
+    }
+    return net.fetch(pathToFileURL(filePath).toString());
   });
 
   // Serve local PDFs to the bundled pdf.js viewer (fetch works through custom
   // schemes even though Chromium's native PDF viewer does not on Electron 39).
   protocol.handle('fleet-pdf', async (request) => {
-    // resolve() normalizes any `..` segments so the .pdf suffix check below is
-    // a meaningful guard, not bypassable via traversal.
-    const filePath = resolve(fileURLToPath(`file://${new URL(request.url).pathname}`));
+    const resolved = await resolveFleetPath(request.url, 'fleet-pdf');
+    if (!resolved) return new Response('Bad Request', { status: 400 });
+    // resolve() normalizes any `..` segments so the .pdf suffix check is a
+    // meaningful guard, not bypassable via traversal.
+    const filePath = resolve(resolved);
     if (!filePath.toLowerCase().endsWith('.pdf')) {
       return new Response('Forbidden', { status: 403 });
+    }
+    if (isUncPath(filePath)) {
+      try {
+        const data = await readFile(filePath);
+        return new Response(new Uint8Array(data), {
+          headers: { 'Content-Type': 'application/pdf' }
+        });
+      } catch {
+        return new Response('Not Found', { status: 404 });
+      }
     }
     return net.fetch(pathToFileURL(filePath).toString());
   });

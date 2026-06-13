@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { TerminalBackgroundSlideshow } from '../../../../shared/types';
+import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 export function BackgroundThumbnails(props: {
   slideshow: TerminalBackgroundSlideshow;
@@ -80,7 +81,7 @@ function ThumbnailGrid(props: {
             className="relative aspect-[16/10] rounded overflow-hidden border border-fleet-border-strong"
           >
             <img
-              src={encodeURI(`fleet-image://${path}`)}
+              src={toFleetImageUrl(path)}
               className="w-full h-full object-cover"
               loading="lazy"
               draggable={false}

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from 'react';
 import type { ImageGenerationMeta } from '../../../../shared/types';
+import { toFleetImageUrl } from '../../../../shared/path-platform';
 
 type ImageGridProps = {
   generations: ImageGenerationMeta[];
@@ -13,7 +14,7 @@ function Thumbnail({ generation }: { generation: ImageGenerationMeta }): React.J
   useEffect(() => {
     if (!firstImage?.filename) return;
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${generation.id}/${firstImage.filename}`;
-    setSrc(`fleet-image://${filePath}`);
+    setSrc(toFleetImageUrl(filePath));
   }, [generation.id, firstImage?.filename]);
 
   if (src) return <img src={src} alt={generation.prompt} className="w-full h-full object-cover" />;

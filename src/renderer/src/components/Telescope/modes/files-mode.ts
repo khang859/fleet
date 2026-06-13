@@ -3,7 +3,8 @@ import { File } from 'lucide-react';
 import { fuzzyMatch } from '../../../lib/commands';
 import { getFileIcon } from '../../../lib/file-icons';
 import { quotePathForShell, bracketedPaste } from '../../../lib/shell-utils';
-import { useWorkspaceStore } from '../../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
+import { pathForPaneContext } from '../../../../../shared/path-platform';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
 type FileEntry = {
@@ -78,7 +79,8 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
     onAltSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string' || !activePaneId) return;
-      const quoted = quotePathForShell(filePath, window.fleet.platform);
+      const ctx = getPaneContextById(activePaneId);
+      const quoted = quotePathForShell(pathForPaneContext(filePath, ctx), ctx);
       window.fleet.pty.input({
         paneId: activePaneId,
         data: bracketedPaste(quoted + ' ')

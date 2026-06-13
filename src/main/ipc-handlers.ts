@@ -63,6 +63,7 @@ import type { PiAuthInspector } from './pi-auth-inspector';
 import type { PiEnvInjectionManager } from './pi-env-injection-manager';
 import type { ShellProfileRegistry } from './shell-profiles';
 import type { WslService } from './wsl-service';
+import type { PathContext } from '../shared/shell-profiles';
 import type { BedrockWritePatch, BedrockSecretField } from '../shared/pi-env-injection-types';
 import type { PiProvider, PiSettings } from '../shared/pi-config-types';
 import type { FleetSettingsPatch } from '../shared/types';
@@ -582,7 +583,11 @@ export function registerIpcHandlers(
 
   ipcMain.handle(IPC_CHANNELS.FILE_GREP, async (_event, req: FileGrepRequest) => grepFiles(req));
 
-  ipcMain.handle(IPC_CHANNELS.FILE_RECENT_IMAGES, async () => searchRecentImages());
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_RECENT_IMAGES,
+    async (_event, req?: { pathContext?: PathContext }) =>
+      searchRecentImages(wslService, req?.pathContext)
+  );
 
   // Clipboard history
   ipcMain.handle(IPC_CHANNELS.CLIPBOARD_HISTORY, () => ({

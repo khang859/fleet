@@ -3,11 +3,17 @@ import { quotePathForShell } from '../shell-utils';
 
 describe('quotePathForShell', () => {
   it('single-quotes POSIX paths', () => {
-    expect(quotePathForShell('/home/user/file.txt', 'darwin')).toBe("'/home/user/file.txt'");
+    expect(quotePathForShell('/home/user/file.txt', 'posix')).toBe("'/home/user/file.txt'");
+  });
+
+  it('single-quotes WSL pane paths (POSIX shell on Windows)', () => {
+    expect(quotePathForShell('/home/user/file.txt', { kind: 'wsl', distro: 'Ubuntu' })).toBe(
+      "'/home/user/file.txt'"
+    );
   });
 
   it('escapes single quotes in POSIX paths', () => {
-    expect(quotePathForShell("/home/user/it's a file.txt", 'linux')).toBe(
+    expect(quotePathForShell("/home/user/it's a file.txt", 'posix')).toBe(
       "'/home/user/it'\\''s a file.txt'"
     );
   });
