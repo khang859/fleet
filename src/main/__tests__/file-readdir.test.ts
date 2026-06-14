@@ -49,4 +49,16 @@ describe('sortAndMapDirEntries', () => {
   it('returns empty array for empty input', () => {
     expect(sortAndMapDirEntries([], '/any/path')).toEqual([]);
   });
+
+  it('joins with posix separators for a WSL context (OS-independent)', () => {
+    const entries = [makeDirent('src', true)];
+    const wsl = { kind: 'wsl', distro: 'Ubuntu-24.04' } as const;
+    const result = sortAndMapDirEntries(entries, '/home/khang/repo', wsl);
+    // posix join is platform-independent, so this holds on Windows CI too.
+    expect(result[0]).toEqual({
+      name: 'src',
+      path: '/home/khang/repo/src',
+      isDirectory: true
+    });
+  });
 });

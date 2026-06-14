@@ -1,5 +1,5 @@
 import type { Workspace, NotificationEvent, ActivityState } from './types';
-import type { ShellProfile, WslDistroState } from './shell-profiles';
+import type { ShellProfile, WslDistroState, PathContext } from './shell-profiles';
 import type { TranscriptMessage } from './sessions';
 import type {
   UpdateTaskFields,
@@ -167,6 +167,8 @@ export type FileSearchRequest = {
   query: string;
   scope?: string;
   limit?: number;
+  /** Pane coordinate system; WSL panes run locate/find inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type FileSearchResult = {
@@ -186,6 +188,8 @@ export type FileGrepRequest = {
   query: string;
   cwd: string;
   limit?: number;
+  /** Pane coordinate system; WSL panes run rg/grep inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type FileGrepResult = {
@@ -237,6 +241,8 @@ export interface LogEntry {
 
 export type WorktreeCreateRequest = {
   repoPath: string;
+  /** Pane context; for a WSL pane the worktree is created inside the distro. */
+  pathContext?: PathContext;
 };
 
 export type WorktreeCreateResponse = {
@@ -246,6 +252,8 @@ export type WorktreeCreateResponse = {
 
 export type WorktreeRemoveRequest = {
   worktreePath: string;
+  /** Pane context the worktree belongs to; routes git into the distro for WSL. */
+  pathContext?: PathContext;
 };
 
 export type ShellProfilesListResponse = {

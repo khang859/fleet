@@ -4,6 +4,7 @@ import { X, Loader2, GitBranch, AlertCircle } from 'lucide-react';
 import { DiffView, DiffModeEnum, DiffFile, type DiffHighlighter } from '@git-diff-view/react';
 import '@git-diff-view/react/styles/diff-view.css';
 import type { GitStatusPayload, GitFileStatus } from '../../../shared/ipc-api';
+import type { PathContext } from '../../../shared/shell-profiles';
 import { getLanguageForPath } from '../../../shared/languages';
 import { Overlay } from './Overlay';
 
@@ -29,13 +30,16 @@ type GitChangesModalProps = {
   cwd: string | undefined;
   /** When set, show committed changes against this ref (base...HEAD) instead of the working tree. */
   compareRef?: string | null;
+  /** Pane coordinate system for `cwd`; WSL panes run git inside the distro. */
+  pathContext?: PathContext;
 };
 
 export function GitChangesModal({
   isOpen,
   onClose,
   cwd,
-  compareRef
+  compareRef,
+  pathContext
 }: GitChangesModalProps): React.JSX.Element | null {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<GitStatusPayload | null>(null);
@@ -63,7 +67,7 @@ export function GitChangesModal({
     setFilterText('');
     setActiveFileIndex(0);
     window.fleet.git
-      .getStatus(cwd, compareRef ?? undefined)
+      .getStatus(cwd, compareRef ?? undefined, pathContext)
       .then((result) => {
         setData(result);
         setLoading(false);
@@ -73,7 +77,7 @@ export function GitChangesModal({
         setData({ isRepo: true, branch: '', files: [], diff: '', error: String(err) });
         setLoading(false);
       });
-  }, [isOpen, cwd, compareRef]);
+  }, [isOpen, cwd, compareRef, pathContext]);
 
   // Filter files
   const filteredFiles = useMemo(() => {

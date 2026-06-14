@@ -1,13 +1,30 @@
 import { useRef, useState, useEffect } from 'react';
 import { quotePathForShell } from '../lib/shell-utils';
+import { getPaneContextById } from '../store/workspace-store';
+import { pathForPaneContext } from '../../../shared/path-platform';
+import type { PathContext } from '../../../shared/shell-profiles';
 
-function formatDroppedFiles(files: FileList, platform: string): string {
-  const paths: string[] = [];
-  for (let i = 0; i < files.length; i++) {
-    const filePath = window.fleet.utils.getFilePath(files[i]);
-    paths.push(quotePathForShell(filePath, platform));
+/**
+ * getFilePath returns a Windows path. For a WSL pane translate it to POSIX via
+ * wslpath (cached, honours a custom automount.root); the pure heuristic is the
+ * fallback if the subprocess fails. win32/posix panes pass through.
+ */
+async function pathForContext(winPath: string, ctx: PathContext): Promise<string> {
+  if (typeof ctx === 'object' && ctx.kind === 'wsl') {
+    try {
+      return await window.fleet.wsl.toWslPath(ctx.distro, winPath);
+    } catch {
+      return pathForPaneContext(winPath, ctx);
+    }
   }
-  return paths.join(' ') + ' ';
+  return pathForPaneContext(winPath, ctx);
+}
+
+async function formatDroppedPaths(winPaths: string[], ctx: PathContext): Promise<string> {
+  const quoted = await Promise.all(
+    winPaths.map(async (winPath) => quotePathForShell(await pathForContext(winPath, ctx), ctx))
+  );
+  return quoted.join(' ') + ' ';
 }
 
 type TerminalDropHandlers = {
@@ -78,10 +95,19 @@ export function useTerminalDrop(
       dragCounterRef.current = 0;
       setIsDragOver(false);
 
-      if (e.dataTransfer.files.length > 0) {
-        const formatted = formatDroppedFiles(e.dataTransfer.files, window.fleet.platform);
-        window.fleet.pty.input({ paneId, data: formatted });
-        onAfterDrop?.();
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        // Capture Windows paths synchronously before any await (the synthetic
+        // event and its FileList are pooled/reused after the handler returns).
+        const winPaths: string[] = [];
+        for (let i = 0; i < files.length; i++) {
+          winPaths.push(window.fleet.utils.getFilePath(files[i]));
+        }
+        const ctx = getPaneContextById(paneId);
+        void formatDroppedPaths(winPaths, ctx).then((formatted) => {
+          window.fleet.pty.input({ paneId, data: formatted });
+          onAfterDrop?.();
+        });
       }
     }
   };

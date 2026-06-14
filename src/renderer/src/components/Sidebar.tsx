@@ -16,7 +16,13 @@ import { TabItem } from './TabItem';
 import { createLogger } from '../logger';
 
 const logDnd = createLogger('sidebar:dnd');
-import { useWorkspaceStore, collectPaneIds, collectPaneLeafs } from '../store/workspace-store';
+import {
+  useWorkspaceStore,
+  collectPaneIds,
+  collectPaneLeafs,
+  getPaneContextById
+} from '../store/workspace-store';
+import type { PathContext } from '../../../shared/shell-profiles';
 import { useNotificationStore } from '../store/notification-store';
 import { useCwdStore } from '../store/cwd-store';
 import { useKanbanStore } from '../store/kanban-store';
@@ -35,6 +41,7 @@ import { EnvSyncConflictDialog } from './env-sync/EnvSyncConflictDialog';
 import { SessionsTabCard } from './sessions/SessionsTabCard';
 import { useSettingsStore } from '../store/settings-store';
 import { TOGGLEABLE_TOOLS } from '../../../shared/tools';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 
 function getFirstDirtyPaneId(tab: Tab): string | null {
   function check(node: Tab['splitRoot']): string | null {
@@ -224,7 +231,7 @@ function ImagesTabCard({
       return;
     }
     const filePath = `${window.fleet.homeDir}/.fleet/images/generations/${lastCompleted.id}/${thumbFile.filename}`;
-    setThumbSrc(`fleet-image://${filePath}`);
+    setThumbSrc(toFleetImageUrl(filePath));
   }, [lastCompleted?.id, thumbFile?.filename]);
 
   const inProgress = generations.filter(
@@ -676,9 +683,9 @@ export function Sidebar({
 
   // --- Worktree creation ---
   const handleCreateWorktree = useCallback(
-    async (tabId: string, cwd: string) => {
+    async (tabId: string, cwd: string, pathContext?: PathContext) => {
       try {
-        const result = await window.fleet.worktree.create({ repoPath: cwd });
+        const result = await window.fleet.worktree.create({ repoPath: cwd, pathContext });
         createWorktreeGroup(tabId, result.worktreePath, result.branchName, cwd);
       } catch (err) {
         console.error('Failed to create worktree:', err);
@@ -710,7 +717,7 @@ export function Sidebar({
         const firstPaneId = collectPaneIds(tab.splitRoot)[0];
         const cwd = (firstPaneId ? liveCwds.get(firstPaneId) : undefined) ?? tab.cwd;
         try {
-          const result = await window.fleet.git.isRepo(cwd);
+          const result = await window.fleet.git.isRepo(cwd, getPaneContextById(firstPaneId));
           if (result.isRepo) newSet.add(tab.id);
         } catch {
           // ignore
@@ -1151,7 +1158,7 @@ export function Sidebar({
         </div>
         <div className="flex items-center gap-1" style={{ WebkitAppRegion: 'no-drag' }}>
           {/* Env sync badge for active tab's repo */}
-          <EnvSyncBadge cwd={activeCwd} />
+          <EnvSyncBadge cwd={activeCwd} pathContext={getPaneContextById(activeTabFirstPaneId)} />
           {/* Dirty state indicator */}
           {isDirty && (
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Unsaved changes" />
@@ -1240,7 +1247,7 @@ export function Sidebar({
                       const anyTab = groupTabs[0];
                       const firstPane = collectPaneIds(anyTab.splitRoot)[0];
                       const cwd = (firstPane ? liveCwds.get(firstPane) : undefined) ?? anyTab.cwd;
-                      void handleCreateWorktree(anyTab.id, cwd);
+                      void handleCreateWorktree(anyTab.id, cwd, getPaneContextById(firstPane));
                     }}
                     onDragStart={() => handleDragStart(firstTabIdx, 'group')}
                     onDragOver={(e) => handleDragOver(e, firstTabIdx, true)}
@@ -1335,7 +1342,11 @@ export function Sidebar({
                       ? () => {
                           const firstPane = collectPaneIds(tab.splitRoot)[0];
                           const liveCwd = firstPane ? liveCwds.get(firstPane) : undefined;
-                          void handleCreateWorktree(tab.id, liveCwd ?? tab.cwd);
+                          void handleCreateWorktree(
+                            tab.id,
+                            liveCwd ?? tab.cwd,
+                            getPaneContextById(firstPane)
+                          );
                         }
                       : undefined
                   }

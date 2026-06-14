@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import type { TerminalBackground } from '../../../shared/types';
 import type { SlideshowFrame } from '../hooks/use-slideshow';
+import { toFleetImageUrl } from '../../../shared/path-platform';
 
 const FIT_STYLES: Record<TerminalBackground['fit'], { size: string; repeat: string }> = {
   cover: { size: 'cover', repeat: 'no-repeat' },
@@ -61,8 +62,8 @@ export function BackgroundLayer({
   const layerStyle = (src: string): CSSProperties => ({
     // Over-extend when blurred so the blur's soft edge doesn't reveal the pane border.
     inset: background.blur > 0 ? -background.blur * 2 : 0,
-    // encodeURI so paths with spaces/special chars survive the CSS url() parser.
-    backgroundImage: `url("${encodeURI(`fleet-image://${src}`)}")`,
+    // toFleetImageUrl percent-encodes so paths with spaces/special chars survive the CSS url() parser.
+    backgroundImage: `url("${toFleetImageUrl(src)}")`,
     backgroundSize: FIT_STYLES[background.fit].size,
     backgroundRepeat: FIT_STYLES[background.fit].repeat,
     backgroundPosition: 'center',

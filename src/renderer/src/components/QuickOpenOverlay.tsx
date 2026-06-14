@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Overlay } from './Overlay';
-import { useWorkspaceStore } from '../store/workspace-store';
+import { useWorkspaceStore, getActivePaneContext } from '../store/workspace-store';
 import { fuzzyMatch } from '../lib/commands';
 import { getFileIcon } from '../lib/file-icons';
 
@@ -61,7 +61,7 @@ export function QuickOpenOverlay({
     if (!isOpen || !rootDir) return;
     setIsLoading(true);
     setAllFiles([]);
-    void window.fleet.file.list(rootDir).then((result) => {
+    void window.fleet.file.list(rootDir, getActivePaneContext().pathContext).then((result) => {
       if (result.success) {
         setAllFiles(result.files);
       }

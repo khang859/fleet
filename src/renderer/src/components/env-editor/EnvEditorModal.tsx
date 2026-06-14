@@ -18,6 +18,7 @@ import { FileNavigator } from './FileNavigator';
 import { EnvForm } from './EnvForm';
 import { EnvRawEditor } from './EnvRawEditor';
 import type { EnvFileEntry } from '../../../../shared/env-editor-types';
+import type { PathContext } from '../../../../shared/shell-profiles';
 import {
   parseEnvFile,
   serializeEnvFile,
@@ -30,11 +31,13 @@ const RAW_ONLY_BYTES = 256 * 1024;
 export function EnvEditorModal({
   isOpen,
   onClose,
-  cwd
+  cwd,
+  pathContext
 }: {
   isOpen: boolean;
   onClose: () => void;
   cwd: string | undefined;
+  pathContext?: PathContext;
 }): React.JSX.Element | null {
   const panelRef = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<string | undefined>(cwd);
@@ -63,9 +66,9 @@ export function EnvEditorModal({
       setFiles([]);
       return;
     }
-    const list = await window.fleet.envEditor.list(root);
+    const list = await window.fleet.envEditor.list(root, pathContext);
     setFiles(list);
-  }, [root]);
+  }, [root, pathContext]);
 
   useEffect(() => {
     if (isOpen) {
@@ -221,8 +224,8 @@ export function EnvEditorModal({
       setNewFileError(null);
       try {
         const dir = group === '·root' ? root : `${root}/${group}`;
-        const { absPath } = await window.fleet.envEditor.create(dir, name);
-        const list = await window.fleet.envEditor.list(root);
+        const { absPath } = await window.fleet.envEditor.create(dir, name, pathContext);
+        const list = await window.fleet.envEditor.list(root, pathContext);
         setFiles(list);
         setNewFileOpen(false);
         const created = list.find((f) => f.absPath === absPath) ?? null;
@@ -231,7 +234,7 @@ export function EnvEditorModal({
         setNewFileError(e instanceof Error ? e.message : 'Could not create file');
       }
     },
-    [root]
+    [root, pathContext]
   );
 
   const renameFile = useCallback(
@@ -243,7 +246,7 @@ export function EnvEditorModal({
       }
       try {
         const { absPath } = await window.fleet.envEditor.rename(file.absPath, newName);
-        const list = await window.fleet.envEditor.list(root);
+        const list = await window.fleet.envEditor.list(root, pathContext);
         setFiles(list);
         if (selected?.absPath === file.absPath) {
           setSelected(list.find((f) => f.absPath === absPath) ?? null);
@@ -252,7 +255,7 @@ export function EnvEditorModal({
         showToast(e instanceof Error ? e.message : 'Could not rename file');
       }
     },
-    [root, selected, showToast]
+    [root, selected, showToast, pathContext]
   );
 
   const deleteFile = useCallback(

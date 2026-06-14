@@ -3,7 +3,8 @@ import { File } from 'lucide-react';
 import { fuzzyMatch } from '../../../lib/commands';
 import { getFileIcon } from '../../../lib/file-icons';
 import { quotePathForShell, bracketedPaste } from '../../../lib/shell-utils';
-import { useWorkspaceStore } from '../../../store/workspace-store';
+import { useWorkspaceStore, getPaneContextById } from '../../../store/workspace-store';
+import { pathForPaneContext } from '../../../../../shared/path-platform';
 import type { TelescopeMode, TelescopeItem } from '../types';
 
 type FileEntry = {
@@ -26,9 +27,10 @@ function makeItem(file: FileEntry): TelescopeItem {
 }
 
 export function createFilesMode(cwd: string, activePaneId: string | null): TelescopeMode {
+  const ctx = getPaneContextById(activePaneId);
   // Pre-load file listing in the background
   if (!fileCache.has(cwd)) {
-    void window.fleet.file.list(cwd).then((result) => {
+    void window.fleet.file.list(cwd, ctx).then((result) => {
       fileCache.set(cwd, result.files);
     });
   }
@@ -70,7 +72,7 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
       // Ensure cache is populated (may have been set by pre-load)
       let files = fileCache.get(cwd);
       if (!files) {
-        const result = await window.fleet.file.list(cwd);
+        const result = await window.fleet.file.list(cwd, ctx);
         fileCache.set(cwd, result.files);
         files = result.files;
       }
@@ -90,7 +92,7 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
     onAltSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string' || !activePaneId) return;
-      const quoted = quotePathForShell(filePath, window.fleet.platform);
+      const quoted = quotePathForShell(pathForPaneContext(filePath, ctx), ctx);
       window.fleet.pty.input({
         paneId: activePaneId,
         data: bracketedPaste(quoted + ' ')
