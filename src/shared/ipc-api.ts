@@ -14,6 +14,7 @@ import type {
   ConflictState,
   VerifyCommand
 } from './kanban-types';
+import type { RuneAssistMode, RuneAssistSelection } from './rune-assist';
 
 export type PtyCreateRequest = {
   paneId: string;
@@ -426,6 +427,44 @@ export type PmChatStatusPayload = {
 export type PmChatTranscriptPayload = {
   boardId: string;
   messages: TranscriptMessage[];
+};
+
+// --- Rune Quick-Assist ---
+export type RuneAssistSendRequest = {
+  cwd: string;
+  paneId: string;
+  text: string;
+  mode: RuneAssistMode;
+  contextFile?: string;
+  selection?: RuneAssistSelection;
+};
+
+export type RuneAssistStopRequest = { cwd: string; paneId: string };
+export type RuneAssistResetRequest = { cwd: string };
+
+export type RuneAssistState = {
+  cwd: string;
+  inFlight: boolean;
+  error: string | null;
+  sessionId: string | null;
+};
+
+export type RuneAssistStatusPayload = {
+  cwd: string;
+  paneId: string;
+  phase: 'idle' | 'working' | 'error';
+  step?: string;
+  error?: string;
+};
+
+export type RuneAssistResultPayload = {
+  cwd: string;
+  paneId: string;
+  mode: RuneAssistMode;
+  /** Ask: the assistant's answer text. */
+  answer?: string;
+  /** Edit: files rune wrote (best-effort), for reloading other open panes. */
+  changedFiles?: string[];
 };
 
 export type {
