@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.71.1
+
+- **Fixed opening files from WSL panes** — opening a file (via Telescope, file browser, grep, or a markdown link) from a **WSL (this machine)** pane no longer fails with `ENOENT … stat 'C:\home\…'`. The file's WSL distro is now remembered on the viewer pane and its path is bridged to a `\\wsl.localhost\…` UNC path before being read, fixing the markdown, file-editor, PDF, and image viewers. No effect on macOS, Linux, or native-Windows files.
+
 ## v2.71.0
 
 - **WSL repos run inside the distro** — for boards and panes backed by a `\\wsl.localhost\…` repo, Fleet now executes git/grep/find/ls-files, env-editor/env-sync, worktree management, and the full **kanban autopilot** pipeline (worker, verify, and review agents) *inside* the WSL distro instead of over the UNC bridge, and translates WSL↔Windows paths for file serving, screenshots, and paste. This makes autopilot, file tooling, and worktrees behave correctly for repos that live in WSL. **Note:** autopilot agents require **mirrored** WSL networking (`networkingMode=mirrored` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`); in the default NAT mode the run is refused with an actionable message, because a distro can't reach Fleet's board server on the Windows host over NAT.
