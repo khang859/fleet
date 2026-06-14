@@ -10,6 +10,7 @@ import {
   lastAssistantText,
   extractChangedFiles,
   changedLineRange,
+  clampOverlayPosition,
   ASK_PREAMBLE
 } from '../rune-assist';
 import type { TranscriptMessage } from '../sessions';
@@ -185,5 +186,45 @@ describe('changedLineRange', () => {
   });
   it('handles leading deletions', () => {
     expect(changedLineRange('a\nb\nc', 'b\nc')).toEqual({ fromLine: 1, toLine: 1 });
+  });
+});
+
+describe('clampOverlayPosition', () => {
+  const base = { layerWidth: 800, layerHeight: 600, boxWidth: 320, boxHeight: 120, pad: 8 };
+
+  it('leaves an in-bounds position untouched', () => {
+    expect(clampOverlayPosition({ ...base, rawTop: 100, rawLeft: 100 })).toEqual({
+      top: 100,
+      left: 100
+    });
+  });
+
+  it('clamps a position past the right/bottom edge back inside', () => {
+    // maxLeft = 800 - 320 - 8 = 472; maxTop = 600 - 120 - 8 = 472
+    expect(clampOverlayPosition({ ...base, rawTop: 5000, rawLeft: 5000 })).toEqual({
+      top: 472,
+      left: 472
+    });
+  });
+
+  it('clamps a negative position to the padding', () => {
+    expect(clampOverlayPosition({ ...base, rawTop: -50, rawLeft: -50 })).toEqual({
+      top: 8,
+      left: 8
+    });
+  });
+
+  it('pins to pad when the box is larger than the layer', () => {
+    expect(
+      clampOverlayPosition({
+        rawTop: 300,
+        rawLeft: 300,
+        layerWidth: 100,
+        layerHeight: 100,
+        boxWidth: 320,
+        boxHeight: 120,
+        pad: 8
+      })
+    ).toEqual({ top: 8, left: 8 });
   });
 });

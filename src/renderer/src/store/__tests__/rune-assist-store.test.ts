@@ -69,7 +69,9 @@ describe('rune-assist-store', () => {
       writeContent,
       save: vi.fn().mockResolvedValue(undefined),
       getFilePath: () => 'a.ts',
-      isClean: () => true
+      isClean: () => true,
+      coordsForPos: () => null,
+      onScroll: () => () => {}
     });
     const store = useRuneAssistStore.getState();
     store.openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
@@ -87,10 +89,39 @@ describe('rune-assist-store', () => {
   it('applyResult in edit mode goes idle and marks lastEdited', () => {
     const { openOverlay, applyResult } = useRuneAssistStore.getState();
     openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    // A real edit turn captures a snapshot in send() before applyResult fires.
+    useRuneAssistStore.setState((s) => ({
+      panes: { ...s.panes, p1: { ...s.panes['p1']!, editSnapshot: 'before' } }
+    }));
     applyResult('p1', { cwd: '/repo', paneId: 'p1', mode: 'edit', changedFiles: ['a.ts'] });
     const p = useRuneAssistStore.getState().panes['p1']!;
     expect(p.phase).toBe('idle');
     expect(p.lastEdited).toBe(true);
+  });
+
+  it('applyResult in edit mode without a snapshot (rehydrated) does not arm Revert', () => {
+    const { rehydrate, applyResult } = useRuneAssistStore.getState();
+    rehydrate('p1', { cwd: '/repo', contextFile: 'a.ts', startedAt: 1, step: 'editing…' });
+    applyResult('p1', { cwd: '/repo', paneId: 'p1', mode: 'edit', changedFiles: ['a.ts'] });
+    const p = useRuneAssistStore.getState().panes['p1']!;
+    expect(p.phase).toBe('idle');
+    expect(p.lastEdited).toBe(false);
+  });
+
+  it('rehydrate re-attaches a working pill and does not clobber existing state', () => {
+    const { rehydrate } = useRuneAssistStore.getState();
+    rehydrate('p1', { cwd: '/repo', contextFile: 'a.ts', startedAt: 123, step: 'reading…' });
+    const p = useRuneAssistStore.getState().panes['p1']!;
+    expect(p.phase).toBe('working');
+    expect(p.startedAt).toBe(123);
+    expect(p.step).toBe('reading…');
+    expect(p.open).toBe(false);
+    // Calling again must not reset a pane that already has live state.
+    useRuneAssistStore.setState((s) => ({
+      panes: { ...s.panes, p1: { ...s.panes['p1']!, step: 'live' } }
+    }));
+    rehydrate('p1', { cwd: '/repo', contextFile: 'a.ts', startedAt: 999, step: 'stale' });
+    expect(useRuneAssistStore.getState().panes['p1']!.step).toBe('live');
   });
 
   it('send collapses the overlay so the result affordance can show', async () => {

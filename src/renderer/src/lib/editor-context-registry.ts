@@ -22,6 +22,15 @@ export type EditorHandle = {
   getFilePath: () => string;
   /** True when the buffer matches what's on disk (safe to reload without losing edits). */
   isClean: () => boolean;
+  /**
+   * Screen position of a document offset, relative to the pane wrapper, plus whether the
+   * line is currently within the scroll viewport. Returns null when it can't be computed
+   * (no view, or the offset is outside the rendered range). Used to keep the overlay
+   * anchored to its line as the editor scrolls.
+   */
+  coordsForPos: (pos: number) => { top: number; left: number; visible: boolean } | null;
+  /** Subscribe to editor scroll; returns an unsubscribe fn. */
+  onScroll: (cb: () => void) => () => void;
 };
 
 const registry = new Map<string, EditorHandle>();

@@ -19,7 +19,9 @@ function fakeHandle(): EditorHandle {
     writeContent: async () => {},
     save: async () => {},
     getFilePath: () => 'x',
-    isClean: () => true
+    isClean: () => true,
+    coordsForPos: () => null,
+    onScroll: () => () => {}
   };
 }
 

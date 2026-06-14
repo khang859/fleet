@@ -160,3 +160,31 @@ export function changedLineRange(before: string, after: string): RuneAssistSelec
   const toLine = Math.max(fromLine, Math.min(b.length - bottom, lines));
   return { fromLine, toLine };
 }
+
+export type OverlayClampInput = {
+  /** Desired position of the overlay box's top-left, relative to the layer. */
+  rawTop: number;
+  rawLeft: number;
+  /** Size of the containing layer (the editor pane). */
+  layerWidth: number;
+  layerHeight: number;
+  /** Size of the overlay box being positioned. */
+  boxWidth: number;
+  boxHeight: number;
+  /** Minimum gap to keep between the box and the layer edges. */
+  pad: number;
+};
+
+/**
+ * Clamp an overlay box so it stays fully inside its layer with `pad` breathing room.
+ * When the layer is smaller than the box + padding, the box is pinned at `pad` (top-left)
+ * rather than pushed off the opposite edge.
+ */
+export function clampOverlayPosition(i: OverlayClampInput): { top: number; left: number } {
+  const maxLeft = Math.max(i.pad, i.layerWidth - i.boxWidth - i.pad);
+  const maxTop = Math.max(i.pad, i.layerHeight - i.boxHeight - i.pad);
+  return {
+    top: Math.min(Math.max(i.pad, i.rawTop), maxTop),
+    left: Math.min(Math.max(i.pad, i.rawLeft), maxLeft)
+  };
+}

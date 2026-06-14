@@ -18,6 +18,7 @@ import {
   extractChangedFiles
 } from '../../shared/rune-assist';
 import type { TranscriptMessage } from '../../shared/sessions';
+import type { RuneAssistMode } from '../../shared/rune-assist';
 import type {
   RuneAssistSendRequest,
   RuneAssistState,
@@ -34,10 +35,19 @@ const OUTPUT_CAP = 64 * 1024;
 
 const sessionsFileSchema = z.record(z.string(), z.string());
 
+interface ActiveTurn {
+  paneId: string;
+  mode: RuneAssistMode;
+  startedAt: number;
+  step: string | null;
+}
+
 interface CwdChat {
   sessionId: string | null;
   inFlight: boolean;
   error: string | null;
+  /** Metadata for the turn currently running, so the renderer can rehydrate after a refresh. */
+  activeTurn: ActiveTurn | null;
 }
 
 export interface RuneFileChatServiceOptions {
@@ -105,7 +115,7 @@ export class RuneFileChatService {
           JSON.parse(readFileSync(this.sessionsPath(), 'utf-8'))
         );
         for (const [key, sessionId] of Object.entries(raw)) {
-          this.chats.set(key, { sessionId, inFlight: false, error: null });
+          this.chats.set(key, { sessionId, inFlight: false, error: null, activeTurn: null });
         }
       } catch {
         // first run or unreadable file — start fresh
@@ -113,7 +123,7 @@ export class RuneFileChatService {
     }
     let c = this.chats.get(cwd);
     if (!c) {
-      c = { sessionId: null, inFlight: false, error: null };
+      c = { sessionId: null, inFlight: false, error: null, activeTurn: null };
       this.chats.set(cwd, c);
     }
     return c;
@@ -133,7 +143,18 @@ export class RuneFileChatService {
 
   getState(cwd: string): RuneAssistState {
     const c = this.chat(cwd);
-    return { cwd, inFlight: c.inFlight, error: c.error, sessionId: c.sessionId };
+    return {
+      cwd,
+      inFlight: c.inFlight,
+      error: c.error,
+      sessionId: c.sessionId,
+      activeTurn: c.activeTurn
+    };
+  }
+
+  /** State for the workspace that owns an open file (resolves the file to its repo root). */
+  getStateForFile(filePath: string): RuneAssistState {
+    return this.getState(this.resolveWorkspaceCwd(filePath));
   }
 
   /** Forget the conversation (the rune session file is left untouched). */
@@ -170,6 +191,7 @@ export class RuneFileChatService {
     }
     c.inFlight = true;
     c.error = null;
+    c.activeTurn = { paneId, mode, startedAt: Date.now(), step: 'thinking…' };
     this.opts.emitStatus({ cwd, paneId, phase: 'working', step: 'thinking…' });
 
     const contextLine = contextFile ? buildContextLine(contextFile, selection) : '';
@@ -195,7 +217,9 @@ export class RuneFileChatService {
       const tool = parseLatestToolStep(output);
       if (tool && tool !== lastStep) {
         lastStep = tool;
-        this.opts.emitStatus({ cwd, paneId, phase: 'working', step: describeRuneStep(tool) });
+        const step = describeRuneStep(tool);
+        if (c.activeTurn) c.activeTurn.step = step;
+        this.opts.emitStatus({ cwd, paneId, phase: 'working', step });
       }
     };
     child.stdout.on('data', collect);
@@ -210,6 +234,7 @@ export class RuneFileChatService {
       clearTimeout(timeout);
       c.inFlight = false;
       c.error = error;
+      c.activeTurn = null;
       if (dropSession) {
         // The saved session id failed to resume (likely stale/corrupt). Drop it so the
         // next turn starts a fresh session instead of re-resuming a dead one forever.

@@ -9,6 +9,8 @@ type Phase = 'idle' | 'working' | 'error';
 type PaneAssist = {
   open: boolean;
   anchor: { top: number; left: number } | null;
+  /** Document offset the overlay is anchored to, so it can track the line on scroll. */
+  anchorPos: number | null;
   draft: string;
   phase: Phase;
   step: string | null;
@@ -26,7 +28,12 @@ type PaneAssist = {
   modeOverride: RuneAssistMode | null;
 };
 
-type OpenArgs = { cwd: string; contextFile: string; anchor: { top: number; left: number } };
+type OpenArgs = {
+  cwd: string;
+  contextFile: string;
+  anchor: { top: number; left: number };
+  anchorPos?: number;
+};
 
 type PaneMap = Record<string, PaneAssist | undefined>;
 
@@ -45,14 +52,25 @@ type StoreState = {
     payload: Pick<RuneAssistStatusPayload, 'phase' | 'step' | 'error'>
   ) => void;
   applyResult: (paneId: string, payload: RuneAssistResultPayload) => void;
+  /** After a renderer refresh: re-attach a working pill for a turn still running in main. */
+  rehydrate: (
+    paneId: string,
+    args: { cwd: string; contextFile: string; startedAt: number; step: string | null }
+  ) => void;
   /** Pane permanently closed: cancel any in-flight turn for it and drop its state. */
   disposePane: (paneId: string) => void;
 };
 
-function blank(cwd: string, contextFile: string, anchor: OpenArgs['anchor']): PaneAssist {
+function blank(
+  cwd: string,
+  contextFile: string,
+  anchor: OpenArgs['anchor'],
+  anchorPos: number | null
+): PaneAssist {
   return {
     open: true,
     anchor,
+    anchorPos,
     draft: '',
     phase: 'idle',
     step: null,
@@ -80,9 +98,9 @@ function patch(
 export const useRuneAssistStore = create<StoreState>((set, get) => ({
   panes: {},
 
-  openOverlay: (paneId, { cwd, contextFile, anchor }) =>
+  openOverlay: (paneId, { cwd, contextFile, anchor, anchorPos }) =>
     set((s) => ({
-      panes: { ...s.panes, [paneId]: blank(cwd, contextFile, anchor) }
+      panes: { ...s.panes, [paneId]: blank(cwd, contextFile, anchor, anchorPos ?? null) }
     })),
 
   closeOverlay: (paneId) => set((s) => patch(s, paneId, (p) => ({ ...p, open: false }))),
@@ -201,9 +219,42 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
       }
     }
     set((s) =>
-      patch(s, paneId, (cur) => ({ ...cur, phase: 'idle', step: null, lastEdited: true }))
+      patch(s, paneId, (cur) => ({
+        ...cur,
+        phase: 'idle',
+        step: null,
+        // Only arm Revert when we actually captured a pre-turn snapshot. A turn rehydrated
+        // after a refresh has none, so a Revert button there would be a no-op.
+        lastEdited: cur.editSnapshot != null
+      }))
     );
   },
+
+  rehydrate: (paneId, { cwd, contextFile, startedAt, step }) =>
+    set((s) => {
+      if (s.panes[paneId]) return { panes: s.panes }; // already have live state; don't clobber
+      return {
+        panes: {
+          ...s.panes,
+          [paneId]: {
+            open: false,
+            anchor: null,
+            anchorPos: null,
+            draft: '',
+            phase: 'working',
+            step,
+            error: null,
+            answer: null,
+            editSnapshot: null,
+            lastEdited: false,
+            startedAt,
+            cwd,
+            contextFile,
+            modeOverride: null
+          }
+        }
+      };
+    }),
 
   disposePane: (paneId) => {
     const p = get().panes[paneId];

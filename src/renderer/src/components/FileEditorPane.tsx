@@ -187,7 +187,9 @@ export function FileEditorPane({
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialContentRef = useRef<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const openRuneOverlayRef = useRef<(anchor: { top: number; left: number }) => void>(() => {});
+  const openRuneOverlayRef = useRef<
+    (anchor: { top: number; left: number }, anchorPos: number) => void
+  >(() => {});
   const runeWorkingRef = useRef(false);
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
@@ -199,8 +201,8 @@ export function FileEditorPane({
     const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
     return tab?.cwd ?? '/';
   });
-  openRuneOverlayRef.current = (anchor) =>
-    openOverlay(paneId, { cwd, contextFile: filePath, anchor });
+  openRuneOverlayRef.current = (anchor, anchorPos) =>
+    openOverlay(paneId, { cwd, contextFile: filePath, anchor, anchorPos });
 
   const save = useCallback(async () => {
     if (!viewRef.current) return;
@@ -289,7 +291,7 @@ export function FileEditorPane({
                   coords && host
                     ? { top: coords.bottom - host.top, left: coords.left - host.left }
                     : { top: 8, left: 8 };
-                openRuneOverlayRef.current(anchor);
+                openRuneOverlayRef.current(anchor, sel.head);
                 return true;
               }
             },
@@ -417,6 +419,24 @@ export function FileEditorPane({
         const view = viewRef.current;
         if (!view) return true;
         return view.state.doc.toString() === savedContentRef.current;
+      },
+      coordsForPos: (pos) => {
+        const view = viewRef.current;
+        const host = wrapperRef.current?.getBoundingClientRect();
+        if (!view || !host) return null;
+        const clamped = Math.max(0, Math.min(pos, view.state.doc.length));
+        const c = view.coordsAtPos(clamped);
+        if (!c) return null; // offset scrolled outside the rendered range
+        const scroller = view.scrollDOM.getBoundingClientRect();
+        const visible = c.bottom > scroller.top && c.top < scroller.bottom;
+        return { top: c.bottom - host.top, left: c.left - host.left, visible };
+      },
+      onScroll: (cb) => {
+        const view = viewRef.current;
+        if (!view) return () => {};
+        const el = view.scrollDOM;
+        el.addEventListener('scroll', cb, { passive: true });
+        return () => el.removeEventListener('scroll', cb);
       }
     };
     registerEditorHandle(paneId, handle);
@@ -429,6 +449,28 @@ export function FileEditorPane({
   // Rune IPC events are subscribed once at the app level (see useRuneAssistEvents) and
   // routed into the store by paneId — NOT here, because this pane unmounts on tab switch
   // and would otherwise miss the turn's result/idle event while it's in the background.
+
+  // After a renderer refresh the store is wiped, but a turn may still be running in the main
+  // process for this pane. Re-attach a working pill so its terminal event isn't dropped (the
+  // pre-turn snapshot for Revert isn't recoverable across a reload — reload+idle still work).
+  useEffect(() => {
+    let cancelled = false;
+    void window.fleet.runeAssist.getState({ filePath }).then((state) => {
+      if (cancelled) return;
+      const turn = state.activeTurn;
+      if (turn?.paneId === paneId) {
+        useRuneAssistStore.getState().rehydrate(paneId, {
+          cwd: state.cwd,
+          contextFile: filePath,
+          startedAt: turn.startedAt,
+          step: turn.step
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [paneId, filePath]);
 
   // Cleanup dirty state on unmount
   useEffect(() => {

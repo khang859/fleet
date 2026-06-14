@@ -5,6 +5,7 @@ import type {
   RuneAssistSendRequest,
   RuneAssistStopRequest,
   RuneAssistResetRequest,
+  RuneAssistStateRequest,
   RuneAssistState
 } from '../../shared/ipc-api';
 
@@ -20,6 +21,7 @@ export function registerRuneAssistIpc(service: RuneFileChatService): void {
   });
   ipcMain.handle(
     IPC_CHANNELS.RUNE_ASSIST_STATE,
-    (_e, cwd: string): RuneAssistState => service.getState(cwd)
+    (_e, req: RuneAssistStateRequest): RuneAssistState =>
+      req.filePath ? service.getStateForFile(req.filePath) : service.getState(req.cwd ?? '/')
   );
 }

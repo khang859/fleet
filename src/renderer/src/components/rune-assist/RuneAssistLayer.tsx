@@ -1,6 +1,7 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useRuneAssistStore } from '../../store/rune-assist-store';
-import { detectIntent } from '../../../../shared/rune-assist';
+import { getEditorHandle } from '../../lib/editor-context-registry';
+import { clampOverlayPosition, detectIntent } from '../../../../shared/rune-assist';
 import { RuneAssistOverlay } from './RuneAssistOverlay';
 import { RuneWorkingPill } from './RuneWorkingPill';
 import { RuneAnswerPopover } from './RuneAnswerPopover';
@@ -21,6 +22,20 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
   const handleDismiss = useCallback(() => dismissAnswer(paneId), [dismissAnswer, paneId]);
   const handleStop = useCallback(() => void stop(paneId), [stop, paneId]);
 
+  // Revert overwrites the buffer with the pre-rune snapshot AND persists it. If the user
+  // typed manual edits after rune's edit landed, that's silent data loss — so require a
+  // confirm click when the buffer is dirty.
+  const [confirmRevert, setConfirmRevert] = useState(false);
+  const handleRevert = useCallback(() => {
+    const dirty = getEditorHandle(paneId)?.isClean() === false;
+    if (dirty && !confirmRevert) {
+      setConfirmRevert(true);
+      return;
+    }
+    setConfirmRevert(false);
+    void revert(paneId);
+  }, [paneId, revert, confirmRevert]);
+
   const layerRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -28,29 +43,73 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
     top: pane?.anchor?.top ?? 8,
     left: pane?.anchor?.left ?? 8
   });
+  // Hidden (visibility, NOT unmounted) when the anchored line scrolls out of view, so an
+  // in-flight turn survives. Reappears when the line scrolls back. See research: follow,
+  // clamp, hide-when-clipped is the cross-library consensus.
+  const [hidden, setHidden] = useState(false);
+
+  const anchorPos = pane?.anchorPos ?? null;
+  const fallbackTop = pane?.anchor?.top ?? 8;
+  const fallbackLeft = pane?.anchor?.left ?? 8;
 
   useLayoutEffect(() => {
     const layer = layerRef.current;
     const box = boxRef.current;
     if (!layer || !box) return;
-    const pad = 8;
-    const maxLeft = Math.max(pad, layer.clientWidth - box.offsetWidth - pad);
-    const maxTop = Math.max(pad, layer.clientHeight - box.offsetHeight - pad);
-    const rawTop = pane?.anchor?.top ?? 8;
-    const rawLeft = pane?.anchor?.left ?? 8;
-    const next = {
-      top: Math.min(Math.max(pad, rawTop), maxTop),
-      left: Math.min(Math.max(pad, rawLeft), maxLeft)
+
+    const recompute = (): void => {
+      let rawTop = fallbackTop;
+      let rawLeft = fallbackLeft;
+      const handle = getEditorHandle(paneId);
+      if (handle && anchorPos !== null) {
+        const c = handle.coordsForPos(anchorPos);
+        if (!c) {
+          // Line is outside the rendered range — keep position, just hide.
+          setHidden((prev) => (prev ? prev : true));
+          return;
+        }
+        rawTop = c.top;
+        rawLeft = c.left;
+        setHidden((prev) => (prev === !c.visible ? prev : !c.visible));
+      } else {
+        setHidden((prev) => (prev ? false : prev));
+      }
+      const next = clampOverlayPosition({
+        rawTop,
+        rawLeft,
+        layerWidth: layer.clientWidth,
+        layerHeight: layer.clientHeight,
+        boxWidth: box.offsetWidth,
+        boxHeight: box.offsetHeight,
+        pad: 8
+      });
+      setPos((prev) => (prev.top === next.top && prev.left === next.left ? prev : next));
     };
-    setPos((prev) => (prev.top === next.top && prev.left === next.left ? prev : next));
+
+    recompute();
+    const off = getEditorHandle(paneId)?.onScroll(recompute);
+    window.addEventListener('resize', recompute);
+    return () => {
+      off?.();
+      window.removeEventListener('resize', recompute);
+    };
   }, [
-    pane?.anchor?.top,
-    pane?.anchor?.left,
+    paneId,
+    anchorPos,
+    fallbackTop,
+    fallbackLeft,
     pane?.phase,
     pane?.answer,
     pane?.open,
-    pane?.lastEdited
+    pane?.lastEdited,
+    // Re-subscribe if the pane swaps to a different file (new EditorView/scrollDOM).
+    pane?.contextFile
   ]);
+
+  // Drop a pending confirm if the Revert affordance is no longer showing.
+  useEffect(() => {
+    if (!pane?.lastEdited) setConfirmRevert(false);
+  }, [pane?.lastEdited]);
 
   if (!pane) return null;
 
@@ -60,7 +119,8 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
     position: 'absolute',
     top: pos.top,
     left: pos.left,
-    zIndex: 30
+    zIndex: 30,
+    visibility: hidden ? 'hidden' : 'visible'
   };
 
   return (
@@ -90,10 +150,14 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
           </div>
         ) : pane.lastEdited ? (
           <button
-            onClick={() => void revert(paneId)}
-            className="rounded-full border border-fleet-border bg-fleet-surface-2 px-3 py-1 text-xs text-emerald-300 shadow-lg hover:text-emerald-200"
+            onClick={handleRevert}
+            className={`rounded-full border px-3 py-1 text-xs shadow-lg ${
+              confirmRevert
+                ? 'border-amber-700/70 bg-amber-950/40 text-amber-300 hover:text-amber-200'
+                : 'border-fleet-border bg-fleet-surface-2 text-emerald-300 hover:text-emerald-200'
+            }`}
           >
-            ⟳ Reloaded · Revert
+            {confirmRevert ? '⚠ Discard unsaved edits? · Confirm' : '⟳ Reloaded · Revert'}
           </button>
         ) : null}
       </div>

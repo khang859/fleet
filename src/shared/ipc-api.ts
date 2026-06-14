@@ -441,12 +441,21 @@ export type RuneAssistSendRequest = {
 
 export type RuneAssistStopRequest = { cwd: string; paneId: string };
 export type RuneAssistResetRequest = { cwd: string };
+/** Query in-flight state either by resolved cwd or by the open file (which resolves to its repo root). */
+export type RuneAssistStateRequest = { cwd?: string; filePath?: string };
 
 export type RuneAssistState = {
   cwd: string;
   inFlight: boolean;
   error: string | null;
   sessionId: string | null;
+  /** The turn currently running for this cwd (for rehydrating the overlay after a refresh). */
+  activeTurn: {
+    paneId: string;
+    mode: RuneAssistMode;
+    startedAt: number;
+    step: string | null;
+  } | null;
 };
 
 export type RuneAssistStatusPayload = {

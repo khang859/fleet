@@ -68,6 +68,7 @@ import type {
   RuneAssistSendRequest,
   RuneAssistStopRequest,
   RuneAssistResetRequest,
+  RuneAssistStateRequest,
   RuneAssistState,
   RuneAssistStatusPayload,
   RuneAssistResultPayload
@@ -670,8 +671,8 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, req),
     reset: async (req: RuneAssistResetRequest): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, req),
-    getState: async (cwd: string): Promise<RuneAssistState> =>
-      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, cwd),
+    getState: async (req: RuneAssistStateRequest): Promise<RuneAssistState> =>
+      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, req),
     onStatus: (callback: (payload: RuneAssistStatusPayload) => void): Unsubscribe =>
       onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, callback),
     onResult: (callback: (payload: RuneAssistResultPayload) => void): Unsubscribe =>
