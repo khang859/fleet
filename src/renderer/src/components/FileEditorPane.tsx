@@ -25,6 +25,7 @@ import {
   type EditorHandle
 } from '../lib/editor-context-registry';
 import { useRuneAssistStore } from '../store/rune-assist-store';
+import { RuneAssistLayer } from './rune-assist/RuneAssistLayer';
 import type { PaneNode } from '../../../shared/types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
@@ -189,6 +190,8 @@ export function FileEditorPane({
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
   const openOverlay = useRuneAssistStore((s) => s.openOverlay);
+  const applyStatus = useRuneAssistStore((s) => s.applyStatus);
+  const applyResult = useRuneAssistStore((s) => s.applyResult);
   // The workspace cwd that owns this pane (rune runs there).
   const cwd = useWorkspaceStore((s) => {
     const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
@@ -404,6 +407,21 @@ export function FileEditorPane({
     };
   }, [paneId, filePath]);
 
+  // Subscribe to Rune IPC events and route them to the store for this pane
+  useEffect(() => {
+    const offStatus = window.fleet.runeAssist.onStatus((p) => {
+      if (p.paneId === paneId)
+        applyStatus(paneId, { phase: p.phase, step: p.step, error: p.error });
+    });
+    const offResult = window.fleet.runeAssist.onResult((p) => {
+      if (p.paneId === paneId) applyResult(paneId, p);
+    });
+    return () => {
+      offStatus();
+      offResult();
+    };
+  }, [paneId, applyStatus, applyResult]);
+
   // Cleanup dirty state on unmount
   useEffect(() => {
     return () => {
@@ -448,7 +466,7 @@ export function FileEditorPane({
       : { label: 'Saved', className: 'text-emerald-500' };
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden">
+    <div className="relative h-full w-full flex flex-col overflow-hidden">
       {showPathChrome && <PathChromeHeader filePath={filePath} />}
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
@@ -470,6 +488,7 @@ export function FileEditorPane({
           {saveStatus.label}
         </span>
       </div>
+      <RuneAssistLayer paneId={paneId} />
     </div>
   );
 }

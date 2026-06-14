@@ -89,4 +89,28 @@ describe('rune-assist-store', () => {
     expect(p.phase).toBe('idle');
     expect(p.lastEdited).toBe(true);
   });
+
+  it('send collapses the overlay so the result affordance can show', async () => {
+    const sendSpy = vi.fn().mockResolvedValue(undefined);
+    (globalThis as unknown as { window: { fleet: unknown } }).window = {
+      fleet: { runeAssist: { send: sendSpy } }
+    };
+    const store = useRuneAssistStore.getState();
+    store.openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    await store.send('p1', 'add a guard');
+    expect(useRuneAssistStore.getState().panes['p1']!.open).toBe(false);
+  });
+
+  it('applyStatus error reopens the overlay with the message', () => {
+    const { openOverlay, applyStatus } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    // simulate overlay collapsed by a prior send
+    useRuneAssistStore.setState((s) => ({
+      panes: { ...s.panes, p1: { ...s.panes['p1']!, open: false } }
+    }));
+    applyStatus('p1', { phase: 'error', error: 'boom' });
+    const p = useRuneAssistStore.getState().panes['p1']!;
+    expect(p.open).toBe(true);
+    expect(p.error).toBe('boom');
+  });
 });

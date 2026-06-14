@@ -96,6 +96,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
     set((s) =>
       patch(s, paneId, (cur) => ({
         ...cur,
+        open: false,
         draft: body,
         phase: 'working',
         step: 'starting…',
@@ -119,6 +120,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
       set((s) =>
         patch(s, paneId, (cur) => ({
           ...cur,
+          open: true,
           phase: 'error',
           error: err instanceof Error ? err.message : String(err)
         }))
@@ -144,6 +146,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
     set((s) =>
       patch(s, paneId, (p) => ({
         ...p,
+        open: payload.phase === 'error' ? true : p.open,
         phase: payload.phase,
         step: payload.step ?? (payload.phase === 'error' ? null : p.step),
         error: payload.phase === 'error' ? (payload.error ?? 'something went wrong') : null
