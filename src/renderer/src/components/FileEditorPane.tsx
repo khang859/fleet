@@ -187,9 +187,12 @@ export function FileEditorPane({
   const initialContentRef = useRef<string | null>(null);
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const openRuneOverlayRef = useRef<(anchor: { top: number; left: number }) => void>(() => {});
+  const runeWorkingRef = useRef(false);
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
   const openOverlay = useRuneAssistStore((s) => s.openOverlay);
+  const runeWorking = useRuneAssistStore((s) => s.panes[paneId]?.phase === 'working');
+  runeWorkingRef.current = runeWorking;
   // The workspace cwd that owns this pane (rune runs there).
   const cwd = useWorkspaceStore((s) => {
     const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
@@ -302,7 +305,7 @@ export function FileEditorPane({
             setIsDirty(dirty);
             onContentChangeRef.current?.(current);
             setPaneDirty(paneId, dirty);
-            if (dirty) {
+            if (dirty && !runeWorkingRef.current) {
               if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
               autoSaveTimerRef.current = setTimeout(() => {
                 void saveRef.current();
@@ -356,6 +359,14 @@ export function FileEditorPane({
     return () => unregisterFileSave(paneId);
   }, [paneId]);
 
+  // Don't let a pending auto-save fire into a file rune is editing.
+  useEffect(() => {
+    if (runeWorking && autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+  }, [runeWorking]);
+
   // Register editor handle so Rune overlay can read selection, flash lines, and sync content
   useEffect(() => {
     const handle: EditorHandle = {
@@ -375,8 +386,8 @@ export function FileEditorPane({
         const view = viewRef.current;
         if (!view) return null;
         const content = res.data.content;
-        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
         savedContentRef.current = content;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
         return content;
       },
       flashLines: (range) => {
@@ -393,9 +404,12 @@ export function FileEditorPane({
         await window.fleet.file.write(filePath, content);
         const view = viewRef.current;
         if (view) {
-          view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
           savedContentRef.current = content;
+          view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
         }
+      },
+      save: async () => {
+        await saveRef.current();
       }
     };
     registerEditorHandle(paneId, handle);

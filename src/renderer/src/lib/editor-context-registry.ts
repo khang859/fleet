@@ -16,6 +16,8 @@ export type EditorHandle = {
   flashLines: (range: RuneAssistSelection) => void;
   /** Overwrite the document + persist to disk (used by Revert). */
   writeContent: (content: string) => Promise<void>;
+  /** Flush the current buffer to disk (used before an edit turn so rune reads the user's content). */
+  save: () => Promise<void>;
 };
 
 const registry = new Map<string, EditorHandle>();

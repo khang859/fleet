@@ -15,7 +15,8 @@ function fakeHandle(): EditorHandle {
       return 'x';
     },
     flashLines: () => {},
-    writeContent: async () => {}
+    writeContent: async () => {},
+    save: async () => {}
   };
 }
 

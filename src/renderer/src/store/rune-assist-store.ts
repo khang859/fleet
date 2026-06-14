@@ -93,6 +93,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
     const mode = detectIntent(body);
     const handle = getEditorHandle(paneId);
     const selection = handle?.getSelection();
+    if (mode === 'edit') await handle?.save();
     const snapshot = mode === 'edit' ? (handle?.getContent() ?? null) : null;
 
     set((s) =>
