@@ -410,6 +410,12 @@ export function FileEditorPane({
       },
       save: async () => {
         await saveRef.current();
+      },
+      getFilePath: () => filePath,
+      isClean: () => {
+        const view = viewRef.current;
+        if (!view) return true;
+        return view.state.doc.toString() === savedContentRef.current;
       }
     };
     registerEditorHandle(paneId, handle);

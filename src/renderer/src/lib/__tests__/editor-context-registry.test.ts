@@ -3,6 +3,7 @@ import {
   registerEditorHandle,
   unregisterEditorHandle,
   getEditorHandle,
+  getEditorHandlesForFile,
   type EditorHandle
 } from '../editor-context-registry';
 
@@ -16,7 +17,9 @@ function fakeHandle(): EditorHandle {
     },
     flashLines: () => {},
     writeContent: async () => {},
-    save: async () => {}
+    save: async () => {},
+    getFilePath: () => 'x',
+    isClean: () => true
   };
 }
 
@@ -30,5 +33,12 @@ describe('editor-context-registry', () => {
     registerEditorHandle('pane-2', fakeHandle());
     unregisterEditorHandle('pane-2');
     expect(getEditorHandle('pane-2')).toBeUndefined();
+  });
+  it('finds handles by file path', () => {
+    const h = fakeHandle();
+    registerEditorHandle('pane-9', h);
+    expect(getEditorHandlesForFile('x')).toContain(h);
+    expect(getEditorHandlesForFile('nope')).toEqual([]);
+    unregisterEditorHandle('pane-9');
   });
 });

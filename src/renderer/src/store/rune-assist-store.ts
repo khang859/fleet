@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { detectIntent, changedLineRange } from '../../../shared/rune-assist';
 import type { RuneAssistMode } from '../../../shared/rune-assist';
-import { getEditorHandle } from '../lib/editor-context-registry';
+import { getEditorHandle, getEditorHandlesForFile } from '../lib/editor-context-registry';
 import type { RuneAssistResultPayload, RuneAssistStatusPayload } from '../../../shared/ipc-api';
 
 type Phase = 'idle' | 'working' | 'error';
@@ -186,6 +186,14 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
         .catch(() => {
           // reload failed (file deleted / FS error); flash is best-effort, ignore
         });
+    }
+    // Reload any OTHER open panes whose file rune also changed (skip dirty panes — don't
+    // discard a user's unsaved edits; the active pane is already reloaded above).
+    for (const file of payload.changedFiles ?? []) {
+      for (const other of getEditorHandlesForFile(file)) {
+        if (other === handle) continue;
+        if (other.isClean()) void other.reloadFromDisk();
+      }
     }
     set((s) =>
       patch(s, paneId, (cur) => ({ ...cur, phase: 'idle', step: null, lastEdited: true }))

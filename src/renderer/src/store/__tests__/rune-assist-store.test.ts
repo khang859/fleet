@@ -67,7 +67,9 @@ describe('rune-assist-store', () => {
       reloadFromDisk: vi.fn().mockResolvedValue('current'),
       flashLines: () => {},
       writeContent,
-      save: vi.fn().mockResolvedValue(undefined)
+      save: vi.fn().mockResolvedValue(undefined),
+      getFilePath: () => 'a.ts',
+      isClean: () => true
     });
     const store = useRuneAssistStore.getState();
     store.openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });

@@ -18,6 +18,10 @@ export type EditorHandle = {
   writeContent: (content: string) => Promise<void>;
   /** Flush the current buffer to disk (used before an edit turn so rune reads the user's content). */
   save: () => Promise<void>;
+  /** Absolute path of the file this pane is editing. */
+  getFilePath: () => string;
+  /** True when the buffer matches what's on disk (safe to reload without losing edits). */
+  isClean: () => boolean;
 };
 
 const registry = new Map<string, EditorHandle>();
@@ -32,4 +36,13 @@ export function unregisterEditorHandle(paneId: string): void {
 
 export function getEditorHandle(paneId: string): EditorHandle | undefined {
   return registry.get(paneId);
+}
+
+/** All registered handles editing the given absolute file path (usually 0 or 1). */
+export function getEditorHandlesForFile(filePath: string): EditorHandle[] {
+  const out: EditorHandle[] = [];
+  for (const handle of registry.values()) {
+    if (handle.getFilePath() === filePath) out.push(handle);
+  }
+  return out;
 }

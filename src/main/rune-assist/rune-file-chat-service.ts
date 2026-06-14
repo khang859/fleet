@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process';
 import { mkdirSync, writeFileSync, readFileSync, renameSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import { CodedError } from '../errors';
@@ -223,7 +223,7 @@ export class RuneFileChatService {
           if (mode === 'ask') {
             result.answer = lastAssistantText(messages);
           } else {
-            result.changedFiles = extractChangedFiles(messages);
+            result.changedFiles = extractChangedFiles(messages).map((p) => resolve(cwd, p));
           }
           this.opts.emitResult(result);
           this.opts.emitStatus({ cwd, paneId, phase: 'idle' });
