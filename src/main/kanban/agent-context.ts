@@ -1,5 +1,4 @@
 import { execFileSync } from 'child_process';
-import { networkInterfaces } from 'os';
 import { posix } from 'path';
 import { parseWslUncPath } from '../../shared/path-platform';
 import { wslExePath } from '../wsl-service';
@@ -96,18 +95,15 @@ export function buildAgentSpawn(spec: AgentSpawnSpec, loc: AgentWslLocation | nu
 }
 
 /**
- * NAT-mode WSL agents reach the host via the distro's default-gateway IP (the
- * host's vEthernet (WSL) adapter), not loopback. With this enabled the kanban MCP
- * server binds that adapter IP in addition to `127.0.0.1` (see
- * KanbanMcpServer.start), and the in-distro agent connects to the gateway URL.
- *
- * REQUIRED per-machine setup: the WSL Hyper-V firewall blocks distro→host inbound
- * by default (`Get-NetFirewallHyperVVMSetting` → DefaultInboundAction = Block), so
- * a scoped Hyper-V firewall rule must allow inbound to the MCP port from the WSL
- * VM. Without it the agent's MCP connection times out. Mirrored-mode distros need
- * none of this (they share the host loopback) and work unconditionally.
+ * NAT-mode WSL agents are NOT yet wired end-to-end: the MCP server still binds
+ * `127.0.0.1` only (kanban-mcp-server.ts), which the distro can't reach across
+ * the NAT boundary. Flipping this on requires the server to also bind an address
+ * reachable from the WSL subnet (the vEthernet adapter IP — not 0.0.0.0) plus a
+ * scoped Windows Firewall inbound rule, validated on real Windows hardware. Until
+ * then NAT distros are refused with an actionable message. Mirrored mode needs
+ * none of this and works today.
  */
-export const WSL_NAT_AGENTS_ENABLED = true;
+export const WSL_NAT_AGENTS_ENABLED = false;
 
 export type WslNetworking = {
   mode: 'nat' | 'mirrored' | 'unknown';
@@ -130,10 +126,8 @@ const NAT_UNSUPPORTED =
  *    widening, stays loopback-only).
  *  - unknown (old WSL without `wslinfo`): assume loopback works (WSL1 / pre-NAT);
  *    a genuine failure surfaces as a clear MCP-connect error in the run log.
- *  - nat: reach the host via the default-gateway IP (its vEthernet (WSL) adapter),
- *    which the server also binds. Requires the Hyper-V firewall rule documented on
- *    {@link WSL_NAT_AGENTS_ENABLED}; if that flag is off or no gateway resolved the
- *    run is refused with an actionable message.
+ *  - nat: needs the gateway IP + the deferred host bind/firewall. Until that
+ *    lands (see {@link WSL_NAT_AGENTS_ENABLED}) the run is refused.
  */
 export function resolveAgentHost(
   net: WslNetworking,
@@ -206,23 +200,4 @@ export function agentHostFor(distro: string, exec: SyncExec = defaultSyncExec): 
 /** Test-only: drop the per-distro cache. */
 export function __clearAgentHostCache(): void {
   hostCache.clear();
-}
-
-/** Lists the host's network interfaces; injectable so discovery is unit-testable. */
-export type ListIfaces = () => ReturnType<typeof networkInterfaces>;
-
-/**
- * The host's vEthernet (WSL) adapter IPv4 — the address a NAT-mode distro reaches
- * the host on (it is the distro's default gateway). The kanban MCP server binds
- * this in addition to loopback so the in-distro agent can connect. null when no
- * WSL adapter exists (no distro running, or a non-Windows host).
- */
-export function wslAdapterIp(list: ListIfaces = networkInterfaces): string | null {
-  for (const [name, addrs] of Object.entries(list())) {
-    if (!/WSL/i.test(name)) continue;
-    for (const addr of addrs ?? []) {
-      if (addr.family === 'IPv4' && !addr.internal) return addr.address;
-    }
-  }
-  return null;
 }
