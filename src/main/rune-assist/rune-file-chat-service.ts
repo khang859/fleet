@@ -12,6 +12,8 @@ import {
   buildContextLine,
   composeAssistPrompt,
   parseRuneSessionId,
+  parseLatestToolStep,
+  describeRuneStep,
   lastAssistantText,
   extractChangedFiles
 } from '../../shared/rune-assist';
@@ -168,7 +170,7 @@ export class RuneFileChatService {
     }
     c.inFlight = true;
     c.error = null;
-    this.opts.emitStatus({ cwd, paneId, phase: 'working', step: 'starting…' });
+    this.opts.emitStatus({ cwd, paneId, phase: 'working', step: 'thinking…' });
 
     const contextLine = contextFile ? buildContextLine(contextFile, selection) : '';
     const prompt = contextLine ? composeAssistPrompt(mode, contextLine, body) : body;
@@ -184,9 +186,16 @@ export class RuneFileChatService {
 
     let output = ''; // merged stdout+stderr tail, for error classification
     let sessionId: string | null = c.sessionId;
+    let lastStep: string | null = null;
     const collect = (chunk: Buffer): void => {
       output = (output + chunk.toString('utf-8')).slice(-OUTPUT_CAP);
       if (!sessionId) sessionId = parseRuneSessionId(output);
+      // Surface rune's live `[tool: <name>]` activity as a step in the working pill.
+      const tool = parseLatestToolStep(output);
+      if (tool && tool !== lastStep) {
+        lastStep = tool;
+        this.opts.emitStatus({ cwd, paneId, phase: 'working', step: describeRuneStep(tool) });
+      }
     };
     child.stdout.on('data', collect);
     child.stderr.on('data', collect);

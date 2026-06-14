@@ -5,6 +5,8 @@ import {
   composeAssistPrompt,
   buildAssistArgs,
   parseRuneSessionId,
+  parseLatestToolStep,
+  describeRuneStep,
   lastAssistantText,
   extractChangedFiles,
   changedLineRange,
@@ -71,6 +73,28 @@ describe('parseRuneSessionId', () => {
   });
   it('returns null when absent', () => {
     expect(parseRuneSessionId('no id here')).toBeNull();
+  });
+});
+
+describe('parseLatestToolStep', () => {
+  it('returns the last tool marker in the stream', () => {
+    const out =
+      'session-id: x\n[tool: list_files]\n[done: 16197 bytes]\n[tool: read]\n[done: 9 bytes]';
+    expect(parseLatestToolStep(out)).toBe('read');
+  });
+  it('returns null when there are no tool markers', () => {
+    expect(parseLatestToolStep('session-id: x\nOK')).toBeNull();
+  });
+});
+
+describe('describeRuneStep', () => {
+  it('humanizes known tool names', () => {
+    expect(describeRuneStep('read')).toBe('reading…');
+    expect(describeRuneStep('edit')).toBe('editing…');
+    expect(describeRuneStep('search_files')).toBe('searching…');
+  });
+  it('falls back to the raw name with an ellipsis', () => {
+    expect(describeRuneStep('mystery_tool')).toBe('mystery_tool…');
   });
 });
 

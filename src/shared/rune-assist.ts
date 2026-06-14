@@ -51,6 +51,43 @@ export function parseRuneSessionId(output: string): string | null {
   return /^session-id: ([A-Za-z0-9_-]+)$/m.exec(output)?.[1] ?? null;
 }
 
+/** The tool name from the LAST `[tool: <name>]` marker rune prints on stdout, or null. */
+export function parseLatestToolStep(output: string): string | null {
+  let last: string | null = null;
+  const re = /\[tool: ([^\]]+)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(output)) !== null) last = m[1].trim();
+  return last;
+}
+
+/** Human-readable progress label for a rune tool name (shown in the working pill). */
+export function describeRuneStep(tool: string): string {
+  switch (tool) {
+    case 'read':
+      return 'reading…';
+    case 'list_files':
+      return 'listing files…';
+    case 'search_files':
+      return 'searching…';
+    case 'edit':
+    case 'write':
+      return 'editing…';
+    case 'bash':
+      return 'running a command…';
+    case 'gh':
+    case 'git_diff':
+    case 'git_status':
+      return 'checking git…';
+    case 'spawn_subagent':
+      return 'delegating…';
+    case 'web_fetch':
+    case 'web_search':
+      return 'searching the web…';
+    default:
+      return `${tool}…`;
+  }
+}
+
 /** Concatenated text of the last assistant message — the Ask answer. */
 export function lastAssistantText(messages: TranscriptMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
