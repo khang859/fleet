@@ -23,7 +23,7 @@ export function RuneAssistOverlay({
   }, []);
   const rows = Math.min(6, Math.max(1, draft.split('\n').length));
   return (
-    <div className="w-80 rounded-lg border border-fleet-border bg-fleet-surface-2 shadow-xl">
+    <div className="w-80 rounded-lg border border-fleet-border-strong bg-fleet-surface-2 shadow-2xl ring-1 ring-[color-mix(in_srgb,var(--fleet-accent)_45%,transparent)]">
       <textarea
         ref={ref}
         rows={rows}
@@ -41,7 +41,7 @@ export function RuneAssistOverlay({
           }
         }}
       />
-      <div className="flex items-center gap-2 border-t border-fleet-border px-3 py-1.5 text-[11px] text-neutral-500">
+      <div className="flex items-center gap-2 border-t border-fleet-border-strong px-3 py-1.5 text-[11px] text-neutral-500">
         <span className={draft.trim() === '' ? 'text-neutral-600' : undefined}>⏎ send</span>
         <span>· esc close</span>
         <button
