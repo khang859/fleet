@@ -217,16 +217,31 @@ export class RuneFileChatService {
         this.opts.emitStatus({ cwd, paneId, phase: 'error', error });
         return;
       }
-      void this.readMessages(c.sessionId).then((messages) => {
-        const result: RuneAssistResultPayload = { cwd, paneId, mode };
-        if (mode === 'ask') {
-          result.answer = lastAssistantText(messages);
-        } else {
-          result.changedFiles = extractChangedFiles(messages);
-        }
-        this.opts.emitResult(result);
-        this.opts.emitStatus({ cwd, paneId, phase: 'idle' });
-      });
+      void this.readMessages(c.sessionId)
+        .then((messages) => {
+          const result: RuneAssistResultPayload = { cwd, paneId, mode };
+          if (mode === 'ask') {
+            result.answer = lastAssistantText(messages);
+          } else {
+            result.changedFiles = extractChangedFiles(messages);
+          }
+          this.opts.emitResult(result);
+          this.opts.emitStatus({ cwd, paneId, phase: 'idle' });
+        })
+        .catch((err: unknown) => {
+          // The turn succeeded but its transcript couldn't be read — surface an error
+          // rather than leaving the overlay stuck on "working".
+          log.error('rune-assist failed to read transcript', {
+            cwd,
+            error: err instanceof Error ? err.message : String(err)
+          });
+          this.opts.emitStatus({
+            cwd,
+            paneId,
+            phase: 'error',
+            error: 'rune finished but its response could not be read'
+          });
+        });
     };
 
     const timeout = setTimeout(() => {

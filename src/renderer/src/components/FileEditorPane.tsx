@@ -190,8 +190,6 @@ export function FileEditorPane({
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
   const openOverlay = useRuneAssistStore((s) => s.openOverlay);
-  const applyStatus = useRuneAssistStore((s) => s.applyStatus);
-  const applyResult = useRuneAssistStore((s) => s.applyResult);
   // The workspace cwd that owns this pane (rune runs there).
   const cwd = useWorkspaceStore((s) => {
     const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
@@ -407,20 +405,9 @@ export function FileEditorPane({
     };
   }, [paneId, filePath]);
 
-  // Subscribe to Rune IPC events and route them to the store for this pane
-  useEffect(() => {
-    const offStatus = window.fleet.runeAssist.onStatus((p) => {
-      if (p.paneId === paneId)
-        applyStatus(paneId, { phase: p.phase, step: p.step, error: p.error });
-    });
-    const offResult = window.fleet.runeAssist.onResult((p) => {
-      if (p.paneId === paneId) applyResult(paneId, p);
-    });
-    return () => {
-      offStatus();
-      offResult();
-    };
-  }, [paneId, applyStatus, applyResult]);
+  // Rune IPC events are subscribed once at the app level (see useRuneAssistEvents) and
+  // routed into the store by paneId — NOT here, because this pane unmounts on tab switch
+  // and would otherwise miss the turn's result/idle event while it's in the background.
 
   // Cleanup dirty state on unmount
   useEffect(() => {

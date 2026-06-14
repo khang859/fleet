@@ -40,6 +40,8 @@ type StoreState = {
     payload: Pick<RuneAssistStatusPayload, 'phase' | 'step' | 'error'>
   ) => void;
   applyResult: (paneId: string, payload: RuneAssistResultPayload) => void;
+  /** Pane permanently closed: cancel any in-flight turn for it and drop its state. */
+  disposePane: (paneId: string) => void;
 };
 
 function blank(cwd: string, contextFile: string, anchor: OpenArgs['anchor']): PaneAssist {
@@ -99,7 +101,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
         open: false,
         draft: body,
         phase: 'working',
-        step: 'starting…',
+        step: 'thinking…',
         error: null,
         answer: null,
         lastEdited: false,
@@ -180,5 +182,19 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
     set((s) =>
       patch(s, paneId, (cur) => ({ ...cur, phase: 'idle', step: null, lastEdited: true }))
     );
+  },
+
+  disposePane: (paneId) => {
+    const p = get().panes[paneId];
+    if (!p) return;
+    if (p.phase === 'working') {
+      void window.fleet.runeAssist.stop({ cwd: p.cwd, paneId });
+    }
+    set((s) => {
+      if (!s.panes[paneId]) return { panes: s.panes };
+      const next = { ...s.panes };
+      delete next[paneId];
+      return { panes: next };
+    });
   }
 }));

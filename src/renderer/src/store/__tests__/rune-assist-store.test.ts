@@ -113,4 +113,29 @@ describe('rune-assist-store', () => {
     expect(p.open).toBe(true);
     expect(p.error).toBe('boom');
   });
+
+  it('disposePane cancels an in-flight turn and drops the pane state', () => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    (globalThis as unknown as { window: { fleet: unknown } }).window = {
+      fleet: { runeAssist: { stop } }
+    };
+    const { openOverlay, applyStatus, disposePane } = useRuneAssistStore.getState();
+    openOverlay('p1', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    applyStatus('p1', { phase: 'working' });
+    disposePane('p1');
+    expect(stop).toHaveBeenCalledWith({ cwd: '/repo', paneId: 'p1' });
+    expect(useRuneAssistStore.getState().panes['p1']).toBeUndefined();
+  });
+
+  it('disposePane does not call stop when the pane is idle', () => {
+    const stop = vi.fn().mockResolvedValue(undefined);
+    (globalThis as unknown as { window: { fleet: unknown } }).window = {
+      fleet: { runeAssist: { stop } }
+    };
+    const { openOverlay, disposePane } = useRuneAssistStore.getState();
+    openOverlay('p2', { cwd: '/repo', contextFile: 'a.ts', anchor: { top: 0, left: 0 } });
+    disposePane('p2');
+    expect(stop).not.toHaveBeenCalled();
+    expect(useRuneAssistStore.getState().panes['p2']).toBeUndefined();
+  });
 });
