@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from 'child_process';
-import { mkdirSync, writeFileSync, readFileSync, renameSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync, readFileSync, renameSync, existsSync } from 'fs';
+import { join, dirname } from 'path';
 import { z } from 'zod';
 import { createLogger } from '../logger';
 import { CodedError } from '../errors';
@@ -56,8 +56,8 @@ export class RuneFileChatService {
   private opts: RuneFileChatServiceOptions;
   private sessionsLoaded = false;
   private inFlightChildren = new Set<ChildProcess>();
-  /** Active child per cwd, so stop(cwd) can SIGTERM the right one. */
-  private childByCwd = new Map<string, ChildProcess>();
+  /** Active child per originating pane, so stop(paneId) can SIGTERM the right one. */
+  private childByPane = new Map<string, ChildProcess>();
 
   constructor(opts: RuneFileChatServiceOptions) {
     this.opts = opts;
@@ -67,11 +67,31 @@ export class RuneFileChatService {
   dispose(): void {
     for (const child of this.inFlightChildren) child.kill('SIGTERM');
     this.inFlightChildren.clear();
-    this.childByCwd.clear();
+    this.childByPane.clear();
   }
 
   private sessionsPath(): string {
     return join(this.opts.stateDir, 'rune-assist-sessions.json');
+  }
+
+  /**
+   * The directory rune should run in for a given open file: the nearest ancestor
+   * containing a `.git` (so codebase tools see the whole repo), falling back to the
+   * file's own directory, then '/'. File tabs are created with cwd '/', so without
+   * this rune would run at the filesystem root.
+   */
+  private resolveWorkspaceCwd(filePath: string): string {
+    const start = dirname(filePath);
+    let dir = start;
+    let parent = dirname(dir);
+    while (parent !== dir) {
+      if (existsSync(join(dir, '.git'))) return dir;
+      dir = parent;
+      parent = dirname(dir);
+    }
+    // `dir` is now the filesystem root — check it too, then fall back to the file's dir.
+    if (existsSync(join(dir, '.git'))) return dir;
+    return start || '/';
   }
 
   /** Lazily hydrate persisted cwd→session ids so conversations survive restarts. */
@@ -124,15 +144,17 @@ export class RuneFileChatService {
     this.persistSessions();
   }
 
-  /** SIGTERM the in-flight child for this cwd, if any. */
-  stop(cwd: string): void {
-    this.childByCwd.get(cwd)?.kill('SIGTERM');
+  /** SIGTERM the in-flight child for this pane, if any. */
+  stop(paneId: string): void {
+    this.childByPane.get(paneId)?.kill('SIGTERM');
   }
 
   sendMessage(req: RuneAssistSendRequest): void {
-    const { cwd, paneId, mode, contextFile, selection } = req;
+    const { paneId, mode, contextFile, selection } = req;
     const body = req.text.trim();
     if (body === '') throw new CodedError('message is empty', 'BAD_REQUEST');
+    // Run rune in the file's repo root (not the file tab's cwd, which is '/').
+    const cwd = contextFile ? this.resolveWorkspaceCwd(contextFile) : req.cwd;
     const c = this.chat(cwd);
     if (c.inFlight) {
       // Routed to the originating pane so the overlay can show a gentle note.
@@ -158,7 +180,7 @@ export class RuneFileChatService {
     });
 
     this.inFlightChildren.add(child);
-    this.childByCwd.set(cwd, child);
+    this.childByPane.set(paneId, child);
 
     let output = ''; // merged stdout+stderr tail, for error classification
     let sessionId: string | null = c.sessionId;
@@ -174,7 +196,7 @@ export class RuneFileChatService {
       if (finished) return;
       finished = true;
       this.inFlightChildren.delete(child);
-      this.childByCwd.delete(cwd);
+      this.childByPane.delete(paneId);
       clearTimeout(timeout);
       c.inFlight = false;
       c.error = error;

@@ -13,7 +13,7 @@ export function registerRuneAssistIpc(service: RuneFileChatService): void {
     service.sendMessage(req);
   });
   ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_STOP, (_e, req: RuneAssistStopRequest) => {
-    service.stop(req.cwd);
+    service.stop(req.paneId);
   });
   ipcMain.handle(IPC_CHANNELS.RUNE_ASSIST_RESET, (_e, req: RuneAssistResetRequest) => {
     service.reset(req.cwd);
