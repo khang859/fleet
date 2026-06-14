@@ -1,0 +1,161 @@
+import { describe, it, expect } from 'vitest';
+import {
+  detectIntent,
+  buildContextLine,
+  composeAssistPrompt,
+  buildAssistArgs,
+  parseRuneSessionId,
+  lastAssistantText,
+  extractChangedFiles,
+  changedLineRange,
+  ASK_PREAMBLE
+} from '../rune-assist';
+import type { TranscriptMessage } from '../sessions';
+
+describe('detectIntent', () => {
+  it('classifies leading imperatives as edit', () => {
+    expect(detectIntent('finish this function')).toBe('edit');
+    expect(detectIntent('Refactor the loop')).toBe('edit');
+    expect(detectIntent('  add a null guard')).toBe('edit');
+  });
+  it('classifies questions/everything else as ask', () => {
+    expect(detectIntent('what does this do?')).toBe('ask');
+    expect(detectIntent('where is validateToken used')).toBe('ask');
+    expect(detectIntent('')).toBe('ask');
+  });
+});
+
+describe('buildContextLine', () => {
+  it('renders a selection range', () => {
+    expect(buildContextLine('src/auth.ts', { fromLine: 11, toLine: 14 })).toBe(
+      '[context: file src/auth.ts, lines 11-14 selected]'
+    );
+  });
+  it('renders a single cursor line when from === to', () => {
+    expect(buildContextLine('src/auth.ts', { fromLine: 12, toLine: 12 })).toBe(
+      '[context: file src/auth.ts, line 12]'
+    );
+  });
+  it('renders file only when no selection', () => {
+    expect(buildContextLine('src/auth.ts', undefined)).toBe('[context: file src/auth.ts]');
+  });
+});
+
+describe('composeAssistPrompt', () => {
+  it('prepends the read-only preamble in ask mode', () => {
+    const out = composeAssistPrompt('ask', '[context: file a.ts]', 'what is this');
+    expect(out.startsWith(ASK_PREAMBLE)).toBe(true);
+    expect(out).toContain('[context: file a.ts]');
+    expect(out).toContain('what is this');
+    expect(out).toBe(`${ASK_PREAMBLE}\n\n[context: file a.ts]\n\nwhat is this`);
+  });
+  it('omits the preamble in edit mode', () => {
+    const out = composeAssistPrompt('edit', '[context: file a.ts]', 'finish it');
+    expect(out.startsWith(ASK_PREAMBLE)).toBe(false);
+    expect(out).toBe('[context: file a.ts]\n\nfinish it');
+  });
+});
+
+describe('buildAssistArgs', () => {
+  it('builds prompt-only args on the first turn', () => {
+    expect(buildAssistArgs('hello', null)).toEqual(['--prompt', 'hello']);
+  });
+  it('appends --resume when a session id exists', () => {
+    expect(buildAssistArgs('hello', 'sess-1')).toEqual(['--prompt', 'hello', '--resume', 'sess-1']);
+  });
+});
+
+describe('parseRuneSessionId', () => {
+  it('extracts the id from a session-id line', () => {
+    expect(parseRuneSessionId('blah\nsession-id: abc_DEF-123\nmore')).toBe('abc_DEF-123');
+  });
+  it('returns null when absent', () => {
+    expect(parseRuneSessionId('no id here')).toBeNull();
+  });
+});
+
+describe('lastAssistantText', () => {
+  it('returns the concatenated text of the last assistant message', () => {
+    const messages: TranscriptMessage[] = [
+      { role: 'user', blocks: [{ type: 'text', text: 'q' }] },
+      { role: 'assistant', blocks: [{ type: 'text', text: 'first' }] },
+      { role: 'tool', blocks: [{ type: 'tool_result', output: 'x' }] },
+      {
+        role: 'assistant',
+        blocks: [
+          { type: 'text', text: 'final ' },
+          { type: 'text', text: 'answer' }
+        ]
+      }
+    ];
+    expect(lastAssistantText(messages)).toBe('final answer');
+  });
+  it('returns empty string when there is no assistant text', () => {
+    expect(lastAssistantText([{ role: 'user', blocks: [{ type: 'text', text: 'q' }] }])).toBe('');
+  });
+});
+
+describe('extractChangedFiles', () => {
+  it('collects file paths from write-like tool calls', () => {
+    const messages: TranscriptMessage[] = [
+      {
+        role: 'assistant',
+        blocks: [
+          {
+            type: 'tool_use',
+            name: 'write_file',
+            argsPreview: JSON.stringify({ path: 'src/a.ts' })
+          },
+          {
+            type: 'tool_use',
+            name: 'edit_file',
+            argsPreview: JSON.stringify({ file_path: 'src/b.ts' })
+          },
+          { type: 'tool_use', name: 'read_file', argsPreview: JSON.stringify({ path: 'src/c.ts' }) }
+        ]
+      }
+    ];
+    expect(extractChangedFiles(messages)).toEqual(['src/a.ts', 'src/b.ts']);
+  });
+  it('dedupes and ignores unparseable args', () => {
+    const messages: TranscriptMessage[] = [
+      {
+        role: 'assistant',
+        blocks: [
+          {
+            type: 'tool_use',
+            name: 'write_file',
+            argsPreview: JSON.stringify({ path: 'src/a.ts' })
+          },
+          {
+            type: 'tool_use',
+            name: 'write_file',
+            argsPreview: JSON.stringify({ path: 'src/a.ts' })
+          },
+          { type: 'tool_use', name: 'write_file', argsPreview: 'not json' }
+        ]
+      }
+    ];
+    expect(extractChangedFiles(messages)).toEqual(['src/a.ts']);
+  });
+});
+
+describe('changedLineRange', () => {
+  it('returns the 1-based inclusive range of changed lines', () => {
+    const before = 'a\nb\nc\nd';
+    const after = 'a\nB\nC\nd';
+    expect(changedLineRange(before, after)).toEqual({ fromLine: 2, toLine: 3 });
+  });
+  it('handles added lines', () => {
+    expect(changedLineRange('a\nb', 'a\nx\nb')).toEqual({ fromLine: 2, toLine: 2 });
+  });
+  it('returns null when identical', () => {
+    expect(changedLineRange('a\nb', 'a\nb')).toBeNull();
+  });
+  it('clamps trailing deletions to the new line count', () => {
+    expect(changedLineRange('a\nb\nc', 'a\nb')).toEqual({ fromLine: 2, toLine: 2 });
+  });
+  it('handles leading deletions', () => {
+    expect(changedLineRange('a\nb\nc', 'b\nc')).toEqual({ fromLine: 1, toLine: 1 });
+  });
+});
