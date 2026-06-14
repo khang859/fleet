@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react';
 
 type Props = {
   step: string | null;
+  startedAt: number | null;
   onStop: () => void;
 };
 
-export function RuneWorkingPill({ step, onStop }: Props): React.JSX.Element {
-  // Count seconds since the pill mounted (≈ turn start) so a long rune turn looks alive.
-  const [elapsed, setElapsed] = useState(0);
+export function RuneWorkingPill({ step, startedAt, onStop }: Props): React.JSX.Element {
+  const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const id = setInterval(() => setElapsed((s) => s + 1), 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
+  const elapsed = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0;
   return (
     <div className="flex items-center gap-2 rounded-full border border-fleet-border bg-fleet-surface-2 px-3 py-1 text-xs text-neutral-200 shadow-lg">
       <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-400" />

@@ -181,6 +181,7 @@ export function FileEditorPane({
   const [isSaving, setIsSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const savedContentRef = useRef<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -283,7 +284,7 @@ export function FileEditorPane({
               run: (view) => {
                 const sel = view.state.selection.main;
                 const coords = view.coordsAtPos(sel.head);
-                const host = containerRef.current?.getBoundingClientRect();
+                const host = wrapperRef.current?.getBoundingClientRect();
                 const anchor =
                   coords && host
                     ? { top: coords.bottom - host.top, left: coords.left - host.left }
@@ -473,7 +474,7 @@ export function FileEditorPane({
       : { label: 'Saved', className: 'text-emerald-500' };
 
   return (
-    <div className="relative h-full w-full flex flex-col overflow-hidden">
+    <div ref={wrapperRef} className="relative h-full w-full flex flex-col overflow-hidden">
       {showPathChrome && <PathChromeHeader filePath={filePath} />}
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">

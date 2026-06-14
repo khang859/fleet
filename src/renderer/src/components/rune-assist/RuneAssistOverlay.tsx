@@ -21,17 +21,18 @@ export function RuneAssistOverlay({
   useEffect(() => {
     ref.current?.focus();
   }, []);
+  const rows = Math.min(6, Math.max(1, draft.split('\n').length));
   return (
     <div className="w-80 rounded-lg border border-fleet-border bg-fleet-surface-2 shadow-xl">
       <textarea
         ref={ref}
-        rows={1}
+        rows={rows}
         value={draft}
         placeholder="Ask or instruct Rune…"
         className="w-full resize-none bg-transparent px-3 py-2 text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
             e.preventDefault();
             onSubmit();
           } else if (e.key === 'Escape') {
@@ -41,7 +42,7 @@ export function RuneAssistOverlay({
         }}
       />
       <div className="flex items-center gap-2 border-t border-fleet-border px-3 py-1.5 text-[11px] text-neutral-500">
-        <span>⏎ send</span>
+        <span className={draft.trim() === '' ? 'text-neutral-600' : undefined}>⏎ send</span>
         <span>· esc close</span>
         <button
           type="button"

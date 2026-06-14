@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useRuneAssistStore } from '../../store/rune-assist-store';
 import { detectIntent } from '../../../../shared/rune-assist';
 import { RuneAssistOverlay } from './RuneAssistOverlay';
@@ -21,22 +21,53 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
   const handleDismiss = useCallback(() => dismissAnswer(paneId), [dismissAnswer, paneId]);
   const handleStop = useCallback(() => void stop(paneId), [stop, paneId]);
 
+  const layerRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+
+  const [pos, setPos] = useState<{ top: number; left: number }>({
+    top: pane?.anchor?.top ?? 8,
+    left: pane?.anchor?.left ?? 8
+  });
+
+  useLayoutEffect(() => {
+    const layer = layerRef.current;
+    const box = boxRef.current;
+    if (!layer || !box) return;
+    const pad = 8;
+    const maxLeft = Math.max(pad, layer.clientWidth - box.offsetWidth - pad);
+    const maxTop = Math.max(pad, layer.clientHeight - box.offsetHeight - pad);
+    const rawTop = pane?.anchor?.top ?? 8;
+    const rawLeft = pane?.anchor?.left ?? 8;
+    const next = {
+      top: Math.min(Math.max(pad, rawTop), maxTop),
+      left: Math.min(Math.max(pad, rawLeft), maxLeft)
+    };
+    setPos((prev) => (prev.top === next.top && prev.left === next.left ? prev : next));
+  }, [
+    pane?.anchor?.top,
+    pane?.anchor?.left,
+    pane?.phase,
+    pane?.answer,
+    pane?.open,
+    pane?.lastEdited
+  ]);
+
   if (!pane) return null;
 
   const effectiveMode = pane.modeOverride ?? detectIntent(pane.draft);
 
   const anchorStyle: React.CSSProperties = {
     position: 'absolute',
-    top: pane.anchor?.top ?? 8,
-    left: pane.anchor?.left ?? 8,
+    top: pos.top,
+    left: pos.left,
     zIndex: 30
   };
 
   return (
-    <div className="pointer-events-none absolute inset-0">
-      <div className="pointer-events-auto" style={anchorStyle}>
+    <div ref={layerRef} className="pointer-events-none absolute inset-0">
+      <div ref={boxRef} className="pointer-events-auto" style={anchorStyle}>
         {pane.phase === 'working' ? (
-          <RuneWorkingPill step={pane.step} onStop={handleStop} />
+          <RuneWorkingPill step={pane.step} startedAt={pane.startedAt} onStop={handleStop} />
         ) : pane.answer !== null ? (
           <RuneAnswerPopover answer={pane.answer} onDismiss={handleDismiss} />
         ) : pane.open ? (

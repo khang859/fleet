@@ -19,6 +19,8 @@ type PaneAssist = {
   editSnapshot: string | null;
   /** True after a successful Edit turn lands — drives the "⟳ Reloaded · Revert" affordance. */
   lastEdited: boolean;
+  /** Timestamp (ms) when the current working turn started; null when not working. */
+  startedAt: number | null;
   cwd: string;
   contextFile: string;
   modeOverride: RuneAssistMode | null;
@@ -58,6 +60,7 @@ function blank(cwd: string, contextFile: string, anchor: OpenArgs['anchor']): Pa
     answer: null,
     editSnapshot: null,
     lastEdited: false,
+    startedAt: null,
     cwd,
     contextFile,
     modeOverride: null
@@ -113,7 +116,8 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
         error: null,
         answer: null,
         lastEdited: false,
-        editSnapshot: snapshot
+        editSnapshot: snapshot,
+        startedAt: Date.now()
       }))
     );
 
@@ -159,7 +163,8 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
         open: payload.phase === 'error' ? true : p.open,
         phase: payload.phase,
         step: payload.step ?? (payload.phase === 'error' ? null : p.step),
-        error: payload.phase === 'error' ? (payload.error ?? 'something went wrong') : null
+        error: payload.phase === 'error' ? (payload.error ?? 'something went wrong') : null,
+        startedAt: payload.phase === 'working' ? (p.startedAt ?? Date.now()) : null
       }))
     ),
 
