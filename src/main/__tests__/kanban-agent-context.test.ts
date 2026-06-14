@@ -8,9 +8,7 @@ import {
   resolveAgentHost,
   agentHostFor,
   __clearAgentHostCache,
-  wslAdapterIp,
-  type SyncExec,
-  type ListIfaces
+  type SyncExec
 } from '../kanban/agent-context';
 
 vi.mock('../wsl-service', () => ({ wslExePath: () => 'wsl.exe' }));
@@ -180,30 +178,11 @@ describe('agentHostFor', () => {
     expect((exec as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
   });
 
-  it('resolves the gateway host under NAT (agents enabled)', () => {
+  it('surfaces the unsupported reason under NAT', () => {
     const exec = vi.fn((_file: string, args: string[]) =>
       args.includes('wslinfo') ? 'nat\n' : '192.168.32.1\n'
     ) as unknown as SyncExec;
-    expect(agentHostFor(DISTRO, exec)).toEqual({ host: '192.168.32.1' });
-  });
-});
-
-describe('wslAdapterIp', () => {
-  it('returns the IPv4 of the vEthernet (WSL) adapter', () => {
-    const list = () => ({
-      Ethernet: [{ family: 'IPv4', address: '10.0.0.5', internal: false }],
-      'vEthernet (WSL (Hyper-V firewall))': [
-        { family: 'IPv6', address: 'fe80::1', internal: false },
-        { family: 'IPv4', address: '192.168.32.1', internal: false }
-      ]
-    });
-    expect(wslAdapterIp(list as unknown as ListIfaces)).toBe('192.168.32.1');
-  });
-
-  it('returns null when no WSL adapter is present', () => {
-    const list = () => ({
-      Ethernet: [{ family: 'IPv4', address: '10.0.0.5', internal: false }]
-    });
-    expect(wslAdapterIp(list as unknown as ListIfaces)).toBeNull();
+    const r = agentHostFor(DISTRO, exec);
+    expect('unsupported' in r).toBe(true);
   });
 });

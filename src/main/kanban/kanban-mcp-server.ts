@@ -19,7 +19,6 @@ import { latestBlackboard, postBlackboardUpdate, isSwarmRoot } from './kanban-sw
 import { finalizeWorktree, reviewStat, checkMergeConflicts, headSha } from './workspace';
 import { pmDocsDir } from './pm-paths';
 import { readArtifactPreview } from './artifact-files';
-import { WSL_NAT_AGENTS_ENABLED, wslAdapterIp } from './agent-context';
 
 const log = createLogger('kanban-mcp');
 
@@ -508,7 +507,6 @@ function toolsForMode(mode: RunMode): McpTool[] {
 
 export class KanbanMcpServer {
   private server: Server | null = null;
-  private wslServer: Server | null = null;
   private runs = new Map<string, RunScope>();
   private claimLocks = new Map<string, string>(); // token -> claim lock (for heartbeat)
 
@@ -569,72 +567,30 @@ export class KanbanMcpServer {
     this.claimLocks.delete(token);
   }
 
-  private newHttpServer(): Server {
-    return createServer((req, res) => {
-      this.handle(req, res).catch((err) => {
-        log.error('handler error', { error: err instanceof Error ? err.message : String(err) });
-        this.send(res, 500, { error: 'internal' });
-      });
-    });
-  }
-
   start(port: number): Promise<number> {
     return new Promise((resolve, reject) => {
-      this.server = this.newHttpServer();
+      this.server = createServer((req, res) => {
+        this.handle(req, res).catch((err) => {
+          log.error('handler error', { error: err instanceof Error ? err.message : String(err) });
+          this.send(res, 500, { error: 'internal' });
+        });
+      });
       this.server.on('error', reject);
       // Bind to loopback only — never expose the board to the network.
       this.server.listen(port, '127.0.0.1', () => {
         const addr = this.server?.address();
         const bound = typeof addr === 'object' && addr ? addr.port : port;
         log.info('kanban mcp server listening', { port: bound });
-        // NAT-mode WSL distros can't reach loopback on the host, so also bind the
-        // vEthernet (WSL) adapter IP at the same port — the run-token-gated board
-        // is then reachable from inside the distro. Best-effort: a failure here
-        // never blocks the loopback server the host side depends on.
-        void this.bindWslAdapter(bound).finally(() => {
-          resolve(bound);
-        });
-      });
-    });
-  }
-
-  private bindWslAdapter(port: number): Promise<void> {
-    if (!WSL_NAT_AGENTS_ENABLED || process.platform !== 'win32') return Promise.resolve();
-    const ip = wslAdapterIp();
-    if (!ip) {
-      log.info('no wsl adapter found; skipping nat bind');
-      return Promise.resolve();
-    }
-    return new Promise((resolve) => {
-      const srv = this.newHttpServer();
-      srv.on('error', (err) => {
-        log.warn('wsl adapter bind failed', {
-          ip,
-          port,
-          error: err instanceof Error ? err.message : String(err)
-        });
-        resolve();
-      });
-      srv.listen(port, ip, () => {
-        log.info('kanban mcp server also listening on wsl adapter', { ip, port });
-        this.wslServer = srv;
-        resolve();
+        resolve(bound);
       });
     });
   }
 
   stop(): Promise<void> {
     return new Promise((resolve) => {
-      const servers = [this.server, this.wslServer].filter((s): s is Server => s !== null);
+      if (!this.server) return resolve();
+      this.server.close(() => resolve());
       this.server = null;
-      this.wslServer = null;
-      if (servers.length === 0) return resolve();
-      let remaining = servers.length;
-      for (const srv of servers) {
-        srv.close(() => {
-          if (--remaining === 0) resolve();
-        });
-      }
     });
   }
 
@@ -952,8 +908,7 @@ export class KanbanMcpServer {
             .parse(args);
           let repoPath = a.repo_path ?? null;
           if (a.project !== undefined) {
-            if (repoPath)
-              return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
+            if (repoPath) return this.rpcError(res, rpcReq.id, 'pass either project or repo_path, not both');
             const p = this.store.getProjectByName(scope.boardId, a.project);
             if (!p) return this.rpcError(res, rpcReq.id, `unknown project: ${a.project}`);
             repoPath = p.path;
@@ -1011,8 +966,7 @@ export class KanbanMcpServer {
         case 'kanban_project_remove': {
           const a = z.object({ name: z.string() }).parse(args);
           const p = this.store.getProjectByName(scope.boardId, a.name);
-          if (!p)
-            return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
+          if (!p) return this.rpcError(res, rpcReq.id, `project not found on this board: ${a.name}`);
           commands.removeProject(p.id);
           return this.text(res, rpcReq.id, `Project "${a.name}" removed.`);
         }
@@ -1020,19 +974,11 @@ export class KanbanMcpServer {
           const a = z.object({ artifact_id: z.string() }).parse(args);
           const art = this.store.getArtifact(a.artifact_id);
           if (!art || art.boardId !== scope.boardId) {
-            return this.rpcError(
-              res,
-              rpcReq.id,
-              `artifact not found on this board: ${a.artifact_id}`
-            );
+            return this.rpcError(res, rpcReq.id, `artifact not found on this board: ${a.artifact_id}`);
           }
           const preview = readArtifactPreview(art.storedPath, 64 * 1024);
           if (!preview.previewable) {
-            return this.rpcError(
-              res,
-              rpcReq.id,
-              preview.reason ?? 'artifact is not readable as text'
-            );
+            return this.rpcError(res, rpcReq.id, preview.reason ?? 'artifact is not readable as text');
           }
           const suffix = preview.truncated ? '\n\n…(truncated)' : '';
           return this.text(res, rpcReq.id, (preview.text ?? '') + suffix);
@@ -1311,7 +1257,9 @@ export class KanbanMcpServer {
           return this.text(res, rpcReq.id, JSON.stringify(latestBlackboard(this.store, a.root)));
         }
         case 'kanban_swarm_post': {
-          const a = z.object({ root: z.string(), key: z.string(), value: z.unknown() }).parse(args);
+          const a = z
+            .object({ root: z.string(), key: z.string(), value: z.unknown() })
+            .parse(args);
           if (!isSwarmRoot(this.store, a.root)) {
             return this.rpcError(res, rpcReq.id, `${a.root} is not a swarm root`);
           }
