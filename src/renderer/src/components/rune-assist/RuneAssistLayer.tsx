@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { useRuneAssistStore } from '../../store/rune-assist-store';
+import { detectIntent } from '../../../../shared/rune-assist';
 import { RuneAssistOverlay } from './RuneAssistOverlay';
 import { RuneWorkingPill } from './RuneWorkingPill';
 import { RuneAnswerPopover } from './RuneAnswerPopover';
@@ -15,11 +16,14 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
   const closeOverlay = useRuneAssistStore((s) => s.closeOverlay);
   const dismissAnswer = useRuneAssistStore((s) => s.dismissAnswer);
   const revert = useRuneAssistStore((s) => s.revert);
+  const setModeOverride = useRuneAssistStore((s) => s.setModeOverride);
 
   const handleDismiss = useCallback(() => dismissAnswer(paneId), [dismissAnswer, paneId]);
   const handleStop = useCallback(() => void stop(paneId), [stop, paneId]);
 
   if (!pane) return null;
+
+  const effectiveMode = pane.modeOverride ?? detectIntent(pane.draft);
 
   const anchorStyle: React.CSSProperties = {
     position: 'absolute',
@@ -42,6 +46,10 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
               onChange={(v) => setDraft(paneId, v)}
               onSubmit={() => void send(paneId, pane.draft)}
               onClose={() => closeOverlay(paneId)}
+              mode={effectiveMode}
+              onToggleMode={() =>
+                setModeOverride(paneId, effectiveMode === 'edit' ? 'ask' : 'edit')
+              }
             />
             {pane.phase === 'error' && pane.error && (
               <div className="w-80 rounded-md border border-red-900/60 bg-red-950/40 px-3 py-1.5 text-xs text-red-300">

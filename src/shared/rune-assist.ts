@@ -14,6 +14,7 @@ const IMPERATIVE_RE =
 
 /** Heuristic: a leading imperative verb => edit; otherwise ask. Authoritative mode is the caller's. */
 export function detectIntent(text: string): RuneAssistMode {
+  if (/\?\s*$/.test(text)) return 'ask';
   return IMPERATIVE_RE.test(text) ? 'edit' : 'ask';
 }
 

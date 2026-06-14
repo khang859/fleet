@@ -25,6 +25,10 @@ describe('detectIntent', () => {
     expect(detectIntent('where is validateToken used')).toBe('ask');
     expect(detectIntent('')).toBe('ask');
   });
+  it('treats a trailing question mark as ask even with a leading imperative', () => {
+    expect(detectIntent('Update the docs?')).toBe('ask');
+    expect(detectIntent('add a guard?  ')).toBe('ask');
+  });
 });
 
 describe('buildContextLine', () => {

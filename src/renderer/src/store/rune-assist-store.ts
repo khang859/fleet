@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { detectIntent, changedLineRange } from '../../../shared/rune-assist';
+import type { RuneAssistMode } from '../../../shared/rune-assist';
 import { getEditorHandle } from '../lib/editor-context-registry';
 import type { RuneAssistResultPayload, RuneAssistStatusPayload } from '../../../shared/ipc-api';
 
@@ -20,6 +21,7 @@ type PaneAssist = {
   lastEdited: boolean;
   cwd: string;
   contextFile: string;
+  modeOverride: RuneAssistMode | null;
 };
 
 type OpenArgs = { cwd: string; contextFile: string; anchor: { top: number; left: number } };
@@ -31,6 +33,7 @@ type StoreState = {
   openOverlay: (paneId: string, args: OpenArgs) => void;
   closeOverlay: (paneId: string) => void;
   setDraft: (paneId: string, draft: string) => void;
+  setModeOverride: (paneId: string, mode: RuneAssistMode) => void;
   dismissAnswer: (paneId: string) => void;
   send: (paneId: string, text: string) => Promise<void>;
   stop: (paneId: string) => Promise<void>;
@@ -56,7 +59,8 @@ function blank(cwd: string, contextFile: string, anchor: OpenArgs['anchor']): Pa
     editSnapshot: null,
     lastEdited: false,
     cwd,
-    contextFile
+    contextFile,
+    modeOverride: null
   };
 }
 
@@ -82,6 +86,9 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
 
   setDraft: (paneId, draft) => set((s) => patch(s, paneId, (p) => ({ ...p, draft }))),
 
+  setModeOverride: (paneId, mode) =>
+    set((s) => patch(s, paneId, (p) => ({ ...p, modeOverride: mode }))),
+
   dismissAnswer: (paneId) => set((s) => patch(s, paneId, (p) => ({ ...p, answer: null }))),
 
   send: async (paneId, text) => {
@@ -90,7 +97,7 @@ export const useRuneAssistStore = create<StoreState>((set, get) => ({
     const p = get().panes[paneId];
     if (!p || p.phase === 'working') return; // one in-flight per pane (main also guards per cwd)
 
-    const mode = detectIntent(body);
+    const mode = p.modeOverride ?? detectIntent(body);
     const handle = getEditorHandle(paneId);
     const selection = handle?.getSelection();
     if (mode === 'edit') await handle?.save();
