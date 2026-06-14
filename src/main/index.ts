@@ -53,6 +53,8 @@ import type { DispatcherConfig, WorkerExit } from './kanban/kanban-dispatcher';
 import { setKanbanSettingsApplier } from './kanban/kanban-settings-bridge';
 import { KanbanMcpServer } from './kanban/kanban-mcp-server';
 import { PmChatService } from './kanban/pm-chat-service';
+import { RuneFileChatService } from './rune-assist/rune-file-chat-service';
+import { registerRuneAssistIpc } from './rune-assist/rune-assist-ipc';
 import {
   prepareWorkspace,
   ensureFeatureBranch,
@@ -93,6 +95,7 @@ let kanbanPrPoller: PrPoller | undefined;
 let kanbanCommands: KanbanCommands | undefined;
 let kanbanNotifier: KanbanNotifier | null = null;
 let pmChat: PmChatService | undefined;
+let runeAssist: RuneFileChatService | null = null;
 const ptyManager = new PtyManager();
 const layoutStore = new LayoutStore();
 const eventBus = new EventBus();
@@ -1148,6 +1151,21 @@ void app.whenReady().then(async () => {
   });
   registerKanbanIpc(kanbanCommands, pmChat);
 
+  runeAssist = new RuneFileChatService({
+    stateDir: app.getPath('userData'),
+    emitStatus: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_STATUS, payload);
+      }
+    },
+    emitResult: (payload) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(IPC_CHANNELS.RUNE_ASSIST_RESULT, payload);
+      }
+    }
+  });
+  registerRuneAssistIpc(runeAssist);
+
   sessionsService = new SessionsService();
   registerSessionsIpcHandlers(sessionsService);
   sessionsService.startWatching(() => {
@@ -1185,6 +1203,7 @@ function shutdownAll(): void {
   kanbanDispatcher?.stop();
   kanbanPrPoller?.stop();
   pmChat?.dispose();
+  runeAssist?.dispose();
   void kanbanMcp?.stop();
   kanbanStore?.close();
 }
