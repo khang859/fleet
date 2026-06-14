@@ -95,13 +95,18 @@ export function buildAgentSpawn(spec: AgentSpawnSpec, loc: AgentWslLocation | nu
 }
 
 /**
- * NAT-mode WSL agents are NOT yet wired end-to-end: the MCP server still binds
- * `127.0.0.1` only (kanban-mcp-server.ts), which the distro can't reach across
- * the NAT boundary. Flipping this on requires the server to also bind an address
- * reachable from the WSL subnet (the vEthernet adapter IP — not 0.0.0.0) plus a
- * scoped Windows Firewall inbound rule, validated on real Windows hardware. Until
- * then NAT distros are refused with an actionable message. Mirrored mode needs
- * none of this and works today.
+ * NAT-mode WSL agents are unsupported, and this is NOT just a missing firewall
+ * rule. Empirically validated on real hardware (see
+ * docs/learnings/2026-06-14-wsl-nat-distro-to-host-unreachable.md): under NAT a
+ * distro cannot reach the Windows host on the vEthernet (WSL) adapter IP at all —
+ * the distro→host direction is blocked at the NAT/vSwitch level, independent of
+ * the firewall. Binding the host adapter IP, a Hyper-V firewall rule, a standard
+ * Windows Firewall inbound rule, and even `DefaultInboundAction = Allow` all left
+ * the connection timing out (the host reaches its own listener fine; only
+ * distro→host fails). So NAT distros are refused with an actionable message.
+ *
+ * Mirrored mode shares the host loopback and works today — it is the supported
+ * path for autopilot agents in a WSL repo.
  */
 export const WSL_NAT_AGENTS_ENABLED = false;
 
