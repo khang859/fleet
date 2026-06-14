@@ -64,7 +64,13 @@ import type {
   PmChatState,
   PmChatStatusPayload,
   PmChatTranscriptPayload,
-  KanbanAddProjectRequest
+  KanbanAddProjectRequest,
+  RuneAssistSendRequest,
+  RuneAssistStopRequest,
+  RuneAssistResetRequest,
+  RuneAssistState,
+  RuneAssistStatusPayload,
+  RuneAssistResultPayload
 } from '../shared/ipc-api';
 import type {
   Board,
@@ -656,6 +662,20 @@ const fleetApi = {
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_DEFAULT_PROJECT, id),
     setProjectVerifyCommands: async (id: string, cmds: VerifyCommand[]): Promise<void> =>
       typedInvoke<void>(IPC_CHANNELS.KANBAN_SET_PROJECT_VERIFY, id, cmds)
+  },
+  runeAssist: {
+    send: async (req: RuneAssistSendRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_SEND, req),
+    stop: async (req: RuneAssistStopRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_STOP, req),
+    reset: async (req: RuneAssistResetRequest): Promise<void> =>
+      typedInvoke<void>(IPC_CHANNELS.RUNE_ASSIST_RESET, req),
+    getState: async (cwd: string): Promise<RuneAssistState> =>
+      typedInvoke<RuneAssistState>(IPC_CHANNELS.RUNE_ASSIST_STATE, cwd),
+    onStatus: (callback: (payload: RuneAssistStatusPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistStatusPayload>(IPC_CHANNELS.RUNE_ASSIST_STATUS, callback),
+    onResult: (callback: (payload: RuneAssistResultPayload) => void): Unsubscribe =>
+      onChannel<RuneAssistResultPayload>(IPC_CHANNELS.RUNE_ASSIST_RESULT, callback)
   },
   envSync: {
     getConfig: async (repoDir: string): Promise<EnvSyncConfig | null> =>
