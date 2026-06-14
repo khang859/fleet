@@ -151,7 +151,7 @@ export function RuneAssistLayer({ paneId }: Props): React.JSX.Element | null {
         ) : pane.lastEdited ? (
           <button
             onClick={handleRevert}
-            className={`rounded-full border px-3 py-1 text-xs shadow-xl ring-1 ring-black/40 ${
+            className={`rounded-full border px-3 py-1 text-xs shadow-xl ring-1 ring-white/15 ${
               confirmRevert
                 ? 'border-amber-700/70 bg-amber-950/40 text-amber-300 hover:text-amber-200'
                 : 'border-fleet-border-strong bg-fleet-surface-2 text-emerald-300 hover:text-emerald-200'

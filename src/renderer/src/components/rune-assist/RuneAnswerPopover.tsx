@@ -27,7 +27,7 @@ export function RuneAnswerPopover({ answer, onDismiss }: Props): React.JSX.Eleme
   return (
     <div
       ref={ref}
-      className="max-h-72 w-96 overflow-auto rounded-lg border border-fleet-border-strong bg-fleet-surface-2 px-3 py-2 text-sm leading-relaxed text-neutral-100 shadow-2xl ring-1 ring-black/40"
+      className="max-h-72 w-96 overflow-auto rounded-lg border border-fleet-border-strong bg-fleet-surface-2 px-3 py-2 text-sm leading-relaxed text-neutral-100 shadow-2xl ring-1 ring-white/15"
     >
       {answer.trim() === '' ? (
         <div className="text-neutral-500 italic">Rune returned no answer.</div>
