@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { useImageStore } from '../store/image-store';
 import { toFleetImageUrl } from '../../../shared/path-platform';
+import type { PathContext } from '../../../shared/shell-profiles';
 
 function getBasename(filePath: string): string {
   return filePath.split('/').pop() || filePath.split('\\').pop() || filePath;
@@ -18,9 +19,13 @@ const ZOOM_STEP = 0.15;
 
 type ImageViewerPaneProps = {
   filePath: string;
+  pathContext?: PathContext;
 };
 
-export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.Element {
+export function ImageViewerPane({
+  filePath,
+  pathContext
+}: ImageViewerPaneProps): React.JSX.Element {
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
@@ -62,10 +67,10 @@ export function ImageViewerPane({ filePath }: ImageViewerPaneProps): React.JSX.E
 
     setImageSrc(toFleetImageUrl(filePath));
 
-    void window.fleet.file.stat(filePath).then((result) => {
+    void window.fleet.file.stat(filePath, pathContext).then((result) => {
       if (result.success && result.data) setFileSize(result.data.size);
     });
-  }, [filePath]);
+  }, [filePath, pathContext]);
 
   // Calculate fit zoom (scale to fill pane without cropping)
   const getFitZoom = useCallback((): number => {

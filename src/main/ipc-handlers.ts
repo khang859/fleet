@@ -49,6 +49,21 @@ function resolveCtxPath(ctx: PathContext | undefined, p: string): string {
   return isWslContext(ctx) ? toWindowsAccessiblePath(p, ctx) : p;
 }
 
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  svg: 'image/svg+xml',
+  bmp: 'image/bmp',
+  ico: 'image/x-icon'
+};
+
+function mimeTypeForExt(ext: string): string {
+  return IMAGE_MIME_TYPES[ext] ?? 'application/octet-stream';
+}
+
 type FileListEntry = { path: string; relativePath: string; name: string };
 
 /**
@@ -582,22 +597,35 @@ export function registerIpcHandlers(
     }
   );
 
-  // File operations
-  ipcMain.handle(IPC_CHANNELS.FILE_READ, async (_event, filePath: string) => {
-    try {
-      const stats = await stat(filePath);
-      const content = await readFile(filePath, 'utf-8');
-      return { success: true, data: { content, size: stats.size, modifiedAt: stats.mtimeMs } };
-    } catch (err) {
-      return { success: false, error: toError(err).message };
+  // File operations. A WSL pane's path is posix; bridge it to a Windows-accessible
+  // UNC path (resolveCtxPath) before touching `fs`, or `fs.stat('/home/...')` would
+  // resolve against the current drive (→ `C:\home\...`) and fail with ENOENT.
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_READ,
+    async (_event, filePath: string, pathContext?: PathContext) => {
+      try {
+        const target = resolveCtxPath(pathContext, filePath);
+        const stats = await stat(target);
+        const content = await readFile(target, 'utf-8');
+        return { success: true, data: { content, size: stats.size, modifiedAt: stats.mtimeMs } };
+      } catch (err) {
+        return { success: false, error: toError(err).message };
+      }
     }
-  });
+  );
 
   ipcMain.handle(
     IPC_CHANNELS.FILE_WRITE,
-    async (_event, { filePath, content }: { filePath: string; content: string }) => {
+    async (
+      _event,
+      {
+        filePath,
+        content,
+        pathContext
+      }: { filePath: string; content: string; pathContext?: PathContext }
+    ) => {
       try {
-        await writeFile(filePath, content, 'utf-8');
+        await writeFile(resolveCtxPath(pathContext, filePath), content, 'utf-8');
         return { success: true };
       } catch (err) {
         return { success: false, error: toError(err).message };
@@ -605,26 +633,19 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle(IPC_CHANNELS.FILE_STAT, async (_event, filePath: string) => {
-    try {
-      const stats = await stat(filePath);
-      const ext = extname(filePath).toLowerCase().slice(1);
-      const mimeTypes: Record<string, string> = {
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        svg: 'image/svg+xml',
-        bmp: 'image/bmp',
-        ico: 'image/x-icon'
-      };
-      const mimeType = mimeTypes[ext] ?? 'application/octet-stream';
-      return { success: true, data: { size: stats.size, modifiedAt: stats.mtimeMs, mimeType } };
-    } catch (err) {
-      return { success: false, error: toError(err).message };
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_STAT,
+    async (_event, filePath: string, pathContext?: PathContext) => {
+      try {
+        const stats = await stat(resolveCtxPath(pathContext, filePath));
+        const ext = extname(filePath).toLowerCase().slice(1);
+        const mimeType = mimeTypeForExt(ext);
+        return { success: true, data: { size: stats.size, modifiedAt: stats.mtimeMs, mimeType } };
+      } catch (err) {
+        return { success: false, error: toError(err).message };
+      }
     }
-  });
+  );
 
   // List immediate children of a directory (single level, no recursion)
   ipcMain.handle(
@@ -683,27 +704,19 @@ export function registerIpcHandlers(
     }
   );
 
-  ipcMain.handle(IPC_CHANNELS.FILE_READ_BINARY, async (_event, filePath: string) => {
-    try {
-      const ext = extname(filePath).toLowerCase().slice(1);
-      const mimeTypes: Record<string, string> = {
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        svg: 'image/svg+xml',
-        bmp: 'image/bmp',
-        ico: 'image/x-icon'
-      };
-      const mimeType = mimeTypes[ext] ?? 'application/octet-stream';
-      const buffer = await readFile(filePath);
-      const base64 = buffer.toString('base64');
-      return { success: true, data: { base64, mimeType } };
-    } catch (err) {
-      return { success: false, error: toError(err).message };
+  ipcMain.handle(
+    IPC_CHANNELS.FILE_READ_BINARY,
+    async (_event, filePath: string, pathContext?: PathContext) => {
+      try {
+        const mimeType = mimeTypeForExt(extname(filePath).toLowerCase().slice(1));
+        const buffer = await readFile(resolveCtxPath(pathContext, filePath));
+        const base64 = buffer.toString('base64');
+        return { success: true, data: { base64, mimeType } };
+      } catch (err) {
+        return { success: false, error: toError(err).message };
+      }
     }
-  });
+  );
 
   ipcMain.handle(IPC_CHANNELS.FILE_SEARCH, async (_event, req: FileSearchRequest) => {
     // For a WSL pane with no explicit scope, root the `find` fallback at the

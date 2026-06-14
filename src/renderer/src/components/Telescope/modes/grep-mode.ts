@@ -56,7 +56,7 @@ export function createGrepMode(cwd: string, activePaneId: string | null): Telesc
     onSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string') return;
-      useWorkspaceStore.getState().openFile(filePath);
+      useWorkspaceStore.getState().openFile(filePath, pathContext);
     },
 
     onAltSelect: (item) => {

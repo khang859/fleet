@@ -279,7 +279,7 @@ type WorkspaceStore = {
   reconcileToolTabs: () => void;
 
   // File/image pane helpers
-  openFile: (filePath: string) => string;
+  openFile: (filePath: string, pathContext?: PathContext) => string;
   openFileInTab: (
     files: Array<{ path: string; paneType: 'file' | 'image' | 'markdown' | 'pdf'; label: string }>
   ) => void;
@@ -1222,11 +1222,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     }));
   },
 
-  openFile: (filePath) => {
+  openFile: (filePath, pathContext) => {
     const paneType = getPaneTypeForFilePath(filePath);
     const tabType = paneType;
     const fileName = filePath.split('/').pop() ?? filePath;
-    const leaf: PaneLeaf = { type: 'leaf', id: generateId(), cwd: '/', paneType, filePath };
+    // Remember the coordinate system the path lives in (e.g. which WSL distro) so
+    // the viewer can bridge it for `fs` access — otherwise a posix path falls back
+    // to the win32 host context and `stat` fails (→ `C:\home\...` ENOENT).
+    const ctx = pathContext ?? getPaneContextById(get().activePaneId);
+    const leaf: PaneLeaf = {
+      type: 'leaf',
+      id: generateId(),
+      cwd: '/',
+      paneType,
+      filePath,
+      pathContext: ctx
+    };
     const tab: Tab = {
       id: generateId(),
       label: fileName,
@@ -1246,6 +1257,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   openFileInTab: (files) => {
+    // New tabs inherit the active pane's coordinate system (e.g. markdown links
+    // opened from a WSL pane stay in that distro's posix space).
+    const ctx = getPaneContextById(get().activePaneId);
     for (const file of files) {
       const state = get();
       // Dedup: check if file is already open in any tab
@@ -1267,7 +1281,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
           id: generateId(),
           cwd: '/',
           paneType: file.paneType,
-          filePath: file.path
+          filePath: file.path,
+          pathContext: ctx
         };
         const tab: Tab = {
           id: generateId(),

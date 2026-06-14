@@ -277,16 +277,18 @@ const fleetApi = {
   },
   file: {
     read: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<
       | { success: true; data: { content: string; size: number; modifiedAt: number } }
       | { success: false; error: string }
-    > => typedInvoke(IPC_CHANNELS.FILE_READ, filePath),
+    > => typedInvoke(IPC_CHANNELS.FILE_READ, filePath, pathContext),
     write: async (
       filePath: string,
-      content: string
+      content: string,
+      pathContext?: PathContext
     ): Promise<{ success: true } | { success: false; error: string }> =>
-      typedInvoke(IPC_CHANNELS.FILE_WRITE, { filePath, content }),
+      typedInvoke(IPC_CHANNELS.FILE_WRITE, { filePath, content, pathContext }),
     openDialog: async (
       opts: {
         defaultPath?: string;
@@ -306,16 +308,18 @@ const fleetApi = {
     onOpenInTab: (callback: (payload: FileOpenInTabPayload) => void): Unsubscribe =>
       onChannel(IPC_CHANNELS.FILE_OPEN_IN_TAB, callback),
     readBinary: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<{ success: boolean; data?: { base64: string; mimeType: string }; error?: string }> =>
-      typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath),
+      typedInvoke(IPC_CHANNELS.FILE_READ_BINARY, filePath, pathContext),
     stat: async (
-      filePath: string
+      filePath: string,
+      pathContext?: PathContext
     ): Promise<{
       success: boolean;
       data?: { size: number; modifiedAt: number; mimeType: string };
       error?: string;
-    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath),
+    }> => typedInvoke(IPC_CHANNELS.FILE_STAT, filePath, pathContext),
     search: async (req: FileSearchRequest): Promise<FileSearchResponse> =>
       typedInvoke(IPC_CHANNELS.FILE_SEARCH, req),
     grep: async (req: FileGrepRequest): Promise<FileGrepResponse> =>

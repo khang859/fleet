@@ -48,7 +48,7 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
         const checks = await Promise.all(
           recentFiles.map(async (filePath) => ({
             filePath,
-            exists: (await window.fleet.file.stat(filePath)).success
+            exists: (await window.fleet.file.stat(filePath, ctx)).success
           }))
         );
         const missing = checks.filter((c) => !c.exists).map((c) => c.filePath);
@@ -86,7 +86,7 @@ export function createFilesMode(cwd: string, activePaneId: string | null): Teles
     onSelect: (item) => {
       const filePath = item.data?.filePath;
       if (typeof filePath !== 'string') return;
-      useWorkspaceStore.getState().openFile(filePath);
+      useWorkspaceStore.getState().openFile(filePath, ctx);
     },
 
     onAltSelect: (item) => {

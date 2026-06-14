@@ -13,12 +13,14 @@ import { useMarkdownFind } from '../hooks/use-markdown-find';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { useToastStore } from '../store/toast-store';
 import { dirname, resolve } from '../lib/path-utils';
+import type { PathContext } from '../../../shared/shell-profiles';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 type Props = {
   paneId: string;
   filePath: string;
+  pathContext?: PathContext;
 };
 
 type ViewMode = 'preview' | 'raw';
@@ -39,7 +41,7 @@ function isExternalUrl(href: string): boolean {
   return /^https?:\/\//.test(href);
 }
 
-export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
+export function MarkdownPane({ paneId, filePath, pathContext }: Props): React.JSX.Element {
   const [activeView, setActiveView] = useState<ViewMode>('preview');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +149,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
 
   // Load file content on mount
   useEffect(() => {
-    void window.fleet.file.read(filePath).then((result) => {
+    void window.fleet.file.read(filePath, pathContext).then((result) => {
       if (result.success && result.data) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
@@ -161,7 +163,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
       }
       setLoading(false);
     });
-  }, [filePath]);
+  }, [filePath, pathContext]);
 
   // Sync content from editor to contentRef
   const handleContentChange = useCallback((content: string) => {
@@ -350,6 +352,7 @@ export function MarkdownPane({ paneId, filePath }: Props): React.JSX.Element {
           <FileEditorPane
             paneId={paneId}
             filePath={filePath}
+            pathContext={pathContext}
             onContentChange={handleContentChange}
             showPathChrome={false}
           />

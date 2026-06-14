@@ -119,7 +119,7 @@ export function createBrowseMode(
       if (isDirectory === true) {
         void loadDir(filePath);
       } else {
-        useWorkspaceStore.getState().openFile(filePath);
+        useWorkspaceStore.getState().openFile(filePath, ctx);
       }
     },
 

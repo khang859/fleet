@@ -27,6 +27,7 @@ import {
 import { useRuneAssistStore } from '../store/rune-assist-store';
 import { RuneAssistLayer } from './rune-assist/RuneAssistLayer';
 import type { PaneNode } from '../../../shared/types';
+import type { PathContext } from '../../../shared/shell-profiles';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
@@ -161,6 +162,7 @@ function getLanguageName(filePath: string): string {
 type Props = {
   paneId: string;
   filePath: string;
+  pathContext?: PathContext;
   onContentChange?: (content: string) => void;
   /** When false, hides the built-in path header + footer path — used when the host pane renders its own chrome. */
   showPathChrome?: boolean;
@@ -169,6 +171,7 @@ type Props = {
 export function FileEditorPane({
   paneId,
   filePath,
+  pathContext,
   onContentChange,
   showPathChrome = true
 }: Props): React.JSX.Element {
@@ -208,7 +211,7 @@ export function FileEditorPane({
     if (!viewRef.current) return;
     setIsSaving(true);
     const content = viewRef.current.state.doc.toString();
-    const result = await window.fleet.file.write(filePath, content);
+    const result = await window.fleet.file.write(filePath, content, pathContext);
     setIsSaving(false);
     if (result.success) {
       savedContentRef.current = content;
@@ -224,7 +227,7 @@ export function FileEditorPane({
         }
       }
     }
-  }, [filePath, paneId, setPaneDirty]);
+  }, [filePath, pathContext, paneId, setPaneDirty]);
 
   // Keep saveRef current so closures in EditorView always call the latest save
   const saveRef = useRef(save);
@@ -235,7 +238,7 @@ export function FileEditorPane({
 
   // Load file on mount
   useEffect(() => {
-    void window.fleet.file.read(filePath).then((result) => {
+    void window.fleet.file.read(filePath, pathContext).then((result) => {
       if (result.success && result.data) {
         if (result.data.size > MAX_FILE_SIZE) {
           setTooLarge(true);
@@ -248,7 +251,7 @@ export function FileEditorPane({
       }
       setLoading(false);
     });
-  }, [filePath]);
+  }, [filePath, pathContext]);
 
   // Create editor once file is loaded
   useEffect(() => {
@@ -384,7 +387,7 @@ export function FileEditorPane({
       },
       getContent: () => viewRef.current?.state.doc.toString() ?? '',
       reloadFromDisk: async () => {
-        const res = await window.fleet.file.read(filePath);
+        const res = await window.fleet.file.read(filePath, pathContext);
         if (!res.success) return null;
         const view = viewRef.current;
         if (!view) return null;
@@ -404,7 +407,7 @@ export function FileEditorPane({
         }, 1500);
       },
       writeContent: async (content) => {
-        await window.fleet.file.write(filePath, content);
+        await window.fleet.file.write(filePath, content, pathContext);
         const view = viewRef.current;
         if (view) {
           savedContentRef.current = content;
@@ -444,7 +447,7 @@ export function FileEditorPane({
       unregisterEditorHandle(paneId);
       if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
     };
-  }, [paneId, filePath]);
+  }, [paneId, filePath, pathContext]);
 
   // Rune IPC events are subscribed once at the app level (see useRuneAssistEvents) and
   // routed into the store by paneId — NOT here, because this pane unmounts on tab switch
