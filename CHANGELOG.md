@@ -1,5 +1,10 @@
 # Changelog
 
+## v2.71.0
+
+- **WSL repos run inside the distro** — for boards and panes backed by a `\\wsl.localhost\…` repo, Fleet now executes git/grep/find/ls-files, env-editor/env-sync, worktree management, and the full **kanban autopilot** pipeline (worker, verify, and review agents) *inside* the WSL distro instead of over the UNC bridge, and translates WSL↔Windows paths for file serving, screenshots, and paste. This makes autopilot, file tooling, and worktrees behave correctly for repos that live in WSL. **Note:** autopilot agents require **mirrored** WSL networking (`networkingMode=mirrored` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`); in the default NAT mode the run is refused with an actionable message, because a distro can't reach Fleet's board server on the Windows host over NAT.
+- **Rune Quick-Assist** — summon Rune right at your cursor in any open file. A transient overlay auto-detects whether you're **asking** (answer appears in a one-shot anchored popover) or **editing** (the file is changed in place, then auto-reloaded and flashed, with one-click revert), backed by a non-blocking working pill and per-pane concurrency — no docked panel, chips, or mode juggling.
+
 ## v2.70.1
 
 - **Clearer Claude session metadata** — the transcript header's cramped metadata strip is replaced with a labeled key→value panel (Cost, Model, Messages, Tokens, Cache, Branch, Duration). Cryptic glyphs are gone; every value carries a visible label, with token/cache breakdowns in tooltips. Session list cost badges gain explanatory tooltips.
