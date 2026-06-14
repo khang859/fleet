@@ -174,6 +174,7 @@ export class RuneFileChatService {
 
     const contextLine = contextFile ? buildContextLine(contextFile, selection) : '';
     const prompt = contextLine ? composeAssistPrompt(mode, contextLine, body) : body;
+    const wasResuming = c.sessionId !== null;
     const args = buildAssistArgs(prompt, c.sessionId);
     const child = spawn('rune', args, {
       cwd,
@@ -201,7 +202,7 @@ export class RuneFileChatService {
     child.stderr.on('data', collect);
 
     let finished = false;
-    const finish = (error: string | null): void => {
+    const finish = (error: string | null, dropSession = false): void => {
       if (finished) return;
       finished = true;
       this.inFlightChildren.delete(child);
@@ -209,7 +210,15 @@ export class RuneFileChatService {
       clearTimeout(timeout);
       c.inFlight = false;
       c.error = error;
-      if (sessionId && sessionId !== c.sessionId) {
+      if (dropSession) {
+        // The saved session id failed to resume (likely stale/corrupt). Drop it so the
+        // next turn starts a fresh session instead of re-resuming a dead one forever.
+        if (c.sessionId !== null) {
+          log.warn('rune-assist dropping unresumable session', { cwd, sessionId: c.sessionId });
+          c.sessionId = null;
+          this.persistSessions();
+        }
+      } else if (sessionId && sessionId !== c.sessionId) {
         c.sessionId = sessionId;
         this.persistSessions();
       }
@@ -273,7 +282,10 @@ export class RuneFileChatService {
         .map((l) => l.trim())
         .filter(Boolean)
         .pop();
-      finish(lastLine ? lastLine.slice(0, 300) : `the run failed (exit ${code ?? '?'})`);
+      finish(
+        lastLine ? lastLine.slice(0, 300) : `the run failed (exit ${code ?? '?'})`,
+        wasResuming
+      );
     });
   }
 
