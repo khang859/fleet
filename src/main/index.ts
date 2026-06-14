@@ -1032,9 +1032,10 @@ void app.whenReady().then(async () => {
       } else if (mode === 'review') {
         // Singleton reviewer selected BY MODE; fall back to an in-memory default persona when
         // no saved reviewer profile exists (existing users have none). NEVER write task.assignee.
-        profile = profiles.find(
+        const reviewerProfile = profiles.find(
           (p) => p.name === REVIEWER_PROFILE_NAME && p.role === 'reviewer'
-        ) ?? {
+        );
+        profile = reviewerProfile ?? {
           name: REVIEWER_PROFILE_NAME,
           role: 'reviewer',
           model: '',
