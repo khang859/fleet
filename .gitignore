@@ -13,3 +13,6 @@ sprites-raw
 sprites-staging
 .worktrees/
 hooks/bin/
+
+# Superpowers brainstorm scratch
+.superpowers/

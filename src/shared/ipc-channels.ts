@@ -213,6 +213,13 @@ export const IPC_CHANNELS = {
   KANBAN_PM_RESET: 'kanban:pm-reset',
   KANBAN_PM_STATUS: 'kanban:pm-status',
   KANBAN_PM_TRANSCRIPT: 'kanban:pm-transcript',
+  // Rune Quick-Assist (cursor overlay)
+  RUNE_ASSIST_SEND: 'rune-assist:send',
+  RUNE_ASSIST_STOP: 'rune-assist:stop',
+  RUNE_ASSIST_RESET: 'rune-assist:reset',
+  RUNE_ASSIST_STATE: 'rune-assist:state',
+  RUNE_ASSIST_STATUS: 'rune-assist:status',
+  RUNE_ASSIST_RESULT: 'rune-assist:result',
   KANBAN_LIST_PROJECTS: 'kanban:list-projects',
   KANBAN_ADD_PROJECT: 'kanban:add-project',
   KANBAN_REMOVE_PROJECT: 'kanban:remove-project',

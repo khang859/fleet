@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { EditorState, StateEffect } from '@codemirror/state';
+import { EditorState, StateEffect, StateField, type Range } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -7,7 +7,9 @@ import {
   highlightActiveLineGutter,
   highlightSpecialChars,
   drawSelection,
-  highlightActiveLine
+  highlightActiveLine,
+  Decoration,
+  type DecorationSet
 } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { syntaxHighlighting, defaultHighlightStyle, LanguageSupport } from '@codemirror/language';
@@ -17,9 +19,51 @@ import { getLanguageForPath } from '../../../shared/languages';
 import { useWorkspaceStore } from '../store/workspace-store';
 import { registerFileSave, unregisterFileSave } from '../lib/file-save-registry';
 import { PathChromeHeader } from './PathChromeHeader';
+import {
+  registerEditorHandle,
+  unregisterEditorHandle,
+  type EditorHandle
+} from '../lib/editor-context-registry';
+import { useRuneAssistStore } from '../store/rune-assist-store';
+import { RuneAssistLayer } from './rune-assist/RuneAssistLayer';
+import type { PaneNode } from '../../../shared/types';
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const AUTO_SAVE_DELAY = 3000; // 3 seconds
+
+// --- Rune flash: transient line highlight after an Agent edit ---
+const flashRangeEffect = StateEffect.define<{ fromLine: number; toLine: number } | null>();
+
+const flashField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none;
+  },
+  update(deco, tr) {
+    let next = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (!e.is(flashRangeEffect)) continue;
+      if (e.value === null) {
+        next = Decoration.none;
+        continue;
+      }
+      const ranges: Array<Range<Decoration>> = [];
+      const { fromLine, toLine } = e.value;
+      for (let ln = fromLine; ln <= toLine && ln <= tr.state.doc.lines; ln++) {
+        const line = tr.state.doc.line(ln);
+        ranges.push(Decoration.line({ class: 'rune-flash-line' }).range(line.from));
+      }
+      next = Decoration.set(ranges, true);
+    }
+    return next;
+  },
+  provide: (f) => EditorView.decorations.from(f)
+});
+
+/** True if the given pane id appears anywhere in this split tree. */
+function treeContainsPane(node: PaneNode, paneId: string): boolean {
+  if (node.type === 'leaf') return node.id === paneId;
+  return treeContainsPane(node.children[0], paneId) || treeContainsPane(node.children[1], paneId);
+}
 
 async function loadCodeMirrorLanguage(langId: string): Promise<LanguageSupport | null> {
   switch (langId) {
@@ -137,12 +181,28 @@ export function FileEditorPane({
   const [isSaving, setIsSaving] = useState(false);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const savedContentRef = useRef<string>('');
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const initialContentRef = useRef<string | null>(null);
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openRuneOverlayRef = useRef<
+    (anchor: { top: number; left: number }, anchorPos: number) => void
+  >(() => {});
+  const runeWorkingRef = useRef(false);
 
   const setPaneDirty = useWorkspaceStore((s) => s.setPaneDirty);
+  const openOverlay = useRuneAssistStore((s) => s.openOverlay);
+  const runeWorking = useRuneAssistStore((s) => s.panes[paneId]?.phase === 'working');
+  runeWorkingRef.current = runeWorking;
+  // The workspace cwd that owns this pane (rune runs there).
+  const cwd = useWorkspaceStore((s) => {
+    const tab = s.workspace.tabs.find((t) => treeContainsPane(t.splitRoot, paneId));
+    return tab?.cwd ?? '/';
+  });
+  openRuneOverlayRef.current = (anchor, anchorPos) =>
+    openOverlay(paneId, { cwd, contextFile: filePath, anchor, anchorPos });
 
   const save = useCallback(async () => {
     if (!viewRef.current) return;
@@ -212,11 +272,26 @@ export function FileEditorPane({
           highlightActiveLine(),
           syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
           search(),
+          flashField,
           keymap.of([
             {
               key: 'Mod-s',
               run: () => {
                 void saveRef.current();
+                return true;
+              }
+            },
+            {
+              key: 'Mod-i',
+              run: (view) => {
+                const sel = view.state.selection.main;
+                const coords = view.coordsAtPos(sel.head);
+                const host = wrapperRef.current?.getBoundingClientRect();
+                const anchor =
+                  coords && host
+                    ? { top: coords.bottom - host.top, left: coords.left - host.left }
+                    : { top: 8, left: 8 };
+                openRuneOverlayRef.current(anchor, sel.head);
                 return true;
               }
             },
@@ -233,7 +308,7 @@ export function FileEditorPane({
             setIsDirty(dirty);
             onContentChangeRef.current?.(current);
             setPaneDirty(paneId, dirty);
-            if (dirty) {
+            if (dirty && !runeWorkingRef.current) {
               if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
               autoSaveTimerRef.current = setTimeout(() => {
                 void saveRef.current();
@@ -249,7 +324,11 @@ export function FileEditorPane({
           }),
           EditorView.theme({
             '&': { height: '100%' },
-            '.cm-scroller': { overflow: 'auto' }
+            '.cm-scroller': { overflow: 'auto' },
+            '.rune-flash-line': {
+              backgroundColor: 'rgba(152, 195, 121, 0.18)',
+              transition: 'background-color 1.2s ease-out'
+            }
           })
         ]
       }),
@@ -282,6 +361,116 @@ export function FileEditorPane({
     registerFileSave(paneId, async () => saveRef.current());
     return () => unregisterFileSave(paneId);
   }, [paneId]);
+
+  // Don't let a pending auto-save fire into a file rune is editing.
+  useEffect(() => {
+    if (runeWorking && autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+  }, [runeWorking]);
+
+  // Register editor handle so Rune overlay can read selection, flash lines, and sync content
+  useEffect(() => {
+    const handle: EditorHandle = {
+      getSelection: () => {
+        const view = viewRef.current;
+        if (!view) return { fromLine: 1, toLine: 1 };
+        const sel = view.state.selection.main;
+        return {
+          fromLine: view.state.doc.lineAt(sel.from).number,
+          toLine: view.state.doc.lineAt(sel.to).number
+        };
+      },
+      getContent: () => viewRef.current?.state.doc.toString() ?? '',
+      reloadFromDisk: async () => {
+        const res = await window.fleet.file.read(filePath);
+        if (!res.success) return null;
+        const view = viewRef.current;
+        if (!view) return null;
+        const content = res.data.content;
+        savedContentRef.current = content;
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+        return content;
+      },
+      flashLines: (range) => {
+        const view = viewRef.current;
+        if (!view) return;
+        view.dispatch({ effects: flashRangeEffect.of(range) });
+        if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+        flashTimerRef.current = setTimeout(() => {
+          viewRef.current?.dispatch({ effects: flashRangeEffect.of(null) });
+          flashTimerRef.current = null;
+        }, 1500);
+      },
+      writeContent: async (content) => {
+        await window.fleet.file.write(filePath, content);
+        const view = viewRef.current;
+        if (view) {
+          savedContentRef.current = content;
+          view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: content } });
+        }
+      },
+      save: async () => {
+        await saveRef.current();
+      },
+      getFilePath: () => filePath,
+      isClean: () => {
+        const view = viewRef.current;
+        if (!view) return true;
+        return view.state.doc.toString() === savedContentRef.current;
+      },
+      coordsForPos: (pos) => {
+        const view = viewRef.current;
+        const host = wrapperRef.current?.getBoundingClientRect();
+        if (!view || !host) return null;
+        const clamped = Math.max(0, Math.min(pos, view.state.doc.length));
+        const c = view.coordsAtPos(clamped);
+        if (!c) return null; // offset scrolled outside the rendered range
+        const scroller = view.scrollDOM.getBoundingClientRect();
+        const visible = c.bottom > scroller.top && c.top < scroller.bottom;
+        return { top: c.bottom - host.top, left: c.left - host.left, visible };
+      },
+      onScroll: (cb) => {
+        const view = viewRef.current;
+        if (!view) return () => {};
+        const el = view.scrollDOM;
+        el.addEventListener('scroll', cb, { passive: true });
+        return () => el.removeEventListener('scroll', cb);
+      }
+    };
+    registerEditorHandle(paneId, handle);
+    return () => {
+      unregisterEditorHandle(paneId);
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+    };
+  }, [paneId, filePath]);
+
+  // Rune IPC events are subscribed once at the app level (see useRuneAssistEvents) and
+  // routed into the store by paneId — NOT here, because this pane unmounts on tab switch
+  // and would otherwise miss the turn's result/idle event while it's in the background.
+
+  // After a renderer refresh the store is wiped, but a turn may still be running in the main
+  // process for this pane. Re-attach a working pill so its terminal event isn't dropped (the
+  // pre-turn snapshot for Revert isn't recoverable across a reload — reload+idle still work).
+  useEffect(() => {
+    let cancelled = false;
+    void window.fleet.runeAssist.getState({ filePath }).then((state) => {
+      if (cancelled) return;
+      const turn = state.activeTurn;
+      if (turn?.paneId === paneId) {
+        useRuneAssistStore.getState().rehydrate(paneId, {
+          cwd: state.cwd,
+          contextFile: filePath,
+          startedAt: turn.startedAt,
+          step: turn.step
+        });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [paneId, filePath]);
 
   // Cleanup dirty state on unmount
   useEffect(() => {
@@ -327,7 +516,7 @@ export function FileEditorPane({
       : { label: 'Saved', className: 'text-emerald-500' };
 
   return (
-    <div className="h-full w-full flex flex-col overflow-hidden">
+    <div ref={wrapperRef} className="relative h-full w-full flex flex-col overflow-hidden">
       {showPathChrome && <PathChromeHeader filePath={filePath} />}
       <div ref={containerRef} className="flex-1 min-h-0" />
       <div className="flex-shrink-0 flex items-center gap-3 px-3 h-7 bg-neutral-950/80 border-t border-neutral-800 text-xs text-neutral-400">
@@ -349,6 +538,7 @@ export function FileEditorPane({
           {saveStatus.label}
         </span>
       </div>
+      <RuneAssistLayer paneId={paneId} />
     </div>
   );
 }

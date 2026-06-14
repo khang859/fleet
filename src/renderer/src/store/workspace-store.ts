@@ -5,6 +5,7 @@ import { DEFAULT_TOOL_VISIBILITY } from '../../../shared/tools';
 import { getPaneTypeForFilePath } from '../../../shared/file-open';
 import { useCwdStore } from './cwd-store';
 import { useSettingsStore } from './settings-store';
+import { useRuneAssistStore } from './rune-assist-store';
 import { injectLiveCwd, getFirstPaneLiveCwd } from '../lib/workspace-utils';
 import { createLogger } from '../logger';
 import { clampSidebarWidth } from '../components/sidebar-constants';
@@ -545,6 +546,12 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closeTab: (tabId, serializedPanes) => {
     logTabs.debug('closeTab', { tabId });
+    // Cancel any in-flight Rune Quick-Assist turns for panes in this tab and drop their state.
+    const closing = get().workspace.tabs.find((t) => t.id === tabId);
+    if (closing) {
+      const rune = useRuneAssistStore.getState();
+      for (const pid of collectPaneIds(closing.splitRoot)) rune.disposePane(pid);
+    }
     set((state) => {
       const target = state.workspace.tabs.find((t) => t.id === tabId);
       // Pinned tabs (Kanban/Images/Annotate) are not closeable.
@@ -865,6 +872,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   closePane: (paneId) => {
     logLayout.debug('closePane', { paneId });
+    // Cancel any in-flight Rune Quick-Assist turn for this pane and drop its state.
+    useRuneAssistStore.getState().disposePane(paneId);
     set((state) => {
       // Don't let the close-pane action destroy a pinned tab via its sole leaf.
       const owner = state.workspace.tabs.find((t) => collectPaneIds(t.splitRoot).includes(paneId));
