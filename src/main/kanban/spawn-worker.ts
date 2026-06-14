@@ -2,6 +2,13 @@ import { spawn } from 'child_process';
 import { mkdirSync, writeFileSync, openSync, closeSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { createLogger } from '../logger';
+import {
+  agentWslLocation,
+  agentMcpConfigPosixPath,
+  agentMcpUrl,
+  buildAgentSpawn,
+  agentHostFor
+} from './agent-context';
 import { renderProfileMarkdown } from './profile-file';
 import { isValidProfileName, type WorkerProfile } from '../../shared/types';
 import type { RunMode, VerifyCommand } from '../../shared/kanban-types';
@@ -21,6 +28,8 @@ export interface BuildWorkerInput {
   task: WorkerTaskInfo;
   workspace: string;
   mcpPort: number;
+  /** Host rune uses to reach the MCP server. Resolved per WSL networking mode; defaults to loopback. */
+  mcpHost?: string;
   runToken: string;
   logPath: string;
   mode: RunMode;
@@ -199,8 +208,13 @@ function requireToolsForMode(mode: RunMode): string | null {
 export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation {
   const runeDir = join(input.workspace, '.rune');
   mkdirSync(runeDir, { recursive: true });
+  // The file is always written at a Windows-accessible path (a UNC path for a WSL
+  // worktree, via the 9p bridge). RUNE_MCP_CONFIG, though, must be the path rune
+  // sees: a POSIX path inside the distro, or the native path otherwise.
+  const loc = agentWslLocation(input.workspace);
   const mcpConfigPath = join(runeDir, 'mcp.json');
-  const url = `http://127.0.0.1:${input.mcpPort}/mcp?run=${input.runToken}`;
+  const runeMcpConfig = loc ? agentMcpConfigPosixPath(loc) : mcpConfigPath;
+  const url = agentMcpUrl(input.mcpPort, input.runToken, input.mcpHost ?? '127.0.0.1');
   writeFileSync(
     mcpConfigPath,
     JSON.stringify({ servers: { kanban: { type: 'http', url } } }, null, 2)
@@ -243,7 +257,7 @@ export function buildWorkerInvocation(input: BuildWorkerInput): WorkerInvocation
     cwd: input.workspace,
     logPath: input.logPath,
     env: {
-      RUNE_MCP_CONFIG: mcpConfigPath,
+      RUNE_MCP_CONFIG: runeMcpConfig,
       FLEET_KANBAN_TASK: input.task.id,
       FLEET_KANBAN_RUN: input.runToken
     }
@@ -350,9 +364,21 @@ export function spawnVerify(
 ): number | undefined {
   mkdirSync(dirname(input.logPath), { recursive: true });
   const out = openSync(input.logPath, 'a');
-  const child = spawn('sh', ['-c', buildVerifyScript(input.commands)], {
-    cwd: input.workspace,
-    env: { ...process.env },
+  // Verify commands operate on the worktree with the project's own toolchain, so
+  // for a WSL worktree they must run inside the distro (no MCP involved here).
+  const loc = agentWslLocation(input.workspace);
+  const spawnSpec = buildAgentSpawn(
+    {
+      command: 'sh',
+      args: ['-c', buildVerifyScript(input.commands)],
+      cwd: input.workspace,
+      env: {}
+    },
+    loc
+  );
+  const child = spawn(spawnSpec.file, spawnSpec.argv, {
+    cwd: spawnSpec.cwd,
+    env: { ...process.env, ...spawnSpec.env },
     detached: true,
     stdio: ['ignore', out, out]
   });
@@ -377,12 +403,37 @@ export function spawnRuneWorker(
   onSpawnError?: (err: NodeJS.ErrnoException) => void,
   onExit?: (exit: WorkerExit) => void
 ): number | undefined {
-  const inv = buildWorkerInvocation(input);
+  // A WSL worktree runs rune inside the distro; resolve the host it should use to
+  // reach the MCP server (and refuse up-front if the distro can't, e.g. NAT mode)
+  // before writing the scoped mcp.json with that host.
+  const loc = agentWslLocation(input.workspace);
+  let mcpHost = '127.0.0.1';
+  if (loc) {
+    const resolved = agentHostFor(loc.distro);
+    if ('unsupported' in resolved) {
+      const err: NodeJS.ErrnoException = Object.assign(new Error(resolved.unsupported), {
+        code: 'WSL_NAT_UNSUPPORTED'
+      });
+      log.error('kanban WSL worker unsupported under current networking mode', {
+        taskId: input.task.id,
+        distro: loc.distro,
+        reason: resolved.unsupported
+      });
+      onSpawnError?.(err);
+      return undefined;
+    }
+    mcpHost = resolved.host;
+  }
+  const inv = buildWorkerInvocation({ ...input, mcpHost });
   mkdirSync(dirname(inv.logPath), { recursive: true });
   const out = openSync(inv.logPath, 'a');
-  const child = spawn(inv.command, inv.args, {
-    cwd: inv.cwd,
-    env: { ...process.env, ...inv.env },
+  const spawnSpec = buildAgentSpawn(
+    { command: inv.command, args: inv.args, cwd: inv.cwd, env: inv.env },
+    loc
+  );
+  const child = spawn(spawnSpec.file, spawnSpec.argv, {
+    cwd: spawnSpec.cwd,
+    env: { ...process.env, ...spawnSpec.env },
     detached: true,
     stdio: ['ignore', out, out]
   });
